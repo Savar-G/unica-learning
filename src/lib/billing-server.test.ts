@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { CARD_UPDATE_SOURCE, stripeBillingProvider, supabaseBillingStore } from "@/lib/billing-server";
-import { CARD_LOCK_SECONDS } from "@/lib/card-lock";
+import { CardWriteRefused, convergeCard } from "@/lib/card-reconcile";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 
 vi.mock("server-only", () => ({}));
@@ -115,23 +115,29 @@ describe("the card update on Stripe", () => {
     await expect(stripeBillingProvider(null).readCardUpdate("cs_test_1")).rejects.toThrow("No Stripe key");
   });
 
-  it("sets the card on the customer and on each subscription that can still charge, and reads the whole list first", async () => {
-    const running = (id: string, status: string) => ({ id, status });
-    const { client, requests } = recordingStripe((url, method) => (method === "POST"
-      ? { body: { id: "written" } }
-      : { body: { object: "list", has_more: false, data: [running("sub_live", "active"), running("sub_trial", "trialing"), running("sub_late", "past_due"), running("sub_over", "canceled"), running("sub_gone", "incomplete_expired")] } }));
-    await stripeBillingProvider(client).setCardDefault("cus_1", "pm_new", () => true);
+  /** A customer with no default card yet, whose list holds these subscriptions, all on the old card. */
+  const onOldCard = (data: unknown[]) => recordingStripe((url, method) => (method === "POST"
+    ? { body: { id: "written" } }
+    : new URL(url).pathname === "/v1/subscriptions" ? { body: { object: "list", has_more: false, data } } : { body: { id: "cus_1", invoice_settings: { default_payment_method: null } } }));
+  const running = (id: string, status: string) => ({ id, status, default_payment_method: "pm_old" });
+  const write = (client: Stripe, canWrite = () => true) => convergeCard("cus_1", "pm_new", { stripe: stripeBillingProvider(client), canWrite });
+
+  it("writes the card on each subscription that can still charge and on the customer, and reads the whole list first", async () => {
+    const { client, requests } = onOldCard([running("sub_live", "active"), running("sub_trial", "trialing"), running("sub_late", "past_due"), running("sub_over", "canceled"), running("sub_gone", "incomplete_expired")]);
+    await write(client);
     expect(requests[0].method).toBe("GET");
-    const [customer, ...subscriptions] = requests.filter((r) => r.method === "POST");
+    const writes = requests.filter((r) => r.method === "POST");
+    const customer = writes.at(-1)!;
     expect(new URL(customer.url).pathname).toBe("/v1/customers/cus_1");
     expect(customer.body.get("invoice_settings[default_payment_method]")).toBe("pm_new");
+    const subscriptions = writes.slice(0, -1);
     expect(subscriptions.map((r) => r.url.split("/").at(-1))).toEqual(["sub_live", "sub_trial", "sub_late"]);
-    for (const write of subscriptions) expect(write.body.get("default_payment_method")).toBe("pm_new");
+    for (const row of subscriptions) expect(row.body.get("default_payment_method")).toBe("pm_new");
   });
 
   it("stores the card on the customer when no subscription exists yet, so the plan start can use it", async () => {
-    const { client, requests } = recordingStripe((url, method) => (method === "POST" ? { body: { id: "cus_1" } } : { body: { object: "list", has_more: false, data: [] } }));
-    await stripeBillingProvider(client).setCardDefault("cus_1", "pm_new", () => true);
+    const { client, requests } = onOldCard([]);
+    await write(client);
     const writes = requests.filter((r) => r.method === "POST");
     expect(writes.map((r) => new URL(r.url).pathname)).toEqual(["/v1/customers/cus_1"]);
     expect(writes[0].body.get("invoice_settings[default_payment_method]")).toBe("pm_new");
@@ -139,19 +145,39 @@ describe("the card update on Stripe", () => {
 
   it("writes nothing when it cannot read the whole list", async () => {
     const { client, requests } = recordingStripe(() => ({ status: 500, body: { error: { type: "api_error", message: "down" } } }));
-    await expect(stripeBillingProvider(client).setCardDefault("cus_1", "pm_new", () => true)).rejects.toThrow();
+    await expect(write(client)).rejects.toThrow();
     expect(requests.filter((r) => r.method === "POST")).toEqual([]);
   });
 
-  it("starts no Stripe write once the lock's time is nearly over, and stops between writes", async () => {
-    const answer = (url: string, method: string) => (method === "POST" ? { body: { id: "written" } } : { body: { object: "list", has_more: false, data: [{ id: "sub_live", status: "active" }] } });
-    const none = recordingStripe(answer);
-    await expect(stripeBillingProvider(none.client).setCardDefault("cus_1", "pm_new", () => false)).rejects.toThrow("about to end");
+  it("starts no Stripe write once its time is over, and stops between writes", async () => {
+    const none = onOldCard([running("sub_live", "active")]);
+    await expect(write(none.client, () => false)).rejects.toThrow("time for a card write");
     expect(none.requests.filter((r) => r.method === "POST")).toEqual([]);
-    const one = recordingStripe(answer);
+    const one = onOldCard([running("sub_live", "active")]);
     let left = 1;
-    await expect(stripeBillingProvider(one.client).setCardDefault("cus_1", "pm_new", () => left-- > 0)).rejects.toThrow("about to end");
-    expect(one.requests.filter((r) => r.method === "POST").map((r) => new URL(r.url).pathname)).toEqual(["/v1/customers/cus_1"]);
+    await expect(write(one.client, () => left-- > 0)).rejects.toThrow("time for a card write");
+    expect(one.requests.filter((r) => r.method === "POST").map((r) => new URL(r.url).pathname)).toEqual(["/v1/subscriptions/sub_live"]);
+  });
+
+  it("calls a refusal a refusal, and any other failure an unknown outcome", async () => {
+    const answers: [number, string, new (...args: never[]) => Error][] = [
+      [400, "invalid_request_error", CardWriteRefused], [402, "card_error", CardWriteRefused], [500, "api_error", Stripe.errors.StripeAPIError],
+      [429, "rate_limit_error", Stripe.errors.StripeRateLimitError], [409, "idempotency_error", Stripe.errors.StripeAPIError], [400, "idempotency_error", Stripe.errors.StripeIdempotencyError],
+    ];
+    for (const [status, type, error] of answers) {
+      const { client } = recordingStripe(() => ({ status, body: { error: { type, message: "No" } } }));
+      await expect(stripeBillingProvider(client).setCustomerCard("cus_1", "pm_new")).rejects.toBeInstanceOf(error);
+    }
+  });
+
+  it("reads a customer Stripe does not have, or that was deleted, as gone, and writes nothing", async () => {
+    const missing = recordingStripe((url) => (new URL(url).pathname.startsWith("/v1/customers/") ? { status: 404, body: { error: { type: "invalid_request_error", message: "No such customer" } } } : { body: { object: "list", has_more: false, data: [] } }));
+    expect(await write(missing.client)).toEqual({ wrote: 0, confirmed: true });
+    expect(missing.requests.filter((r) => r.method === "POST")).toEqual([]);
+    const deleted = recordingStripe((url) => (new URL(url).pathname.startsWith("/v1/customers/") ? { body: { id: "cus_1", deleted: true } } : { body: { object: "list", has_more: false, data: [] } }));
+    expect(await write(deleted.client)).toEqual({ wrote: 0, confirmed: true });
+    const down = recordingStripe(() => ({ status: 500, body: { error: { type: "api_error", message: "down" } } }));
+    await expect(write(down.client)).rejects.toThrow();
   });
 
   it("leaves saved-card's first card on the row after an update", async () => {
@@ -213,42 +239,52 @@ describe("the billing store", () => {
   const CARD = { parentId: P1, session: "cs_test_1", created: 1_800_000_000, paymentMethod: "pm_new" };
 
   it("records a return's card with the parent, the row, the session, its time from Stripe and the card's id", async () => {
-    const { store, sent } = rpcStore(() => Response.json({ state: "taken", token: "t1", session: "cs_test_1", payment_method: "pm_new", needs_repair: true, recorded: true }));
-    expect(await store.takeCardLock("card-1", CARD)).toEqual({ state: "taken", token: "t1", session: "cs_test_1", paymentMethod: "pm_new", needsRepair: true, recorded: true });
-    expect(sent).toEqual([{ name: "take_card_lock", body: { p_card: "card-1", p_seconds: CARD_LOCK_SECONDS, p_parent: P1, p_session: "cs_test_1", p_session_created_at: new Date(1_800_000_000_000).toISOString(), p_payment_method: "pm_new" } }]);
+    const { store, sent } = rpcStore(() => Response.json({ state: "row", session: "cs_test_1", payment_method: "pm_new", needs_repair: true, recorded: true }));
+    expect(await store.recordCard("card-1", CARD)).toEqual({ state: "row", session: "cs_test_1", paymentMethod: "pm_new", needsRepair: true, recorded: true });
+    expect(sent).toEqual([{ name: "record_card_update", body: { p_parent: P1, p_card: "card-1", p_session: "cs_test_1", p_session_created_at: new Date(1_800_000_000_000).toISOString(), p_payment_method: "pm_new" } }]);
+    expect(await rpcStore(() => Response.json({ state: "no_match" })).store.recordCard("card-1", CARD)).toEqual({ state: "no_match" });
   });
 
-  it("takes the lock for a plan start with only the row", async () => {
-    const { store, sent } = rpcStore(() => Response.json({ state: "busy", session: null, recorded: false }));
-    expect(await store.takeCardLock("card-1")).toEqual({ state: "busy", session: null, recorded: false });
-    expect(sent).toEqual([{ name: "take_card_lock", body: { p_card: "card-1", p_seconds: CARD_LOCK_SECONDS } }]);
+  it("throws on a record answer it cannot read or that fails, so no card is written", async () => {
+    for (const answer of ["maybe", { state: "maybe" }, null]) await expect(rpcStore(() => Response.json(answer)).store.recordCard("card-1", CARD)).rejects.toThrow("unreadable");
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.recordCard("card-1", CARD)).rejects.toThrow("record");
   });
 
-  it("passes the other answers of the lock on", async () => {
-    expect(await rpcStore(() => Response.json({ state: "no_match" })).store.takeCardLock("card-1", CARD)).toEqual({ state: "no_match" });
-    expect(await rpcStore(() => Response.json({ state: "clean", session: "cs_test_2", recorded: false })).store.takeCardLock("card-1", CARD)).toEqual({ state: "clean", session: "cs_test_2", recorded: false });
-  });
-
-  it("throws on a lock answer it cannot read or that fails, so no card is written", async () => {
-    for (const answer of ["maybe", { state: "maybe" }, { state: "taken", session: null }, null]) {
-      await expect(rpcStore(() => Response.json(answer)).store.takeCardLock("card-1", CARD)).rejects.toThrow("unreadable");
-    }
-    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.takeCardLock("card-1", CARD)).rejects.toThrow("take");
-  });
-
-  it("finishes with the row, the token, the session and whether it wrote, and reads each answer", async () => {
+  it("settles with the row, the session and whether a read confirmed it, and reads each answer", async () => {
     const { store, sent } = rpcStore(() => Response.json({ state: "newer", session: "cs_test_2", payment_method: "pm_b" }));
-    expect(await store.finishCardLock("card-1", "t1", "cs_test_1", true)).toEqual({ state: "newer", session: "cs_test_2", paymentMethod: "pm_b" });
-    expect(sent).toEqual([{ name: "finish_card_lock", body: { p_card: "card-1", p_token: "t1", p_session: "cs_test_1", p_wrote: true } }]);
-    for (const state of ["done", "unchanged", "lost"]) expect(await rpcStore(() => Response.json({ state })).store.finishCardLock("card-1", "t1", null, false)).toEqual({ state });
-    await expect(rpcStore(() => Response.json({ state: "maybe" })).store.finishCardLock("card-1", "t1", null, true)).rejects.toThrow("unreadable");
-    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.finishCardLock("card-1", "t1", null, true)).rejects.toThrow("finish");
+    expect(await store.settleCard("card-1", "cs_test_1", true)).toEqual({ state: "newer", session: "cs_test_2", paymentMethod: "pm_b" });
+    expect(sent).toEqual([{ name: "settle_card_update", body: { p_card: "card-1", p_session: "cs_test_1", p_confirmed: true } }]);
+    for (const state of ["settled", "flagged"]) expect(await rpcStore(() => Response.json({ state })).store.settleCard("card-1", "cs_test_1", false)).toEqual({ state });
+    await expect(rpcStore(() => Response.json({ state: "maybe" })).store.settleCard("card-1", null, true)).rejects.toThrow("unreadable");
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.settleCard("card-1", null, true)).rejects.toThrow("settle");
   });
 
-  it("lets go with the row and the token", async () => {
-    const { store, sent } = rpcStore(() => Response.json(true));
-    await store.releaseCardLock("card-1", "t1");
-    expect(sent).toEqual([{ name: "release_card_lock", body: { p_card: "card-1", p_token: "t1" } }]);
-    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.releaseCardLock("card-1", "t1")).rejects.toThrow("release");
+  const rowColumns = { card_id: "card-1", customer: "cus_1", session_id: "cs_test_1", payment_method_id: "pm_new", needs_repair: true, pending_plan_key: null, pending_plan_card: null, pending_plan_at: null };
+
+  it("reads a row by card, by customer and for the sweep, with its pending plan when there is one", async () => {
+    const pending = { ...rowColumns, pending_plan_key: "key-1", pending_plan_card: "pm_new", pending_plan_at: new Date(1000).toISOString() };
+    const { store, sent } = rpcStore(() => Response.json([pending]));
+    const row = { cardId: "card-1", customer: "cus_1", session: "cs_test_1", paymentMethod: "pm_new", needsRepair: true, pendingPlan: { key: "key-1", card: "pm_new", at: 1000 } };
+    expect(await store.cardRow("card-1")).toEqual(row);
+    expect(await store.cardRowOfCustomer("cus_1")).toEqual(row);
+    expect(await store.dueCardRows(5000, 10)).toEqual([row]);
+    expect(sent.map((s) => s.body)).toEqual([{ p_card: "card-1" }, { p_customer: "cus_1" }, { p_changed_after: new Date(5000).toISOString(), p_limit: 10 }]);
+    expect(await rpcStore(() => Response.json([])).store.cardRow("card-1")).toBeNull();
+    expect((await rpcStore(() => Response.json([rowColumns])).store.cardRow("card-1"))?.pendingPlan).toBeNull();
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.cardRow("card-1")).rejects.toThrow("read");
+  });
+
+  it("records and ends a plan start with the key and the card, and reads the record", async () => {
+    const { store, sent } = rpcStore(() => Response.json({ key: "key-1", card: "pm_first", at: new Date(1000).toISOString() }));
+    expect(await store.beginPlanStart("card-1", "key-2", "pm_second")).toEqual({ key: "key-1", card: "pm_first", at: 1000 });
+    await store.endPlanStart("card-1", "key-1");
+    await store.noteCardChecked("card-1");
+    expect(sent).toEqual([
+      { name: "begin_plan_start", body: { p_card: "card-1", p_key: "key-2", p_payment_method: "pm_second" } },
+      { name: "end_plan_start", body: { p_card: "card-1", p_key: "key-1" } },
+      { name: "note_card_checked", body: { p_card: "card-1" } },
+    ]);
+    await expect(rpcStore(() => Response.json({ key: "key-1" })).store.beginPlanStart("card-1", "k", "pm")).rejects.toThrow("unreadable");
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.endPlanStart("card-1", "k")).rejects.toThrow("end");
   });
 });

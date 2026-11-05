@@ -1,11 +1,12 @@
 // The billing module's store and provider (src/lib/billing.ts) in memory, for tests. The store keeps the database's
-// guards: every read is filtered by the signed-in parent, and the card order and lock are the rules of take_card_lock,
-// finish_card_lock and release_card_lock, on the clock of Date.now. The provider keeps Stripe's rules as the live provider reads them: invoices belong to a customer, a
-// read of a whole list either answers or throws, a card update session names the row and the customer it was made for, and
-// only a plan that can still charge takes a new default card. `stripe` is a real Stripe client over the same memory, so
-// startPlan (src/lib/stripe.ts) runs on what a card update left behind.
+// guards: every read is filtered by the signed-in parent, and the card order and the plan record are the rules of
+// record_card_update, settle_card_update, card_update_rows, begin_plan_start and end_plan_start, on the clock of Date.now. The
+// provider keeps Stripe's rules as the live provider reads them: invoices belong to a customer, a read of a whole list either
+// answers or throws, a card update session names the row and the customer it was made for, and only a plan that can still charge
+// takes a new default card. `stripe` is a real Stripe client over the same memory, so startPlan (src/lib/stripe.ts) runs on what a
+// card update left behind.
 import Stripe from "stripe";
-import { CARD_LOCK_SECONDS } from "@/lib/card-lock";
+import { CardWriteRefused, type CardRow, type CardState } from "@/lib/card-reconcile";
 import { RUNNING_PLAN } from "@/lib/parent-plan";
 import type { BillingProvider, BillingStore, CardUpdateRequest, CardUpdateSession, ProviderInvoice } from "@/lib/billing";
 
@@ -22,6 +23,7 @@ export interface MemorySubscription {
   customer: string;
   status: string;
   defaultCard: string | null;
+  startKey?: string | null;
 }
 
 /** A saved payment method of a customer. Stripe lists the newest first. */
@@ -30,7 +32,7 @@ export interface MemoryPaymentMethod {
   type: string;
 }
 
-type Operation = "family" | "card" | "invoices" | "create" | "read" | "setDefault" | "take" | "finish" | "release";
+type Operation = "family" | "card" | "invoices" | "create" | "read" | "state" | "setDefault" | "record" | "settle" | "rows" | "note" | "begin" | "end";
 
 /** One child_card_updates row. */
 export interface MemoryCardRow {
@@ -39,8 +41,13 @@ export interface MemoryCardRow {
   paymentMethod: string | null;
   applied: boolean;
   needsRepair: boolean;
-  token: string | null;
-  expiresAt: number | null;
+  pendingKey: string | null;
+  pendingCard: string | null;
+  pendingAt: number | null;
+  /** When the card changed: updated_at. */
+  changedAt: number;
+  /** When the sweep last looked: reconciled_at. */
+  checkedAt: number | null;
 }
 
 export function memoryBilling({ children, invoices = {}, subscriptions = [], paymentMethods = {}, customerDefaults = {} }: {
@@ -56,8 +63,8 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
   const created: CardUpdateRequest[] = [];
   /** One row per child: child_card_updates. */
   const updates = new Map<string, MemoryCardRow>();
-  let tokens = 0;
-  const calls: Record<Operation, number> = { family: 0, card: 0, invoices: 0, create: 0, read: 0, setDefault: 0, take: 0, finish: 0, release: 0 };
+  /** A Customer's card writes are counted. */
+  const calls: Record<Operation, number> = { family: 0, card: 0, invoices: 0, create: 0, read: 0, state: 0, setDefault: 0, record: 0, settle: 0, rows: 0, note: 0, begin: 0, end: 0 };
   /** Cards whose subscription write Stripe refuses, after the Customer's write landed. */
   const refuseOnSubscription = new Set<string>();
   /** Set an operation's error to make every call of it throw, as a database or Stripe error would. */
@@ -75,6 +82,16 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
     const child = children.find((c) => c.card?.id === cardId);
     return child && updates.get(child.childId);
   };
+  const newRow = (): MemoryCardRow => ({ sessionId: null, created: null, paymentMethod: null, applied: false, needsRepair: false, pendingKey: null, pendingCard: null, pendingAt: null, changedAt: Date.now(), checkedAt: null });
+  const cardRowOf = (child: MemoryBillingChild, row: MemoryCardRow): CardRow => ({
+    cardId: child.card!.id, customer: child.card!.customer!, session: row.sessionId, paymentMethod: row.paymentMethod, needsRepair: row.needsRepair,
+    pendingPlan: row.pendingKey ? { key: row.pendingKey, card: row.pendingCard!, at: row.pendingAt! } : null,
+  });
+  const rowWhere = (test: (c: MemoryBillingChild) => boolean) => {
+    const child = children.find((c) => c.card?.customer && test(c));
+    const row = child && updates.get(child.childId);
+    return child && row ? cardRowOf(child, row) : null;
+  };
 
   const store: BillingStore = {
     async family(parentId) {
@@ -88,38 +105,64 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       const child = childOfCard(parentId, cardId);
       return child?.card ? { cardId: child.card.id, childId: child.childId, customer: child.card.customer, cardSaved: child.card.saved } : null;
     },
-    async takeCardLock(cardId, card) {
-      begin("take");
-      const child = card ? childOfCard(card.parentId, cardId) : children.find((c) => c.card?.id === cardId);
+    async recordCard(cardId, card) {
+      begin("record");
+      const child = childOfCard(card.parentId, cardId);
       if (!child) return { state: "no_match" };
       let row = updates.get(child.childId);
-      if (!row) updates.set(child.childId, row = { sessionId: null, created: null, paymentMethod: null, applied: false, needsRepair: false, token: null, expiresAt: null });
+      if (!row) updates.set(child.childId, row = newRow());
       let recorded = false;
-      if (card) {
-        if (row.sessionId === null || row.created === null || card.created > row.created || (card.created === row.created && card.session > row.sessionId)) {
-          Object.assign(row, { sessionId: card.session, created: card.created, paymentMethod: card.paymentMethod, applied: false, needsRepair: true });
-          recorded = true;
-        }
-        if (!row.needsRepair) return { state: "clean", session: row.sessionId, recorded: false };
+      if (row.sessionId === null || row.created === null || card.created > row.created || (card.created === row.created && card.session > row.sessionId)) {
+        Object.assign(row, { sessionId: card.session, created: card.created, paymentMethod: card.paymentMethod, applied: false, needsRepair: true, changedAt: Date.now() });
+        recorded = true;
       }
-      if (row.token && row.expiresAt !== null && row.expiresAt > Date.now()) return { state: "busy", session: row.sessionId, recorded };
-      row.token = `lock-${++tokens}`;
-      row.expiresAt = Date.now() + CARD_LOCK_SECONDS * 1000;
-      return { state: "taken", token: row.token, session: row.sessionId, paymentMethod: row.paymentMethod, needsRepair: row.needsRepair, recorded };
+      return { state: "row", session: row.sessionId, paymentMethod: row.paymentMethod, needsRepair: row.needsRepair, recorded };
     },
-    async finishCardLock(cardId, token, session, wrote) {
-      begin("finish");
+    async settleCard(cardId, session, confirmed) {
+      begin("settle");
       const row = rowOfCard(cardId);
-      if (!row || row.token !== token) return { state: "lost" };
+      if (!row) return { state: "newer", session: null, paymentMethod: null };
       if (row.sessionId !== session) return { state: "newer", session: row.sessionId, paymentMethod: row.paymentMethod };
-      if (!wrote) return { state: "unchanged" };
-      Object.assign(row, { needsRepair: false, token: null, expiresAt: null, applied: row.sessionId !== null });
-      return { state: "done" };
+      if (confirmed) {
+        Object.assign(row, { needsRepair: false, applied: row.sessionId !== null });
+        return { state: "settled" };
+      }
+      if (row.paymentMethod) row.needsRepair = true;
+      return { state: "flagged" };
     },
-    async releaseCardLock(cardId, token) {
-      begin("release");
+    async cardRow(cardId) {
+      begin("rows");
+      return rowWhere((c) => c.card?.id === cardId);
+    },
+    async cardRowOfCustomer(customer) {
+      begin("rows");
+      return rowWhere((c) => c.card?.customer === customer);
+    },
+    async dueCardRows(changedAfter, limit) {
+      begin("rows");
+      return children.flatMap((c) => {
+        const row = updates.get(c.childId);
+        return row && c.card?.customer && (row.pendingKey || (row.paymentMethod && (row.needsRepair || row.changedAt > changedAfter))) ? [{ child: c, row }] : [];
+      }).sort((a, b) => (a.row.checkedAt ?? -1) - (b.row.checkedAt ?? -1)).slice(0, limit).map(({ child, row }) => cardRowOf(child, row));
+    },
+    async noteCardChecked(cardId) {
+      begin("note");
       const row = rowOfCard(cardId);
-      if (row?.token === token) Object.assign(row, { token: null, expiresAt: null });
+      if (row) row.checkedAt = Date.now();
+    },
+    async beginPlanStart(cardId, key, card) {
+      begin("begin");
+      const child = children.find((c) => c.card?.id === cardId);
+      if (!child) throw new Error("plan_start_no_card_setup");
+      let row = updates.get(child.childId);
+      if (!row) updates.set(child.childId, row = newRow());
+      if (!row.pendingKey) Object.assign(row, { pendingKey: key, pendingCard: card, pendingAt: Date.now() });
+      return { key: row.pendingKey!, card: row.pendingCard!, at: row.pendingAt! };
+    },
+    async endPlanStart(cardId, key) {
+      begin("end");
+      const row = rowOfCard(cardId);
+      if (row?.pendingKey === key) Object.assign(row, { pendingKey: null, pendingCard: null, pendingAt: null });
     },
   };
 
@@ -140,15 +183,28 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       begin("read");
       return sessions.get(id) ?? null;
     },
-    async setCardDefault(customer, paymentMethod, canWrite) {
+    async cardState(customer): Promise<CardState> {
+      begin("state");
+      return {
+        gone: false, customerDefault: customerDefaults[customer] ?? null,
+        plans: subscriptions.filter((s) => s.customer === customer).map((s) => ({ id: s.id, status: s.status, defaultCard: s.defaultCard, startKey: s.startKey ?? null, firstCharge: new Date(1_900_000_000_000).toISOString() })),
+      };
+    },
+    async setSubscriptionCard(id, card) {
+      if (fail.setDefault) throw fail.setDefault;
+      const during = duringNextWrite;
+      duringNextWrite = null;
+      await during?.();
+      if (refuseOnSubscription.has(card)) throw new CardWriteRefused("Stripe refused the subscription write");
+      const subscription = subscriptions.find((s) => s.id === id && RUNNING_PLAN.has(s.status));
+      if (subscription) subscription.defaultCard = card;
+    },
+    async setCustomerCard(customer, card) {
       begin("setDefault");
       const during = duringNextWrite;
       duringNextWrite = null;
       await during?.();
-      if (!canWrite()) throw new Error("The card lock is about to end");
-      customerDefaults[customer] = paymentMethod;
-      if (refuseOnSubscription.has(paymentMethod)) throw new Error("Stripe refused the subscription write");
-      for (const s of subscriptions) if (s.customer === customer && RUNNING_PLAN.has(s.status)) s.defaultCard = paymentMethod;
+      customerDefaults[customer] = card;
     },
   };
 
@@ -157,13 +213,13 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
     const method = init?.method ?? "GET";
     const answer = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
     if (url.pathname === "/v1/subscriptions" && method === "GET") {
-      return answer({ object: "list", has_more: false, data: subscriptions.filter((s) => s.customer === url.searchParams.get("customer")).map((s) => ({ id: s.id, status: s.status })) });
+      return answer({ object: "list", has_more: false, data: subscriptions.filter((s) => s.customer === url.searchParams.get("customer")).map((s) => ({ id: s.id, status: s.status, default_payment_method: s.defaultCard, metadata: { ...(s.startKey ? { start_key: s.startKey } : {}) }, trial_end: 1_900_000_000 })) });
     }
     if (url.pathname === "/v1/subscriptions" && method === "POST") {
       const form = new URLSearchParams(String(init?.body ?? ""));
       const id = `sub_memory_${subscriptions.length + 1}`;
-      subscriptions.push({ id, customer: form.get("customer")!, status: "trialing", defaultCard: form.get("default_payment_method") });
-      return answer({ id, trial_end: 1_900_000_000 });
+      subscriptions.push({ id, customer: form.get("customer")!, status: "trialing", defaultCard: form.get("default_payment_method"), startKey: form.get("metadata[start_key]") });
+      return answer({ id, status: "trialing", default_payment_method: form.get("default_payment_method"), metadata: { start_key: form.get("metadata[start_key]") }, trial_end: 1_900_000_000 });
     }
     if (url.pathname.startsWith("/v1/subscriptions/") && method === "POST") {
       const form = new URLSearchParams(String(init?.body ?? ""));
@@ -207,8 +263,6 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
     customerDefaults,
     refuseOnSubscription,
     updates,
-    /** No real wait between tries of a busy lock. */
-    pause: async () => {},
     /** The parent finishes Stripe's page: the session now holds the card, and it is the customer's newest. */
     complete(id: string, paymentMethod: string, type = "card") {
       const session = sessions.get(id);

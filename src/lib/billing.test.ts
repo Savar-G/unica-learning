@@ -213,9 +213,20 @@ describe("the card update", () => {
     expect(await finishCardUpdate("p1", "cs_test_none", b)).toBe("not_found");
     await startCardUpdate("p1", "card-1", urls, b);
     b.complete("cs_test_1", "pm_new");
+    // Stripe gave no answer, so the outcome of the write is unknown. The row keeps the card for the sweep.
     b.fail.setDefault = new Error("Stripe down");
-    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("unconfirmed");
     expect(defaults(b).sub_live).toBe("pm_old");
+    expect(b.updates.get("c1")).toMatchObject({ sessionId: "cs_test_1", paymentMethod: "pm_new", needsRepair: true });
+  });
+
+  it("answers failed when Stripe refuses the card", async () => {
+    const b = withPlan();
+    await startCardUpdate("p1", "card-1", urls, b);
+    b.complete("cs_test_1", "pm_new");
+    b.refuseOnSubscription.add("pm_new");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
+    expect(b.updates.get("c1")).toMatchObject({ needsRepair: true });
   });
 
   /** Two finished updates of one child, A then B, with Stripe's pages opened in that order. */
@@ -261,45 +272,39 @@ describe("the card update", () => {
     await startCardUpdate("p1", "card-1", urls, b);
     b.complete("cs_test_1", "pm_new");
     b.fail.setDefault = new Error("Stripe down");
-    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("unconfirmed");
     delete b.fail.setDefault;
     expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("updated");
     expect(defaults(b).sub_live).toBe("pm_new");
   });
 
-  it("writes the newer card when a newer return arrives during this write, and tells the newer return only what it knows", async () => {
+  it("writes the newer card when a newer return arrives during this write, and each return says only what it knows", async () => {
     const b = withPlan();
     await twoUpdates(b);
-    // B's return finds the lock busy for its whole wait, so it records its card and does not claim it took effect.
-    b.duringNextWrite(async () => { expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("unconfirmed"); });
+    // B's return records its card and finishes first. A's write then lands, and A finds B newer in the row and writes B again.
+    b.duringNextWrite(async () => { expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("updated"); });
     expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("stale");
-    expect(b.calls.setDefault).toBe(2);
     expect(defaults(b).sub_live).toBe("pm_b");
     expect(b.customerDefaults.cus_1).toBe("pm_b");
-    expect(b.updates.get("c1")).toMatchObject({ sessionId: "cs_test_2", needsRepair: false, token: null });
+    expect(b.updates.get("c1")).toMatchObject({ sessionId: "cs_test_2", needsRepair: false });
   });
 
-  it("says updated to a return that waited, when the holder wrote its card meanwhile", async () => {
-    const b = withPlan();
-    await twoUpdates(b);
-    let second: Promise<string> | null = null;
-    b.duringNextWrite(async () => { second = finishCardUpdate("p1", "cs_test_2", { ...b, pause: () => new Promise((resolve) => setTimeout(resolve, 1)) }); await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("stale");
-    expect(await second).toBe("updated");
-    expect(b.calls.setDefault).toBe(2);
-    expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("stale");
-  });
-
-  it("answers failed, and does not say updated, when the claim or the finish cannot be stored", async () => {
+  it("answers failed when the card cannot be recorded, and writes nothing", async () => {
     const b = withPlan();
     await startCardUpdate("p1", "card-1", urls, b);
     b.complete("cs_test_1", "pm_new");
-    b.fail.take = new Error("Database down");
+    b.fail.record = new Error("Database down");
     expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
     expect(b.calls.setDefault).toBe(0);
-    delete b.fail.take;
-    b.fail.finish = new Error("Database down");
-    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
+  });
+
+  it("does not say updated when the row cannot say that this card is the newest", async () => {
+    const b = withPlan();
+    await startCardUpdate("p1", "card-1", urls, b);
+    b.complete("cs_test_1", "pm_new");
+    b.fail.settle = new Error("Database down");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("unconfirmed");
+    expect(b.updates.get("c1")).toMatchObject({ needsRepair: true });
   });
 
   it("keeps one child's order apart from another child's", async () => {

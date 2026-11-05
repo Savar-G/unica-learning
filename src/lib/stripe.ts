@@ -1,11 +1,12 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { gradeName } from "@/lib/assessment/grades";
-import { letGoOfCardLock, lockWindow, writeNewestCard, type CardLocks } from "@/lib/card-lock";
-import { liveCardLocks } from "@/lib/card-lock-server";
+import { PLAN_RETRY_MS, planNotOver, settleNewestCard, writeWindow, type CardRow, type CardRows, type PlanCard } from "@/lib/card-reconcile";
+import { liveCardRows } from "@/lib/card-reconcile-server";
 import { RUNNING_PLAN } from "@/lib/parent-plan";
 import { cad, priceWithOffer } from "@/lib/site";
-import { CARD_READ, CARD_WRITE, customerSubscriptions, writeCardDefault } from "@/lib/stripe-subscriptions";
+import { CARD_READ, CARD_WRITE, customerSubscriptions, planCard as planCardOf, refusedByStripe, stripeCards } from "@/lib/stripe-subscriptions";
 import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
@@ -171,7 +172,8 @@ export function stripeCustomerUrl(customer: string): string | null {
 
 export type StartPlanOutcome =
   | { ok: true; subscription: string; firstChargeAt: string }
-  | { ok: false; error: "no_card" | "already" | "not_delivered" | "busy" };
+  /** "unconfirmed": Stripe may still make the plan. The record stays, and the webhook, the sweep or the next press decides it. */
+  | { ok: false; error: "no_card" | "already" | "not_delivered" | "unconfirmed" };
 
 /** True when Stripe has no object with this id (a 404), so the caller creates it. */
 const missing = (e: unknown) => e instanceof Stripe.errors.StripeError && e.statusCode === 404;
@@ -203,62 +205,85 @@ async function planCard(s: Stripe, customer: string): Promise<string | undefined
  * price on the child's customer, charged to the saved card: the free first month first (a 30-day trial, nothing
  * charged), then the full price on day 30 and each month after until the parent cancels. Refuses when the
  * customer already has a subscription that is not over, or no saved card. Throws, and starts nothing, when it cannot
- * read the customer's whole list. The card setup's id keys the create, so a double click starts one subscription.
+ * read the customer's whole list.
  *
- * #554: the start holds the child's card lock (card-lock.ts), so it cannot start on a card that a card update is replacing.
- * It answers "busy" while an update holds the lock. It first repairs a card a failed update left behind, and it charges the
- * row's newest card, else the card planCard finds. A newer card that arrives meanwhile goes on the Customer and on the new
- * plan before the lock is let go. When that last step fails the plan has still started, so the answer says so: the row's
- * needs_repair stays set, and the next return, update or plan start writes the card.
+ * #554: the creation is recorded before its request (card-reconcile.ts), with a key and a card that a retry sends again, so a
+ * double click or a retry starts one subscription. A timeout answers "unconfirmed" and leaves the record: the request can still
+ * land. It charges the row's newest card, else the card planCard finds. A card update during the start is corrected right after it
+ * and, for a late creation, by the webhook or the sweep. When that last step fails the plan has still started, so the answer says so.
  */
-export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean }, now = new Date(), locks: CardLocks | null = liveCardLocks()): Promise<StartPlanOutcome> {
+export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean }, now = new Date(), rows: CardRows | null = liveCardRows()): Promise<StartPlanOutcome> {
   if (p.deliveryConfirmed !== true) return { ok: false, error: "not_delivered" };
-  if (!locks) throw new Error("No card lock");
-  const canWrite = lockWindow();
-  const lock = await locks.takeCardLock(p.cardSetup);
-  if (lock.state === "busy") return { ok: false, error: "busy" };
-  if (lock.state !== "taken") throw new Error("The card setup has no card lock");
-  const started: string[] = [];
-  const write = (card: string) => writeCardDefault(s, p.customer, card, canWrite, started);
-  let outcome: StartPlanOutcome;
-  try {
-    if (lock.needsRepair) {
-      if (!lock.paymentMethod) throw new Error("The newest card update has no card");
-      await write(lock.paymentMethod);
-    }
-    outcome = await startHeldPlan(s, p, lock.paymentMethod, canWrite, now);
-  } catch (e) {
-    await letGoOfCardLock(locks, p.cardSetup, lock.token);
-    throw e;
-  }
-  if (outcome.ok) started.push(outcome.subscription);
-  try {
-    await writeNewestCard(locks, p.cardSetup, lock.token, { session: lock.session, paymentMethod: lock.paymentMethod, write: false }, write);
-  } catch (e) {
-    console.error("[stripe] plan start could not settle the card", e instanceof Error ? e.message : "failed");
-    await letGoOfCardLock(locks, p.cardSetup, lock.token);
-  }
-  return outcome;
-}
-
-/** The start itself, under the lock. `newest` is the row's newest card, when a card update recorded one. */
-async function startHeldPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number }, newest: string | null, canWrite: () => boolean, now: Date): Promise<StartPlanOutcome> {
+  if (!rows) throw new Error("No card rows");
+  const canWrite = writeWindow();
+  const row = await rows.cardRow(p.cardSetup);
+  const pending = row?.pendingPlan ?? null;
   const current = await customerSubscriptions(s, p.customer, CARD_READ);
-  if (current.some((x) => x.status !== "canceled" && x.status !== "incomplete_expired")) return { ok: false, error: "already" };
-  const card = newest ?? await planCard(s, p.customer);
+
+  // An earlier press whose answer was lost: its subscription is here, so this press gets its answer.
+  const landed = pending && current.find((x) => x.metadata?.start_key === pending.key);
+  if (pending && landed) {
+    await endRecord(rows, p.cardSetup, pending.key);
+    const plan = planCardOf(landed);
+    await settleAfterStart(s, rows, p.cardSetup, canWrite, plan);
+    return planNotOver(landed.status) ? { ok: true, subscription: landed.id, firstChargeAt: plan.firstCharge ?? firstChargeAt(now, planTerms(p.price).trialDays).toISOString() } : { ok: false, error: "already" };
+  }
+  if (current.some((x) => planNotOver(x.status))) {
+    if (pending) await endRecord(rows, p.cardSetup, pending.key);
+    await settleAfterStart(s, rows, p.cardSetup, canWrite);
+    return { ok: false, error: "already" };
+  }
+  // Stripe may forget the key soon, and then the same key could start a second plan. The sweep decides this record at 24 hours.
+  if (pending && Date.now() - pending.at >= PLAN_RETRY_MS) return { ok: false, error: "unconfirmed" };
+
+  const card = pending?.card ?? row?.paymentMethod ?? await planCard(s, p.customer);
   if (!card) return { ok: false, error: "no_card" };
   const terms = planTerms(p.price);
   await planProduct(s);
-  if (!canWrite()) throw new Error("The card lock is about to end");
-  const created = await s.subscriptions.create({
-    customer: p.customer,
-    items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: terms.monthlyCents, recurring: { interval: "month" } } }],
-    trial_period_days: terms.trialDays,
-    default_payment_method: card,
-    metadata: { card_setup: p.cardSetup, price: cad(p.price), trial_start_reason: "workbook_delivered", delivery_confirmed: "true" },
-  }, { ...CARD_WRITE, idempotencyKey: `start-plan-${p.cardSetup}` });
+  const held = await rows.beginPlanStart(p.cardSetup, `start-plan-${p.cardSetup}-${randomUUID()}`, card);
+  let created: Stripe.Subscription;
+  try {
+    created = await s.subscriptions.create({
+      customer: p.customer,
+      items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: terms.monthlyCents, recurring: { interval: "month" } } }],
+      trial_period_days: terms.trialDays,
+      default_payment_method: held.card,
+      metadata: { card_setup: p.cardSetup, start_key: held.key, price: cad(p.price), trial_start_reason: "workbook_delivered", delivery_confirmed: "true" },
+    }, { ...CARD_WRITE, idempotencyKey: held.key });
+  } catch (e) {
+    if (refusedByStripe(e)) {
+      // Nothing started, and Stripe answers this key the same way for 24 hours, so the next press needs a new one.
+      await endRecord(rows, p.cardSetup, held.key);
+      throw e;
+    }
+    console.error("[stripe] plan start not confirmed", e instanceof Error ? e.message : "failed");
+    return { ok: false, error: "unconfirmed" };
+  }
+  await endRecord(rows, p.cardSetup, held.key);
+  const plan = planCardOf(created);
+  await settleAfterStart(s, rows, p.cardSetup, canWrite, { ...plan, defaultCard: plan.defaultCard ?? held.card });
   const end = created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
   return { ok: true, subscription: created.id, firstChargeAt: end.toISOString() };
+}
+
+/** Only logs when it cannot: the answer stands, and the webhook or the sweep ends the record. */
+async function endRecord(rows: CardRows, cardSetup: string, key: string) {
+  try {
+    await rows.endPlanStart(cardSetup, key);
+  } catch (e) {
+    console.error("[stripe] plan start record not ended", e instanceof Error ? e.message : "failed");
+  }
+}
+
+/** Brings the Customer and the plan to the row's newest card. Only logs when it cannot: the row stays flagged, and the sweep comes back. */
+async function settleAfterStart(s: Stripe, rows: CardRows, cardSetup: string, canWrite: () => boolean, made?: PlanCard) {
+  try {
+    const row: CardRow | null = await rows.cardRow(cardSetup);
+    if (!row?.paymentMethod) return;
+    await settleNewestCard(cardSetup, row.customer, row, { rows, stripe: stripeCards(s), canWrite }, made);
+  } catch (e) {
+    console.error("[stripe] plan start could not settle the card", e instanceof Error ? e.message : "failed");
+  }
 }
 
 export type CancelPlanOutcome =

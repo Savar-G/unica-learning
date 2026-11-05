@@ -9,7 +9,7 @@ const ERRORS: Record<string, string> = {
   no_card: "No saved card was found for this family.",
   not_delivered: "Confirm that the first workbook has arrived at the family's home before starting the free month.",
   delivery_receipt_required: "Open this child's workbook 1 and confirm its delivery. Then return here to start the free month.",
-  busy: "A card update for this child is running. Try again in a minute.",
+  unconfirmed: "We could not confirm that Stripe started this plan. Do not start another one. Reload this page in 15 minutes, or check the family in Stripe.",
   unavailable: "Stripe is unavailable. Try again later.",
   failed: "Stripe could not start the plan. Check Stripe before trying again.",
 };

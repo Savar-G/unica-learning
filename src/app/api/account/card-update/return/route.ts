@@ -7,7 +7,7 @@ import { parentId, sessionClient } from "@/lib/supabase-auth";
 const SESSION = /^cs_(?:test|live)_[A-Za-z0-9]+$/;
 const NOTICE: Record<CardUpdateFinish, CardNotice | null> = { updated: "updated", stale: null, unconfirmed: "unconfirmed", incomplete: "unchanged", not_found: "failed", failed: "failed" };
 
-// Shorter than the card lock (CARD_LOCK_SECONDS), so the lock outlives this request.
+// The writes keep inside this: see writeWindow in card-reconcile.ts.
 export const maxDuration = 60;
 
 // Stripe sends the parent back here after the hosted page saved a card (#554). This is where the card becomes the

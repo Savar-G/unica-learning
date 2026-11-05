@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
+import { dueCardCount, sweepCardsNow } from "@/lib/card-sweep-server";
 import { emailConfigProblem, type MailTransport } from "@/lib/email-delivery";
 import { resendTransport } from "@/lib/email-resend";
 import { sweepAbandonedCallsNow } from "@/lib/maya-call-sweep-server";
@@ -18,7 +19,8 @@ import { adminClient } from "@/lib/supabase-auth";
 // After the reminders, the same run sends the weekly Maya emails (#332, src/lib/maya-weekly-email.ts) and then the
 // monthly summary emails (#563, src/lib/monthly-summary-email.ts) through the same spaced transport. Beside the emails, the same run ends abandoned Maya chats and calls (#528,
 // src/lib/maya-call-sweep.ts): it starts no new end after SWEEP_START_MS and stops waiting at SWEEP_TIME_LIMIT_MS, inside
-// the cron's 60-second request limit (timeout_milliseconds in migration add_reminder_cron).
+// the cron's 60-second request limit (timeout_milliseconds in migration add_reminder_cron). Also beside the emails, it brings
+// Stripe to each child's newest card (#554, src/lib/card-reconcile.ts), on its own time inside that limit.
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -69,12 +71,13 @@ export async function POST(request: Request) {
   const store = reminderStore(admin);
   const origin = linkOrigin(request);
   let sweep: Promise<unknown> | null = null;
+  let cards: Promise<unknown> | null = null;
   try {
     if (new URL(request.url).searchParams.get("dry") === "1") {
       const maya = dueWeeklyEmails(await mayaWeeklyStore(admin).load(now), now).length;
       const monthly = dueMonthlyEmails(await monthlySummaryEmailStore(admin).load(now), now).length;
       const abandoned = (await sweepAbandonedCallsNow(admin, { dry: true })).due;
-      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, monthly, sweep: abandoned });
+      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, monthly, sweep: abandoned, cards: await dueCardCount(now) });
     }
     // The sweep runs beside the emails and never fails the run.
     sweep = sweepAbandonedCallsNow(admin, { origin, startedAt: now }).then(
@@ -87,6 +90,7 @@ export async function POST(request: Request) {
         return { error: "run_failed" as const };
       },
     );
+    cards = sweepCardsNow({ origin, startedAt: now });
     const transport = spaced(resendTransport(), SEND_GAP_MS);
     const result = await runReminders(store, now, {
       newToken,
@@ -112,11 +116,12 @@ export async function POST(request: Request) {
       console.error("[monthly summary] run failed", e instanceof Error ? e.message : e);
       monthly = { error: "run_failed" };
     }
-    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep });
+    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
     // The sweep finishes before the answer, so the function is not stopped in the middle of a call's end.
     await sweep;
+    await cards;
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }

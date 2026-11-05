@@ -1,7 +1,6 @@
 import "server-only";
-import type Stripe from "stripe";
-import { CARD_WRITE_MS } from "@/lib/card-lock";
-import { RUNNING_PLAN } from "@/lib/parent-plan";
+import Stripe from "stripe";
+import { CardWriteRefused, type CardStripe, type PlanCard } from "@/lib/card-reconcile";
 
 /** More subscriptions than these pages hold is not a state the plan rules know: the read throws. */
 const SUBSCRIPTION_PAGES = 10;
@@ -26,26 +25,53 @@ export async function customerSubscriptions(s: Stripe, customer: string, options
   throw new Error("Too many subscriptions");
 }
 
-/** A Stripe read of a card or a plan while the card lock is held. */
+/** A Stripe read of a card or a plan: about 9 seconds at most. */
 export const CARD_READ: Stripe.RequestOptions = { timeout: 4000, maxNetworkRetries: 1 };
-/** A Stripe write of a card while the card lock is held. One attempt, so its longest time is known: see card-lock.ts. */
-export const CARD_WRITE: Stripe.RequestOptions = { timeout: CARD_WRITE_MS, maxNetworkRetries: 0 };
+/** A Stripe write of a card or a plan. One attempt, so its longest time is known. */
+export const CARD_WRITE: Stripe.RequestOptions = { timeout: 15_000, maxNetworkRetries: 0 };
 
 /**
- * The card becomes the Customer's default, which a later plan start uses, and the default of each subscription that can
- * still charge, read from the whole list first. `also` names a subscription just made, in case the list does not show it yet.
- * Only the card lock's holder calls this. `canWrite` is tested before each write: past it, this throws and writes nothing more.
+ * True only when Stripe said no, so nothing happened. A timeout, a lost connection, a 5xx, a 429 and a 409 leave the outcome
+ * unknown, and so does a key reused with other fields, as the key's first request may have worked.
  */
-export async function writeCardDefault(s: Stripe, customer: string, paymentMethod: string, canWrite: () => boolean, also: readonly string[] = []): Promise<void> {
-  const check = () => {
-    if (!canWrite()) throw new Error("The card lock is about to end");
+export function refusedByStripe(e: unknown): boolean {
+  if (!(e instanceof Stripe.errors.StripeError) || e instanceof Stripe.errors.StripeIdempotencyError) return false;
+  const status = e.statusCode ?? 0;
+  return status >= 400 && status < 500 && status !== 408 && status !== 409 && status !== 429;
+}
+
+const idOf = (value: string | { id: string } | null | undefined) => (typeof value === "string" ? value : value?.id ?? null);
+
+/** A subscription as the card comparison reads it. */
+export function planCard(x: Stripe.Subscription): PlanCard {
+  return {
+    id: x.id, status: x.status, defaultCard: idOf(x.default_payment_method), startKey: x.metadata?.start_key ?? null,
+    firstCharge: x.trial_end ? new Date(x.trial_end * 1000).toISOString() : null,
   };
-  const subscriptions = await customerSubscriptions(s, customer, CARD_READ);
-  check();
-  await s.customers.update(customer, { invoice_settings: { default_payment_method: paymentMethod } }, CARD_WRITE);
-  const running = subscriptions.filter((x) => RUNNING_PLAN.has(x.status)).map((x) => x.id);
-  for (const id of new Set([...running, ...also])) {
-    check();
-    await s.subscriptions.update(id, { default_payment_method: paymentMethod }, CARD_WRITE);
+}
+
+const writing = async (write: () => Promise<unknown>) => {
+  try {
+    await write();
+  } catch (e) {
+    throw refusedByStripe(e) ? new CardWriteRefused(e instanceof Error ? e.message : "Stripe refused the write") : e;
   }
+};
+
+/** Stripe as the card comparison's seam. */
+export function stripeCards(s: Stripe): CardStripe {
+  return {
+    async cardState(customer) {
+      // A customer this key cannot see is one nothing here can charge: deleted, or a test-mode customer on the live key.
+      const found = await s.customers.retrieve(customer, {}, CARD_READ).catch((e: unknown) => {
+        if (e instanceof Stripe.errors.StripeError && e.statusCode === 404) return null;
+        throw e;
+      });
+      if (!found || found.deleted) return { gone: true, customerDefault: null, plans: [] };
+      const subscriptions = await customerSubscriptions(s, customer, CARD_READ);
+      return { gone: false, customerDefault: idOf(found.invoice_settings?.default_payment_method), plans: subscriptions.map(planCard) };
+    },
+    setSubscriptionCard: (subscription, card) => writing(() => s.subscriptions.update(subscription, { default_payment_method: card }, CARD_WRITE)),
+    setCustomerCard: (customer, card) => writing(() => s.customers.update(customer, { invoice_settings: { default_payment_method: card } }, CARD_WRITE)),
+  };
 }

@@ -1,4 +1,4 @@
-import { letGoOfCardLock, lockWindow, writeNewestCard, type CardLocks } from "@/lib/card-lock";
+import { CardWriteRefused, settleNewestCard, writeWindow, type CardRows, type CardStripe } from "@/lib/card-reconcile";
 import type { ParentPlan } from "@/lib/parent-plan";
 import { fillChildPlan, type PlanStates } from "@/lib/plan-state";
 
@@ -11,8 +11,8 @@ import { fillChildPlan, type PlanStates } from "@/lib/plan-state";
 //
 // The card update is Stripe's hosted page: Checkout in setup mode, for cards only. The new card then becomes the Customer's
 // default, which a later plan start uses, and the default of the plan that can still charge. Only the newest update counts:
-// a return of an update that is not newer than the last one changes nothing (child_card_updates), and every write of a child's
-// card holds that row's lock (card-lock.ts). Cancel stays in the current flow (D-222). The store (card_setups,
+// a return of an update that is not newer than the last one changes nothing (child_card_updates), and Stripe follows that row
+// (card-reconcile.ts). Cancel stays in the current flow (D-222). The store (card_setups,
 // child_card_updates) and the provider (Stripe) are the seams: billing-server.ts holds Supabase and Stripe, billing-memory.ts
 // holds both in memory for tests.
 
@@ -33,7 +33,7 @@ export interface BillingCard {
   cardSaved: boolean;
 }
 
-export interface BillingStore extends CardLocks {
+export interface BillingStore extends CardRows {
   /** The parent's children, oldest first. Throws when the read fails. */
   family(parentId: string): Promise<BillingChild[]>;
   /** The parent's card row, or null: another family's row reads as none. Throws when the read fails. */
@@ -72,22 +72,18 @@ export interface CardUpdateSession {
   paymentMethod: string | null;
 }
 
-export interface BillingProvider {
+export interface BillingProvider extends CardStripe {
   /** All of one customer's invoices. Throws when it cannot read the whole list. */
   invoices(customer: string): Promise<ProviderInvoice[]>;
   /** Stripe's hosted page to save a new card, or null when Stripe gives no page. Throws when Stripe fails. */
   createCardUpdate(request: CardUpdateRequest): Promise<string | null>;
   /** The session, or null when there is no such card update session. Throws when Stripe fails. */
   readCardUpdate(id: string): Promise<CardUpdateSession | null>;
-  /** The card becomes the customer's default, which a later plan start uses, and the default of each of the customer's subscriptions that can still charge. Throws when Stripe fails, and before any write when `canWrite` says no. */
-  setCardDefault(customer: string, paymentMethod: string, canWrite: () => boolean): Promise<void>;
 }
 
 export interface CardUpdates {
   store: BillingStore;
   provider: BillingProvider;
-  /** The wait between tries of a busy lock; tests pass their own. */
-  pause?: (ms: number) => Promise<void>;
 }
 
 export interface FamilyBillingSeams extends CardUpdates {
@@ -189,60 +185,48 @@ export async function startCardUpdate(parentId: string, cardId: string, urls: { 
 }
 
 /**
+ * "updated": our own writes to Stripe answered, and this return's card is the row's newest.
  * "stale": this return changed nothing for this card, because this update or a newer one already took effect. It is not a failure.
- * "unconfirmed": another writer held the lock for the whole wait. The card is recorded, and that writer or the next one writes it.
+ * "unconfirmed": a write's outcome is unknown. The card is recorded, and the sweep writes it.
+ * "failed": nothing was recorded, or Stripe refused the card.
  */
 export type CardUpdateFinish = "updated" | "stale" | "unconfirmed" | "incomplete" | "not_found" | "failed";
-
-/** How long a return waits for a busy lock: about 6 seconds, as Stripe writes usually take under 2. */
-const BUSY_TRIES = 12;
-const BUSY_PAUSE_MS = 500;
-const pauseFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
  * The parent came back from Stripe's page. The session must name this parent's row and that row's customer before anything
  * is written. The row records this card when it is the child's newest, so a browser history entry or another tab cannot bring
- * an older card back. Then this return takes the lock and writes the row's newest card, whichever return it is: an older
- * address opened again repairs a failed write of the newest card, and answers "stale".
- *
- * "updated" means one thing: the row says this session's card is the newest and that it finished writing. Every other path
- * leaves needs_repair set when the write did not finish, so the next return of either address, the next update or a plan start
- * writes the newest card.
+ * an older card back. Then this return brings Stripe to the row's newest card, whichever return it is: an older address opened
+ * again repairs a failed write of the newest card, and answers "stale". A later stray write is not this return's to catch: the
+ * webhook or the sweep corrects it (card-reconcile.ts). The route's maxDuration is 60 seconds, and the writes keep inside it.
  */
-export async function finishCardUpdate(parentId: string, sessionId: string, { store, provider, pause = pauseFor }: CardUpdates): Promise<CardUpdateFinish> {
+export async function finishCardUpdate(parentId: string, sessionId: string, { store, provider }: CardUpdates): Promise<CardUpdateFinish> {
+  let cardId: string;
+  let customer: string;
+  let first: { session: string | null; paymentMethod: string | null };
+  const canWrite = writeWindow();
   try {
     const session = await provider.readCardUpdate(sessionId);
     if (!session) return "not_found";
     const card = await store.card(parentId, session.ref);
-    const customer = card?.customer;
-    if (!card || !customer || customer !== session.customer) return "not_found";
+    if (!card?.customer || card.customer !== session.customer) return "not_found";
     if (!session.paymentMethod) return "incomplete";
-    const recording = { parentId, session: session.id, created: session.created, paymentMethod: session.paymentMethod };
-    let recorded = false;
-    for (let tries = 0; ; tries++) {
-      const canWrite = lockWindow();
-      const lock = await store.takeCardLock(card.cardId, recording);
-      if (lock.state === "no_match") return "not_found";
-      recorded ||= lock.recorded;
-      // Another writer wrote this return's card during the wait, and the row is clean: this return's card did take effect.
-      if (lock.state === "clean") return recorded && lock.session === session.id ? "updated" : "stale";
-      if (lock.state === "taken") {
-        try {
-          const done = await writeNewestCard(store, card.cardId, lock.token, { session: lock.session, paymentMethod: lock.paymentMethod, write: true }, (paymentMethod) => provider.setCardDefault(customer, paymentMethod, canWrite));
-          return done === session.id ? "updated" : "stale";
-        } catch (e) {
-          await letGoOfCardLock(store, card.cardId, lock.token);
-          throw e;
-        }
-      }
-      if (tries >= BUSY_TRIES) {
-        console.error("[billing] card update not confirmed: the card lock stayed busy");
-        return "unconfirmed";
-      }
-      await pause(BUSY_PAUSE_MS);
-    }
+    const recorded = await store.recordCard(card.cardId, { parentId, session: session.id, created: session.created, paymentMethod: session.paymentMethod });
+    if (recorded.state === "no_match") return "not_found";
+    if (!recorded.needsRepair) return "stale";
+    cardId = card.cardId;
+    customer = card.customer;
+    first = recorded;
   } catch (e) {
     console.error("[billing] card update finish failed", e instanceof Error ? e.message : "failed");
     return "failed";
+  }
+  try {
+    const done = await settleNewestCard(cardId, customer, first, { rows: store, stripe: provider, canWrite });
+    if (done.failure) return done.failure instanceof CardWriteRefused ? "failed" : "unconfirmed";
+    return done.session === sessionId ? "updated" : "stale";
+  } catch (e) {
+    // The writes may have worked, but the row cannot say that this card is the newest.
+    console.error("[billing] card update not confirmed", e instanceof Error ? e.message : "failed");
+    return "unconfirmed";
   }
 }

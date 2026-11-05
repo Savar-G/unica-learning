@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
   claimMs: 0,
   weeklySend: false,
   sendTimes: [] as number[],
+  cardRuns: 0,
+  cardFails: false,
 }));
 
 vi.mock("@/lib/account-server", () => ({ linkOrigin: () => "https://unicalearning.com" }));
@@ -31,6 +33,14 @@ vi.mock("@/lib/email-resend", () => ({
       return h.mail.transport.send(m);
     },
   }),
+}));
+vi.mock("@/lib/card-sweep-server", () => ({
+  dueCardCount: async () => 3,
+  sweepCardsNow: async () => {
+    h.cardRuns++;
+    if (h.cardFails) return { error: "run_failed" };
+    return { due: 1, checked: 1, corrected: 0, plans: 0, failed: 0, outOfTime: false };
+  },
 }));
 vi.mock("@/lib/maya-call-sweep-server", () => ({ sweepAbandonedCallsNow: async () => ({ due: 0 }) }));
 vi.mock("@/lib/maya-weekly-email-store", () => ({ mayaWeeklyStore: () => ({ load: async () => ({}) }) }));
@@ -146,4 +156,17 @@ it("a 10-second claim that leaves too little for the send's limit goes back, and
   h.claimMs = 0;
   expect(await (await call()).json()).toMatchObject({ ok: true, monthly: { due: 1, sent: 1 } });
   expect(h.mail.delivered).toHaveLength(1);
+});
+
+it("the card sweep runs beside the emails, a failed sweep hides nothing else, and the dry run only counts", async () => {
+  h.cardRuns = 0;
+  h.cardFails = false;
+  expect(await (await call()).json()).toMatchObject({ ok: true, cards: { due: 1, failed: 0 } });
+  expect(h.cardRuns).toBe(1);
+  h.cardFails = true;
+  expect(await (await call()).json()).toMatchObject({ ok: true, maya: { due: 0 }, cards: { error: "run_failed" } });
+  h.cardFails = false;
+  const runs = h.cardRuns;
+  expect(await (await call("?dry=1")).json()).toMatchObject({ ok: true, dry: true, cards: 3 });
+  expect(h.cardRuns).toBe(runs);
 });

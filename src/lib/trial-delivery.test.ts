@@ -36,7 +36,7 @@ describe("the free month starts after home delivery confirmation", () => {
     expect(await startPlan(f.client, { ...setup, deliveryConfirmed: false }, deliveredAt, locks())).toEqual({ ok: false, error: "not_delivered" });
     expect(f.requests).toEqual([]);
   });
-  it("starts a full 30-day trial after delivery, with an audit reason and the existing send key", async () => {
+  it("starts a full 30-day trial after delivery, with an audit reason and a recorded send key", async () => {
     const f = provider();
     expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks())).toEqual({ ok: true, subscription: "sub_trial", firstChargeAt: "2026-12-05T18:00:00.000Z" });
     const create = f.requests.filter((r) => r.path.endsWith("/subscriptions") && r.method === "POST");
@@ -44,7 +44,8 @@ describe("the free month starts after home delivery confirmation", () => {
     expect(create[0].body.get("trial_period_days")).toBe("30");
     expect(create[0].body.get("metadata[trial_start_reason]")).toBe("workbook_delivered");
     expect(create[0].body.get("metadata[delivery_confirmed]")).toBe("true");
-    expect(create[0].key).toBe("start-plan-card-1");
+    expect(create[0].key).toMatch(/^start-plan-card-1-[0-9a-f-]{36}$/);
+    expect(create[0].body.get("metadata[start_key]")).toBe(create[0].key);
     expect(f.requests.some((r) => /\/(charges|payment_intents)$/.test(r.path))).toBe(false);
   });
   it("charges the customer's newest card and writes only the plan, for a customer with no default card", async () => {

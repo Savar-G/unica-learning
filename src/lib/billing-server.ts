@@ -2,11 +2,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import type { BillingProvider, BillingStore, CardUpdates, FamilyBillingSeams, ProviderInvoice } from "@/lib/billing";
-import { supabaseCardLocks } from "@/lib/card-lock-server";
+import { supabaseCardRows } from "@/lib/card-reconcile-server";
 import type { Database } from "@/lib/database";
 import { stripePlanProvider, supabasePlanStore } from "@/lib/plan-state-server";
 import { stripe } from "@/lib/stripe";
-import { writeCardDefault } from "@/lib/stripe-subscriptions";
+import { stripeCards } from "@/lib/stripe-subscriptions";
 import { adminClient } from "@/lib/supabase-auth";
 
 // The billing module's seams (src/lib/billing.ts) for the live site: card_setups and children in Supabase, read with the
@@ -94,16 +94,16 @@ export function stripeBillingProvider(client: Stripe | null): BillingProvider {
       const saved = session.status === "complete" && intent && typeof intent !== "string" && intent.status === "succeeded" && idOf(intent.customer) === customer;
       return { id: session.id, ref, customer, created: session.created, paymentMethod: saved ? idOf(intent.payment_method) : null };
     },
-    async setCardDefault(customer, paymentMethod, canWrite) {
-      await writeCardDefault(s(), customer, paymentMethod, canWrite);
-    },
+    cardState: (customer) => stripeCards(s()).cardState(customer),
+    setSubscriptionCard: (subscription, card) => stripeCards(s()).setSubscriptionCard(subscription, card),
+    setCustomerCard: (customer, card) => stripeCards(s()).setCustomerCard(customer, card),
   };
 }
 
 /** card_setups and children as the billing store. */
 export function supabaseBillingStore(db: SupabaseClient<Database>): BillingStore {
   return {
-    ...supabaseCardLocks(db),
+    ...supabaseCardRows(db),
     async family(parentId) {
       const [children, cards] = await Promise.all([
         db.from("children").select("id, first_name").eq("parent_id", parentId).order("created_at").order("id"),

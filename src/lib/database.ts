@@ -99,6 +99,7 @@ type NullArgs = KnownArgs<{
   queue_workbook_edit: "p_question" | "p_item";
   // A plan start on a child with no card update has no session.
   finish_card_lock: "p_session";
+  settle_card_update: "p_session";
   finish_workbook_edit: "p_content" | "p_rendering" | "p_error";
   admin_template_stats_v2: "school_grade" | "curriculum";
   // An idle worker has no run; a worker outside git has no build.
