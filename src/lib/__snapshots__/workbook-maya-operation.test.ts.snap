@@ -3,17 +3,17 @@
 exports[`generated Maya coverage by print band > pins all ten days of U3 and keeps the exact print input 1`] = `
 [
   {
-    "accepted": 85,
+    "accepted": 39,
     "kind": "All",
     "level": "U3",
-    "operations": 91,
+    "operations": 45,
     "questions": 419,
   },
   {
-    "accepted": 14,
+    "accepted": 0,
     "kind": "bare",
     "level": "U3",
-    "operations": 14,
+    "operations": 0,
     "questions": 36,
   },
   {
@@ -38,17 +38,17 @@ exports[`generated Maya coverage by print band > pins all ten days of U3 and kee
     "questions": 4,
   },
   {
-    "accepted": 24,
+    "accepted": 18,
     "kind": "missing",
     "level": "U3",
-    "operations": 24,
+    "operations": 18,
     "questions": 54,
   },
   {
-    "accepted": 36,
+    "accepted": 10,
     "kind": "story",
     "level": "U3",
-    "operations": 36,
+    "operations": 10,
     "questions": 130,
   },
   {
@@ -71,24 +71,24 @@ exports[`generated Maya coverage by print band > pins all ten days of U3 and kee
 exports[`generated Maya coverage by print band > pins all ten days of U4 and keeps the exact print input 1`] = `
 [
   {
-    "accepted": 158,
+    "accepted": 93,
     "kind": "All",
     "level": "U4",
-    "operations": 179,
+    "operations": 114,
     "questions": 535,
   },
   {
-    "accepted": 7,
+    "accepted": 0,
     "kind": "bare",
     "level": "U4",
-    "operations": 16,
+    "operations": 9,
     "questions": 16,
   },
   {
-    "accepted": 43,
+    "accepted": 13,
     "kind": "choose",
     "level": "U4",
-    "operations": 43,
+    "operations": 13,
     "questions": 61,
   },
   {
@@ -113,17 +113,17 @@ exports[`generated Maya coverage by print band > pins all ten days of U4 and kee
     "questions": 25,
   },
   {
-    "accepted": 25,
+    "accepted": 21,
     "kind": "missing",
     "level": "U4",
-    "operations": 33,
+    "operations": 29,
     "questions": 101,
   },
   {
-    "accepted": 83,
+    "accepted": 59,
     "kind": "story",
     "level": "U4",
-    "operations": 87,
+    "operations": 63,
     "questions": 150,
   },
   {
@@ -146,17 +146,17 @@ exports[`generated Maya coverage by print band > pins all ten days of U4 and kee
 exports[`generated Maya coverage by print band > pins all ten days of U16 and keeps the exact print input 1`] = `
 [
   {
-    "accepted": 260,
+    "accepted": 289,
     "kind": "All",
     "level": "U16",
-    "operations": 297,
+    "operations": 313,
     "questions": 595,
   },
   {
     "accepted": 30,
     "kind": "bare",
     "level": "U16",
-    "operations": 53,
+    "operations": 38,
     "questions": 132,
   },
   {
@@ -174,17 +174,17 @@ exports[`generated Maya coverage by print band > pins all ten days of U16 and ke
     "questions": 3,
   },
   {
-    "accepted": 13,
+    "accepted": 42,
     "kind": "missing",
     "level": "U16",
-    "operations": 13,
+    "operations": 49,
     "questions": 127,
   },
   {
     "accepted": 55,
     "kind": "story",
     "level": "U16",
-    "operations": 69,
+    "operations": 64,
     "questions": 94,
   },
   {

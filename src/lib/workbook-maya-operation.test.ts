@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkQuestionPackage, operationResult, sameValue, type QuestionPackage } from "./question-package";
+import { checkQuestionPackage, operationResult, sameValue, workedSteps, type QuestionPackage } from "./question-package";
 import { withWorkbookMayaOperation, printedWorkbookQuestion } from "./workbook-maya-operation";
 import { createSession } from "./maya/session";
 import { curriculumFor } from "./workbook-curriculum";
@@ -12,6 +12,7 @@ import { keySolver, toSolve } from "./workbook-solve-check";
 import { renderableDraft } from "./workbook-fit";
 import { workbookTemplate } from "./workbook-template";
 import { workbookQuality } from "./workbook-quality";
+import { readNumbers } from "./number-words";
 import { taskIdentity } from "./workbook-task-identity";
 import { mayaCoverage, samplePages, changedPages } from "../../scripts/workbook-sample-pages";
 
@@ -39,7 +40,7 @@ describe("workbook teaching operations", () => {
     expect(createSession({ callId: "story", package: attached }).contentProblem).toBeNull();
     expect(printedWorkbookQuestion(attached)).toEqual(original);
     expect(taskIdentity(attached)).toBe(taskIdentity(original));
-    expect(withWorkbookMayaOperation(attached)).toBe(attached);
+    expect(withWorkbookMayaOperation(attached)).toEqual(attached);
     expect(toSolve(attached)).toEqual(toSolve(original));
   });
 
@@ -49,6 +50,7 @@ describe("workbook teaching operations", () => {
     expect(withWorkbookMayaOperation(bond).operation).toEqual({ kind: "subtract", operands: [10, 7] });
     expect(createSession({ callId: "bond", package: withWorkbookMayaOperation(bond) }).contentProblem).toBeNull();
     const unknown = question("max(a, b)", 9, 3, 9);
+    unknown.text = "Select the greatest of 9 and 3.";
     expect(checkQuestionPackage(unknown).ok).toBe(true);
     expect(withWorkbookMayaOperation(unknown)).toBe(unknown);
   });
@@ -82,6 +84,7 @@ describe("workbook teaching operations", () => {
 
   it("checks decimal and fraction arithmetic against the exact item key", () => {
     const decimal = question("a + b", 9, 3, 1.5);
+    decimal.text = "1.2 + 0.3 = ?";
     const check = decimal.item!.checks[0];
     if (check.kind !== "template") throw new Error("missing template");
     check.source.slots[0].value = { dec: "1.2" };
@@ -89,6 +92,7 @@ describe("workbook teaching operations", () => {
     check.source.slots.forEach(s => { s.domain = { min: 0, max: 100, decimal_places: 1 }; });
     expect(withWorkbookMayaOperation(decimal).operation?.kind).toBe("decimal-add");
     const fraction = question("Fraction(a, 12) + Fraction(b, 12)", 1, 5);
+    fraction.text = "1/12 + 5/12 = ?";
     const region = fraction.item!.regions[0];
     if (region.kind === "box") region.answer = { type: "fraction", numerator: 1, denominator: 2 };
     const attached = withWorkbookMayaOperation(fraction);
@@ -120,18 +124,93 @@ describe("workbook teaching operations", () => {
 
   it("keeps multi-step order and checks an independently computed result", () => {
     const pkg = question("a + b * 2", 9, 3, 15);
+    pkg.text = "What is 9 + 3 × 2?";
     const attached = withWorkbookMayaOperation(pkg);
     expect(attached.operation?.kind).toBe("evaluate");
     expect(checkQuestionPackage(attached).status).toBe("checked");
     expect(attached.answer?.value).toEqual({ type: "number", value: 15 });
   });
 
+  it.each([
+    ["2 + ? = 6", "subtract", 6, 2, 4],
+    ["? + 2 = 6", "subtract", 6, 2, 4],
+    ["6 - ? = 2", "subtract", 6, 2, 4],
+    ["? - 2 = 4", "add", 4, 2, 6],
+    ["20 × ? = 6000", "divide", 6000, 20, 300],
+    ["? × 20 = 6000", "divide", 6000, 20, 300],
+    ["? ÷ 7 = 8", "multiply", 8, 7, 56],
+    ["56 ÷ ? = 8", "divide", 56, 8, 7],
+    ["6000 = 20 × ?", "divide", 6000, 20, 300],
+  ] as const)("solves the printed unknown in %s", (text, kind, a, b, key) => {
+    const pkg = question(String(key), 0, 0, key);
+    pkg.text = text;
+    const attached = withWorkbookMayaOperation(pkg);
+    expect(attached.operation).toEqual({ kind, operands: [a, b] });
+    expect(createSession({ callId: text, package: attached }).contentProblem).toBeNull();
+    assertPrintedOperands(attached);
+  });
+
+  it("rejects answer construction as a method even when all its operands are printed", () => {
+    const pkg = question("hidden", 2, 2, 4);
+    pkg.text = "2 + ? = 6";
+    const check = pkg.item!.checks[0];
+    if (check.kind !== "template") throw new Error("missing template");
+    check.source.derived = [["hidden", "a * b"]];
+    expect(withWorkbookMayaOperation(pkg).operation).toEqual({ kind: "subtract", operands: [6, 2] });
+    pkg.text = "Select 4 from 6, 2 and 4.";
+    expect(withWorkbookMayaOperation(pkg)).toBe(pkg);
+  });
+
+  it("rechecks prior teaching data against the printed relationship", () => {
+    const pkg = question("300", 0, 0, 300);
+    pkg.text = "20 × ? = 6000";
+    const stale = withWorkbookMayaOperation(pkg);
+    const operation = { kind: "multiply", operands: [30, 10] } as const;
+    stale.operation = { ...operation, operands: [30, 10] };
+    stale.steps = workedSteps(stale.operation);
+    const example = { kind: "multiply", operands: [0, 1] } as const;
+    stale.easierExample = { text: "0 × 1 = ?", operation: { ...example, operands: [0, 1] }, answer: { type: "number", value: 0 }, steps: workedSteps({ ...example, operands: [0, 1] }) };
+    expect(checkQuestionPackage(stale).ok).toBe(true);
+    expect(withWorkbookMayaOperation(stale).operation).toEqual({ kind: "divide", operands: [6000, 20] });
+  });
+
+  it("holds hidden constants and unsupported printed relationships", () => {
+    for (const text of ["After 9: 10 or 11?", "Count back from 10. What comes next?", "Build 6 from 9 and 3."]) {
+      const pkg = question("a - b", 9, 3, 6);
+      pkg.text = text;
+      expect(withWorkbookMayaOperation(pkg)).toBe(pkg);
+    }
+    const numeral = question("-123", 0, 0, -123);
+    numeral.text = "(-123)";
+    expect(withWorkbookMayaOperation(numeral)).toBe(numeral);
+    const expanded = question("a * 1000 + b * 100 + c * 10", 9, 4, 9490);
+    const check = expanded.item!.checks[0];
+    if (check.kind !== "template") throw new Error("missing template");
+    check.source.derived = [["c", "9"]];
+    expanded.text = "9000 + 400 + 90 = ?";
+    const attached = withWorkbookMayaOperation(expanded);
+    expect(attached.operation).toEqual({ kind: "evaluate", operands: ["9000 + 400 + 90"] });
+    assertPrintedOperands(attached);
+  });
+
   it("uses a zero example for a smallest nonzero addition", () => {
-    const attached = withWorkbookMayaOperation(question("a + b", 0, 1, 1));
+    const pkg = question("a + b", 0, 1, 1);
+    pkg.text = "0 + 1 = ?";
+    const attached = withWorkbookMayaOperation(pkg);
     expect(attached.easierExample?.answer).toEqual({ type: "number", value: 0 });
     expect(createSession({ callId: "small", package: attached }).contentProblem).toBeNull();
   });
 });
+
+function assertPrintedOperands(pkg: QuestionPackage) {
+  const printed = new Set(readNumbers(pkg.text).map(value => value.value));
+  const op = pkg.operation!;
+  const operands = op.kind === "evaluate" ? readNumbers(op.operands[0]).map(value => value.value)
+    : op.operands.flatMap(value => typeof value === "number" ? [value]
+      : typeof value === "object" && value.type === "fraction" ? [value.numerator, value.denominator] : []);
+  expect(operands.length, pkg.text).toBeGreaterThan(0);
+  for (const operand of operands) expect(printed.has(operand), `${pkg.text}: hidden operand ${operand}`).toBe(true);
+}
 
 const BC = curriculumFor("bc")!;
 describe("generated Maya coverage by print band", () => {
@@ -153,6 +232,7 @@ describe("generated Maya coverage by print band", () => {
     // The counter uses the public createSession for every generated question. Assert every attached package as well.
     for (const q of draft.pages.flatMap(p => p.questions)) if (q.package?.operationSource === "maya") {
       expect(checkQuestionPackage(q.package).status, q.package.text).toBe("checked");
+      assertPrintedOperands(q.package);
       expect(toSolve(q.package)).toEqual(toSolve(printedWorkbookQuestion(q.package)));
     }
     const original = { ...draft, pages: draft.pages.map(p => ({ ...p, questions: p.questions.map(q => ({ ...q, package: q.package ? printedWorkbookQuestion(q.package) : null })) })) };

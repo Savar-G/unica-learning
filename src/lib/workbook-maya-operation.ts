@@ -1,10 +1,11 @@
-// Teaching data for checked workbook templates (#525). The stored template expression, not printed text or a
-// guessed operation that happens to give the key, determines the operation. Unsupported expressions fail closed.
+// Teaching data for checked workbook templates (#525). Derive the method from the printed relationship and its
+// unknown. The template source checks the key only. Equal results do not prove that a method fits the question.
 import {
   checkQuestionPackage, operationProblem, operationResult, operationText, sameValue, workedSteps,
   type Operation, type QuestionPackage,
 } from "./question-package";
-import { templateAnswer, templateAnswerValue, templateNumbers, type TemplateSource } from "./question-package-template";
+import { templateAnswer, templateAnswerValue } from "./question-package-template";
+import { readNumbers } from "./number-words";
 import type { GeneratedWorkbook } from "./workbook-generator";
 
 /** Keep the original print input. Teaching metadata must not select columns, methods, units or answer-key text. */
@@ -15,56 +16,118 @@ export function printedWorkbookQuestion(pkg: QuestionPackage): QuestionPackage {
   return { ...original, operation: null, answer: null, steps: [], wrongAnswers: [], easierExample: null };
 }
 
-function templateOperation(source: TemplateSource, format: string): Operation | null {
-  const numbers = templateNumbers(source);
-  if (!numbers) return null;
-  let expression = source.answer.trim();
-  if (expression.startsWith("str(") && expression.endsWith(")")) expression = expression.slice(4, -1).trim();
-  // The number-bond templates store q = w - p. Their missing-part key is the sampled p, and their whole key is w.
-  // Use that stored relationship only for these forms, never turn a lone place-value or counting slot into a sum.
-  if (["missing", "picture"].includes(format) && source.derived.some(([name, value]) => name === "q" && value.trim() === "w - p")) {
-    if (expression === "p") return { kind: "subtract", operands: [numbers.w, numbers.q] };
-    if (expression === "w") return { kind: "add", operands: [numbers.p, numbers.q] };
-  }
-  // Resolve an arithmetic result stored under a derived name. A sampled number alone is not an operation.
-  for (let i = 0; i <= source.derived.length; i++) {
-    const derived = source.derived.find(([name]) => name === expression);
-    if (!derived) break;
-    expression = derived[1].trim();
-  }
-  const scalar = "(?:[A-Za-z][A-Za-z0-9_]*|[0-9]+(?:\\.[0-9]+)?)";
-  const read = (word: string) => Object.hasOwn(numbers, word) ? numbers[word] : Number(word);
-  const fractions = new RegExp(`^Fraction\\(\\s*(${scalar})\\s*,\\s*(${scalar})\\s*\\)\\s*(\\+|-|\\*|/)\\s*Fraction\\(\\s*(${scalar})\\s*,\\s*(${scalar})\\s*\\)$`).exec(expression);
-  if (fractions) {
-    const kind = fractions[3] === "+" ? "fraction-add" : fractions[3] === "-" ? "fraction-subtract" : fractions[3] === "*" ? "fraction-multiply" : "fraction-divide";
-    return { kind, operands: [
-      { type: "fraction", numerator: read(fractions[1]), denominator: read(fractions[2]) },
-      { type: "fraction", numerator: read(fractions[4]), denominator: read(fractions[5]) },
-    ] };
-  }
-  const binary = new RegExp(`^(${scalar})\\s*(\\+|-|\\*|//|/)\\s*(${scalar})$`).exec(expression);
-  if (binary) {
-    const a = read(binary[1]), b = read(binary[3]);
-    if (![a, b].every(Number.isFinite)) return null;
-    const whole = [a, b].every(Number.isSafeInteger);
-    const kind = binary[2] === "+" ? (whole ? "add" : "decimal-add")
-      : binary[2] === "-" ? (whole ? "subtract" : "decimal-subtract")
-        : binary[2] === "*" ? (whole ? "multiply" : "decimal-multiply") : "divide";
-    return { kind, operands: [a, b] };
-  }
-  // More than one arithmetic step retains the expression and its order of operations. The package checker uses
-  // its independent arithmetic evaluator. Calls, conditionals, indexing and text are deliberately not translated.
-  if (!/^[A-Za-z0-9_\s.+*/()-]+$/.test(expression) || !/[+*/-]/.test(expression) || expression.includes("//") || expression.includes("**")) return null;
-  let unknown = false;
-  const filled = expression.replace(/[A-Za-z][A-Za-z0-9_]*/g, name => {
-    if (!Object.hasOwn(numbers, name)) { unknown = true; return name; }
-    return `(${numbers[name]})`;
-  });
-  return unknown ? null : { kind: "evaluate", operands: [filled.replace(/\*/g, "×").replace(/\//g, "÷").replace(/-/g, "−")] };
+const NUMBER = "-?\\d+(?:\\.\\d+)?";
+const UNKNOWN = "(?:\\?|_+)";
+const WORDS = "[a-z][a-z '\\-]*?";
+const ACTOR = "(?<who>[a-z]+)";
+const SUBJECT = "(?:\\k<who>|he|she|they)";
+const THINGS = `(?<things>${WORDS})`;
+const n = (name: string) => `(?<${name}>${NUMBER})`;
+
+function binary(sign: string, a: number, b: number): Operation {
+  const whole = [a, b].every(Number.isSafeInteger);
+  if (sign === "/" && !whole) return { kind: "evaluate", operands: [`${a} ÷ ${b}`] };
+  const kind = sign === "+" ? (whole ? "add" : "decimal-add")
+    : sign === "-" ? (whole ? "subtract" : "decimal-subtract")
+      : sign === "*" ? (whole ? "multiply" : "decimal-multiply") : "divide";
+  return { kind, operands: [a, b] };
 }
 
-/** Add only independently checked teaching data. Leave every existing operation and every printed field intact. */
+/** Read only an entire printed numeric expression. No slot names, derived bindings or answer expressions enter here. */
+function expressionOperation(expression: string): Operation | null {
+  const fraction = new RegExp(`^(${NUMBER})/(\\d+)\\s*([+*/-])\\s*(${NUMBER})/(\\d+)$`).exec(expression);
+  if (fraction) {
+    const kind = fraction[3] === "+" ? "fraction-add" : fraction[3] === "-" ? "fraction-subtract" : fraction[3] === "*" ? "fraction-multiply" : "fraction-divide";
+    return { kind, operands: [
+      { type: "fraction", numerator: Number(fraction[1]), denominator: Number(fraction[2]) },
+      { type: "fraction", numerator: Number(fraction[4]), denominator: Number(fraction[5]) },
+    ] };
+  }
+  const pair = new RegExp(`^(${NUMBER})\\s*([+*/-])\\s*(${NUMBER})$`).exec(expression);
+  if (pair) return binary(pair[2], Number(pair[1]), Number(pair[3]));
+  if (!/^[\d\s.+*/()-]+$/.test(expression) || readNumbers(expression).length < 2 || !/[+*/-]/.test(expression) || expression.includes("**") || expression.includes("//")) return null;
+  return { kind: "evaluate", operands: [expression.replace(/\*/g, "×").replace(/\//g, "÷").replace(/-/g, "−")] };
+}
+
+/** Invert the printed relationship at its unknown, including a numeric expression on the other side of '='. */
+function equationOperation(text: string): Operation | null {
+  const sides = text.split("=").map(s => s.trim());
+  if (sides.length !== 2) return expressionOperation(text);
+  for (const [unknown, known] of [sides, [...sides].reverse()]) {
+    if (new RegExp(`^${UNKNOWN}$`).test(unknown)) return expressionOperation(known);
+    const first = new RegExp(`^${UNKNOWN}\\s*([+*/-])\\s*(${NUMBER})$`).exec(unknown);
+    const last = new RegExp(`^(${NUMBER})\\s*([+*/-])\\s*${UNKNOWN}$`).exec(unknown);
+    if (!first && !last) continue;
+    const sign = first ? first[1] : last![2];
+    const given = first ? first[2] : last![1];
+    const inverse = sign === "+" ? `${known} - ${given}`
+      : sign === "*" ? `${known} / ${given}`
+        : sign === "-" ? (first ? `${known} + ${given}` : `${given} - ${known}`)
+          : first ? `${known} * ${given}` : `${given} / ${known}`;
+    if (new RegExp(`^${NUMBER}$`).test(known)) return expressionOperation(inverse);
+    if (!expressionOperation(known)) return null;
+    const grouped = sign === "+" ? `(${known}) - ${given}` : sign === "*" ? `(${known}) / ${given}`
+      : sign === "-" ? (first ? `(${known}) + ${given}` : `${given} - (${known})`)
+        : first ? `(${known}) * ${given}` : `${given} / (${known})`;
+    return expressionOperation(grouped);
+  }
+  return null;
+}
+
+// Closed printed story and number-bond forms. Named captures bind printed quantities to their roles. Unmatched
+// wording stays unsupported even when the source's answer expression happens to produce the key.
+const PRINTED_FORMS: readonly [string, (v: Record<string, string>) => Operation | null][] = [
+  [`${n("whole")} is ${n("part")} and (?:${UNKNOWN}|which number: ${NUMBER} or ${NUMBER}\\?)`, v => binary("-", +v.whole, +v.part)],
+  [`${n("whole")} is ${n("a")} and ${n("b")} and ${UNKNOWN}`, v => expressionOperation(`${v.whole} - ${v.a} - ${v.b}`)],
+  [`(?:${NUMBER} and ${NUMBER} make ${NUMBER}\\. )?${n("part")} and ${UNKNOWN} make ${n("whole")}`, v => binary("-", +v.whole, +v.part)],
+  [`${UNKNOWN} and ${n("part")} make ${n("whole")}`, v => binary("-", +v.whole, +v.part)],
+  [`Whole ${n("whole")}, part ${n("part")}\\. Other part\\?`, v => binary("-", +v.whole, +v.part)],
+  [`${n("part")} ${WORDS}\\. How many more make ${n("whole")}\\?`, v => binary("-", +v.whole, +v.part)],
+  [`${n("whole")} ${WORDS}: ${n("part")} red, the rest blue\\. How many (?:are )?blue\\?`, v => binary("-", +v.whole, +v.part)],
+  [`${ACTOR} has ${n("a")} ${THINGS} and gets ${n("b")} more\\. How many \\k<things> now\\?`, v => binary("+", +v.a, +v.b)],
+  [`${ACTOR} has ${n("a")} ${THINGS}\\. ${SUBJECT} gets ${n("b")} more\\. How many \\k<things> does \\k<who> have (?:now|in all)\\?`, v => binary("+", +v.a, +v.b)],
+  [`${ACTOR} has ${n("a")} ${THINGS}\\. ${SUBJECT} gets ${n("b")} more, then ${n("c")} more\\. How many \\k<things> does \\k<who> have now\\?`, v => expressionOperation(`${v.a} + ${v.b} + ${v.c}`)],
+  [`${ACTOR} has ${n("a")} ${THINGS}\\. ${SUBJECT} (?:gives away|gives) ${n("b")}(?: away)?\\. How many \\k<things> (?:does \\k<who> have left|are left)\\?`, v => binary("-", +v.a, +v.b)],
+  [`${ACTOR} picks ${n("a")} ${THINGS}\\. ${SUBJECT} eats ${n("b")} of them\\. How many \\k<things> are left\\?`, v => binary("-", +v.a, +v.b)],
+  [`${ACTOR} has ${n("a")} ${THINGS}\\. ${SUBJECT} gives ${n("b")} away, then gets ${n("c")} more\\. How many \\k<things> does \\k<who> have now\\?`, v => expressionOperation(`${v.a} - ${v.b} + ${v.c}`)],
+  [`${ACTOR} has ${n("part")} ${THINGS} and wants ${n("whole")}\\. How many more \\k<things> does \\k<who> need\\?`, v => binary("-", +v.whole, +v.part)],
+  [`${ACTOR} scores ${n("a")} points\\. A friend scores ${n("b")} points\\. How many more points does \\k<who> score\\?`, v => binary("-", +v.a, +v.b)],
+  [`${ACTOR} buys ${n("groups")} packs of ${n("size")} ${THINGS}\\. How many \\k<things> is that\\?`, v => binary("*", +v.groups, +v.size)],
+  [`${ACTOR}'s school orders ${n("groups")} boxes with ${n("size")} ${THINGS} in each\\. How many \\k<things> is that\\?`, v => binary("*", +v.groups, +v.size)],
+  [`Each ${WORDS} holds ${n("size")} ${THINGS}\\. ${ACTOR} fills ${n("groups")} of them\\. How many \\k<things> is that\\?`, v => binary("*", +v.size, +v.groups)],
+  [`A bus carries ${n("size")} people\\. How many people can ${n("groups")} buses carry\\?`, v => binary("*", +v.size, +v.groups)],
+  [`A rule says: multiply the position number by ${n("size")}\\. What is the value at position ${n("groups")}\\?`, v => binary("*", +v.size, +v.groups)],
+  [`${ACTOR}'s school orders ${n("a")} boxes with ${n("b")} ${THINGS} in each\\. It gives away ${n("c")} \\k<things>\\. How many \\k<things> does the school have now\\?`, v => expressionOperation(`${v.a} * ${v.b} - ${v.c}`)],
+  [`${ACTOR}'s school sends ${n("a")} full buses of ${n("b")} people to a game, and ${n("c")} people leave early\\. How many people are still at the game\\?`, v => expressionOperation(`${v.a} * ${v.b} - ${v.c}`)],
+  [`A plant is ${n("a")} cm tall and grows ${n("b")} cm each week\\. How tall is it after ${n("c")} weeks\\?`, v => expressionOperation(`${v.a} + ${v.b} * ${v.c}`)],
+];
+const PRINTED_RELATIONSHIPS = PRINTED_FORMS.map(([pattern, build]) => ({ pattern: new RegExp(`^${pattern}\\.?$`, "i"), build }));
+
+function printedOperation(text: string): Operation | null {
+  const printed = text.replace(/\d{1,3}(?:,\d{3})+/g, value => value.replace(/,/g, ""))
+    .replace(/[−–]/g, "-").replace(/×/g, "*").replace(/÷/g, "/").replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
+  const equation = printed.replace(/^(?:Missing number: |Fill the blank: )/i, "").replace(/\.$/, "");
+  const operation = equationOperation(equation.replace(/^What is (.*)\?$/i, "$1"));
+  if (operation) return operation;
+  for (const { pattern, build } of PRINTED_RELATIONSHIPS) {
+    const match = pattern.exec(printed);
+    if (match?.groups) return build(match.groups);
+  }
+  return null;
+}
+
+/** This is an additional provenance check, not proof that equal arithmetic describes the printed relationship. */
+function hasPrintedOperands(operation: Operation, text: string): boolean {
+  const printed = new Set(readNumbers(text).map(n => n.value));
+  const operands = operation.kind === "evaluate" ? readNumbers(operation.operands[0]).map(n => n.value)
+    : operation.operands.flatMap(value => typeof value === "number" ? [value]
+      : typeof value === "object" && value.type === "fraction" ? [value.numerator, value.denominator] : []);
+  return operands.length > 0 && operands.every(value => printed.has(value));
+}
+
+/** Add only independently checked teaching data. Preserve original builder operations and every printed field. */
 export function withWorkbookMayaOperation(pkg: QuestionPackage): QuestionPackage {
+  pkg = printedWorkbookQuestion(pkg);
   if (pkg.operation || !checkQuestionPackage(pkg).ok || !pkg.item || !pkg.item.scorable
     || ["circle", "draw", "colour-or-shade"].includes(pkg.item.format)) return pkg;
   const checks = pkg.item.checks.filter(c => c.kind === "template");
@@ -73,10 +136,9 @@ export function withWorkbookMayaOperation(pkg: QuestionPackage): QuestionPackage
   const key = templateAnswer(check.source);
   if (!("answer" in key)) return pkg;
   const answer = templateAnswerValue(key.answer);
-  const format = pkg.templateId?.split(":").at(-1) ?? "";
   if (/(?:place-value|digit-value|read-write|read-numeral|compare-order|round-to|round-decimal)/.test(pkg.skill.skills.join(" "))) return pkg;
-  const operation = templateOperation(check.source, format);
-  if (!operation || operationProblem(operation) || !sameValue(operationResult(operation), answer)) return pkg;
+  const operation = printedOperation(pkg.text);
+  if (!operation || !hasPrintedOperands(operation, pkg.text) || operationProblem(operation) || !sameValue(operationResult(operation), answer)) return pkg;
   const region = pkg.item.regions.find(r => r.id === check.region);
   if (region?.kind !== "box" || !region.answer || !sameValue(region.answer, answer)) return pkg;
   // All examples use the same operation kind. The package checker must confirm a smaller example with a different
