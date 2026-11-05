@@ -149,8 +149,8 @@ async function make() {
   const operator = join(dir, "operator");
   const listener = join(dir, "listener");
   mkdirSync(operator, { recursive: true });
-  // The write order comes from the seed too, so a run can be checked; the seed stays in the key.
-  writeListenerFolder(listener, plan, clips, { random: seeded(seed ^ 0x5bd1e995), time: new Date("2026-01-01T00:00:00Z") });
+  // The write order has its own randomness: from the plan's seed, a file's inode order would give back the whole key.
+  writeListenerFolder(listener, plan, clips, { random: () => randomInt(2 ** 31) / 2 ** 31, time: new Date("2026-01-01T00:00:00Z") });
   writeFileSync(join(operator, "key-do-not-open.json"), `${JSON.stringify(key, null, 2)}\n`);
   writeFileSync(join(operator, "measures.json"), `${JSON.stringify(measures, null, 2)}\n`);
   writeFileSync(join(operator, "operator-report.md"), operatorReport(key, measures));
