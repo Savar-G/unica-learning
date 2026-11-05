@@ -22,12 +22,15 @@ import { prepareTemplate, seededRandom, slotDomain } from "@/lib/workbook-curric
 import { isChallengeOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curriculum/house-templates";
 import type { AiItem, BuiltQuestion, SlotPlace } from "@/lib/workbook-generator-items";
 import type { SlotName } from "@/lib/workbook-page";
+import type { StepDeclaration } from "@/lib/workbook-print-contract";
 
 /** How the question is answered on the page. */
 export type StepItemKind = "box" | "story" | "choice" | "spot" | "two-ways" | "sequence";
 
 /** The template a question was filled from: its step, its place in the step's templates and what code sampled. */
 export interface StepTemplateRef {
+  /** The template factory was asked to build this exact curriculum step. */
+  declaration?: StepDeclaration;
   skill: string;
   step: number;
   /** 0-based place in the step's `templates`. */
@@ -539,6 +542,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       const level = (d: TemplateDifficulty) => ["easy", "medium", "hard"].indexOf(d);
       const ref: StepTemplateRef = {
         skill: step.skill, step: step.number, index, format: t.format, difficulty: t.difficulty, kind: at.kind, source, answer,
+        declaration: { source: "template", reference: { unit: r.curriculum.skill(step.skill)!.unit, skill: step.skill, step: step.number } },
         ...("choices" in at && at.choices ? { choices: at.choices } : {}), ...(shown !== undefined ? { shown } : {}),
         ...(at.kind === "sequence" && seq ? { terms: seq.terms, seqStep: seq.step } : {}),
         frame: sentenceFrame(text, people), drill: !HAS_SENTENCE.test(t.text),
@@ -635,7 +639,7 @@ export function buildStepItem(ref: StepTemplateRef, text: string, place: SlotPla
   };
   const checked = checkQuestionPackage(pkg);
   if (checked.status === "failed" || checked.status === "unsupported") return { package: null, stepIds: [], check: { status: "failed", reason: checked.reason } };
-  return { package: pkg, stepIds: [], check: checked.status === "checked" ? { status: "checked" } : { status: "not-checked", reason: checked.reason } };
+  return { package: pkg, stepIds: [], stepDeclaration: ref.declaration, itemStep: ref.declaration?.reference ?? null, check: checked.status === "checked" ? { status: "checked" } : { status: "not-checked", reason: checked.reason } };
 }
 
 /** Why the AI's rewording of a step template story breaks its contract, or null: the same numbers, a story, no answer. */

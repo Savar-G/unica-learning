@@ -33,7 +33,7 @@
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
 import { sampleAiCache } from "./workbook-sample-cache";
 import { renderSamplePages, samplePrintCache } from "./workbook-sample-render";
-import { samplePages, pagesMarkdown, writePageDiff, mayaCoverage, mayaCoverageMarkdown } from "./workbook-sample-pages";
+import { samplePages, pagesMarkdown, writePageDiff, mayaCoverage, mayaCoverageMarkdown, masteryCoverageMarkdown } from "./workbook-sample-pages";
 import { browserStats, closeSampleBrowser } from "./workbook-sample-browser";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -50,7 +50,7 @@ import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@
 import { openRouterClient } from "@/lib/ai-openrouter";
 import type { Database } from "@/lib/database";
 import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
-import { BC_CURRICULUM, curriculumFor, curriculumFromData, curriculumProblems } from "@/lib/workbook-curriculum";
+import { BC_CURRICULUM, curriculumFor, curriculumFromData, curriculumProblems, curriculumVersion } from "@/lib/workbook-curriculum";
 import { parseStepProgressions } from "@/lib/workbook-curriculum/step-source";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { workbookDraftStore } from "@/lib/workbook-draft-store";
@@ -68,6 +68,7 @@ import { workbookTemplate } from "@/lib/workbook-template";
 import { aiSolver, keySolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 import { workbookBuilderCoverage } from "@/lib/workbook-builder-coverage";
+import { skillUnits } from "@/lib/workbook-teaching-frame";
 
 const PROJECT = "cdjobwsyzndtltzfpyqa";
 const URL = `https://${PROJECT}.supabase.co`;
@@ -292,6 +293,7 @@ interface BookResult {
   pdf: string;
   sheet: string;
   draft: GeneratedWorkbook;
+  masteryCoverage: string;
   renderProblems: RenderProblem[];
   omissions: number;
   usd: number;
@@ -497,6 +499,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   return {
     label, level, kind, child, pageUse, profile: structuredClone(profile), replay: { ...cache.counts }, changed,
     draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems,
+    masteryCoverage: masteryCoverageMarkdown(draft, { curriculum: BC.key, curriculumVersion: curriculumVersion(BC.key)!, plan: reviewDays(planned.plan, values.days), units: skillUnits(BC) }),
     omissions: draft.pages.reduce((n, p) => n + (p.omissions?.length ?? 0), 0), usd: c?.usd ?? 0, calls: c?.calls ?? 0, minutes: (performance.now() - t0) / 60000,
     solve: { checks: solveLogs.length, disagreed: solveLogs.filter(l => l.verdict.status === "disagreed").length,
       failed: solveLogs.filter(l => l.verdict.status === "failed").length, usd: sc?.usd ?? 0 },
@@ -617,7 +620,7 @@ async function writeIndex() {
     "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
     "",
-    ...ok.flatMap(r => [`### ${r.label}`, "", mayaCoverageMarkdown(mayaCoverage(r.draft))]),
+    ...ok.flatMap(r => [`### ${r.label}`, "", mayaCoverageMarkdown(mayaCoverage(r.draft)), r.masteryCoverage]),
     "## Builder coverage (#480, #489)",
     `Fully covered levels (level and fluency skills): ${workbookBuilderCoverage(BC).filter(c=>c.fullyCovered).map(c=>c.level).join(", ") || "none"}. A skill whose steps all have printable templates takes its questions from them; the warm-up's fluency facts and skills without printable templates use #482's builders or, with neither, the existing writer. Personal review skills are routed individually.`,
     "| Level | Step templates | Hand-built builders | Existing writer | Existing writer IDs |",

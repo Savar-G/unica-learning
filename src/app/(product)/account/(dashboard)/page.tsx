@@ -21,7 +21,7 @@ import { DeskRow, MinutesRow } from "@/components/parent-home-rows";
 import { ParentDashboardHome } from "@/components/parent-dashboard-home";
 import { dashboardOverview, parentDashboard } from "@/lib/parent-dashboard-server";
 import { openingPath } from "@/lib/parent-assessment";
-import { pickChild } from "@/lib/parent-shell";
+import { pickChild, signInPath } from "@/lib/parent-shell";
 import { parentMinutes } from "@/lib/maya-minutes-server";
 import { DEMO_DAILY_MINUTES } from "@/lib/maya-minutes";
 import { SupportPage } from "@/components/support-page";
@@ -42,8 +42,9 @@ export const metadata = pageMetadata({
 export default async function Account({ searchParams }: PageProps<"/account">) {
   const db = await sessionClient();
   const parentUser = await parentId(db);
-  if (!parentUser) redirect("/sign-in");
   const query = await searchParams;
+  // A link to one child's Overview (the monthly email, #563) comes back to that child after sign-in.
+  if (!parentUser) redirect(signInPath(typeof query.child === "string" ? query.child : null));
   // The dashboard (#551), for the families its switch opens to. A child whose stage opens on the report goes there (#552).
   const dashboard = await parentDashboard();
   const addressed = typeof query.child === "string" ? query.child : null;

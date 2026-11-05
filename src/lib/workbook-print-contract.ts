@@ -90,6 +90,12 @@ export interface StepReference {
   step: number;
 }
 
+/** A declaration by the builder that was asked to construct this exact skill and step. */
+export interface StepDeclaration {
+  source: "template" | "code" | "warm-up";
+  reference: StepReference;
+}
+
 export interface TeachingContext {
   version: number;
   curriculum: { key: string; version: string };
@@ -389,6 +395,8 @@ interface TeachingQuestion {
   part: string;
   place?: string;
   package: QuestionPackage;
+  itemStep?: StepReference | null;
+  stepDeclaration?: StepDeclaration;
   itemPlan?: { template?: { skill: string; step: number } };
 }
 
@@ -411,7 +419,7 @@ export function teachingContext(frame: TeachingFrame, page: { content?: PageCont
   if (!part || (!q.package.item && !q.package.answer)) return null;
   const item = packageItem(q.package);
   const plannedStep = part.step?.unit && part.step.skill ? { unit: part.step.unit, skill: part.step.skill, step: part.step.step } : null;
-  const itemStep = testedStep(frame, plannedStep, q);
+  const itemStep = testedStep(frame, q);
   const practiceType = q.place ?? null;
   const reason: MasteryReason | null = !item.scorable ? (item.parentChecked ? "parent-checked" : "not-scorable")
     : practiceType === "try-first" ? "try-first"
@@ -426,17 +434,23 @@ export function teachingContext(frame: TeachingFrame, page: { content?: PageCont
 
 /**
  * The step a question really tests, whole or not at all: its template's step (with that skill's own unit), when the
- * package names that skill; else the planned step, for an item written on the planned skill. A review item with no
- * template names no step here: its slot's list says only what it may draw from.
+ * package names that skill; else a declaration from a step-specific builder. A planned step, a review list or an older
+ * inferred itemStep never supplies a tested step.
  */
-function testedStep(frame: TeachingFrame, planned: StepReference | null, q: TeachingQuestion): StepReference | null {
+function testedStep(frame: TeachingFrame, q: TeachingQuestion): StepReference | null {
   const skills = q.package.skill.skills;
   const template = q.itemPlan?.template;
   if (template) {
     const unit = frame.units[template.skill];
     return unit && skills.includes(template.skill) ? { unit, skill: template.skill, step: template.step } : null;
   }
-  return planned && skills[0] === planned.skill ? planned : null;
+  const declared = q.stepDeclaration && ["template", "code", "warm-up"].includes(q.stepDeclaration.source)
+    ? q.stepDeclaration.reference : null;
+  if (declared) {
+    return frame.units[declared.skill] === declared.unit && skills.includes(declared.skill)
+      ? { ...declared } : null;
+  }
+  return null;
 }
 
 interface ManifestSource extends ManifestPage {

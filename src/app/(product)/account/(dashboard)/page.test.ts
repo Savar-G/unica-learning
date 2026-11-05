@@ -24,13 +24,13 @@ vi.mock("@/lib/parent-dashboard-server", () => ({
   parentDashboard: async () => dashboard.value,
   dashboardOverview: async () => { overview.reads++; return overview.value; },
 }));
-const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false }));
+const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
 vi.mock("@/lib/test-attempt-server", () => ({
   parentStartStates: async () => new Map([["c1", { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") }]]),
 }));
 vi.mock("@/lib/supabase-auth", () => ({
-  parentId: async () => "p1",
+  parentId: async () => (family.signedOut ? null : "p1"),
   sessionClient: async () => ({
     from: (table: string) => ({
       select: (columns: string) => {
@@ -55,7 +55,13 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { minutes.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => { minutes.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
+
+it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
+  family.signedOut = true;
+  await expect(Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })).rejects.toThrow("REDIRECT /sign-in?next=%2Faccount%3Fchild%3Dc1");
+  await expect(Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })).rejects.toThrow(/REDIRECT \/sign-in$/);
+});
 
 it("shows only the latest note and its links on the matching child's card, without an empty notes section", async () => {
   family.olderChild = true;
