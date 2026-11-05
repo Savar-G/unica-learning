@@ -259,32 +259,55 @@ describe("the billing store", () => {
     await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.settleCard("card-1", null, true)).rejects.toThrow("settle");
   });
 
-  const rowColumns = { card_id: "card-1", customer: "cus_1", session_id: "cs_test_1", payment_method_id: "pm_new", needs_repair: true, pending_plan_key: null, pending_plan_card: null, pending_plan_at: null };
+  const noStart = { start_generation: null, start_key: null, start_card: null, start_at: null, start_state: null, start_subscription: null, start_first_charge: null, start_finished_at: null, start_email: null, start_alert: null };
+  const rowColumns = { card_id: "card-1", customer: "cus_1", session_id: "cs_test_1", payment_method_id: "pm_new", needs_repair: true, ...noStart };
+  const startAnswer = { admitted: false, generation: 2, key: "key-1", card: "pm_first", at: new Date(1000).toISOString(), state: "started", subscription: "sub_1", first_charge: "2026-12-05T18:00:00+00:00", finished_at: new Date(2000).toISOString(), email: "pending", alert: null };
+  const planStart = { generation: 2, key: "key-1", card: "pm_first", at: 1000, state: "started", subscription: "sub_1", firstCharge: "2026-12-05T18:00:00.000Z", finished: 2000, email: "pending", alert: null };
 
-  it("reads a row by card, by customer and for the sweep, with its pending plan when there is one", async () => {
-    const pending = { ...rowColumns, pending_plan_key: "key-1", pending_plan_card: "pm_new", pending_plan_at: new Date(1000).toISOString() };
-    const { store, sent } = rpcStore(() => Response.json([pending]));
-    const row = { cardId: "card-1", customer: "cus_1", session: "cs_test_1", paymentMethod: "pm_new", needsRepair: true, pendingPlan: { key: "key-1", card: "pm_new", at: 1000 } };
+  it("reads a row by card, by customer and for the sweep, with its newest plan start when there is one", async () => {
+    const withStart = { ...rowColumns, start_generation: 2, start_key: "key-1", start_card: "pm_first", start_at: startAnswer.at, start_state: "started", start_subscription: "sub_1", start_first_charge: startAnswer.first_charge, start_finished_at: startAnswer.finished_at, start_email: "pending", start_alert: null };
+    const { store, sent } = rpcStore(() => Response.json([withStart]));
+    const row = { cardId: "card-1", customer: "cus_1", session: "cs_test_1", paymentMethod: "pm_new", needsRepair: true, planStart };
     expect(await store.cardRow("card-1")).toEqual(row);
     expect(await store.cardRowOfCustomer("cus_1")).toEqual(row);
     expect(await store.dueCardRows(5000, 10)).toEqual([row]);
+    expect(sent.map((s) => s.name)).toEqual(["card_check_rows", "card_check_rows", "card_check_rows"]);
     expect(sent.map((s) => s.body)).toEqual([{ p_card: "card-1" }, { p_customer: "cus_1" }, { p_changed_after: new Date(5000).toISOString(), p_limit: 10 }]);
     expect(await rpcStore(() => Response.json([])).store.cardRow("card-1")).toBeNull();
-    expect((await rpcStore(() => Response.json([rowColumns])).store.cardRow("card-1"))?.pendingPlan).toBeNull();
+    expect((await rpcStore(() => Response.json([rowColumns])).store.cardRow("card-1"))?.planStart).toBeNull();
     await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.cardRow("card-1")).rejects.toThrow("read");
+    await expect(rpcStore(() => Response.json([{ ...withStart, start_state: "maybe" }])).store.cardRow("card-1")).rejects.toThrow("unreadable");
   });
 
-  it("records and ends a plan start with the key and the card, and reads the record", async () => {
-    const { store, sent } = rpcStore(() => Response.json({ key: "key-1", card: "pm_first", at: new Date(1000).toISOString() }));
-    expect(await store.beginPlanStart("card-1", "key-2", "pm_second")).toEqual({ key: "key-1", card: "pm_first", at: 1000 });
-    await store.endPlanStart("card-1", "key-1");
+  it("admits a plan start with the generation, the key and the card, and reads the record that answers", async () => {
+    const { store, sent } = rpcStore(() => Response.json(startAnswer));
+    expect(await store.admitPlanStart("card-1", 2, "key-2", "pm_second")).toEqual(planStart);
+    expect(sent).toEqual([{ name: "admit_plan_start", body: { p_card: "card-1", p_generation: 2, p_key: "key-2", p_payment_method: "pm_second" } }]);
+    await expect(rpcStore(() => Response.json({ key: "key-1" })).store.admitPlanStart("card-1", 1, "k", "pm")).rejects.toThrow("unreadable");
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.admitPlanStart("card-1", 1, "k", "pm")).rejects.toThrow("admission");
+  });
+
+  it("closes a record, notes its email and its alert, and lets an admin close it, each by generation", async () => {
+    const { store, sent } = rpcStore(() => Response.json(true));
+    await store.finishPlanStart("card-1", 2, { state: "started", subscription: "sub_1", firstCharge: "2026-12-05T18:00:00.000Z", email: true });
+    await store.finishPlanStart("card-1", 3, { state: "other", subscription: "sub_2" });
+    await store.finishPlanStart("card-1", 4, { state: "refused" });
+    await store.notePlanEmail("card-1", 2, "sent");
+    expect(await store.claimPlanAlert("card-1", 2)).toBe(true);
+    await store.notePlanAlert("card-1", 2, { state: "released", error: "Resend answered 429" });
+    expect(await store.teamEndPlanStart("card-1", 2, "admin-1")).toBe(true);
     await store.noteCardChecked("card-1");
     expect(sent).toEqual([
-      { name: "begin_plan_start", body: { p_card: "card-1", p_key: "key-2", p_payment_method: "pm_second" } },
-      { name: "end_plan_start", body: { p_card: "card-1", p_key: "key-1" } },
+      { name: "finish_plan_start", body: { p_card: "card-1", p_generation: 2, p_state: "started", p_subscription: "sub_1", p_first_charge: "2026-12-05T18:00:00.000Z", p_email: true } },
+      { name: "finish_plan_start", body: { p_card: "card-1", p_generation: 3, p_state: "other", p_subscription: "sub_2", p_first_charge: null, p_email: false } },
+      { name: "finish_plan_start", body: { p_card: "card-1", p_generation: 4, p_state: "refused", p_subscription: null, p_first_charge: null, p_email: false } },
+      { name: "note_plan_start_email", body: { p_card: "card-1", p_generation: 2, p_state: "sent" } },
+      { name: "claim_plan_start_alert", body: { p_card: "card-1", p_generation: 2 } },
+      { name: "note_plan_start_alert", body: { p_card: "card-1", p_generation: 2, p_state: "released", p_email_id: null, p_error: "Resend answered 429" } },
+      { name: "team_end_plan_start", body: { p_card: "card-1", p_generation: 2, p_admin: "admin-1" } },
       { name: "note_card_checked", body: { p_card: "card-1" } },
     ]);
-    await expect(rpcStore(() => Response.json({ key: "key-1" })).store.beginPlanStart("card-1", "k", "pm")).rejects.toThrow("unreadable");
-    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.endPlanStart("card-1", "k")).rejects.toThrow("end");
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.finishPlanStart("card-1", 1, { state: "refused" })).rejects.toThrow("finish");
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.teamEndPlanStart("card-1", 1, "a")).rejects.toThrow("team end");
   });
 });

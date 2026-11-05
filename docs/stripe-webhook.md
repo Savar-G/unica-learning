@@ -55,7 +55,7 @@ On `customer.subscription.created` and `customer.subscription.updated`, for a cu
 
 - A late write or a late plan creation raises an event, and that event corrects it.
 - No loop: a corrective write raises one more event, and that event finds nothing to change. It costs one Stripe read of the Customer and the list.
-- A pending plan creation with a subscription of its key is decided here too: the card is corrected, the parent gets the one confirmation email and the record ends. A record younger than 60 seconds stays, as its start may still be answering.
+- An open plan start with a subscription of its key is decided here too: the card is corrected, the record closes as started and the parent gets the one confirmation email. A record younger than 60 seconds stays, as its start may still be answering. With no subscription after 24 hours, the record stays open and the team gets one alert: see `docs/parent-dashboard.md`.
 - A write to the Customer alone raises no event we listen to. The sweep in `/api/reminders` covers it, and any event that was missed: see `docs/parent-dashboard.md`.
 - A default changed by hand in Stripe's dashboard goes back to the row's card.
 

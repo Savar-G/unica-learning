@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
 import { dueCardCount, sweepCardsNow } from "@/lib/card-sweep-server";
-import { emailConfigProblem, type MailTransport } from "@/lib/email-delivery";
+import { emailConfigProblem, pacedTransport } from "@/lib/email-delivery";
 import { resendTransport } from "@/lib/email-resend";
 import { sweepAbandonedCallsNow } from "@/lib/maya-call-sweep-server";
 import { dueWeeklyEmails, runWeeklyEmails } from "@/lib/maya-weekly-email";
@@ -17,10 +17,11 @@ import { adminClient } from "@/lib/supabase-auth";
 // "Authorization: Bearer <CRON_SECRET>" (the URL and the secret live in Supabase Vault; see
 // supabase/migrations/20261011_add_reminder_cron.sql). Vercel cron here runs only once a day, so it cannot.
 // After the reminders, the same run sends the weekly Maya emails (#332, src/lib/maya-weekly-email.ts) and then the
-// monthly summary emails (#563, src/lib/monthly-summary-email.ts) through the same spaced transport. Beside the emails, the same run ends abandoned Maya chats and calls (#528,
+// monthly summary emails (#563, src/lib/monthly-summary-email.ts). Everything the run sends goes through one paced transport. Beside the emails, the same run ends abandoned Maya chats and calls (#528,
 // src/lib/maya-call-sweep.ts): it starts no new end after SWEEP_START_MS and stops waiting at SWEEP_TIME_LIMIT_MS, inside
 // the cron's 60-second request limit (timeout_milliseconds in migration add_reminder_cron). Also beside the emails, it brings
-// Stripe to each child's newest card (#554, src/lib/card-reconcile.ts), on its own time inside that limit.
+// Stripe to each child's newest card (#554, src/lib/card-reconcile.ts). All the card sweep's work ends 45 seconds after the run began
+// (SWEEP_END_MS in src/lib/card-sweep-server.ts), and the monthly emails' work 50 seconds after it (MONTHLY_END_MS).
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -30,18 +31,6 @@ export const maxDuration = 60;
 const SEND_GAP_MS = 600;
 /** The monthly emails' work has ended this long after the run began, which leaves time to answer inside the 60-second limit; the next run does the rest. */
 const MONTHLY_END_MS = 50_000;
-
-/** The transport, with a wait of `gapMs` before each send after the first. */
-function spaced(transport: MailTransport, gapMs: number): MailTransport {
-  let first = true;
-  return {
-    async send(message) {
-      if (!first) await new Promise((r) => setTimeout(r, gapMs));
-      first = false;
-      return transport.send(message);
-    },
-  };
-}
 
 function authorized(header: string | null, secret: string): boolean {
   const given = Buffer.from(header ?? "");
@@ -79,8 +68,9 @@ export async function POST(request: Request) {
       const abandoned = (await sweepAbandonedCallsNow(admin, { dry: true })).due;
       return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, monthly, sweep: abandoned, cards: await dueCardCount(now) });
     }
+    const transport = pacedTransport(resendTransport(), SEND_GAP_MS);
     // The sweep runs beside the emails and never fails the run.
-    sweep = sweepAbandonedCallsNow(admin, { origin, startedAt: now }).then(
+    sweep = sweepAbandonedCallsNow(admin, { origin, startedAt: now, transport }).then(
       (r) => {
         if (r.due > 0) console.info("[maya sweep] run", JSON.stringify(r));
         return r;
@@ -90,8 +80,7 @@ export async function POST(request: Request) {
         return { error: "run_failed" as const };
       },
     );
-    cards = sweepCardsNow({ origin, startedAt: now });
-    const transport = spaced(resendTransport(), SEND_GAP_MS);
+    cards = sweepCardsNow({ origin, startedAt: now, transport });
     const result = await runReminders(store, now, {
       newToken,
       message: (reminder, token, state) => reminderMessage(reminder, token, state, origin),

@@ -12,10 +12,15 @@ import { RUNNING_PLAN } from "@/lib/parent-plan";
 // confirm the state. Only a read that shows Stripe on the row's card clears it. The sweep looks at a clean row too for 7 days after
 // its card changed, as a late write comes after the flag was cleared.
 //
-// A plan creation has the same problem, and the same answer. Its record (pending_plan_*) is written before the request, with the
-// request's idempotency key and card, and a retry sends the same two. A timeout leaves the record, and the webhook, the sweep or
-// the next start decides it when it finds the subscription. Stripe keeps a key for 24 hours, so a retry stops at 23 hours, and at 24
-// hours the sweep lists the customer's subscriptions: with none found, the record ends and a new start may run.
+// A plan creation has the same problem. Each start is one durable record (public.plan_starts), one key per card setup and generation,
+// and the record is never cleared. admit_plan_start is the one way to a create call, so a press that read before another press
+// finished gets the first press's key, or finds that it finished. Time closes nothing: Stripe forgets a key after 24 hours, but that
+// does not prove that the first request ended. So an open record past 24 hours stays open, the sweep goes on looking, the team gets one
+// alert and a press answers that the start needs the team. Only an admin, after their own check, closes it (endStuckPlanStart).
+// A new generation opens only when the record's plan has really ended, as read from Stripe, or when the record started nothing.
+//
+// The parent's confirmation email has its own state on the record. A refused or a busy send stays pending for the next sweep. An
+// unknown outcome is final, as the email delivery module's rule says. So an email problem cannot take away a record's recovery.
 
 /** The sweep's look at a clean row lasts this long after its card changed. */
 export const CARD_WATCH_MS = 7 * 24 * 60 * 60 * 1000;
@@ -23,7 +28,7 @@ export const CARD_WATCH_MS = 7 * 24 * 60 * 60 * 1000;
 export const PLAN_KEY_MS = 24 * 60 * 60 * 1000;
 /** A retry sends the record's key only this long after the record. */
 export const PLAN_RETRY_MS = 23 * 60 * 60 * 1000;
-/** A start's own request ends well within this. Until then the start answers for itself, and the webhook and the sweep leave its record. */
+/** A start's own request ends well within this. Until then the start answers for itself, and the webhook and the sweep leave its record and its email. */
 export const PLAN_ANSWER_MS = 60_000;
 /** Comparisons that overtake each other, in one call. */
 const CARD_TRIES = 3;
@@ -62,19 +67,50 @@ export type CardSettle =
   /** Not confirmed: the flag is set. */
   | { state: "flagged" };
 
-/** A plan creation recorded before its Stripe request. `at` is in milliseconds. */
-export interface PendingPlan {
+export type PlanStartState =
+  /** Its request may still land. Only a found subscription, Stripe's refusal or an admin closes it. */
+  | "open"
+  /** Its subscription was found or answered. */
+  | "started"
+  /** Another running subscription was found, so no start may run anyway. */
+  | "other"
+  /** Stripe said no, so nothing started. */
+  | "refused"
+  /** An admin closed it after their own check. */
+  | "team_ended";
+
+/** The parent's confirmation email. `pending` stays due. `sent` and `unknown` are final. */
+export type PlanEmail = "none" | "pending" | "sent" | "unknown";
+
+/** One start of one generation: a row of public.plan_starts. Times `at` and `finished` are in milliseconds. */
+export interface PlanStart {
+  generation: number;
   key: string;
   card: string;
   at: number;
+  state: PlanStartState;
+  subscription: string | null;
+  /** ISO time the free month ends, or null. */
+  firstCharge: string | null;
+  finished: number | null;
+  email: PlanEmail;
+  /** The team's alert: its claim is held (`sending`), or it is final. Null: not sent. */
+  alert: "sending" | "sent" | "unknown" | null;
 }
+
+/** How a start's record closes. */
+export type PlanStartOutcome =
+  | { state: "started"; subscription: string; firstCharge: string | null; email: boolean }
+  | { state: "other"; subscription: string }
+  | { state: "refused" };
 
 /** One child's row, with its card setup and customer. */
 export interface CardRow extends NewestCard {
   cardId: string;
   customer: string;
   needsRepair: boolean;
-  pendingPlan: PendingPlan | null;
+  /** The newest generation's start, closed or open. */
+  planStart: PlanStart | null;
 }
 
 export interface CardRows {
@@ -86,14 +122,26 @@ export interface CardRows {
   cardRow(cardId: string): Promise<CardRow | null>;
   /** The customer's row, or null. A family being deleted has none. Throws when it fails. */
   cardRowOfCustomer(customer: string): Promise<CardRow | null>;
-  /** Rows with a pending plan, or with a card that is flagged or changed after `changedAfter` (ms), the row looked at longest ago first. Throws when it fails. */
+  /** Rows with an open start, a pending email, or a card that is flagged or changed after `changedAfter` (ms), the row looked at longest ago first. Throws when it fails. */
   dueCardRows(changedAfter: number, limit: number): Promise<CardRow[]>;
   /** The sweep looked at this row. Throws when it fails. */
   noteCardChecked(cardId: string): Promise<void>;
-  /** Records a creation, or answers the one already pending. Throws when it fails, and for a card setup that does not exist. */
-  beginPlanStart(cardId: string, key: string, card: string): Promise<PendingPlan>;
-  /** The creation with this key is decided. Another key's record stays. Throws when it fails. */
-  endPlanStart(cardId: string, key: string): Promise<void>;
+  /**
+   * The way to a create call, in one step under the child's row lock. Opens `generation` with this key and card when the generation
+   * before it is closed. Otherwise it changes nothing. It answers the newest record, and the caller sends only when that record is
+   * open and is `generation`. Throws when it fails, and for a card setup that does not exist.
+   */
+  admitPlanStart(cardId: string, generation: number, key: string, card: string): Promise<PlanStart>;
+  /** Closes an open record. A closed record stays as it is. Throws when it fails. */
+  finishPlanStart(cardId: string, generation: number, outcome: PlanStartOutcome): Promise<void>;
+  /** The confirmation email's final outcome. Only a pending email moves. Throws when it fails. */
+  notePlanEmail(cardId: string, generation: number, state: "sent" | "unknown"): Promise<void>;
+  /** Claims the team's alert of an open record at least 24 hours old. False when a claim is held or the alert is final. Throws when it fails. */
+  claimPlanAlert(cardId: string, generation: number): Promise<boolean>;
+  /** The alert's outcome. `released` gives the claim back. Throws when it fails. */
+  notePlanAlert(cardId: string, generation: number, note: { state: "sent" | "unknown" | "released"; emailId?: string; error?: string }): Promise<void>;
+  /** An admin closes an open record at least 24 hours old. False when it is not one. Throws when it fails. */
+  teamEndPlanStart(cardId: string, generation: number, admin: string): Promise<boolean>;
 }
 
 /** One subscription, as a comparison reads it. */
@@ -212,13 +260,23 @@ export async function settleNewestCard(cardId: string, customer: string, first: 
   return { session: target.session, wrote, failure: failure ?? new Error("Card updates kept overtaking this one") };
 }
 
+/** A send's outcome, as the email delivery module (src/lib/email-delivery.ts) answers it. */
+export type SendOutcome = { status: "sent"; emailId: string } | { status: "refused"; error: string } | { status: "unknown"; error: string } | { status: "busy" };
+
 export interface CardCheckSeams extends CardSeams {
-  /** Tells the parent that the plan they did not hear about has started. Throws when it cannot, and the record stays. */
-  announcePlan(row: CardRow, plan: PlanCard): Promise<void>;
+  /** Tells the parent that the plan they did not hear about has started. Answers the send's outcome. Throws when the claim fails: nothing went. */
+  announcePlan(row: CardRow, start: PlanStart): Promise<SendOutcome>;
+  /**
+   * After a busy send: what the email's claim says. `pending`: another run is still sending it. `sent` or `unknown`: its outcome is
+   * final, as with a claim that stopped with no outcome. Throws when it cannot read.
+   */
+  planEmailClaim(cardId: string): Promise<"pending" | "sent" | "unknown">;
+  /** Tells the team, once, that a start needs them (src/lib/card-plan-alert.ts). Throws when the claim fails: nothing went. */
+  alertTeam(row: CardRow, start: PlanStart): Promise<SendOutcome>;
 }
 
 export type PlanCheck =
-  /** No record. */
+  /** No open record. */
   | "none"
   /** The record stays: a start may still answer for it, or its creation may still land. */
   | "waiting"
@@ -226,44 +284,113 @@ export type PlanCheck =
   | "started"
   /** Another running subscription was found, so no start may run anyway. */
   | "other"
-  /** The key's life is over and no subscription was found. A new start may run. */
-  | "never_landed";
+  /** The key's life is over and no subscription was found. The record stays open, and the team knows. */
+  | "needs_team";
 
-/** Decides a pending creation from the customer's subscriptions. Throws when Stripe or the store fails, and the record stays. */
-async function checkPendingPlan(row: CardRow, pending: PendingPlan, { rows, stripe, announcePlan }: CardCheckSeams, now: number): Promise<PlanCheck> {
-  if (now - pending.at < PLAN_ANSWER_MS) return "waiting";
-  const state = await stripe.cardState(row.customer);
-  const started = state.plans.find((p) => p.startKey === pending.key);
-  if (started) {
-    if (planNotOver(started.status)) await announcePlan(row, started);
-    await rows.endPlanStart(row.cardId, pending.key);
-    return "started";
+/** Closes a record whose subscription was found. The parent hears about a plan that is still on, with a date to give. */
+export const startedOutcome = (plan: PlanCard): PlanStartOutcome => ({
+  state: "started", subscription: plan.id, firstCharge: plan.firstCharge, email: planNotOver(plan.status) && plan.firstCharge !== null,
+});
+
+/** What a press does next, from the record and the customer's whole list of subscriptions. */
+export type PressStep =
+  /** The record's subscription is here. */
+  | { step: "landed"; plan: PlanCard }
+  /** Another running subscription is here. */
+  | { step: "other"; plan: PlanCard }
+  | { step: "already" }
+  /** The record is too near the key's end to retry. */
+  | { step: "unconfirmed" }
+  /** The key's life is over and no subscription was found. Only an admin's check can close the record. */
+  | { step: "needs_team" }
+  /** Ask for admission to `generation`. `card`: the record's card for a retry, or null for a new start, which finds its own. */
+  | { step: "admit"; generation: number; card: string | null };
+
+/**
+ * The rules of a press. A closed record opens a new generation only when no plan is running and, for a record that made a plan, that
+ * plan reads as over in Stripe's list. A list without it proves nothing, so the answer is `already`.
+ */
+export function pressStep(start: PlanStart | null, plans: PlanCard[], now: number): PressStep {
+  const running = plans.find((p) => planNotOver(p.status));
+  if (!start) return running ? { step: "already" } : { step: "admit", generation: 1, card: null };
+  if (start.state === "open") {
+    const landed = plans.find((p) => p.startKey === start.key);
+    if (landed) return { step: "landed", plan: landed };
+    if (running) return { step: "other", plan: running };
+    const age = now - start.at;
+    if (age >= PLAN_KEY_MS) return { step: "needs_team" };
+    if (age >= PLAN_RETRY_MS) return { step: "unconfirmed" };
+    return { step: "admit", generation: start.generation, card: start.card };
   }
-  if (state.plans.some((p) => planNotOver(p.status))) {
-    await rows.endPlanStart(row.cardId, pending.key);
-    return "other";
+  if (running) return { step: "already" };
+  if ((start.state === "started" || start.state === "other") && !plans.some((p) => p.id === start.subscription)) return { step: "already" };
+  return { step: "admit", generation: start.generation + 1, card: null };
+}
+
+const closed = (start: PlanStart, outcome: PlanStartOutcome, now: number): PlanStart => ({
+  ...start, state: outcome.state, finished: now,
+  subscription: outcome.state === "refused" ? null : outcome.subscription,
+  firstCharge: outcome.state === "started" ? outcome.firstCharge : null,
+  email: outcome.state === "started" && outcome.email ? "pending" : "none",
+});
+
+/** Decides an open record from the customer's subscriptions. Throws when Stripe or the store fails, and the record stays open. */
+async function checkOpenStart(row: CardRow, start: PlanStart, seams: CardCheckSeams, now: number): Promise<{ plan: PlanCheck; start: PlanStart; justClosed: boolean }> {
+  if (now - start.at < PLAN_ANSWER_MS) return { plan: "waiting", start, justClosed: false };
+  const { plans } = await seams.stripe.cardState(row.customer);
+  const step = pressStep(start, plans, now);
+  if (step.step === "landed" || step.step === "other") {
+    const outcome = step.step === "landed" ? startedOutcome(step.plan) : { state: "other" as const, subscription: step.plan.id };
+    await seams.rows.finishPlanStart(row.cardId, start.generation, outcome);
+    return { plan: step.step === "landed" ? "started" : "other", start: closed(start, outcome, now), justClosed: true };
   }
-  if (now - pending.at < PLAN_KEY_MS) return "waiting";
-  await rows.endPlanStart(row.cardId, pending.key);
-  return "never_landed";
+  if (step.step !== "needs_team") return { plan: "waiting", start, justClosed: false };
+  if (start.alert === null) {
+    if (!seams.canWrite()) throw new Error("The time for the team's alert is over");
+    const sent = await seams.alertTeam(row, start);
+    if (sent.status === "refused") throw new Error(`The team's alert did not go: ${sent.error}`);
+  }
+  return { plan: "needs_team", start, justClosed: false };
+}
+
+/**
+ * Sends a pending confirmation email. Refused and busy stay pending for the next sweep. Unknown is final: the email may have gone.
+ * A start that closed its own record is still sending its own email for a while, so an older close waits for PLAN_ANSWER_MS.
+ * Throws when the email or the store fails, and the email stays pending.
+ */
+async function tellParent(row: CardRow, start: PlanStart, seams: CardCheckSeams, justClosed: boolean, now: number): Promise<PlanEmail> {
+  if (start.email !== "pending") return start.email;
+  if (!justClosed && start.finished !== null && now - start.finished < PLAN_ANSWER_MS) return "pending";
+  if (!seams.canWrite()) return "pending";
+  const sent = await seams.announcePlan(row, start);
+  if (sent.status === "refused") throw new Error(`The plan email did not go: ${sent.error}`);
+  const state = sent.status === "busy" ? await seams.planEmailClaim(row.cardId) : sent.status;
+  if (state !== "pending") await seams.rows.notePlanEmail(row.cardId, start.generation, state);
+  return state;
 }
 
 export interface CardCheck {
   wrote: number;
   plan: PlanCheck;
-  /** Stripe failed, or the plan's record could not be decided. The row is flagged, or its record stays, so the sweep comes back. */
+  /** The confirmation email's state after this check. */
+  email: PlanEmail;
+  /** Stripe failed, the plan's record could not be decided, or an email did not go. The row is flagged, or its record stays, so the sweep comes back. */
   failure: unknown;
 }
 
-/** Brings one row's Stripe side to the row, and decides its pending creation. Throws only when the row cannot be flagged. */
+/** Brings one row's Stripe side to the row, decides its open start, and sends its pending email. Throws only when the row cannot be flagged. */
 export async function checkCardRow(row: CardRow, seams: CardCheckSeams, now = Date.now()): Promise<CardCheck> {
   const card = await settleNewestCard(row.cardId, row.customer, row, seams);
-  if (!row.pendingPlan) return { wrote: card.wrote, plan: "none", failure: card.failure };
+  if (!row.planStart) return { wrote: card.wrote, plan: "none", email: "none", failure: card.failure };
+  let start = row.planStart;
+  let plan: PlanCheck = "none";
+  let justClosed = false;
   try {
-    return { wrote: card.wrote, plan: await checkPendingPlan(row, row.pendingPlan, seams, now), failure: card.failure };
+    if (start.state === "open") ({ plan, start, justClosed } = await checkOpenStart(row, start, seams, now));
+    return { wrote: card.wrote, plan, email: await tellParent(row, start, seams, justClosed, now), failure: card.failure };
   } catch (e) {
-    console.error("[billing] pending plan check failed", e instanceof Error ? e.message : "failed");
-    return { wrote: card.wrote, plan: "waiting", failure: card.failure ?? e };
+    console.error("[billing] plan start check failed", e instanceof Error ? e.message : "failed");
+    return { wrote: card.wrote, plan: start.state === "open" && plan === "none" ? "waiting" : plan, email: start.email, failure: card.failure ?? e };
   }
 }
 
@@ -278,41 +405,67 @@ export interface CardSweep {
   checked: number;
   /** Rows where a write was needed. */
   corrected: number;
-  /** Pending creations decided. */
+  /** Open starts decided. */
   plans: number;
+  /** Confirmation emails with a final outcome. */
+  emails: number;
+  /** Open starts that need the team. */
+  needsTeam: number;
   failed: number;
   outOfTime: boolean;
 }
 
-/** The sweep's time: its clock, and when it stops starting a row. The row's writes follow `canWrite` in the seams. */
+/** The sweep's time: its clock, when it stops starting a row, and the end of all its work. The row's writes follow `canWrite` in the seams. */
 export interface SweepTime {
   now(): number;
   startBy: number;
+  /** Ends every call of the sweep. The seams' Stripe, database and email calls take the same signal. */
+  signal?: AbortSignal;
 }
 
-/** Looks at each due row in turn. One row's failure stops only that row. Throws when the first read fails. */
+/** The work's answer, or a throw at the signal, so nothing can hold up the sweep past its end. */
+function untilEnd<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return work;
+  let stop: () => void = () => {};
+  const ended = new Promise<never>((_, reject) => {
+    stop = () => reject(new Error("The sweep's time is over"));
+    if (signal.aborted) stop();
+    else signal.addEventListener("abort", stop, { once: true });
+  });
+  return Promise.race([work, ended]).finally(() => signal.removeEventListener("abort", stop));
+}
+
+/**
+ * Looks at each due row in turn. One row's failure stops only that row. A row is noted before its work, so a row that uses all the
+ * time goes to the back of the next run. At the signal the sweep answers at once, and a cut-off row stays due: a write or an email
+ * that was stopped has an unknown outcome, and the next run reads Stripe and the claim again. Throws when the first read fails.
+ */
 export async function sweepCards(seams: CardCheckSeams, time: SweepTime, limit = SWEEP_LIMIT): Promise<CardSweep> {
-  const rows = await seams.rows.dueCardRows(time.now() - CARD_WATCH_MS, limit);
-  const result: CardSweep = { due: rows.length, checked: 0, corrected: 0, plans: 0, failed: 0, outOfTime: false };
+  const rows = await untilEnd(seams.rows.dueCardRows(time.now() - CARD_WATCH_MS, limit), time.signal);
+  const result: CardSweep = { due: rows.length, checked: 0, corrected: 0, plans: 0, emails: 0, needsTeam: 0, failed: 0, outOfTime: false };
   for (const row of rows) {
-    if (time.now() >= time.startBy) {
+    if (time.now() >= time.startBy || time.signal?.aborted) {
       result.outOfTime = true;
       break;
     }
     try {
-      const check = await checkCardRow(row, seams, time.now());
+      await untilEnd(seams.rows.noteCardChecked(row.cardId), time.signal);
+    } catch (e) {
+      console.error("[billing] card row note failed", e instanceof Error ? e.message : "failed");
+    }
+    try {
+      const was = row.planStart?.email;
+      const check = await untilEnd(checkCardRow(row, seams, time.now()), time.signal);
       result.checked++;
       if (check.wrote > 0) result.corrected++;
-      if (check.plan === "started" || check.plan === "other" || check.plan === "never_landed") result.plans++;
+      if (check.plan === "started" || check.plan === "other") result.plans++;
+      if (check.plan === "needs_team") result.needsTeam++;
+      if (check.email !== was && (check.email === "sent" || check.email === "unknown")) result.emails++;
       if (check.failure) result.failed++;
     } catch (e) {
       result.failed++;
+      if (time.signal?.aborted) result.outOfTime = true;
       console.error("[billing] card row check failed", e instanceof Error ? e.message : "failed");
-    }
-    try {
-      await seams.rows.noteCardChecked(row.cardId);
-    } catch (e) {
-      console.error("[billing] card row note failed", e instanceof Error ? e.message : "failed");
     }
   }
   return result;

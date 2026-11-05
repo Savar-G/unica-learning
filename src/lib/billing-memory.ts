@@ -1,12 +1,12 @@
 // The billing module's store and provider (src/lib/billing.ts) in memory, for tests. The store keeps the database's
 // guards: every read is filtered by the signed-in parent, and the card order and the plan record are the rules of
-// record_card_update, settle_card_update, card_update_rows, begin_plan_start and end_plan_start, on the clock of Date.now. The
+// record_card_update, settle_card_update, card_check_rows and the plan start functions of migration plan_starts, on the clock of Date.now. The
 // provider keeps Stripe's rules as the live provider reads them: invoices belong to a customer, a read of a whole list either
 // answers or throws, a card update session names the row and the customer it was made for, and only a plan that can still charge
 // takes a new default card. `stripe` is a real Stripe client over the same memory, so startPlan (src/lib/stripe.ts) runs on what a
 // card update left behind.
 import Stripe from "stripe";
-import { CardWriteRefused, type CardRow, type CardState } from "@/lib/card-reconcile";
+import { CardWriteRefused, PLAN_KEY_MS, type CardRow, type CardState, type PlanStart } from "@/lib/card-reconcile";
 import { RUNNING_PLAN } from "@/lib/parent-plan";
 import type { BillingProvider, BillingStore, CardUpdateRequest, CardUpdateSession, ProviderInvoice } from "@/lib/billing";
 
@@ -32,7 +32,7 @@ export interface MemoryPaymentMethod {
   type: string;
 }
 
-type Operation = "family" | "card" | "invoices" | "create" | "read" | "state" | "setDefault" | "record" | "settle" | "rows" | "note" | "begin" | "end";
+type Operation = "family" | "card" | "invoices" | "create" | "read" | "state" | "setDefault" | "record" | "settle" | "rows" | "note" | "admit" | "finish" | "planEmail" | "alert";
 
 /** One child_card_updates row. */
 export interface MemoryCardRow {
@@ -41,9 +41,6 @@ export interface MemoryCardRow {
   paymentMethod: string | null;
   applied: boolean;
   needsRepair: boolean;
-  pendingKey: string | null;
-  pendingCard: string | null;
-  pendingAt: number | null;
   /** When the card changed: updated_at. */
   changedAt: number;
   /** When the sweep last looked: reconciled_at. */
@@ -63,8 +60,14 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
   const created: CardUpdateRequest[] = [];
   /** One row per child: child_card_updates. */
   const updates = new Map<string, MemoryCardRow>();
+  /** public.plan_starts: each card setup's records, oldest generation first. Never cleared. */
+  const planStarts = new Map<string, PlanStart[]>();
+  /** Who closed a record: plan_starts.ended_by. */
+  const endedBy = new Map<string, string>();
+  const newestStart = (cardId: string) => planStarts.get(cardId)?.at(-1) ?? null;
+  const startOf = (cardId: string, generation: number) => planStarts.get(cardId)?.find((s) => s.generation === generation);
   /** A Customer's card writes are counted. */
-  const calls: Record<Operation, number> = { family: 0, card: 0, invoices: 0, create: 0, read: 0, state: 0, setDefault: 0, record: 0, settle: 0, rows: 0, note: 0, begin: 0, end: 0 };
+  const calls: Record<Operation, number> = { family: 0, card: 0, invoices: 0, create: 0, read: 0, state: 0, setDefault: 0, record: 0, settle: 0, rows: 0, note: 0, admit: 0, finish: 0, planEmail: 0, alert: 0 };
   /** Cards whose subscription write Stripe refuses, after the Customer's write landed. */
   const refuseOnSubscription = new Set<string>();
   /** Set an operation's error to make every call of it throw, as a database or Stripe error would. */
@@ -82,10 +85,10 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
     const child = children.find((c) => c.card?.id === cardId);
     return child && updates.get(child.childId);
   };
-  const newRow = (): MemoryCardRow => ({ sessionId: null, created: null, paymentMethod: null, applied: false, needsRepair: false, pendingKey: null, pendingCard: null, pendingAt: null, changedAt: Date.now(), checkedAt: null });
+  const newRow = (): MemoryCardRow => ({ sessionId: null, created: null, paymentMethod: null, applied: false, needsRepair: false, changedAt: Date.now(), checkedAt: null });
   const cardRowOf = (child: MemoryBillingChild, row: MemoryCardRow): CardRow => ({
     cardId: child.card!.id, customer: child.card!.customer!, session: row.sessionId, paymentMethod: row.paymentMethod, needsRepair: row.needsRepair,
-    pendingPlan: row.pendingKey ? { key: row.pendingKey, card: row.pendingCard!, at: row.pendingAt! } : null,
+    planStart: newestStart(child.card!.id) && { ...newestStart(child.card!.id)! },
   });
   const rowWhere = (test: (c: MemoryBillingChild) => boolean) => {
     const child = children.find((c) => c.card?.customer && test(c));
@@ -142,7 +145,8 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       begin("rows");
       return children.flatMap((c) => {
         const row = updates.get(c.childId);
-        return row && c.card?.customer && (row.pendingKey || (row.paymentMethod && (row.needsRepair || row.changedAt > changedAfter))) ? [{ child: c, row }] : [];
+        const start = c.card && newestStart(c.card.id);
+        return row && c.card?.customer && (start?.state === "open" || start?.email === "pending" || (row.paymentMethod && (row.needsRepair || row.changedAt > changedAfter))) ? [{ child: c, row }] : [];
       }).sort((a, b) => (a.row.checkedAt ?? -1) - (b.row.checkedAt ?? -1)).slice(0, limit).map(({ child, row }) => cardRowOf(child, row));
     },
     async noteCardChecked(cardId) {
@@ -150,19 +154,55 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       const row = rowOfCard(cardId);
       if (row) row.checkedAt = Date.now();
     },
-    async beginPlanStart(cardId, key, card) {
-      begin("begin");
+    async admitPlanStart(cardId, generation, key, card) {
+      begin("admit");
       const child = children.find((c) => c.card?.id === cardId);
       if (!child) throw new Error("plan_start_no_card_setup");
-      let row = updates.get(child.childId);
-      if (!row) updates.set(child.childId, row = newRow());
-      if (!row.pendingKey) Object.assign(row, { pendingKey: key, pendingCard: card, pendingAt: Date.now() });
-      return { key: row.pendingKey!, card: row.pendingCard!, at: row.pendingAt! };
+      if (!updates.has(child.childId)) updates.set(child.childId, newRow());
+      const latest = newestStart(cardId);
+      if ((latest?.generation ?? 0) === generation - 1 && latest?.state !== "open") {
+        const start: PlanStart = { generation, key, card, at: Date.now(), state: "open", subscription: null, firstCharge: null, finished: null, email: "none", alert: null };
+        planStarts.set(cardId, [...(planStarts.get(cardId) ?? []), start]);
+        return { ...start };
+      }
+      if (!latest) throw new Error("plan_start_generation_gap");
+      return { ...latest };
     },
-    async endPlanStart(cardId, key) {
-      begin("end");
-      const row = rowOfCard(cardId);
-      if (row?.pendingKey === key) Object.assign(row, { pendingKey: null, pendingCard: null, pendingAt: null });
+    async finishPlanStart(cardId, generation, outcome) {
+      begin("finish");
+      const start = startOf(cardId, generation);
+      if (start?.state !== "open") return;
+      Object.assign(start, {
+        state: outcome.state, finished: Date.now(),
+        subscription: outcome.state === "refused" ? null : outcome.subscription,
+        firstCharge: outcome.state === "started" ? outcome.firstCharge : null,
+        email: outcome.state === "started" && outcome.email ? "pending" : "none",
+      });
+    },
+    async notePlanEmail(cardId, generation, state) {
+      begin("planEmail");
+      const start = startOf(cardId, generation);
+      if (start?.email === "pending") start.email = state;
+    },
+    async claimPlanAlert(cardId, generation) {
+      begin("alert");
+      const start = startOf(cardId, generation);
+      if (start?.state !== "open" || start.alert !== null || Date.now() - start.at < PLAN_KEY_MS) return false;
+      start.alert = "sending";
+      return true;
+    },
+    async notePlanAlert(cardId, generation, note) {
+      begin("alert");
+      const start = startOf(cardId, generation);
+      if (start?.alert === "sending") start.alert = note.state === "released" ? null : note.state;
+    },
+    async teamEndPlanStart(cardId, generation, admin) {
+      begin("finish");
+      const start = startOf(cardId, generation);
+      if (start?.state !== "open" || Date.now() - start.at < PLAN_KEY_MS) return false;
+      Object.assign(start, { state: "team_ended", finished: Date.now() });
+      endedBy.set(`${cardId}:${generation}`, admin);
+      return true;
     },
   };
 
@@ -263,6 +303,8 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
     customerDefaults,
     refuseOnSubscription,
     updates,
+    planStarts,
+    endedBy,
     /** The parent finishes Stripe's page: the session now holds the card, and it is the customer's newest. */
     complete(id: string, paymentMethod: string, type = "card") {
       const session = sessions.get(id);

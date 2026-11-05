@@ -19,6 +19,9 @@ const h = vi.hoisted(() => ({
   sendTimes: [] as number[],
   cardRuns: 0,
   cardFails: false,
+  cardSends: 0,
+  maySends: 0,
+  transports: new Set<unknown>(),
 }));
 
 vi.mock("@/lib/account-server", () => ({ linkOrigin: () => "https://unicalearning.com" }));
@@ -36,17 +39,26 @@ vi.mock("@/lib/email-resend", () => ({
 }));
 vi.mock("@/lib/card-sweep-server", () => ({
   dueCardCount: async () => 3,
-  sweepCardsNow: async () => {
+  sweepCardsNow: async ({ transport }: { transport: { send(m: unknown): Promise<unknown> } }) => {
     h.cardRuns++;
+    h.transports.add(transport);
+    for (let i = 0; i < h.cardSends; i++) await transport.send({ to: `card-${i}@family.ca` });
     if (h.cardFails) return { error: "run_failed" };
     return { due: 1, checked: 1, corrected: 0, plans: 0, failed: 0, outOfTime: false };
   },
 }));
-vi.mock("@/lib/maya-call-sweep-server", () => ({ sweepAbandonedCallsNow: async () => ({ due: 0 }) }));
+vi.mock("@/lib/maya-call-sweep-server", () => ({
+  sweepAbandonedCallsNow: async (_admin: unknown, options: { dry?: boolean; transport?: { send(m: unknown): Promise<unknown> } }) => {
+    if (!options.dry) h.transports.add(options.transport);
+    if (options.transport) for (let i = 0; i < h.maySends; i++) await options.transport.send({ to: `alert-${i}@family.ca` });
+    return { due: 0 };
+  },
+}));
 vi.mock("@/lib/maya-weekly-email-store", () => ({ mayaWeeklyStore: () => ({ load: async () => ({}) }) }));
 vi.mock("@/lib/maya-weekly-email", () => ({
   dueWeeklyEmails: () => [],
   runWeeklyEmails: async (_store: unknown, _now: number, deps: { transport: { send(m: unknown): Promise<unknown> } }) => {
+    h.transports.add(deps.transport);
     if (h.weeklySend) await deps.transport.send({ to: "weekly@family.ca" });
     return { due: h.weeklySend ? 1 : 0, sent: h.weeklySend ? 1 : 0, failed: 0, busy: 0, unknown: 0 };
   },
@@ -100,6 +112,9 @@ beforeEach(() => {
   h.claimMs = 0;
   h.weeklySend = false;
   h.sendTimes = [];
+  h.cardSends = 0;
+  h.maySends = 0;
+  h.transports = new Set();
 });
 
 it("the dry path counts the email, sends nothing and claims nothing", async () => {
@@ -121,6 +136,17 @@ it("waits Resend's gap after the email before it, on the same transport", async 
   expect(h.sendTimes).toHaveLength(2);
   expect(h.sendTimes[1] - h.sendTimes[0]).toBeGreaterThanOrEqual(590);
 });
+
+it("one transport carries everything the run sends, and sends that overlap still start 600 ms apart", async () => {
+  h.weeklySend = true;
+  h.cardSends = 3;
+  h.maySends = 2;
+  await call();
+  expect(h.transports.size).toBe(1);
+  expect(h.sendTimes).toHaveLength(7); // 3 card emails, 2 safety alerts, 1 weekly, 1 monthly.
+  const times = [...h.sendTimes].sort((a, b) => a - b);
+  expect(Math.min(...times.slice(1).map((at, i) => at - times[i]))).toBeGreaterThanOrEqual(590);
+}, 15_000);
 
 it("a failed monthly run hides nothing else, and sends nothing", async () => {
   h.loadFails = true;

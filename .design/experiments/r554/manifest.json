@@ -9,6 +9,8 @@
     { "file": "card-updated-desktop.png", "shows": "Back from Stripe's hosted page in test mode: the note, after the new card became that subscription's default" },
     { "file": "stripe-failed-desktop.png", "shows": "Stripe could not answer for one Customer: that child's plan cannot load, no invoice list and no claim about invoices. Taken before the note's top margin was added." },
     { "file": "stripe-failed-phone.png", "shows": "The same at 390 wide" },
-    { "file": "not-started-desktop.png", "shows": "A saved card with no plan started, and no invoices yet" }
+    { "file": "not-started-desktop.png", "shows": "A saved card with no plan started, and no invoices yet" },
+    { "file": "stuck-start-card.png", "shows": "Review round 4, /admin/next-steps at 1280 wide, cropped to the Plan start column: a start with no plan found after 24 hours, on the test family's card (synthetic record)" },
+    { "file": "stuck-start-closed.png", "shows": "The same card after 'I checked Stripe: close this start' and its confirmation" }
   ]
 }

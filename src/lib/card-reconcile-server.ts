@@ -1,10 +1,10 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { CardRecord, CardRow, CardRows, CardSettle, PendingPlan } from "@/lib/card-reconcile";
+import type { CardRecord, CardRow, CardRows, CardSettle, PlanEmail, PlanStart, PlanStartState } from "@/lib/card-reconcile";
 import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
 
-// The row's seam on the live site: the service-only functions of migration card_row_reconcile.
+// The row's seam on the live site: the service-only functions of migrations card_row_reconcile and plan_starts.
 
 type Answer = Record<string, unknown>;
 const object = (data: unknown): Answer => {
@@ -39,16 +39,48 @@ function readSettle(data: unknown): CardSettle {
   }
 }
 
-function readPending(data: unknown): PendingPlan {
+const START_STATES: readonly PlanStartState[] = ["open", "started", "other", "refused", "team_ended"];
+const EMAIL_STATES: readonly PlanEmail[] = ["none", "pending", "sent", "unknown"];
+const ALERT_STATES: readonly NonNullable<PlanStart["alert"]>[] = ["sending", "sent", "unknown"];
+const startState = (value: unknown): PlanStartState => {
+  const found = START_STATES.find((s) => s === value);
+  if (!found) throw new Error("Card row answer unreadable");
+  return found;
+};
+const emailState = (value: unknown): PlanEmail => {
+  const found = EMAIL_STATES.find((s) => s === value);
+  if (!found) throw new Error("Card row answer unreadable");
+  return found;
+};
+const alertState = (value: unknown): PlanStart["alert"] => {
+  if (value === null || value === undefined) return null;
+  const found = ALERT_STATES.find((s) => s === value);
+  if (!found) throw new Error("Card row answer unreadable");
+  return found;
+};
+const generationOf = (value: unknown): number => {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) throw new Error("Card row answer unreadable");
+  return value;
+};
+const isoOrNull = (value: unknown): string | null => (typeof value === "string" && value ? new Date(millis(value)).toISOString() : null);
+
+function readStart(data: unknown): PlanStart {
   const a = object(data);
-  return { key: required(a.key), card: required(a.card), at: millis(a.at) };
+  return {
+    generation: generationOf(a.generation), key: required(a.key), card: required(a.card), at: millis(a.at), state: startState(a.state),
+    subscription: text(a.subscription), firstCharge: isoOrNull(a.first_charge), finished: a.finished_at ? millis(a.finished_at) : null,
+    email: emailState(a.email), alert: alertState(a.alert),
+  };
 }
 
-// The generator types a function's table columns as not null. The session, the card and the record can each be null here.
-type RowColumns = Database["public"]["Functions"]["card_update_rows"]["Returns"][number];
+// The generator types a function's table columns as not null. The session, the card and the whole start can each be null here.
+type RowColumns = Database["public"]["Functions"]["card_check_rows"]["Returns"][number];
 const readRow = (r: RowColumns): CardRow => ({
   cardId: r.card_id, customer: r.customer, session: r.session_id, paymentMethod: r.payment_method_id, needsRepair: r.needs_repair,
-  pendingPlan: r.pending_plan_key && r.pending_plan_card && r.pending_plan_at ? { key: r.pending_plan_key, card: r.pending_plan_card, at: millis(r.pending_plan_at) } : null,
+  planStart: r.start_key ? readStart({
+    generation: r.start_generation, key: r.start_key, card: r.start_card, at: r.start_at, state: r.start_state, subscription: r.start_subscription,
+    first_charge: r.start_first_charge, finished_at: r.start_finished_at, email: r.start_email, alert: r.start_alert,
+  }) : null,
 });
 
 export function supabaseCardRows(db: SupabaseClient<Database>): CardRows {
@@ -66,17 +98,17 @@ export function supabaseCardRows(db: SupabaseClient<Database>): CardRows {
       return readSettle(data);
     },
     async cardRow(cardId) {
-      const { data, error } = await db.rpc("card_update_rows", { p_card: cardId });
+      const { data, error } = await db.rpc("card_check_rows", { p_card: cardId });
       if (error) throw new Error(`card row read: ${error.message}`);
       return data[0] ? readRow(data[0]) : null;
     },
     async cardRowOfCustomer(customer) {
-      const { data, error } = await db.rpc("card_update_rows", { p_customer: customer });
+      const { data, error } = await db.rpc("card_check_rows", { p_customer: customer });
       if (error) throw new Error(`card row read: ${error.message}`);
       return data[0] ? readRow(data[0]) : null;
     },
     async dueCardRows(changedAfter, limit) {
-      const { data, error } = await db.rpc("card_update_rows", { p_changed_after: new Date(changedAfter).toISOString(), p_limit: limit });
+      const { data, error } = await db.rpc("card_check_rows", { p_changed_after: new Date(changedAfter).toISOString(), p_limit: limit });
       if (error) throw new Error(`card rows read: ${error.message}`);
       return data.map(readRow);
     },
@@ -84,14 +116,38 @@ export function supabaseCardRows(db: SupabaseClient<Database>): CardRows {
       const { error } = await db.rpc("note_card_checked", { p_card: cardId });
       if (error) throw new Error(`card row note: ${error.message}`);
     },
-    async beginPlanStart(cardId, key, card) {
-      const { data, error } = await db.rpc("begin_plan_start", { p_card: cardId, p_key: key, p_payment_method: card });
-      if (error) throw new Error(`plan start record: ${error.message}`);
-      return readPending(data);
+    async admitPlanStart(cardId, generation, key, card) {
+      const { data, error } = await db.rpc("admit_plan_start", { p_card: cardId, p_generation: generation, p_key: key, p_payment_method: card });
+      if (error) throw new Error(`plan start admission: ${error.message}`);
+      return readStart(data);
     },
-    async endPlanStart(cardId, key) {
-      const { error } = await db.rpc("end_plan_start", { p_card: cardId, p_key: key });
-      if (error) throw new Error(`plan start end: ${error.message}`);
+    async finishPlanStart(cardId, generation, outcome) {
+      const { data, error } = await db.rpc("finish_plan_start", {
+        p_card: cardId, p_generation: generation, p_state: outcome.state,
+        p_subscription: outcome.state === "refused" ? null : outcome.subscription,
+        p_first_charge: outcome.state === "started" ? outcome.firstCharge : null,
+        p_email: outcome.state === "started" && outcome.email,
+      });
+      if (error) throw new Error(`plan start finish: ${error.message}`);
+      if (typeof data !== "boolean") throw new Error("Card row answer unreadable");
+    },
+    async notePlanEmail(cardId, generation, state) {
+      const { error } = await db.rpc("note_plan_start_email", { p_card: cardId, p_generation: generation, p_state: state });
+      if (error) throw new Error(`plan start email: ${error.message}`);
+    },
+    async claimPlanAlert(cardId, generation) {
+      const { data, error } = await db.rpc("claim_plan_start_alert", { p_card: cardId, p_generation: generation });
+      if (error) throw new Error(`plan start alert: ${error.message}`);
+      return data === true;
+    },
+    async notePlanAlert(cardId, generation, note) {
+      const { error } = await db.rpc("note_plan_start_alert", { p_card: cardId, p_generation: generation, p_state: note.state, p_email_id: note.emailId ?? null, p_error: note.error ?? null });
+      if (error) throw new Error(`plan start alert note: ${error.message}`);
+    },
+    async teamEndPlanStart(cardId, generation, admin) {
+      const { data, error } = await db.rpc("team_end_plan_start", { p_card: cardId, p_generation: generation, p_admin: admin });
+      if (error) throw new Error(`plan start team end: ${error.message}`);
+      return data === true;
     },
   };
 }

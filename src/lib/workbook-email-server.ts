@@ -85,6 +85,22 @@ export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { card
   return sendEmailOnce(workbookEmailLedger(db, message), { cardId: p.cardId, kind: "plan_start", workbookNumber: 0, delivery: null }, message, { transport });
 }
 
+/** A claim this old stopped with no outcome (the same limit as the dispatch's check of a welcome). The email may have gone. */
+const SENDING_STOPPED_MS = 10 * 60 * 1000;
+
+/**
+ * After a busy send of the plan start email: what its claim says. `pending`: another run is still sending it, or a refused send may be
+ * claimed again. `sent` and `unknown` are final. Throws when it cannot read.
+ */
+export async function planStartEmailClaim(db: SupabaseClient<Database>, cardId: string, now = Date.now()): Promise<"pending" | "sent" | "unknown"> {
+  const { data, error } = await db.from("workbook_emails").select("status, claimed_at").eq("card_setup_id", cardId).eq("kind", "plan_start").eq("workbook_number", 0).maybeSingle();
+  if (error) throw Error("store_failed");
+  if (data?.status === "sent") return "sent";
+  if (data?.status === "unknown" || data?.status === "skipped") return "unknown";
+  if (data?.status === "sending" && data.claimed_at && now - Date.parse(data.claimed_at) >= SENDING_STOPPED_MS) return "unknown";
+  return "pending";
+}
+
 export async function sendQueuedWorkbookWelcome(db: SupabaseClient<Database>, cardId: string, transport?: MailTransport) {
   const { data, error } = await db.from("workbook_emails").select("id").eq("card_setup_id", cardId).eq("kind", "welcome")
     .in("status", ["pending", "failed"]).lt("attempts", 3).maybeSingle();

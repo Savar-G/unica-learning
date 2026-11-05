@@ -38,8 +38,39 @@ export type SendResult =
 
 /** The mail transport seam: Resend in production (src/lib/email-resend.ts), in memory in tests. */
 export interface MailTransport {
-  /** Sends one message. Never throws: a request that ends without an answer is "unknown". */
-  send(message: EmailMessage): Promise<SendResult>;
+  /**
+   * Sends one message. Never throws: a request that ends without an answer is "unknown". `signal`: stops the send. Stopped before
+   * the request starts, it is "refused", as nothing went. Stopped during the request, it is "unknown".
+   */
+  send(message: EmailMessage, options?: { signal?: AbortSignal }): Promise<SendResult>;
+}
+
+const OUT_OF_TIME: SendResult = { status: "refused", error: "The send did not start: the time ran out" };
+
+/**
+ * One transport that starts one request every `gapMs`, for everything one run sends, whoever sends it and however the sends overlap.
+ * Each send takes the next free start time, so a slow send holds up no other. A send stopped while it waits sends nothing.
+ */
+export function pacedTransport(transport: MailTransport, gapMs: number): MailTransport {
+  let nextStart = 0;
+  return {
+    async send(message, options) {
+      const signal = options?.signal;
+      if (signal?.aborted) return OUT_OF_TIME;
+      const now = performance.now();
+      const start = Math.max(now, nextStart);
+      nextStart = start + gapMs;
+      if (start > now) {
+        const started = await new Promise<boolean>((resolve) => {
+          const stop = () => { clearTimeout(timer); resolve(false); };
+          const timer = setTimeout(() => { signal?.removeEventListener("abort", stop); resolve(true); }, start - now);
+          signal?.addEventListener("abort", stop, { once: true });
+        });
+        if (!started) return OUT_OF_TIME;
+      }
+      return transport.send(message, options);
+    },
+  };
 }
 
 /**

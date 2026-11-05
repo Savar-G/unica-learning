@@ -42,7 +42,8 @@ const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** `fetch`: the network; tests give a stub. */
 export function resendTransport({ fetch: request = (input, init) => fetch(input, init) }: { fetch?: typeof fetch } = {}): MailTransport {
   return {
-    async send(message): Promise<SendResult> {
+    async send(message, options): Promise<SendResult> {
+      if (options?.signal?.aborted) return { status: "refused", error: "The send did not start: the time ran out" };
       const key = process.env.RESEND_API_KEY;
       if (!key) return { status: "refused", error: "RESEND_API_KEY is not set" };
       const from = resendFrom(message);
@@ -64,7 +65,7 @@ export function resendTransport({ fetch: request = (input, init) => fetch(input,
             reply_to: message.replyTo,
             headers: message.headers,
           }),
-          signal: controller.signal,
+          signal: options?.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal,
         });
         if (res.ok) {
           // Resend took the email. An answer without an id still means sent; "sent" stands in for the id.

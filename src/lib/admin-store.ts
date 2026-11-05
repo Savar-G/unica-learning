@@ -14,6 +14,7 @@ import type { TestContextRecord } from "@/lib/admin-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
+import { PLAN_KEY_MS } from "@/lib/card-reconcile";
 import { findSavedCard } from "@/lib/saved-card";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
@@ -445,6 +446,8 @@ export interface CardSetupRow {
   card_saved_at: string | null;
   workbookEmails?: WorkbookEmailRecord[];
   workbookEmailsReadAt?: number;
+  /** A plan start that needs the team: open, with Stripe's key past its life (#554). */
+  stuckPlanStart?: number | null;
 }
 
 async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promise<CardSetupRow[]> {
@@ -453,7 +456,10 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
     .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
     .in("card_setup_id", cards.map((c) => c.id)).order("created_at").order("id"), "workbook emails");
   const workbookEmailsReadAt = Date.now();
-  return cards.map((c) => ({ ...c, workbookEmails: emails.filter((e) => e.card_setup_id === c.id), workbookEmailsReadAt }));
+  const openStarts = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at")
+    .in("card_setup_id", cards.map((c) => c.id)).eq("state", "open").order("card_setup_id").order("generation"), "plan starts");
+  const stuck = new Map(openStarts.filter((s) => workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
+  return cards.map((c) => ({ ...c, workbookEmails: emails.filter((e) => e.card_setup_id === c.id), workbookEmailsReadAt, stuckPlanStart: stuck.get(c.id) ?? null }));
 }
 
 export interface WaitlistRow {

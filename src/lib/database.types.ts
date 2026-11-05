@@ -2028,6 +2028,81 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_starts: {
+        Row: {
+          card_setup_id: string
+          email_noted_at: string | null
+          email_state: string
+          ended_by: string | null
+          finished_at: string | null
+          first_charge_at: string | null
+          generation: number
+          parent_id: string
+          payment_method_id: string
+          start_key: string
+          started_at: string
+          state: string
+          subscription_id: string | null
+          team_alert_at: string | null
+          team_alert_email_id: string | null
+          team_alert_error: string | null
+          team_alert_state: string | null
+        }
+        Insert: {
+          card_setup_id: string
+          email_noted_at?: string | null
+          email_state?: string
+          ended_by?: string | null
+          finished_at?: string | null
+          first_charge_at?: string | null
+          generation: number
+          parent_id: string
+          payment_method_id: string
+          start_key: string
+          started_at?: string
+          state?: string
+          subscription_id?: string | null
+          team_alert_at?: string | null
+          team_alert_email_id?: string | null
+          team_alert_error?: string | null
+          team_alert_state?: string | null
+        }
+        Update: {
+          card_setup_id?: string
+          email_noted_at?: string | null
+          email_state?: string
+          ended_by?: string | null
+          finished_at?: string | null
+          first_charge_at?: string | null
+          generation?: number
+          parent_id?: string
+          payment_method_id?: string
+          start_key?: string
+          started_at?: string
+          state?: string
+          subscription_id?: string | null
+          team_alert_at?: string | null
+          team_alert_email_id?: string | null
+          team_alert_error?: string | null
+          team_alert_state?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_starts_card_setup_id_fkey"
+            columns: ["card_setup_id"]
+            isOneToOne: false
+            referencedRelation: "card_setups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_starts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       question_shows: {
         Row: {
           assessment_id: string
@@ -4298,6 +4373,15 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admit_plan_start: {
+        Args: {
+          p_card: string
+          p_generation: number
+          p_key: string
+          p_payment_method: string
+        }
+        Returns: Json
+      }
       admit_scan_photo: {
         Args: {
           p_bytes: number
@@ -4369,6 +4453,31 @@ export type Database = {
           p_token: string
         }
         Returns: Json
+      }
+      card_check_rows: {
+        Args: {
+          p_card?: string
+          p_changed_after?: string
+          p_customer?: string
+          p_limit?: number
+        }
+        Returns: {
+          card_id: string
+          customer: string
+          needs_repair: boolean
+          payment_method_id: string
+          session_id: string
+          start_alert: string
+          start_at: string
+          start_card: string
+          start_email: string
+          start_finished_at: string
+          start_first_charge: string
+          start_generation: number
+          start_key: string
+          start_state: string
+          start_subscription: string
+        }[]
       }
       card_update_rows: {
         Args: {
@@ -4514,6 +4623,10 @@ export type Database = {
           out_locked_until: string
           out_status: string
         }[]
+      }
+      claim_plan_start_alert: {
+        Args: { p_card: string; p_generation: number }
+        Returns: boolean
       }
       claim_scan_link_email: {
         Args: {
@@ -4694,6 +4807,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      finish_plan_start: {
+        Args: {
+          p_card: string
+          p_email: boolean
+          p_first_charge: string
+          p_generation: number
+          p_state: string
+          p_subscription: string
+        }
+        Returns: boolean
+      }
       finish_scan_calibration: {
         Args: {
           p_bytes: number
@@ -4827,6 +4951,20 @@ export type Database = {
         }[]
       }
       note_card_checked: { Args: { p_card: string }; Returns: undefined }
+      note_plan_start_alert: {
+        Args: {
+          p_card: string
+          p_email_id: string
+          p_error: string
+          p_generation: number
+          p_state: string
+        }
+        Returns: boolean
+      }
+      note_plan_start_email: {
+        Args: { p_card: string; p_generation: number; p_state: string }
+        Returns: boolean
+      }
       parent_reads_workbook: { Args: { p_workbook: string }; Returns: boolean }
       parent_reads_workbook_folder: {
         Args: { p_folder: string }
@@ -4841,6 +4979,13 @@ export type Database = {
         }[]
       }
       ping: { Args: never; Returns: number }
+      plan_start_answer: {
+        Args: {
+          p_admitted: boolean
+          p_row: Database["public"]["Tables"]["plan_starts"]["Row"]
+        }
+        Returns: Json
+      }
       queue_workbook_edit: {
         Args: {
           p_action: string
@@ -5143,6 +5288,10 @@ export type Database = {
         Returns: Json
       }
       take_plan_read_order: { Args: never; Returns: number }
+      team_end_plan_start: {
+        Args: { p_admin: string; p_card: string; p_generation: number }
+        Returns: boolean
+      }
       use_workbook_run_attempts: {
         Args: {
           p_lease: string
