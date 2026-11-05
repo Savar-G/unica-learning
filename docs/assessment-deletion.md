@@ -67,7 +67,7 @@ An admin opens a parent record and confirms its email. The route checks the sign
 
 Each family write takes a shared parent row lock through database triggers. A deletion request takes the exclusive parent lock and sets a persistent fence. A test, answer, or card save that wins the lock first changes eligibility before the claim. A write that loses the lock is rejected. The Storage trigger also fences secret-key uploads. Storage object insertion before the claim finishes first and enters the listing. Later insertion fails. A request accepted before admin revocation remains an authorized request; a request after revocation fails, including with the same session token.
 
-Card creation holds the family across external Stripe requests. Retention cannot claim an active hold. After freezing a family, the worker deduplicates every tracked Stripe customer and checks up to four customers concurrently. Confirmed saved state cancels only the retention check and reopens the family. Unknown state keeps the checking request and the family fence. A timeout must not discard completed work or authorize deletion. Explicit deletion does not cancel a subscription or delete Stripe payment history. It must be handled separately if requested.
+Card creation holds the family across external Stripe requests. Retention cannot claim an active hold. After freezing a family, the worker deduplicates every tracked Stripe customer and checks up to four customers concurrently. Confirmed saved state cancels only the retention check and reopens the family. Unknown state keeps the checking request and the family fence. A timeout must not discard completed work or authorize deletion. An admin's explicit deletion does not cancel a subscription or delete Stripe payment history. It must be handled separately if requested. A parent's self-serve deletion stops each plan first; see [Self-serve delete](#self-serve-delete-556). Neither deletes Stripe payment history.
 
 Checkout reads use Stripe's supported `open` and `complete` status filters. Each open page is expired, then the worker reads the first open page again. Expiration is durable progress. Historical expired sessions do not need traversal. Cleanup resumes across attempts. A completed canceled-intent checkpoint skips repeated cleanup for that customer. It does not establish that sessions or cards are clear. After all customers are prepared, a separate pass reads every customer's open sessions and current intent head. A changed head or open session invalidates preparation and keeps the request frozen. The final pass then reads completed sessions, payment methods, and subscriptions for every customer. No clear payment decision is stored between attempts. An interrupted final pass starts again with fresh reads for the full customer set.
 
@@ -301,6 +301,48 @@ These rows add no retention activity and no storage objects. The existing family
 
 
 Delivery time corrections use `workbook_delivery_corrections`. Each append-only row keeps the previous and corrected delivery time, short reason, actor, server time, request ID, and current/previous audit links. Its foreign keys bind it to the original receipt and workbook's family/child/number. The latest correction supplies the effective time through `DeliveryStore.receipt`; the original receipt is never updated. Owning parents read only their own corrections; admins read all. Direct browser writes and service updates are refused. The correction RPC checks live admin membership and the family write fence, including retries. Family deletion cascades through the correction rows and their audit rows. The real hosted worker check includes these rows. Retention deadlines and anonymous copies do not use correction activity or reasons.
+
+## Self-serve delete (#556)
+
+A parent deletes the whole family from the Account tab (`/account/settings`, behind `PARENT_DASHBOARD_ENABLED`). The route is `/api/account/family/delete`; the steps and their order are in `src/lib/family-delete.ts`; the seams are `src/lib/family-delete-server.ts` and `src/lib/family-delete-memory.ts`. Migration `family_delete_self_serve` adds `public.family_delete_attempts` and the service-only functions `claim_family_delete_attempt`, `clear_family_delete_attempts` and `request_parent_family_deletion`.
+
+The form takes the password and the typed word `DELETE`. Each password try counts before the check (5 tries, then 15 minutes locked). `claim_pin_reset_attempt` cannot do this, because a parent with no PIN has no `parent_pins` row. A parent with no password (Google, or a short phone signup) adds one at `/account/password` first. `request_family_deletion` needs an admin session, so the parent's request has its own function with the same effects and refusals.
+
+### Why the plans stop first
+
+A live subscription keeps a family only in the retention rules. A queued request skips them: the worker reads no plan state for it, and its restricted key cannot cancel a subscription. A request written while a plan runs would delete the family and leave Stripe charging the card. So the server stops every plan and reads every customer again before it writes the request. The customers come from `family_retention_cards`, so an old booking's customer counts; a booking with no matching customer stops the delete, and the parent is told to email us.
+
+The cancel is `subscriptions.cancel` with `invoice_now=false` and `prorate=false`: at once, no refund and no last invoice. It uses the site's `STRIPE_SECRET_KEY`. Stripe's API reference says that a cancel stops automatic collection of the customer's finalized invoices by default, and that both parameters default to `false` (read on 5 November 2026).
+
+A plan cannot start under a deletion. The admin's start route (`/api/admin/cards/[id]/start`) now holds the family across its Stripe call (`holdPlanStart`, with the card setup's id as the hold's id). A start that goes first makes the request answer `busy`, and the retry sees the new plan and stops it. A request that goes first makes the hold fail with `family_unavailable`, and no plan starts. A plan made by hand in the Stripe Dashboard is outside this rule.
+
+### What each failure leaves
+
+| Failure | Family's data | Plans | Request and fence | What the parent sees |
+|---|---|---|---|---|
+| Wrong password, or locked | All there | Unchanged | None | Tries left, or the end of the lock |
+| Auth cannot check the password | All there | Unchanged | None | "We changed nothing" (the try stays counted, as in the PIN reset) |
+| Admin account, or a card hold | All there | Unchanged | None | Refusal; a hold says to try again |
+| A customer or plan read fails, or an old booking has no match | All there | Unchanged | None | "We changed nothing" |
+| The only stop fails | All there | Unchanged | None | "We deleted nothing" |
+| A later stop fails | All there | Earlier plans ended; Stripe cannot undo this | None | How many plans stopped; try again. The team gets an email |
+| The read after the stops fails, or finds a running plan | All there | As read | None | The same, and a retry stops what is left |
+| The request write fails, or a hold appeared | All there | All ended | None, or written with its answer lost | The same. A retry writes the request once |
+| The sign-out fails | Being deleted | All ended | Written | The confirmation. The fallback clears this device's cookies |
+| The deletion stops after the request | Being deleted | All ended | Kept | The confirmation. The daily worker takes the family from the queue and resumes |
+| A retention job froze the family first | Being deleted | All ended | Reason moves to `request`, so that job's `keep` cannot reopen it | The confirmation |
+
+The deletion runs in `after()`, with `runFamilyDeletion`, and writes the copy without names before it removes Storage and Auth, as in every other path. A parent who signs in again before it finishes goes to `/family-deleted`. Limit: an admin's pending request also sends the parent there, and that page says the plans stopped, which an admin's request does not do.
+
+Stripe's `customer.subscription.deleted` event can arrive while the family is fenced. The webhook's save is refused, it answers 500, and Stripe sends the event again; after the family is gone the customer has no match, and the webhook logs it and answers 204. A hold from a plan start whose Stripe answer was lost stays until the admin retries the start. To remove one by hand, reconcile the plan in Stripe, then call `end_family_card_operation` with the card setup's id.
+
+### Checks
+
+Local: the seams' tests (`src/lib/family-delete.test.ts`, `family-delete-server.test.ts`, the route's test and the start route's test). Hosted, on 5 November 2026 (UTC), in a block that rolled back with synthetic families (`supabase/tests/family_delete.sql`, result `PROBE_OK`): 5 tries and the lock; a parent and anon cannot call the functions or read the table; the service role cannot read the table directly; a check writes nothing; a hold refuses the check and the request; the request fences once with reason `request` and phase `checking`; a hold under the fence fails with 55000; a request over a retention freeze blocks that job's `keep`; the worker's claim reads the request. The attempts table's cascade was read from the catalog.
+
+Stripe test mode, on 5 November 2026 (UTC), with a temporary test that refused any key that was not a test key: `runningPlans` found a real plan in its free month; `stopPlanNow` moved it to `canceled`; `runningPlans` then found none; the customer's invoice count did not change.
+
+Not proved: the whole flow with a real password, real Stripe and a real deletion on the hosted site. Also not proved: a plan in a paid month or with a failed payment on real Stripe, two connections racing on the row lock, `after()` on Vercel, and whether the production `STRIPE_SECRET_KEY` has the write access to Subscriptions and the read access to Customers that this needs. If it has not, the parent sees "we changed nothing" or "we could not stop your plan", and no request is written. Before families get the switch, run it on a preview with a new named QA family and a Stripe test-mode plan.
 
 ## Plan state (#548)
 

@@ -49,6 +49,19 @@
 .pd-links a { display: flex; align-items: center; min-height: 52px; color: var(--ink); text-decoration: none; }
 .pd-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
+/* The family delete on the Account tab (#556): at the foot of the page, and red only on the final button. */
+.support-page .pd-delete { margin-top: 56px; padding-top: 28px; border-top: 1px solid var(--line-soft); }
+.support-page .pd-delete h2 { margin-top: 0; font-size: 22px; }
+.support-page .pd-delete h3 { margin: 24px 0 8px; font: 500 16px/1.3 var(--sans); }
+.support-page .pd-delete ul { margin: 0; padding-left: 20px; }
+.support-page .pd-delete li { margin: 0 0 8px; }
+.support-page .pd-delete .acct-form { margin-top: 24px; }
+.support-page .pd-delete-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+.support-page .pd-delete .btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+.support-page .pd-delete .btn.danger:hover:not(:disabled) { background: #b92620; border-color: #b92620; color: #fff; }
+.support-page .pd-delete .btn.danger:disabled { opacity: 0.45; cursor: not-allowed; }
+.support-page .pd-delete .fld .hint { font-size: 14px; }
+
 /* The phone */
 .pd-top, .pd-bar, .pd-main-kid { display: none; }
 

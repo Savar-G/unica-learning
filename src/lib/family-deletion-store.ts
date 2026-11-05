@@ -5,7 +5,7 @@ import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database";
 import {
-  checkFamilyPayments, deleteFamily, settlePaymentOperations, withDeletionHeartbeat,
+  checkFamilyPayments, deleteFamily, familyCustomers, settlePaymentOperations, withDeletionHeartbeat,
   type FamilyCard, type FamilyDeletionResult, type FamilyDeletionStore, type FamilyPaymentStore, type PaymentOperation, type PaymentProgress,
   type RetentionCandidate, type RetentionCardState, type RetentionClaim, type RetentionFamily,
 } from "@/lib/assessment";
@@ -23,6 +23,18 @@ export async function beginCardOperation(db: SupabaseClient<Database>, parent: s
 export async function endCardOperation(db: SupabaseClient<Database>, token: string): Promise<void> {
   const { error } = await db.rpc("end_family_card_operation", { token });
   if (error) console.error("[deletion] card hold release failed", error.code);
+}
+
+/**
+ * A plan start holds the family across its Stripe call (#556). The hold's id is the card setup's id: a start whose answer
+ * was lost keeps the hold, and a retry with the same Stripe key takes the same hold and ends it. `fenced`: the family asked
+ * for deletion, so no plan may start.
+ */
+export async function holdPlanStart(db: SupabaseClient<Database>, parent: string, card: string): Promise<"held" | "fenced"> {
+  const { error } = await db.rpc("begin_family_card_operation", { p: parent, token: card });
+  if (!error || error.code === "23505") return "held";
+  if (error.code === "55000") return "fenced";
+  throw new Error("Card operation unavailable");
 }
 
 type Fns = Database["public"]["Functions"];
@@ -89,6 +101,18 @@ const isFamilyCard = (c: unknown): c is FamilyCard => typeof c === "object" && c
   && ((c as FamilyCard).booking === undefined || (c as FamilyCard).booking === null
     || (typeof (c as FamilyCard).booking?.email === "string" && !!(c as FamilyCard).booking?.email
       && typeof (c as FamilyCard).booking?.ref === "string" && !!(c as FamilyCard).booking?.ref));
+
+/**
+ * Every Stripe customer of the family (#556), from the same rows the retention rules read, old bookings too. Throws when
+ * one cannot be found: a plan on that customer could go on charging after the family is gone.
+ */
+export async function familyStripeCustomers(db: SupabaseClient<Database>, s: Stripe, parent: string): Promise<string[]> {
+  const cards: unknown = await rpc(db, "family_retention_cards", { p: parent });
+  if (!Array.isArray(cards) || !cards.every(isFamilyCard)) throw new Error("Family card rows unreadable");
+  const customers = await familyCustomers(cards, (booking) => readBookingCustomers(s, booking, () => ({ timeout: 8000, maxNetworkRetries: 1 })));
+  if (customers === "unknown") throw new Error("Family customer unresolved");
+  return customers;
+}
 
 /** Every family the worker decides (#191): the queue, due free-test families, and every family with Stripe history. */
 export async function retentionCandidates(db: SupabaseClient<Database>): Promise<RetentionCandidate[]> {

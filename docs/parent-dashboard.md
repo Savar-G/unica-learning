@@ -19,6 +19,10 @@ The Maya tab is `/account/notes/<child>`, the notes page that already existed, s
 
 The tab shows for test families only, until a child can call Maya (#337); the `maya` switch in `src/lib/parent-view-server.ts` holds that. Admin test calls never appear: the database writes no note for them, `parent_maya_note_sessions` returns only family calls and chats, `withSessions` drops any other row, and they take no child minutes. There is no pattern line: no code counts a pattern across calls yet, and the tab shows only what code counted.
 
+## The family delete (#556)
+
+The Account tab's delete and its route follow the same switch: the route answers 404 for a family the switch does not open to. The confirmation is `/family-deleted`, outside the account pages, because the session has ended. The privacy and terms pages are worded to stay true while the switch is off: they say "if your account page offers it". See `docs/assessment-deletion.md`.
+
 ## Adding a tab's page
 
 A tab with no page does not appear. When a ticket builds a tab's page, change that tab's line in `TAB_PAGE` in `src/lib/parent-shell.ts`. The stage rule (`src/lib/child-stage.ts`) still decides which tabs a child may have.

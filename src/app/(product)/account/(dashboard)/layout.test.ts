@@ -36,6 +36,17 @@ const render = async () => renderToStaticMarkup(createElement("div", null, await
 
 beforeEach(() => { state.dashboard = family(); state.parent = "p1"; state.card = true; nav.path = "/account"; nav.query = new URLSearchParams(); });
 
+it("sends a parent whose family's deletion is queued to the confirmation, not to a live account", async () => {
+  state.dashboard = family({ deletionRequested: true });
+  await expect(render()).rejects.toThrow("REDIRECT /family-deleted");
+});
+it("shows the delete on the Account tab closed, and says what it does before any form", async () => {
+  state.dashboard = family();
+  const html = renderToStaticMarkup(await AccountSettings());
+  expect(html).toContain("Delete your family&#x27;s account");
+  expect(html).toContain("stops every plan");
+  expect(html).not.toContain("d-password");
+});
 it("adds nothing around the page for a family the switch does not open to", async () => {
   state.dashboard = null;
   expect(await render()).toBe("<div><p>the page</p></div>");

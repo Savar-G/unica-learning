@@ -894,6 +894,32 @@ export type Database = {
           },
         ]
       }
+      family_delete_attempts: {
+        Row: {
+          failed_attempts: number
+          locked_until: string | null
+          parent_id: string
+        }
+        Insert: {
+          failed_attempts?: number
+          locked_until?: string | null
+          parent_id: string
+        }
+        Update: {
+          failed_attempts?: number
+          locked_until?: string | null
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_delete_attempts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       family_deletion_schedule: {
         Row: {
           last_parent: string | null
@@ -4112,6 +4138,19 @@ export type Database = {
         Args: { p_id: string; p_lease: string; p_page: number; p_result: Json }
         Returns: boolean
       }
+      claim_family_delete_attempt: {
+        Args: {
+          p_lock_seconds: number
+          p_max: number
+          p_now: string
+          p_parent: string
+        }
+        Returns: {
+          out_attempts_left: number
+          out_locked_until: string
+          out_status: string
+        }[]
+      }
       claim_family_deletion: {
         Args: { p: string; token: string }
         Returns: Json
@@ -4195,6 +4234,10 @@ export type Database = {
             Args: { p_lease: string; p_run: string; p_runner: string }
             Returns: boolean
           }
+      clear_family_delete_attempts: {
+        Args: { p_parent: string }
+        Returns: undefined
+      }
       complete_family_deletion: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -4524,6 +4567,10 @@ export type Database = {
       }
       request_family_deletion: {
         Args: { confirmation: string; p: string }
+        Returns: string
+      }
+      request_parent_family_deletion: {
+        Args: { check_only?: boolean; p: string }
         Returns: string
       }
       reserve_workbook_edit_call: {

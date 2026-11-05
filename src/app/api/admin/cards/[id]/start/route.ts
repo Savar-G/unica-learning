@@ -1,6 +1,7 @@
 import { adminSession, type CardSetupRow } from "@/lib/admin-store";
 import { adminClient } from "@/lib/supabase-auth";
 import { isUuid } from "@/lib/assessment-store";
+import { endCardOperation, holdPlanStart } from "@/lib/family-deletion-store";
 import { startPlan, stripe } from "@/lib/stripe";
 import { planPrice } from "@/lib/subscription-plan";
 import { firstDelivery } from "@/lib/workbook-delivery";
@@ -35,8 +36,15 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     if (!receipt) return Response.json({ ok: false, error: "delivery_receipt_required" }, { status: 409 });
     const s = stripe();
     if (!s) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
+    // #556: a family's deletion request reads no plans, so a plan must not start under one. Started first, this hold makes
+    // the request wait for a retry that sees the plan. Requested first, the fence refuses the hold. A throw below may mean
+    // that the plan started, so the hold stays until a retry with the same Stripe key settles it.
+    const service = adminClient();
+    if (!service) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
+    if (await holdPlanStart(service, card.parent_id, card.id) === "fenced") return Response.json({ ok: false, error: "family_unavailable" }, { status: 409 });
     const price = planPrice(Number(card.price), card.plan);
     const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true });
+    await endCardOperation(service, card.id);
     if (!result.ok) return Response.json(result, { status: 409 });
     return Response.json({ ...result, confirmation: await confirm(card.id, price, result.firstChargeAt, new URL(request.url).origin) });
   } catch (e) {
