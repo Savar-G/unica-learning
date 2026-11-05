@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { createSession, finish, nextQuestion, reportModel, storedTest, submitAnswer, testAreaAnswers, testStep, type Placement, type Session } from "@/lib/assessment";
+import { createSession, finish, lockStage1, lockStage2, nextQuestion, reportModel, stage3Due, storedTest, submitAnswer, testAreaAnswers, testStep, type Placement, type Session } from "@/lib/assessment";
 import { checked } from "@/lib/assessment/scripted-child";
 import { listChildren, readMonthlySummary, readOverview, readWorkbooks } from "@/lib/parent-view";
 import { parentViewReader } from "@/lib/parent-view-server";
@@ -206,6 +206,20 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(view?.areas).toEqual([]);
     expect(log).not.toHaveBeenCalled();
     log.mockRestore();
+  });
+  it.each([["up", true], ["down", false]] as const)("replays a test with a third stage %s, and keeps the bars (D-282)", async (direction, isRight) => {
+    let session = createSession({ grade: 3, province: "BC" }, 7);
+    for (;;) {
+      const q = nextQuestion(session);
+      if (q) session = submitAnswer(session, { questionId: q.id, response: isRight ? q.answer : "wrong", timeMs: 9_000 });
+      else if (!session.route) session = lockStage1(session);
+      else if (stage3Due(session)) session = lockStage2(session);
+      else break;
+    }
+    expect(session.stage3Route).toBe(direction);
+    const rows = scored(session);
+    const r = overviewReader({ ...rows, assessments: [{ ...rows.assessments[0], stage3_route: direction }] });
+    expect((await r.reader.testResult(TEST))?.answers).toEqual(testAreaAnswers(session));
   });
   it("a test with no stored score has no bars", async () => {
     const session = take();

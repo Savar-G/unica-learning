@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { breakDue, createSession, lockStage1, nextQuestion, submitAnswer, testStep, type Session, type TestStep } from "@/lib/assessment";
 
 // The halfway break and the progress display (#69): the browser learns both from the step it receives.
-function steps(session: Session): TestStep[] {
+function steps(first: Session): TestStep[] {
+  // A test with no third stage: the third stage has its own tests (third-stage.test.ts).
+  let session: Session = { ...first, stage3: undefined };
   const seen: TestStep[] = [];
   for (let step = testStep(session); ; step = testStep(session)) {
     seen.push(step);
