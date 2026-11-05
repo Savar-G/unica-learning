@@ -84,21 +84,22 @@ it("keeps the photo's message when an image route refuses, and can try again", a
   expect(host.querySelectorAll("img")).toHaveLength(3);
 });
 
-it("Scan pages asks for no preview unless the server says this family may see it", async () => {
+it("Scan pages asks for no preview unless the server says this family has checks", async () => {
   // Disproved if an ordinary family's browser even calls the route.
+  let checks = false;
   vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
     calls.push(`${init?.method ?? "GET"} ${path}`);
-    if (path.includes("?child=")) return Response.json({ photos: [{ id: "photo-1", child_id: "child", child: "Alex", book: 1, day: "Day 1", page: 3, state: "saved", expires_at: "2027-01-01T00:00:00Z" }] });
+    if (path.includes("?child=")) return Response.json({ checks, pages: [], photos: [{ id: "photo-1", pageId: "p1", workbookId: "b", book: 1, pageNumber: 3, state: "saved", check: checks ? "checking" : "none", reason: null, sentAt: null, createdAt: "2026-11-05T10:00:00Z" }] });
+    if (path.endsWith("/preview")) return Response.json({ preview: { status: "busy" } });
     return new Response(new Blob(["private"]));
   });
-  const open = async (preview: boolean) => {
-    await act(async () => root.render(createElement(ScanPages, { key: String(preview), childrenList: [{ id: "child", first_name: "Alex" }], parent: "parent", noticeAcknowledged: true, preview })));
-    await flush();
-    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "View photo")!.click());
-    await flush();
+  const open = async (key: string) => {
+    await act(async () => root.render(createElement(ScanPages, { key, childrenList: [{ id: "child", first_name: "Alex" }], parent: "parent", noticeAcknowledged: true })));
+    await flush(); await flush();
   };
-  await open(false);
+  await open("off");
   expect(calls.filter((c) => c.includes("/preview"))).toEqual([]);
-  await open(true);
+  checks = true;
+  await open("on");
   expect(calls.some((c) => c === "POST /api/account/scans/photo-1/preview")).toBe(true);
 });

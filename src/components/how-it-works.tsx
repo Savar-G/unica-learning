@@ -54,9 +54,9 @@ const STEPS: { n: string; title: string; text: ReactNode; vis: ReactNode; label:
   {
     n: "05",
     title: "Scan the pages. We mark them.",
-    text: "Take a photo of each finished page in the Unica app. It comes back marked, with the steps for anything wrong.",
+    text: "Take a photo of each finished page with your phone, on our website. It comes back marked, with the steps for anything wrong.",
     vis: <ScanDemo />,
-    label: "The Unica app scans a finished page and marks it: 8 of 9 right.",
+    label: "A phone on our website takes a photo of a finished page, and the page comes back marked: 8 of 9 right.",
   },
   {
     n: "06",
