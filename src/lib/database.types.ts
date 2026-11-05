@@ -4545,6 +4545,7 @@ export type Database = {
       }
       lock_booking_email: { Args: { mail: string }; Returns: undefined }
       lock_maya_family: { Args: { p: string }; Returns: undefined }
+      lock_maya_family_list: { Args: { p: string }; Returns: undefined }
       lock_stage1: {
         Args: { p_answers: Json; p_assessment: string; p_route: string }
         Returns: string
