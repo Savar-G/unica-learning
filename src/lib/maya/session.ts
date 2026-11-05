@@ -8,6 +8,9 @@
 //
 // One call: READY -> OPEN -> ASSESS -> (MODEL_EXAMPLE -> TRY_TARGET | TRY_TARGET | GUIDE_TARGET) -> CHECK ->
 // WRITE_CLOSE -> CLOSE, or CONTENT_HOLD when the question package does not check or is a kind Maya cannot teach yet.
+// A question held from the start ends at once in code's words (#527: hello, that Maya is an AI, that she cannot help with
+// this kind of question yet, and to pick another question or ask a grown-up), with no model call; a hold during the
+// call closes with the held lines only. A held call writes no learning event.
 // The interrupts take over in this priority: SAFETY first, then a stop and the deadline (TIME_CLOSE), then a repair
 // Maya owes (REPAIR_MAYA), then confirmation of what was heard (CONFIRM_HEARD), then teaching with WAIT_WRITE and
 // REDIRECT. Every event is taken in that order: a safety signal, a stop request, an unclear number and the clock are
@@ -37,7 +40,7 @@ import {
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
-import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, LINE_IDS, type LineOffer } from "./lines";
+import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, readAnswer, readNumbers, takenBack, unreadableAnswer, valuesIn } from "./numbers";
@@ -413,11 +416,8 @@ export function createSession(input: {
   /** The call's end when it is shorter than 10 minutes (ms from the start; #330, the minutes left this week). */
   limitMs?: number;
 }): Session {
-  const check = checkQuestionPackage(input.package);
-  // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
-  const pkg = check.ok && hasOperation(check.package) ? structuredClone(check.package) : null;
-  const untaught = pkg ? untaughtSteps(pkg) : [];
-  const teachable = pkg !== null && TEACHABLE_KINDS.includes(pkg.operation.kind) && TEACHABLE_KINDS.includes(pkg.easierExample.operation.kind) && untaught.length === 0;
+  const { pkg, held } = teachableOf(input.package);
+  const teachable = held === null;
   return {
     version: 4,
     callId: input.callId,
@@ -430,8 +430,7 @@ export function createSession(input: {
     state: "READY",
     resume: null,
     package: teachable ? pkg : null,
-    contentProblem: !check.ok ? check.reason : teachable ? null
-      : `Maya cannot teach ${!pkg ? "items with no operation" : untaught.length > 0 ? `the ${untaught.join(", ")} step of ${pkg.operation.kind} questions` : `${pkg.operation.kind} questions`} yet`,
+    contentProblem: held,
     startedAt: null,
     now: null,
     expect: "nothing",
@@ -471,6 +470,27 @@ export function createSession(input: {
   };
 }
 
+/** The package Maya teaches from, or why she holds it (the content hold's reason). */
+function teachableOf(raw: unknown): { pkg: OperationPackage | null; held: string | null } {
+  const check = checkQuestionPackage(raw);
+  if (!check.ok) return { pkg: null, held: check.reason };
+  // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
+  if (!hasOperation(check.package)) return { pkg: null, held: "Maya cannot teach items with no operation yet" };
+  const pkg = structuredClone(check.package);
+  const untaught = untaughtSteps(pkg);
+  if (TEACHABLE_KINDS.includes(pkg.operation.kind) && TEACHABLE_KINDS.includes(pkg.easierExample.operation.kind) && untaught.length === 0) return { pkg, held: null };
+  return { pkg: null, held: `Maya cannot teach ${untaught.length > 0 ? `the ${untaught.join(", ")} step of ${pkg.operation.kind} questions` : `${pkg.operation.kind} questions`} yet` };
+}
+
+/**
+ * The pre-check of a question before any call (#527): why Maya holds this package (it does not check, has no operation,
+ * or is a kind or step she cannot teach yet), or null when she can teach it. The same rule a new session uses, with no
+ * model call, so the desk can say so before a chat starts.
+ */
+export function heldReason(raw: unknown): string | null {
+  return teachableOf(raw).held;
+}
+
 function shorterLimits(limitMs: number | undefined): Pick<Session, "limits"> {
   if (limitMs === undefined || !Number.isFinite(limitMs) || limitMs >= TIME_LIMITS.endAtMs) return {};
   const endAtMs = Math.max(1000, Math.round(limitMs));
@@ -493,7 +513,8 @@ export function nextActs(session: Session): { expect: Expect; acts: Act[] } {
  */
 export function learningEvent(session: Session, family: { parentId: string; childId: string }): NewLearningEvent | null {
   const { outcome, package: pkg } = session;
-  if (!outcome || !pkg || session.startedAt === null) return null;
+  // A held question (#527) records nothing: Maya taught nothing she could trust, so the call says nothing about the child.
+  if (!outcome || !pkg || session.startedAt === null || outcome.reason === "content_issue") return null;
   const right = session.lastResult === "right";
   const result = right ? (outcome.assistance === "independent" ? "right" : "right_with_help") : "blank";
   const first = workSteps(pkg)[0]?.id ?? null;
@@ -686,7 +707,7 @@ function gate(s: Session, reading: Reading): Allowed | null {
     return { acts: ["safety"], code: "safety_first", reason: "Safety comes first: give the safety guidance before anything else." };
   }
   if (s.state === "SAFETY") return { acts: ["close"], code: "safety_first", reason: "No math after a safety concern: close." };
-  if (s.state === "CONTENT_HOLD") return { acts: ["close"], code: "content_hold", reason: `Maya cannot teach this question (${s.contentProblem}): close without teaching.` };
+  if (s.state === "CONTENT_HOLD") return { acts: ["close"], code: "content_hold", reason: `Maya cannot teach this question (${s.contentProblem}): close with only the held lines, in order, and no other words.` };
   if (s.expect !== "maya") return { acts: [], code: "not_mayas_turn", reason: "It is the child's turn: wait for them." };
   if (s.stopRequested || reading.stop) return { acts: ["close"], code: "stop_first", reason: "The child asked to stop: close kindly, with no more questions." };
   if (s.state === "REPAIR_MAYA") return { acts: ["repair"], code: "repair_first", reason: "Maya said something the checked math does not support: correct it first." };
@@ -877,6 +898,14 @@ export function step(session: Session, event: SessionEvent): StepResult {
       s.startedAt = event.at;
       s.state = s.package ? "OPEN" : "CONTENT_HOLD";
       s.expect = "maya";
+      // A question Maya cannot teach (#527): code says hello, that she is an AI, that she cannot help with this kind of
+      // question yet and what the child can do, then the call ends. No model is asked and nothing is taught.
+      if (!s.package) {
+        const text = heldSentences(true).join(" ");
+        effects.push({ kind: "say", act: "close", text });
+        s.turns.push({ at: event.at, speaker: "maya", text, state: "CLOSE", act: "close" });
+        end(s, "child_stopped", effects, false);
+      }
       break;
     case "child_turn": {
       if (typeof event.text !== "string") return refuse(session, "invalid_event", "A child turn needs its text.");
@@ -1016,6 +1045,14 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // 1. The priority gates, before any math: safety, content, turn, stop, repair, silence, confirmation.
   const blocked = gate(s, reading);
   if (blocked && !blocked.acts.includes(p.act)) return no(blocked.code, blocked.reason, blocked.acts);
+  // A content hold (#527): the close says the held lines, all of them and in order, and nothing else.
+  if (s.state === "CONTENT_HOLD" && p.act === "close") {
+    const want = heldOffers(!s.opened).map((o) => o.line);
+    const got = p.parts.map((x) => ("line" in x ? x.line : null));
+    if (p.draw?.length || p.board?.length || got.length !== want.length || got.some((line, i) => line !== want[i])) {
+      return no("content_hold", `Maya cannot teach this question: say only ${want.join(", ")}, in this order, with no other words.`, ["close"]);
+    }
+  }
 
   // 2. Teaching: the child's answers are judged only now, and only for an act that may score them.
   const checked: Checked[] = [];
@@ -1675,6 +1712,10 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         lineSets = [...offers.filter((o) => o.line !== "answer.right"), ...offers.filter((o) => o.line === "answer.right")]
           .map((o) => make(act, [o], { understanding: "uncertain" }));
         break;
+      case "close":
+        // A content hold (#527): the held lines together, in order.
+        lineSets = s.state === "CONTENT_HOLD" ? [make(act, offers)] : byLevel(free).map((o) => make(act, [o], o.slots.step ? { step: o.slots.step } : {}));
+        break;
       case "confirm":
         // The number the child said last first.
         lineSets = [...free].reverse().map((o) => make(act, [o]));
@@ -2010,6 +2051,8 @@ export const turnWordLimit = (s: Pick<Session, "grade" | "shorter">): number =>
   !s.shorter && (s.grade === undefined || (Number.isInteger(s.grade) && s.grade >= 4 && s.grade <= 7)) ? 45 : 25;
 
 function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
+  // A content hold (#527): only the held lines, with the hello when Maya has not said it.
+  if (s.state === "CONTENT_HOLD") return act === "close" ? heldOffers(!s.opened) : [];
   const pkg = s.package;
   if (!pkg) return [];
   const l = packageLines(pkg);

@@ -29,8 +29,9 @@ import { simplestWords, teachSteps } from "./fractions";
  * answer.parts, how the parts make the answer, said before answer.give on the final step. Version 5: regroup.add, where
  * a column's carry comes from, as step.regroup in addition. Version 6 (#407): fraction steps (common denominator,
  * numerators, simplest form) and check.equal, an equal fraction when the question asks for the simplest form.
+ * Version 9 (#527): held.hello, held.cannot and held.next, Maya's words on a question she cannot teach yet.
  */
-export const LINES_VERSION = 8;
+export const LINES_VERSION = 9;
 
 export const LINE_IDS = [
   "about.ai",
@@ -68,6 +69,9 @@ export const LINE_IDS = [
   "close.solved",
   "close.together",
   "repair.sorry",
+  "held.hello",
+  "held.cannot",
+  "held.next",
 ] as const;
 export type LineId = (typeof LINE_IDS)[number];
 
@@ -399,6 +403,12 @@ export const TEMPLATES = {
     "Oops, I said that wrong. Let me fix it.", "Sorry, I made a mistake there. Here it is again.", "Wait, I mixed that up. Let me say it again.",
     "Oops, my mistake. Let me try again.", "Sorry, that came out wrong. Here's the right way.",
   ],
+  // A question Maya cannot teach yet (#527, Savar 2026-11-04: "say so plainly"). One fixed wording each, all written by
+  // code: hello and that she is an AI (only when she has not said hello yet), that she cannot help with this kind of
+  // question yet, and what the child can do now. Plain words for a 6-year-old (D-202); no promise and no feeling (D-196).
+  "held.hello": ["Hi, I'm Maya, an AI."],
+  "held.cannot": ["I can't help with this kind of question yet."],
+  "held.next": ["Pick another question, or ask a grown-up."],
 } as const satisfies Record<string, readonly string[]>;
 export type TemplateKey = keyof typeof TEMPLATES;
 
@@ -845,8 +855,21 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];
-  const extra = [...fixedOffers(), ...areaOffers(pkg)];
+  const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];
   return [...new Set([...offers, ...offers.map(spokenOffer), ...extra].flatMap((o) => o.texts.map(sentence)))];
+}
+
+/**
+ * Maya's whole turn on a question she cannot teach yet (#527): hello and that she is an AI when she has not said hello
+ * yet, then that she cannot help with this kind of question yet, then what the child can do now. Needs no package.
+ */
+export function heldOffers(hello: boolean): LineOffer[] {
+  return [...(hello ? [offer("held.hello", "held.hello", {})] : []), offer("held.cannot", "held.cannot", {}), offer("held.next", "held.next", {})];
+}
+
+/** The held turn's sentences, as Maya says them and as the desk shows them before a chat. */
+export function heldSentences(hello: boolean): string[] {
+  return heldOffers(hello).map((o) => o.texts[0]);
 }
 
 /** Fixed replies. Each reply is its own turn so the grade 1 limit also holds. */

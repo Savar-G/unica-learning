@@ -13,12 +13,12 @@ type RequestAction = { type: string; id: string; revision?: number; messageId?: 
 let root: Root, host: HTMLDivElement, state: DeskChatState;
 let answer: (action: RequestAction) => Promise<ChatReply>;
 const requests: RequestAction[] = [];
-function Harness({ question = 1 }: { question?: number }) {
+function Harness({ question = 1, held = false }: { question?: number; held?: boolean }) {
   const chat = useDeskChat(reply(1).usage, { book, page: 1, question });
   useLayoutEffect(() => { state = chat; }, [chat]);
-  return createElement(ChatControls, { state: chat, picked: true });
+  return createElement(ChatControls, { state: chat, picked: true, held });
 }
-const render = async (question = 1) => act(async () => root.render(createElement(Harness, { question })));
+const render = async (question = 1, held = false) => act(async () => root.render(createElement(Harness, { question, held })));
 const send = async (type: "start" | "child" | "end", text?: string) => {
   let ok = false;
   await act(async () => { ok = await state.act(type, text); });
@@ -38,6 +38,19 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+describe("a question Maya cannot teach yet (#527)", () => {
+  it("offers no chat to start, so nothing is sent", async () => {
+    await render(1, true);
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Chat with Maya");
+    expect(host.querySelector("input")!.disabled).toBe(true);
+    expect(requests).toEqual([]);
+  });
+  it("offers the chat on a question Maya teaches", async () => {
+    await render(1, false);
+    expect(button("Chat with Maya").disabled).toBe(false);
+  });
+});
 
 describe("chat message admission at the public hook", () => {
   it("R451-2: releases a definitely refused request before sending new text at the returned revision", async () => {

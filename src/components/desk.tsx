@@ -48,6 +48,8 @@ export interface DeskCard {
   crop: QuestionCrop | null;
   /** The question in columns on the board, or null when the board cannot lay it out. */
   board: QuestionBoard | null;
+  /** Maya cannot teach this question yet (#527): her code-written words for it, shown before any chat; else null. */
+  held: string[] | null;
 }
 
 type DeskProps = {
@@ -155,6 +157,8 @@ export function Desk(props: DeskProps) {
             <p className="desk-bubble">{greeting}</p>
           )}
           {card && ready && <QuestionCard card={card} where={where!} image={ready.image} />}
+          {/* A question Maya cannot teach yet (#527): her words show at once, from the pre-check, and no chat starts. */}
+          {card?.held && props.chatUsage && !chat.chat && <p className="desk-bubble" role="status"><span className="sr-only">Maya: </span>{card.held.join(" ")}</p>}
           {chat.chat?.transcript.map((line, i) => <p key={`${chat.chat!.id}-${i}`} className={`desk-bubble${line.speaker === "child" ? " desk-child-bubble" : ""}`}><span className="sr-only">{line.speaker === "child" ? "You" : "Maya"}: </span>{line.text}</p>)}
           {!!chat.chat?.hint && <p className="desk-event">Hint {chat.chat.hint} of 3</p>}
           {!!chat.chat?.batches.length && <button className="desk-pick" type="button" onClick={() => document.getElementById("chat-board")?.scrollIntoView({ behavior: still ? "instant" : "smooth", block: "center" })}>Show me on the board</button>}
@@ -166,7 +170,7 @@ export function Desk(props: DeskProps) {
               <Icon name="page" />{card ? "Pick another question" : "Pick from my page"}
             </button>
           )}
-          {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} /> : <>
+          {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} held={!!card?.held} /> : <>
           <p className="desk-soon">Chat and calls with Maya start soon.</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />

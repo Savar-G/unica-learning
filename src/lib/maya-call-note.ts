@@ -236,6 +236,15 @@ export function codeSentences(f: NoteFacts): string[] {
     ];
   }
   const lines = [`${CHILD} called Maya about ${where}.`];
+  // A question Maya cannot teach yet (#527): what Maya told the child, in plain words. The call says nothing about how
+  // the child did (no learning event, so no step they got stuck on).
+  if (f.reason === "content_issue") {
+    lines.push("Maya cannot help with this kind of question yet, so the call ended.", `She asked ${CHILD} to pick another question or ask a grown-up.`);
+    if (f.help === "worked_example") lines.push("Maya showed an easier example first.");
+    else if (f.help === "guided") lines.push("Maya helped one step at a time.");
+    else if (f.help === "hint") lines.push("Maya gave a small hint.");
+    return lines;
+  }
   if (f.stuckOn) lines.push(`${CHILD} got stuck on ${f.stuckOn}.`);
   if (f.finished === "on_own") lines.push(`${CHILD} finished it with no help.`);
   else if (f.finished === "with_help") {
@@ -246,7 +255,6 @@ export function codeSentences(f: NoteFacts): string[] {
       f.reason === "time_limit" ? "The call ran out of time before the question was done."
       : f.reason === "no_response" ? `${CHILD} stopped answering, so the call ended before the question was done.`
       : f.reason === "technical_issue" ? "The call stopped because of a problem on our side."
-      : f.reason === "content_issue" ? "Maya could not help with this question yet, so the call ended."
       : `${CHILD} ended the call before the question was done.`,
     );
     if (f.help === "worked_example") lines.push("Maya showed an easier example first.");
