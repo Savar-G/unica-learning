@@ -3,11 +3,62 @@ import { describe, expect, it } from "vitest";
 import { checkQuestionPackage, type ItemCheck } from "@/lib/question-package";
 import { BC_CURRICULUM, curriculumFor, curriculumFromData } from "@/lib/workbook-curriculum";
 import { buildStepItem, choicesFor, sequenceOf, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
+import { itemNumber, planItem } from "@/lib/workbook-item-plan";
+import { buildQuestion, selectedItemStep, type AiItem } from "@/lib/workbook-generator-items";
 
 const BC = curriculumFor("bc")!;
 const place = (level: number, skill: string) => ({ id: "q1", workbookId: "00000000-0000-4000-8000-0000000000c1", page: 3, question: 1, level, skills: [skill] });
 const item = (skill: string, step: number, slot: Parameters<typeof stepTemplateItem>[0]["place"], seed = 1, attempt = 0, level = 4) =>
   stepTemplateItem({ curriculum: BC, skill, step, place: slot, level, day: 1, seed, attempt, ordinal: 0 });
+
+describe("step declarations (#597)", () => {
+  const fact = (skill: string, kind: "add" | "subtract", a: number, b: number, text: string): AiItem => ({
+    ...planItem({ skill: "4.8-multiplication-facts", slot: "1.1", level: 16, day: 1, ordinal: 1, range: { min: 2, max: 100, pictures: false, help: "none" } })!.item,
+    skill, text, format: "write-number",
+    wrongAnswers: [{ value: itemNumber((kind === "add" ? a + b : a - b) + 1), cause: "careless", description: "One more than the answer.", step: null }],
+    easier: { text: kind === "add" ? "2 + 1 = ?" : "5 − 2 = ?", operation: { kind, operands: [itemNumber(kind === "add" ? 2 : 5), itemNumber(kind === "add" ? 1 : 2)], expression: null, unit: null, denominator: null, values: [] } },
+    operation: { kind, operands: [itemNumber(a), itemNumber(b)], expression: null, unit: null, denominator: null, values: [] },
+  });
+
+  it.each([
+    ["3.9-area-square-units", "add", 3, 4, "Amy has 3 crayons. She finds 4 more. How many crayons does she have now?"],
+    ["5.8-extend-facts", "subtract", 190, 100, "190 − 100 = ?"],
+    ["5.8-extend-facts", "subtract", 150, 100, "150 − 100 = ?"],
+  ] as const)("does not infer a step for %s %s(%s,%s)", (skill, kind, a, b, text) => {
+    // A stale caller's old selection settings must not turn generic arithmetic into provenance.
+    const legacyPlace = { ...place(16, skill), preserveText: true, stepSelection: { curriculum: BC } };
+    const built = buildQuestion(fact(skill, kind, a, b, text), legacyPlace);
+    expect(built.check.status, JSON.stringify(built.check)).toBe("checked");
+    expect(built.package!.text).toBe(text);
+    expect(built.itemStep).toBeNull();
+    expect(built.stepDeclaration).toBeUndefined();
+    expect(built.itemStepReason).toContain("no declared curriculum step");
+  });
+
+  it.each([["3.9-area-square-units", 2], ["5.8-extend-facts", 1]] as const)("keeps the exact requested template step %s#%s", (skill, step) => {
+    const filled = Array.from({ length: 20 }, (_, i) => item(skill, step, "practice-row", i + 1, 0, 16)).find(x => x?.ref.format === "bare")!;
+    expect(filled).toBeTruthy();
+    const built = buildStepItem(filled.ref, filled.text, place(16, skill), "code");
+    expect(built.check.status).toBe("checked");
+    expect(built.stepDeclaration).toEqual({ source: "template", reference: { unit: BC.skill(skill)!.unit, skill, step } });
+    expect(built.itemStep).toEqual(built.stepDeclaration!.reference);
+    if (skill === "3.9-area-square-units") expect(built.package!.text).toMatch(/area|squares/i);
+    else {
+      const numbers = [...built.package!.text.matchAll(/\d[\d,]*/g)].map(m => Number(m[0].replace(/,/g, "")));
+      expect(numbers.length).toBeGreaterThanOrEqual(2);
+      expect(numbers.every(n => n % 100 === 0)).toBe(true);
+    }
+  });
+
+  it("ignores a declaration supplied by the writer", () => {
+    const raw = fact("5.8-extend-facts", "subtract", 190, 100, "190 − 100 = ?");
+    const injected = { unit: "5.8", skill: raw.skill, step: 1 };
+    const built = buildQuestion({ ...raw, itemStep: injected, stepDeclaration: { source: "code", reference: injected } }, { ...place(16, raw.skill), preserveText: true });
+    expect(built.itemStep).toBeNull();
+    expect(built.stepDeclaration).toBeUndefined();
+    expect(selectedItemStep(built.package, null)).toBeNull();
+  });
+});
 
 describe("step template items (#489)", () => {
   it("fills a template with numbers from its step's ranges and checks the key from the numbers", () => {

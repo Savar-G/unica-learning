@@ -578,6 +578,7 @@ export type Database = {
         Row: {
           created_at: string
           first_name: string
+          former_names: string[]
           grade: number
           id: string
           interests: string[] | null
@@ -593,6 +594,7 @@ export type Database = {
         Insert: {
           created_at?: string
           first_name: string
+          former_names?: string[]
           grade: number
           id?: string
           interests?: string[] | null
@@ -608,6 +610,7 @@ export type Database = {
         Update: {
           created_at?: string
           first_name?: string
+          former_names?: string[]
           grade?: number
           id?: string
           interests?: string[] | null
@@ -754,6 +757,7 @@ export type Database = {
           parent_id: string
           sent_at: string | null
           status: string | null
+          summary_month: string | null
           unsubscribe_hash: string | null
           week_start: string | null
         }
@@ -774,6 +778,7 @@ export type Database = {
           parent_id: string
           sent_at?: string | null
           status?: string | null
+          summary_month?: string | null
           unsubscribe_hash?: string | null
           week_start?: string | null
         }
@@ -794,6 +799,7 @@ export type Database = {
           parent_id?: string
           sent_at?: string | null
           status?: string | null
+          summary_month?: string | null
           unsubscribe_hash?: string | null
           week_start?: string | null
         }
@@ -1390,6 +1396,30 @@ export type Database = {
           },
         ]
       }
+      maya_call_sweep_cursors: {
+        Row: {
+          at: string | null
+          call_id: string | null
+          kind: string
+          until_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          at?: string | null
+          call_id?: string | null
+          kind: string
+          until_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          at?: string | null
+          call_id?: string | null
+          kind?: string
+          until_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       maya_calls: {
         Row: {
           assessment_id: string | null
@@ -1826,6 +1856,32 @@ export type Database = {
           },
         ]
       }
+      monthly_summary_renders: {
+        Row: {
+          created_at: string
+          id: string
+          parent_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          parent_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_summary_renders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_pins: {
         Row: {
           created_at: string
@@ -2014,6 +2070,53 @@ export type Database = {
           },
         ]
       }
+      scan_calibrations: {
+        Row: {
+          attempts: number
+          created_at: string
+          finished_at: string | null
+          lease_token: string
+          lease_until: string
+          parent_id: string
+          photo_id: string
+          printed_revision: string
+          result: Json | null
+          state: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          finished_at?: string | null
+          lease_token: string
+          lease_until: string
+          parent_id: string
+          photo_id: string
+          printed_revision: string
+          result?: Json | null
+          state: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          finished_at?: string | null
+          lease_token?: string
+          lease_until?: string
+          parent_id?: string
+          photo_id?: string
+          printed_revision?: string
+          result?: Json | null
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_calibration_photo"
+            columns: ["photo_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "scan_photos"
+            referencedColumns: ["id", "parent_id"]
+          },
+        ]
+      }
       scan_limits: {
         Row: {
           active_jobs: number
@@ -2052,6 +2155,51 @@ export type Database = {
           singleton?: boolean
         }
         Relationships: []
+      }
+      scan_link_emails: {
+        Row: {
+          child_id: string
+          created_at: string
+          email_id: string | null
+          error: string | null
+          id: string
+          parent_id: string
+          status: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          parent_id: string
+          status?: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          parent_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_link_emails_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_link_emails_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scan_photo_notices: {
         Row: {
@@ -4137,6 +4285,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      begin_scan_calibration: {
+        Args: {
+          p_id: string
+          p_lease_seconds?: number
+          p_parent: string
+          p_token: string
+        }
+        Returns: Json
+      }
       change_answer: {
         Args: {
           p_answer_changes: Json
@@ -4224,6 +4381,10 @@ export type Database = {
         }
         Returns: string
       }
+      claim_monthly_summary_render: {
+        Args: { p_max: number; p_parent: string; p_window_seconds: number }
+        Returns: boolean
+      }
       claim_pin_attempt: {
         Args: {
           p_lock_seconds: number
@@ -4250,6 +4411,15 @@ export type Database = {
           out_locked_until: string
           out_status: string
         }[]
+      }
+      claim_scan_link_email: {
+        Args: {
+          p_child: string
+          p_max: number
+          p_parent: string
+          p_window_seconds: number
+        }
+        Returns: string
       }
       claim_workbook_edit: {
         Args: { p_id: string; p_lease: string; p_runner: string }
@@ -4404,6 +4574,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      finish_scan_calibration: {
+        Args: {
+          p_bytes: number
+          p_id: string
+          p_parent: string
+          p_result: Json
+          p_state: string
+          p_token: string
+        }
+        Returns: string
+      }
       finish_scan_photo: {
         Args: { p_bytes: number; p_id: string; p_parent: string }
         Returns: string
@@ -4484,6 +4665,7 @@ export type Database = {
       }
       lock_booking_email: { Args: { mail: string }; Returns: undefined }
       lock_maya_family: { Args: { p: string }; Returns: undefined }
+      lock_maya_family_list: { Args: { p: string }; Returns: undefined }
       lock_stage1: {
         Args: { p_answers: Json; p_assessment: string; p_route: string }
         Returns: string
@@ -4590,6 +4772,15 @@ export type Database = {
       release_workbook_edit: {
         Args: { p_id: string; p_lease: string }
         Returns: boolean
+      }
+      rename_child: {
+        Args: {
+          p_child: string
+          p_first_name: string
+          p_parent: string
+          p_stale_seconds: number
+        }
+        Returns: string
       }
       renew_family_deletion: {
         Args: { p: string; token: string }
@@ -4742,6 +4933,10 @@ export type Database = {
       }
       save_workbook_run_solves: {
         Args: { p_lease: string; p_logs: Json; p_run: string }
+        Returns: boolean
+      }
+      scan_photo_is_active: {
+        Args: { p_created: string; p_expires: string; p_state: string }
         Returns: boolean
       }
       scan_session_active: {

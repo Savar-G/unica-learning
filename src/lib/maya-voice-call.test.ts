@@ -100,6 +100,37 @@ describe("a voice call", () => {
     expect((await s.calls.view(view.id))!.transcript.map((l) => l.text).join(" ")).not.toContain("Let me see.");
   });
 
+  it("#589: a solved child's reply that crosses the closing time keeps its priority, though it ends as solved", async () => {
+    const s = setup();
+    const rule = ruleMayaModel();
+    let close = false;
+    s.seams.model = () => ({ ...rule, propose: async (input, signal) => (close ? { version: 2, act: "close", parts: [{ warm: "closing" }] } : rule.propose(input, signal)) });
+    const view = ok(await s.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1", limitMs: 70_000 })).view;
+    const call = await open(s, view.id);
+    await call.start();
+    const solved = await call.child("I got 66.");
+    expect(call.session.solved).not.toBeNull();
+    expect(solved.priority).toBe(false);
+    close = true;
+    // Not past the closing time: an ordinary close, which may wait for a phrase.
+    s.advance(5);
+    const before = await open(s, view.id);
+    expect((await before.child("I wrote it.")).priority).toBe(false);
+    const again = setup();
+    again.seams.model = s.seams.model;
+    close = false;
+    const later = ok(await again.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1", limitMs: 70_000 })).view;
+    const crossing = await open(again, later.id);
+    await crossing.start();
+    await crossing.child("I got 66.");
+    close = true;
+    again.advance(11);
+    const turn = await crossing.child("I wrote it.");
+    expect(turn.ended).toBe(true);
+    expect(crossing.session.outcome?.reason).toBe("solved");
+    expect(turn.priority).toBe(true);
+  });
+
   it("saves an acknowledgement before it is said, with no half-done turn, and a replaced worker cannot save one (R577-3)", async () => {
     const s = setup();
     const rule = ruleMayaModel();

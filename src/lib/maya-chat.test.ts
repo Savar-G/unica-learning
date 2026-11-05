@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { chatFamilyGate, chatLimitLabel, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
 import { mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
-import { memoryWordingHistoryStore } from "@/lib/maya";
+import { memoryWordingHistoryStore, SAFETY_GUIDANCE } from "@/lib/maya";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { learningEvents } from "@/lib/learning-events";
 import { ruleMayaModel, fakeMayaModel } from "@/lib/maya-model-fake";
@@ -24,6 +24,41 @@ function setup(overrides: Partial<CallSeams> = {}) {
   return { calls, store, eventStore, note, alert, start };
 }
 describe("desk chat through the shared call interface", () => {
+  it("#589: answers a child in danger at once, with code's close and no close call", async () => {
+    const rule = ruleMayaModel();
+    let armed = false;
+    let asked = 0;
+    const never = new Promise<never>(() => {});
+    const s = setup({ model: () => ({ ...rule, propose: async (input, signal) => {
+      if (!armed) return rule.propose(input, signal);
+      if (++asked === 1) return { version: 2, act: "safety", parts: [], reading: { safety: "immediate" } };
+      return never;
+    } }) });
+    const r = success(await s.start());
+    armed = true;
+    const answered = await Promise.race([
+      s.calls.input(r.view.id, r.view.revision, { type: "child", text: "Someone is hurting me." }, "Leah"),
+      new Promise<"still waiting">((resolve) => setTimeout(() => resolve("still waiting"), 500)),
+    ]);
+    if (answered === "still waiting") throw Error("the reply waited for the close call");
+    const view = childChatView(success(answered).view);
+    expect(asked).toBe(1);
+    expect(view.ended).toBe(true);
+    expect(view.safetyMessage).toBe(SAFETY_GUIDANCE.immediate);
+    expect(view.transcript.map((t) => t.text)).toContain(SAFETY_GUIDANCE.immediate);
+    const row = s.store.rows()[0];
+    expect(row.trace && checkTrace(row.trace).ok).toBe(true);
+    expect(row.trace!.outcome).toMatchObject({ reason: "safety" });
+    expect(row.trace!.turns.flatMap((t) => t.kind === "maya" ? [t.output?.act] : [])).toEqual(["open", "safety", "close"]);
+    expect(s.alert).toHaveBeenCalled();
+    // Only that close may have no model attempt.
+    const close = row.trace!.turns.findLast((t) => t.kind === "maya")!;
+    const elsewhere = structuredClone(row.trace!);
+    Object.assign(elsewhere.turns[elsewhere.turns.lastIndexOf(elsewhere.turns.findLast((t) => t.kind === "maya")!)], { state: "GUIDE" });
+    expect(close).toMatchObject({ state: "SAFETY", attempts: [{ source: "fallback" }] });
+    expect(checkTrace(elsewhere)).toMatchObject({ ok: false });
+  });
+
   it("saves hints, board work, the common trace, one event and the parent note", async () => {
     const s = setup();
     let r = success(await s.start());

@@ -4,6 +4,7 @@ import { AddChild, SignOut } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
 import { pageMetadata } from "@/lib/metadata";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
+import { childDetails } from "@/components/account-child-details";
 import { ACCOUNT_PATH } from "@/lib/parent-shell";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 
@@ -28,6 +29,7 @@ export default async function AccountSettings() {
         <li><Link href="/account/pin">Set or change your PIN</Link></li>
         <li><Link href="/account/maya-notice">Maya notice</Link></li>
       </ul>
+      {await childDetails(db)}
       <AddChild province={kids?.at(-1)?.province ?? "BC"} />
       <p className="small acct-out">Signed in. <SignOut /></p>
     </SupportPage>

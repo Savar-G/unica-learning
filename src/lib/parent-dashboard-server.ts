@@ -2,9 +2,9 @@ import "server-only";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
-import { LAST_CHILD_COOKIE } from "@/lib/parent-shell";
+import { LAST_CHILD_COOKIE, pickChild } from "@/lib/parent-shell";
 import { pinIsSet } from "@/lib/parent-pin-server";
-import { listChildren, type ChildView } from "@/lib/parent-view";
+import { listChildren, readOverview, type ChildView, type OverviewView } from "@/lib/parent-view";
 import { parentViewReader } from "@/lib/parent-view-server";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 
@@ -39,3 +39,20 @@ export const parentDashboard = cache(async (): Promise<ParentDashboard | null> =
     return null;
   }
 });
+
+/**
+ * The Overview (#560) of the child the home page shows: the child the address names, else the last child viewed. Null
+ * for a stage with no Overview, and when its reads fail: the home page then shows its other parts, as before.
+ */
+export async function dashboardOverview(dashboard: ParentDashboard, addressChild: string | null): Promise<OverviewView | null> {
+  const child = pickChild(dashboard.children, addressChild, dashboard.remembered);
+  if (!child?.tabs.includes("overview")) return null;
+  try {
+    const session = await sessionClient();
+    const parent = await parentId(session);
+    return parent ? await readOverview(parentViewReader(session, parent, adminClient()), child.id, Date.now()) : null;
+  } catch (error) {
+    console.error("[parent-dashboard] overview load failed", error instanceof Error ? error.message : "failed");
+    return null;
+  }
+}

@@ -21,6 +21,10 @@
 // repair) and a content problem found during the call (`contentProblem`: the content hold and a close). A content
 // problem that comes while an input runs is taken before the next Maya turn of that input.
 //
+// Safety guidance never waits for a model (#589). Once the danger is known, a refused proposal goes straight to code's
+// guidance with no repair call. The accepted guidance then goes out at once: through `onGuidance` for a voice call, whose
+// close call comes after it; a chat answers one request, so its close is code's too, and no close call is made.
+//
 // Every session writes a trace (src/lib/maya-trace.ts). The clock and the random seed are passed in.
 import { type Batch } from "@/lib/board";
 import {
@@ -74,6 +78,11 @@ export interface TextSessionOptions {
    * fixed wording (R382-3-1); the command line prints these to stderr. Never write them to a stored record.
    */
   onError?: (error: unknown, where: { turn: number; source: "model" | "repair" | "review" } | "session") => void;
+  /**
+   * Safety guidance the session accepted, as soon as it is accepted and before the model is asked for the close (#589).
+   * What it gets counts as delivered: the input's own output holds only what comes after. Called with no await before it.
+   */
+  onGuidance?: (output: TextOutput) => void;
   /**
    * Goes on with a call saved by `saved()` on an earlier request (the admin demo, #323, runs one request per child
    * turn). The saved state must come from this adapter with the same package; it is the server's own record, never
@@ -261,16 +270,39 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     });
     await wait(reviewed, controller);
   }
+  /** Guidance the session accepted goes out now. A call that ended returns it with its outcome instead. */
+  function sendGuidance() {
+    if (!options.onGuidance || folded.session.outcome || !folded.pending.some((p) => p.act === "safety")) return;
+    const out = textOutput(folded);
+    append({ kind: "delivered", at: now() });
+    options.onGuidance(out);
+  }
+  /** The close after the guidance, in code's words. Every fallback here is a close, which ends the call when accepted. */
+  function closeByCode() {
+    for (const proposal of fallbacks(folded.session)) {
+      append({ kind: "fallback", at: now(), proposal });
+      if (folded.session.outcome) return;
+    }
+    append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });
+  }
   async function pump(controller: AbortController) {
+    sendGuidance();
     for (let n = 0; n < MAX_MAYA_TURNS && !controller.signal.aborted; n++) {
       if (folded.session.outcome) break;
       const urgent = folded.session.safety.flagged || folded.session.contentProblem !== null;
       if (folded.childState === "child_speaking" && !urgent) break;
       if (nextActs(folded.session).expect !== "maya") break;
+      const { state, safety } = folded.session;
+      if (options.channel === "chat" && state === "SAFETY" && safety.guided && !folded.candidate && !folded.attempts.length) {
+        closeByCode();
+        break;
+      }
       if (folded.candidate) await reviewCandidate(controller);
       else if (!folded.attempts.length) await request("model", controller);
       if (controller.signal.aborted) break;
-      if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome) await request("repair", controller);
+      // With the danger known, a refused proposal gets code's guidance now, not a second model call.
+      const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
+      if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
@@ -280,6 +312,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         }
         if (folded.attempts.length) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });
       }
+      sendGuidance();
     }
   }
   function schedule(respond = true): Promise<TextOutput> {

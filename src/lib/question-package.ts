@@ -387,6 +387,8 @@ export interface QuestionPackage {
    */
   answer: PackageAnswer | null;
   operation: Operation | null;
+  /** Added after workbook selection and print checks. The renderer uses the original item without teaching data. */
+  operationSource?: "maya";
   /**
    * The shape version of the worked steps here and in the easier example; absent means 1. Code checks only the
    * versions in STEPS_VERSIONS; any other is "unsupported", never a pass.

@@ -4,9 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Account from "./page";
 import StartScreen from "../start/[child]/page";
 import type { ParentNote } from "@/lib/parent-maya-notes";
+import type { ChildView } from "@/lib/parent-view";
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 const minutes = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>() }));
 vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: async () => minutes.value }));
@@ -20,14 +21,18 @@ const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
 vi.mock("@/lib/parent-maya-notes", async (original) => ({ ...await original<typeof import("@/lib/parent-maya-notes")>(), latestParentMayaNotes: async () => notes.latest }));
 
 const dashboard = vi.hoisted(() => ({ value: null as import("@/lib/parent-dashboard-server").ParentDashboard | null }));
-vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => dashboard.value }));
-const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false }));
+const overview = vi.hoisted(() => ({ value: null as import("@/lib/parent-view").OverviewView | null, reads: 0 }));
+vi.mock("@/lib/parent-dashboard-server", () => ({
+  parentDashboard: async () => dashboard.value,
+  dashboardOverview: async () => { overview.reads++; return overview.value; },
+}));
+const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
 vi.mock("@/lib/test-attempt-server", () => ({
   parentStartStates: async () => new Map([["c1", { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") }]]),
 }));
 vi.mock("@/lib/supabase-auth", () => ({
-  parentId: async () => "p1",
+  parentId: async () => (family.signedOut ? null : "p1"),
   sessionClient: async () => ({
     from: (table: string) => ({
       select: (columns: string) => {
@@ -52,7 +57,13 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { minutes.value = new Map(); dashboard.value = null; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => { minutes.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
+
+it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
+  family.signedOut = true;
+  await expect(Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })).rejects.toThrow("REDIRECT /sign-in?next=%2Faccount%3Fchild%3Dc1");
+  await expect(Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })).rejects.toThrow(/REDIRECT \/sign-in$/);
+});
 
 it("shows only the latest note and its links on the matching child's card, without an empty notes section", async () => {
   family.olderChild = true;
@@ -149,10 +160,13 @@ it("gives a family the switch does not open to today's Parent home, byte for byt
   const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ password: "1", pin: "1", existing: "1" }) })));
   await expect(out).toMatchFileSnapshot("./parent-home.golden.html");
   expect(out).not.toContain("pd-");
+  // #560: the Overview is never read or shown for this family.
+  expect(overview.reads).toBe(0);
+  expect(out).not.toContain("po-");
 });
 
 describe("a family the switch opens to", () => {
-  const view = (id: string, firstName: string) => ({ id, firstName, schoolGrade: 3 as const, stage: "test_running" as const, opensOn: "continue_or_wait" as const, tabs: ["assessment" as const, "account" as const], readOnly: false, currentWorkbook: null, reportIds: [] });
+  const view = (id: string, firstName: string): ChildView => ({ id, firstName, schoolGrade: 3, stage: "test_running", opensOn: "continue_or_wait", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null, reportIds: [], finishedTests: [] });
   const open = async (query: Record<string, string> = {}) => {
     dashboard.value = { children: [view("z-old", "Sam"), view("c1", "Asha")], remembered: null, pinSet: true, timeZoneSaved: true };
     return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve(query) })));
@@ -183,16 +197,16 @@ describe("a family the switch opens to", () => {
   it("opens on the last child viewed, with only that child's part", async () => {
     dashboard.value = null;
     const first = await open();
-    expect(first).toContain("<h1>Sam</h1>");
+    expect(first).toContain("<h1>Sam&#x27;s math test</h1>");
     dashboard.value = { children: [view("z-old", "Sam"), view("c1", "Asha")], remembered: "c1", pinSet: true, timeZoneSaved: true };
     const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
-    expect(out).toContain("<h1>Asha</h1>");
+    expect(out).toContain("<h1>Asha&#x27;s math test</h1>");
     expect(out).not.toContain("Sam");
   });
 
   it("follows the address, and ignores a child who is not the family's", async () => {
-    expect(await open({ child: "c1" })).toContain("<h1>Asha</h1>");
-    expect(await open({ child: "another-family" })).toContain("<h1>Sam</h1>");
+    expect(await open({ child: "c1" })).toContain("<h1>Asha&#x27;s math test</h1>");
+    expect(await open({ child: "another-family" })).toContain("<h1>Sam&#x27;s math test</h1>");
   });
 
   it("keeps the test, its date and the saved messages, and adds no panel", async () => {
@@ -236,5 +250,164 @@ describe("a family the switch opens to", () => {
     expect(out).toContain("Asha finished it after a small hint.");
     expect(out).toContain('href="/account/notes/c1"');
     expect(out).toContain('href="/account/scan"');
+  });
+
+  describe("each stage before the plan", () => {
+    const withStage = (over: Partial<ChildView>): ChildView => ({ ...view("c1", "Asha"), ...over });
+    const openOne = async (child: ChildView, query: Record<string, string> = {}) => {
+      dashboard.value = { children: [child], remembered: null, pinSet: true, timeZoneSaved: true };
+      return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve(query) })));
+    };
+    const finished = { reportIds: ["r2", "r1"] };
+
+    it("opens report_ready_bc on the newest report", async () => {
+      await expect(openOne(withStage({ stage: "report_ready_bc", opensOn: "report_start_free_month", ...finished }))).rejects.toThrow("REDIRECT /account/report/r2");
+    });
+
+    it("opens report_ready_waitlist on the newest report", async () => {
+      await expect(openOne(withStage({ stage: "report_ready_waitlist", opensOn: "report_waitlist", ...finished }))).rejects.toThrow("REDIRECT /account/report/r2");
+    });
+
+    it("keeps a saved message on the way to the report", async () => {
+      await expect(openOne(withStage({ stage: "report_ready_bc", opensOn: "report_start_free_month", ...finished }), { password: "1" })).rejects.toThrow("REDIRECT /account/report/r2?password=1");
+    });
+
+    it("opens the child the address names, not the oldest", async () => {
+      dashboard.value = { children: [view("z-old", "Sam"), withStage({ stage: "report_ready_bc", opensOn: "report_start_free_month", ...finished })], remembered: null, pinSet: true, timeZoneSaved: true };
+      await expect(Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })).rejects.toThrow("REDIRECT /account/report/r2");
+      expect(renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "z-old" }) })))).toContain("Sam&#x27;s math test");
+    });
+
+    it("opens no_test on Start test, with how it works and no report", async () => {
+      const out = await openOne({ ...withStage({ stage: "no_test", opensOn: "start_test" }), id: "z-old", firstName: "Sam" });
+      expect(out).toContain("Start Sam&#x27;s free math test");
+      expect(out).toContain('href="/account/test/z-old"');
+      expect(out).toContain("How it works");
+      expect(out).toContain('href="/sample-report"');
+      expect(out).not.toContain("Start free month");
+    });
+
+    it("opens test_running on the test's state: here a test waiting for its report", async () => {
+      const out = await openOne(withStage({ stage: "test_running", opensOn: "continue_or_wait" }));
+      expect(out).toContain("Asha finished the test");
+      expect(out).toContain("What the report shows");
+      expect(out).toContain("The next test opens at");
+      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+    });
+
+    it("sends no one anywhere when the family's own page is Parent home", async () => {
+      dashboard.value = null;
+      const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+      expect(out).toContain("Your account");
+      expect(out).not.toContain("pd-");
+    });
+  });
+
+  describe("the Overview (#560)", () => {
+    const tabs = ["overview", "workbooks", "maya", "assessment", "account"] as const;
+    const asha = (t: readonly (typeof tabs)[number][] = tabs) => ({ ...view("c1", "Asha"), stage: "active" as const, opensOn: "overview" as const, tabs: [...t], currentWorkbook: { number: 2 } });
+    const full = (t?: readonly (typeof tabs)[number][]): import("@/lib/parent-view").OverviewView => ({
+      child: asha(t),
+      level: { working: 4, earlySign: true, testedOn: "2026-10-31" },
+      areas: [
+        { area: "number", name: "Number and operations", level: 3, label: "at-grade", earlySign: false },
+        { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
+        { area: "shapes", name: "Shapes, measurement and data", level: 4, label: "ahead", earlySign: false },
+      ],
+      resultPreparing: false,
+      resultLate: false,
+      workbook: { number: 2, scannedDays: 3, days: 10 },
+      action: "learning_card_empty",
+      summaryMonth: null,
+    });
+    const render = async (value: import("@/lib/parent-view").OverviewView | null, t?: readonly (typeof tabs)[number][]) => {
+      dashboard.value = { children: [view("z-old", "Sam"), asha(t)], remembered: null, pinSet: true, timeZoneSaved: true };
+      overview.value = value;
+      return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
+    };
+
+    it("shows the tiles, the area bars and one thing to do, naming the child", async () => {
+      minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
+      const out = await render(full());
+      expect(out).toContain("Working at Grade 4");
+      expect(out).toContain("In Grade 3 at school.");
+      expect(out).toContain("Early sign");
+      expect(out).toContain("From the test on October 31.");
+      expect(out).toContain("Workbook 2</p>");
+      expect(out).toContain("3 of 10 days scanned");
+      expect(out).toContain("12 of 30 minutes");
+      expect(out).toContain("Level by area");
+      expect(out).toContain("The line marks Asha&#x27;s school grade, Grade 3.");
+      for (const label of ["At grade", "Building up · Early sign", "Ahead"]) expect(out).toContain(label);
+      expect(out.match(/class="po-card po-action/g)).toHaveLength(1);
+      expect(out).toContain("Tell us how Asha learns");
+      expect(out).toContain('href="/account/learning/c1"');
+      expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
+      expect(out).not.toMatch(/\d\s*%|streak|percent|wrong|other children/i);
+    });
+
+    it("shows Maya this week only for a child with the Maya tab", async () => {
+      minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
+      expect(await render(full())).toContain('id="po-maya"');
+      // Without the tab the home page keeps its own minutes row, as before.
+      expect(await render(full(), tabs.filter((t) => t !== "maya"))).not.toContain('id="po-maya"');
+    });
+
+    it("a tile or a section with no data does not appear, and no card shows when none applies", async () => {
+      const out = await render({ ...full(), level: null, areas: [], workbook: null, action: null });
+      expect(out).not.toContain("po-tiles");
+      expect(out).not.toContain("Level by area");
+      expect(out).not.toContain("po-action");
+      expect(out).not.toContain("days scanned");
+    });
+
+    it("offers the monthly summary PDF of the month the view names, and nothing without one (#562)", async () => {
+      const out = await render({ ...full(), summaryMonth: "2026-10" });
+      expect(out).toContain('id="po-summary"');
+      expect(out).toContain("October 2026");
+      expect(out).toContain('href="/api/account/children/c1/monthly-summary?month=2026-10"');
+      expect(out).toContain("One page on Asha&#x27;s month");
+      expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
+      expect(await render(full())).not.toContain("po-summary");
+    });
+
+    it("asks the parent to email us when the new result is late", async () => {
+      const out = await render({ ...full(), level: null, areas: [], workbook: null, resultPreparing: true, resultLate: true });
+      expect(out).toContain("taking longer than it should");
+      expect(out).toContain("mailto:");
+      expect(out).not.toContain("being prepared");
+    });
+
+    it("says a new result is being prepared, with no Level tile and no bars", async () => {
+      const out = await render({ ...full(), level: null, areas: [], workbook: null, resultPreparing: true });
+      expect(out).toContain("Asha&#x27;s new result is being prepared.");
+      expect(out).not.toContain("Working at");
+      expect(out).not.toContain("Level by area");
+      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+      expect(await render(full())).not.toContain("being prepared");
+    });
+
+    it("the card for an open test uses the start control's words", async () => {
+      const out = await render({ ...full(), action: "continue_test" });
+      expect(out).toContain("Go to the test");
+      expect(out).toContain('href="#pd-test"');
+      expect(out).not.toContain("Start the test");
+      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+    });
+
+    it.each([
+      ["start_test", "Start the test", "#pd-test"],
+      ["payment_failed", "The last payment for Asha&#x27;s plan did not go through.", "/account/plan"],
+      ["no_pin", "Set a 4-digit PIN before Asha uses the desk.", "/account/pin"],
+    ] as const)("the card for %s", async (action, text, href) => {
+      const out = await render({ ...full(), action });
+      expect(out).toContain(text);
+      expect(out).toContain(`href="${href}"`);
+      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+    });
+
+    it("shows nothing of the Overview for another child than the one read", async () => {
+      expect(await render({ ...full(), child: { ...asha(), id: "z-old" } })).not.toContain("po-");
+    });
   });
 });
