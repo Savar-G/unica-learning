@@ -1,4 +1,6 @@
 import { assertTemplateInput, assertContextInput, INPUT_LIMITS } from "./limits";
+import { MISCONCEPTIONS } from "@/lib/assessment/misconceptions";
+import { watchOutProblems } from "./watch-out";
 /** Read source JSON as data. This module validates structure before any typed consumer sees it. */
 import type { CurriculumStep, StepProgressions, TemplateContexts } from "./types";
 import { CONTEXT_NAMES, domainProblems, placeholders, prepareTemplateForAudit } from "./template";
@@ -59,7 +61,7 @@ export function parseStepProgressions(input: unknown): StepProgressions {
     if (!pair(step.example, ["problem", "answer"])) error("example");
     if (!pair(step.spotTheError, ["wrong", "fix"])) error("spotTheError");
     if (!["checked", "none"].includes(String(step.arithmetic))) error("arithmetic");
-    if (!Array.isArray(step.mistakes) || !step.mistakes.every(m => pair(m, ["answer", "why"]) && object(m) && ["careless", "conceptual"].includes(String(m.kind)) && (m.misconception === null || typeof m.misconception === "string"))) error("mistakes");
+    if (!Array.isArray(step.mistakes) || !step.mistakes.every(m => pair(m, ["answer", "why"]) && object(m) && ["careless", "conceptual"].includes(String(m.kind)) && (m.misconception === null || typeof m.misconception === "string") && (m.watchOut === undefined || pair(m.watchOut, ["wrong", "fix"]) && object(m.watchOut) && (m.watchOut.verified === undefined || typeof m.watchOut.verified === "boolean") && (m.watchOut.verifierModel === undefined || typeof m.watchOut.verifierModel === "string") && (m.watchOut.verificationHash === undefined || typeof m.watchOut.verificationHash === "string")))) error("mistakes");
     if (step.regrouping !== undefined && typeof step.regrouping !== "boolean") error("regrouping");
     if (step.values !== undefined && !scalarList(step.values)) error("values");
     if (step.numbers !== undefined && (!object(step.numbers) || !Object.values(step.numbers).every(domain))) error("numbers");
@@ -81,6 +83,10 @@ export function parseStepProgressions(input: unknown): StepProgressions {
 }
 export function stepFieldProblems(step: CurriculumStep, contexts?: TemplateContexts): string[] {
   const errors: string[] = [], at = `${step.skill} step ${step.number}`;
+  for (const [i, mistake] of step.mistakes.entries()) {
+    if (mistake.misconception !== null && !Object.hasOwn(MISCONCEPTIONS, mistake.misconception)) errors.push(`${at} mistake ${i + 1}: unknown misconception`);
+    if (mistake.watchOut) errors.push(...watchOutProblems(mistake.watchOut).map(p => `${at} mistake ${i + 1}: ${p}`));
+  }
   for (const [key, value] of Object.entries(step.numbers ?? {})) {
     if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(key) || ["constructor", "prototype"].includes(key)) errors.push(`${at} numbers.${key}: invalid domain name`);
     errors.push(...domainProblems(value).map(p => `${at} numbers.${key}: ${p}`));
