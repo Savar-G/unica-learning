@@ -12,4 +12,4 @@ Round 1 reviewed candidate `8365f43afa1af1ec8c83d167949c23de9d83b85d` against `9
 
 No finding was declined. Round 2 checked these fixes and changed code only. Verdict: APPROVE on `09f88fa74e61e522e6bcf796639cd8f87f86cb58`, on Savar's MacBook Pro (4). The reviewer independently reproduced the old defects, confirmed all three fixes, and passed all 298 targeted tests. The reviewed source diff was 30 files, 970 insertions and 90 deletions before the fixes.
 
-Two rounds completed. S1, S2 and S3 are resolved. No blocker or should remains open. The production build, lint and TypeScript checks passed on the fixed candidate. No source changes followed that approval.
+Two rounds completed. S1, S2 and S3 are resolved. No blocker or should remains open. The production build, lint and TypeScript checks passed on the fixed candidate. Assessment behavior has not changed since approval. The later rebase regenerated database types from the live schema and preserved main's billing additions. The local integration checks are recorded in `verification.md`.

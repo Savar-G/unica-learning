@@ -43,3 +43,9 @@ Both QA tabs were closed. No report email, paid model call or workbook generatio
 The independent reviewer found S1, S2 and S3 in `review-ledger.md`. All three were reproduced with failing public-interface checks before the source fixes. The corrected regressions pass together: four files, 298 tests. This includes refusal to finish when an area's only answers were excluded as rushed, all pool rows and selected positions in the export, and unknown responses plus their change history in deletion copies.
 
 The full 400-file run above preceded the rebase to `97c96c22d52dc94b3c05e01968a79eb8f922abd7`. The assessment, attempt, report and placement checks then passed on that base: 54 files and 5674 tests. The review fixes have the additional 298-test run. The final PR checks establish the result on the pushed head.
+
+## Billing merge conflict
+
+The rebase onto `1db03c27ae43fe40eb29972400c2adf664505fa3` had one conflict, in the generated database types. `npm run db:types` replaced the file from the live public schema. It retains the deletion folders and billing fields from main, the assessment lock function, and the current live email and admin fields. No generated type was edited by hand.
+
+The assessment additions and removals in `DESIGN.md` and `admin-store.ts` match the approved patch. Every other assessment file except the regenerated types is unchanged from `1bdc49fe`. Focused assessment, attempt, export, progress and family-deletion checks passed: 51 files and 5611 tests. Lint and the production build passed. These checks establish local integration after the conflict; the final required CI check still applies to the pushed head.
