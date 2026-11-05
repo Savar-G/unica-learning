@@ -32,6 +32,25 @@ const parsedPage = (html: string) => {
 };
 
 describe("the workbook templates", () => {
+  it.each(["Which is greater?", "Which is greater: 8 × 7 or 6 × 6?", "WHICH IS GREATER?"])("prints no repeated choice label for %s", (question) => {
+    const draft = book("U12");
+    const p = first(draft, "practice");
+    if (p.content?.kind !== "day") throw new Error("Expected a day page");
+    const q = p.questions[0];
+    p.content.blocks = [{ slot: "on-your-own", items: [q.number] }];
+    p.questions = [{ ...q, package: { ...q.package, text: question, operation: null, item: {
+      format: "tick-one", scorable: true, parentChecked: false, error: null, checks: [],
+      regions: [{ id: "answer", kind: "choice", mark: "tick", label: "Which is greater?", choices: ["8 × 7", "6 × 6"], answer: "8 × 7" }],
+    } } }];
+    const html = workbookTemplate().page(p, { qr: "", qrUrl: "" }, draft)!;
+    expect(html).toContain(question);
+    expect(html).not.toContain('<span class="rl">Which is greater?</span>');
+    expect(html).toContain("8 × 7");
+    expect(html).toContain("6 × 6");
+    p.questions[0].package.item!.regions[0].label = "Is it right?";
+    expect(workbookTemplate().page(p, { qr: "", qrUrl: "" }, draft)).toContain('<span class="rl">Is it right?</span>');
+  });
+
   it.each(["U4", "U16"].flatMap(level => ["practice", "practice-2", "challenge"].map(type => [level, type])))("prints one unambiguous label for a whole Extra page in %s %s", (level, type) => {
     const draft = book(level);
     const p = first(draft, type);

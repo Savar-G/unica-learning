@@ -1,4 +1,5 @@
 import type { EditCall } from "@/lib/workbook-edit-calls";
+import { choiceInstruction } from "@/lib/workbook-layout-check";
 // The workbook generator (#311, spec #296): a two-week plan (#308, src/lib/workbook-plan.ts) in, one coherent draft
 // workbook out, stored as one unit through the draft store. The plan fixes every page and part; the AI fills the
 // question slots of each page with content only (src/lib/workbook-generator-items.ts), one call per page; code
@@ -2314,10 +2315,8 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
     if (w.page.atMaximum) content.atMaximum = true;
     // The page's instruction says what its questions ask (the U4 review, item 15), on practice and review pages; the
     // other pages keep their own line.
-    // What to circle, said on every page that has a circled choice (Savar, 2026-11-04: true or false never said to
-    // circle): "Circle true or false.", "Circle yes or no.", else "Circle your answer.".
-    const circled = questions.filter(q => q.package && q.place !== "warm-up").flatMap(q => (q.package!.item?.regions ?? []).flatMap(r => r.kind === "choice" && r.mark !== "tick" ? [r.choices.map(c => c.toLowerCase()).sort().join(",")] : []));
-    const circleLine = !circled.length ? null : circled.every(c => c === "false,true") ? "Circle true or false." : circled.every(c => c === "no,yes") ? "Circle yes or no." : "Circle your answer.";
+    // Name every choice kind, including Spot the error's yes/no beside true/false practice.
+    const circleLine = choiceInstruction(questions);
     // (A new idea page's chip says "Read how it works, then try it.": its instruction line says what to write and circle,
     // never the same words twice, Savar 2026-11-04.)
     if (["practice", "practice-2", "remember-these", "remember-these-mixed-set", "new-idea"].includes(w.page.type)) {
@@ -2325,9 +2324,14 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
       const circle = !!circleLine, boxes = formats.has("boxes"), write = [...formats].some(f => !["circle", "boxes"].includes(f));
       const writes = questions.some(q => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some(r => r.kind === "box"));
       const boxLine = writes && write ? (input.plan.level === 4 ? "Fill in the boxes." : "Fill in the missing numbers and write the answers in the boxes.") : "Fill in the missing numbers.";
-      const parts = [boxes ? boxLine : writes ? "Write the answer in the box." : null, circle ? circleLine : null].filter(Boolean);
+      const writeLine = input.plan.level <= 9 && circleLine?.includes(",") ? "Write in the box." : "Write the answer in the box.";
+      const parts = [boxes ? boxLine : writes ? writeLine : null, circle ? circleLine : null].filter(Boolean);
       if (parts.length) content.subtitle = parts.join(" ");
-    } else if (circleLine && !/\bcircle\b/i.test(content.subtitle ?? "")) content.subtitle = `${content.subtitle ? `${content.subtitle.replace(/\s*$/, "")} ` : ""}${circleLine}`;
+    } else if (circleLine && !/\bcircle\b/i.test(content.subtitle ?? "")) {
+      // Leave room for every choice kind on Friday's instruction line.
+      const lead = w.page.type === "friday-5" && circleLine.includes(",") ? "Review, then try five with no hints." : content.subtitle;
+      content.subtitle = `${lead ? `${lead.replace(/\s*$/, "")} ` : ""}${circleLine}`;
+    }
     if (w.page.extraPractice) Object.assign(content, { extraPractice: true, title: "Extra practice", subtitle: `Answer questions from this workbook.${circleLine ? ` ${circleLine}` : ""}` });
   }
   return content;

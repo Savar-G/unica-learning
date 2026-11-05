@@ -4,9 +4,29 @@ import { fakeWorkbookItems } from "./workbook-ai-fake";
 import { curriculumFor } from "./workbook-curriculum";
 import { generateWorkbook } from "./workbook-generator";
 import { planWorkbook } from "./workbook-plan";
-import { sampleChild, samplePlanInput } from "./workbook-sample-profiles";
+import { firstCustomerProfile, sampleChild, samplePlanInput } from "./workbook-sample-profiles";
 import { keySolver } from "./workbook-solve-check";
 import type { GeneratedPage, StoredCall, GenerateDeps } from "./workbook-generator";
+import { planNextWorkbook } from "./workbook-placement";
+
+it("names both true/false and Spot the error's yes/no in a first-customer page instruction", async () => {
+  const curriculum = curriculumFor("bc")!;
+  const placed = planNextWorkbook({ curriculum, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1 });
+  if (!placed.ok) throw new Error(placed.reason);
+  const day = placed.plan.days[0];
+  let tokens = 0;
+  const result = await generateWorkbook({ workbookId: "00000000-0000-4000-8000-0000000000a1", childId: "00000000-0000-4000-8000-0000000000c1", number: 1, profileBuild: null,
+    curriculum, plan: { ...placed.plan, days: [{ ...day, pages: day.pages.filter(p => p.type === "new-idea") }] }, book: { child: "Noah" }, itemPolicy: "approved-v1" },
+  { ai: fakeAiClient({ answer: fakeWorkbookItems }), solver: keySolver(), fit: { fits: async p => p.questions.length <= 10 ? { ok: true } : { ok: false, problems: [{ question: null, reason: "Test page holds ten questions" }] } },
+    store: { save: async d => ({ status: "saved", draftId: d.id }), draft: async () => null }, qrToken: () => `token-${String(++tokens).padStart(12, "0")}` });
+  if (result.status !== "stored") throw new Error(result.status);
+  const pages = result.draft.pages.filter(p => p.questions.some(q => q.place === "spot-the-error")
+    && p.questions.some(q => q.package?.item?.regions.some(r => r.kind === "choice" && r.choices.includes("true"))));
+  expect(pages.length).toBeGreaterThan(0);
+  for (const p of pages) {
+    expect(p.content?.kind === "day" && p.content.subtitle).toBe("Write the answer in the box. Circle true or false, or yes or no.");
+  }
+});
 
 it("sends only story and explanation contracts to the writer, and supplies examples in every call", async () => {
   const c = curriculumFor("bc")!;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
-import { bottomGapLimit, circleProblem, layoutProblems, repeatedInstruction } from "@/lib/workbook-layout-check";
+import { bottomGapLimit, choiceInstruction, circleProblem, layoutProblems, repeatedInstruction } from "@/lib/workbook-layout-check";
 import type { DayContent } from "@/lib/workbook-page";
 import { renderWorkbook, type DraftPage, type MeasuredElement } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
@@ -154,8 +154,23 @@ describe("the layout checks", () => {
       const c = { ...(page().content as DayContent), subtitle: `A ${type} page. Write the answer.` };
       expect(circleProblem(c, [{ package: circle, place: "on-your-own" }]), type).toMatch(/does not say to circle/);
       expect(circleProblem({ ...c, subtitle: "Circle true or false." }, [{ package: circle, place: "on-your-own" }]), type).toBeNull();
-      expect(circleProblem(c, [{ package: tick, place: "spot-the-error" }]), type).toBeNull();
+      expect(circleProblem(c, [{ package: tick, place: "spot-the-error" }]), type).toMatch(/instruction does not name yes or no/);
+      expect(circleProblem({ ...c, subtitle: "Circle yes or no." }, [{ package: tick, place: "spot-the-error" }]), type).toBeNull();
     }
+  });
+
+  it("names each choice kind, keeps single-kind wording, and excludes warm-up and operation ticks", () => {
+    const question = (choices: string[], mark: "tick" | "circle" = "circle", place = "on-your-own") => ({
+      place, package: { ...base, item: { ...base.item!, regions: [{ kind: "choice" as const, id: "c", choices, mark, label: null, answer: choices[0] }] } },
+    });
+    const truth = question(["true", "false"]), yesNo = question(["No", "Yes"], "tick", "spot-the-error"), other = question(["8 × 7", "6 × 6"]);
+    expect(choiceInstruction([truth])).toBe("Circle true or false.");
+    expect(choiceInstruction([yesNo])).toBe("Circle yes or no.");
+    expect(choiceInstruction([other])).toBe("Circle your answer.");
+    expect(choiceInstruction([truth, yesNo])).toBe("Circle true or false, or yes or no.");
+    expect(choiceInstruction([yesNo, truth, truth])).toBe("Circle true or false, or yes or no.");
+    expect(choiceInstruction([truth, yesNo, other])).toBe("Circle true or false, yes or no, or another answer.");
+    expect(choiceInstruction([question(["+", "−"], "tick"), question(["true", "false"], "circle", "warm-up")])).toBeNull();
   });
 
   it("6: fail an instruction printed twice on a page, from its words or as printed", () => {
