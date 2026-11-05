@@ -12,8 +12,12 @@ import type { WorkbookStatus } from "@/lib/workbook-content";
 
 export interface MemoryChildFamilies {
   children: { id: string; parentId: string; grade: Grade }[];
-  /** Each finished test of a child, with its stored assessment profile (the JSON, with its buildId) or null. */
-  tests?: { id: string; childId: string; completedAt: string; profile: unknown }[];
+  /**
+   * Each finished test of a child, with its stored assessment profile (the JSON, with its buildId) or null. `unreliable`:
+   * its report has the reliability note. `reported: false`: its report is not built yet, so the skill states leave it
+   * out; left out, the report exists.
+   */
+  tests?: { id: string; childId: string; completedAt: string; profile: unknown; unreliable?: boolean; reported?: boolean }[];
   /** The parents' answers on the learning card, by child id. */
   learning?: Record<string, ProfileLearning>;
   /** The parents whose family deletion is requested. */
@@ -48,7 +52,7 @@ export function memoryChildProfiles(families: MemoryChildFamilies) {
     async skillInputs(childId) {
       const shipped = workbooks.filter((w) => w.childId === childId && w.status === "shipped").sort((a, b) => b.number - a.number)[0];
       return {
-        tests: tests.filter((t) => t.childId === childId && t.profile !== null).map((t) => ({ assessmentId: t.id, completedAt: t.completedAt, profile: json(t.profile) })),
+        tests: tests.filter((t) => t.childId === childId && t.profile !== null && t.reported !== false).map((t) => ({ assessmentId: t.id, completedAt: t.completedAt, profile: json(t.profile), unreliable: t.unreliable ?? false })),
         workbookStandards: [...(shipped?.standards ?? [])],
         history: history.filter((r) => r.childId === childId).map((r) => ({ standard: r.standard, state: r.state })),
       };
