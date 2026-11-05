@@ -59,6 +59,7 @@ import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-packa
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
+import { attachWorkbookMayaOperations, withWorkbookMayaOperation, printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
 import { digestOf } from "@/lib/workbook-digest";
@@ -3424,7 +3425,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     }
   }
   const questions = pages.flatMap((p) => p.questions);
-  const draft: GeneratedWorkbook = {
+  const draft: GeneratedWorkbook = attachWorkbookMayaOperations({
     ...book,
     model: deps.ai.model,
     pages,
@@ -3437,7 +3438,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       failed: questions.filter((q) => q.check.status === "failed").length,
       failedPages: pages.filter((p) => p.fit.status === "failed").length,
     },
-  };
+  });
   const saved = await deps.store.save(draft);
   return saved.status === "saved" ? { status: "stored", draft } : saved;
 }
@@ -3531,8 +3532,10 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
     b.package = { ...b.package, id: q.package?.id ?? b.package.id,
       ref: { source: "workbook", workbookId: input.workbookId, page: page.number, question: q.number } };
     if (Object.hasOwn(manual, q.number) && b.check.status !== "checked") throw new Error("The code cannot derive every answer from these fields.");
-    if (!Object.hasOwn(manual, q.number) && keepNumbers && JSON.stringify(b.package.operation) !== JSON.stringify(q.package?.operation)) throw new Error("The rewrite changed the numbers. Try again and ask to keep the calculation.");
-    if (!Object.hasOwn(manual, q.number) && keepNumbers && !q.package?.operation && JSON.stringify(editNumbers([b.package.item?.checks, b.package.item?.figure])) !== JSON.stringify(editNumbers([q.package?.item?.checks, q.package?.item?.figure]))) throw new Error("The rewrite changed the numbers. Try again and ask to keep the calculation.");
+    b.package = withWorkbookMayaOperation(b.package);
+    const previous = q.package ? printedWorkbookQuestion(q.package) : null, edited = printedWorkbookQuestion(b.package);
+    if (!Object.hasOwn(manual, q.number) && keepNumbers && JSON.stringify(edited.operation) !== JSON.stringify(previous?.operation)) throw new Error("The rewrite changed the numbers. Try again and ask to keep the calculation.");
+    if (!Object.hasOwn(manual, q.number) && keepNumbers && !previous?.operation && JSON.stringify(editNumbers([edited.item?.checks, edited.item?.figure])) !== JSON.stringify(editNumbers([previous?.item?.checks, previous?.item?.figure]))) throw new Error("The rewrite changed the numbers. Try again and ask to keep the calculation.");
     const format = b.package.item?.format;
     if (slot.place && STRICT_SLOTS.includes(slot.place) && format && !SLOT_FORMATS[slot.place]?.includes(format)) throw new Error("The question does not fit this part of the page.");
     const problem = levelRange(b.package, input)
