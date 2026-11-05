@@ -2546,7 +2546,8 @@ function layOut(input: GenerateInput) {
         const templated = !w.page.existingSlots && [0, 1, 2, 3, 6, 12, 128].some((k) => !!templateContractFor(input, w, { ...slot, contract: undefined }, k));
         // (A Mixed set item is a story, and story text is code's, D-231: while any skill of its part has a code builder
         // the slot takes it, never the writer. The real U16 first-customer sample's writer stories failed their checks.)
-        const mixedBuilder = slot.place === "mixed-set" && slot.part.skills.some((s) => approvedQuestionTypes(s).some((t) => !["places", "order", "count", "relation", "likelihood"].includes(t)));
+        // (G1, a personal plan's Mixed set lists every secure skill below the level; with no signals, today's choice.)
+        const mixedBuilder = !!input.plan.personal?.hasAssessment && slot.place === "mixed-set" && slot.part.skills.some((s) => approvedQuestionTypes(s).some((t) => !["places", "order", "count", "relation", "likelihood"].includes(t)));
         slot.existing = w.page.existingSlots ? w.page.existingSlots.includes(slot.id) : templated || mixedBuilder ? false : slot.place === "challenge" ? !challengeSkill : !approvedQuestionTypes(skill).length;
         if (slot.existing) {
           slot.contract = null;
@@ -2698,6 +2699,8 @@ function layOut(input: GenerateInput) {
           if (slot.place !== "warm-up") pageForms.add(printedForm(best.p));
           if (best.sentence && !pageFrames.has(best.sentence)) { pageFrames.add(best.sentence); dayFrames.set(best.sentence, (dayFrames.get(best.sentence) ?? 0) + 1); }
         }
+        // (A Mixed set slot no code candidate fills keeps today's writer, rather than failing.)
+        if (!best && mixedBuilder) { slot.existing = true; slot.contract = null; continue; }
         slot.contract = best?.c ?? null;
         // Nothing approved fits: the step has no new question left for this slot. It stays planned, and fails as such
         // (#482 review at 3134252: a slot that cannot be filled is a failure, never a silent removal).
