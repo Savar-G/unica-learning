@@ -353,7 +353,7 @@ const accepted = (a: Record<string, unknown>) => a.refusal === null && a.error =
  */
 function checkOrder(attempts: Record<string, unknown>[], path: string) {
   const sources = attempts.map((a) => a.source).join(",");
-  need(["controller", "model", "model,repair", "model,fallback", "model,repair,fallback"].includes(sources), path, `model, then at most one repair, then at most one fallback (got ${sources})`);
+  need(["controller", "fallback", "model", "model,repair", "model,fallback", "model,repair,fallback"].includes(sources), path, `model, then at most one repair, then at most one fallback (got ${sources})`);
   attempts.slice(0, -1).forEach((a, i) => need(!accepted(a), `${path}[${i}]`, "refused or failed, because an attempt follows it"));
   if (attempts[1]?.source === "repair") need(attempts[0].refusal !== null, `${path}[1]`, "a repair only after a refusal, not after a model error");
 }
@@ -400,6 +400,8 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
         const o = x.output as { act?: unknown; say?: unknown; board?: unknown } | null;
         need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && o?.act === "safety" && Array.isArray(o.say) && o.say.length === 1 && Object.values(SAFETY_GUIDANCE).some((text) => text === (o.say as unknown[])[0]) && Array.isArray(o.board) && o.board.length === 0, path, "controller output is exact safety guidance only");
       }
+      // A chat's close after the safety guidance is code's own: no model is asked for it (#589).
+      if (attempts.length === 1 && attempts[0]?.source === "fallback") need(x.state === "SAFETY" && (x.output as { act?: unknown } | null)?.act === "close", `${path}.attempts`, "a fallback with no model attempt is only the close after safety guidance");
       attempts.forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
       checkOrder(attempts, `${path}.attempts`);
       need("output" in x, `${path}.output`, "present (null when nothing was output)");

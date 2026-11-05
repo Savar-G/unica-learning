@@ -52,7 +52,7 @@ import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-histor
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
-import { heardWordings, learningEvent, type Outcome, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { heardWordings, learningEvent, limitsOf, SAFETY_GUIDANCE, type Outcome, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { freeTalkFor } from "@/lib/maya-free-talk";
 import type { MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
@@ -350,10 +350,12 @@ export interface VoiceTurn {
   /** The call ended with this input. */
   ended: boolean;
   /**
-   * Safety guidance after a child's disclosure, or the deadline close (`gate` and `step` in src/lib/maya/session.ts): the
-   * worker says it at once and waits for nothing that came before it.
+   * Safety guidance after a child's disclosure, or words past the closing time (`gate` and `step` in
+   * src/lib/maya/session.ts): the worker says them at once and waits for nothing that came before them.
    */
   priority?: boolean;
+  /** The exact safety guidance among `say`, which the worker says once more if it was cut (#589). */
+  guidance?: string;
   /** How long this input spent on the model, its repair and the free-talk reviews (#532). Absent when no input ran. */
   time?: { modelMs: number; repairMs: number; reviewMs: number };
 }
@@ -373,6 +375,13 @@ export interface VoiceCall {
   readonly replaced: boolean;
   /** The revision of the last save. */
   readonly revision: number;
+  /** An input is still running: a close call can be out after its guidance went out (#589). */
+  readonly working: boolean;
+  /**
+   * Hears safety guidance as soon as the session accepts it, before the model is asked for the close (#589). The input's
+   * own turn then holds only what comes after it. The save follows behind, as `settled` shows.
+   */
+  onGuidance(listener: (turn: VoiceTurn) => void): void;
   /** Saved accepted final words when this handle restored a controller that had already ended. */
   readonly pendingFinal: VoiceTurn | null;
   readonly boardSnapshot: BoardSnapshot;
@@ -594,8 +603,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; a resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id"> & { kind?: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean): TextSession {
+  function textSession(record: Pick<CallRecord, "id"> & { kind?: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void): TextSession {
     return createTextSession({
+      onGuidance,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
       freeTalk: record.kind === "chat" ? false : freeTalkFor("admin_test"), reviewer: seams.reviewer?.(model.id) ?? null,
     });
@@ -844,7 +854,17 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (!(await store.update(found.id, found.revision, claim))) return { ok: false, error: "conflict" };
       let record: CallRecord = { ...found, ...claim, revision: found.revision + 1 };
       const pkg = found.live.package;
-      const session = textSession(record, pkg, model, null, restored);
+      let hearGuidance: ((turn: VoiceTurn) => void) | null = null;
+      // Every trace turn before this index has been told to the worker in an earlier turn.
+      let told = 0;
+      const session = textSession(record, pkg, model, null, restored, undefined, undefined, undefined, undefined, undefined, (out) => {
+        persist(out);
+        const from = told;
+        told = session.trace().turns.length;
+        // Only a worker that lost the call to another stays silent.
+        if (!replaced && record.status !== "ended") hearGuidance?.(voiceTurn(out, from));
+      });
+      told = session.trace().turns.length;
       const last = restored.turns.at(-1);
       const pendingFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {
         say: last?.kind === "maya" && last.stateAfter === "CLOSE" ? [...(last.output?.say ?? [])] : [],
@@ -889,13 +909,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         });
       const none: VoiceTurn = { say: [], newBatches: 0, safetyMessage: null, ended: false };
       const inactive = () => lost || record.status === "ended";
-      const turn = async (run: () => Promise<TextOutput>): Promise<VoiceTurn> => {
-        if (inactive()) return none;
-        const before = session.trace().turns.length;
-        const out = await run();
-        persist(out);
-        await queue;
-        if (inactive()) return none;
+      /** What the worker needs of one output: the trace turns from `before` on give its times and each batch's cue. */
+      const voiceTurn = (out: TextOutput, before: number): VoiceTurn => {
         // Preserve the controller turn association. Do not spread batches evenly across an entire reply.
         // Each current board offer follows the last word of its accepted controller turn.
         let word = 0;
@@ -914,8 +929,25 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         }
         const boardCues = out.board.map(batch => ({ batch, word: ends.get(batch.transactionId) ?? speechWords(out.say.join(" ")).length }));
         const state = session.session;
-        const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit";
-        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time };
+        // The close keeps its priority after it ended the call: a reply that crosses the closing time can end as "solved".
+        const closing = state.startedAt !== null && state.now !== null && state.now - state.startedAt >= limitsOf(state).closingAtMs;
+        const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit" || closing;
+        const guidance = out.say.find((text) => (Object.values(SAFETY_GUIDANCE) as string[]).includes(text));
+        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(guidance ? { guidance } : {}) };
+      };
+      let working = 0;
+      const turn = async (run: () => Promise<TextOutput>): Promise<VoiceTurn> => {
+        if (inactive()) return none;
+        const before = session.trace().turns.length;
+        working++;
+        let out: TextOutput;
+        try { out = await run(); } finally { working--; }
+        persist(out);
+        await queue;
+        if (inactive()) return none;
+        const from = Math.max(before, told);
+        told = session.trace().turns.length;
+        return voiceTurn(out, from);
       };
       const call: VoiceCall = {
         id: record.id,
@@ -934,6 +966,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         get revision() {
           return record.revision;
         },
+        get working() { return working > 0; },
+        onGuidance(listener) { hearGuidance = listener; },
         get pendingFinal() {
           return pendingFinal ? structuredClone(pendingFinal) : null;
         },

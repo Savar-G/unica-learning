@@ -33,7 +33,7 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 
 1. The model gets the session's offers for this turn: the allowed acts, their code-written lines, the warm groups with their phrases and original pick ids, and the board offers. It returns a version 2 proposal (`src/lib/maya-model.ts`, prompt `PROMPT_VERSION`).
 2. `step` checks the proposal. The board core (`applyBatch`) then checks each board batch the session builds from it.
-3. If either refuses, the model is asked again once, with the refusal's code and reason.
+3. If either refuses, the model is asked again once, with the refusal's code and reason. With the danger known, it is not: code's guidance follows at once (#589).
 4. If the second proposal is refused too, or the model fails, code replaces it with a fallback (`fallbacks` in `src/lib/maya/session.ts`). A fallback is code lines or a bank phrase from the session's own offers, with no free talk and no board, and `step` checks it like any proposal.
 5. If no fallback is accepted, the call ends as a technical issue and Maya says nothing.
 
@@ -146,6 +146,10 @@ The text adapter takes three inputs that only speech brings. The admin demo and 
 | `partial(text)` | `child_turn` with `final: false` | The child talks over Maya. Her output stops (`cancelled` in the output: stop the audio and drop board batches not yet shown) and nothing is judged. It returns without waiting for a model call or free-talk review. The interrupted input returns no speech or board batches. Its late result cannot change the session or add a Maya trace turn. Maya does not answer; the full turn comes through `child`. |
 | `mayaSaid(text)` | `maya_said` | What Maya actually said in one utterance from the current output batch. Each report consumes the matching unspoken utterance. Words that are not her approved text stop her output and start `REPAIR_MAYA`: the repair comes first (`repair` act), then the teaching goes on. Her approved text changes nothing. |
 | `contentProblem(detail)` | `content_problem` | The package turns out wrong during the call: the content hold (`CONTENT_HOLD`), no more teaching, a close, outcome `content_issue`. In the safety state the safety path goes on and the outcome stays `safety`. A problem that comes while an input runs is taken before that input's next Maya turn. |
+
+## Safety guidance goes out first (#589)
+
+With `onGuidance` set (the voice call), the session gives accepted safety guidance to that function at once and records it as delivered, then asks the model for the close. The input's own output holds only what comes after. With `channel: "chat"`, the close is code's fallback and no close call is made, the one Maya turn a trace accepts with a fallback and no model attempt. Other callers still get the guidance and the close together. See [Safety guidance goes first](maya-voice.md#safety-guidance-goes-first-589).
 
 ## Cancellation and pending work
 

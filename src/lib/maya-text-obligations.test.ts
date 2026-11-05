@@ -306,3 +306,99 @@ describe("cancellation keeps pending work", () => {
     expect([...coverage].sort()).toEqual(["child", "contentProblem", "held_response", "late", "mayaSaid", "partial", "start", "tick"]);
   });
 });
+
+describe("safety guidance does not wait for a model (#589)", () => {
+  /** A model that reads danger on the child's turn, then waits for the test on each later call. */
+  function dangerThenHeld(first: unknown = { version: 2, act: "safety", parts: [], reading: { safety: "immediate" } }) {
+    const base = ruleMayaModel();
+    const held: PromiseWithResolvers<void>[] = [];
+    let armed = false;
+    let asked = 0;
+    const model = { ...base, propose: async (...args: Parameters<typeof base.propose>) => {
+      if (!armed) return base.propose(...args);
+      if (++asked === 1) return first;
+      const wait = Promise.withResolvers<void>();
+      held.push(wait);
+      await wait.promise;
+      return base.propose(...args);
+    } };
+    return { model, held, arm: () => { armed = true; }, asked: () => asked };
+  }
+  const settled = () => new Promise((r) => setTimeout(r, 20));
+
+  it("goes out before the close call answers, and the input's output holds only what follows", async () => {
+    const d = dangerThenHeld();
+    const heard: TextOutput[] = [];
+    const session = createTextSession({ callId: "now", package: pkg, model: d.model, clock: () => T0, random: 7, onGuidance: (out) => heard.push(out) });
+    await session.start();
+    d.arm();
+    let done: TextOutput | null = null;
+    const child = session.child("Someone hurts me.").then((out) => { done = out; return out; });
+    await settled();
+    expect(heard.map((o) => o.say)).toEqual([[SAFETY_GUIDANCE.immediate]]);
+    expect(heard[0]).toMatchObject({ ended: null });
+    expect(d.held).toHaveLength(1);
+    expect(done).toBeNull();
+    d.held[0].resolve();
+    const out = await child;
+    expect(out.say.join(" ")).not.toContain(SAFETY_GUIDANCE.immediate);
+    expect(out.say.length).toBeGreaterThan(0);
+    expect(out.ended).toMatchObject({ reason: "safety" });
+    const trace = session.trace();
+    expect(checkTrace(trace).ok).toBe(true);
+    expect(trace.turns.flatMap((t) => t.kind === "maya" ? [t.output?.act] : [])).toEqual(["open", "safety", "close"]);
+    expect(trace.obligations.filter((o) => o.kind === "safety_due").map((o) => o.status)).toEqual(["served"]);
+  });
+
+  it("a saved session goes on after the guidance with no second guidance, whether or not the call was resumed", async () => {
+    const d = dangerThenHeld();
+    const heard: TextOutput[] = [];
+    const options = { callId: "now-saved", package: pkg, model: d.model, clock: () => T0, random: 7, onGuidance: (out: TextOutput) => heard.push(out) };
+    const session = createTextSession(options);
+    await session.start();
+    d.arm();
+    void session.child("Someone hurts me.");
+    await settled();
+    const saved = JSON.parse(JSON.stringify(await session.saved()));
+    const resumed = createTextSession({ ...options, resume: saved, onGuidance: (out) => heard.push(out) });
+    expect(resumed.session).toMatchObject({ state: "SAFETY", safety: { guided: true } });
+    const close = resumed.tick();
+    await settled();
+    d.held.at(-1)!.resolve();
+    const out = await close;
+    expect(out.ended).toMatchObject({ reason: "safety" });
+    expect(heard).toHaveLength(1);
+    expect(out.say.join(" ")).not.toContain(SAFETY_GUIDANCE.immediate);
+    d.held[0].resolve();
+  });
+
+  it("a refused proposal gets code's guidance with no repair call", async () => {
+    const d = dangerThenHeld({ version: 2, act: "guide", step: "ones", level: 4, parts: [{ talk: "Hmm." }], reading: { safety: "concern" } });
+    const heard: TextOutput[] = [];
+    const session = createTextSession({ callId: "now-refused", package: pkg, model: d.model, clock: () => T0, random: 7, onGuidance: (out) => heard.push(out) });
+    await session.start();
+    d.arm();
+    const child = session.child("Someone hurts me.");
+    await settled();
+    expect(heard.map((o) => o.say)).toEqual([[SAFETY_GUIDANCE.concern]]);
+    // The one held call is the close: nothing asked again about the refusal.
+    expect(d.asked()).toBe(2);
+    d.held[0].resolve();
+    await child;
+    const attempts = session.trace().turns.flatMap((t) => t.kind === "maya" && t.output?.act === "safety" ? t.attempts.map((a) => a.source) : []);
+    expect(attempts).toEqual(["model", "fallback"]);
+  });
+
+  it("without a listener a session still returns the guidance and the close together", async () => {
+    const d = dangerThenHeld();
+    const session = createTextSession({ callId: "whole", package: pkg, model: d.model, clock: () => T0, random: 7 });
+    await session.start();
+    d.arm();
+    const child = session.child("Someone hurts me.");
+    await settled();
+    d.held[0].resolve();
+    const out = await child;
+    expect(out.say[0]).toBe(SAFETY_GUIDANCE.immediate);
+    expect(out.ended).toMatchObject({ reason: "safety" });
+  });
+});
