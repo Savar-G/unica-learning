@@ -11,8 +11,11 @@ export async function withFamilyCardOperation<T>(store: { begin(): Promise<boole
   return result;
 }
 
-/** `copies`: the copies without names this run wrote (#201); a retry after an earlier run's copies writes 0. */
-export type FamilyDeletionResult = { state: "deleted"; images: number; copies: number } | { state: "busy" | "excluded" };
+/**
+ * `copies`: the copies without names this run wrote (#201); a retry after an earlier run's copies writes 0. `plan_start`: the family is
+ * kept, as Stripe may still make a plan for it (#554).
+ */
+export type FamilyDeletionResult = { state: "deleted"; images: number; copies: number } | { state: "busy" | "excluded" | "plan_start" };
 
 /** The external worker must enforce its time limit. Saving the cursor first also survives termination. */
 export interface RetentionBatchStore {
@@ -23,7 +26,7 @@ export interface RetentionBatchStore {
 
 export async function runRetentionBatch(ids: string[], store: RetentionBatchStore, remainingMs: () => number, maximumFamilyMs = 30_000) {
   if (!Number.isFinite(maximumFamilyMs) || maximumFamilyMs <= 0) throw new Error("Invalid deletion budget");
-  const counts = { eligible: ids.length, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0, copies: 0 };
+  const counts = { eligible: ids.length, deleted: 0, busy: 0, excluded: 0, plan_start: 0, failed: 0, images: 0, copies: 0 };
   const cursor = await store.cursor();
   const order = cursor === null ? ids : [...ids.filter((id) => id > cursor), ...ids.filter((id) => id <= cursor)];
   const budget = Math.min(maximumFamilyMs, remainingMs());

@@ -20,7 +20,8 @@
 .test-board-tab:focus-visible { outline-offset: -4px; }
 .wb-hide { appearance: none; min-height: 44px; margin: -2px 0 -6px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font: 400 15px/1 var(--sans); cursor: pointer; }
 .test-mark { appearance: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font: 400 16px/1 var(--sans); cursor: pointer; }
-.test-mark { align-self: flex-start; margin-top: 4px; }
+.test-question-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.test-question-actions .test-mark { margin: 0; }
 .test-mark[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); }
 /* Keep each control's full height when the question pane needs to scroll. */
 .test-desk .test-pane-l > * { flex-shrink: 0; }
@@ -38,12 +39,13 @@
 @media (max-width: 900px), (orientation: portrait) {
   .test-desk .test-pane-l { gap: 16px; }
   /* Next uses the space below the answer display, beside the full number pad. The pad never runs under Next. */
-  .test-response:has(.test-num) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto 1fr auto; gap: 14px; }
+  .test-response:has(.test-num) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto 1fr auto; gap: 14px; }
   .test-response .test-num { display: contents; }
   .test-response .test-display { grid-column: 1; grid-row: 1; }
-  .test-response .test-pad { grid-column: 2; grid-row: 1 / 4; }
-  .test-response:has(.test-num) > .test-alert { grid-column: 1; grid-row: 2; }
-  .test-response:has(.test-num) > .test-next { grid-column: 1; grid-row: 3; flex-wrap: wrap; }
+  .test-response .test-pad { grid-column: 2; grid-row: 1 / 5; }
+  .test-response:has(.test-num) > .test-question-actions { grid-column: 1; grid-row: 2; }
+  .test-response:has(.test-num) > .test-alert { grid-column: 1; grid-row: 3; }
+  .test-response:has(.test-num) > .test-next { grid-column: 1; grid-row: 4; flex-wrap: wrap; }
   .test-end { margin: 16px 20px 20px; }
   /* Stacked: the folded board is a 56 px bar under the question. */
   .test-root .test-split.test-desk.is-board-closed { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 56px; }

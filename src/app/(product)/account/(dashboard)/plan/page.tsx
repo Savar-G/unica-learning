@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CancelPlan } from "@/components/account-plan";
+import { PlanText, planDay as day } from "@/components/plan-text";
 import { SupportPage } from "@/components/support-page";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
-import { familyProvince, familyZone, formatInZone, type FamilyZone } from "@/lib/family-time";
+import { familyProvince, familyZone, type FamilyZone } from "@/lib/family-time";
 import { pageMetadata } from "@/lib/metadata";
+import { parentDashboard } from "@/lib/parent-dashboard-server";
 import { canCancel, type ParentPlan } from "@/lib/parent-plan";
 import { familyPlans } from "@/lib/parent-plan-server";
-import { cad } from "@/lib/site";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 
 export const metadata = pageMetadata({ path: "/account/plan", title: "Your plan", description: "See or cancel your plan.", index: false });
@@ -19,10 +20,11 @@ export default async function PlanPage() {
   const db = await sessionClient();
   const parent = await parentId(db);
   if (!parent) redirect("/sign-in?next=/account/plan");
-  const [{ data: family }, { data: kids }, plans] = await Promise.all([
+  const [{ data: family }, { data: kids }, plans, dashboard] = await Promise.all([
     db.from("parents").select("postal, time_zone").maybeSingle(),
     db.from("children").select("id, created_at, province").order("created_at").order("id"),
     familyPlans(parent),
+    parentDashboard(),
   ]);
   const zone = familyZone({ timeZone: family?.time_zone ?? null, postal: family?.postal ?? null, province: familyProvince(kids ?? []) });
   return (
@@ -34,7 +36,7 @@ export default async function PlanPage() {
           <li key={cardId} className="acct-kid acct-plan">
             <div>
               <b>{childName}</b>
-              <PlanText plan={plan} zone={zone} />
+              <PlanText plan={plan} zone={zone} cardUpdate={dashboard ? "link" : undefined} />
             </div>
             {canCancel(plan) && <CancelPlan cardId={cardId} name={childName} consequence={consequence(plan, zone)} />}
           </li>
@@ -43,21 +45,6 @@ export default async function PlanPage() {
       <p className="small acct-out"><Link href="/account">Back to your account</Link>. <Link href="/terms">Read the terms</Link>.</p>
     </SupportPage>
   );
-}
-
-const day = (at: string | null, zone: FamilyZone) => (at ? formatInZone(at, zone, { year: "numeric", month: "long", day: "numeric" }) : null);
-const money = (monthly: number | null) => (monthly === null ? "the monthly price" : `CAD ${cad(monthly)}`);
-
-function PlanText({ plan, zone }: { plan: ParentPlan; zone: FamilyZone }) {
-  switch (plan.kind) {
-    case "not_started": return <p>Your card is saved, and nothing has been charged. Your free first month starts when the first workbook arrives at your home. To stop before then, email <Email />.</p>;
-    case "free_month": return <p>Free first month. On {day(plan.firstCharge, zone)}, we charge {money(plan.monthly)}, then {money(plan.monthly)} each month until you cancel.</p>;
-    case "paying": return <p>{money(plan.monthly)} a month.{plan.nextCharge ? ` Next charge: ${day(plan.nextCharge, zone)}.` : ""}</p>;
-    case "payment_failed": return <p>Your last payment did not go through. To update your card, email <Email />.</p>;
-    case "ending": return <p>Cancelled. {plan.endsOn ? `The plan ends on ${day(plan.endsOn, zone)}. ` : ""}We will not charge your card{plan.free ? "" : " again"}.</p>;
-    case "ended": return <p>This plan has ended. We will not charge your card.</p>;
-    case "unknown": return <p>We cannot show this plan right now. To cancel, email <Email />.</p>;
-  }
 }
 
 function consequence(plan: ParentPlan, zone: FamilyZone): string {

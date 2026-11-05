@@ -198,13 +198,22 @@ describe("retention run", () => {
   it("delete mode claims only the families the rules delete, with the Stripe end date", async () => {
     const s = store();
     expect(await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), s.store, () => 840_000, NOW))
-      .toEqual({ ok: false, eligible: 3, deleted: 3, busy: 0, excluded: 0, failed: 0, images: 0, copies: 3, deferred: 0, ...decisions });
+      .toEqual({ ok: false, eligible: 3, deleted: 3, busy: 0, excluded: 0, plan_start: 0, failed: 0, images: 0, copies: 3, deferred: 0, ...decisions });
     expect(s.runs).toEqual([
       { id: "a-request", endedAt: null },
       { id: "b-free-test", endedAt: null },
       { id: "c-former", endedAt: "2026-03-01T00:00:00.000Z" },
     ]);
     expect(s.calls[0]).toBe("verify");
+  });
+
+  it("keeps a family with an open plan start and reports it, with no failure and no id", async () => {
+    const s = store();
+    const run = s.store.run;
+    const keep = { ...s.store, run: async (id: string, limit: number, claim: { endedAt: string | null }) => id === "b-free-test" ? { state: "plan_start" as const } : run(id, limit, claim) };
+    const result = await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), keep, () => 840_000, NOW);
+    expect(result).toMatchObject({ eligible: 3, deleted: 2, plan_start: 1, failed: 0 });
+    expect(JSON.stringify(result)).not.toContain("b-free-test");
   });
 
   it("retries queued work within each budget despite slow unrelated Stripe reads", async () => {

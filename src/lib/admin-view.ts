@@ -1,3 +1,4 @@
+import { UNKNOWN_RESPONSE } from "@/lib/assessment";
 // The admin area (#77) in plain data: the list filters, the test's answers beside its questions, and the words for the
 // flags. Pure: no network, database or clock, so the pages (src/app/(product)/admin) only fetch and show. Server and admin only:
 // it handles correct answers, which a parent's browser must never get.
@@ -161,7 +162,7 @@ export interface AnswerLine {
   number: number;
   questionId: string;
   /** Stage 1 (at the school grade) or stage 2 (after the route); null when the question is not in the stored test. */
-  stage: 1 | 2 | 3 | null;
+  stage: number | null;
   prompt: string | null;
   level: Level | null;
   strand: Strand | null;
@@ -239,7 +240,8 @@ export const questionNumbers = (answers: readonly Pick<AnswerRecord, "position" 
  * finished, whose score counted every answer.
  */
 export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], reviews: readonly ReviewRecord[], leftOut: readonly string[] = []): AnswerLine[] {
-  const stage = new Map<string, { q: Question; stage: 1 | 2 | 3 }>();
+  const stage = new Map<string, { q: Question; stage: number }>();
+  for (const [i, block] of (test.adaptive?.blocks ?? []).entries()) for (const q of block.questions) stage.set(q.id, { q, stage: i + 1 });
   for (const q of test.stage1) stage.set(q.id, { q, stage: 1 });
   for (const q of [...test.stage2.up, ...test.stage2.stay, ...test.stage2.down]) stage.set(q.id, { q, stage: 2 });
   for (const q of [...(test.stage3?.up ?? []), ...(test.stage3?.down ?? [])]) stage.set(q.id, { q, stage: 3 });
@@ -260,7 +262,7 @@ export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], 
       correct: a.correct,
       misconception: misconceptionText(a.misconception),
       timeMs: a.time_ms,
-      tooFast: a.time_ms < TOO_FAST_MS,
+      tooFast: a.response !== UNKNOWN_RESPONSE && a.time_ms < TOO_FAST_MS,
       leftOut: out.has(a.question_id),
       work: { required: a.work_required, image: a.work_path, text: a.work_text },
       review: reviewed.get(a.question_id) ?? null,

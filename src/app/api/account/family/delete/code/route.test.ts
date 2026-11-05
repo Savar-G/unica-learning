@@ -1,13 +1,14 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const f = vi.hoisted(() => ({ user: vi.fn(), access: vi.fn(), admin: vi.fn(), ask: vi.fn(), retry: vi.fn() }));
+const f = vi.hoisted(() => ({ user: vi.fn(), access: vi.fn(), admin: vi.fn(), ask: vi.fn(), retry: vi.fn(), after: vi.fn(), alert: vi.fn() }));
 vi.mock("server-only", () => ({}));
+vi.mock("next/server", () => ({ after: f.after }));
 vi.mock("@/lib/supabase-auth", () => ({ sessionClient: async () => ({ auth: { getUser: f.user } }), adminClient: f.admin }));
 vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access }));
 vi.mock("@/lib/family-time-server", () => ({ familyRetryTime: f.retry }));
 vi.mock("@/lib/email-delivery", () => ({ sendEmail: vi.fn(), emailConfigProblem: () => null }));
 vi.mock("@/lib/family-delete-code", () => ({ requestDeleteCode: f.ask }));
-vi.mock("@/lib/family-delete-server", () => ({ supabaseDeleteStore: () => "store", supabaseDeleteCodes: () => "codes" }));
+vi.mock("@/lib/family-delete-server", () => ({ supabaseDeleteStore: () => "store", supabaseDeleteCodes: () => "codes", familyDeleteAlert: f.alert }));
 import { POST } from "./route";
 
 const parent = "11111111-1111-4111-8111-111111111111";
@@ -56,6 +57,15 @@ it("tells the module when the address is not confirmed", async () => {
 it("never gives the code to the browser", async () => {
   const response = await POST(request());
   expect(await response.json()).toEqual({ ok: true, sentTo: "parent@example.invalid", unsure: false });
+});
+it("refuses a code for an unresolved plan start and tells the team", async () => {
+  f.ask.mockResolvedValue({ ok: false, error: "plan_start" });
+  const response = await POST(request());
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual({ ok: false, error: "plan_start" });
+  expect(f.after).toHaveBeenCalledTimes(1);
+  await f.after.mock.calls[0][0]();
+  expect(f.alert).toHaveBeenCalledWith(parent, { plansStopped: 0, state: "plan_start" });
 });
 it.each([
   [{ ok: false, error: "no_confirmed_email" }, 409],

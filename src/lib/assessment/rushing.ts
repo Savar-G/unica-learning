@@ -3,6 +3,7 @@
 // knows; very fast right answers still count. When too many answers are very fast, the report says the result may not
 // be reliable and offers a new test at once. Pure, like the session: every time comes in with the answers.
 // Starting values; Savar tunes them from the first real results. Never inline them.
+import { UNKNOWN_RESPONSE } from "./adaptive";
 import { TOO_FAST_MS } from "./flags";
 import type { Answer } from "./types";
 
@@ -11,7 +12,7 @@ export const RUSH_RUN = 3;
 /** Over this share of very fast answers, in whole percent, the result may not be reliable. */
 export const UNRELIABLE_FAST_PERCENT = 30;
 
-type Timed = Pick<Answer, "questionId" | "timeMs" | "correct">;
+type Timed = Pick<Answer, "questionId" | "timeMs" | "correct"> & Partial<Pick<Answer, "response">>;
 
 /** How fast the child answered a test, as the placement stores it. */
 export interface Pace {
@@ -24,7 +25,7 @@ export interface Pace {
   unreliable: boolean;
 }
 
-const veryFast = (a: Pick<Answer, "timeMs">) => a.timeMs < TOO_FAST_MS;
+const veryFast = (a: Pick<Answer, "timeMs"> & Partial<Pick<Answer, "response">>) => a.response !== UNKNOWN_RESPONSE && a.timeMs < TOO_FAST_MS;
 
 /** For each answer in test order: true when it is very fast and wrong, inside a run of RUSH_RUN or more very fast answers. */
 export function leftOutOfScore(answers: readonly Timed[]): boolean[] {

@@ -29,6 +29,7 @@ const GRANTED: Record<string, Set<string>> = {
 };
 
 const ROWS: Record<string, unknown> = {
+  child_plan_states: [],
   children: [{ id: CHILD, first_name: "Leah", grade: 3 }],
   reports: [{ id: "report-1", child_id: CHILD, assessment_id: TEST, assessment: { province: "BC" } }],
   card_setups: [{ child_id: CHILD }],
@@ -64,11 +65,29 @@ describe("the Supabase reader", () => {
     const [child] = await listChildren(r.reader, NOW);
     expect(child).toEqual({ id: CHILD, firstName: "Leah", schoolGrade: 3, stage: "first_book_coming", opensOn: "overview", tabs: ["overview", "workbooks", "assessment", "account"], readOnly: false, currentWorkbook: { number: 1 }, reportIds: ["report-1"], finishedTests: [{ reportId: "report-1", finishedAt: expect.any(Number) }] });
   });
+  it("reads the plan from the stored row, so a delivered child whose plan ended is `ended`", async () => {
+    const delivered = { workbook_delivery_receipts: [{ child_id: CHILD }] };
+    const withRows = (rows: Record<string, unknown>) => createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+      const table = new URL(String(input)).pathname.replace("/rest/v1/", "");
+      return Response.json(rows[table] ?? ROWS[table] ?? []);
+    } } }) as never;
+    const stage = async (rows: Record<string, unknown>) => (await listChildren(parentViewReader(withRows(rows), PARENT, withRows(rows), {}), NOW))[0].stage;
+    expect(await stage({ ...delivered, child_plan_states: [{ child_id: CHILD, kind: "ended" }] })).toBe("ended");
+    expect(await stage({ ...delivered, child_plan_states: [{ child_id: CHILD, kind: "paying" }] })).toBe("active");
+    expect(await stage(delivered)).toBe("active");
+  });
+  it("keeps a family's dashboard when the plan read fails: every plan reads as unknown", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const [child] = await listChildren(reader("child_plan_states").reader, NOW);
+    expect(child.stage).toBe("first_book_coming");
+    expect(log).toHaveBeenCalledWith("[parent-view] plan read failed", "plans read: boom");
+    log.mockRestore();
+  });
   it("reads only the tables it needs, and no raw profile, event or call table", async () => {
     const r = reader();
     await listChildren(r.reader, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "reports", "workbook_delivery_receipts", "workbooks"]);
-    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "test_accounts"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "test_accounts"]);
   });
   it("keeps the parent's session within the database's column grants", async () => {
     const r = reader();
@@ -85,6 +104,7 @@ describe("the Supabase reader", () => {
     await listChildren(r.reader, NOW);
     expect(r.admin.find((u) => u.pathname.endsWith("/assessments"))!.searchParams.get("parent_id")).toBe(`eq.${PARENT}`);
     expect(r.admin.find((u) => u.pathname.endsWith("/test_accounts"))!.searchParams.get("parent_id")).toBe(`eq.${PARENT}`);
+    expect(r.admin.find((u) => u.pathname.endsWith("/child_plan_states"))!.searchParams.get("parent_id")).toBe(`eq.${PARENT}`);
   });
   it("asks only for shipped workbooks and saved cards", async () => {
     const r = reader();
@@ -94,6 +114,9 @@ describe("the Supabase reader", () => {
   });
   it.each(["children", "reports", "card_setups", "workbook_delivery_receipts", "workbooks", "assessments"])("throws when %s fails", async (table) => {
     await expect(listChildren(reader(table).reader, NOW)).rejects.toThrow();
+  });
+  it("does not read plans without the secret key", async () => {
+    await expect(parentViewReader(client([]), PARENT, null, {}).plans()).rejects.toThrow("no secret key");
   });
   it("throws without the secret key, so a family never reads as having no tests", async () => {
     await expect(listChildren(parentViewReader(client([]), PARENT, null, {}), NOW)).rejects.toThrow("no secret key");
@@ -115,7 +138,7 @@ describe("the Supabase reader of the Workbooks tab (#558)", () => {
     const r = reader();
     await readWorkbooks(r.reader, CHILD, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbooks"]);
-    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "test_accounts", "workbook_emails"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "test_accounts", "workbook_emails"]);
     const emails = r.admin.find((u) => u.pathname.endsWith("/workbook_emails"))!.searchParams;
     expect(emails.get("select")).toBe("child_id,workbook_number,delivery");
     expect(emails.get("parent_id")).toBe(`eq.${PARENT}`);
@@ -294,7 +317,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect((await r.reader.learningCards())[0]).toMatchObject({ childId: CHILD, interests: ["space"] });
     await readOverview(r.reader, CHILD, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
-    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "test_accounts"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "child_plan_states", "test_accounts"]);
   });
 });
 

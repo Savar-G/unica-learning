@@ -114,7 +114,7 @@ describe("an admin test call", () => {
     expect(events[0]).toMatchObject({ source: "call", result: "right_with_help", question: PKG.ref, evidence: { kind: "call", id: row.id } });
     expect(row.learningEventId).toBe(events[0].id);
     expect(s.rebuild).toHaveBeenCalledTimes(1);
-    expect(s.rebuild).toHaveBeenCalledWith(CHILD);
+    expect(s.rebuild).toHaveBeenCalledWith(CHILD, expect.objectContaining({ call: expect.objectContaining({ childId: CHILD }) }));
     expect(row.profileRebuiltAt).not.toBeNull();
     expect(end.view.learningEventId).toBe(events[0].id);
   });
