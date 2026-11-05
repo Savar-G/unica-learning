@@ -28,7 +28,6 @@ import {
   readAnswers,
   renderLine,
   score,
-  seeded,
   SENTENCES,
   sentenceProblems,
   writeListenerFolder,
