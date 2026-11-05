@@ -996,9 +996,10 @@ export function step(session: Session, event: SessionEvent): StepResult {
       }
       break;
     case "content_problem":
+      // Stored in every state, so a problem found after a safety concern still writes no learning event. Safety keeps the turn.
+      s.contentProblem = event.detail;
       if (s.state !== "SAFETY") {
         moveTo(s, "CONTENT_HOLD");
-        s.contentProblem = event.detail;
         s.expect = "maya";
         effects.push({ kind: "cancel_output" });
       }

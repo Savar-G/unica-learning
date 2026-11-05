@@ -723,6 +723,20 @@ describe("other events", () => {
     expect(learningEvent(s, { parentId: "p", childId: "c" })).toBeNull();
   });
 
+  it("writes no learning event when the content problem comes after a safety concern, and safety keeps the turn (#527 review)", () => {
+    const c = afterExample();
+    c.child("Someone at home hurts me.");
+    const guided = c.maya({ act: "safety", parts: [], reading: { safety: "concern" } });
+    expect(said(guided.effects)).toEqual([SAFETY_GUIDANCE.concern]);
+    const before = c.session.state;
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    expect(c.session.state).toBe(before);
+    expect(c.session.safety.flagged).toBe(true);
+    const s = step(c.session, { type: "hang_up", at: T0 + 1000 }).session;
+    expect(s.outcome).not.toBeNull();
+    expect(learningEvent(s, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
   it("gives the held lines as the only fallback on a hold during the call (#527)", () => {
     const c = afterExample();
     c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
