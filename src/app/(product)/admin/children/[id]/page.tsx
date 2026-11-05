@@ -45,6 +45,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
     </Table>
     {/* #312: drafts made in the background, with their progress and check results. */}
     <h2>Workbook drafts</h2>
+    <p><Link className="btn adm-btn" href={`/admin/children/${c.id}/preview-plan`} prefetch={false}>Preview plan</Link></p>
     <PrepareWorkbook childId={c.id} child={c.first_name} runner={runner} />
     {runner === "mac" && <p className="adm-note"><WorkerLine worker={worker} /></p>}
     <ChildRunsTable runs={runs} now={new Date()} />
