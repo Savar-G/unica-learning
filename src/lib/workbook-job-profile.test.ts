@@ -5,7 +5,7 @@ import { allRight, knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
 import { readChildProfile, type ChildProfileStore } from "@/lib/child-profile";
-import { prepareChildProfileForWorkbook, rebuildWorkbookLearnerProfile, type WorkbookProfileSeams } from "@/lib/child-profile-server";
+import { prepareChildProfileForWorkbook, rebuildWorkbookLearnerProfile, WORKBOOK_LEARNER_DERIVED_VERSION, type WorkbookProfileSeams } from "@/lib/child-profile-server";
 import { memoryLearnerProfileStore } from "@/lib/learner-profile-memory";
 import { profileAiClient } from "@/lib/learner-profile-ai";
 import { memoryReportReaders, type MemoryReportTables } from "@/lib/report-loading-memory";
@@ -61,7 +61,7 @@ function setup({ test = true, ahead = false }: { test?: boolean; ahead?: boolean
         .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!))[0];
       if (!latest) return null;
       const row = learner.rows().find((r) => r.assessmentId === latest.id);
-      return { assessmentId: latest.id, schemaVersion: row?.schemaVersion ?? null, profile: row?.profile ?? null };
+      return { assessmentId: latest.id, completedAt: latest.completedAt, schemaVersion: row?.schemaVersion ?? null, profile: row?.profile ?? null };
     },
     async rebuildLearner(assessmentId) {
       rebuilds.learner++;
@@ -105,7 +105,7 @@ function setup({ test = true, ahead = false }: { test?: boolean; ahead?: boolean
 describe("P2 profile at plan time", () => {
   it("builds the missing child profile for a finished Grade 4 test with an empty learning card", async () => {
     const s = setup({ ahead: true });
-    s.store(s.facts);
+    s.store({ ...s.facts, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION });
     expect(await readChildProfile(s.profiles, CHILD)).toBeNull();
     expect(s.rebuilds).toEqual({ prepare: 0, learner: 0, child: 0 });
     const id = await s.start();
@@ -132,11 +132,88 @@ describe("P2 profile at plan time", () => {
     expect(s.rebuilds).toEqual({ prepare: 1, learner: 1, child: 1 });
   });
 
-  it.each(["missing", "row schema", "JSON schema", "family facts"])("rebuilds a stale learner profile: %s", async (kind) => {
+  it("refuses a generic plan when a BC test finishes after the first latest-test read (F1)", async () => {
+    const s = setup({ test: false });
+    const completed = setup();
+    const latest = s.seams.latestFinishedBc;
+    let first = true;
+    s.seams.latestFinishedBc = async (childId) => {
+      const before = await latest(childId);
+      if (first) {
+        first = false;
+        // Codex's reproduction: completion is visible to the child build, but no learner row exists yet.
+        s.tables.assessments!.push(...completed.tables.assessments!);
+      }
+      return before;
+    };
+    const id = await s.start();
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect(s.tables.assessments![0].status).toBe("completed");
+    expect((await s.runs.run(id))?.error).toBe("We couldn't build Leah's profile from the assessment. Try again, or check the admin profile page.");
+    expect(await s.runs.frame(id)).toBeNull();
+    expect(await s.drafts.draft((await s.runs.run(id))!.draftKey)).toBeNull();
+    expect(s.rebuilds).toEqual({ prepare: 1, learner: 0, child: 1 });
+    expect(s.ai.requests).toEqual([]);
+  });
+
+  it("makes a facts-round learner current after one rebuild across two preparations (F2)", async () => {
+    const s = setup();
+    const facts = {
+      families: ["add20" as const], correct: 1, answered: 1, medianMs: 2000,
+      accuracy: "secure" as const, speed: "quick" as const, seconds: 60, skipped: 0,
+    };
+    s.tables.assessments![0].placement!.facts = facts;
+    s.store({ ...s.facts, facts });
+    expect((await prepareChildProfileForWorkbook(CHILD, s.seams)).ok).toBe(true);
+    expect((await prepareChildProfileForWorkbook(CHILD, s.seams)).ok).toBe(true);
+    expect(s.rebuilds.learner).toBe(1);
+    expect(s.rebuilds.child).toBe(2);
+    expect(s.learner.rows()[0].profile).toMatchObject({ workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION, facts });
+  });
+
+  it("refuses an older profile when another BC test finishes after the child profile read", async () => {
+    const s = setup();
+    s.store({ ...s.facts, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION });
+    const latest = s.seams.latestFinishedBc;
+    let reads = 0;
+    s.seams.latestFinishedBc = async (childId) => {
+      if (++reads === 2) {
+        s.tables.assessments!.push({ ...s.tables.assessments![0], id: "newer-test", completedAt: "2026-10-29T17:00:00.000Z" });
+      }
+      return latest(childId);
+    };
+    const id = await s.start();
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect((await s.runs.run(id))?.error).toBe("We couldn't build Leah's profile from the assessment. Try again, or check the admin profile page.");
+    expect(await s.runs.frame(id)).toBeNull();
+    expect(reads).toBe(2);
+  });
+
+  it("accepts a profile built from a later completed test than the final latest-test snapshot", async () => {
+    const s = setup();
+    const current = { ...s.facts, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION };
+    s.store(current);
+    const snapshot = await s.seams.latestFinishedBc(CHILD);
+    s.seams.latestFinishedBc = async () => snapshot;
+    const inputs = s.seams.child.profiles.inputs;
+    s.seams.child.profiles.inputs = async (childId) => {
+      s.tables.assessments!.push({ ...s.tables.assessments![0], id: "newer-test", completedAt: "2026-10-29T17:00:00.000Z" });
+      s.store(current, 1, "newer-test");
+      return inputs(childId);
+    };
+    const result = await prepareChildProfileForWorkbook(CHILD, s.seams);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("the newer test's profile must be accepted");
+    expect(result.profile?.profile.assessment?.assessmentId).toBe("newer-test");
+    expect(s.rebuilds.learner).toBe(0);
+  });
+
+  it.each(["missing", "row schema", "JSON schema", "derived version"])("rebuilds a stale learner profile once: %s", async (kind) => {
     const s = setup();
     if (kind === "row schema") s.store(s.facts, 99);
     if (kind === "JSON schema") s.store({ ...s.facts, schemaVersion: 99 });
-    if (kind === "family facts") s.store({ ...s.facts, facts: { families: ["add20"], correct: 1, answered: 1 } });
+    if (kind === "derived version") s.store({ ...s.facts, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION - 1 });
+    expect((await prepareChildProfileForWorkbook(CHILD, s.seams)).ok).toBe(true);
     expect((await prepareChildProfileForWorkbook(CHILD, s.seams)).ok).toBe(true);
     expect(s.rebuilds.learner).toBe(1);
     expect((await readChildProfile(s.profiles, CHILD))?.profile.assessment?.profile.level).toEqual(s.facts.level);
@@ -144,7 +221,7 @@ describe("P2 profile at plan time", () => {
 
   it("keeps a current learner profile and always rebuilds the child profile", async () => {
     const s = setup();
-    const facts = { ...s.facts, facts: { families: [], correct: 0, answered: 0, byFamily: [] } };
+    const facts = { ...s.facts, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION };
     s.store(facts);
     expect((await prepareChildProfileForWorkbook(CHILD, s.seams)).ok).toBe(true);
     expect((await prepareChildProfileForWorkbook(CHILD, s.seams)).ok).toBe(true);
@@ -184,10 +261,11 @@ describe("P2 profile at plan time", () => {
     expect(s.learner.rows()[0].profile).not.toHaveProperty("ai");
   });
 
-  it.each(["learner null", "learner error", "child save", "profile read", "wrong test"])("fails with a plain reason and no frame or draft: %s", async (kind) => {
+  it.each(["learner null", "learner error", "learner stale", "child save", "profile read", "wrong test"])("fails with a plain reason and no frame or draft: %s", async (kind) => {
     const s = setup();
     if (kind === "learner null") s.seams.rebuildLearner = async () => null;
     if (kind === "learner error") s.seams.rebuildLearner = async () => { throw new Error("private SQL error"); };
+    if (kind === "learner stale") s.seams.rebuildLearner = async () => s.facts;
     if (kind === "child save") s.seams.child.profiles.save = async () => ({ refused: "private constraint" });
     if (kind === "profile read") {
       const current = s.seams.child.profiles.current;
@@ -199,7 +277,7 @@ describe("P2 profile at plan time", () => {
     if (kind === "wrong test") {
       s.seams.child.profiles.inputs = async () => ({
         parentId: PARENT, grade: 4, learning: null,
-        assessment: { assessmentId: "another-test", completedAt: COMPLETED, buildId: null, profile: s.facts },
+        assessment: { assessmentId: "another-test", completedAt: COMPLETED, buildId: null, profile: { ...s.facts, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION } },
       });
       // A readable profile from another test cannot satisfy this test's preparation.
       s.seams.child.profiles.save = async (row, expected) => s.profiles.save({ ...row, assessmentId: null }, expected);

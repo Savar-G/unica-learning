@@ -16,6 +16,9 @@ import { profileAiClient, writeProfileAi } from "@/lib/learner-profile-ai";
 import { secretKeyReportReader } from "@/lib/report-loading-server";
 import { loadReportInputs, type ReportReader } from "@/lib/report-loading";
 
+/** Bump when this builder can derive more fields, including P1's fact families after its derivation is available. */
+export const WORKBOOK_LEARNER_DERIVED_VERSION = 1;
+
 // The child profile's rebuild (src/lib/child-profile.ts, #303) on the server, with the secret key. The report job
 // calls it last, after a finished test's profile and its AI parts are stored; the learning card's route calls it after
 // the test's profile is built again with the new answers. Later, the steps that write call and marking events call it.
@@ -63,8 +66,9 @@ export async function rebuildWorkbookLearnerProfile(assessmentId: string, db: {
   const inputs = await loadReportInputs(db.reader, assessmentId, () => Promise.reject(new Error("the learner profile reads no comparison")));
   if (!inputs) return null;
   const a = inputs.assessment;
-  const facts = learnerProfile({ placement: a.placement, answers: inputs.profileAnswers(), help: a.help, learning: await db.store.learning(a.childId) });
-  if (!facts) return null;
+  const derived = learnerProfile({ placement: a.placement, answers: inputs.profileAnswers(), help: a.help, learning: await db.store.learning(a.childId) });
+  if (!derived) return null;
+  const facts = { ...derived, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION };
   const owned = { assessmentId, parentId: a.parentId, childId: a.childId };
   const buildId = await db.store.save({ ...owned, profile: facts });
   if (!db.ai) return facts;
@@ -83,16 +87,16 @@ export async function rebuildWorkbookLearnerProfile(assessmentId: string, db: {
 
 /** Reads of the latest finished BC-scored test, and the two profile builds, for a new workbook plan. */
 export interface WorkbookProfileSeams {
-  latestFinishedBc(childId: string): Promise<{ assessmentId: string; schemaVersion: number | null; profile: unknown } | null>;
+  latestFinishedBc(childId: string): Promise<{ assessmentId: string; completedAt: string | null; schemaVersion: number | null; profile: unknown } | null>;
   rebuildLearner(assessmentId: string): Promise<LearnerProfile | null>;
   child: ChildProfileSeams;
 }
 
-/** Missing schema-1 additions need a rebuild too. A test without a facts round has no family results to add. */
+/** Require only fields this builder can produce. The marker makes a successful rebuild current until a version bump. */
 function staleLearnerProfile(schemaVersion: number | null, value: unknown): boolean {
-  const profile = value as { schemaVersion?: unknown; facts?: { byFamily?: unknown } | null } | null;
+  const profile = value as { schemaVersion?: unknown; workbookDerivedVersion?: unknown; facts?: unknown } | null;
   return schemaVersion !== PROFILE_SCHEMA_VERSION || profile?.schemaVersion !== PROFILE_SCHEMA_VERSION
-    || profile.facts === undefined || (profile.facts !== null && profile.facts.byFamily == null);
+    || profile.workbookDerivedVersion !== WORKBOOK_LEARNER_DERIVED_VERSION || profile.facts === undefined;
 }
 
 /** P2: called only when a run plans. A failed build or read must not give a child with a test a generic book. */
@@ -102,13 +106,20 @@ export async function prepareChildProfileForWorkbook(childId: string, seams: Wor
   try {
     const latest = await seams.latestFinishedBc(childId);
     if (latest && staleLearnerProfile(latest.schemaVersion, latest.profile)) {
-      if (!(await seams.rebuildLearner(latest.assessmentId))) return { ok: false };
+      const rebuilt = await seams.rebuildLearner(latest.assessmentId);
+      if (!rebuilt || staleLearnerProfile(rebuilt.schemaVersion, rebuilt)) return { ok: false };
     }
     const built = await rebuildChildProfileNow(childId, seams.child);
-    if (latest && !built?.built) return { ok: false };
     const profile = await readChildProfile(seams.child.profiles, childId);
-    // A stale row, or a build which lost its test, is not enough for this plan.
-    if (latest && profile?.profile.assessment?.assessmentId !== latest.assessmentId) return { ok: false };
+    // Recheck after both the build and the profile read. A test may have finished since the first read returned null.
+    const after = await seams.latestFinishedBc(childId);
+    if (after) {
+      const assessment = profile?.profile.assessment;
+      if (!built?.built || !assessment || staleLearnerProfile(assessment.profile.schemaVersion, assessment.profile)) return { ok: false };
+      const later = assessment.completedAt !== null && after.completedAt !== null
+        && Date.parse(assessment.completedAt) > Date.parse(after.completedAt);
+      if (assessment.assessmentId !== after.assessmentId && !later) return { ok: false };
+    }
     return { ok: true, profile };
   } catch (e) {
     console.error("[workbook profile] preparation failed", childId, e instanceof Error ? e.message : String(e));
@@ -123,13 +134,13 @@ export function workbookProfileBuilder(admin: SupabaseClient<Database>, env: Rec
   const workbooks = workbookStore(admin);
   const seams: WorkbookProfileSeams = {
     async latestFinishedBc(childId) {
-      const tests = await admin.from("assessments").select("id").eq("child_id", childId).eq("status", "completed")
+      const tests = await admin.from("assessments").select("id, completed_at").eq("child_id", childId).eq("status", "completed")
         .eq("placement->>scoredAgainst", "BC").order("completed_at", { ascending: false }).order("id").limit(1).maybeSingle();
       if (tests.error) throw new Error(tests.error.message);
       if (!tests.data) return null;
       const stored = await admin.from("learner_profiles").select("schema_version, profile").eq("assessment_id", tests.data.id).maybeSingle();
       if (stored.error) throw new Error(stored.error.message);
-      return { assessmentId: tests.data.id, schemaVersion: stored.data?.schema_version ?? null, profile: stored.data?.profile ?? null };
+      return { assessmentId: tests.data.id, completedAt: tests.data.completed_at, schemaVersion: stored.data?.schema_version ?? null, profile: stored.data?.profile ?? null };
     },
     rebuildLearner: (assessmentId) => rebuildWorkbookLearnerProfile(assessmentId, {
       reader: secretKeyReportReader(admin), store: learnerProfileStore(admin), ai: profileAiClient(env),
