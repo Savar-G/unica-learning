@@ -256,6 +256,10 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("changeAnswer");
       const row = tests.find((t) => t.id === id);
       if (!row || row.status !== "in_progress") return "closed";
+      if (row.test.adaptive) {
+        const locked = row.test.adaptive.blocks.slice(0, row.test.adaptive.locked).reduce((n,b) => n + b.questions.length, 0);
+        if (position < locked) return "closed";
+      }
       // #253: a stage 1 answer changes only while stage 1 is not locked (no route stored).
       if (position < row.test.stage1.length && row.route != null) return "closed";
       // D-282: a stage 2 answer changes only while stage 2 is not locked (no third stage record stored).
@@ -299,6 +303,15 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       row.stage3Route = stage3Route;
       if (stage3Route !== "none") row.resumeUntil = resumeUntil;
       return stage3Route;
+    },
+    async lockBlock(id, { expected, adaptive, answers, resumeUntil }) {
+      await begin("lockBlock");
+      const row = tests.find(t => t.id === id && t.status === "in_progress");
+      if (!row?.test.adaptive) return "closed";
+      if (row.test.adaptive.locked !== expected || !sameAnswers(row.answers, answers)) return "changed";
+      row.test.adaptive = structuredClone(adaptive);
+      row.resumeUntil = resumeUntil;
+      return "stored";
     },
     async complete(id, { at, placement, help, answers }) {
       await begin("complete");

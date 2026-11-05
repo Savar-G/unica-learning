@@ -89,10 +89,24 @@ function drawnQuestions(test: ExportRow): ExportRow[] {
   const taken = ROUTES.find((r) => r === test.route);
   const stage3 = isObject(stored.stage3) ? stored.stage3 : {};
   const onRoute = stage1.length + list(taken && stage2[taken]).length;
-  const row = (q: Question, stage: 1 | 2 | 3, route: Route | null, index: number, position: number | null): ExportRow => ({
+  const row = (q: Question, stage: number | null, route: Route | null, index: number, position: number | null): ExportRow => ({
     assessment_id: test.id, stage, route, index, position,
     question_id: q.id, template_id: q.templateId, level: q.level, strand: q.strand, format: q.format, question: q,
   });
+  if (isObject(stored.adaptive)) {
+    const blocks = Array.isArray(stored.adaptive.blocks) ? stored.adaptive.blocks : [];
+    const selected = new Map<string, { stage: number; index: number; position: number }>();
+    let first = 0;
+    blocks.forEach((block, stage) => {
+      const questions = list(isObject(block) ? block.questions : null);
+      questions.forEach((q, index) => selected.set(q.id, { stage: stage + 1, index, position: first + index }));
+      first += questions.length;
+    });
+    return list(stored.adaptive.pool).map((q, index) => {
+      const place = selected.get(q.id);
+      return row(q, place?.stage ?? null, null, place?.index ?? index, place?.position ?? null);
+    });
+  }
   return [
     ...stage1.map((q, i) => row(q, 1, null, i, i)),
     ...ROUTES.flatMap((r) => list(stage2[r]).map((q, i) => row(q, 2, r, i, taken === r ? stage1.length + i : null))),

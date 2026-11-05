@@ -2,6 +2,7 @@
 // with the answers. The flags go to Savar's alert and the stored placement (the admin area, #77), never to the parent's
 // report. The report gets only one thing from them: helpLikely, which says the level may be too high.
 // Starting values; tune them from the first real results and never inline them.
+import { UNKNOWN_RESPONSE } from "./adaptive";
 import { atLeast } from "./constants";
 import type { Answer } from "./types";
 
@@ -36,7 +37,7 @@ export type Flag =
 export function flagsFor(answers: readonly Answer[], help: HelpAnswer | null): Flag[] {
   const flags: Flag[] = [];
   if (help === "yes" || help === "a-little") flags.push({ kind: "helped", answer: help });
-  const fast = answers.filter((a) => a.timeMs < TOO_FAST_MS);
+  const fast = answers.filter((a) => a.response !== UNKNOWN_RESPONSE && a.timeMs < TOO_FAST_MS);
   if (fast.length > 0) flags.push({ kind: "too-fast", questionIds: fast.map((a) => a.questionId), right: fast.filter((a) => a.correct).length });
   answers.forEach((a, i) => {
     if (a.timeMs < LONG_PAUSE_MS || i < PAUSE_WINDOW || i + PAUSE_WINDOW > answers.length) return;
