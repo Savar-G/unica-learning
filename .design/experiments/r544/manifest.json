@@ -1,0 +1,191 @@
+{
+  "round": "r544",
+  "ticket": "#566 (spec #544, parent dashboard): pre-trial views and phone layout variants",
+  "route": "design skill, focused route, explore stage. The desktop shell of the mock is the chosen direction (D-235, D-242); only the two open decisions below vary. Nothing in src/ changes until Savar picks.",
+  "picked": null,
+  "picked_by": "waiting for Savar (D-242: Savar approves each screen). Until then T5 and T6 use the recommended options: set 1 B, set 2 A.",
+  "board": "index.html",
+  "how_to_open": "From the repo root: python3 -m http.server 3467 --directory .design/experiments/r544, then open http://127.0.0.1:3467/ (or open index.html directly in a browser; everything is local, no network).",
+  "sources": {
+    "binding": "AGENTS.md, DESIGN.md (warm look D-034, report D-084/D-087, copy rules), spec #544 (stages, tabs, three rules), decisions D-235 to D-242 in .design/decisions.md",
+    "mock": ".design/references/parent-dashboard/mock-2026-11-04.png on branch site/parent-dashboard-spec (FigJam fLyAJsC68ezugsmkH3oRGh node 99:53): the white left sidebar with the wordmark, the child block, icon tabs with the active tab in tangerine on accent-soft, white bordered cards, light 300 headlines, mono eyebrows",
+    "tokens": "site.css is the site's own CSS from the dev build of origin/main (base, warm look, support page, report), so every colour, type size and report rule is the real one. fonts/ holds the latin Geist and Geist Mono files.",
+    "content": "report-data.js is the markup the real ReportCard renders on /sample-report (Leah, the sample child, Grade 3, working at grade 2, BC). The Ontario version drops the BC topics and the Workbook 1 preview and says Early sign, as the report does for a waitlist family. Next step words are the report's own (nextStep, ReportNextActions); test states are Parent home's (startView); the three steps are /start's (D-134)."
+  },
+  "invariants": [
+    "The desktop shell is the mock's: sidebar, child block, icon tabs, white bordered cards, warm look tokens",
+    "Pre-trial stages show only the Assessment and Account tabs (spec #544); one child, so no switcher chevron",
+    "Start free month is one button to the current Stripe page with no new form (D-242); the words are the report's: free month, CAD 79.99 a month, delivery included, nothing charged until the first workbook arrives at your home, cancel anytime",
+    "The report is the real ReportCard markup, unchanged",
+    "On a phone in a pre-trial stage: a top bar with the wordmark and an Account link and no bottom bar, because two tabs do not need one (an assumption of this round)",
+    "Set 2 uses the decided bottom bar: Overview, Progress, Scan pages, Workbooks, More. The desktop sidebar is the same in all three options",
+    "Copy names the child (Leah), never she or her; says free month; every sample number carries a Sample data label",
+    "No streaks, time spent, percent right, wrong-answer counts or comparison with other children on the Overview (D-236)"
+  ],
+  "viewports": {
+    "desktop": [
+      1440,
+      900
+    ],
+    "phone": [
+      390,
+      844
+    ]
+  },
+  "sets": [
+    {
+      "id": "pre",
+      "decision": "On the pre-trial pages, where does the one action sit relative to the report, so a BC parent gets from a finished report to Start free month in the fewest clicks with the report in view?",
+      "primary_axis": "placement of the next-step action relative to the report (information hierarchy)",
+      "evidence": "Clicks and scrolling from opening the dashboard to the Stripe page; whether the verdict is still the first thing read (D-084: say it plainly, never to sell); whether the email's ?step=plan link lands on the button",
+      "states": [
+        "no_test",
+        "test_running",
+        "test_waiting",
+        "report_ready_bc",
+        "report_ready_waitlist"
+      ],
+      "state_note": "test_running and test_waiting are the two halves of the spec's test_running stage (test open; finished with the report not ready). Open a state with the address hash, for example pre-b.html#report_ready_waitlist. Option C also takes #report_ready_bc&open to show the full report unfolded. The -scrolled screenshots show the report 2200 px down: the action is in view there only in B (A shows the struggles; C's full report is folded, so it has none).",
+      "recommended": "B",
+      "options": [
+        {
+          "id": "A",
+          "name": "Action card above the report",
+          "artifact": "pre-a.html",
+          "bet": "Parents read top to bottom: put the next step once at the top, then the whole report, and repeat it in the report's own Next step row at the end.",
+          "benefit": "Simplest to build: the current ReportCard plus one card. One click from the first screen and from the end. Same on desktop and phone.",
+          "cost": "In the middle of the report the button is out of view, so a parent who decides while reading scrolls up or down for it.",
+          "risk": "The price card sits above the verdict, so the page opens on a sales line before the result. That works against D-084 and may read as pushy.",
+          "screens": [
+            "pre-a-report_ready_bc-desktop.png",
+            "pre-a-report_ready_bc-phone.png",
+            "pre-a-report_ready_bc-desktop-scrolled.png",
+            "pre-a-report_ready_bc-phone-scrolled.png",
+            "pre-a-report_ready_waitlist-desktop.png",
+            "pre-a-report_ready_waitlist-phone.png",
+            "pre-a-no_test-desktop.png",
+            "pre-a-no_test-phone.png",
+            "pre-a-test_running-desktop.png",
+            "pre-a-test_running-phone.png",
+            "pre-a-test_waiting-desktop.png",
+            "pre-a-test_waiting-phone.png"
+          ]
+        },
+        {
+          "id": "B",
+          "name": "Report with a next-step rail",
+          "artifact": "pre-b.html",
+          "bet": "The decision happens while reading, at no fixed point: keep the action beside the report at every scroll depth, and let the report itself open the page.",
+          "benefit": "One click from anywhere in the report, with the verdict still first. The rail has room for what happens after the click (Workbook 1, mailing, when the free month starts) and the optional learning questions. On a phone it becomes one button fixed at the bottom.",
+          "cost": "The report column is about 830 px wide at 1440, so its rows stack (title above content), as the report already does on tablets. That needs a container rule in the report CSS. The fixed phone button covers about 90 px of the report.",
+          "risk": "A rail that never leaves can feel like a sales sidebar. The words stay the report's own and plain, with no urgency, to keep it informational.",
+          "screens": [
+            "pre-b-report_ready_bc-desktop.png",
+            "pre-b-report_ready_bc-phone.png",
+            "pre-b-report_ready_bc-desktop-scrolled.png",
+            "pre-b-report_ready_bc-phone-scrolled.png",
+            "pre-b-report_ready_waitlist-desktop.png",
+            "pre-b-report_ready_waitlist-phone.png",
+            "pre-b-no_test-desktop.png",
+            "pre-b-no_test-phone.png",
+            "pre-b-test_running-desktop.png",
+            "pre-b-test_running-phone.png",
+            "pre-b-test_waiting-desktop.png",
+            "pre-b-test_waiting-phone.png",
+            "pre-b-report_ready_waitlist-phone-scrolled.png"
+          ]
+        },
+        {
+          "id": "C",
+          "name": "Result and action first, full report below",
+          "artifact": "pre-c.html",
+          "bet": "Most parents decide on the headline: show the report's level band and the action side by side in the first screen, and fold the rest of the report under Read the full report.",
+          "benefit": "The shortest path: on desktop the level, the verdict and the button share the first screen, with no fixed bar. On a 390 x 844 phone the button sits just below the first screen (about 880 px down), one short scroll.",
+          "cost": "The areas, strengths, struggles and the child's work are one click away. The page needs a second state (the unfolded report) and the email link must unfold it.",
+          "risk": "Story 13 (see the report at once) and the report's job of showing the gaps: a parent may feel the detail is hidden behind the sale, and the button may look like the point of the page.",
+          "screens": [
+            "pre-c-report_ready_bc-desktop.png",
+            "pre-c-report_ready_bc-phone.png",
+            "pre-c-report_ready_waitlist-desktop.png",
+            "pre-c-report_ready_waitlist-phone.png",
+            "pre-c-no_test-desktop.png",
+            "pre-c-no_test-phone.png",
+            "pre-c-test_running-desktop.png",
+            "pre-c-test_running-phone.png",
+            "pre-c-test_waiting-desktop.png",
+            "pre-c-test_waiting-phone.png"
+          ]
+        }
+      ],
+      "recommendation": "B. The job is the fewest clicks with the report in view: B is the only option where the button is one click away at every point of the report while the verdict, not the price, opens the page. A is the fallback if the container rule for the narrower report is not wanted. C is the fastest path, but it hides the detail that makes the report worth trusting."
+    },
+    {
+      "id": "phone",
+      "decision": "On a phone, how do the seven tabs fit around the decided bottom bar (Overview, Progress, Scan pages, Workbooks, More), and where do the child switcher, Open the desk and the family Account go?",
+      "primary_axis": "where the overflow tabs and family controls live (navigation model)",
+      "evidence": "Taps to reach Maya, Assessment and Account (cancel, invoices); whether the child switcher and Open the desk are where a parent looks; how the bar behaves today, when Progress, Scan pages and Maya are still hidden",
+      "states": [
+        "overview",
+        "more",
+        "today"
+      ],
+      "state_note": "#overview is the active stage with all seven tabs (future, Sample data). #more opens More. #today is first_book_coming as it can ship now: Overview, Workbooks, Assessment, Account (Progress waits for #194, Scan pages for #457, Maya for #337). The desktop screenshot is the same mock sidebar in all three.",
+      "recommended": "A",
+      "options": [
+        {
+          "id": "A",
+          "name": "More opens a sheet",
+          "artifact": "phone-a.html",
+          "bet": "The familiar phone pattern: four daily tabs in the bar, and More opens a sheet with Maya, Assessment and Account. The child block with Open the desk sits at the top of each page.",
+          "benefit": "Every tab is at most two taps. Nothing new to learn. With five tabs or fewer there is no More: today's bar is simply Overview, Workbooks, Assessment, Account.",
+          "cost": "A bottom sheet is a new component (focus, Escape, swipe to close, back button). The child switcher scrolls away with the page.",
+          "risk": "Account (cancel, invoices, delete) is two taps down on a phone, behind a word that says nothing.",
+          "screens": [
+            "phone-a-overview-phone.png",
+            "phone-a-more-phone.png",
+            "phone-a-today-phone.png",
+            "phone-a-overview-desktop.png"
+          ]
+        },
+        {
+          "id": "B",
+          "name": "More is a page for the child and the family",
+          "artifact": "phone-b.html",
+          "bet": "More is not an overflow menu but a home for everything that is not daily: the children (switch, Open the desk), the child's Maya and Assessment, and the Account sections listed directly.",
+          "benefit": "Account's sections (plans and invoices, card, pause or cancel, children, delete) are one tap from More, with no extra Account page. No overlay to build.",
+          "cost": "The More page repeats the Account tab of the desktop in another shape, so two layouts of the same content must stay in step. Today More appears even with four tabs.",
+          "risk": "The child switcher is mostly in More; a parent of two may not find it from Overview, and the page mixes child and family items.",
+          "screens": [
+            "phone-b-overview-phone.png",
+            "phone-b-more-phone.png",
+            "phone-b-today-phone.png",
+            "phone-b-overview-desktop.png"
+          ]
+        },
+        {
+          "id": "C",
+          "name": "Family controls in the top bar",
+          "artifact": "phone-c.html",
+          "bet": "Split by scope: everything in the bottom bar is about the selected child; the family (the child switcher and Account) sits in a top bar that stays. More holds only Maya and Assessment.",
+          "benefit": "Matches the spec's rule that Account covers the family, not one child. Account and the switcher are one tap from every page. More is a small menu of two.",
+          "cost": "Two navigation places to learn. The top bar keeps 56 px of a small screen on every page. Today the bar has only three tabs.",
+          "risk": "Parents look for cancel in More, not behind an Account icon at the top; and an always-visible switcher adds weight for one-child families (most families).",
+          "screens": [
+            "phone-c-overview-phone.png",
+            "phone-c-more-phone.png",
+            "phone-c-today-phone.png",
+            "phone-c-overview-desktop.png"
+          ]
+        }
+      ],
+      "recommendation": "A. It keeps the decided bar, needs no second copy of Account, and falls back cleanly today, when only four tabs exist and no More is needed. If Savar wants, take one part of C into it: keep the child switcher fixed in the top bar for families with two or more children."
+    }
+  ],
+  "open_questions": [
+    "Pre-trial on a phone: this round assumes a top bar with an Account link and no bottom bar. Savar may prefer the bottom bar from the start.",
+    "Option B needs a container rule so the report stacks inside the narrower column; the report is otherwise unchanged.",
+    "The learning questions (#126) stay in the report's Next step row in every option; B also links to them from the rail.",
+    "Tablet widths (768 and 1024) are checked after a pick."
+  ],
+  "screenshots_note": "Captured at 1440 x 900 CSS px (stored 1280 x 800) and 390 x 844 CSS px (stored at 2x). board-desktop.png and board-phone.png show index.html. Aside's local daemon did not start on 2026-11-05 (the Mac was out of memory with many agents running), so these were taken in the T3 preview browser panel against a local static server."
+}

@@ -333,7 +333,7 @@ async function startFor(
  * every answer in waits to be scored, and never expires. Throws on a store failure, once every read has ended, so no
  * read outlives the request.
  */
-async function withAnswers(store: AttemptStore, parent: string, childId?: string): Promise<StoredAttempt[]> {
+export async function withAnswers(store: AttemptStore, parent: string, childId?: string): Promise<StoredAttempt[]> {
   return (await withReads(store, parent, childId)).attempts;
 }
 

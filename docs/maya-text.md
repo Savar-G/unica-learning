@@ -78,7 +78,7 @@ Every regroup wording is new and waits for Savar's approval. See [the line revie
 
 Maya teaches adding and subtracting two fractions (`fraction-add`, `fraction-subtract`), with like or unlike denominators. A question with a step Maya has no lines for stays held (`content_issue`): a mixed or whole number to add, multiplying, dividing, simplifying alone and equivalent fractions (`TEACHABLE_KINDS`, `TAUGHT_STEP_KINDS`).
 
-## Questions Maya cannot teach yet (#527, D-235)
+## Questions Maya cannot teach yet (#527, D-240, D-250)
 
 A question whose package does not check, has no operation (a yes-no, place-value or drawing item), or is a kind or step Maya has no lines for is held. The same rule runs before any call (`heldReason` in `src/lib/maya`): the desk shows Maya's held words on the question card and offers no chat. If a held call still starts (voice, an old tab), the controller says code's held turn at the start with no model call: "Hi, I'm Maya, an AI. I can't help with this kind of question yet. Pick another question, or ask a grown-up." (`held.hello`, `held.cannot`, `held.next`). The call ends at once with outcome `content_issue`. A hold found during the call closes with only `held.cannot` and `held.next`, in that order: the session refuses any other words, and the code fallback says them. A held call writes no learning event, rebuilds no profile and uses no chat message. The parent's note says: "Maya cannot help with this kind of question yet, so the call ended. She asked {child} to pick another question or ask a grown-up."
 
