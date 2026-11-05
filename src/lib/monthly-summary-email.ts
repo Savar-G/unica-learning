@@ -7,11 +7,14 @@
 //   - Once: the send key is (parent, month), claimed in public.email_log. A refused send can retry up to MAX_SEND_ATTEMPTS
 //     times; an unknown one stays claimed, and nothing sends it again.
 //   - Its own unsubscribe, which stops only this email; no other unsubscribe stops it.
+//   - Time: with `deps.time`, the run ends by `endAt`. The reads abort when too little time is left for one send; no claim
+//     starts unless the time covers the claim and the send; a claim that ends too late is given back, uncounted.
 // The shared reminder job runs this through sendEmailOnce after the other emails, on the same spaced transport.
 // Pure TypeScript apart from the delivery module: the store (src/lib/monthly-summary-email-store.ts) does the reads.
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
-import { sendEmailOnce, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
+import { sendEmailOnceInTime, type EmailMessage, type MailTransport, type ReleasableLedger } from "@/lib/email-delivery";
+import { TIME_LIMIT_MS as SEND_LIMIT_MS } from "@/lib/email-resend";
 import { addDays, addMonths, familyProvince, familyZone, formatCalendarDate, localDateTime, localMonth } from "@/lib/family-time";
 import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
 import type { DeliveryCorrectionRecord, DeliveryRecord } from "@/lib/parent-view";
@@ -24,6 +27,12 @@ export const SEND_HOUR = 7;
 export const LATE_DAYS = 7;
 /** Emails one run sends at most; the next run sends the rest. */
 export const RUN_LIMIT = 20;
+/** The longest one claim takes: the store aborts it then. */
+export const CLAIM_LIMIT_MS = 5_000;
+/** What a claimed email needs: the transport's gap (under 1 s), its time limit, and the writes of the outcome and the copy. */
+export const AFTER_CLAIM_MS = 1_000 + SEND_LIMIT_MS + 3_000;
+/** What one email needs from before its claim. With less time left, the run starts no read and no claim. */
+export const ONE_SEND_MS = CLAIM_LIMIT_MS + AFTER_CLAIM_MS;
 
 export interface MonthlyParent {
   id: string;
@@ -203,9 +212,16 @@ export function monthlyMessage(due: DueMonthly, token: string, state: MonthlySta
 
 /** The store the run uses. The real one keeps its claims in public.email_log, whose unique index is the guard. */
 export interface MonthlyStore {
-  load(now: number): Promise<MonthlyState>;
+  /** Rejects, or stops early, once `signal` aborts. */
+  load(now: number, signal?: AbortSignal): Promise<MonthlyState>;
   /** The send ledger, keyed by (parent, month). A claim stores the unsubscribe token hash in its own write. */
-  ledger: SendLedger<DueMonthly, string>;
+  ledger: ReleasableLedger<DueMonthly, string>;
+}
+
+/** The run's time: its clock, and when its work must have ended. */
+export interface MonthlyTime {
+  now(): number;
+  endAt: number;
 }
 
 export interface MonthlyRunResult {
@@ -217,20 +233,58 @@ export interface MonthlyRunResult {
   busy: number;
   /** The email may have gone: the claim stays, and nothing sends it again. */
   unknown: number;
+  /** The claim ended too late: nothing went and the claim went back, so a later run sends it. */
+  released: number;
+  /** The claim ended too late and could not go back: nothing went, and the claim stays until someone clears it. */
+  stuck: number;
+  /** The time ran out before all the work: the next run does the rest. */
+  outOfTime: boolean;
+}
+
+/** Reads the state, or answers null when the time left is not enough for one send. */
+async function loadInTime(store: MonthlyStore, now: number, time: MonthlyTime | undefined): Promise<MonthlyState | null> {
+  if (!time) return store.load(now);
+  const room = time.endAt - ONE_SEND_MS - time.now();
+  if (room <= 0) return null;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // The race answers even if a read does not stop when it is aborted.
+  const stopped = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      // The default reason, AbortError: the query client retries a read that fails with any other name.
+      controller.abort();
+      resolve(null);
+    }, room);
+  });
+  try {
+    return await Promise.race([store.load(now, controller.signal), stopped]);
+  } catch (e) {
+    if (controller.signal.aborted) return null;
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** One run at `now`: decides, then sends each email once through the delivery module. */
 export async function runMonthlyEmails(
   store: MonthlyStore,
   now: number,
-  deps: { origin: string; newToken(): { token: string; hash: string }; transport?: MailTransport; limit?: number; shouldStop?(): boolean },
+  deps: { origin: string; newToken(): { token: string; hash: string }; transport?: MailTransport; limit?: number; time?: MonthlyTime },
 ): Promise<MonthlyRunResult> {
-  const state = await store.load(now);
+  const { time } = deps;
+  const left = () => (time ? time.endAt - time.now() : Infinity);
+  const result: MonthlyRunResult = { due: 0, sent: 0, failed: 0, busy: 0, unknown: 0, released: 0, stuck: 0, outOfTime: false };
+  const state = await loadInTime(store, now, time);
+  if (!state) return { ...result, outOfTime: true };
   const due = dueMonthlyEmails(state, now);
-  const result: MonthlyRunResult = { due: due.length, sent: 0, failed: 0, busy: 0, unknown: 0 };
+  result.due = due.length;
   for (const d of due.slice(0, deps.limit ?? RUN_LIMIT)) {
     // Nothing is claimed for an email this run does not reach: the next run sends it.
-    if (deps.shouldStop?.()) break;
+    if (left() < ONE_SEND_MS) {
+      result.outOfTime = true;
+      break;
+    }
     const { token, hash } = deps.newToken();
     const message = monthlyMessage(d, token, state, deps.origin);
     if (!message) {
@@ -239,11 +293,18 @@ export async function runMonthlyEmails(
       continue;
     }
     try {
-      const outcome = await sendEmailOnce(store.ledger, d, message, { transport: deps.transport, claimFields: { unsubscribe_hash: hash } });
+      const outcome = await sendEmailOnceInTime(store.ledger, d, message, { transport: deps.transport, claimFields: { unsubscribe_hash: hash }, inTime: () => left() >= AFTER_CLAIM_MS });
       if (outcome.status === "sent") result.sent++;
       else if (outcome.status === "refused") result.failed++;
       else if (outcome.status === "busy") result.busy++;
-      else {
+      else if (outcome.status === "not_sent") {
+        result.outOfTime = true;
+        if (outcome.released) result.released++;
+        else {
+          console.error("[monthly summary] the claim could not go back; nothing went and the row stays claimed", d.month);
+          result.stuck++;
+        }
+      } else {
         console.error("[monthly summary] delivery unknown; the row stays claimed", d.month, outcome.error);
         result.unknown++;
       }

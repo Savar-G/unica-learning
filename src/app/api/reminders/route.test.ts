@@ -10,6 +10,11 @@ const h = vi.hoisted(() => ({
   mail: null as unknown as ReturnType<typeof memoryTransport>,
   store: null as unknown as ReturnType<typeof memoryMonthlyStore>,
   loadFails: false,
+  loadHangs: false,
+  loads: 0,
+  loadSignal: undefined as AbortSignal | undefined,
+  earlierWorkMs: 0,
+  claimMs: 0,
   weeklySend: false,
   sendTimes: [] as number[],
 }));
@@ -17,6 +22,7 @@ const h = vi.hoisted(() => ({
 vi.mock("@/lib/account-server", () => ({ linkOrigin: () => "https://unicalearning.com" }));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => ({}) }));
 vi.mock("@/lib/email-resend", () => ({
+  TIME_LIMIT_MS: 15_000,
   resendConfigProblem: () => null,
   resendFrom: () => "Unica Learning <contact@unicalearning.com>",
   resendTransport: () => ({
@@ -39,12 +45,26 @@ vi.mock("@/lib/reminder-store", () => ({ reminderStore: () => ({ load: async () 
 vi.mock("@/lib/reminders", async (real) => ({
   ...(await real<typeof import("@/lib/reminders")>()),
   dueReminders: () => [],
-  runReminders: async () => ({ due: 0, sent: 0, failed: 0, busy: 0, unknown: 0 }),
+  runReminders: async () => {
+    vi.setSystemTime(Date.now() + h.earlierWorkMs);
+    return { due: 0, sent: 0, failed: 0, busy: 0, unknown: 0 };
+  },
 }));
 vi.mock("@/lib/monthly-summary-email-store", () => ({
   monthlySummaryEmailStore: () => ({
-    load: (now: number) => (h.loadFails ? Promise.reject(new Error("read failed")) : h.store.load(now)),
-    ledger: h.store.ledger,
+    load: (now: number, signal?: AbortSignal) => {
+      h.loads++;
+      h.loadSignal = signal;
+      if (h.loadHangs) return new Promise(() => {});
+      return h.loadFails ? Promise.reject(new Error("read failed")) : h.store.load(now);
+    },
+    ledger: {
+      ...h.store.ledger,
+      claim: (...args: Parameters<typeof h.store.ledger.claim>) => {
+        vi.setSystemTime(Date.now() + h.claimMs);
+        return h.store.ledger.claim(...args);
+      },
+    },
   }),
 }));
 
@@ -63,6 +83,11 @@ beforeEach(() => {
     corrections: [],
   });
   h.loadFails = false;
+  h.loadHangs = false;
+  h.loads = 0;
+  h.loadSignal = undefined;
+  h.earlierWorkMs = 0;
+  h.claimMs = 0;
   h.weeklySend = false;
   h.sendTimes = [];
 });
@@ -91,4 +116,34 @@ it("a failed monthly run hides nothing else, and sends nothing", async () => {
   h.loadFails = true;
   expect(await (await call()).json()).toMatchObject({ ok: true, due: 0, maya: { due: 0 }, monthly: { error: "run_failed" } });
   expect(h.mail.delivered).toHaveLength(0);
+});
+
+it("after 38 seconds of earlier work it reads nothing and sends nothing, and the next run sends", async () => {
+  h.earlierWorkMs = 38_000;
+  expect(await (await call()).json()).toMatchObject({ ok: true, monthly: { outOfTime: true, due: 0, sent: 0 } });
+  expect(h.loads).toBe(0);
+  expect(h.store.rows()).toEqual([]);
+  h.earlierWorkMs = 0;
+  expect(await (await call()).json()).toMatchObject({ ok: true, monthly: { outOfTime: false, sent: 1 } });
+});
+
+it("a slow load stops at the time for one send: the run still answers, and nothing is claimed", async () => {
+  h.loadHangs = true;
+  h.earlierWorkMs = 25_980; // The load's time ends 26 seconds after the run began.
+  expect(await (await call()).json()).toMatchObject({ ok: true, maya: { due: 0 }, monthly: { outOfTime: true, sent: 0 } });
+  expect(h.loadSignal?.aborted).toBe(true);
+  expect(h.store.rows()).toEqual([]);
+  expect(h.mail.delivered).toHaveLength(0);
+});
+
+it("a 10-second claim that leaves too little for the send's limit goes back, and the next run sends", async () => {
+  h.earlierWorkMs = 25_900;
+  h.claimMs = 10_000;
+  expect(await (await call()).json()).toMatchObject({ ok: true, monthly: { due: 1, released: 1, sent: 0 } });
+  expect(h.mail.delivered).toHaveLength(0);
+  expect(h.store.rows()).toEqual([]);
+  h.earlierWorkMs = 0;
+  h.claimMs = 0;
+  expect(await (await call()).json()).toMatchObject({ ok: true, monthly: { due: 1, sent: 1 } });
+  expect(h.mail.delivered).toHaveLength(1);
 });

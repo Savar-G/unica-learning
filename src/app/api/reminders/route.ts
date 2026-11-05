@@ -26,8 +26,8 @@ export const maxDuration = 60;
 
 /** Resend's free plan takes 2 requests a second; one email every 600 ms stays under it. */
 const SEND_GAP_MS = 600;
-/** The monthly emails start no new send this long after the run began, inside the 60-second limit; the next run sends the rest. */
-const MONTHLY_START_MS = 40_000;
+/** The monthly emails' work has ended this long after the run began, which leaves time to answer inside the 60-second limit; the next run does the rest. */
+const MONTHLY_END_MS = 50_000;
 
 /** The transport, with a wait of `gapMs` before each send after the first. */
 function spaced(transport: MailTransport, gapMs: number): MailTransport {
@@ -106,8 +106,8 @@ export async function POST(request: Request) {
     // A failed monthly run never hides the other results.
     let monthly: Awaited<ReturnType<typeof runMonthlyEmails>> | { error: "run_failed" };
     try {
-      monthly = await runMonthlyEmails(monthlySummaryEmailStore(admin), now, { origin, newToken, transport, shouldStop: () => Date.now() - now > MONTHLY_START_MS });
-      if (monthly.due > 0) console.info("[monthly summary] run", JSON.stringify(monthly));
+      monthly = await runMonthlyEmails(monthlySummaryEmailStore(admin), now, { origin, newToken, transport, time: { now: () => Date.now(), endAt: now + MONTHLY_END_MS } });
+      if (monthly.due > 0 || monthly.outOfTime) console.info("[monthly summary] run", JSON.stringify(monthly));
     } catch (e) {
       console.error("[monthly summary] run failed", e instanceof Error ? e.message : e);
       monthly = { error: "run_failed" };

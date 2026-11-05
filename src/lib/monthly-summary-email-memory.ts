@@ -7,7 +7,8 @@ import { MAX_SEND_ATTEMPTS } from "@/lib/reminders";
 // The monthly summary email's store (src/lib/monthly-summary-email.ts, #563) in memory, for tests. It keeps the database's
 // rules (migration monthly_summary_email): one monthly_summary row per parent per month, so a second claim is refused; a
 // retry takes a failed row back only once and only before MAX_SEND_ATTEMPTS; refused marks the row failed, unknown keeps
-// it claimed. `unsubscribe(token)` does what the unsubscribe link does (src/lib/reminder-store.ts): the token of this
+// it claimed; release gives a claim back uncounted (a first claim's row goes, a retry's row is failed again at its old
+// count). `unsubscribe(token)` does what the unsubscribe link does (src/lib/reminder-store.ts): the token of this
 // email turns off only this email. `logOther` adds another email's unsubscribe, which load leaves out, as the real one does.
 
 type Row = Omit<MonthlyLogEntry, "kind"> & { kind: MonthlyLogEntry["kind"] | "unsubscribe" | "maya_unsubscribe"; hash: string | null; emailId: string | null; error: string | null };
@@ -22,6 +23,8 @@ export function memoryMonthlyStore(data: { parents: MonthlyParent[]; children: M
   const rows: Row[] = [];
   const copies: { logId: string; parentId: string; copy: EmailCopy }[] = [];
   const failing = new Set<string>();
+  let lastId = 0;
+  const newId = () => `log-${++lastId}`;
   const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
   const row = (id: string) => rows.find((r) => r.id === id);
   return {
@@ -46,7 +49,7 @@ export function memoryMonthlyStore(data: { parents: MonthlyParent[]; children: M
           return r.id;
         }
         if (rows.some((r) => r.kind === "monthly_summary" && r.parentId === d.parentId && r.month === d.month)) return null;
-        const id = `log-${rows.length + 1}`;
+        const id = newId();
         rows.push({ id, kind: "monthly_summary", parentId: d.parentId, month: d.month, status: "claimed", attempts: 1, hash: unsubscribe_hash, emailId: null, error: null });
         return id;
       },
@@ -58,6 +61,13 @@ export function memoryMonthlyStore(data: { parents: MonthlyParent[]; children: M
       },
       async unknown(id, error) {
         Object.assign(row(id)!, { error });
+      },
+      async release(id, d) {
+        const r = row(id);
+        if (!r || r.status !== "claimed") return false;
+        if (d.retry) Object.assign(r, { status: "failed", attempts: d.retry.attempts });
+        else rows.splice(rows.indexOf(r), 1);
+        return true;
       },
       async keepCopy(id, d, c) {
         const held = copies.findIndex((x) => x.logId === id);
@@ -72,12 +82,12 @@ export function memoryMonthlyStore(data: { parents: MonthlyParent[]; children: M
       const r = rows.find((x) => x.hash === hash);
       if (!r) return "unknown";
       if (!rows.some((x) => x.kind === "monthly_summary_unsubscribe" && x.parentId === r.parentId)) {
-        rows.push({ id: `log-${rows.length + 1}`, kind: "monthly_summary_unsubscribe", parentId: r.parentId, month: null, status: null, attempts: 0, hash: null, emailId: null, error: null });
+        rows.push({ id: newId(), kind: "monthly_summary_unsubscribe", parentId: r.parentId, month: null, status: null, attempts: 0, hash: null, emailId: null, error: null });
       }
       return "unsubscribed";
     },
     logOther(kind) {
-      rows.push({ id: `log-${rows.length + 1}`, kind, parentId: data.parents[0].id, month: null, status: null, attempts: 0, hash: null, emailId: null, error: null });
+      rows.push({ id: newId(), kind, parentId: data.parents[0].id, month: null, status: null, attempts: 0, hash: null, emailId: null, error: null });
     },
     failClaimFor(parentId) {
       failing.add(parentId);

@@ -4,7 +4,7 @@ import type { Database } from "@/lib/database";
 import { hideTokens } from "@/lib/email-copies";
 import { sendEmailOnce } from "@/lib/email-delivery";
 import { memoryTransport } from "@/lib/email-delivery-memory";
-import { dueMonthlyEmails, monthlyMessage, runMonthlyEmails, type DueMonthly } from "@/lib/monthly-summary-email";
+import { ONE_SEND_MS, dueMonthlyEmails, monthlyMessage, runMonthlyEmails, type DueMonthly } from "@/lib/monthly-summary-email";
 import { monthlySummaryEmailStore } from "@/lib/monthly-summary-email-store";
 import { unsubscribe, unsubscribeState } from "@/lib/reminder-store";
 import { hashToken, newToken } from "@/lib/sign-in-link";
@@ -18,13 +18,23 @@ type Row = Record<string, unknown>;
 const ORIGIN = "https://unicalearning.com";
 const NOV_1 = Date.UTC(2026, 10, 1, 15); // 8 a.m. in Vancouver.
 
-function fakeDb(tables: Record<string, Row[]>, opts: { failTable?: string } = {}) {
+/** Answers only when the request's own signal aborts; with no signal, never. */
+const untilAborted = (signal?: AbortSignal | null) => new Promise<never>((_resolve, reject) => signal?.addEventListener("abort", () => reject(signal.reason)));
+
+function fakeDb(tables: Record<string, Row[]>, opts: { failTable?: string; hang?: { table: string; method?: string; when: "before" | "after" } } = {}) {
   const reads: string[] = [];
+  let hang = opts.hang;
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    // As the real fetch: an aborted signal fails the request at once.
+    init?.signal?.throwIfAborted();
     const url = new URL(String(input));
     const table = url.pathname.split("/").pop()!;
     reads.push(table);
     if (opts.failTable === table) return Response.json({ message: "unavailable" }, { status: 400 });
+    // One request hangs, before or after its write: the release that follows goes through.
+    const hit = hang?.table === table && (hang.method ?? "GET") === (init?.method ?? "GET") ? hang : null;
+    if (hit) hang = undefined;
+    if (hit?.when === "before") await untilAborted(init?.signal);
     const rows = tables[table] ??= [];
     if (init?.method === "POST") {
       const row = JSON.parse(String(init.body)) as Row;
@@ -36,6 +46,7 @@ function fakeDb(tables: Record<string, Row[]>, opts: { failTable?: string } = {}
       } else if (unique >= 0) return Response.json({ code: "23505", message: "duplicate" }, { status: 409 });
       const saved = { id: `log-${rows.length + 1}`, ...row };
       rows.push(saved);
+      if (hit?.when === "after") await untilAborted(init?.signal);
       const one = new Headers(init.headers).get("accept")?.includes("vnd.pgrst.object");
       return new Response(JSON.stringify(one ? saved : [saved]), { status: 201, headers: { "content-type": "application/json" } });
     }
@@ -55,7 +66,12 @@ function fakeDb(tables: Record<string, Row[]>, opts: { failTable?: string } = {}
     }
     if (init?.method === "PATCH") {
       Object.assign(found[0] ?? {}, JSON.parse(String(init.body)));
+      if (hit?.when === "after") await untilAborted(init?.signal);
       return new Response(JSON.stringify(found.slice(0, 1)), { headers: { "content-type": "application/json" } });
+    }
+    if (init?.method === "DELETE") {
+      for (const r of found) rows.splice(rows.indexOf(r), 1);
+      return new Response(JSON.stringify(found), { headers: { "content-type": "application/json" } });
     }
     const order = url.searchParams.get("order");
     if (order) found.sort((a, b) => String(a[order.split(",")[0].split(".")[0]]).localeCompare(String(b[order.split(",")[0].split(".")[0]])));
@@ -166,6 +182,90 @@ describe("what the run reads", () => {
     const state = await monthlySummaryEmailStore(db, OFF).load(NOV_1);
     expect(state.log).toEqual([]);
     expect(dueMonthlyEmails(state, NOV_1)).toHaveLength(1);
+  });
+});
+
+describe("an aborted load", () => {
+  it.each(["workbook_delivery_receipts", "workbook_delivery_corrections", "parents", "children", "email_log", "test_accounts", "admin_users"])(
+    "a slow read of %s stops at the abort, and throws: no partial picture",
+    async (table) => {
+      const { db } = fakeDb(twoFamilies(), { hang: { table, when: "before" } });
+      const controller = new AbortController();
+      const load = monthlySummaryEmailStore(db, OFF).load(NOV_1, controller.signal);
+      setTimeout(() => controller.abort(), 20);
+      await expect(load).rejects.toThrow();
+    },
+    1_000,
+  );
+});
+
+describe("the time limit of a claim and its release", () => {
+  const due: DueMonthly = { parentId: "marked", month: "2026-10", childIds: ["c2"], retry: null };
+  const a = "a".repeat(64);
+  const b = "b".repeat(64);
+  const CLAIM_MS = { claimLimitMs: 20 };
+  const held = (over: Row) => ({ id: "log-1", parent_id: "marked", kind: "monthly_summary", summary_month: "2026-10-01", status: "claimed", attempts: 1, unsubscribe_hash: a, ...over });
+
+  it("a claim that hangs after its write stops at its limit and takes its own row back", async () => {
+    const tables = twoFamilies() as Record<string, Row[]>;
+    const { db } = fakeDb(tables, { hang: { table: "email_log", method: "POST", when: "after" } });
+    await expect(monthlySummaryEmailStore(db, OFF, CLAIM_MS).ledger.claim(due, { unsubscribe_hash: a })).rejects.toThrow("monthly summary claim");
+    expect(tables.email_log).toEqual([]);
+    expect(dueMonthlyEmails(await monthlySummaryEmailStore(db, OFF).load(NOV_1), NOV_1).map((d) => d.parentId)).toEqual(["marked"]);
+  }, 1_000);
+
+  it("a claim that hangs before its write leaves another run's claim alone", async () => {
+    const tables = { ...twoFamilies(), email_log: [held({})] } as Record<string, Row[]>;
+    const { db } = fakeDb(tables, { hang: { table: "email_log", method: "POST", when: "before" } });
+    await expect(monthlySummaryEmailStore(db, OFF, CLAIM_MS).ledger.claim(due, { unsubscribe_hash: b })).rejects.toThrow("monthly summary claim");
+    expect(tables.email_log).toMatchObject([{ status: "claimed", unsubscribe_hash: a }]);
+  }, 1_000);
+
+  it("a retry's claim that hangs after its write goes back to failed at its old count", async () => {
+    const tables = { ...twoFamilies(), email_log: [held({ status: "failed", attempts: 2, error: "refused" })] } as Record<string, Row[]>;
+    const { db } = fakeDb(tables, { hang: { table: "email_log", method: "PATCH", when: "after" } });
+    const retry = { ...due, retry: { logId: "log-1", attempts: 2 } };
+    await expect(monthlySummaryEmailStore(db, OFF, CLAIM_MS).ledger.claim(retry, { unsubscribe_hash: b })).rejects.toThrow("monthly summary claim retry");
+    expect(tables.email_log).toMatchObject([{ status: "failed", attempts: 2, unsubscribe_hash: b }]);
+  }, 1_000);
+
+  it("a release deletes a first claim's row, and answers no for a row that is not claimed", async () => {
+    const tables = { ...twoFamilies(), email_log: [held({}), held({ id: "log-2", status: "sent", summary_month: "2026-09-01" })] } as Record<string, Row[]>;
+    const { db } = fakeDb(tables);
+    const { ledger } = monthlySummaryEmailStore(db, OFF);
+    expect(await ledger.release("log-1", due)).toBe(true);
+    expect(tables.email_log.map((r) => r.id)).toEqual(["log-2"]);
+    expect(await ledger.release("log-2", { ...due, month: "2026-09" })).toBe(false);
+    expect(tables.email_log).toMatchObject([{ id: "log-2", status: "sent" }]);
+  });
+
+  it("a release puts a retry back at its old count, with a reason the admin can read", async () => {
+    const tables = { ...twoFamilies(), email_log: [held({ attempts: 3 })] } as Record<string, Row[]>;
+    const { db } = fakeDb(tables);
+    expect(await monthlySummaryEmailStore(db, OFF).ledger.release("log-1", { ...due, retry: { logId: "log-1", attempts: 2 } })).toBe(true);
+    expect(tables.email_log).toMatchObject([{ status: "failed", attempts: 2 }]);
+    expect(String(tables.email_log[0].error)).toContain("ran out of time");
+  });
+
+  it("a failed release answers no, and does not throw", async () => {
+    const { db } = fakeDb({ ...twoFamilies(), email_log: [held({})] }, { failTable: "email_log" });
+    expect(await monthlySummaryEmailStore(db, OFF).ledger.release("log-1", due)).toBe(false);
+  });
+
+  it("a run on the real store: a claim that ended too late leaves no row and no copy, and the next run sends", async () => {
+    const tables = twoFamilies() as Record<string, Row[]>;
+    const { db } = fakeDb(tables);
+    const mail = memoryTransport();
+    const store = monthlySummaryEmailStore(db, OFF);
+    const clock = { t: 0 };
+    const time = { now: () => clock.t, endAt: ONE_SEND_MS + 1 };
+    const slow = { ...store, ledger: { ...store.ledger, claim: (...args: Parameters<typeof store.ledger.claim>) => { clock.t += 10_000; return store.ledger.claim(...args); } } };
+    expect(await runMonthlyEmails(slow, NOV_1, { origin: ORIGIN, newToken, transport: mail.transport, time })).toMatchObject({ released: 1, sent: 0 });
+    expect(mail.delivered).toHaveLength(0);
+    expect(tables.email_log).toEqual([]);
+    expect(tables.email_copies ?? []).toEqual([]);
+    expect(await runMonthlyEmails(store, NOV_1, { origin: ORIGIN, newToken, transport: mail.transport })).toMatchObject({ sent: 1 });
+    expect(tables.email_log).toMatchObject([{ status: "sent", attempts: 1 }]);
   });
 });
 

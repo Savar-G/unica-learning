@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 import { memoryTransport } from "@/lib/email-delivery-memory";
 import { memoryMonthlyStore } from "@/lib/monthly-summary-email-memory";
-import { dueMonthlyEmails, monthlyEmail, runMonthlyEmails, type MonthlyChild, type MonthlyParent } from "@/lib/monthly-summary-email";
+import { AFTER_CLAIM_MS, CLAIM_LIMIT_MS, ONE_SEND_MS, dueMonthlyEmails, monthlyEmail, runMonthlyEmails, type MonthlyChild, type MonthlyParent, type MonthlyStore } from "@/lib/monthly-summary-email";
 import { readMonthlySummary, readOverview } from "@/lib/parent-view";
 import { memoryParentViewReaders } from "@/lib/parent-view-memory";
 import { MAX_SEND_ATTEMPTS } from "@/lib/reminders";
@@ -29,6 +29,12 @@ function setup(over: Partial<Parameters<typeof memoryMonthlyStore>[0]> = {}) {
   const mail = memoryTransport();
   const run = (now = NOV_1, limit?: number) => runMonthlyEmails(store, now, { origin: ORIGIN, newToken, transport: mail.transport, limit });
   return { store, mail, run };
+}
+
+function threeFamilies() {
+  const parents = ["a", "b", "c"].map((id) => ({ ...priya, id, email: `${id}@family.ca` }));
+  const children = parents.map((p) => ({ ...leah, id: `c-${p.id}`, parentId: p.id }));
+  return { parents, children, deliveries: children.map((c) => delivered(c.id, "2026-10-10T18:00:00Z")) };
 }
 
 const tokenOf = (text: string) => /\/unsubscribe\?t=([A-Za-z0-9_-]+)/.exec(text)![1];
@@ -206,18 +212,123 @@ describe("sent once", () => {
     expect(store.copies[0].copy.message.subject).toBe(mail.delivered[0].subject);
   });
 
-  it("a run's limit and stop signal leave the rest for the next run, with nothing claimed", async () => {
-    const parents = ["a", "b", "c"].map((id) => ({ ...priya, id, email: `${id}@family.ca` }));
-    const children = parents.map((p) => ({ ...leah, id: `c-${p.id}`, parentId: p.id }));
-    const deliveries = children.map((c) => delivered(c.id, "2026-10-10T18:00:00Z"));
-    const { store, mail, run } = setup({ parents, children, deliveries });
+  it("a run's limit leaves the rest for the next run, with nothing claimed", async () => {
+    const { store, mail, run } = setup(threeFamilies());
     expect(await run(NOV_1, 1)).toMatchObject({ due: 3, sent: 1 });
-    let sends = 0;
-    const stopped = await runMonthlyEmails(store, NOV_1, { origin: ORIGIN, newToken, transport: mail.transport, shouldStop: () => sends++ > 0 });
-    expect(stopped).toMatchObject({ due: 2, sent: 1 });
-    expect(store.rows()).toHaveLength(2);
-    expect(await run(NOV_1)).toMatchObject({ due: 1, sent: 1 });
+    expect(store.rows()).toHaveLength(1);
+    expect(await run(NOV_1)).toMatchObject({ due: 2, sent: 2 });
     expect(mail.delivered).toHaveLength(3);
+  });
+});
+
+describe("the run's time", () => {
+  const END = NOV_1 + 50_000;
+
+  /** A run on a passed-in clock that ends at END. `left` is the time left when the monthly step starts. */
+  function timed(left: number, over: Partial<Parameters<typeof memoryMonthlyStore>[0]> = {}) {
+    const { store, mail } = setup(over);
+    const clock = { t: END - left };
+    const run = (from: MonthlyStore = store) => runMonthlyEmails(from, NOV_1, { origin: ORIGIN, newToken, transport: mail.transport, time: { now: () => clock.t, endAt: END } });
+    return { store, mail, clock, run };
+  }
+  /** A store whose claim takes `ms` on the clock. */
+  const slowClaim = (store: MonthlyStore, clock: { t: number }, ms: number): MonthlyStore => ({
+    ...store,
+    ledger: { ...store.ledger, claim: async (d, fields) => { clock.t += ms; return store.ledger.claim(d, fields); } },
+  });
+
+  it("with too little time for one send, it reads nothing and claims nothing, and the next run sends", async () => {
+    const { store, mail, clock, run } = timed(ONE_SEND_MS - 1);
+    const load = vi.fn(store.load);
+    expect(await run({ ...store, load })).toMatchObject({ outOfTime: true, due: 0, sent: 0 });
+    expect(load).not.toHaveBeenCalled();
+    expect(store.rows()).toEqual([]);
+    clock.t = END - 50_000;
+    expect(await run()).toMatchObject({ outOfTime: false, due: 1, sent: 1 });
+    expect(mail.delivered).toHaveLength(1);
+  });
+
+  it("aborts a slow load when only one send's time is left: the step stops cleanly, and the next run sends", async () => {
+    const { store, mail, clock, run } = timed(ONE_SEND_MS + 20);
+    let signal: AbortSignal | undefined;
+    const slow: MonthlyStore = {
+      ...store,
+      load: (_now, given) => new Promise((_resolve, reject) => {
+        signal = given;
+        given?.addEventListener("abort", () => reject(given.reason));
+      }),
+    };
+    expect(await run(slow)).toMatchObject({ outOfTime: true, due: 0, sent: 0, failed: 0 });
+    expect(signal?.reason?.name).toBe("AbortError");
+    expect(store.rows()).toEqual([]);
+    clock.t = END - 50_000;
+    expect(await run()).toMatchObject({ due: 1, sent: 1 });
+    expect(mail.delivered).toHaveLength(1);
+  });
+
+  it("stops waiting for a load that ignores the abort", async () => {
+    const { store, run } = timed(ONE_SEND_MS + 20);
+    expect(await run({ ...store, load: () => new Promise(() => {}) })).toMatchObject({ outOfTime: true, sent: 0 });
+  });
+
+  it("a load that fails in time still throws: it is a failed run, not a late one", async () => {
+    const { store, run } = timed(50_000);
+    await expect(run({ ...store, load: () => Promise.reject(new Error("read failed")) })).rejects.toThrow("read failed");
+  });
+
+  it("claims nothing when the load ended too late for a send", async () => {
+    const { store, mail, clock, run } = timed(50_000);
+    const late: MonthlyStore = { ...store, load: async (now) => { clock.t = END - ONE_SEND_MS + 1; return store.load(now); } };
+    expect(await run(late)).toMatchObject({ outOfTime: true, due: 1, sent: 0 });
+    expect(store.rows()).toEqual([]);
+    expect(mail.delivered).toHaveLength(0);
+  });
+
+  it("the slowest email that starts still ends inside the time, and the next one does not start", async () => {
+    const { store, mail, clock, run } = timed(ONE_SEND_MS + 1, threeFamilies());
+    const send = mail.transport.send;
+    mail.transport.send = async (m) => { clock.t += AFTER_CLAIM_MS; return send(m); };
+    expect(await run(slowClaim(store, clock, CLAIM_LIMIT_MS))).toMatchObject({ due: 3, sent: 1, outOfTime: true });
+    expect(store.rows()).toHaveLength(1);
+    expect(clock.t).toBeLessThanOrEqual(END);
+  });
+
+  it("a claim that ended too late goes back with nothing sent, and the next run sends with its first attempt", async () => {
+    const { store, mail, clock, run } = timed(ONE_SEND_MS + 1);
+    expect(await run(slowClaim(store, clock, 10_000))).toMatchObject({ due: 1, released: 1, stuck: 0, sent: 0, outOfTime: true });
+    expect(mail.delivered).toHaveLength(0);
+    expect(store.rows()).toEqual([]);
+    expect(store.copies).toEqual([]);
+    clock.t = END - 50_000;
+    expect(await run()).toMatchObject({ due: 1, sent: 1 });
+    expect(store.rows()).toMatchObject([{ status: "sent", attempts: 1 }]);
+    expect(mail.delivered).toHaveLength(1);
+  });
+
+  it("a retry on its last attempt goes back at its old count, so the email is not lost", async () => {
+    const { store, mail, clock, run } = timed(50_000);
+    for (let i = 1; i < MAX_SEND_ATTEMPTS; i++) {
+      mail.answerNext("refuse");
+      await run();
+    }
+    expect(store.rows()).toMatchObject([{ status: "failed", attempts: MAX_SEND_ATTEMPTS - 1 }]);
+    clock.t = END - ONE_SEND_MS - 1;
+    expect(await run(slowClaim(store, clock, 10_000))).toMatchObject({ released: 1, sent: 0 });
+    expect(store.rows()).toMatchObject([{ status: "failed", attempts: MAX_SEND_ATTEMPTS - 1 }]);
+    clock.t = END - 50_000;
+    expect(await run()).toMatchObject({ sent: 1 });
+    expect(store.rows()).toMatchObject([{ status: "sent", attempts: MAX_SEND_ATTEMPTS }]);
+  });
+
+  it.each([
+    ["answers no", async () => false],
+    ["throws", async () => { throw new Error("database gone"); }],
+  ])("a release that %s sends nothing, is counted, and the row stays claimed", async (_label, release) => {
+    const { store, mail, clock, run } = timed(ONE_SEND_MS + 1);
+    const slow = slowClaim(store, clock, 10_000);
+    expect(await run({ ...slow, ledger: { ...slow.ledger, release } })).toMatchObject({ released: 0, stuck: 1, sent: 0 });
+    expect(mail.delivered).toHaveLength(0);
+    expect(store.rows()).toMatchObject([{ status: "claimed", attempts: 1 }]);
   });
 });
 
