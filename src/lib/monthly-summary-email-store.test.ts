@@ -281,7 +281,7 @@ describe("the send ledger in public.email_log", () => {
     expect(await runMonthlyEmails(store, NOV_1, { origin: ORIGIN, newToken, transport: mail.transport })).toMatchObject({ due: 0 });
     const [row] = tables.email_log;
     const token = /\/unsubscribe\?t=([A-Za-z0-9_-]+)/.exec(mail.delivered[0].text)![1];
-    expect(row).toMatchObject({ parent_id: "marked", kind: "monthly_summary", summary_month: "2026-10-01", status: "sent", attempts: 1, email_id: "email-1", unsubscribe_hash: hashToken(token) });
+    expect(row).toMatchObject({ parent_id: "marked", kind: "monthly_summary", summary_month: "2026-10-01", status: "sent", attempts: 1, email_id: "email-1", unsubscribe_hash: hashToken(token), copy_child_ids: ["c2"] });
     expect(tables.email_log).toHaveLength(1);
     expect(tables.email_copies).toHaveLength(1);
     expect(tables.email_copies[0]).toMatchObject({ email_log_id: row.id, parent_id: "marked", outcome: "sent", subject: "October summary: Child c2" });
@@ -317,7 +317,7 @@ describe("the send ledger in public.email_log", () => {
     expect(retry.retry).toEqual({ logId: tables.email_log[0].id, attempts: 1 });
     const before = tables.email_log[0].unsubscribe_hash;
     expect(await store.ledger.claim(retry, { unsubscribe_hash: "c".repeat(64) })).toBe(tables.email_log[0].id);
-    expect(tables.email_log[0]).toMatchObject({ status: "claimed", attempts: 2, unsubscribe_hash: "c".repeat(64) });
+    expect(tables.email_log[0]).toMatchObject({ status: "claimed", attempts: 2, unsubscribe_hash: "c".repeat(64), copy_child_ids: ["c2"] });
     expect(before).not.toBe("c".repeat(64));
     // The row moved on, so the same retry cannot take it twice.
     expect(await store.ledger.claim(retry, { unsubscribe_hash: "d".repeat(64) })).toBeNull();

@@ -10,6 +10,24 @@ const EMAIL = "parent@example.invalid";
 const ACCOUNT = { email: EMAIL, confirmed: true };
 const MINUTE = 60_000;
 
+it("binds a child's code to that child, and cannot use it to delete the family", async () => {
+  const family = memoryFamily({ time: 1_000_000 });
+  const codes = memoryDeleteCodes(family);
+  const mail: EmailMessage[] = [];
+  const action = { child: OTHER };
+  await requestDeleteCode(PARENT, ACCOUNT, {
+    codes, store: memoryDeleteStore(family), action,
+    configProblem: () => null, newCode: () => "123456",
+    send: async (message) => { mail.push(message); return { status: "sent", emailId: "sent" }; },
+  });
+  expect(mail[0].subject).toContain("delete one child");
+  expect(mail[0].text).toContain("Your account and other children stay");
+  expect(await codeProof(codes, PARENT, EMAIL)("123456")).toBe("wrong");
+  expect(await codeProof(codes, PARENT, EMAIL, { child: PARENT })("123456")).toBe("wrong");
+  expect(await codeProof(codes, PARENT, EMAIL, action)("123456")).toBe("ok");
+  expect(await codeProof(codes, PARENT, EMAIL, action)("123456")).toBe("ended");
+});
+
 function harness(over: Partial<MemoryFamily> = {}, seams: Partial<DeleteCodeSeams> = {}) {
   // family.time is the database's clock. Asking for a code and checking it use no other clock.
   const family = memoryFamily({ time: 1_000_000, ...over });

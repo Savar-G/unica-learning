@@ -24,11 +24,18 @@ const render = async (rows: unknown[]) => renderToStaticMarkup(await childDetail
 
 it("has one section per child, each with the first name and the learning card", async () => {
   const out = await render([ASHA, OMAR]);
-  expect(out.match(/<section/g)).toHaveLength(2);
+  expect(out.match(/class="acd-child"/g)).toHaveLength(2);
   expect(out).toContain('value="Asha"');
   expect(out).toContain('value="Omar"');
   expect(out).toContain('href="/account/learning/c1"');
   expect(out).toContain('href="/account/learning/c2"');
+});
+
+it("offers a separate named delete for each child", async () => {
+  const out = await render([ASHA, OMAR]);
+  expect(out).toContain("Delete Asha");
+  expect(out).toContain("Delete Omar");
+  expect(out).toContain("Your account and other children stay");
 });
 
 it("shows the saved answers, or says there are none, and links to the one learning card page", async () => {
