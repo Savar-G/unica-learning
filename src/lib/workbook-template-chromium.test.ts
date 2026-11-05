@@ -37,6 +37,30 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
 }
 
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
+  it.each(["U4", "U16"])("prints whole-block Extra labels and generated required minutes in %s", async level => {
+    const draft = book(level, 1);
+    for (const p of draft.pages) if (p.content?.kind === "day") {
+      p.content.requiredTimeTarget = 20;
+      for (const b of p.content.blocks) if (["practice-2", "challenge"].includes(p.type)) b.extra = true;
+    }
+    const selected = draft.pages.filter(p => p.type === "how-plan" || p.content?.kind === "day" && p.content.day === 1 && ["practice-2", "challenge"].includes(p.type));
+    expect(selected.length).toBeGreaterThan(1);
+    const printed: Awaited<ReturnType<typeof engine.print>>[] = [];
+    const result = await renderWorkbook({ draft: { ...draft, pages: selected }, parentId: PARENT,
+      template: { ...template, page: (p, parts) => template.page(p, parts, draft) },
+      engine: { print: async job => {
+        const output = await engine.print(job);
+        printed.push(output);
+        return output;
+      } },
+    });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    const badges = printed.flatMap(p => p.measured.filter(m => m.name.startsWith("chipbadge-extra-")));
+    expect(badges.length).toBe(selected.reduce((n, p) => n + (p.content?.kind === "day" ? p.content.blocks.filter(b => b.extra).length : 0), 0));
+    expect(badges.every(m => m.visible && m.text === "Extra" && m.width > 30 && m.height >= 15)).toBe(true);
+    expect(printed.flatMap(p => p.measured).some(m => m.name.startsWith("slot-required-time-"))).toBe(true);
+  }, 60_000);
+
   it.each([["U2", 1, false], ["U6", 2, false], ["U12", 3, false], ["U22", 4, false], ["U12", 5, true]] as const)(
     "lay out one page of each type of a %s book (test book: %s) within its content area",
     async (level, n, test) => {

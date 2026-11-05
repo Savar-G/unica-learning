@@ -23,9 +23,10 @@ import {
   type MeasuredElement,
   type PageParts,
   type WorkbookTemplate,
+  type WorkbookDraft,
 } from "@/lib/workbook-render";
 import type { TemplateFonts } from "@/lib/workbook-template-fixed";
-import { instructionProblem, feedbackItemProblem } from "@/lib/workbook-feedback-check";
+import { instructionProblem, feedbackItemProblem, generatedDayTime } from "@/lib/workbook-feedback-check";
 import { titleProblem } from "@/lib/workbook-titles";
 import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
 import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
@@ -282,6 +283,7 @@ const CSS = `
 .chip.c-ch{background:#FFF0B8;color:#0C0C0E;border:1.5px solid #2B2622;height:31px}
 .chip.c-fx{background:#FDECEC;color:#B42318}
 .chip.c-lt{background:#F4F4F5;color:#0C0C0E}
+.pg .chip.c-extra-inline{height:auto;padding:0 8px;vertical-align:top;margin-left:10px}
 .side{font-size:var(--small);color:#44444C}
 .lab{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:var(--small);line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:#44444C}
 .blue{color:#2453D4}
@@ -435,6 +437,7 @@ const CSS = `
 .hp .tp b{display:block;font-weight:500;font-size:18px;line-height:1.3;white-space:nowrap}
 .hp .tp .t2{display:block;font-size:14px;color:#44444C;white-space:nowrap}
 .hp .pp{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:16px;width:96px}
+.hp .plan-time{display:block;font-size:13px;line-height:18px;color:#44444C}
 .hp .dn{width:56px;text-align:right}
 .hp .how{margin-top:auto;border-top:1px solid #0C0C0E;padding-top:14px;display:flex;flex-direction:column;gap:12px}
 .hp .hw{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
@@ -1361,7 +1364,16 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
   // (A block's rows: the sum of its grids' --rows, so blocks grow by their rows too.)
   const blockRows = (html: string) => [...html.matchAll(/class="(?:two|cols|list|facts|pcards|pcards fill|mxs)" style="--rows:(\d+)"/g)].reduce((n, m) => n + Number(m[1]), 0) || 1;
-  const blocks = c.blocks.map((b, i) => [b, i, blockHtml(b, i, ctx)] as const).map(([b, i, html]) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}" style="--rows:${blockRows(html)}${b.slot === "in-your-head" ? `;flex:0 0 auto` : ""}" data-slot="${b.slot}" data-measure="block-${i}">${html.replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
+  const blocks = c.blocks.map((b, i) => {
+    let html = blockHtml(b, i, ctx);
+    if (b.extra) {
+      const badge = `<span data-measure="chipbadge-extra-${i}" class="chip c-rv"><span>Extra</span></span>`;
+      if (html.includes('<div class="chiprow">')) html = html.replace('<div class="chiprow">', `<div class="chiprow">${badge}`);
+      else if (/<(?:div|span) class="lab"[^>]*>/.test(html)) html = html.replace(/(<(div|span) class="lab"[^>]*>[\s\S]*?)(<\/\2>)/, `$1${badge.replace('class="chip c-rv"', 'class="chip c-rv c-extra-inline"')}$3`);
+      else html = `<div class="chiprow">${badge}</div>${html}`;
+    }
+    return [b, i, html] as const;
+  }).map(([b, i, html]) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}" style="--rows:${blockRows(html)}${b.slot === "in-your-head" ? `;flex:0 0 auto` : ""}" data-slot="${b.slot}" data-measure="block-${i}">${html.replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
   // A page at its day's time limit holds no more questions: its rows grow to fill it, each with more room to work
   // (Codex at 47c5fd78: the time limit must not excuse a half-empty page).
   const stretch = c.consistentLayout && c.fillingComplete && c.atMaximum ? " stretch" : "";
@@ -1389,17 +1401,30 @@ function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { 
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
 
-function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "how-plan" }>): string {
-  const rows = c.rows.map((r) => `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(r.second)}</span></span></td>`
-    + `<td class="pp">${r.pages[0]}–${r.pages[1]}</td><td class="dn"><i class="tb"></i></td></tr>`).join("");
+function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "how-plan" }>, book: WorkbookDraft): string {
+  const times = new Map(c.rows.flatMap(r => {
+    const pages = book.pages.filter(p => p.content?.kind === "day" && !p.content.extraPractice && p.content.day === r.day);
+    if (!pages.some(p => p.content?.kind === "day" && (p.content.requiredTimeTarget !== undefined || p.content.blocks.some(b => b.extra))))
+      return r.requiredMinutes === undefined ? [] : [[r.day, { requiredMinutes: r.requiredMinutes, hasExtra: !!r.extra }] as const];
+    return [[r.day, generatedDayTime(pages)] as const];
+  }));
+  const extra = [...times.values()].some(t => t.hasExtra);
+  // Match the gate's tolerance: floating-point noise at 20 minutes must not print 21.
+  const roundedMinutes = (minutes: number) => Math.ceil(minutes - 1e-9);
+  const timeText = (minutes: number, hasExtra: boolean) => `about ${roundedMinutes(minutes)} minutes${hasExtra ? ", plus Extra if there's time" : ""}`;
+  const rows = c.rows.map((r) => {
+    const time = times.get(r.day);
+    return `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(r.second)}</span></span></td>`
+    + `<td class="pp">${r.pages[0]}–${r.pages[1]}${time ? `<span class="plan-time" ${mark.slot(`required-time-${r.day}`)}>${roundedMinutes(time.requiredMinutes)} min</span>` : ""}</td><td class="dn"><i class="tb"></i></td></tr>`;
+  }).join("");
   const how = [
-    { chip: { label: "Every day", cls: "c-pr", icon: ICONS.target }, text: `${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
+    { chip: { label: "Every day", cls: "c-pr", icon: ICONS.target }, text: times.size ? `${c.pagesADay} pages a day, ${timeText(Math.max(...[...times.values()].map(t => t.requiredMinutes)), extra)}.${extra ? " Extra blocks are optional." : ""}` : `${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
     { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Open unicalearning.com in your browser to scan each finished page." },
     { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Ask for help using Maya, the AI Teaching Assistant." },
     { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: "Anything your child got wrong in the previous workbook comes back as new questions." },
   ];
   return `<div class="pg mid">${scanMarks}<div class="hp" ${mark.slot("page")}><div class="top"><span>HOW IT WORKS · ${escape(c.child.toUpperCase())}'S PLAN</span><span>WORKBOOK ${c.workbook}</span></div>`
-    + `<table><thead><tr><th style="width:96px">DAY</th><th>TOPIC</th><th style="width:96px">PAGES</th><th style="width:56px;text-align:right">DONE</th></tr></thead><tbody>${rows}</tbody></table>`
+    + `<table><thead><tr><th style="width:96px">DAY</th><th>TOPIC</th><th style="width:96px">PAGES${times.size ? "<br>REQUIRED TIME" : ""}</th><th style="width:56px;text-align:right">DONE</th></tr></thead><tbody>${rows}</tbody></table>`
     + `<div class="how"><span class="lab">How it works</span><div class="hw">${how.map((h, i) => `<div>${chipHtml(h.chip)}<p ${mark.slot(`how-${i}`)}>${escape(h.text)}</p></div>`).join("")}</div></div>`
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
@@ -1552,13 +1577,13 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
 export function workbookTemplate(fonts?: TemplateFonts): WorkbookTemplate {
   return {
     css: (fonts ? fontFace("Unica Sans", "300 700", fonts.sans) + fontFace("Unica Mono", "400 500", fonts.mono) : "") + CSS,
-    page(page, parts) {
+    page(page, parts, book) {
       const c = page.content;
       if (!c) return null;
       switch (c.kind) {
         case "day": return dayPage(page, parts, c);
         case "cover": return coverPage(page, parts, c);
-        case "how-plan": return howPlanPage(page, parts, c);
+        case "how-plan": return howPlanPage(page, parts, c, book);
         case "back-cover": return blankPage(page, parts, { ...c, kind: "blank" });
         case "blank": return blankPage(page, parts, c);
       }

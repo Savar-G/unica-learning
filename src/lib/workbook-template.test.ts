@@ -5,6 +5,7 @@ import { workbookProblem } from "@/lib/workbook-content";
 import { renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { bandOf, workbookTemplate } from "@/lib/workbook-template";
+import { generatedDayTime } from "@/lib/workbook-feedback-check";
 
 // The workbook templates (#310) through the renderer with the fake print engine: every page type of the sample books
 // has a layout and prints its number and QR code, the rendered book is one the store takes, and the template's fit
@@ -25,6 +26,66 @@ const first = (draft: WorkbookDraft, type: string) => draft.pages.find((p) => p.
 const AREA = { "1 slot-content": { x: 64, y: 210, width: 688, height: 720 } };
 
 describe("the workbook templates", () => {
+  it.each(["U4", "U16"].flatMap(level => ["practice", "practice-2", "challenge"].map(type => [level, type])))("prints one Extra chip per whole marked block in %s %s and keeps every question", (level, type) => {
+    const draft = book(level);
+    const p = first(draft, type);
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const content = { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: true })) };
+    const html = workbookTemplate().page({ ...p, content }, { qr: "", qrUrl: "" }, draft)!;
+    const original = workbookTemplate().page(p, { qr: "", qrUrl: "" }, draft)!;
+    expect(html.match(/>Extra<\/span>/g)).toHaveLength(content.blocks.length);
+    for (const q of p.questions) expect(html).toContain(`data-measure="question-${q.number}"`);
+    expect(html.match(/data-measure="chipbadge-extra-/g)).toHaveLength(content.blocks.length);
+    expect(html.match(/class="chiprow"/g)).toHaveLength(original.match(/class="chiprow"/g)?.length ?? 0);
+    expect(original).not.toContain(">Extra</span>");
+  });
+
+  it("prints required minutes from the draft in How it works and each plan row", () => {
+    const draft = book("U16");
+    for (const p of draft.pages) if (p.content?.kind === "day") {
+      p.content.requiredTimeTarget = 20;
+      for (const b of p.content.blocks) if (p.type === "challenge" || p.type === "practice-2") b.extra = true;
+    }
+    const plan = first(draft, "how-plan");
+    if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
+    plan.content.minutes = { min: 99, max: 99 };
+    const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, draft)!;
+    const minutes = plan.content.rows.map(r => generatedDayTime(draft.pages.filter(p => p.content?.kind === "day" && p.content.day === r.day)).requiredMinutes);
+    expect(html).toContain(`about ${Math.ceil(Math.max(...minutes))} minutes, plus Extra if there's time`);
+    expect(html).toContain("Extra blocks are optional.");
+    expect(html).not.toContain("99 minutes");
+    for (const [i, row] of plan.content.rows.entries()) expect(html).toContain(`data-measure="slot-required-time-${row.day}">${Math.ceil(minutes[i])} min`);
+  });
+
+  it("keeps How it works unchanged without Extra and required-time fields", () => {
+    const draft = book("U16"), plan = first(draft, "how-plan");
+    if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
+    plan.content.minutes = { min: 17, max: 17 };
+    const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, draft)!;
+    expect(html).toContain("about 17 minutes.");
+    expect(html).not.toMatch(/REQUIRED TIME|Extra|plan-time|slot-required-time/);
+  });
+
+  it("uses the generated row estimate when only the plan page is printed", () => {
+    const draft = book("U16"), plan = first(draft, "how-plan");
+    if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
+    plan.content.rows = plan.content.rows.map(row => ({ ...row, requiredMinutes: row.day + 7.2, extra: true }));
+    const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, only(draft, plan))!;
+    expect(html).toContain("about 18 minutes, plus Extra if there's time");
+    expect(html).toContain('data-measure="slot-required-time-1">9 min');
+    expect(html).toContain('data-measure="slot-required-time-10">18 min');
+  });
+
+  it("prints 20 minutes at the exact budget boundary despite floating-point noise", () => {
+    const draft = book("U16"), plan = first(draft, "how-plan");
+    if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
+    plan.content.rows = plan.content.rows.map(row => ({ ...row, requiredMinutes: 20.000000000000004, extra: true }));
+    const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, only(draft, plan))!;
+    expect(html).toContain("about 20 minutes, plus Extra if there's time");
+    expect(html).toContain('data-measure="slot-required-time-1">20 min');
+    expect(html).not.toContain("21 min");
+  });
+
   it.each([["U2"], ["U6"], ["U12"], ["U22"]])("lay out every page of a %s sample book, and the book is one the store takes", async (level) => {
     const result = await render(book(level));
     if (result.status !== "rendered") throw new Error(JSON.stringify(result.problems.slice(0, 5)));
