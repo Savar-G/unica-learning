@@ -734,7 +734,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       // worded (#407: an equal fraction when the question does not ask for the simplest form).
       const read = readAnswer(lastChild, opts);
       const named = askedHeard !== null && GATE_YES_START.test(lastChild) && !GATE_NOT_SURE.test(lastChild) &&
-        valuesIn(lastChild, opts).length > 0 && valuesIn(lastChild, opts).every((v) => sameValue(v, askedHeard));
+        valuesIn(lastChild, opts).length > 0 && valuesIn(lastChild, opts).every((v) => sameValue(v, askedHeard!));
       const yes = askedHeard !== null && (GATE_YES.test(lastChild) || named) ? askedHeard : null;
       const final = yes ?? read.final;
       if (!final || (yes === null && !read.sure) || !rightForQuestion(op, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
