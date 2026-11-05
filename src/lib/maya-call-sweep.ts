@@ -205,12 +205,12 @@ export async function sweepAbandonedCalls(o: SweepOptions): Promise<SweepResult>
     return true;
   }
 
-  /** One read or write of the place, refused after its own time limit. */
-  async function placeStep<T>(step: Promise<T>): Promise<T> {
+  /** One read or write of the place, refused after its own time limit. LATE when the sweep's whole time limit passed first. */
+  async function placeStep<T>(step: Promise<T>): Promise<T | typeof LATE> {
     let wait: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<never>((_, reject) => (wait = setTimeout(() => reject(new Error("no answer in time")), o.placeTimeoutMs ?? SWEEP_PLACE_MS)));
     try {
-      return await Promise.race([step, late]);
+      return await bounded(Promise.race([step, late]));
     } finally {
       clearTimeout(wait);
     }
@@ -224,23 +224,26 @@ export async function sweepAbandonedCalls(o: SweepOptions): Promise<SweepResult>
     let stored: SweepPlace | null = null;
     if (!o.dry) {
       try {
-        stored = await placeStep(o.source.readPlace(kind));
+        const read = await placeStep(o.source.readPlace(kind));
+        if (read === LATE) return false;
+        stored = read;
       } catch (e) {
         console.error("[maya sweep] place not read", kind, e instanceof Error ? e.message : String(e));
       }
     }
     // A pass that starts at the oldest call covers the calls there are now.
     const until = stored?.until ?? newest;
-    /** Stores where the next run starts (null: at the oldest call, a new pass). */
-    const keep = async (after: SweepCursor | null): Promise<void> => {
+    /** Stores where the next run starts (null: at the oldest call, a new pass). False when the time limit stopped it. */
+    const keep = async (after: SweepCursor | null): Promise<boolean> => {
       const place = after && { after, until };
-      if (o.dry || (place?.after.at === stored?.after.at && place?.after.id === stored?.after.id && place?.until === stored?.until)) return;
+      if (o.dry || (place?.after.at === stored?.after.at && place?.after.id === stored?.after.id && place?.until === stored?.until)) return true;
       try {
-        await placeStep(o.source.writePlace(kind, place));
+        if ((await placeStep(o.source.writePlace(kind, place))) === LATE) return false;
         stored = place;
       } catch (e) {
         console.error("[maya sweep] place not stored", kind, e instanceof Error ? e.message : String(e));
       }
+      return true;
     };
     let after = stored?.after ?? null;
     let left = false;
@@ -249,10 +252,7 @@ export async function sweepAbandonedCalls(o: SweepOptions): Promise<SweepResult>
       if (rows === LATE) return false;
       for (const record of rows) {
         // A call newer than the pass came since it began: the pass is over, and the next run starts a new one.
-        if (!left && Date.parse(cursorOf(record).at) > Date.parse(until)) {
-          await keep(null);
-          return true;
-        }
+        if (!left && Date.parse(cursorOf(record).at) > Date.parse(until)) return keep(null);
         if (!isDue(record)) continue;
         result.due++;
         if (o.dry) continue;
@@ -262,18 +262,16 @@ export async function sweepAbandonedCalls(o: SweepOptions): Promise<SweepResult>
           continue;
         }
         // Stored before the end starts: an end that hangs or uses the whole run does not hold up the next run.
-        await keep(cursorOf(record));
+        if (!(await keep(cursorOf(record)))) return false;
         if (!(await end(record, counted))) return false;
       }
       if (rows.length < SWEEP_BATCH) {
         // Calls were left for the next run: it starts after the last call this run started to end.
-        if (!left) await keep(null);
-        return true;
+        return left || keep(null);
       }
       after = cursorOf(rows[rows.length - 1]);
     }
-    if (!left) await keep(after);
-    return true;
+    return left || keep(after);
   }
 
   try {

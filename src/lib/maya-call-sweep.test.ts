@@ -440,6 +440,21 @@ describe("the sweep of abandoned calls", () => {
     expect(s.row(view.id).status).toBe("ended");
   });
 
+  it("stops at its whole time limit when a place read or write is still waiting (#586 review 2)", async () => {
+    // Wrong if: a place step waits out its own limit after the sweep's whole limit has passed, so the sweep runs over.
+    const s = setup();
+    await s.chat();
+    s.set(T0 + DUE_MS);
+    const never = () => new Promise<never>(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const source of [{ ...s.inner, readPlace: never }, { ...s.inner, writePlace: never }]) {
+      const started = Date.now();
+      const result = await sweepAbandonedCalls({ calls: mayaCalls(sweepSeams(s.seams)), source, clock: s.now, timeLimitMs: 30, placeTimeoutMs: 5000 });
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(result.cut).toBe(true);
+    }
+  });
+
   it("counts the final speech after a solved outcome when the sweep ends a voice call its worker could not (#586 review)", async () => {
     // Wrong if: the sweep counts connected time only to the outcome's time, not through the stored connection events
     // of the final speech, so a call the worker left to the sweep is settled short.
