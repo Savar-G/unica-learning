@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AreaAnswer, ReportModel } from "@/lib/assessment";
-import { listChildren, readChild, readOverview, readWorkbooks } from "@/lib/parent-view";
+import { listChildren, readChild, readMonthlySummary, readOverview, readWorkbooks } from "@/lib/parent-view";
 import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryResult, type MemoryTest, type MemoryWorkbook } from "@/lib/parent-view-memory";
 
 // The parent view module (spec #544), through its public interface, over the in-memory reader, which keeps the
@@ -103,7 +103,7 @@ describe("what a parent reads", () => {
     const readers = memoryParentViewReaders({ children: [younger, omar, leah] });
     const list = await listChildren(readers.parent("parent-1"), NOW);
     expect(list.map((c) => c.firstName)).toEqual(["Leah", "Ana"]);
-    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0 });
+    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0 });
   });
   it("lists a child's reports, the newest test first", async () => {
     const reader = parent({ tests: [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })], reports: [report("old"), report("new")] });
@@ -307,7 +307,7 @@ describe("the Overview (#560)", () => {
 
   it("before the first test: no tile, no bar, and Start the test as the one thing to do", async () => {
     expect(await read({})).toEqual({
-      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], resultPreparing: false, resultLate: false, workbook: null, action: "start_test",
+      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], resultPreparing: false, resultLate: false, workbook: null, action: "start_test", summaryMonth: null,
     });
   });
 
@@ -474,5 +474,132 @@ describe("the Overview (#560)", () => {
 
   it.each(["results", "scans", "learning"] as const)("a failed read of %s throws", async (table) => {
     await expect(read({ ...delivered, ...tested, results: [result("t")], fail: [table] })).rejects.toThrow(table);
+  });
+});
+
+describe("the monthly summary (#562)", () => {
+  const own = { parentId: "parent-1", childId: "child-1" };
+  const card = { cards: [{ ...own, cardSavedAt: "2026-09-20T00:00:00Z" }] };
+  // Delivered on September 30 at 20:00 in Vancouver (UTC-7): October 1 in UTC, September in family time.
+  const delivered = { ...card, deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-10-01T03:00:00Z" }], workbooks: [{ ...own, id: "wb-1", number: 1, status: "shipped", shippedAt: "2026-09-25T18:00:00Z" }] };
+  const level = (over: Partial<ReportModel["level"]> = {}): ReportModel["level"] => ({ working: 3, grade: 3, atCeiling: false, confidence: "normal", certainty: "clear", ...over });
+  const result = (assessmentId: string, over: Partial<MemoryResult> = {}): MemoryResult => ({ ...own, assessmentId, level: level(), answers: [], ...over });
+  const answers = (area: AreaAnswer["area"], lvl: AreaAnswer["level"], right: number): AreaAnswer[] => Array.from({ length: right }, () => ({ area, level: lvl, correct: true }));
+  const sept = { tests: [test("t", { completedAt: Date.parse("2026-09-10T18:00:00Z") })], reports: [report("t")], results: [result("t", { answers: answers("number", 3, 4) })] };
+  const tables = (over: Parameters<typeof parent>[0] = {}) => parent({ ...delivered, ...sept, ...over });
+  const summary = (over: Parameters<typeof parent>[0] = {}, month = "2026-10", now = NOW) => readMonthlySummary(tables(over), "child-1", month, now);
+
+  describe("which months it offers", () => {
+    it("the Overview offers the last finished month in family time, from the month after the first delivery", async () => {
+      expect((await readOverview(tables(), "child-1", NOW))?.summaryMonth).toBe("2026-10");
+      // On October 31 at 23:30 in Vancouver it is still October: the last finished month is September, the delivery's month.
+      expect((await readOverview(tables(), "child-1", Date.parse("2026-11-01T06:30:00Z")))?.summaryMonth).toBe("2026-09");
+      // In the month of the first delivery there is no finished month after it began.
+      expect((await readOverview(tables(), "child-1", Date.parse("2026-09-30T12:00:00Z")))?.summaryMonth).toBeNull();
+    });
+    it("none before a delivery is confirmed, and none for a stage with no Overview", async () => {
+      expect((await readOverview(tables({ deliveries: [] }), "child-1", NOW))?.summaryMonth).toBeNull();
+      expect(await summary({ deliveries: [] })).toBeNull();
+      expect(await readMonthlySummary(parent({ ...sept }), "child-1", "2026-10", NOW)).toBeNull();
+    });
+    it("a correction of the delivery time moves the first month", async () => {
+      const corrections = [{ ...own, workbookId: "wb-1", deliveredAt: "2026-10-20T18:00:00Z", auditId: 2 }];
+      expect((await readOverview(tables({ corrections }), "child-1", NOW))?.summaryMonth).toBe("2026-10");
+      expect(await summary({ corrections }, "2026-09")).toBeNull();
+    });
+    it("refuses a month before the first delivery, the current month, a later month and a malformed month", async () => {
+      expect(await summary({}, "2026-08")).toBeNull();
+      expect(await summary({}, "2026-11")).toBeNull();
+      expect(await summary({}, "2026-12")).toBeNull();
+      for (const bad of ["2026-13", "2026-1", "october", "2026-10-01", ""]) expect(await summary({}, bad)).toBeNull();
+      expect(await summary({}, "2026-09")).not.toBeNull();
+    });
+    it("is not found for another family's child", async () => {
+      const readers = memoryParentViewReaders({
+        children: [leah, omar],
+        cards: [{ parentId: "parent-2", childId: "child-2", cardSavedAt: "2026-09-20T00:00:00Z" }],
+        deliveries: [{ parentId: "parent-2", childId: "child-2", deliveredAt: "2026-09-01T00:00:00Z" }],
+      });
+      expect(await readMonthlySummary(readers.parent("parent-1"), "child-2", "2026-10", NOW)).toBeNull();
+      expect(await readMonthlySummary(readers.parent("parent-2"), "child-2", "2026-10", NOW)).not.toBeNull();
+    });
+  });
+
+  it("holds the level, the area bars, the month's workbooks, scanned days, Maya calls and the next book's range", async () => {
+    const pages = ["d1a", "d1b", "d2a"].map((id) => ({ parentId: "parent-1", workbookId: "wb-2", id, dayLabel: id.startsWith("d1") ? "Day 1" : "Day 2" }));
+    const scan = (pageId: string, takenAt: string) => ({ ...own, workbookId: "wb-2", pageId, state: "saved", expiresAt: "2027-01-01T00:00:00Z", takenAt });
+    const view = await summary({
+      workbooks: [...delivered.workbooks, { ...own, id: "wb-2", number: 2, status: "shipped", shippedAt: "2026-10-14T18:00:00Z" }],
+      deliveries: [...delivered.deliveries, { ...own, workbookId: "wb-2", deliveredAt: "2026-10-18T18:00:00Z" }],
+      pages,
+      scans: [scan("d1a", "2026-10-20T18:00:00Z"), scan("d1b", "2026-10-21T18:00:00Z"), scan("d2a", "2026-10-25T18:00:00Z")],
+      maya: [
+        { ...own, kind: "child", createdAt: "2026-10-02T18:00:00Z", usedSeconds: 300 },
+        { ...own, kind: "child", createdAt: "2026-10-30T18:00:00Z", usedSeconds: 60 },
+      ],
+    });
+    expect(view).toEqual({
+      firstName: "Leah", schoolGrade: 3, month: "2026-10", madeOn: "2026-11-04",
+      level: { working: 3, earlySign: false, testedOn: "2026-09-10" },
+      areas: [{ area: "number", name: expect.any(String), level: 3, label: "at-grade", earlySign: false }],
+      mailed: [{ number: 2, shippedOn: "2026-10-14" }],
+      daysScanned: 2, mayaCalls: 2,
+      next: { earliest: "2026-10-28", latest: "2026-11-15" },
+    });
+  });
+
+  it("has nothing for a section with no data", async () => {
+    const view = await summary({ tests: [], reports: [], results: [] });
+    expect(view).toMatchObject({ level: null, areas: [], mailed: [], daysScanned: 0, mayaCalls: 0, next: null });
+  });
+
+  it("counts month boundaries in family time", async () => {
+    const pages = [{ parentId: "parent-1", workbookId: "wb-1", id: "p", dayLabel: "Day 1" }];
+    // 06:30 UTC on November 1 is October 31 in Vancouver.
+    const late = "2026-11-01T06:30:00Z";
+    const view = await summary({
+      workbooks: [{ ...delivered.workbooks[0], shippedAt: "2026-10-01T03:00:00Z" }],
+      pages, scans: [{ ...own, workbookId: "wb-1", pageId: "p", state: "saved", expiresAt: "2027-01-01T00:00:00Z", takenAt: late }],
+      maya: [{ ...own, kind: "child", createdAt: late, usedSeconds: 30 }, { ...own, kind: "child", createdAt: "2026-10-01T06:30:00Z", usedSeconds: 30 }],
+    });
+    // Shipped on September 30 in Vancouver, so not in October; the late scan and call are October's; the early call is September's.
+    expect(view).toMatchObject({ mailed: [], daysScanned: 1, mayaCalls: 1 });
+  });
+
+  it("uses the newest test finished by the month's end, not a later one", async () => {
+    const tests = [test("t", { completedAt: Date.parse("2026-09-10T18:00:00Z") }), test("nov", { completedAt: Date.parse("2026-11-02T18:00:00Z") })];
+    const view = await summary({ tests, reports: [report("t"), report("nov")], results: [result("t"), result("nov", { level: level({ working: 5 }) })] });
+    expect(view?.level).toEqual({ working: 3, earlySign: false, testedOn: "2026-09-10" });
+  });
+
+  it("a day counts only when every page of it has a saved photo, in the month of its last page", async () => {
+    const pages = ["a", "b"].map((id) => ({ parentId: "parent-1", workbookId: "wb-1", id, dayLabel: "Day 1" }));
+    const scan = (pageId: string, takenAt: string, state = "saved") => ({ ...own, workbookId: "wb-1", pageId, state, expiresAt: "2027-01-01T00:00:00Z", takenAt });
+    expect((await summary({ pages, scans: [scan("a", "2026-10-02T18:00:00Z")] }))?.daysScanned).toBe(0);
+    expect((await summary({ pages, scans: [scan("a", "2026-10-02T18:00:00Z"), scan("b", "2026-10-03T18:00:00Z", "pending")] }))?.daysScanned).toBe(0);
+    expect((await summary({ pages, scans: [scan("a", "2026-09-29T18:00:00Z"), scan("b", "2026-10-03T18:00:00Z")] }))?.daysScanned).toBe(1);
+    expect((await summary({ pages, scans: [scan("a", "2026-09-29T18:00:00Z"), scan("b", "2026-09-30T18:00:00Z")] }))?.daysScanned).toBe(0);
+  });
+
+  it("counts only the child's own calls that used time, never a parent's demo call or another child's", async () => {
+    const maya = [
+      { ...own, kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 0 },
+      { ...own, kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: null },
+      { ...own, kind: "parent_demo" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 200 },
+      { parentId: "parent-1", childId: "child-3", kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 200 },
+      { parentId: "parent-2", childId: "child-1", kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 200 },
+    ];
+    expect((await summary({ maya }))?.mayaCalls).toBe(0);
+  });
+
+  it("copies only the fields it names, whatever a row holds", async () => {
+    const SECRET = "RAW-CANARY";
+    const raw = { learner_profile: SECRET, transcript: SECRET, ai: { findings: [SECRET] }, model: { summary: SECRET } };
+    const view = await summary({
+      results: [{ ...result("t", { answers: answers("number", 3, 4) }), level: { ...level(), ...raw } as never, ...raw }],
+      maya: [{ ...own, kind: "child", createdAt: "2026-10-02T18:00:00Z", usedSeconds: 60, ...raw } as never],
+      children: [{ ...leah, ...raw }, omar],
+    });
+    expect(JSON.stringify(view)).not.toContain(SECRET);
   });
 });

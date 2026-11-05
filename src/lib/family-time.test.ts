@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  effectiveZone, familyZone, familyZoneName, familyTime, familyWhen, formatCalendarDate, localDay, localWeekStart,
-  PACIFIC_ZONE, warnIfTimeZoneDataIsOld, zoneFor,
+  addMonths, effectiveZone, familyZone, familyZoneName, familyTime, familyWhen, formatCalendarDate, localDay, localMonth, localWeekStart,
+  monthOf, PACIFIC_ZONE, warnIfTimeZoneDataIsOld, zoneFor,
 } from "@/lib/family-time";
 
 afterEach(() => vi.restoreAllMocks());
@@ -287,5 +287,31 @@ describe("one family-zone selection rule", () => {
     ["America/Regina", "6:00 a.m."],
   ])("applies the November override to browser zone %s and preserves fixed zones", (timeZone, expected) => {
     expect(familyTime(Date.parse("2026-11-09T12:00:00Z"), familyZone({ timeZone }))).toBe(expected);
+  });
+});
+
+describe("calendar months in family time (monthly summary, #562)", () => {
+  it("puts an instant in the family's local month, with the dated overrides", () => {
+    // 06:30 UTC on November 1 is 23:30 on October 31 in Vancouver (UTC-7 all year from 2026-03-08), and 01:30 in Halifax.
+    const at = Date.parse("2026-11-01T06:30:00Z");
+    expect(localMonth(at, PACIFIC_ZONE)).toBe("2026-10");
+    expect(localMonth(at, "America/Halifax")).toBe("2026-11");
+    // Edmonton is UTC-6 from 2026-11-01T08:00Z: 05:59 UTC on December 1 is still November 30 there.
+    expect(localMonth(Date.parse("2026-12-01T05:59:00Z"), "America/Edmonton")).toBe("2026-11");
+    expect(localMonth(Date.parse("2026-12-01T06:00:00Z"), "America/Edmonton")).toBe("2026-12");
+  });
+
+  it("gives a month's first day and the instant the next month starts at local midnight", () => {
+    expect(monthOf(Date.parse("2026-10-15T12:00:00Z"), PACIFIC_ZONE)).toEqual({ start: "2026-10-01", resetsAt: Date.parse("2026-11-01T07:00:00Z") });
+    expect(monthOf(Date.parse("2026-12-31T12:00:00Z"), "America/Toronto")).toEqual({ start: "2026-12-01", resetsAt: Date.parse("2027-01-01T05:00:00Z") });
+  });
+
+  it("counts months across a year", () => {
+    expect(addMonths("2026-11", -1)).toBe("2026-10");
+    expect(addMonths("2026-01", -1)).toBe("2025-12");
+    expect(addMonths("2026-12", 1)).toBe("2027-01");
+    expect(addMonths("2026-05", 0)).toBe("2026-05");
+    expect(() => addMonths("2026-13", 1)).toThrow(RangeError);
+    expect(() => addMonths("26-01", 1)).toThrow(RangeError);
   });
 });

@@ -289,6 +289,7 @@ describe("a family the switch opens to", () => {
       resultLate: false,
       workbook: { number: 2, scannedDays: 3, days: 10 },
       action: "learning_card_empty",
+      summaryMonth: null,
     });
     const render = async (value: import("@/lib/parent-view").OverviewView | null, t?: readonly (typeof tabs)[number][]) => {
       dashboard.value = { children: [view("z-old", "Sam"), asha(t)], remembered: null, pinSet: true, timeZoneSaved: true };
@@ -329,6 +330,16 @@ describe("a family the switch opens to", () => {
       expect(out).not.toContain("Level by area");
       expect(out).not.toContain("po-action");
       expect(out).not.toContain("days scanned");
+    });
+
+    it("offers the monthly summary PDF of the month the view names, and nothing without one (#562)", async () => {
+      const out = await render({ ...full(), summaryMonth: "2026-10" });
+      expect(out).toContain('id="po-summary"');
+      expect(out).toContain("October 2026");
+      expect(out).toContain('href="/api/account/children/c1/monthly-summary?month=2026-10"');
+      expect(out).toContain("One page on Asha&#x27;s month");
+      expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
+      expect(await render(full())).not.toContain("po-summary");
     });
 
     it("asks the parent to email us when the new result is late", async () => {
