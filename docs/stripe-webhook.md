@@ -43,11 +43,11 @@ Stripe tries a failed event again for up to three days in live mode. A customer 
 
 - `src/lib/plan-state.ts` holds the rules, behind a store seam and a provider seam.
 - An event only says that something changed. Each event reads the customer's subscriptions again and stores what `parentPlan` makes of them. So the stored kind follows the same rule as the plan page: the zero invoice of a free month does not read as paying.
-- The row keeps the latest Stripe read, because each event reads Stripe again. A newer event whose read started first does not replace an older event whose read started later. Of two reads that start at the same time, the newer event stays. A duplicate of the row's event writes nothing.
+- The row keeps the read with the highest value from one database sequence. Each read takes its value from `take_plan_read_order` before it reads Stripe. So a read that missed a change took before that change, and the take of the change's own event comes after it. The order comes from the database, because the clocks of two application servers can disagree. A newer event that took first does not replace an older event that took later. A duplicate of the row's event writes nothing.
 - An event older than the row's event skips the Stripe read and writes nothing, so a late event costs no Stripe call. The last change's event is never older than the row's event, so this skip cannot lose a change.
 - `unknown` is never stored. A child with no row reads as `unknown`, and a failed read leaves the row as it is.
-- `fillChildPlan` fills a missing row from Stripe. It never replaces a row. An event replaces a filled row unless the fill's read started later.
-- `customerPlan` reads all pages of the customer's subscriptions, at most 10 pages of 100. If it cannot read the whole list, it throws: the webhook answers 500 and the plan page shows `unknown`.
+- `fillChildPlan` fills a missing row from Stripe. It never replaces a row. An event replaces a filled row unless the fill took later.
+- `customerSubscriptions` (`src/lib/stripe-subscriptions.ts`) reads all pages of the customer's subscriptions, at most 10 pages of 100. `customerPlan`, `cancelPlan` and `startPlan` all use it. If it cannot read the whole list, it throws: the webhook answers 500, the plan page shows `unknown`, the cancel route answers 502 and the plan start route answers 502, with nothing cancelled and nothing started.
 
 ## Limit to know before a page reads the row
 

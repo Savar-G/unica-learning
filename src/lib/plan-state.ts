@@ -6,10 +6,11 @@ import type { KnownPlan, ParentPlan } from "@/lib/parent-plan";
 // parentPlan makes of them, so the stored kind follows the same rule as the plan page: the zero invoice of a free month
 // does not read as paying, and an event about an old subscription does not end a running one.
 //
-// The order: the row keeps the latest Stripe read. `readAt` is when the read started, so the read of the last change's
-// event, or a read that started later, has seen that change and stays. Of two reads that start at the same time, the
-// newer event stays, and an event stays over a fill. A duplicate of the row's event writes nothing. A write with no event
-// only fills a missing row. An event replaces a filled row by the same order.
+// The order: the row keeps the read with the highest value from one database sequence. Each read takes its value before
+// it starts, so a read that missed a change took before that change, and the take of the change's own event comes after
+// it. App clocks play no part: two servers' clocks can disagree. Values never repeat, so there are no ties. A duplicate of
+// the row's event writes nothing. A write with no event only fills a missing row. An event replaces a filled row by the
+// same order.
 //
 // `unknown` is never stored. It is what a child with no row reads as, and a read that fails leaves the row as it is.
 // The store (child_plan_states and card_setups) and the provider (Stripe) are the seams: plan-state-server.ts holds
@@ -51,8 +52,8 @@ export interface StoredPlanState {
 }
 
 export interface PlanWrite extends StoredPlanState {
-  /** ISO time the Stripe read started. */
-  readAt: string;
+  /** What `takeReadOrder` gave before the Stripe read. */
+  readOrder: number;
 }
 
 export type PlanSave = "stored" | "older" | "duplicate" | "no_match";
@@ -64,6 +65,8 @@ export interface PlanStateStore {
   ownerOfChild(key: PlanKey): Promise<PlanOwner | null>;
   /** The child's row, or null. Throws when the read fails. */
   load(key: PlanKey): Promise<StoredPlanState | null>;
+  /** The next value of one shared database sequence. Take it before a Stripe read. Throws when it fails. */
+  takeReadOrder(): Promise<number>;
   /**
    * In one statement, by the rules at the top of this file. Writes nothing and answers `no_match` when no card setup has
    * this customer; a write with no event only fills a missing row, and otherwise answers `older`. Throws when it fails.
@@ -79,14 +82,13 @@ export interface PlanProvider {
 export interface PlanStates {
   store: PlanStateStore;
   provider: PlanProvider;
-  now(): Date;
 }
 
 /**
  * Stores what one event leads to. `no_match` means that nothing could use the event: Stripe should not send it again.
  * Throws when Stripe or the store fails, so Stripe sends it again.
  */
-export async function applyPlanEvent(event: PlanEvent, { store, provider, now }: PlanStates): Promise<PlanSave> {
+export async function applyPlanEvent(event: PlanEvent, { store, provider }: PlanStates): Promise<PlanSave> {
   if (!event.customer) return "no_match";
   const owner = await store.ownerOfCustomer(event.customer);
   if (!owner) return "no_match";
@@ -96,9 +98,9 @@ export async function applyPlanEvent(event: PlanEvent, { store, provider, now }:
   const stored = await store.load(owner);
   if (stored?.eventId === event.id) return "duplicate";
   if (stored?.eventAt && Date.parse(stored.eventAt) > Date.parse(eventAt)) return "older";
-  const readAt = now().toISOString();
+  const readOrder = await store.takeReadOrder();
   const plan = await provider.plan(event.customer);
-  return store.save(event.customer, { plan, eventAt, eventId: event.id, readAt });
+  return store.save(event.customer, { plan, eventAt, eventId: event.id, readOrder });
 }
 
 /** The stored plan. A child with no row, or a read that fails, is unknown. Asks Stripe nothing. */
@@ -114,15 +116,15 @@ export async function readChildPlan(key: PlanKey, store: PlanStateStore): Promis
  * The stored plan; with no row, fills it from Stripe. Only a saved card has a plan to fill. Never replaces a row: an
  * event stored during the Stripe read stays, and is what this returns. Anything that fails is unknown.
  */
-export async function fillChildPlan(key: PlanKey, { store, provider, now }: PlanStates): Promise<ParentPlan> {
+export async function fillChildPlan(key: PlanKey, { store, provider }: PlanStates): Promise<ParentPlan> {
   try {
     const stored = await store.load(key);
     if (stored) return stored.plan;
     const owner = await store.ownerOfChild(key);
     if (!owner?.cardSaved) return { kind: "unknown" };
-    const readAt = now().toISOString();
+    const readOrder = await store.takeReadOrder();
     const plan = await provider.plan(owner.customer);
-    await store.save(owner.customer, { plan, eventAt: null, eventId: null, readAt });
+    await store.save(owner.customer, { plan, eventAt: null, eventId: null, readOrder });
     return (await store.load(key))?.plan ?? { kind: "unknown" };
   } catch (e) {
     console.error("[plan-state] fill failed", e instanceof Error ? e.message : "failed");

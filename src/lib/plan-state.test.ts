@@ -5,7 +5,6 @@ import { memoryPlanStates } from "@/lib/plan-state-memory";
 
 const key = { parentId: "parent-1", childId: "child-1" };
 const card = { ...key, customer: "cus_1", cardSaved: true };
-const NOW = new Date("2026-11-04T12:00:00.000Z");
 const FIRST_CHARGE = 1_800_000_000;
 const when = (seconds: number) => new Date(seconds * 1000).toISOString();
 
@@ -17,7 +16,7 @@ const event = (over: Partial<PlanEvent> = {}): PlanEvent => ({
 });
 /** A family with one saved card, and Stripe's subscriptions for it. */
 const family = (subscriptions: PlanSubscription[] = [sub()]) =>
-  memoryPlanStates({ cards: [card], subscriptions: { cus_1: subscriptions }, now: () => NOW });
+  memoryPlanStates({ cards: [card], subscriptions: { cus_1: subscriptions } });
 
 const KINDS: [KnownPlan, PlanSubscription[]][] = [
   [{ kind: "not_started" }, []],
@@ -67,8 +66,7 @@ describe("the order of events", () => {
   });
 
   it("an older event that was already reading Stripe when the newer one was stored changes nothing", async () => {
-    const clock = [new Date("2026-11-04T12:00:01.000Z"), new Date("2026-11-04T12:00:02.000Z")];
-    const states = memoryPlanStates({ cards: [card], subscriptions: { cus_1: [sub()] }, now: () => clock.shift()! });
+    const states = family([sub()]);
     const read = states.hold("plan");
     const older = applyPlanEvent(event({ id: "evt_old", created: 100 }), states);
     await read.reached;
@@ -80,9 +78,8 @@ describe("the order of events", () => {
     expect(await readChildPlan(key, states.store)).toEqual({ kind: "payment_failed" });
   });
 
-  it("keeps the latest read: a newer event that read first does not replace a delayed older event that read later", async () => {
-    const clock = [new Date("2026-11-04T12:00:01.000Z"), new Date("2026-11-04T12:00:02.000Z")];
-    const states = memoryPlanStates({ cards: [card], subscriptions: { cus_1: [sub()] }, now: () => clock.shift()! });
+  it("keeps the latest take: a newer event that took first does not replace a delayed older event that took later", async () => {
+    const states = family([sub()]);
     const read = states.hold("plan");
     const newer = applyPlanEvent(event({ id: "evt_new", created: 200 }), states);
     await read.reached;
@@ -90,25 +87,41 @@ describe("the order of events", () => {
     expect(await applyPlanEvent(event({ id: "evt_old", created: 100 }), states)).toBe("stored");
     read.release();
     expect(await newer).toBe("older");
-    expect(states.rows[0]).toMatchObject({ eventId: "evt_old", readAt: "2026-11-04T12:00:02.000Z" });
+    expect(states.rows[0]).toMatchObject({ eventId: "evt_old", readOrder: 2 });
     expect(await readChildPlan(key, states.store)).toEqual({ kind: "payment_failed" });
   });
 
-  it("of two reads that start at the same time, keeps the newer event", async () => {
+  it("takes the order before it reads Stripe, so a later take always saw newer Stripe state", async () => {
     const states = family([sub()]);
-    const read = states.hold("plan");
-    const older = applyPlanEvent(event({ id: "evt_old", created: 100 }), states);
-    await read.reached;
-    states.subscriptions.cus_1 = [sub({ status: "past_due" })];
-    expect(await applyPlanEvent(event({ id: "evt_new", created: 200 }), states)).toBe("stored");
-    read.release();
-    expect(await older).toBe("older");
-    expect(states.rows[0]).toMatchObject({ eventId: "evt_new" });
+    const take = states.hold("take");
+    const applying = applyPlanEvent(event(), states);
+    await take.reached;
+    expect(states.calls.plan).toBe(0);
+    take.release();
+    expect(await applying).toBe("stored");
+    expect(states.calls.plan).toBe(1);
   });
 
-  it("two events of one second both count, and the earlier read does not replace the later one", async () => {
-    const clock = [new Date("2026-11-04T12:00:01.000Z"), new Date("2026-11-04T12:00:02.000Z")];
-    const states = memoryPlanStates({ cards: [card], subscriptions: { cus_1: [sub()] }, now: () => clock.shift()! });
+  it("the later take replaces the row, and each take is larger than the one before", async () => {
+    const states = family([sub()]);
+    await applyPlanEvent(event({ id: "evt_a" }), states);
+    expect(states.rows[0].readOrder).toBe(1);
+    states.subscriptions.cus_1 = [sub({ status: "past_due" })];
+    expect(await applyPlanEvent(event({ id: "evt_b", type: "invoice.payment_failed" }), states)).toBe("stored");
+    expect(states.rows[0]).toMatchObject({ eventId: "evt_b", readOrder: 2 });
+    expect(await readChildPlan(key, states.store)).toEqual({ kind: "payment_failed" });
+  });
+
+  it("asks Stripe nothing and throws when it cannot take the order, so Stripe sends the event again", async () => {
+    const states = family();
+    states.fail.take = new Error("Database down");
+    await expect(applyPlanEvent(event(), states)).rejects.toThrow("Database down");
+    expect(states.calls.plan).toBe(0);
+    expect(states.rows).toEqual([]);
+  });
+
+  it("two events of one second both count, and the earlier take does not replace the later one", async () => {
+    const states = family([sub()]);
     const read = states.hold("plan");
     const first = applyPlanEvent(event({ id: "evt_a", created: 100 }), states);
     await read.reached;
@@ -119,9 +132,8 @@ describe("the order of events", () => {
     expect(await readChildPlan(key, states.store)).toEqual({ kind: "payment_failed" });
   });
 
-  it("stores the later read of two events of one second that arrive in turn", async () => {
-    const clock = [new Date("2026-11-04T12:00:01.000Z"), new Date("2026-11-04T12:00:02.000Z")];
-    const states = memoryPlanStates({ cards: [card], subscriptions: { cus_1: [sub()] }, now: () => clock.shift()! });
+  it("stores the later take of two events of one second that arrive in turn", async () => {
+    const states = family([sub()]);
     await applyPlanEvent(event({ id: "evt_a", created: 100 }), states);
     states.subscriptions.cus_1 = [sub({ status: "past_due" })];
     expect(await applyPlanEvent(event({ id: "evt_b", type: "invoice.payment_failed", created: 100 }), states)).toBe("stored");
@@ -200,7 +212,7 @@ describe("filling a missing row from Stripe", () => {
     const states = family(subscriptions);
     expect(await fillChildPlan(key, states)).toEqual(plan);
     expect(await readChildPlan(key, states.store)).toEqual(plan);
-    expect(states.rows[0]).toMatchObject({ eventAt: null, eventId: null, readAt: NOW.toISOString() });
+    expect(states.rows[0]).toMatchObject({ eventAt: null, eventId: null, readOrder: 1 });
   });
 
   it("does not ask Stripe when the row is there", async () => {
@@ -218,6 +230,21 @@ describe("filling a missing row from Stripe", () => {
     expect(states.rows).toEqual([]);
   });
 
+  it("takes the order before it reads Stripe, and stays unknown when it cannot take it", async () => {
+    const states = family();
+    const take = states.hold("take");
+    const filling = fillChildPlan(key, states);
+    await take.reached;
+    expect(states.calls.plan).toBe(0);
+    take.release();
+    expect((await filling).kind).toBe("free_month");
+
+    const failing = family();
+    failing.fail.take = new Error("Database down");
+    expect(await fillChildPlan(key, failing)).toEqual({ kind: "unknown" });
+    expect(failing.calls.plan).toBe(0);
+  });
+
   it("stays unknown when the store cannot write", async () => {
     const states = family();
     states.fail.save = new Error("family_unavailable");
@@ -225,7 +252,7 @@ describe("filling a missing row from Stripe", () => {
   });
 
   it("stays unknown, and asks Stripe nothing, without a saved card", async () => {
-    const states = memoryPlanStates({ cards: [{ ...card, cardSaved: false }], subscriptions: { cus_1: [] }, now: () => NOW });
+    const states = memoryPlanStates({ cards: [{ ...card, cardSaved: false }], subscriptions: { cus_1: [] } });
     expect(await fillChildPlan(key, states)).toEqual({ kind: "unknown" });
     expect(states.calls.plan).toBe(0);
     expect(states.rows).toEqual([]);
@@ -260,9 +287,8 @@ describe("filling a missing row from Stripe", () => {
     expect(await readChildPlan(key, states.store)).toEqual({ kind: "payment_failed" });
   });
 
-  it("an event whose read started before the fill's read does not replace the filled row", async () => {
-    const clock = [new Date("2026-11-04T12:00:01.000Z"), new Date("2026-11-04T12:00:02.000Z")];
-    const states = memoryPlanStates({ cards: [card], subscriptions: { cus_1: [sub()] }, now: () => clock.shift()! });
+  it("an event that took before the fill does not replace the filled row", async () => {
+    const states = family([sub()]);
     const read = states.hold("plan");
     const applying = applyPlanEvent(event(), states);
     await read.reached;

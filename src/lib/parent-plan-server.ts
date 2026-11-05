@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { sendEmail } from "@/lib/email-delivery";
 import { parentPlan, type KnownPlan, type ParentPlan, type PlanSubscription } from "@/lib/parent-plan";
 import { cancelPlan, stripe, type CancelPlanOutcome } from "@/lib/stripe";
+import { customerSubscriptions } from "@/lib/stripe-subscriptions";
 import { adminClient } from "@/lib/supabase-auth";
 
 // A parent's plans. Every read starts from the signed-in parent's id, so a parent reaches only their own Stripe
@@ -15,8 +16,6 @@ export interface ChildPlan {
 }
 
 const READ = { timeout: 4000, maxNetworkRetries: 1 };
-/** More subscriptions than these pages hold is not a state the plan rule knows: the read throws. */
-const SUBSCRIPTION_PAGES = 10;
 
 function planSubscription(s: Stripe.Subscription): PlanSubscription {
   const item = s.items.data[0];
@@ -31,18 +30,7 @@ function planSubscription(s: Stripe.Subscription): PlanSubscription {
  * answer or when it cannot read the whole list: an answer from part of the list could hide a running plan.
  */
 export async function customerPlan(s: Stripe, customer: string): Promise<KnownPlan> {
-  const subscriptions: PlanSubscription[] = [];
-  let after: string | undefined;
-  for (let page = 0; page < SUBSCRIPTION_PAGES; page++) {
-    const list = await s.subscriptions.list({ customer, status: "all", limit: 100, starting_after: after }, READ);
-    if (typeof list.has_more !== "boolean") throw new Error("Subscription pagination unreadable");
-    subscriptions.push(...list.data.map(planSubscription));
-    if (!list.has_more) return parentPlan(subscriptions);
-    const next = list.data.at(-1)?.id;
-    if (!next || next === after) throw new Error("Subscription pagination did not advance");
-    after = next;
-  }
-  throw new Error("Too many subscriptions");
+  return parentPlan((await customerSubscriptions(s, customer, READ)).map(planSubscription));
 }
 
 /** One entry per child with a saved card. Null when the store cannot answer. */

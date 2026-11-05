@@ -102,12 +102,23 @@ describe("the plan state store on Supabase", () => {
 
   it("sends one atomic write, and returns what the database decided", async () => {
     const { db, rpc } = fakeDb({ rpc: "stored" });
-    const write = { plan: { kind: "free_month", firstCharge: when(1_800_000_000), monthly: 79.99 } as const, eventAt: when(100), eventId: "evt_1", readAt: when(101) };
+    const write = { plan: { kind: "free_month", firstCharge: when(1_800_000_000), monthly: 79.99 } as const, eventAt: when(100), eventId: "evt_1", readOrder: 7 };
     expect(await supabasePlanStore(db).save("cus_1", write)).toBe("stored");
     expect(rpc).toHaveBeenCalledWith("save_child_plan_state", {
       p_customer: "cus_1", p_kind: "free_month", p_next_charge_at: when(1_800_000_000), p_ends_at: null, p_monthly_cents: 7999, p_ending_free: false,
-      p_event_at: when(100), p_event_id: "evt_1", p_read_at: when(101),
+      p_event_at: when(100), p_event_id: "evt_1", p_read_order: 7,
     });
+  });
+
+  it("takes the read order from the database", async () => {
+    const { db, rpc } = fakeDb({ rpc: 42 });
+    expect(await supabasePlanStore(db).takeReadOrder()).toBe(42);
+    expect(rpc).toHaveBeenCalledWith("take_plan_read_order");
+  });
+
+  it.each([null, "42", 1.5, Number.MAX_SAFE_INTEGER + 1])("throws on a read order it cannot compare: %j", async (answer) => {
+    const { db } = fakeDb({ rpc: answer });
+    await expect(supabasePlanStore(db).takeReadOrder()).rejects.toThrow("read order");
   });
 
   it("throws when a read or a write fails", async () => {
@@ -116,12 +127,13 @@ describe("the plan state store on Supabase", () => {
     await expect(store.ownerOfCustomer("cus_1")).rejects.toThrow("down");
     await expect(store.ownerOfChild(key)).rejects.toThrow("down");
     await expect(store.load(key)).rejects.toThrow("down");
-    await expect(store.save("cus_1", { plan: { kind: "ended" }, eventAt: null, eventId: null, readAt: when(1) })).rejects.toThrow("down");
+    await expect(store.takeReadOrder()).rejects.toThrow("down");
+    await expect(store.save("cus_1", { plan: { kind: "ended" }, eventAt: null, eventId: null, readOrder: 1 })).rejects.toThrow("down");
   });
 
   it("throws on an answer it does not know", async () => {
     const { db } = fakeDb({ rpc: "something" });
-    await expect(supabasePlanStore(db).save("cus_1", { plan: { kind: "ended" }, eventAt: null, eventId: null, readAt: when(1) })).rejects.toThrow();
+    await expect(supabasePlanStore(db).save("cus_1", { plan: { kind: "ended" }, eventAt: null, eventId: null, readOrder: 1 })).rejects.toThrow();
   });
 });
 

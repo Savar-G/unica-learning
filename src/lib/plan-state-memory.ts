@@ -1,8 +1,8 @@
 // The plan state module's store and provider (src/lib/plan-state.ts) in memory, for tests. The store keeps the rules of
 // the database function save_child_plan_state: one row per child, a write with no event only fills a missing row, and an
-// event replaces a row from another event or a fill when its read started later, or at the same time when the row is a
-// fill or its event is not newer. supabase/tests/child_plan_states.sql checks the same cases on the database. The provider keeps Stripe's list
-// of the customer's subscriptions and reads it through parentPlan. Every operation yields first, so two calls started
+// event replaces a row from another event or a fill when its take is larger. Its takes count up, as the database's
+// sequence does. supabase/tests/child_plan_states.sql checks the same cases on the database. The provider keeps Stripe's
+// list of the customer's subscriptions and reads it through parentPlan. Every operation yields first, so two calls started
 // together interleave as two requests would; the check and the write after it happen together, as in one statement.
 import { parentPlan, type KnownPlan, type PlanSubscription } from "@/lib/parent-plan";
 import type { PlanOwner, PlanStates, StoredPlanState } from "@/lib/plan-state";
@@ -10,10 +10,10 @@ import type { PlanOwner, PlanStates, StoredPlanState } from "@/lib/plan-state";
 export interface MemoryPlanRow extends StoredPlanState {
   parentId: string;
   childId: string;
-  readAt: string;
+  readOrder: number;
 }
 
-type Operation = "owner" | "load" | "save" | "plan";
+type Operation = "owner" | "load" | "take" | "save" | "plan";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -21,15 +21,16 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
  * The store over `cards` (card_setups) and the provider over `subscriptions` (Stripe). The returned `rows` are the
  * store's rows and `subscriptions` is Stripe's list per customer, so a test can change and check them.
  */
-export function memoryPlanStates({ cards, subscriptions: initial = {}, now }: { cards: PlanOwner[]; subscriptions?: Record<string, PlanSubscription[]>; now: () => Date }) {
+export function memoryPlanStates({ cards, subscriptions: initial = {} }: { cards: PlanOwner[]; subscriptions?: Record<string, PlanSubscription[]> }) {
   const rows: MemoryPlanRow[] = [];
   const subscriptions = { ...initial };
-  const calls: Record<Operation, number> = { owner: 0, load: 0, save: 0, plan: 0 };
+  const calls: Record<Operation, number> = { owner: 0, load: 0, take: 0, save: 0, plan: 0 };
   /** Set an operation's error to make every call of it throw, as a database or Stripe error would. */
   const fail: Partial<Record<Operation, Error>> = {};
   /** Operations held at their answer, already worked out, until the test lets them go. */
   const held = new Map<Operation, { reached: () => void; release: Promise<void> }>();
   let writes = 0;
+  let takes = 0;
   const begin = async (operation: Operation) => {
     calls[operation]++;
     await tick();
@@ -46,7 +47,6 @@ export function memoryPlanStates({ cards, subscriptions: initial = {}, now }: { 
   };
 
   const seams: PlanStates = {
-    now,
     store: {
       async ownerOfCustomer(customer) {
         await begin("owner");
@@ -61,6 +61,10 @@ export function memoryPlanStates({ cards, subscriptions: initial = {}, now }: { 
         const row = rows.find((r) => r.childId === childId && r.parentId === parentId);
         return answer("load", row ? { plan: row.plan, eventAt: row.eventAt, eventId: row.eventId } : null);
       },
+      async takeReadOrder() {
+        await begin("take");
+        return answer("take", ++takes);
+      },
       async save(customer, write) {
         await begin("save");
         const card = cards.find((c) => c.customer === customer);
@@ -73,11 +77,7 @@ export function memoryPlanStates({ cards, subscriptions: initial = {}, now }: { 
         }
         if (write.eventAt === null) return answer("save", "older" as const);
         if (row.eventId === write.eventId) return answer("save", "duplicate" as const);
-        const read = Date.parse(write.readAt);
-        const storedRead = Date.parse(row.readAt);
-        const replaces = read > storedRead
-          || (read === storedRead && (row.eventAt === null || Date.parse(write.eventAt) >= Date.parse(row.eventAt)));
-        if (replaces) {
+        if (write.readOrder > row.readOrder) {
           Object.assign(row, write);
           writes++;
           return answer("save", "stored" as const);

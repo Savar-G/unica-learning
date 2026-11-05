@@ -21,7 +21,6 @@ const signed = (body: string, secret = SECRET) => new Request("https://unica.tes
 const family = () => memoryPlanStates({
   cards: [{ ...key, customer: "cus_1", cardSaved: true }],
   subscriptions: { cus_1: [{ status: "past_due", cancelAtPeriodEnd: false, trialEnd: null, periodEnd: 1_800_000_000, cents: 7999, created: 1 }] },
-  now: () => new Date("2026-11-04T12:00:00.000Z"),
 });
 
 let states: ReturnType<typeof family>;

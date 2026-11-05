@@ -51,11 +51,17 @@ export function supabasePlanStore(db: SupabaseClient<Database>): PlanStateStore 
       if (plan.kind === "unknown") throw new Error("Plan state row does not fit its kind");
       return { plan, eventAt: data.event_at, eventId: data.event_id };
     },
-    async save(customer, { plan, eventAt, eventId, readAt }) {
+    async takeReadOrder() {
+      const { data, error } = await db.rpc("take_plan_read_order");
+      if (error) throw new Error(`Plan read order failed: ${error.message}`);
+      if (!Number.isSafeInteger(data)) throw new Error("Plan read order is not a whole number");
+      return data;
+    },
+    async save(customer, { plan, eventAt, eventId, readOrder }) {
       const columns = planColumns(plan);
       const { data, error } = await db.rpc("save_child_plan_state", {
         p_customer: customer, p_kind: columns.kind, p_next_charge_at: columns.next_charge_at, p_ends_at: columns.ends_at,
-        p_monthly_cents: columns.monthly_cents, p_ending_free: columns.ending_free, p_event_at: eventAt, p_event_id: eventId, p_read_at: readAt,
+        p_monthly_cents: columns.monthly_cents, p_ending_free: columns.ending_free, p_event_at: eventAt, p_event_id: eventId, p_read_order: readOrder,
       });
       if (error) throw new Error(`Plan state write failed: ${error.message}`);
       const outcome = SAVES.find((s) => s === data);
@@ -70,5 +76,5 @@ export function livePlanStates(): PlanStates | null {
   const db = adminClient();
   const client = stripe();
   if (!db || !client) return null;
-  return { store: supabasePlanStore(db), provider: stripePlanProvider(client), now: () => new Date() };
+  return { store: supabasePlanStore(db), provider: stripePlanProvider(client) };
 }

@@ -468,6 +468,7 @@ export type Database = {
           next_charge_at: string | null
           parent_id: string
           read_at: string
+          read_order: number | null
           updated_at: string
         }
         Insert: {
@@ -481,6 +482,7 @@ export type Database = {
           next_charge_at?: string | null
           parent_id: string
           read_at: string
+          read_order?: number | null
           updated_at?: string
         }
         Update: {
@@ -494,6 +496,7 @@ export type Database = {
           next_charge_at?: string | null
           parent_id?: string
           read_at?: string
+          read_order?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -4556,20 +4559,35 @@ export type Database = {
         Args: { p_run: string; p_runner: string; p_stale_seconds: number }
         Returns: string
       }
-      save_child_plan_state: {
-        Args: {
-          p_customer: string
-          p_ending_free: boolean
-          p_ends_at: string
-          p_event_at: string
-          p_event_id: string
-          p_kind: string
-          p_monthly_cents: number
-          p_next_charge_at: string
-          p_read_at: string
-        }
-        Returns: string
-      }
+      save_child_plan_state:
+        | {
+            Args: {
+              p_customer: string
+              p_ending_free: boolean
+              p_ends_at: string
+              p_event_at: string
+              p_event_id: string
+              p_kind: string
+              p_monthly_cents: number
+              p_next_charge_at: string
+              p_read_at: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_customer: string
+              p_ending_free: boolean
+              p_ends_at: string
+              p_event_at: string
+              p_event_id: string
+              p_kind: string
+              p_monthly_cents: number
+              p_next_charge_at: string
+              p_read_order: number
+            }
+            Returns: string
+          }
       save_family_payment_progress: {
         Args: {
           after_id: string
@@ -4687,6 +4705,7 @@ export type Database = {
         }
         Returns: Json
       }
+      take_plan_read_order: { Args: never; Returns: number }
       use_workbook_run_attempts: {
         Args: {
           p_lease: string
