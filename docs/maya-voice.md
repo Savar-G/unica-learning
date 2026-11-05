@@ -1,6 +1,6 @@
 # Maya voice calls (#326)
 
-An admin speaks to Maya as a test child on an assessment question. The call runs in Maya's voice worker (`worker/maya-voice`), a LiveKit Agents for Node worker outside the Vercel build. The worker wraps Maya's controller through the text adapter: the speech-to-text turns the child's speech into child turns, Maya's session (`src/lib/maya`) answers, and the voice says only the words the session accepted. LiveKit never asks a model itself.
+An admin speaks to Maya as a test child on an assessment question. The call runs in Maya's voice worker (`worker/maya-voice`), a LiveKit Agents for Node worker outside the Vercel build. The worker wraps Maya's controller through the text adapter: the speech-to-text turns the child's speech into child turns, Maya's session (`src/lib/maya`) answers, and the voice says only the words the session accepted, plus a code-written acknowledgement when a turn is slow (below). LiveKit never asks a model itself.
 
 Everything runs with **fake providers** until the accounts below exist. The fake speech-to-text hears typed words from the call page, and the fake voice is silent. Nothing is paid and no account is needed.
 
@@ -21,6 +21,7 @@ The saved live state keeps the accepted final words until playback completes. A 
 | Where | What |
 |---|---|
 | `maya_calls` (existing columns) | The transcript and board (`trace`), the outcome, `speech_to_text` and `voice` (provider ids, never keys), `connected_seconds`, and the mishearing counts `mishearing_confirmations` (numbers Maya asked to confirm) and `mishearing_corrections` ("no, I said ..."). |
+| `maya_calls.live` | While live: the session and, under `acknowledged`, the acknowledgement phrases saved before they are said (ids only). Dropped when the call ends. |
 | `maya_call_connections` (new, migration `add_maya_call_connections`) | One row per `agent_joined`, `agent_left`, `child_joined` and `child_left`, with the database receipt time. `append_maya_call_connection` checks the expected revision, raises it and inserts the event in one transaction. It serializes with replacement claims. Receipt times stay in order across worker clocks. `agent_joined` renews a 15-second connection lease every 5 seconds. Each new worker first closes the previous segment with `agent_left`. Connected seconds count overlapping child presence and valid worker leases. A crash can add at most 15 seconds after the last renewal. Reconnect gaps and longer crash gaps are excluded. |
 
 The app does not save audio. The worker starts its session with `record: false`. This setting does not establish the retention policy of LiveKit Cloud, AssemblyAI, or Inworld. Their effective settings and contracts must be verified before any claim that those systems do not store audio. The speech-to-text confidence marks a child turn as uncertain below 0.6, so Maya confirms the number. A cancelled call that Maya never joined writes no learning event. The saved JSON state keeps a cancellation marker until cleanup succeeds. Each recovery attempt reads that marker.
@@ -70,6 +71,7 @@ Agents create no accounts. Create these, then set the values below.
 | `MAYA_REVIEW_MODEL` | Already optional | Optional | The free-talk review model. |
 | `SUPABASE_URL` | No | Yes | `https://cdjobwsyzndtltzfpyqa.supabase.co`. |
 | `SUPABASE_SECRET_KEY` | Already set | Yes | The worker's own key `maya_voice_worker` (step 4), not the web app's. |
+| `MAYA_ACK_LIMIT_MS` | No | Optional | The child's end of speech to the acknowledgement, in ms. Default 1500. `0` turns it off. |
 | `MAYA_VOICE_LOAD_LIMIT` | No | Optional | 0 to 1: the machine load above which the worker takes no new call. LiveKit's default otherwise. |
 
 A real provider set without its privacy confirmation, key or voice stops the worker's job with a clear log line. It never falls back to the fake quietly (`voiceProviders`, `src/lib/maya-voice.ts`).
@@ -104,6 +106,46 @@ LIVEKIT_URL=ws://127.0.0.1:7880 LIVEKIT_API_KEY=devkey LIVEKIT_API_SECRET=secret
 ```
 
 Open `/admin/maya` as an admin, choose **Speak**, and start a call on a test question. With the fake speech-to-text, the call page shows "Test speech: type what <child> says". Maya hears those words over LiveKit instead of the microphone. The microphone check still needs a real microphone.
+
+## Silence: each turn's time and the acknowledgement (#532)
+
+A child's turn runs behind the speech. `llmNode` returns its stream at once, so the session is not silent just because the model is working.
+
+**The acknowledgement.** When the turn is not ready 1500 ms after the child's end of speech (`ACK_LIMIT_MS`, `MAYA_ACK_LIMIT_MS`), the worker says one phrase from `ACK_PHRASES` (`src/lib/maya-voice-ack.ts`), for example "Hmm, let me think."
+
+- D-195 holds by construction. The phrases are code-written. No model writes or picks one, and the controller never sees one. `acknowledgementProblem` is the gate check, run in `npm test`: each phrase passes `workProblem`, has one of a few fixed shapes, and holds no verdict word. The issue's example, "Mm-hm, let me look.", fails it: "look" is a work word, and "Mm-hm" sounds like "yes" after "Is it 56?". "I'm thinking." also fails it, because it claims a state of mind for an AI.
+- No repeat in a call, across a worker replacement too. A phrase is saved in `live.acknowledged` before it is said (`VoiceCall.acknowledge`). That save writes only this list onto the last saved `live`, at the next revision, with the same revision check as every other save. It holds no turn in progress, so a replacement worker still restores the last finished turn. A worker that was replaced has its save refused and says nothing (`ackSkipped: save`). The cost is one more database write on a slow turn. A phrase saved and then cut by the child stays used. When the bank is used, Maya stays silent until the answer (`ackSkipped: bank_used`). With a slow model on every turn, a call reaches that after 8 phrases. Decide the limit and the bank's size from real measurements.
+- It stages no board. Its segment has an empty board plan (`stage(id, [])`), which gives its audio an owner through the normal cue output, so a child's speech stops it like any other speech. The answer's board is staged only after the phrase has played, because a new plan takes the audio from the old one. The answer's voice therefore starts after the phrase, and the wait shows as `ackHoldMs`. A turn that no longer owns the reply (a newer turn replaced it, or its speech was interrupted) stages nothing and writes no words, however late its work ends. It still sends its revision and keeps the check-ins and the call's end.
+- It does not start when the child is talking or absent, after a hang-up, or when the call has a safety flag, a content problem or the deadline close. All of this is read again after the board stage and after the save, just before the phrase is queued. The phrases say nothing about what the child said, because a disclosure that the model has not read yet can still get one.
+- Safety comes first. A finished turn with safety guidance, a child's disclosure the model has read, or the deadline close (`VoiceTurn.priority`) stops the reply at once, including a phrase that is playing, and queues its words with `session.say`. It waits for nothing before it: not the phrase, not a late board answer. A turn with no board batches does not wait for its own board answer either. If the child is talking at that moment, LiveKit plays the words when the child stops.
+- An ordinary answer waits for the phrase to finish, because cutting a phrase of a few words sounds worse than a short wait. If the phrase's audio never reports an end, the wait stops 3000 ms after the phrase was queued (`ACK_HOLD_LIMIT_MS`, 5000 ms before the review of PR #577). The longest phrase is about 1.5 s at a calm pace.
+- It is not in the call's transcript or trace, which hold only what the session accepted. The `voice turn` log holds the phrase id. Practice runs do not run it: they use the text adapter.
+
+**The measure.** The worker logs one `voice turn` line per child turn, and a `voice turn report` line when the call closes (counts, then p50 and p95). Logs hold times and phrase ids, never words. `fakeProviders` says which side was fake.
+
+| Field | Meaning |
+|---|---|
+| `firstSoundMs` | End of speech to Maya's first sound: the phrase or the answer. |
+| `answerMs` | End of speech to the answer's first sound. |
+| `heardMs` | End of speech to the turn reaching the worker: speech-to-text and turn detection. |
+| `modelMs`, `repairMs`, `reviewMs` | The model, its repair and the free-talk reviews, from the call's own trace. |
+| `codeMs` | The rest of the controller's turn: code and the save. |
+| `ackHoldMs` | The ready answer waiting for the phrase to finish. |
+| `boardMs` | The saves behind the turn and staging the board. |
+| `voiceMs` | Words given to the voice, to the first sound. |
+
+The parts add up to `answerMs`. `outcome` is `answered`, `no_words` (the session said nothing) or `interrupted`; only `answered` has parts.
+
+**What the fakes prove, and what they do not.** `worker/maya-voice/src/silence.test.ts` runs a whole call through LiveKit's pipeline with the fake speech-to-text and voice on a frozen clock. It proves the order: a fast turn has no phrase, a slow turn has the phrase at the limit and then the answer, a child who talks cancels it, the phrase sends no board batch, no phrase comes twice, and the parts match exact known delays. The R577 tests delay the board and the save to prove that a late answer cannot replace a newer board, that danger known during a delay stops the phrase, and that a replacement worker reads a phrase already heard. They also measure, on the clock the hold runs on, the time from a finished safety or deadline turn to its words being queued. It proves nothing about real times, because no real model, speech-to-text or voice ran. These stay open until the accounts exist:
+
+- Whether 1500 ms is the right limit, and how often a real turn passes it.
+- Whether LiveKit's `stoppedSpeakingAt` from AssemblyAI is the child's true end of speech. If it comes late, `heardMs` and every total are too small.
+- Whether the first playback event marks real sound on a device. It marks the first frame given to the output, not the speaker.
+- How the gap between the phrase and the answer sounds, as the voice starts the answer only after the phrase has played.
+- How a phrase sounds to a child. Savar has not read the phrases yet (`docs/maya-practice-lines.md`).
+- How long the reply takes to stop on a real output. The tests prove the words are queued at once. LiveKit plays them when the stopped reply has unwound.
+
+**A limit this work does not change.** The worker gets a turn's words when the whole input has finished. After safety guidance, the text adapter also asks the model for the close, and the guidance reaches the worker only when that call returns or fails (up to the model's 30 s limit). The priority rule above starts from there. Changing it means changing the text adapter's `pump`, which needs its own ticket.
 
 ## Not verified yet
 

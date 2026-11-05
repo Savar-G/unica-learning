@@ -158,7 +158,7 @@ export interface CallRecord {
   outcome: Outcome | null;
   counts: { mayaTurns: number; childTurns: number; fallbacks: number } | null;
   /** While live: what the text adapter needs to go on, with the package it runs on. Null once ended. */
-  live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn } | null;
+  live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn; acknowledged?: string[] } | null;
   trace: MayaTrace | null;
   boardHistory: BoardHistory | null;
   learningEventId: string | null;
@@ -349,6 +349,13 @@ export interface VoiceTurn {
   safetyMessage: string | null;
   /** The call ended with this input. */
   ended: boolean;
+  /**
+   * Safety guidance after a child's disclosure, or the deadline close (`gate` and `step` in src/lib/maya/session.ts): the
+   * worker says it at once and waits for nothing that came before it.
+   */
+  priority?: boolean;
+  /** How long this input spent on the model, its repair and the free-talk reviews (#532). Absent when no input ran. */
+  time?: { modelMs: number; repairMs: number; reviewMs: number };
 }
 
 /**
@@ -369,6 +376,13 @@ export interface VoiceCall {
   /** Saved accepted final words when this handle restored a controller that had already ended. */
   readonly pendingFinal: VoiceTurn | null;
   readonly boardSnapshot: BoardSnapshot;
+  /** The acknowledgement phrases this call has said (#532), kept across a worker replacement. */
+  readonly acknowledged: readonly string[];
+  /**
+   * Saves a phrase before it is said, on the last saved session and never on a turn in progress, at the next revision
+   * like any other save. False: this handle no longer owns the call, so the phrase must not be said.
+   */
+  acknowledge(id: string): Promise<boolean>;
   /** Persist receiver outcomes with their presentation times, under this worker's revision. */
   observeBoard(snapshot: BoardSnapshot): Promise<void>;
   start(): Promise<VoiceTurn>;
@@ -837,6 +851,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         newBatches: 0, safetyMessage: null, ended: true,
       } : null;
       const seen: ConnectionEvent[] = [];
+      const acknowledged = [...(found.live.acknowledged ?? [])];
       let lost = false;
       let replaced = false;
       let queue: Promise<void> = Promise.resolve();
@@ -862,7 +877,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (lost || record.status === "ended") return;
           // A final voice turn remains live until its speech handle completes.
           const pendingVoice: VoiceTurn | undefined = out.ended ? { say: [...out.say], newBatches: 0, safetyMessage: out.safetyMessage, ended: true } : undefined;
-          const change: CallChange = { live: { package: pkg, text: await session.saved(), ...(pendingVoice ? { pendingVoice } : {}) }, startedAt: session.trace().startedAt };
+          const change: CallChange = { live: { package: pkg, text: await session.saved(), ...(pendingVoice ? { pendingVoice } : {}), ...(acknowledged.length ? { acknowledged: [...acknowledged] } : {}) }, startedAt: session.trace().startedAt };
           const saved = await store.update(record.id, record.revision, change) ? { ...record, ...change, revision: record.revision + 1 } : null;
           if (!saved) {
             lost = true;
@@ -885,13 +900,22 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         // Each current board offer follows the last word of its accepted controller turn.
         let word = 0;
         const ends = new Map<string, number>();
+        const time = { modelMs: 0, repairMs: 0, reviewMs: 0 };
         for (const t of session.trace().turns.slice(before)) {
-          if (t.kind !== "maya" || !t.output) continue;
+          if (t.kind !== "maya") continue;
+          for (const a of t.attempts) {
+            if (a.source === "model") time.modelMs += a.ms ?? 0;
+            if (a.source === "repair") time.repairMs += a.ms ?? 0;
+            time.reviewMs += a.reviewMs ?? 0;
+          }
+          if (!t.output) continue;
           word += speechWords(t.output.say.join(" ")).length;
           for (const id of t.output.board) ends.set(id, word);
         }
         const boardCues = out.board.map(batch => ({ batch, word: ends.get(batch.transactionId) ?? speechWords(out.say.join(" ")).length }));
-        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null };
+        const state = session.session;
+        const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit";
+        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time };
       };
       const call: VoiceCall = {
         id: record.id,
@@ -914,6 +938,21 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           return pendingFinal ? structuredClone(pendingFinal) : null;
         },
         get boardSnapshot() { return structuredClone(record.boardHistory?.delivery ?? { events: [] }); },
+        get acknowledged() { return [...acknowledged]; },
+        async acknowledge(id) {
+          if (acknowledged.includes(id)) return !lost;
+          acknowledged.push(id);
+          let saved = false;
+          later(async () => {
+            if (lost || record.status !== "live" || !record.live) return;
+            const change: CallChange = { live: { ...record.live, acknowledged: [...acknowledged] } };
+            if (!(await store.update(record.id, record.revision, change))) { lost = true; replaced = true; return; }
+            record = { ...record, ...change, revision: record.revision + 1 };
+            saved = true;
+          });
+          await queue;
+          return saved;
+        },
         async observeBoard(snapshot) {
           const copy = structuredClone(snapshot);
           later(async () => {
