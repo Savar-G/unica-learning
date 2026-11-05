@@ -4,7 +4,7 @@ import { bottomGapLimit, circleProblem, layoutProblems, repeatedInstruction } fr
 import type { DayContent } from "@/lib/workbook-page";
 import { renderWorkbook, type DraftPage, type MeasuredElement } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
-import { fullnessProblem, workbookTemplate } from "@/lib/workbook-template";
+import { fullnessProblem, pagePlan, workbookTemplate } from "@/lib/workbook-template";
 
 // The layout checks of Savar's page reviews (src/lib/workbook-layout-check.ts) on measured pages: each check passes a
 // page laid out as the template means it and fails the same page with the fault he found by eye. The measurements are
@@ -69,12 +69,17 @@ const move = (m: Map<string, MeasuredElement>, name: string, by: Partial<Rect>) 
   m.set(name, { ...e, ...Object.fromEntries(Object.entries(by).map(([k, v]) => [k, (e[k as keyof Rect] as number) + (v as number)])),
     ...(e.firstLine ? { firstLine: { ...e.firstLine, y: e.firstLine.y + dy, baseline: e.firstLine.baseline + dy } } : {}) });
 };
-const reasons = (p: DraftPage, m: Map<string, MeasuredElement>) => layoutProblems(p, m).map((x) => x.reason);
+const check = (p: DraftPage, m: Map<string, MeasuredElement>) => layoutProblems(p, m, pagePlan(p));
+const reasons = (p: DraftPage, m: Map<string, MeasuredElement>) => check(p, m).map((x) => x.reason);
+/** Every measured part of a question moved together. */
+const moveQuestion = (m: Map<string, MeasuredElement>, q: number, by: Partial<Rect>) => {
+  for (const name of [`question-${q}`, `number-${q}`, `question-${q}-content`, `question-${q}-answer`]) move(m, name, by);
+};
 
 describe("the layout checks", () => {
   it("pass a page laid out as the template means it, and mark every problem as a layout problem", () => {
-    expect(layoutProblems(page(), laidOut())).toEqual([]);
-    const crowded = layoutProblems(page(), laidOut(6, (m) => move(m, "heading-1", { y: -10 })));
+    expect(check(page(), laidOut())).toEqual([]);
+    const crowded = check(page(), laidOut(6, (m) => move(m, "heading-1", { y: -10 })));
     expect(crowded.length).toBeGreaterThan(0);
     expect(crowded.every((x) => x.kind === "layout")).toBe(true);
   });
@@ -106,11 +111,16 @@ describe("the layout checks", () => {
     expect(reasons(page(), close)).toEqual(expect.arrayContaining([expect.stringMatching(/question 5 and 6 sits 2 px under question 3 and 4; leave at least 4 px/)]));
   });
 
-  it("2: let a page that grows its rows to fill it keep its labels' gaps", () => {
-    // Rows 3 to 6 grown: 32 px between them, the label still 16 px under question 2 and 26 px over question 3.
-    const grown = laidOut(6, (m) => { for (const q of [3, 4, 5, 6]) for (const name of [`question-${q}`, `question-${q}-content`, `question-${q}-answer`, `number-${q}`]) move(m, name, { y: q >= 5 ? 40 : 20 }); });
-    expect(reasons(page(6, { fillingComplete: true, atMaximum: true }), grown).filter((r) => /label/.test(r))).toEqual([]);
-    expect(reasons(page(6), grown).some((r) => /label/.test(r))).toBe(true);
+  it("2: let a page that grows its rows to fill it space its rows wider than its labels", () => {
+    // On your own's cells grown by 20 px, their questions at each cell's top: 32 px from one row's ink to the next, 16
+    // above the label and 6 under it, as on a page at its maximum.
+    const grown = laidOut(6, (m) => {
+      for (const q of [3, 4]) m.set(`question-${q}`, { ...m.get(`question-${q}`)!, height: 84 });
+      for (const q of [5, 6]) { moveQuestion(m, q, { y: 20 }); m.set(`question-${q}`, { ...m.get(`question-${q}`)!, height: 84 }); }
+    });
+    expect(reasons(page(6, { fillingComplete: true, atMaximum: true }), grown)).toEqual([]);
+    // The same ink on a page that does not grow its rows: the label sits closer to the row above than rows to each other.
+    expect(reasons(page(6), grown)).toEqual([expect.stringMatching(/question 1 and 2 sits 16 px above the label "On your own", closer than the 32 px between rows/)]);
   });
 
   it("3: fail a row whose questions' first lines or numbers sit apart", () => {
@@ -163,6 +173,81 @@ describe("the layout checks", () => {
     const cut = (top: number) => laidOut(6, (m) => m.set("question-4-content", { ...m.get("question-4-content")!, clip: { top, bottom: 0, left: 0, right: 0 } }));
     expect(reasons(page(), cut(0.7))).toEqual([]);
     expect(reasons(page(), cut(5))).toEqual([expect.stringMatching(/the text "text" is cut by its box/)]);
+  });
+
+  it("plan the page's rows and its answers beside each first line from the template", () => {
+    const plan = pagePlan(page())!;
+    expect(plan.rows).toEqual([[1, 2], [3, 4], [5, 6]]);
+    expect([...plan.beside]).toEqual([1, 2, 3, 4, 5, 6].map((n) => [n, { regions: [`question-${n}-answer`], align: "top", inset: 0 }]));
+  });
+
+  // Codex's controls on PR #516 at bfdae35 (/tmp/pr516-review-report.md): each passed the checks before.
+  describe("Codex's controls", () => {
+    it("fail a row partner moved 8 px down, though the two no longer start at one height", () => {
+      const moved = laidOut(6, (m) => moveQuestion(m, 2, { y: 8 }));
+      expect(reasons(page(), moved)).toEqual(expect.arrayContaining([
+        expect.stringMatching(/questions 1 and 2 share a row, but their numbers are 8 px apart/),
+        expect.stringMatching(/questions 1 and 2 share a row, but their first lines are 8 px apart/),
+      ]));
+    });
+
+    it("fail answer spaces all 8 px short of their column's edge, with no peer at the edge", () => {
+      const inset = laidOut(6, (m) => { for (let q = 1; q <= 6; q++) move(m, `question-${q}-answer`, { x: -8 }); });
+      expect(reasons(page(), inset)).toEqual([1, 2, 3, 4, 5, 6].map((q) => expect.stringMatching(new RegExp(`question ${q}'s answer space ends 8 px short of its column's edge`))));
+    });
+
+    it("fail an answer box moved 41 px under its text, and one that is not printed", () => {
+      const detached = laidOut(6, (m) => move(m, "question-3-answer", { y: 41 }));
+      expect(reasons(page(), detached)).toEqual(expect.arrayContaining([expect.stringMatching(/question 3's answer box starts 41 px below its first line/)]));
+      const gone = laidOut(6, (m) => m.delete("question-4-answer"));
+      expect(reasons(page(), gone)).toEqual(expect.arrayContaining([expect.stringMatching(/question 4's answer space question-4-answer is not printed beside it/)]));
+    });
+
+    it("fail a label 6 px up on a page at its maximum", () => {
+      const up = laidOut(6, (m) => move(m, "heading-1", { y: -6 }));
+      expect(reasons(page(6, { fillingComplete: true, atMaximum: true }), up)).toEqual([expect.stringMatching(/the label "On your own" sits 10 px under question 1 and 2 and 12 px above its questions; it belongs to the questions under it/)]);
+      // Its labels unevenly apart there too.
+      // "Remember these" 24 px under its row above, "On your own" 16.
+      const p8 = page(8, { fillingComplete: true, atMaximum: true, blocks: [{ slot: "finish-these", items: [1, 2] }, { slot: "on-your-own", items: [3, 4, 5, 6, 7, 8], reviewFrom: 7 }] });
+      const uneven = laidOut(8, (m) => {
+        const y = m.get("question-5")!.y + 64 + 24;
+        m.set("review-1", text("review-1", { x: 64, y, width: 688, height: 16 }, "Unica Mono 500 13px", "Remember these"));
+        for (const q of [7, 8]) moveQuestion(m, q, { y: y + 16 + 6 - m.get(`question-${q}`)!.y });
+      });
+      expect(reasons(p8, uneven)).toEqual([expect.stringMatching(/the gaps above the page's labels run from 16 px \(above the label "On your own"\) to 24 px/)]);
+    });
+
+    it("fail rows that grew unevenly on a page at its maximum (seeds ed6ecc9f and 19bacf2a: 35 to 51 px apart)", () => {
+      // On your own in two grids, questions 3 to 6, and 7 to 10 under Remember these: the first grid's rows grew 8 px
+      // each, the second's 16 (each label 16 px under its row).
+      const p8 = page(8, { fillingComplete: true, atMaximum: true, blocks: [{ slot: "finish-these", items: [1, 2] }, { slot: "on-your-own", items: [3, 4, 5, 6, 7, 8], reviewFrom: 7 }] });
+      const grown = (second: number) => laidOut(8, (m) => {
+        moveQuestion(m, 5, { y: 8 }); moveQuestion(m, 6, { y: 8 });
+        const y = m.get("question-5")!.y + 64 + 16;
+        m.set("review-1", text("review-1", { x: 64, y, width: 688, height: 16 }, "Unica Mono 500 13px", "Remember these"));
+        for (const q of [7, 8]) moveQuestion(m, q, { y: y + 16 + 6 - m.get(`question-${q}`)!.y });
+        // A third row in the second grid, its gap grown by `second`.
+        for (const q of [9, 10]) {
+          const above = m.get(`question-${q - 2}`)!;
+          const yq = above.y + 64 + 12 + second;
+          m.set(`question-${q}`, el(`question-${q}`, { x: above.x, y: yq, width: 328, height: 64 }));
+          m.set(`number-${q}`, text(`number-${q}`, { x: above.x, y: yq, width: 22, height: 19 }, "Unica Mono 500 14px", `${q}.`));
+          m.set(`question-${q}-content`, text(`question-${q}-content`, { x: above.x + 34, y: yq, width: 200, height: 40 }));
+          m.set(`question-${q}-answer`, el(`question-${q}-answer`, { x: above.x + 264, y: yq, width: 64, height: 64 }));
+        }
+      });
+      const p10 = { ...p8, content: { ...(p8.content as DayContent), blocks: [{ slot: "finish-these" as const, items: [1, 2] }, { slot: "on-your-own" as const, items: [3, 4, 5, 6, 7, 8, 9, 10], reviewFrom: 7 }] }, questions: Array.from({ length: 10 }, (_, i) => ({ number: i + 1, package: base })) };
+      expect(reasons(p10, grown(16))).toEqual([expect.stringMatching(/the gaps between rows run from 20 px to 28 px \(above question 9 and 10\)/)]);
+      // Every row grown by the same 8 px: even.
+      expect(reasons(p10, grown(8))).toEqual([]);
+    });
+
+    it("fail an instruction repeated within one line", () => {
+      expect(repeatedInstruction(["Write the answer in the box. Write the answer in the box."])).toBe("write the answer in the box");
+      expect(repeatedInstruction(["Write the answer in the box. Circle true or false."])).toBeNull();
+      const twice = laidOut(6, (m) => m.set("slot-subtitle", text("slot-subtitle", { x: 64, y: 160, width: 300, height: 21 }, undefined, "Write the answer in the box. Write the answer in the box.")));
+      expect(reasons(page(), twice)).toEqual([expect.stringMatching(/"write the answer in the box" is printed twice/)]);
+    });
   });
 
   it("run the measured checks only on what the real print engine measures, and through the template's fit check", async () => {
