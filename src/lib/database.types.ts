@@ -1797,6 +1797,84 @@ export type Database = {
           },
         ]
       }
+      maya_spend: {
+        Row: {
+          call_id: string | null
+          charge: string
+          child_id: string | null
+          cost_micros: number | null
+          created_at: string
+          id: string
+          month: string
+          parent_id: string | null
+          reserved_micros: number
+          settled_at: string | null
+          uncertain: boolean
+          week: string | null
+          what: string
+        }
+        Insert: {
+          call_id?: string | null
+          charge: string
+          child_id?: string | null
+          cost_micros?: number | null
+          created_at?: string
+          id: string
+          month: string
+          parent_id?: string | null
+          reserved_micros: number
+          settled_at?: string | null
+          uncertain?: boolean
+          week?: string | null
+          what: string
+        }
+        Update: {
+          call_id?: string | null
+          charge?: string
+          child_id?: string | null
+          cost_micros?: number | null
+          created_at?: string
+          id?: string
+          month?: string
+          parent_id?: string | null
+          reserved_micros?: number
+          settled_at?: string | null
+          uncertain?: boolean
+          week?: string | null
+          what?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_spend_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_spend_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maya_spend_alerts: {
+        Row: {
+          claimed_at: string
+          month: string
+        }
+        Insert: {
+          claimed_at?: string
+          month: string
+        }
+        Update: {
+          claimed_at?: string
+          month?: string
+        }
+        Relationships: []
+      }
       maya_wording_history: {
         Row: {
           child_id: string
@@ -3966,6 +4044,13 @@ export type Database = {
           period_start: string
         }[]
       }
+      _maya_spend_counted: {
+        Args: { p_child: string; p_month: string; p_week: string }
+        Returns: {
+          month_micros: number
+          week_micros: number
+        }[]
+      }
       _maya_zone_at: { Args: { p_at: string; p_zone: string }; Returns: string }
       abandon_family_payment_operation: {
         Args: {
@@ -4347,6 +4432,7 @@ export type Database = {
         }
         Returns: Json
       }
+      claim_maya_spend_alert: { Args: { p_month: string }; Returns: boolean }
       claim_maya_weekly: {
         Args: {
           p_attempts: number
@@ -4656,6 +4742,13 @@ export type Database = {
         }
         Returns: Json
       }
+      maya_spend_used: {
+        Args: { p_child: string; p_month: string; p_week: string }
+        Returns: {
+          month_micros: number
+          week_micros: number
+        }[]
+      }
       maya_minutes_used:
         | {
             Args: {
@@ -4774,6 +4867,26 @@ export type Database = {
       request_family_deletion: {
         Args: { confirmation: string; p: string }
         Returns: string
+      }
+      reserve_maya_spend: {
+        Args: {
+          p_call: string
+          p_charge: string
+          p_child: string
+          p_force: boolean
+          p_id: string
+          p_micros: number
+          p_month: string
+          p_month_cap: number
+          p_parent: string
+          p_week: string
+          p_week_cap: number
+          p_what: string
+        }
+        Returns: {
+          ok: boolean
+          over: string
+        }[]
       }
       reserve_workbook_edit_call: {
         Args: {
@@ -4940,6 +5053,10 @@ export type Database = {
           p_runner: string
         }
         Returns: Json
+      }
+      settle_maya_spend: {
+        Args: { p_cost: number; p_id: string }
+        Returns: boolean
       }
       start_scan_photo: {
         Args: { p_id: string; p_parent: string }

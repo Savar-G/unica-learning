@@ -9,7 +9,7 @@ import { childProfileStore } from "@/lib/child-profile-store";
 import type { Database } from "@/lib/database";
 import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
-import { mayaCalls, FAKE_MODEL_ID, type CallSeams, type MayaCalls } from "@/lib/maya-call";
+import { mayaCalls, FAKE_MODEL_ID, type CallSeams, type MayaCalls, type SpendCall } from "@/lib/maya-call";
 import { callAlerts } from "@/lib/maya-call-alert";
 import { mayaAlertLedger } from "@/lib/maya-call-alert-store";
 import { writeNoteAfterCall } from "@/lib/maya-call-note-server";
@@ -18,11 +18,15 @@ import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
 import { wordingHistoryStore } from "@/lib/maya-wording-history-store";
+import { chargeOf, type SpendLedger } from "@/lib/maya-spend";
+import { mayaCallSpend, mayaSpendLedger, meteredClient } from "@/lib/maya-spend-server";
 import { workbookStore } from "@/lib/workbook-store";
 
 // The seams of Maya's calls (src/lib/maya-call.ts) on a Supabase client with the secret key: the call store, the
 // connection log of voice calls, the wording history, the learning events, the profile rebuild, the model and the
-// free-talk review, the internal safety alerts (#333) and the parent's call note (#331). The web server (src/lib/maya-call-server.ts) and Maya's voice worker (worker/maya-voice) both use
+// free-talk review, the internal safety alerts (#333), the parent's call note (#331) and Maya's spending cap (D-290: every
+// OpenRouter request of a call is reserved and settled in the spending ledger for the call's child, or only for the
+// monthly total on an admin test call). The web server (src/lib/maya-call-server.ts) and Maya's voice worker (worker/maya-voice) both use
 // it, so a voice call is stored exactly as a text call is. No Next.js import: the worker runs outside Next.
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -34,8 +38,8 @@ const siteOrigin = (env: Env) => env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/
  * The model a call uses: null asks for the one a new call uses now (Maya's model through OpenRouter, `AI_MODEL`, when
  * OPENROUTER_API_KEY is set, else the fake rule player); an id asks for that model again, or null when it is gone.
  */
-export function callModel(id: string | null, env: Env = process.env): MayaModel | null {
-  const client = aiClient(env);
+export function callModel(id: string | null, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string }): MayaModel | null {
+  const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, newId: metered.newId }, "model") : aiClient(env);
   if (id === null) return client ? aiMayaModel(client) : ruleMayaModel();
   if (id === FAKE_MODEL_ID) return ruleMayaModel();
   return client && client.model === id ? aiMayaModel(client) : null;
@@ -45,9 +49,10 @@ export function callModel(id: string | null, env: Env = process.env): MayaModel 
  * The free-talk review of a call (D-197): MAYA_REVIEW_MODEL (default Claude Haiku 5.5) through OpenRouter, a second
  * model beside Maya's. Null for the fake rule player (it says no free talk) and without OPENROUTER_API_KEY.
  */
-export function callReviewer(modelId: string, env: Env = process.env): TalkReviewer | null {
+export function callReviewer(modelId: string, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string }): TalkReviewer | null {
   if (modelId === FAKE_MODEL_ID) return null;
-  const client = aiClient(env, env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL);
+  const model = env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL;
+  const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, newId: metered.newId }, "review", model) : aiClient(env, model);
   return client ? aiTalkReviewer(client) : null;
 }
 
@@ -74,6 +79,8 @@ async function rebuild(db: SupabaseClient<Database>, childId: string, factsOnly 
 /** `origin`: the site the safety alert's admin link points to; default NEXT_PUBLIC_SITE_URL, else the production site. */
 export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; origin?: string; rebuild?: CallSeams["rebuild"] } = {}): CallSeams {
   const env = options.env ?? process.env;
+  const ledger = mayaSpendLedger(db, { env });
+  const meter = (call: SpendCall | undefined) => (call ? { ledger, call, newId: () => randomUUID() } : undefined);
   return {
     alerts: callAlerts({ ledger: mayaAlertLedger(db), to: env.SIGNUP_NOTIFY_EMAIL || null, origin: options.origin ?? siteOrigin(env) }),
     store: mayaCallStore(db),
@@ -81,10 +88,11 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
     history: wordingHistoryStore(db),
     events: learningEvents(learningEventStore(db)),
     rebuild: options.rebuild ?? ((childId, o) => rebuild(db, childId, o?.factsOnly)),
-    model: (id) => callModel(id, env),
-    reviewer: (modelId) => callReviewer(modelId, env),
+    model: (id, call) => callModel(id, env, meter(call)),
+    reviewer: (modelId, call) => callReviewer(modelId, env, meter(call)),
+    spend: mayaCallSpend(ledger, () => randomUUID()),
     isTestFamily: (parentId) => isTestFamily(db, parentId),
-    note: writeNoteAfterCall(db),
+    note: writeNoteAfterCall(db, { ledger }),
     clock: () => Date.now(),
     newId: () => randomUUID(),
     seed: () => randomInt(0, 2 ** 32),
