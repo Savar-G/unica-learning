@@ -1,4 +1,4 @@
-// A level per reported area for the parent dashboard (D-236, spec #544, #549). Nothing reaches a parent until a UI ticket
+// A level per reported area for the parent dashboard (D-243, spec #544, #549). Nothing reaches a parent until a UI ticket
 // uses it, and the rule must first pass the check on real data (`npm run area-levels:check`).
 //
 // A bar ends at the highest grade with WORKING_LEVEL_PERCENT right in that area, with at least AREA_MINIMUM_ANSWERS
@@ -26,7 +26,7 @@ export type AreaBasis = "area" | "estimate" | "overall";
 export interface AreaLevel {
   area: ReportedStrand;
   level: Level;
-  /** The level against the school grade. Parents see it; the child, printed pages and the desk never do (D-236). */
+  /** The level against the school grade. Parents see it; the child, printed pages and the desk never do (D-243). */
   label: AreaLabel;
   certainty: Certainty;
   basis: AreaBasis;

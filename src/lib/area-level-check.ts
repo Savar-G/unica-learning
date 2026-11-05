@@ -1,4 +1,4 @@
-// The check of the area rule on stored tests (D-236, #549): pure, so scripts/area-level-check.ts only reads and prints.
+// The check of the area rule on stored tests (D-243, #549): pure, so scripts/area-level-check.ts only reads and prints.
 // It compares each bar with the status the report shows for that area. The report counts answers at or below the school
 // grade, and the bar counts every answer, so a difference can be fair; each one is named so that a person can judge it.
 import { areaLevels, type AreaAnswer, type AreaBasis, type AreaLabel, type Certainty, type Placement, type ReportedStrand, type StrandStatus } from "@/lib/assessment";

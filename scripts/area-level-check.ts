@@ -1,4 +1,4 @@
-// Runs the area rule (D-236, #549) on every stored finished test, read-only, and prints counts and anonymous ids.
+// Runs the area rule (D-243, #549) on every stored finished test, read-only, and prints counts and anonymous ids.
 //
 // Usage: npm run area-levels:check
 // The token comes from SUPABASE_ACCESS_TOKEN or the macOS Keychain item "supabase-pagewise" and goes only to the Supabase
@@ -95,7 +95,8 @@ function liveTest(row: LiveRow, markChanged: string[]): CheckedTest {
 
 function copyTest(row: CopyRow): CheckedTest {
   const questions = [...row.questions].filter((q) => q.correct !== null && !fromRemovedRound(q.questionId)).sort((a, b) => a.position - b.position);
-  const out = leftOutOfScore(questions.map((q) => ({ questionId: q.questionId, timeMs: q.timeMs ?? 0, correct: q.correct === true })));
+  // An unknown time does not prove rushing, so it can never count as fast.
+  const out = leftOutOfScore(questions.map((q) => ({ questionId: q.questionId, timeMs: q.timeMs ?? Number.MAX_SAFE_INTEGER, correct: q.correct === true })));
   const answers: AreaAnswer[] = questions.flatMap((q, i) => (out[i] ? [] : [{ area: REPORTED_STRAND[q.strand], level: q.level, correct: q.correct === true }]));
   const difference = storedDifference(row.placement, questions.length);
   if (difference) differences.set(anonymous(row.id), difference);
@@ -113,14 +114,18 @@ const markChanged: string[] = [];
 const tests: CheckedTest[] = [];
 for (const row of live) {
   try {
-    tests.push(liveTest(row, markChanged));
+    const test = liveTest(row, markChanged);
+    checkAreaLevels([test]); // A placement with missing parts is unreadable here, not a stop for the whole check.
+    tests.push(test);
   } catch {
     unreadable.push(anonymous(row.id));
   }
 }
 for (const row of copies) {
   try {
-    tests.push(copyTest(row));
+    const test = copyTest(row);
+    checkAreaLevels([test]); // A placement with missing parts is unreadable here, not a stop for the whole check.
+    tests.push(test);
   } catch {
     unreadable.push(anonymous(row.id));
   }

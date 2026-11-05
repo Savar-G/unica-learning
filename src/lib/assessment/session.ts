@@ -494,7 +494,7 @@ export function testStep(session: Session): TestStep {
 export const breakDue = (step: TestStep): boolean => step.status === "question" && step.number === step.breakAfter + 1;
 
 /**
- * A completed test's answers for the area rule (D-236): one per question, with what `finish` leaves out of the score
+ * A completed test's answers for the area rule (D-243): one per question, with what `finish` leaves out of the score
  * (a very fast wrong answer in a run, #189) left out here too.
  */
 export function testAreaAnswers(session: Session): AreaAnswer[] {

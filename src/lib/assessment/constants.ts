@@ -47,7 +47,7 @@ export const ROUTE_DOWN_BELOW_PERCENT = 40;
 /** Working level = the highest level with this percent correct. */
 export const WORKING_LEVEL_PERCENT = 70;
 
-/** An area's bar (D-236): answers needed at a grade before that grade can end the bar. */
+/** An area's bar (D-243): answers needed at a grade before that grade can end the bar. */
 export const AREA_MINIMUM_ANSWERS = 4;
 
 /** BC selection: questions at or below school grade per reported strand (#188, D-110). */
