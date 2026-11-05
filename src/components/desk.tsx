@@ -186,7 +186,8 @@ export function Desk(props: DeskProps) {
           <button type="button" disabled aria-pressed={!props.chatUsage}><Icon name="board" size={18} />Call + board</button>
         </div>}
 
-        {chat.chat ? <ChatBoard chat={chat.chat} still={still} /> : <OurBoard
+        {chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
+          saved={chat.savedBoard?.id === chat.chat.id ? chat.savedBoard.history : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)} /> : <OurBoard
           key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}
           question={card?.board ?? null}
           at={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
