@@ -33,6 +33,7 @@ function provider(subscriptions: Record<string, unknown[]>, customers: unknown[]
     }
     if (url.pathname === "/v1/customers") return json({ object: "list", data: customers, has_more: false, url: "/v1/customers" });
     if (url.pathname === "/v1/subscriptions") return json({ object: "list", data: subscriptions[url.searchParams.get("customer") ?? ""] ?? [], has_more: false, url: "/v1/subscriptions" });
+    if (url.pathname.startsWith("/v1/subscriptions/")) return json({ id: url.pathname.split("/").at(-1), schedule: null });
     throw new Error(`Unexpected Stripe read: ${url.pathname}`);
   }) });
   return { client, writes };

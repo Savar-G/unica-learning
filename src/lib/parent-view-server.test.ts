@@ -138,7 +138,7 @@ describe("the Supabase reader of the Workbooks tab (#558)", () => {
     const r = reader();
     await readWorkbooks(r.reader, CHILD, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbooks"]);
-    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "test_accounts", "workbook_emails"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "plan_control_operations", "test_accounts", "workbook_emails"]);
     const emails = r.admin.find((u) => u.pathname.endsWith("/workbook_emails"))!.searchParams;
     expect(emails.get("select")).toBe("child_id,workbook_number,delivery");
     expect(emails.get("parent_id")).toBe(`eq.${PARENT}`);

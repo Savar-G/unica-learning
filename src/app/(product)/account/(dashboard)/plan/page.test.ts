@@ -6,8 +6,9 @@ import { canCancel } from "@/lib/parent-plan";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
-const f = vi.hoisted(() => ({ dashboard: null as unknown, plans: [] as unknown[] }));
+const f = vi.hoisted(() => ({ dashboard: null as unknown, plans: [] as unknown[], pending: new Map<string, "pause" | "restart" | "cancel">() }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => f.dashboard }));
+vi.mock("@/lib/plan-controls-server", () => ({ familyPendingControls: async () => f.pending }));
 vi.mock("@/lib/parent-plan-server", () => ({ familyPlans: async () => f.plans }));
 vi.mock("@/lib/supabase-auth", () => ({
   parentId: async () => "p1",
@@ -24,7 +25,7 @@ vi.mock("@/lib/supabase-auth", () => ({
 const failed: ChildPlan = { cardId: "card-1", childName: "Leah", plan: { kind: "payment_failed" } };
 const page = async () => renderToStaticMarkup(await PlanPage());
 
-beforeEach(() => { f.dashboard = null; f.plans = [failed]; });
+beforeEach(() => { f.dashboard = null; f.plans = [failed]; f.pending = new Map(); });
 
 it("keeps today's words for a family the dashboard's switch does not open to", async () => {
   const out = await page();
@@ -41,4 +42,10 @@ it("points a dashboard family to the card update on the Account tab, and keeps t
   expect(out).toContain('Please <a href="/account/settings">update your card</a>.');
   expect(out).not.toContain("To update your card, email");
   expect(out).toContain("Cancel plan");
+});
+
+it("keeps the recovery action visible after a lost pause response, including when the provider is already paused", async () => {
+  f.dashboard = { children: [] }; f.pending.set("card-1", "pause");
+  f.plans = [{ cardId: "card-1", childName: "Leah", plan: { kind: "paused", resumesOn: "2026-12-01T18:00:00Z", monthly: 79.99 } }];
+  expect(await page()).toContain("Check pause");
 });

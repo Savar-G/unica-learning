@@ -84,6 +84,9 @@ export type PlanEmail = "none" | "pending" | "sent" | "unknown";
 
 /** One start of one generation: a row of public.plan_starts. Times `at` and `finished` are in milliseconds. */
 export interface PlanStart {
+  /** Immutable creation terms. Older records are initial starts. */
+  purpose?: "initial" | "restart";
+  monthlyCents?: number | null;
   generation: number;
   key: string;
   card: string;
@@ -116,6 +119,8 @@ export interface CardRow extends NewestCard {
 }
 
 export interface CardRows {
+  /** Immutable terms are needed only by a start press, not by the recovery sweep. */
+  startTerms?(cardId: string, generation: number): Promise<{ purpose: "initial" | "restart"; monthlyCents: number | null }>;
   /** Records `card` when it is the child's newest. Throws when it fails. */
   recordCard(cardId: string, card: RecordedCard): Promise<CardRecord>;
   /** After a comparison of Stripe with `session`'s card. Throws when it fails. */
@@ -133,7 +138,7 @@ export interface CardRows {
    * before it is closed. Otherwise it changes nothing. It answers the newest record, and the caller sends only when that record is
    * open and is `generation`. Throws when it fails, and for a card setup that does not exist.
    */
-  admitPlanStart(cardId: string, generation: number, key: string, card: string): Promise<PlanStart>;
+  admitPlanStart(cardId: string, generation: number, key: string, card: string, terms?: { purpose: "initial" | "restart"; monthlyCents: number; revision?: string }): Promise<PlanStart>;
   /** Closes an open record. A closed record stays as it is. Throws when it fails. */
   finishPlanStart(cardId: string, generation: number, outcome: PlanStartOutcome): Promise<void>;
   /** The confirmation email's final outcome. Only a pending email moves. Throws when it fails. */

@@ -182,6 +182,17 @@ describe("the Workbooks tab (#558)", () => {
   const mail = { method: "mail", carrier: "Canada Post", trackingNumber: "7023 1234", trackingUrl: "https://www.canadapost-postescanada.ca/track?n=70231234" };
   const read = (tables: Parameters<typeof parent>[0], now = NOW) => readWorkbooks(parent({ ...card, ...tables }), "child-1", now);
 
+  it("applies only the stored pause weeks for this child's next workbook", async () => {
+    const reader = parent({ cards: [{ ...own, cardSavedAt: "2026-10-01" }], workbooks: [book(1)] });
+    const calls: unknown[][] = [];
+    reader.pauseWeeks = async (child, number) => { calls.push([child, number]); return number === 2 ? 2 : 0; };
+    const view = await readWorkbooks(reader, "child-1", NOW);
+    expect(view?.next).toEqual({ kind: "range", earliest: "2026-11-30", latest: "2026-12-21" });
+    expect(calls).toEqual([["child-1", 2]]);
+    reader.pauseWeeks = async (_child, number) => number === 3 ? 2 : 0;
+    expect((await readWorkbooks(reader, "child-1", NOW))?.next).toEqual({ kind: "range", earliest: "2026-11-16", latest: "2026-12-07" });
+  });
+
   it("before the first book ships: the status, with no date and no book", async () => {
     expect(await read({ workbooks: [book(1, { status: "printed" })] })).toEqual({
       child: expect.objectContaining({ id: "child-1", firstName: "Leah", stage: "first_book_coming" }),

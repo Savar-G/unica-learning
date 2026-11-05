@@ -37,7 +37,8 @@ export function CancelPlan({ cardId, name, consequence }: { cardId: string; name
     try {
       const res = await fetch("/api/account/plan/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: cardId }) });
       // A plan that has already stopped is what the parent wanted; the reload shows it.
-      if (res.ok || res.status === 409) { setAsking(false); router.refresh(); return; }
+      if (res.ok) { setAsking(false); router.refresh(); return; }
+      if (res.status === 409 && (await res.json()).error === "no_plan") { setAsking(false); router.refresh(); return; }
       setFailed(true);
     } catch { setFailed(true); }
     finally { setBusy(false); }
@@ -50,6 +51,75 @@ export function CancelPlan({ cardId, name, consequence }: { cardId: string; name
         <button type="button" className="btn ghost" onClick={() => setAsking(false)} disabled={busy}>Keep plan</button>
       </div>
     </> : <button type="button" className="btn ghost" onClick={() => setAsking(true)}>Cancel plan</button>}
-    {failed && <p role="alert" className="acct-alert">We could not cancel the plan. Try again, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>}
+    {failed && <p role="alert" className="acct-alert">We could not confirm cancellation. A plan change may still be in progress. Try again, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>}
+  </div>;
+}
+
+interface PausePreview {
+  token: string; weeks: number; remaining: number; year: number; late: boolean; targetNumber: number;
+  charge: string; earliest: string | null; latest: string | null;
+}
+const controlErrors: Record<string, string> = {
+  allowance: "This pause exceeds the eight weeks available this calendar year. Choose fewer weeks.",
+  not_delivered: "You can pause after the first workbook arrives.",
+  unsupported: "We cannot change this plan here yet. Please email us to arrange a pause.",
+  stale: "The plan or its dates changed. Review the new dates before you confirm.",
+  pending: "We cannot confirm this change yet. Check again before you make another change or delete the account.",
+  unconfirmed: "We cannot confirm this change yet. Check again before you make another change or delete the account.",
+  needs_team: "We cannot confirm this change yet. Please email us before you make another change.",
+  no_card: "Please update your card. Then return here to restart the plan.",
+  not_ended: "This plan has not ended. Reload the page to see its current state.",
+};
+
+/** Progressive confirmation uses only server-written dates and terms. A failed confirmation keeps its token for recovery. */
+export function PlanControl({ cardId, name, mode, pending = false }: { cardId: string; name: string; mode: "pause" | "restart"; pending?: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false), [busy, setBusy] = useState(false);
+  const [weeks, setWeeks] = useState(1), [preview, setPreview] = useState<PausePreview | null>(null);
+  const [restart, setRestart] = useState<{ price: number; token: string } | null>(null);
+  const [error, setError] = useState<string | null>(null), [done, setDone] = useState(false);
+  async function send(confirm: boolean) {
+    setBusy(true); setError(null);
+    try {
+      const response = await fetch(`/api/account/plan/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: cardId, weeks, action: confirm ? "confirm" : "preview", ...(confirm ? { token: preview?.token ?? restart?.token } : {}) }) });
+      const body = await response.json();
+      if (!response.ok || body.ok !== true) {
+        const key = typeof body.error === "string" ? body.error : "failed";
+        setError(controlErrors[key] ?? "We could not complete this change. Try again, or email us.");
+        if (key === "stale") { setPreview(null); setRestart(null); }
+        return;
+      }
+      if (body.state === "applied" || body.state === "started") { setDone(true); setPreview(null); setRestart(null); router.refresh(); return; }
+      if (mode === "pause") setPreview(body);
+      else setRestart({ price: body.price, token: body.token });
+    } catch { setError(controlErrors.pending); }
+    finally { setBusy(false); }
+  }
+  const close = () => { setOpen(false); setPreview(null); setRestart(null); setError(null); };
+  const label = pending ? `Check ${mode}` : mode === "pause" ? "Pause plan" : "Restart plan";
+  return <div className="acct-plan-actions">
+    {done ? <p role="status">{mode === "pause" ? "The pause is saved. Your mailing and charge dates have changed." : "The paid plan has restarted. We will prepare the next workbook from the current learning profile."}</p>
+      : !open ? <button type="button" className="btn ghost" onClick={() => { setOpen(true); if (pending) void send(false); }} aria-label={`${label} for ${name}`}>{label}</button>
+        : <>
+          <p><b>{mode === "pause" ? `Pause ${name}'s plan` : `Restart ${name}'s plan`}</b></p>
+          {mode === "pause" && !preview && !pending && <>
+            <p>You can pause for up to eight whole weeks per calendar year after the first delivery.</p>
+            <label>Weeks to pause <select value={weeks} onChange={event => { setWeeks(Number(event.target.value)); setPreview(null); }} disabled={busy}>{Array.from({ length: 8 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}</select></label>
+          </>}
+          {preview && <>
+            <p>{preview.weeks} {preview.weeks === 1 ? "week" : "weeks"}. Next charge: {preview.charge}.</p>
+            <p>{preview.earliest && preview.latest ? `Next mailing: ${preview.earliest} to ${preview.latest}.` : "We cannot confirm the next mailing range yet."}</p>
+            {preview.late && <p>The next workbook keeps its mailing range. The pause applies from workbook {preview.targetNumber}. We will show that mailing range after the next workbook ships.</p>}
+            <p>{preview.remaining} weeks remain in {preview.year} after this pause.</p>
+          </>}
+          {mode === "restart" && <p>{restart ? `We charge CAD ${restart.price.toFixed(2)} immediately, then CAD ${restart.price.toFixed(2)} each month until you cancel. ` : "Restart begins a paid plan immediately. Review the price before you confirm. "}There is no second free month.</p>}
+          <div className="acct-plan-buttons">
+            <button type="button" className="btn" disabled={busy} onClick={() => send(!!(preview || restart))}>{busy ? "Please wait..." : preview || restart ? `Confirm ${mode}` : pending ? `Check ${mode}` : mode === "pause" ? "Review new dates" : "Review price"}</button>
+            <button type="button" className="btn ghost" disabled={busy} onClick={close}>{pending ? "Close" : "Keep current plan"}</button>
+            {preview && <button type="button" className="btn ghost" disabled={busy} onClick={() => setPreview(null)}>Change weeks</button>}
+          </div>
+        </>}
+    {error && <p role="alert" className="acct-alert">{error} <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>}
+    {error === controlErrors.no_card && <UpdateCard cardId={cardId} name={name} />}
   </div>;
 }

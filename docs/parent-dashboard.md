@@ -42,6 +42,7 @@ The pages in `(dashboard)` keep their addresses, because a route group is not in
 - Known limits. The row is the truth: a default changed by hand in Stripe's dashboard goes back to the row's card, at the next subscription event or sweep. To change a card, have the parent use "Update card". A card that Stripe keeps refusing stays flagged and is tried again in each sweep, until a newer card arrives; find these with `needs_repair` and an old `updated_at`.
 - Probes: `supabase/tests/plan_starts.sql`, `supabase/tests/card_row_reconcile.sql` and `supabase/tests/child_card_updates.sql`, through the Supabase MCP `execute_sql`; a run ends with `PROBE_OK` and rolls back.
 - Cancel stays on `/account/plan` (D-222).
+- Pause (#559) and paid Restart (#546) use the existing Account and Plan child cards. Pending requests keep a recovery action after reload. The release stays off. Supported states, the classic paid Pause refusal, durable holds and parent acceptance steps are in `docs/plan-controls.md`.
 - Both card routes answer only to a family the switch opens to, and every other family keeps today's pages.
 - Stored plans change only through `docs/stripe-webhook.md`. Set up that endpoint before families see this page, or a filled row goes stale.
 

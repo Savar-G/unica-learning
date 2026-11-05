@@ -18,7 +18,7 @@ import type { KnownPlan, ParentPlan } from "@/lib/parent-plan";
 
 /** The events the webhook keeps. */
 export const PLAN_EVENT_TYPES = [
-  "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "invoice.paid", "invoice.payment_failed",
+  "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "customer.subscription.paused", "customer.subscription.resumed", "invoice.paid", "invoice.payment_failed",
 ] as const;
 export type PlanEventType = (typeof PLAN_EVENT_TYPES)[number];
 
@@ -147,6 +147,7 @@ export function planColumns(plan: KnownPlan): PlanColumns {
   const columns: PlanColumns = { kind: plan.kind, next_charge_at: null, ends_at: null, monthly_cents: null, ending_free: false };
   switch (plan.kind) {
     case "free_month": return { ...columns, next_charge_at: plan.firstCharge, monthly_cents: cents(plan.monthly) };
+    case "paused": return { ...columns, next_charge_at: plan.resumesOn, monthly_cents: cents(plan.monthly) };
     case "paying": return { ...columns, next_charge_at: plan.nextCharge, monthly_cents: cents(plan.monthly) };
     case "ending": return { ...columns, ends_at: plan.endsOn, ending_free: plan.free };
     case "ended": return { ...columns, ends_at: plan.endedOn ?? null };
@@ -161,6 +162,7 @@ export function planFromColumns(row: PlanColumns): ParentPlan {
     case "not_started":
     case "payment_failed": return { kind: row.kind };
     case "free_month": return row.next_charge_at ? { kind: "free_month", firstCharge: row.next_charge_at, monthly } : { kind: "unknown" };
+    case "paused": return { kind: "paused", resumesOn: row.next_charge_at, monthly };
     case "paying": return { kind: "paying", nextCharge: row.next_charge_at, monthly };
     case "ending": return { kind: "ending", endsOn: row.ends_at, free: row.ending_free };
     case "ended": return row.ends_at ? { kind: "ended", endedOn: row.ends_at } : { kind: "ended" };

@@ -1,4 +1,4 @@
-import { UpdateCard } from "@/components/account-plan";
+import { PlanControl, UpdateCard } from "@/components/account-plan";
 import { PlanText, planDay } from "@/components/plan-text";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { canUpdateCard, type FamilyBilling, type FamilyInvoice, type InvoiceStatus } from "@/lib/billing";
@@ -43,12 +43,15 @@ export function AccountBilling({ billing, zone }: { billing: FamilyBilling; zone
       {billing.plans.length === 0 && <p>You do not have a plan yet.</p>}
       {billing.plans.length > 0 && (
         <ul className="acct-kids pd-plans">
-          {billing.plans.map(({ childId, firstName, cardId, plan }) => (
+          {billing.plans.map(({ childId, firstName, cardId, plan, pending }) => (
             <li key={childId} className="acct-kid acct-plan">
               <div>
                 <b>{firstName}</b>
                 {plan ? <PlanText plan={plan} zone={zone} cardUpdate="here" /> : <p>No plan yet.</p>}
               </div>
+              {cardId && (pending === "pause" || pending === "restart") && <PlanControl cardId={cardId} name={firstName} mode={pending} pending />}
+              {pending === "cancel" && <p role="status">Cancellation is not confirmed. Please email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>}
+              {!pending && plan && cardId && (plan.kind === "paying" || plan.kind === "free_month" || plan.kind === "ended") && <PlanControl cardId={cardId} name={firstName} mode={plan.kind === "ended" ? "restart" : "pause"} />}
               {plan && cardId && canUpdateCard(plan) && <UpdateCard cardId={cardId} name={firstName} />}
             </li>
           ))}

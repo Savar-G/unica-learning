@@ -137,7 +137,7 @@ describe("each child's plan", () => {
     expect(canUpdateCard({ kind: "paying", nextCharge: null, monthly: 79.99 })).toBe(true);
     expect(canUpdateCard({ kind: "payment_failed" })).toBe(true);
     expect(canUpdateCard({ kind: "ending", endsOn: null, free: false })).toBe(false);
-    expect(canUpdateCard({ kind: "ended" })).toBe(false);
+    expect(canUpdateCard({ kind: "ended" })).toBe(true);
     expect(canUpdateCard({ kind: "unknown" })).toBe(false);
   });
 });

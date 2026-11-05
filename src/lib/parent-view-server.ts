@@ -4,6 +4,7 @@ import { answersAddUp, reportShowsPlacement } from "@/lib/area-level-check";
 import { fromRemovedRound, profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
+import { childPauseMailing } from "@/lib/plan-controls-server";
 import type { ParentViewReader } from "@/lib/parent-view";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { scanPagesAccess } from "@/lib/scan-pages-access";
@@ -74,6 +75,10 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       const { data, error } = await session.from("workbooks").select("id, child_id, number, shipped_at, pdf_path").eq("status", "shipped");
       if (error) throw new Error(`workbooks read: ${error.message}`);
       return data.map((w) => ({ id: w.id, childId: w.child_id, number: w.number, shippedAt: w.shipped_at, hasPdf: w.pdf_path !== null }));
+    },
+    async pauseWeeks(child, number) {
+      if (!admin) throw new Error("pause read: no secret key");
+      return childPauseMailing(admin, parent, child, number);
     },
     async dispatches() {
       if (!admin) throw new Error("dispatches read: no secret key");

@@ -154,14 +154,14 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       const row = rowOfCard(cardId);
       if (row) row.checkedAt = Date.now();
     },
-    async admitPlanStart(cardId, generation, key, card) {
+    async admitPlanStart(cardId, generation, key, card, terms) {
       begin("admit");
       const child = children.find((c) => c.card?.id === cardId);
       if (!child) throw new Error("plan_start_no_card_setup");
       if (!updates.has(child.childId)) updates.set(child.childId, newRow());
       const latest = newestStart(cardId);
       if ((latest?.generation ?? 0) === generation - 1 && latest?.state !== "open") {
-        const start: PlanStart = { generation, key, card, at: Date.now(), state: "open", subscription: null, firstCharge: null, finished: null, email: "none", alert: null };
+        const start: PlanStart = { ...terms, generation, key, card, at: Date.now(), state: "open", subscription: null, firstCharge: null, finished: null, email: "none", alert: null };
         planStarts.set(cardId, [...(planStarts.get(cardId) ?? []), start]);
         return { ...start };
       }

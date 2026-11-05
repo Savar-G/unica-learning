@@ -282,7 +282,7 @@ describe("the billing store", () => {
   it("admits a plan start with the generation, the key and the card, and reads the record that answers", async () => {
     const { store, sent } = rpcStore(() => Response.json(startAnswer));
     expect(await store.admitPlanStart("card-1", 2, "key-2", "pm_second")).toEqual(planStart);
-    expect(sent).toEqual([{ name: "admit_plan_start", body: { p_card: "card-1", p_generation: 2, p_key: "key-2", p_payment_method: "pm_second" } }]);
+    expect(sent).toEqual([{ name: "admit_plan_start_terms", body: { p_card: "card-1", p_generation: 2, p_key: "key-2", p_payment_method: "pm_second", p_purpose: "initial", p_monthly_cents: 0, p_revision: "" } }]);
     await expect(rpcStore(() => Response.json({ key: "key-1" })).store.admitPlanStart("card-1", 1, "k", "pm")).rejects.toThrow("unreadable");
     await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.admitPlanStart("card-1", 1, "k", "pm")).rejects.toThrow("admission");
   });

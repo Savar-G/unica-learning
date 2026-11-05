@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import type { BillingProvider, BillingStore, CardUpdates, FamilyBillingSeams, ProviderInvoice } from "@/lib/billing";
+import { adjustedPlan, pendingPlanControl } from "@/lib/plan-controls-server";
 import { supabaseCardRows } from "@/lib/card-reconcile-server";
 import type { Database } from "@/lib/database";
 import { stripePlanProvider, supabasePlanStore } from "@/lib/plan-state-server";
@@ -104,6 +105,8 @@ export function stripeBillingProvider(client: Stripe | null): BillingProvider {
 export function supabaseBillingStore(db: SupabaseClient<Database>): BillingStore {
   return {
     ...supabaseCardRows(db),
+    adjustedPlan: (parent, card, plan) => adjustedPlan(db, parent, card, plan),
+    pendingControl: (parent, card) => pendingPlanControl(db, parent, card),
     async family(parentId) {
       const [children, cards] = await Promise.all([
         db.from("children").select("id, first_name").eq("parent_id", parentId).order("created_at").order("id"),

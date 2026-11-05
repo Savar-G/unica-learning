@@ -9,7 +9,7 @@ import { addDays } from "@/lib/family-time";
 // Two cases the spec leaves open, kept as statuses with no date, so the page never shows a date we cannot keep:
 //   - The range has passed and no newer book shipped: `past_estimate`. Nothing here knows whether the next book is being made.
 //   - The plan ended: `none`.
-// Pause (#559) moves both ends by the paused weeks; it is not built yet.
+// Pause (#559) moves both ends for the next book only. Later targets wait until their preceding book ships.
 
 export const EARLIEST_DAYS = 14;
 export const LATEST_AFTER_DELIVERY_DAYS = 28;
@@ -23,6 +23,7 @@ export interface NextBookInput {
   today: string;
   /** The plan ended. */
   ended: boolean;
+  pausedWeeks?: number;
 }
 
 export type NextBook =
@@ -36,12 +37,14 @@ function day(value: string, name: string): string {
   return value;
 }
 
-export function nextBook({ shippedOn, deliveredOn, today, ended }: NextBookInput): NextBook {
+export function nextBook({ shippedOn, deliveredOn, today, ended, pausedWeeks = 0 }: NextBookInput): NextBook {
   day(today, "today");
   if (ended) return { kind: "none" };
   if (shippedOn === null) return { kind: "first_book_coming" };
   const shipped = day(shippedOn, "shippedOn");
-  const latest = deliveredOn === null ? addDays(shipped, LATEST_AFTER_SHIPPING_DAYS) : addDays(day(deliveredOn, "deliveredOn"), LATEST_AFTER_DELIVERY_DAYS);
+  if (!Number.isInteger(pausedWeeks) || pausedWeeks < 0) throw new RangeError("Invalid paused weeks");
+  const offset = pausedWeeks * 7;
+  const latest = addDays(deliveredOn === null ? addDays(shipped, LATEST_AFTER_SHIPPING_DAYS) : addDays(day(deliveredOn, "deliveredOn"), LATEST_AFTER_DELIVERY_DAYS), offset);
   if (today > latest) return { kind: "past_estimate" };
-  return { kind: "range", earliest: addDays(shipped, EARLIEST_DAYS), latest };
+  return { kind: "range", earliest: addDays(shipped, EARLIEST_DAYS + offset), latest };
 }

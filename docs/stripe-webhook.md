@@ -13,10 +13,12 @@ Do these in live mode. Agents do not do them.
 3. Under events from, select "Your account".
 4. Under payload style, select **Snapshot**. Do not select Thin: the route reads the customer from the event's object, and a thin event has no object.
 5. Keep the default API version. The route reads only the event's id, type, time and customer.
-6. Select exactly these 5 events:
+6. Select exactly these 7 events:
    - `customer.subscription.created`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
+   - `customer.subscription.paused`
+   - `customer.subscription.resumed`
    - `invoice.paid`
    - `invoice.payment_failed`
 7. Under destination type, select "Webhook endpoint".
@@ -68,3 +70,10 @@ A filled row changes only through an event. If the endpoint is not set up, or St
 - Unit tests: `npx vitest run src/lib/plan-state.test.ts src/lib/plan-state-server.test.ts src/lib/card-reconcile.test.ts src/app/api/stripe-webhook/route.test.ts`.
 - Database rules: post `supabase/tests/child_plan_states.sql` to the Supabase Management API (`/v1/projects/cdjobwsyzndtltzfpyqa/database/query`, Keychain token `supabase-pagewise`). A pass is the error `PROBE_OK`: the final exception rolls back every synthetic row.
 - Local events: `stripe listen --forward-to localhost:3000/api/stripe-webhook`, then set the secret it prints as `STRIPE_WEBHOOK_SECRET` in `.env.local`.
+
+
+## Pause and paid Restart (#559, #546)
+
+A native pause has its own `paused` plan state. The state stores the scheduled resume date in `next_charge_at`. A scheduled pause at the next renewal shows the resume date as the next charge date. The Account tab also applies confirmed dates from the private pause record while the stored plan still has its old renewal date. A pending control shows an unknown plan.
+
+Add the two pause events before release. Verify subscription schedule read, write, release and cancel permissions on the restricted key. See `docs/plan-controls.md` for the supported state matrix and provider checks. No change in this implementation enables the dashboard.

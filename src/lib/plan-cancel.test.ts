@@ -80,3 +80,37 @@ describe("the cancel button reads every subscription of the customer", () => {
     expect(f.writes()).toEqual([]);
   });
 });
+
+it("removes the native pause schedule before a cancel can leave a later resume", async () => {
+  const requests: { path: string; body: URLSearchParams }[] = [];
+  const client = new Stripe("sk_test_schedule_cancel", { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (input, init) => {
+    const url = new URL(String(input));
+    if ((init?.method ?? "GET") === "GET") return Response.json({ data: [plan({ status: "active", schedule: "schedule" })], has_more: false });
+    requests.push({ path: url.pathname, body: new URLSearchParams(String(init?.body ?? "")) });
+    return Response.json(url.pathname.endsWith("/release") ? { id: "schedule", status: "released", released_subscription: "sub_1" } : { id: "sub_1" });
+  }) });
+  expect(await cancelPlan(client, "cus_1")).toMatchObject({ ok: true });
+  expect(requests.map(r => r.path)).toEqual(["/v1/subscription_schedules/schedule/release", "/v1/subscriptions/sub_1"]);
+  expect(requests[0].body.get("preserve_cancel_date")).toBe("false");
+  expect(requests[1].body.get("cancel_at_period_end")).toBe("true");
+});
+it("does not confirm cancellation after an unrelated schedule release response", async () => {
+  let writes = 0;
+  const client = new Stripe("sk_test_schedule_cancel", { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (_input, init) => {
+    if ((init?.method ?? "GET") === "GET") return Response.json({ data: [plan({ status: "active", schedule: "schedule" })], has_more: false });
+    writes++; return Response.json({ id: "schedule", status: "released", released_subscription: "other" });
+  }) });
+  await expect(cancelPlan(client, "cus_1")).rejects.toThrow("unconfirmed");
+  expect(writes).toBe(1);
+});
+
+import { stopPlanNow } from "@/lib/stripe";
+it("deletion cancels the schedule and its subscription with no last invoice or proration",async()=>{
+ const requests:{path:string;method:string;body:URLSearchParams}[]=[];
+ const client=new Stripe("sk_test_delete_schedule",{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
+  const url=new URL(String(input)),method=init?.method??"GET";requests.push({path:url.pathname,method,body:new URLSearchParams(String(init?.body??""))});
+  return Response.json(method==="GET"?{id:"sub_1",schedule:"schedule"}:{id:"schedule",status:"canceled"});
+ })});
+ await stopPlanNow(client,"sub_1");expect(requests.map(r=>[r.method,r.path])).toEqual([["GET","/v1/subscriptions/sub_1"],["POST","/v1/subscription_schedules/schedule/cancel"]]);
+ expect(requests[1].body.get("invoice_now")).toBe("false");expect(requests[1].body.get("prorate")).toBe("false");
+});

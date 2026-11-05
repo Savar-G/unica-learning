@@ -83,6 +83,8 @@ export interface ParentViewReader {
   shippedWorkbooks(): Promise<ShippedWorkbook[]>;
   /** The family's dispatch emails' delivery details (carrier, tracking), one row per numbered workbook. */
   dispatches(): Promise<DispatchRecord[]>;
+  /** Stored weeks that apply to this next workbook, from the private billing ledger. */
+  pauseWeeks?(childId: string, number: number): Promise<number>;
   plans(): Promise<PlanRecord[]>;
   switches(): Promise<TabSwitches>;
   /** The family's saved time zone and postal code, for family time. */
@@ -263,9 +265,10 @@ export async function readWorkbooks(reader: ParentViewReader, childId: string, n
       delivery: dispatch ? deliveryView(dispatch.delivery) : null,
     };
   }
+  const pausedWeeks = newest && reader.pauseWeeks ? await reader.pauseWeeks(child.id, newest.number + 1) : 0;
   const next: NextBook = current && current.shippedOn === null && !child.readOnly
     ? { kind: "none" }
-    : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly });
+    : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly, pausedWeeks });
   return { child, current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), hasPdf: w.hasPdf })) };
 }
 
