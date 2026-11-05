@@ -1,0 +1,877 @@
+{
+  "round": "r565",
+  "ticket": "Savar's ask of 2026-11-05: design the batch and one-page flows of Scan pages (spec #368; slices S3, S4, S5, S8, S9)",
+  "route": "design skill, focused route, explore stage. job_kind new, surface product, constraint_mode existing-system. Mockups only: no product code changes.",
+  "picked": null,
+  "picked_by": "waiting for Savar (D-236: he approves every screen before families see it)",
+  "board": "index.html",
+  "how_to_open": "From the repo root: python3 -m http.server 3565 --directory .design/experiments/r565, then open http://127.0.0.1:3565/. Everything is local. Each state has its own address, such as a.html#stack.",
+  "decision": "Where does the parent stay between two photos, so that 10 to 20 pages in a sitting are comfortable with one hand?",
+  "primary_axis": "the home of the capture loop: in the camera, on the stack, or on the day's list of pages",
+  "evidence": "Taps per page, whether guidance can reach the parent while the page is in front of the camera, what happens when a check refuses a page the parent has already turned, and what the browser can really do on a phone",
+  "invariants": [
+    "Same sample child (Leah, the sample child in DESIGN.md), same pages, same tokens (warm look) and dashboard frame (r544 set 2 option A)",
+    "Each photo uploads and saves as soon as it is taken, so a closed tab loses nothing, and there is no per-page confirm",
+    "Same refusal words, Send button, marking, marks ready, Please check and Change this mark screens in every option",
+    "Flow B is the same surface with one page in the stack: no choice of mode",
+    "Copy names the child, never she or her; no provider names; no claims about speed or accuracy; no total score across pages (D-243)"
+  ],
+  "sources": {
+    "binding": "AGENTS.md, DESIGN.md, spec #368 and its comments, #456 S3, #457 S4, #458 S5, #471 S9, D-193, D-208, D-213, D-236, D-237, D-241, D-243, D-246, D-249, D-252, docs/scan-pages.md",
+    "current_screens": "src/components/scan-pages.tsx (S1), scan-preview.tsx (S2b), the Scan pages tab (r564), the frame in parent-shell.css",
+    "limits": "supabase/migrations/20261102_scan_page_photos.sql: 20 photos per 10 minutes, 60 a day, 2 uploads at once, 1 job and 8 queued",
+    "page_art": "Drawn in proto.js from the layout of a real rendered page (r455): name line, day label, answer boxes, four L marks, QR code, page code. The QR codes are decoration and do not scan. All data is sample data."
+  },
+  "options": [
+    {
+      "id": "A",
+      "name": "Camera stays open",
+      "artifact": "a.html",
+      "recommended": true,
+      "bet": "The parent stays in a live camera in the page. It reads each page's QR code and four corners, takes the photo with no tap when the page is new and still, and shows a pile. Turn the page, and it goes on.",
+      "benefit": "No tap per page. Guidance arrives while the page is in front of the camera. It cannot take the same page twice, and it does not photograph a wrong or marked page.",
+      "cost": "Needs camera permission and a browser camera build. A late refusal asks the parent to turn back, or waits to the end.",
+      "risk": "Unproven: a video frame may read worse than a real photo. Nobody has tested this on a real phone (#454, G13).",
+      "taps_for_20_pages": "about 2 with auto (Start, Done); about 22 with the shutter"
+    },
+    {
+      "id": "B",
+      "name": "Stack first",
+      "artifact": "b.html",
+      "recommended": false,
+      "bet": "The stack is home. Each photo uses the phone's own camera (what S1 already does), then returns to the stack.",
+      "benefit": "Works today on every phone. Best photo quality. No permission. Also allows choosing many photos from the phone's library.",
+      "cost": "We cannot draw on the phone's camera, so no guidance until after the photo. Every refusal arrives after the page is turned.",
+      "risk": "About 3 taps a page, 60 for 20 pages. Parents may stop part way. A phone short of memory can reload the page when its camera returns.",
+      "taps_for_20_pages": "about 60 (Take a photo, shutter, Use Photo)"
+    },
+    {
+      "id": "C",
+      "name": "Day checklist",
+      "artifact": "c.html",
+      "recommended": false,
+      "bet": "The day's printed pages are the home: 8 slots a day, filled as photos arrive. The parent sees at once what has no photo.",
+      "benefit": "Matches how days work (D-213). Gaps are obvious, and that matters for the Day 7 snapshot. The printed page shows what to photograph.",
+      "cost": "One tap per page, and a day switch every 8 pages. Pages out of order need more thought.",
+      "risk": "Empty slots can read as a list of things the child did not do. It needs the live camera too, so it has A's risk with fewer of A's benefits.",
+      "taps_for_20_pages": "about 22 (a tap per page, day switches, and the camera still has to be live)"
+    }
+  ],
+  "taps_note": "Taps are counted along the mock's path. They are estimates, not a timed test with a parent.",
+  "recommendation": "A, with two parts of the others: B's phone camera as the fallback when the browser refuses or the camera test fails, and C's 'No photo yet: page 2' line in the stack. Build the shared stack on the current file input first, because that path is already built and ships without A's risk. Then run the real-phone camera test, then add A.",
+  "findings_from_the_round": [
+    "A book opens as two pages, and calibration refuses two sheets (D-252). So every option has to teach 'fold the book back'. The tip, the live message and the refusal all say it.",
+    "The current limit of 20 photos per 10 minutes is exactly the size of the sitting Savar asks for, and retakes count. A 20-page sitting with one retake gets refused. 2 uploads at once also means the browser must queue photos in a fast loop.",
+    "Checks finish after the page is turned, so a refusal must not interrupt. The stack puts refused pages first; the camera shows a quiet message with 'Take it again now'.",
+    "A retake cannot change a finalized mark (#457). So a photo of a marked page says: 'A new photo does not change the marks', and points to Change this mark.",
+    "A pending Please check means the page is not complete (#457), so its row says 'Please check 1', not a score.",
+    "The page's QR code, read by the phone's normal camera, opens the desk link (/tutor/p/<token>), not Scan pages. A parent can do this by mistake. That screen may need a 'Scan this page' link. Not in this round.",
+    "Public copy (DESIGN.md How it works step 5, For parents) still says 'the Unica app', though D-193 made scanning part of the web app."
+  ],
+  "open_decisions_for_savar": [
+    {
+      "q": "Pick the option or a mix",
+      "recommend": "A with B's fallback and C's gap line, in the build order above"
+    },
+    {
+      "q": "Auto-take on by default, or shutter only?",
+      "recommend": "Auto on, with a switch at the top right. It is the only way the other hand stays on the book"
+    },
+    {
+      "q": "Can Send go while some pages are refused or still being checked?",
+      "recommend": "Yes. Send what is ready; the others stay in the stack. Your ask reads 'send them all', so this needs your word"
+    },
+    {
+      "q": "Raise the limits?",
+      "recommend": "Yes: 40 photos per 10 minutes, keep 60 a day, and queue in the browser. Needs a small migration"
+    },
+    {
+      "q": "Tell the parent when marks are ready?",
+      "recommend": "One email per send, only when the parent left the page. Not in the spec, and the mock promises nothing beyond 'the marks show here'"
+    },
+    {
+      "q": "Shorter child row on Scan pages for phones (one line, with Open the desk as a link)?",
+      "recommend": "Yes. The full block takes about 180 px above the stack. It is an exception to the r544 frame"
+    },
+    {
+      "q": "Desktop: show the phone's pages live beside the QR code, with Send there too?",
+      "recommend": "Yes. It extends D-246. Retakes stay on the phone"
+    },
+    {
+      "q": "Allow two facing pages in one photo later?",
+      "recommend": "Not now. It would halve the photos, but D-252 refuses two sheets to protect the crops"
+    }
+  ],
+  "not_tested": [
+    "No real phone camera: the viewfinder is drawn",
+    "No parent has tried any option",
+    "Live QR reading and auto-take are not built",
+    "Keyboard use is not tested end to end in the mockups",
+    "Targets under 44 px, measured on 8 phone states: the wordmark (19 px, from the frame), Open the desk in the short child row (32 px), and the inline links More about photos and Delete this photo (20 px). The build must fix the last three. Reduced motion and the camera loop are checked; no state scrolls sideways at 390, 768 or 1440 px"
+  ],
+  "browser": "Aside, account u0, viewport resizing. The mockups are static pages, so the desktop user agent does not change them. Bars are fixed to the viewport; a whole-page shot sets the viewport to the page height.",
+  "viewports": {
+    "phone": [
+      390,
+      844
+    ],
+    "tablet": [
+      768,
+      1024
+    ],
+    "desktop": [
+      1440,
+      900
+    ]
+  },
+  "shots": [
+    {
+      "file": "shots/a-blocked-390.png",
+      "option": "A",
+      "state": "blocked",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The browser refused the camera: try again, or use the phone's own camera"
+    },
+    {
+      "file": "shots/a-change-1440.png",
+      "option": "A",
+      "state": "change",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "S5: change this mark, with the answer's crop and what we read"
+    },
+    {
+      "file": "shots/a-change-390.png",
+      "option": "A",
+      "state": "change",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "S5: change this mark, with the answer's crop and what we read"
+    },
+    {
+      "file": "shots/a-change-768.png",
+      "option": "A",
+      "state": "change",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "S5: change this mark, with the answer's crop and what we read"
+    },
+    {
+      "file": "shots/a-changed-1440.png",
+      "option": "A",
+      "state": "changed",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "S5: the mark changed. The score moves and the row says so"
+    },
+    {
+      "file": "shots/a-changed-390-full.png",
+      "option": "A",
+      "state": "changed",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": true,
+      "shows": "S5: the mark changed. The score moves and the row says so"
+    },
+    {
+      "file": "shots/a-check-1440.png",
+      "option": "A",
+      "state": "check",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Please check an answer, 1 of 2"
+    },
+    {
+      "file": "shots/a-check-390.png",
+      "option": "A",
+      "state": "check",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Please check an answer, 1 of 2"
+    },
+    {
+      "file": "shots/a-check2-390.png",
+      "option": "A",
+      "state": "check2",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Please check an answer, 2 of 2"
+    },
+    {
+      "file": "shots/a-clean-390.png",
+      "option": "A",
+      "state": "clean",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The stack after the fixes: 12 pages ready"
+    },
+    {
+      "file": "shots/a-d-marked-390.png",
+      "option": "A",
+      "state": "d-marked",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Already scanned: this page is marked. A new photo does not change the marks"
+    },
+    {
+      "file": "shots/a-d-stack-390.png",
+      "option": "A",
+      "state": "d-stack",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Already scanned: this page is in the stack. Keep the first or use the new photo"
+    },
+    {
+      "file": "shots/a-dark-390.png",
+      "option": "A",
+      "state": "dark",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Camera guidance: too dark, with the phone's light where the phone allows it"
+    },
+    {
+      "file": "shots/a-far-390.png",
+      "option": "A",
+      "state": "far",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Camera guidance: move back, a corner is out of view"
+    },
+    {
+      "file": "shots/a-gone-1440.png",
+      "option": "A",
+      "state": "gone",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "S5: change this mark after the photo expired"
+    },
+    {
+      "file": "shots/a-gone-390.png",
+      "option": "A",
+      "state": "gone",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "S5: change this mark after the photo expired"
+    },
+    {
+      "file": "shots/a-got-390.png",
+      "option": "A",
+      "state": "got",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Photo taken with no tap. It flies to the pile. Turn to the next page"
+    },
+    {
+      "file": "shots/a-late-390.png",
+      "option": "A",
+      "state": "late",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "A check that came back late refuses an earlier page. The camera stays open and nothing stops"
+    },
+    {
+      "file": "shots/a-late-768.png",
+      "option": "A",
+      "state": "late",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "A check that came back late refuses an earlier page. The camera stays open and nothing stops"
+    },
+    {
+      "file": "shots/a-limit-390.png",
+      "option": "A",
+      "state": "limit",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The upload limit is reached: photos are safe"
+    },
+    {
+      "file": "shots/a-look-390.png",
+      "option": "A",
+      "state": "look",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Camera guidance: point at one page"
+    },
+    {
+      "file": "shots/a-look-768.png",
+      "option": "A",
+      "state": "look",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "Camera guidance: point at one page"
+    },
+    {
+      "file": "shots/a-marked-390.png",
+      "option": "A",
+      "state": "marked",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "An already marked page, seen live: no photo taken"
+    },
+    {
+      "file": "shots/a-marking-1440.png",
+      "option": "A",
+      "state": "marking",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Marking: one segment per page, and the parent can leave"
+    },
+    {
+      "file": "shots/a-marking-390-full.png",
+      "option": "A",
+      "state": "marking",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": true,
+      "shows": "Marking: one segment per page, and the parent can leave"
+    },
+    {
+      "file": "shots/a-marking-390.png",
+      "option": "A",
+      "state": "marking",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Marking: one segment per page, and the parent can leave"
+    },
+    {
+      "file": "shots/a-marking-768.png",
+      "option": "A",
+      "state": "marking",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "Marking: one segment per page, and the parent can leave"
+    },
+    {
+      "file": "shots/a-maya-390.png",
+      "option": "A",
+      "state": "maya",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Fix mistakes with Maya: opens the desk"
+    },
+    {
+      "file": "shots/a-notice-390.png",
+      "option": "A",
+      "state": "notice",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "First time only: the photo notice (the draft words of #457) before the first photo"
+    },
+    {
+      "file": "shots/a-one-1440.png",
+      "option": "A",
+      "state": "one",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Flow B: one page, checked, ready to send"
+    },
+    {
+      "file": "shots/a-one-390.png",
+      "option": "A",
+      "state": "one",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Flow B: one page, checked, ready to send"
+    },
+    {
+      "file": "shots/a-one-768.png",
+      "option": "A",
+      "state": "one",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "Flow B: one page, checked, ready to send"
+    },
+    {
+      "file": "shots/a-one-check-390.png",
+      "option": "A",
+      "state": "one-check",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Flow B: one page, being checked. Send is off"
+    },
+    {
+      "file": "shots/a-one-marked-390-full.png",
+      "option": "A",
+      "state": "one-marked",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": true,
+      "shows": "Flow B: the marks come straight to this page, with the Maya choice"
+    },
+    {
+      "file": "shots/a-one-marking-390.png",
+      "option": "A",
+      "state": "one-marking",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Flow B: marking"
+    },
+    {
+      "file": "shots/a-page-1440.png",
+      "option": "A",
+      "state": "page",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "A marked page: the score, the page with pen marks, Change beside every answer"
+    },
+    {
+      "file": "shots/a-page-390-full.png",
+      "option": "A",
+      "state": "page",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": true,
+      "shows": "A marked page: the score, the page with pen marks, Change beside every answer"
+    },
+    {
+      "file": "shots/a-page-390.png",
+      "option": "A",
+      "state": "page",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "A marked page: the score, the page with pen marks, Change beside every answer"
+    },
+    {
+      "file": "shots/a-page-768.png",
+      "option": "A",
+      "state": "page",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "A marked page: the score, the page with pen marks, Change beside every answer"
+    },
+    {
+      "file": "shots/a-page-ok-390.png",
+      "option": "A",
+      "state": "page-ok",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "One page of the stack opened"
+    },
+    {
+      "file": "shots/a-paused-390.png",
+      "option": "A",
+      "state": "paused",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Marking paused (the monthly spending cap, D-208): the words do not say why"
+    },
+    {
+      "file": "shots/a-r-blur-390.png",
+      "option": "A",
+      "state": "r-blur",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Refused: blurry"
+    },
+    {
+      "file": "shots/a-r-blur-768.png",
+      "option": "A",
+      "state": "r-blur",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "Refused: blurry"
+    },
+    {
+      "file": "shots/a-r-cut-390.png",
+      "option": "A",
+      "state": "r-cut",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Refused: cut off"
+    },
+    {
+      "file": "shots/a-r-dark-390.png",
+      "option": "A",
+      "state": "r-dark",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Refused: too dark"
+    },
+    {
+      "file": "shots/a-r-two-1440.png",
+      "option": "A",
+      "state": "r-two",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Refused: two sheets"
+    },
+    {
+      "file": "shots/a-r-two-390.png",
+      "option": "A",
+      "state": "r-two",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Refused: two sheets"
+    },
+    {
+      "file": "shots/a-r-wrong-390.png",
+      "option": "A",
+      "state": "r-wrong",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Refused: wrong page"
+    },
+    {
+      "file": "shots/a-ready-1440.png",
+      "option": "A",
+      "state": "ready",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Marks ready, with 2 answers to check first"
+    },
+    {
+      "file": "shots/a-ready-390-full.png",
+      "option": "A",
+      "state": "ready",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": true,
+      "shows": "Marks ready, with 2 answers to check first"
+    },
+    {
+      "file": "shots/a-ready-390.png",
+      "option": "A",
+      "state": "ready",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Marks ready, with 2 answers to check first"
+    },
+    {
+      "file": "shots/a-ready-choice-390.png",
+      "option": "A",
+      "state": "ready-choice",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "All checked: the choice, Fix mistakes with Maya or Just show results"
+    },
+    {
+      "file": "shots/a-ready-choice-768.png",
+      "option": "A",
+      "state": "ready-choice",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "All checked: the choice, Fix mistakes with Maya or Just show results"
+    },
+    {
+      "file": "shots/a-results-390.png",
+      "option": "A",
+      "state": "results",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Just show results"
+    },
+    {
+      "file": "shots/a-retake-390.png",
+      "option": "A",
+      "state": "retake",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Fix mode: the camera asks for the refused pages one at a time"
+    },
+    {
+      "file": "shots/a-same-390.png",
+      "option": "A",
+      "state": "same",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Still on the same page: no second photo"
+    },
+    {
+      "file": "shots/a-sending-390.png",
+      "option": "A",
+      "state": "sending",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Sending"
+    },
+    {
+      "file": "shots/a-stack-1440.png",
+      "option": "A",
+      "state": "stack",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "The stack with mixed states: 2 need another photo, 2 being checked, 8 ready, 1 already marked"
+    },
+    {
+      "file": "shots/a-stack-390-full.png",
+      "option": "A",
+      "state": "stack",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": true,
+      "shows": "The stack with mixed states: 2 need another photo, 2 being checked, 8 ready, 1 already marked"
+    },
+    {
+      "file": "shots/a-stack-390.png",
+      "option": "A",
+      "state": "stack",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The stack with mixed states: 2 need another photo, 2 being checked, 8 ready, 1 already marked"
+    },
+    {
+      "file": "shots/a-stack-768.png",
+      "option": "A",
+      "state": "stack",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "The stack with mixed states: 2 need another photo, 2 being checked, 8 ready, 1 already marked"
+    },
+    {
+      "file": "shots/a-start-1440.png",
+      "option": "A",
+      "state": "start",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Scan pages opens: three tips and one button. On a desktop: the phone message (D-246) beside the pages that came from the phone"
+    },
+    {
+      "file": "shots/a-start-390.png",
+      "option": "A",
+      "state": "start",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Scan pages opens: three tips and one button. On a desktop: the phone message (D-246) beside the pages that came from the phone"
+    },
+    {
+      "file": "shots/a-start-768.png",
+      "option": "A",
+      "state": "start",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "Scan pages opens: three tips and one button. On a desktop: the phone message (D-246) beside the pages that came from the phone"
+    },
+    {
+      "file": "shots/a-steady-390.png",
+      "option": "A",
+      "state": "steady",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The page is known from its QR code. The corners turn green and the ring fills while the parent holds still"
+    },
+    {
+      "file": "shots/a-steady-768.png",
+      "option": "A",
+      "state": "steady",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "The page is known from its QR code. The corners turn green and the ring fills while the parent holds still"
+    },
+    {
+      "file": "shots/a-two-390.png",
+      "option": "A",
+      "state": "two",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Camera guidance: two pages in view, fold the book back"
+    },
+    {
+      "file": "shots/a-wrong-390.png",
+      "option": "A",
+      "state": "wrong",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Another child's page, seen live: no photo taken"
+    },
+    {
+      "file": "shots/b-d-stack-390.png",
+      "option": "B",
+      "state": "d-stack",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Already scanned: this page is in the stack. Keep the first or use the new photo"
+    },
+    {
+      "file": "shots/b-native-390.png",
+      "option": "B",
+      "state": "native",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The phone's own camera: we cannot draw on it, and each page takes shutter, then Use Photo"
+    },
+    {
+      "file": "shots/b-one-390.png",
+      "option": "B",
+      "state": "one",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Flow B: one page, checked, ready to send"
+    },
+    {
+      "file": "shots/b-r-blur-390.png",
+      "option": "B",
+      "state": "r-blur",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Refused: blurry"
+    },
+    {
+      "file": "shots/b-stack-390.png",
+      "option": "B",
+      "state": "stack",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The stack with mixed states: 2 need another photo, 2 being checked, 8 ready, 1 already marked"
+    },
+    {
+      "file": "shots/b-stack-768.png",
+      "option": "B",
+      "state": "stack",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "The stack with mixed states: 2 need another photo, 2 being checked, 8 ready, 1 already marked"
+    },
+    {
+      "file": "shots/b-start-1440.png",
+      "option": "B",
+      "state": "start",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Scan pages opens: three tips and one button. On a desktop: the phone message (D-246) beside the pages that came from the phone"
+    },
+    {
+      "file": "shots/b-start-390.png",
+      "option": "B",
+      "state": "start",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Scan pages opens: three tips and one button. On a desktop: the phone message (D-246) beside the pages that came from the phone"
+    },
+    {
+      "file": "shots/c-one-390.png",
+      "option": "C",
+      "state": "one",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Flow B: one page, checked, ready to send"
+    },
+    {
+      "file": "shots/c-r-blur-390.png",
+      "option": "C",
+      "state": "r-blur",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Refused: blurry"
+    },
+    {
+      "file": "shots/c-stack-1440.png",
+      "option": "C",
+      "state": "stack",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "The stack with mixed states: 2 need another photo, 2 being checked, 8 ready, 1 already marked"
+    },
+    {
+      "file": "shots/c-stack-390.png",
+      "option": "C",
+      "state": "stack",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The stack with mixed states: 2 need another photo, 2 being checked, 8 ready, 1 already marked"
+    },
+    {
+      "file": "shots/c-stack-768.png",
+      "option": "C",
+      "state": "stack",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "The stack with mixed states: 2 need another photo, 2 being checked, 8 ready, 1 already marked"
+    },
+    {
+      "file": "shots/c-start-390.png",
+      "option": "C",
+      "state": "start",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Scan pages opens: three tips and one button. On a desktop: the phone message (D-246) beside the pages that came from the phone"
+    },
+    {
+      "file": "shots/c-target-390.png",
+      "option": "C",
+      "state": "target",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The camera for one chosen page, with the printed page as a picture"
+    }
+  ],
+  "review": "review.md"
+}
