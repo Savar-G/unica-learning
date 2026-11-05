@@ -371,13 +371,28 @@ describe("a plan creation lands late (the review's second case)", () => {
     expect([...new Set(f.stripe.creates().map((c) => (c as { key: string }).key))]).toHaveLength(1);
   });
 
-  it("refuses a second running plan, whatever the row says, and closes a record it finds beside one", async () => {
+  it("refuses a second running plan and keeps an unrelated open request unresolved", async () => {
     const f = family({ stripe: stripeFake({ plans: ["sub_live"] }) });
     expect(await f.start()).toEqual({ ok: false, error: "already" });
     expect(f.stripe.creates()).toEqual([]);
     await f.b.store.admitPlanStart("card-1", 1, "key-old", "pm_old");
     expect(await f.start()).toEqual({ ok: false, error: "already" });
-    expect(record(f)).toMatchObject({ state: "other", subscription: "sub_live" });
+    expect(record(f)).toMatchObject({ state: "open", subscription: null });
+  });
+
+  it("keeps the original request open during normal recovery and alerts the team after 24 hours", async () => {
+    const f = family({ stripe: stripeFake({ plans: ["sub_live"] }) });
+    await f.b.store.admitPlanStart("card-1", 1, "key-old", "pm_old");
+    later(PLAN_ANSWER_MS + 1);
+    expect(await checkCustomerCard("cus_1", f.seams, Date.now())).toMatchObject({ plan: "waiting", failure: null });
+    expect(record(f)).toMatchObject({ state: "open", subscription: null });
+    expect(f.alerts).toEqual([]);
+    later(PLAN_KEY_MS);
+    expect(await f.sweep()).toMatchObject({ needsTeam: 1, failed: 0 });
+    expect(record(f)).toMatchObject({ state: "open", subscription: null });
+    expect(f.alerts).toEqual([1]);
+    expect(f.announced).toEqual([]);
+    expect(f.stripe.creates()).toEqual([]);
   });
 });
 

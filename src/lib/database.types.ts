@@ -525,6 +525,74 @@ export type Database = {
           },
         ]
       }
+      child_deleted_folders: {
+        Row: {
+          bucket: string
+          parent_id: string
+          prefix: string
+        }
+        Insert: {
+          bucket: string
+          parent_id: string
+          prefix: string
+        }
+        Update: {
+          bucket?: string
+          parent_id?: string
+          prefix?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_deleted_folders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      child_deletions: {
+        Row: {
+          child_id: string
+          folders: Json
+          lease_token: string | null
+          lease_until: string | null
+          parent_id: string
+          requested_at: string
+        }
+        Insert: {
+          child_id: string
+          folders?: Json
+          lease_token?: string | null
+          lease_until?: string | null
+          parent_id: string
+          requested_at?: string
+        }
+        Update: {
+          child_id?: string
+          folders?: Json
+          lease_token?: string | null
+          lease_until?: string | null
+          parent_id?: string
+          requested_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_deletions_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "child_deletions_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       child_plan_states: {
         Row: {
           child_id: string
@@ -4623,6 +4691,9 @@ export type Database = {
         Args: { ids?: string[] }
         Returns: {
           answered: number
+          block_lengths: number[]
+          blocks_complete: boolean
+          blocks_locked: number
           break_ended_at: string
           break_started_at: string
           completed_at: string
@@ -4650,6 +4721,9 @@ export type Database = {
         Args: { ids: string[] }
         Returns: {
           answered: number
+          block_lengths: number[]
+          blocks_complete: boolean
+          blocks_locked: number
           break_ended_at: string
           break_started_at: string
           completed_at: string
@@ -4744,6 +4818,10 @@ export type Database = {
           p_workbook: Json
         }
         Returns: Json
+      }
+      assert_child_deletion_lease: {
+        Args: { c: string; p: string; token: string }
+        Returns: undefined
       }
       assert_family_writable: { Args: { p: string }; Returns: undefined }
       beat_workbook_worker: {
@@ -4937,6 +5015,7 @@ export type Database = {
         Args: { p_action: string; p_id: string; p_parent: string }
         Returns: string
       }
+      check_child_deletion: { Args: { c: string; p: string }; Returns: string }
       check_family_payment_lease: {
         Args: { p: string; token: string }
         Returns: undefined
@@ -4946,6 +5025,18 @@ export type Database = {
         Args: { p_id: string; p_lease: string; p_page: number; p_result: Json }
         Returns: boolean
       }
+      child_copy_sources: {
+        Args: { c: string; p: string; token: string }
+        Returns: Json
+      }
+      child_delete_roots: {
+        Args: { c: string; p: string }
+        Returns: {
+          bucket: string
+          prefix: string
+        }[]
+      }
+      child_delete_row_child: { Args: { r: Json; t: string }; Returns: string }
       claim_card_update: {
         Args: {
           p_card: string
@@ -4954,6 +5045,10 @@ export type Database = {
           p_session_created_at: string
         }
         Returns: string
+      }
+      claim_child_deletion: {
+        Args: { c: string; p: string; token: string }
+        Returns: boolean
       }
       claim_family_delete_attempt: {
         Args: {
@@ -5082,6 +5177,10 @@ export type Database = {
         Args: { p_parent: string }
         Returns: undefined
       }
+      complete_child_deletion: {
+        Args: { c: string; p: string; token: string }
+        Returns: boolean
+      }
       complete_family_deletion: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -5107,6 +5206,10 @@ export type Database = {
           p_question: string
           p_result: Json
         }
+        Returns: boolean
+      }
+      confirm_child_copies: {
+        Args: { c: string; p: string; token: string }
         Returns: boolean
       }
       confirm_family_copies: {
@@ -5343,6 +5446,16 @@ export type Database = {
         Args: { pid: string; sid: number }
         Returns: undefined
       }
+      lock_assessment_block: {
+        Args: {
+          p_adaptive: Json
+          p_answers: Json
+          p_assessment: string
+          p_expected: number
+          p_resume_until: string
+        }
+        Returns: string
+      }
       lock_booking_email: { Args: { mail: string }; Returns: undefined }
       lock_maya_family: { Args: { p: string }; Returns: undefined }
       lock_maya_family_list: { Args: { p: string }; Returns: undefined }
@@ -5525,6 +5638,10 @@ export type Database = {
         Args: { p_card: string; p_token: string }
         Returns: boolean
       }
+      release_child_deletion: {
+        Args: { c: string; p: string; token: string }
+        Returns: undefined
+      }
       release_family_deletion: {
         Args: { p: string; token: string }
         Returns: undefined
@@ -5561,6 +5678,20 @@ export type Database = {
       renew_workbook_run: {
         Args: { p_lease: string; p_run: string }
         Returns: boolean
+      }
+      reopen_scan_calibration: {
+        Args: {
+          p_id: string
+          p_lease_seconds?: number
+          p_parent: string
+          p_sheet_check: number
+          p_token: string
+        }
+        Returns: Json
+      }
+      request_child_deletion_held: {
+        Args: { c: string; hold: string; p: string }
+        Returns: string
       }
       request_family_deletion: {
         Args: { confirmation: string; p: string }
@@ -5796,6 +5927,10 @@ export type Database = {
       settle_maya_spend: {
         Args: { p_cost: number; p_id: string }
         Returns: boolean
+      }
+      settle_maya_spend_month: {
+        Args: { p_cost: number; p_id: string }
+        Returns: string
       }
       spend_family_delete_code: {
         Args: { p_hash: string; p_now: string; p_parent: string }

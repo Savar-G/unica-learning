@@ -67,10 +67,12 @@ function world({ made = false, phase = "checking", cancelFails = false, readFail
       if (readFails) return Response.json({ error: { type: "api_error", message: "Synthetic read failure" } }, { status: 503 });
       return Response.json({ object: "list", has_more: false, data: plans });
     }
-    if (method === "DELETE" && url.pathname === "/v1/subscriptions/sub_recovery") {
+    if (method === "DELETE" && url.pathname.startsWith("/v1/subscriptions/")) {
       if (cancelFails) return Response.json({ error: { type: "invalid_request_error", message: "Synthetic cancellation refusal" } }, { status: 400 });
-      plans[0].status = "canceled";
-      return Response.json(plans[0]);
+      const plan = plans.find(p => p.id === url.pathname.split("/").at(-1));
+      if (!plan) throw new Error("Unknown synthetic subscription");
+      plan.status = "canceled";
+      return Response.json(plan);
     }
     throw new Error(`Unexpected Stripe write: ${method} ${url.pathname}`);
   }) });
@@ -108,6 +110,25 @@ it("keeps a queued deletion open, reads Stripe without card writes, and alerts t
 });
 
 for (const phase of ["checking", "deleting"] as const) {
+  it(`keeps the original start open beside a different subscription in ${phase}, then cancels both after the original lands`, async () => {
+    const w = world({ phase });
+    w.plans.push({ id: "sub_other", customer: w.row.customer, status: "trialing", default_payment_method: "pm_old", metadata: { start_key: "different-key" }, trial_end: 1_900_000_000 });
+    expect(await checkCustomerCard(w.row.customer, w.seams, NOW)).toMatchObject({ plan: "needs_team", wrote: 0, email: "none", failure: null });
+    expect(w.row.start_state).toBe("open");
+    expect(w.log).not.toContain("finish_plan_start");
+    expect(await w.remove()).toEqual({ state: "plan_start" });
+    expect(w.plans[0].status).toBe("trialing");
+    expect(w.log.some(x => x.includes("/storage/") || x.includes("/auth/"))).toBe(false);
+
+    w.plans.push({ id: "sub_recovery", customer: w.row.customer, status: "trialing", default_payment_method: "pm_old", metadata: { start_key: w.row.start_key }, trial_end: 1_900_000_000 });
+    expect(await checkCustomerCard(w.row.customer, w.seams, NOW)).toMatchObject({ plan: "started", wrote: 0, email: "none", failure: null });
+    expect(await w.remove()).toEqual({ state: "deleted", images: 0, copies: 0 });
+    expect(w.plans.map(p => p.status)).toEqual(["canceled", "canceled"]);
+    const auth = w.log.indexOf(`DELETE /auth/v1/admin/users/${PARENT}`);
+    for (const plan of w.plans) expect(w.log.indexOf(`DELETE /v1/subscriptions/${plan.id}`)).toBeLessThan(auth);
+    expect(w.announcePlan).not.toHaveBeenCalled();
+  });
+
   it(`resolves a created subscription by the webhook, then cancels it before the queued ${phase} phase deletes`, async () => {
     const w = world({ made: true, phase });
     expect(await w.remove()).toEqual({ state: "plan_start" });
@@ -131,6 +152,16 @@ it("an admin closes a queued start that never created a subscription, then delet
   expect(w.row.start_state).toBe("team_ended");
   expect(await w.remove()).toEqual({ state: "deleted", images: 0, copies: 0 });
   expect(w.log.filter(x => /^(POST|DELETE) \/v1\//.test(x))).toEqual([]);
+});
+
+it("an admin finding only a different subscription leaves the original request unresolved", async () => {
+  const w = world();
+  w.plans.push({ id: "sub_other", customer: w.row.customer, status: "trialing", default_payment_method: "pm_old", metadata: { start_key: "different-key" }, trial_end: 1_900_000_000 });
+  expect(await endStuckPlanStart(w.client, { cardSetup: CARD, customer: w.row.customer, generation: 1, admin: PARENT }, w.rows)).toEqual({ ok: false, error: "already" });
+  expect(w.row.start_state).toBe("open");
+  expect(await w.remove()).toEqual({ state: "plan_start" });
+  expect(w.log).not.toContain("finish_plan_start");
+  expect(w.log).not.toContain("team_end_plan_start");
 });
 
 it("an admin resolves a queued start that created a subscription without a parent email", async () => {

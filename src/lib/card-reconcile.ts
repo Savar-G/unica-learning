@@ -341,12 +341,13 @@ async function checkOpenStart(row: CardRow, start: PlanStart, seams: CardCheckSe
   if (now - start.at < PLAN_ANSWER_MS) return { plan: "waiting", start, justClosed: false };
   const { plans } = await seams.stripe.cardState(row.customer);
   const step = pressStep(start, plans, now);
-  if (step.step === "landed" || step.step === "other") {
-    const outcome = step.step === "landed" ? startedOutcome(step.plan, !row.deletionQueued) : { state: "other" as const, subscription: step.plan.id };
+  if (step.step === "landed") {
+    const outcome = startedOutcome(step.plan, !row.deletionQueued);
     await seams.rows.finishPlanStart(row.cardId, start.generation, outcome);
-    return { plan: step.step === "landed" ? "started" : "other", start: closed(start, outcome, now), justClosed: true };
+    return { plan: "started", start: closed(start, outcome, now), justClosed: true };
   }
-  if (step.step !== "needs_team") return { plan: "waiting", start, justClosed: false };
+  // A different subscription says nothing about this request, which can still land after the list read.
+  if (step.step !== "needs_team" && !(step.step === "other" && now - start.at >= PLAN_KEY_MS)) return { plan: "waiting", start, justClosed: false };
   if (start.alert === null) {
     if (!seams.canWrite()) throw new Error("The time for the team's alert is over");
     const sent = await seams.alertTeam(row, start);

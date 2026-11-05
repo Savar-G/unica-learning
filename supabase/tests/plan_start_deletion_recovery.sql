@@ -15,10 +15,19 @@ begin
       values (p, c, 'one', 79.99, 'cus_recovery_' || p::text, now(), false) returning id into card;
     perform public.admit_plan_start(card, 1, 'recovery-' || p::text, 'pm_probe');
     update public.plan_starts set started_at = now() - interval '25 hours' where card_setup_id = card;
+    begin
+      perform public.finish_plan_start(card, 1, 'other', 'sub_unrelated', null, false);
+      raise exception 'unrelated subscription closed a request before the fence';
+    exception when sqlstate '55000' then null; end;
     -- Reproduce the previous version's queued family, without invoking deletion.
     update public.parents set deletion_requested_at = now() where id = p;
     insert into public.family_deletions(parent_id, reason, phase) values (p, 'request', case when i = 1 then 'checking' else 'deleting' end);
     if public.claim_family_deletion(p, token)->>'state' <> 'plan_start' then raise exception 'open start admitted deletion'; end if;
+    begin
+      perform public.finish_plan_start(card, 1, 'other', 'sub_unrelated', null, false);
+      raise exception 'unrelated subscription closed a fenced request';
+    exception when sqlstate '55000' then null; end;
+    if public.claim_family_deletion(p, token)->>'state' <> 'plan_start' then raise exception 'unrelated subscription removed deletion guard'; end if;
     select * into r from public.card_recovery_rows(p_card => card);
     if r.card_id is distinct from card or r.deletion_queued is distinct from true then raise exception 'queued start hidden'; end if;
     select count(*) into n from public.card_check_rows(p_card => card);

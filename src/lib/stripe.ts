@@ -252,7 +252,6 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
       return planNotOver(step.plan.status) ? { ok: true, subscription: step.plan.id, firstChargeAt: step.plan.firstCharge ?? firstChargeAt(now, planTerms(p.price).trialDays).toISOString(), generation: generationOfRow } : { ok: false, error: "already" };
     }
     case "other":
-      await closeRecord(rows, p.cardSetup, generationOfRow, { state: "other", subscription: step.plan.id });
       await settleAfterStart(s, rows, p.cardSetup, canWrite);
       return { ok: false, error: "already" };
     case "already":
@@ -324,7 +323,6 @@ export async function endStuckPlanStart(s: Stripe, p: { cardSetup: string; custo
     return { ok: false, error: "landed" };
   }
   if (step.step === "other") {
-    await rows.finishPlanStart(p.cardSetup, start.generation, { state: "other", subscription: step.plan.id });
     return { ok: false, error: "already" };
   }
   return await rows.teamEndPlanStart(p.cardSetup, start.generation, p.admin) ? { ok: true } : { ok: false, error: "changed" };
