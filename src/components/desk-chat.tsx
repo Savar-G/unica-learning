@@ -72,7 +72,7 @@ async function sendInk(id: string, ink: Ink): Promise<Sent> {
     if (res.status === 429) return "busy";
     const answer = (await res.json().catch(() => null)) as { held?: unknown; error?: unknown } | null;
     // Only the route's own answer: another 404 (a page that is not this route) says nothing about the call. Since #652 the
-    // route says not_found only when there is no such chat; another child's or family's chat is 403 "not_this_desk",
+    // route says not_found only when no chat of this desk's family has this id; a sibling's chat is 403 "not_this_desk",
     // which, like any refusal of the desk that asked, keeps the ink.
     if (res.status === 404 && answer?.error === "not_found") return "final";
     const held = Number.isInteger(answer?.held) ? (answer!.held as number) : null;

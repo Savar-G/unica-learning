@@ -7,9 +7,10 @@ import { MAX_INK_TEXT } from "@/lib/maya-call";
 // change the child makes and per batch of Maya's as it reached the board, numbered by the desk from 1.
 // POST `{ id, from, events }`: the events at sequences `from`, `from + 1`, …; the call keeps each sequence once, and
 // answers `{ held }`, the last sequence it holds. 429 "busy" (one append a second per chat) and 409 "gap" (`from` is past
-// the next sequence) carry `held` too; 410 "closed": the chat ended more than a few minutes ago. 404 "not_found": there
-// is no such chat, so the ink can never go; 403 "not_this_desk": the chat is another child's or another family's, an
-// answer about the desk that asked, not about the ink (#652).
+// the next sequence) carry `held` too; 410 "closed": the chat ended more than a few minutes ago. 404 "not_found": no chat
+// of this desk has this id (no call, another family's call or a call of another kind, all alike), so the ink can never
+// go; 403 "not_this_desk": a chat of this family that is another child's, an answer about the desk that asked, not
+// about the ink (#652).
 // GET `?id=`: the log the call holds (`events`), for a desk with no draft of the board; the same 404 and 403.
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 const MAX_BODY = MAX_INK_TEXT + 200;
