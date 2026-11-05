@@ -58,9 +58,9 @@ export function adConfig(
 // The pages a child uses: the start screen the parent hands over (/account/start/<child>), the test
 // (/account/test/<child>), and the desk with its Forgot PIN screen and page QR codes (/tutor, /tutor/p/<token>, #301).
 const CHILD_PAGES = /^\/(?:account\/(?:start|test|scan)|tutor)(?:\/|$)/i;
-// Pages whose address can hold a sign-in or unsubscribe token, the admin area, and the family's account settings and workbooks (#544):
+// Pages whose address can hold a sign-in or unsubscribe token, the admin area, and the family's account settings, workbooks and progress (#544):
 // no ad tags there either.
-const PRIVATE_PAGES = /^\/(?:admin|api|auth|sign-in|unsubscribe|account\/(?:settings|workbooks))(?:\/|$)/i;
+const PRIVATE_PAGES = /^\/(?:admin|api|auth|sign-in|unsubscribe|account\/(?:settings|workbooks|progress))(?:\/|$)/i;
 
 /** True on a page where the ad tags never load and never send. An address that cannot be read counts as blocked. */
 export function adsBlockedPath(path: string): boolean {

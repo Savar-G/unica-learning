@@ -2245,8 +2245,19 @@ export type Database = {
       plan_starts: {
         Row: {
           card_setup_id: string
+          email_attempts: number
+          email_claim_token: string | null
+          email_claimed_at: string | null
+          email_error: string | null
+          email_html: string | null
           email_noted_at: string | null
+          email_provider_id: string | null
+          email_send_status: string | null
+          email_sent_at: string | null
           email_state: string
+          email_subject: string | null
+          email_text: string | null
+          email_to: string | null
           ended_by: string | null
           finished_at: string | null
           first_charge_at: string | null
@@ -2264,8 +2275,19 @@ export type Database = {
         }
         Insert: {
           card_setup_id: string
+          email_attempts?: number
+          email_claim_token?: string | null
+          email_claimed_at?: string | null
+          email_error?: string | null
+          email_html?: string | null
           email_noted_at?: string | null
+          email_provider_id?: string | null
+          email_send_status?: string | null
+          email_sent_at?: string | null
           email_state?: string
+          email_subject?: string | null
+          email_text?: string | null
+          email_to?: string | null
           ended_by?: string | null
           finished_at?: string | null
           first_charge_at?: string | null
@@ -2283,8 +2305,19 @@ export type Database = {
         }
         Update: {
           card_setup_id?: string
+          email_attempts?: number
+          email_claim_token?: string | null
+          email_claimed_at?: string | null
+          email_error?: string | null
+          email_html?: string | null
           email_noted_at?: string | null
+          email_provider_id?: string | null
+          email_send_status?: string | null
+          email_sent_at?: string | null
           email_state?: string
+          email_subject?: string | null
+          email_text?: string | null
+          email_to?: string | null
           ended_by?: string | null
           finished_at?: string | null
           first_charge_at?: string | null
@@ -4729,22 +4762,38 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
-      begin_family_delete_code: {
-        Args: {
-          p_day_seconds: number
-          p_hash: string
-          p_now: string
-          p_parent: string
-          p_per_day: number
-          p_per_window: number
-          p_ttl_seconds: number
-          p_window_seconds: number
-        }
-        Returns: {
-          out_retry_at: string
-          out_status: string
-        }[]
-      }
+      begin_family_delete_code:
+        | {
+            Args: {
+              p_day_seconds: number
+              p_hash: string
+              p_now: string
+              p_parent: string
+              p_per_day: number
+              p_per_window: number
+              p_ttl_seconds: number
+              p_window_seconds: number
+            }
+            Returns: {
+              out_retry_at: string
+              out_status: string
+            }[]
+          }
+        | {
+            Args: {
+              p_day_seconds: number
+              p_hash: string
+              p_parent: string
+              p_per_day: number
+              p_per_window: number
+              p_ttl_seconds: number
+              p_window_seconds: number
+            }
+            Returns: {
+              out_retry_at: string
+              out_status: string
+            }[]
+          }
       begin_family_delete_hold: {
         Args: { hold: string; p: string }
         Returns: string

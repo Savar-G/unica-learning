@@ -17,6 +17,13 @@
 // is not in it (the learner profile's standards, src/lib/assessment/profile.ts), so it neither earns nor takes away
 // Mastered.
 //
+// A test the report calls unreliable (its stored reliability note, reportCallsUnreliable in report.ts; D-258) gives no
+// evidence for any state: its tally is as if it did not exist, so it neither earns nor takes away Mastered and makes no
+// weakness. A standard with no other evidence is Not started ("no_evidence"). The map and the rebuild's history both read
+// this rule. A row already stored from such a test stays, and the next rebuild adds one row for the changed state. A test
+// with no report yet has unknown reliability, so both readers leave it out until its report exists; the report job's
+// rebuild then picks it up.
+//
 // Choices the spec leaves open:
 // - The rule replays every test result and mark of the standard by date before it applies the order above, so a newer
 //   test does not wipe out what happened before it. A test with every answer right (at least 2) turns Mastered on; a
@@ -80,6 +87,8 @@ export interface SkillTestResult {
   total: number;
   /** When the test finished. */
   at: string;
+  /** The test's stored report has the reliability note: this tally is no evidence for any state. */
+  unreliable: boolean;
 }
 
 /** One marked item's original result. `review`: a Friday 5, Mixed or Show what you know item. */
@@ -208,8 +217,9 @@ function stateOf(grade: number, schoolGrade: Grade, tests: readonly SkillTestRes
 /** The state and reason of every BC standard, in the skill map's order. A code that is not a BC standard is left out. */
 export function skillStates({ schoolGrade, tests, workbookStandards, marks }: SkillStateInput): StandardSkillState[] {
   const inWorkbook = new Set(workbookStandards);
+  const counted = tests.filter((t) => !t.unreliable);
   return BC_SKILL_MAP.standards.map(({ code, grade }) => {
-    return { standard: code, ...stateOf(grade, schoolGrade, tests.filter((t) => t.standard === code), inWorkbook.has(code), marks.filter((m) => m.standard === code)) };
+    return { standard: code, ...stateOf(grade, schoolGrade, counted.filter((t) => t.standard === code), inWorkbook.has(code), marks.filter((m) => m.standard === code)) };
   });
 }
 

@@ -7,7 +7,9 @@ const CODE = "3.3";
 const OTHER = "3.4";
 const ABOVE = "5.8";
 
-const test = (correct: number, total: number, day = 1, standard = CODE): SkillTestResult => ({ standard, correct, total, at: at(day) });
+const test = (correct: number, total: number, day = 1, standard = CODE): SkillTestResult => ({ standard, correct, total, at: at(day), unreliable: false });
+/** The same tally from a test the report calls unreliable. */
+const rushed = (correct: number, total: number, day = 1, standard = CODE): SkillTestResult => ({ ...test(correct, total, day, standard), unreliable: true });
 const at = (day: number) => `2026-10-${String(day).padStart(2, "0")}T18:00:00.000Z`;
 const page = (right: boolean, day: number, standard = CODE): SkillMark => ({ standard, right, review: false, at: at(day) });
 const review = (right: boolean, day: number, standard = CODE): SkillMark => ({ standard, right, review: true, at: at(day) });
@@ -394,5 +396,40 @@ describe("the history rows of a rebuild", () => {
   it("gives rows in the same order and with the same content in any input order", () => {
     const tests = [test(2, 2, 1), test(0, 1, 2), test(3, 3, 3), test(2, 2, 1, OTHER)];
     expect(skillStateChanges(input([...tests].reverse()), [])).toEqual(skillStateChanges(input(tests), []));
+  });
+});
+
+describe("a test the report calls unreliable gives no evidence for any state (D-258)", () => {
+  const NOTHING = { standard: CODE, state: "not_started", reason: "no_evidence", evidence: "none", evidenceAt: null };
+
+  it("creates no weakness: a low result alone is Not started, with no evidence", () => {
+    expect(stateOf({ tests: [rushed(0, 4)] })).toEqual(NOTHING);
+  });
+  it("earns no Mastered: every answer right alone is Not started, with no evidence", () => {
+    expect(stateOf({ tests: [rushed(5, 5)] })).toEqual(NOTHING);
+  });
+  it("gives no test reason for any other result", () => {
+    for (const r of [rushed(1, 1), rushed(3, 5), rushed(9, 10)]) expect(stateOf({ tests: [r] })).toEqual(NOTHING);
+  });
+  it("leaves Mastered from an earlier good test, whatever the unreliable test says", () => {
+    expect(stateOf({ tests: [test(2, 2, 1), rushed(0, 4, 5)] })).toEqual({ standard: CODE, state: "mastered", reason: "secure_on_test", evidence: "test", evidenceAt: at(1) });
+  });
+  it("leaves the reason of an earlier good test that is not Mastered", () => {
+    expect(stateOf({ tests: [test(9, 10, 1), rushed(0, 4, 5)] })).toMatchObject({ state: "not_started", reason: "secure_on_test", evidenceAt: at(1) });
+    expect(stateOf({ tests: [test(0, 4, 1), rushed(5, 5, 5)] })).toMatchObject({ state: "needs_review", reason: "needs_attention_on_test", evidenceAt: at(1) });
+  });
+  it("does not clear a wrong answer after Mastered", () => {
+    expect(stateOf({ tests: [test(2, 2, 1), test(1, 2, 3), rushed(5, 5, 5)] })).toMatchObject({ state: "needs_review", reason: "failed_review", evidenceAt: at(3) });
+  });
+  it("counts only the good test at one time", () => {
+    expect(stateOf({ tests: [test(2, 2, 1), rushed(0, 4, 1)] })).toMatchObject({ state: "mastered" });
+  });
+  it("leaves Working on: the workbook still has the standard", () => {
+    expect(stateOf({ tests: [rushed(0, 4)], workbookStandards: [CODE] })).toMatchObject({ state: "working_on", reason: "in_workbook" });
+  });
+  it("adds no history row, and the next rebuild corrects a row already written", () => {
+    expect(skillStateChanges({ schoolGrade: 3, tests: [rushed(0, 4)], workbookStandards: [], marks: [] }, [])).toEqual([]);
+    const written = [{ standard: CODE, state: "needs_review" as const }];
+    expect(skillStateChanges({ schoolGrade: 3, tests: [rushed(0, 4)], workbookStandards: [], marks: [] }, written)).toEqual([NOTHING]);
   });
 });

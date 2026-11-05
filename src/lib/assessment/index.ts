@@ -12,6 +12,7 @@ export * from "./rushing";
 export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comparison";
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export {
+  reportCallsUnreliable,
   reportModel,
   storedReportModel,
   type Comparison,
