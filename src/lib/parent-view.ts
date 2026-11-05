@@ -1,8 +1,11 @@
 import "server-only";
 import { attemptState, type Attempt, type Grade } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
+import { familyZone, localDay } from "@/lib/family-time";
+import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
+import { workbookDelivery } from "@/lib/workbook-email";
 
 // The parent view module (spec #544): the one server module for the dashboard's data. One seam: the reader, which is
 // always one signed-in parent's and sees only that family's rows:
@@ -10,12 +13,14 @@ import type { CurriculumId } from "@/lib/signup";
 //   - in memory (src/lib/parent-view-memory.ts), for tests.
 // The output holds only fields named here, copied one by one. The reader has no read of child_profiles,
 // learner_profiles, learning_events or maya_calls, because parents get nothing from them directly (#295). Later tickets
-// add the Overview (#560), Progress (#561) and Workbooks (#558) reads.
+// add the Overview (#560) and Progress (#561) reads. The Workbooks read (#558) is `readWorkbooks`.
 
 export interface ChildRecord {
   id: string;
   firstName: string;
   grade: Grade;
+  /** For the family's time zone only (src/lib/family-time.ts). */
+  province: string | null;
 }
 /** One try at the test. `answeredAll` is needed: a test with every answer in never expires. */
 export type TestRecord = Attempt & { childId: string };
@@ -27,8 +32,29 @@ export interface ReportRecord {
   curriculum: CurriculumId;
 }
 export interface ShippedWorkbook {
+  id: string;
   childId: string;
   number: number;
+  shippedAt: string | null;
+  hasPdf: boolean;
+}
+/** A confirmed delivery, as first recorded. */
+export interface DeliveryRecord {
+  childId: string;
+  workbookId: string;
+  deliveredAt: string;
+}
+/** A later correction of a delivery time; the highest `auditId` is the current time. */
+export interface DeliveryCorrectionRecord {
+  workbookId: string;
+  deliveredAt: string;
+  auditId: number;
+}
+/** The delivery details of a workbook's dispatch email, unchecked: the module checks them. */
+export interface DispatchRecord {
+  childId: string;
+  number: number;
+  delivery: unknown;
 }
 /** The stored plan state of one child (#548). A child with no row reads as `unknown`. */
 export interface PlanRecord {
@@ -45,10 +71,15 @@ export interface ParentViewReader {
   /** The children with a saved card. */
   cardsSaved(): Promise<{ childId: string }[]>;
   /** The children with a confirmed delivery, one row per delivered workbook. */
-  deliveries(): Promise<{ childId: string }[]>;
+  deliveries(): Promise<DeliveryRecord[]>;
+  deliveryCorrections(): Promise<DeliveryCorrectionRecord[]>;
   shippedWorkbooks(): Promise<ShippedWorkbook[]>;
+  /** The family's dispatch emails' delivery details (carrier, tracking), one row per numbered workbook. */
+  dispatches(): Promise<DispatchRecord[]>;
   plans(): Promise<PlanRecord[]>;
   switches(): Promise<TabSwitches>;
+  /** The family's saved time zone and postal code, for family time. */
+  family(): Promise<{ timeZone: string | null; postal: string | null }>;
 }
 
 export interface ChildView extends StageView {
@@ -112,4 +143,72 @@ export async function listChildren(reader: ParentViewReader, now: number): Promi
 /** One child of the signed-in parent. Another family's child, and an id that does not exist, read as not found (null). */
 export async function readChild(reader: ParentViewReader, childId: string, now: number): Promise<ChildView | null> {
   return (await listChildren(reader, now)).find((c) => c.id === childId) ?? null;
+}
+
+/** How a book travels. Mail always has a carrier and a tracking number; the tracking link is optional. */
+export type WorkbookDeliveryView = { method: "hand" } | { method: "mail"; carrier: string; trackingNumber: string; trackingUrl: string | null };
+
+export interface CurrentWorkbookView {
+  id: string;
+  number: number;
+  /** Calendar days in family time. */
+  shippedOn: string | null;
+  deliveredOn: string | null;
+  /** Null until the dispatch email holds checked details. */
+  delivery: WorkbookDeliveryView | null;
+}
+
+export interface ShippedBookView {
+  id: string;
+  number: number;
+  shippedOn: string | null;
+  hasPdf: boolean;
+}
+
+export interface WorkbooksView {
+  child: ChildView;
+  /** The newest shipped book; null before the first one ships. */
+  current: CurrentWorkbookView | null;
+  next: NextBook;
+  /** Every shipped book, newest first. */
+  books: ShippedBookView[];
+}
+
+function deliveryView(value: unknown): WorkbookDeliveryView | null {
+  const d = workbookDelivery(value);
+  if (!d) return null;
+  return d.method === "hand" ? { method: "hand" } : { method: "mail", carrier: d.carrier, trackingNumber: d.trackingNumber, trackingUrl: d.trackingUrl || null };
+}
+
+/**
+ * One child's Workbooks tab (#558): the current book, its tracking, the next book's range and the shipped books.
+ * Null for a child that is not the parent's, and for a child whose stage has no Workbooks tab.
+ */
+export async function readWorkbooks(reader: ParentViewReader, childId: string, now: number): Promise<WorkbooksView | null> {
+  const [child, children, family, workbooks, deliveries, corrections, dispatches] = await Promise.all([
+    readChild(reader, childId, now), reader.children(), reader.family(), reader.shippedWorkbooks(), reader.deliveries(), reader.deliveryCorrections(), reader.dispatches(),
+  ]);
+  if (!child || !child.tabs.includes("workbooks")) return null;
+  // The reader gives the children oldest first, so the first one's province is the family's fallback.
+  const zone = familyZone({ timeZone: family.timeZone, postal: family.postal, province: children[0]?.province ?? null });
+  const day = (at: string | null) => (at === null ? null : localDay(at, zone));
+  const books = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number);
+  const newest = books[0] ?? null;
+  let current: CurrentWorkbookView | null = null;
+  if (newest) {
+    const receipt = deliveries.find((d) => d.childId === child.id && d.workbookId === newest.id);
+    const corrected = corrections.filter((c) => c.workbookId === newest.id).reduce<DeliveryCorrectionRecord | null>((best, c) => (!best || c.auditId > best.auditId ? c : best), null);
+    const dispatch = dispatches.find((d) => d.childId === child.id && d.number === newest.number);
+    current = {
+      id: newest.id,
+      number: newest.number,
+      shippedOn: day(newest.shippedAt),
+      deliveredOn: receipt ? day(corrected?.deliveredAt ?? receipt.deliveredAt) : null,
+      delivery: dispatch ? deliveryView(dispatch.delivery) : null,
+    };
+  }
+  const next: NextBook = current && current.shippedOn === null && !child.readOnly
+    ? { kind: "preparing" }
+    : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly });
+  return { child, current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), hasPdf: w.hasPdf })) };
 }
