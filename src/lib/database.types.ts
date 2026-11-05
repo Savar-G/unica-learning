@@ -2544,6 +2544,57 @@ export type Database = {
         }
         Relationships: []
       }
+      skill_state_history: {
+        Row: {
+          changed_at: string
+          child_id: string
+          evidence_at: string | null
+          evidence_source: string
+          id: number
+          parent_id: string
+          reason: string
+          standard: string
+          state: string
+        }
+        Insert: {
+          changed_at?: string
+          child_id: string
+          evidence_at?: string | null
+          evidence_source: string
+          id?: never
+          parent_id: string
+          reason: string
+          standard: string
+          state: string
+        }
+        Update: {
+          changed_at?: string
+          child_id?: string
+          evidence_at?: string | null
+          evidence_source?: string
+          id?: never
+          parent_id?: string
+          reason?: string
+          standard?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "skill_state_history_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "skill_state_history_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       test_accounts: {
         Row: {
           marked_at: string
@@ -4906,6 +4957,15 @@ export type Database = {
         Args: { p_parent: string; p_report: string }
         Returns: undefined
       }
+      record_skill_state_changes: {
+        Args: {
+          p_build: string
+          p_child: string
+          p_parent: string
+          p_states: Json
+        }
+        Returns: number
+      }
       recover_maya_chat_message: {
         Args: { p_child: string; p_parent: string }
         Returns: Json
@@ -5017,6 +5077,31 @@ export type Database = {
             }
             Returns: string
           }
+      save_child_profile_and_skill_changes: {
+        Args: {
+          p_assessment: string
+          p_changes: Json
+          p_child: string
+          p_expected: string
+          p_parent: string
+          p_profile: Json
+          p_schema_version: number
+        }
+        Returns: Json
+      }
+      save_child_profile_and_skill_changes_from_tests: {
+        Args: {
+          p_assessment: string
+          p_changes: Json
+          p_child: string
+          p_expected: string
+          p_parent: string
+          p_profile: Json
+          p_schema_version: number
+          p_tests: string[]
+        }
+        Returns: Json
+      }
       save_family_payment_progress: {
         Args: {
           after_id: string
