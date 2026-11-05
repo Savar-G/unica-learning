@@ -1,6 +1,7 @@
 import { adminSession } from "@/lib/admin-store";
 import { isUuid } from "@/lib/assessment-store";
 import { childFirstName, voiceCallFacts } from "@/lib/maya-call-server";
+import { serverMayaNotice } from "@/lib/maya-notice-server";
 import { livekitProject } from "@/lib/maya-voice";
 import { mintVoiceToken } from "@/lib/maya-voice-token";
 
@@ -18,7 +19,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/maya/
     const call = await voiceCallFacts(id);
     if (!call) return new Response("Not found", { status: 404 });
     // An admin test call acts as the call's own child: the family comes from the call, never from the request.
-    const minted = await mintVoiceToken({ call, parentId: call.parentId, childId: call.childId, project, name: await childFirstName(call.childId) });
+    const minted = await mintVoiceToken({ call, notice: serverMayaNotice(), parentId: call.parentId, childId: call.childId, project, name: await childFirstName(call.childId) });
     if (!minted.ok) return Response.json({ ok: false, error: minted.error }, { status: 409 });
     return Response.json({ ok: true, ticket: minted.ticket }, { headers: { "cache-control": "no-store" } });
   } catch (e) {

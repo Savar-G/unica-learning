@@ -1,5 +1,6 @@
 import "server-only";
 import { AccessToken, RoomAgentDispatch, RoomConfiguration, TrackSource } from "livekit-server-sdk";
+import { callNeedsNotice, type MayaNotice } from "@/lib/maya-notice";
 import { ATTR, childGrant, childIdentity, VOICE_AGENT_NAME, VOICE_TOKEN_TTL_SECONDS, voiceRoom, type VoiceCallFacts, type VoiceTicket } from "@/lib/maya-voice";
 
 export type { VoiceTicket } from "@/lib/maya-voice";
@@ -8,14 +9,17 @@ export type { VoiceTicket } from "@/lib/maya-voice";
 // call's), and only for a live voice call of that family. Minted on the server with LIVEKIT_API_SECRET, which never
 // leaves it. The token also asks LiveKit to send Maya's worker (agent name maya-voice) to the room, with the call id.
 
-export type MintResult = { ok: true; ticket: VoiceTicket } | { ok: false; error: "not_voice" | "ended" | "wrong_family" };
+export type MintResult = { ok: true; ticket: VoiceTicket } | { ok: false; error: "not_voice" | "ended" | "wrong_family" | "notice_required" };
 
 /**
  * Mints the token for `parentId` and `childId` to join `call`. Refused unless the call is a live voice call of that
  * parent and that child: a family never gets a token for another family's call, and a token never names another room.
+ * Also refused unless the family agreed to the Maya notice (#529), except an admin test call. `notice` is required, so a
+ * later caller cannot forget it; null (no secret key) refuses every call that needs it.
  */
 export async function mintVoiceToken(input: {
-  call: VoiceCallFacts;
+  call: VoiceCallFacts & { kind: string };
+  notice: Pick<MayaNotice, "accepted"> | null;
   parentId: string;
   childId: string;
   project: { url: string; apiKey: string; apiSecret: string };
@@ -27,6 +31,7 @@ export async function mintVoiceToken(input: {
   if (call.mode !== "voice") return { ok: false, error: "not_voice" };
   if (call.status !== "live") return { ok: false, error: "ended" };
   if (call.parentId !== input.parentId || call.childId !== input.childId) return { ok: false, error: "wrong_family" };
+  if (callNeedsNotice(call.kind) && !(await input.notice?.accepted(call.parentId))) return { ok: false, error: "notice_required" };
   const identity = childIdentity(call.childId);
   const at = new AccessToken(input.project.apiKey, input.project.apiSecret, {
     identity,
