@@ -673,7 +673,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   const firstPage = (day: number): Shape => {
     const fixIt = boxOn(day).length > 0 ? [T("fix-it")] : [];
     return n >= WARM_UP_FROM
-      ? { type: "warm-up", role: "first", parts: [T("warm-up"), ...fixIt, T("in-your-head")] }
+      ? { type: "warm-up", role: "first", parts: [T("warm-up"), ...fixIt] }
       : { type: pageType("remember-these"), role: "first", parts: [T("remember-these"), ...fixIt] };
   };
   /** Unit B has a page that day: a teaching day. */

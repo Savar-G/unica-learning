@@ -104874,5 +104874,199 @@
       }
     ],
     "why": "C2-R3: publish only pairs accepted by the stricter factual-claim verifier; remove final rejections."
+  },
+  {
+    "skill": "4.16-many-to-one",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "k": "2 + 8 * (u1 % 2)",
+      "v": "10 * (2 + u2 % 9)",
+      "shown": "(v + m * k) if flip == 0 else (v + m * k) + (k)"
+    },
+    "after": {
+      "k": "2 + 8 * (u1 % 2)",
+      "v": "10 * (2 + u2 % 9)",
+      "shown": "(v + m * k) if flip == 0 else (v + m * k) + (k)",
+      "lower": "v - k",
+      "upper": "v + k"
+    },
+    "why": "Keep mastery review on scale interpretation: infer the interval from adjacent scale marks before checking the reading. Preserve the number domains and answer."
+  },
+  {
+    "skill": "4.16-many-to-one",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: counting by {k}, {m} marks above {v} is {shown}.",
+    "after": "A scale's marks are {lower}, {v}, {upper}. True or false: {m} intervals above {v} is {shown}.",
+    "why": "Keep mastery review on scale interpretation: infer the interval from adjacent scale marks before checking the reading. Preserve the number domains and answer.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "4.17-predict-outcome",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "answer"
+    ],
+    "before": "'red' if a > b else 'blue'",
+    "after": "'red' if a > b + c else 'a different colour'",
+    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases."
+  },
+  {
+    "skill": "4.17-predict-outcome",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "check"
+    ],
+    "before": "a != b",
+    "after": "a != b + c",
+    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases."
+  },
+  {
+    "skill": "4.17-predict-outcome",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "a": "count",
+      "b": "count"
+    },
+    "after": {
+      "a": "count",
+      "b": "count",
+      "c": "count"
+    },
+    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases."
+  },
+  {
+    "skill": "4.17-predict-outcome",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "A bag has {a} red marbles and {b} blue marbles. Which colour is {name} more likely to draw?",
+    "after": "A bag has {a} red, {b} blue and {c} green marbles. Is red or a different colour more likely?",
+    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "4.17-predict-outcome",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "answer"
+    ],
+    "before": "'true' if a > b else 'false'",
+    "after": "'true' if a > b + c else 'false'",
+    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases."
+  },
+  {
+    "skill": "4.17-predict-outcome",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "check"
+    ],
+    "before": "a != b",
+    "after": "a != b + c",
+    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases."
+  },
+  {
+    "skill": "4.17-predict-outcome",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "a": "count",
+      "b": "count"
+    },
+    "after": {
+      "a": "count",
+      "b": "count",
+      "c": "count"
+    },
+    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases."
+  },
+  {
+    "skill": "4.17-predict-outcome",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: a bag with {a} red and {b} blue marbles is more likely to give red.",
+    "after": "True or false: with {a} red, {b} blue and {c} green marbles, red is more likely than the other colours together.",
+    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "4.18-money-notation",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "answer"
+    ],
+    "before": "b10 * 10 + lo",
+    "after": "b10",
+    "why": "Make final-step money notation find a missing bill count from a decimal total with mixed denominations. Preserve the denomination ranges and totals below $100."
+  },
+  {
+    "skill": "4.18-money-notation",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": null,
+    "after": {
+      "vc": "b20 * 2000 + b10 * 1000 + lo * 100 + qu * 25",
+      "v": "str(vc // 100) + '.' + ('0' if vc % 100 < 10 else '') + str(vc % 100)"
+    },
+    "why": "Make final-step money notation find a missing bill count from a decimal total with mixed denominations. Preserve the denomination ranges and totals below $100.",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "4.18-money-notation",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "b10": "b10",
+      "lo": "lo"
+    },
+    "after": {
+      "b20": "b20",
+      "b10": "b10",
+      "lo": "lo",
+      "qu": "qu"
+    },
+    "why": "Make final-step money notation find a missing bill count from a decimal total with mixed denominations. Preserve the denomination ranges and totals below $100."
+  },
+  {
+    "skill": "4.18-money-notation",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "Missing number: {b10} $10 bills and {lo} loonies make $__.",
+    "after": "There are {b20} $20 bills, {lo} loonies, {qu} quarters and some $10 bills. The total is ${v}. How many $10 bills are there?",
+    "why": "Make final-step money notation find a missing bill count from a decimal total with mixed denominations. Preserve the denomination ranges and totals below $100.",
+    "kind": "wording-rewrite"
   }
 ]

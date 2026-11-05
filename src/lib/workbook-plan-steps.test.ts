@@ -68,7 +68,7 @@ describe("the step progression (#489)", () => {
   });
 });
 
-// Captured before C3 from main b9eafdd3. Hash the complete serialized result, including property order.
+// Updated for the approved warm-up removal. Hash the complete serialized result, including property order.
 const GOLDEN: Record<string, string> = {
   "U1-first": "7c177267cce542a8f25abb6e5f1d1814e26900c0c82703e691aefbccaa8b68c2",
   "U1-second": "0efc9603b7e656458a6ff2d2c4605df04df705c3727ada6ab2758e807fffb95f",
@@ -76,18 +76,18 @@ const GOLDEN: Record<string, string> = {
   "U4-first": "ba2be623afc9b14533556472b9a6d4fbcc734c50f07ad0b8d607cd8507786b97",
   "U4-second": "331dca7bd47a8bdc6457a2ff388316ad7b6e459afd3fdab742a99fdaba6259db",
   "U4-test": "592d27baa06fa34d576da28b83c41647436781c2e7a87b5eaa9bcc9ecdf03d6b",
-  "U10-first": "06a0bb949ffd6dc3722416964fecef2ccd4e26052c8a2a76ec45a78309e7460c",
-  "U10-second": "85cdf81482f5365133d5cb1780ec3dcf33eb7edf55e23b563ad8e978a31e9ea2",
-  "U10-test": "784fa3ce5ecbd03237c76fa12e66d5caa9c2fada1654795767779de091694963",
-  "U16-first": "17b0b8a273fb94cd78229a60afc8468321f891052c51f737f415dd98152bef3c",
-  "U16-second": "4c057e4f915c71eaf72248a520d104d4ada910697a0a44a3aef598e7b7e1fde0",
-  "U16-test": "60c91ffb13904cfd4950851cbe2eb70c46d41a4cdfbf1908688e84df04e715f9",
-  "U19-first": "4a463c30fd898208ef32e2233209b2e2778c2fc9c7048e972487b7b4c8e7297d",
-  "U19-second": "6218984be0d94e42fc3e12f6c2608ab640e5ace3b543fef1b51c312105fd90cc",
-  "U19-test": "6f47cf0c5d1080c9ed2c0912a31fba6f65c756f218b00ffeb3b94142aefcf6c3",
-  "U27-first": "d5a9acdc35fcedeaddf8c116a16095facb58e12b58c074de0bd0ff485812b749",
-  "U27-second": "321a9d9bccd3ca4492c0b12aed91b7eb80d59a1defe6c21ccb231d4679bd368c",
-  "U27-test": "6c4268f0bb2e75d638c9002df2bb1387de2b85ab0a857f4551da599a26c4a6fa",
+  "U10-first": "c84ace63234b5b7269571676734da9ee26ac53bd67234e199ef815498657c64d",
+  "U10-second": "c5aa2a7adddc57bd443b658eba2873e7607cd1a80faf83d2701102150f1f802a",
+  "U10-test": "de4d1edd026643e6306b3b66ef5465526b76a73805110f8bd7edb3a109fc673a",
+  "U16-first": "143a268dffeaa0d82eb58124e0b50e36d955d6affe02255e4bea6e3cea263cbc",
+  "U16-second": "1d19e147e608652b68b857f08774326dd9cd81ff13c773aee87880392873e0e4",
+  "U16-test": "1bd0fc27cb9a2c8b9d0455ec5b441bff0c6837dc0028e03e630f10a5ff3efa8d",
+  "U19-first": "f785c04a77b1889d66931d4279f134564578a2c14abcc6e314c63c8d010bc8f0",
+  "U19-second": "dd2f67ff4dfa5d7d03fea55b4698edd22bc3a1a8587dbfa9c2942ea641bd3a71",
+  "U19-test": "8195a047f68d588c5e6bdb64a6d8970369dd1bd62ea8f382dbbef569ee264dd9",
+  "U27-first": "0ee5827becd08f2933e25b1fbc853ecbd1faafc4548557646ecd24ba9904ff34",
+  "U27-second": "fecd5e778fa84fe18ace720807b67ac08bcdab85603d534000b0f6733c448631",
+  "U27-test": "e80de7b08d9208f1abe9d65e19fe4b5b70b14d200bf0ca92db2cd82582f5ff7b",
 };
 
 const personalInput = (level = "U16", persona: "ahead" | "catch-up" | "on-level" | "rushed" = "ahead"): PlanInput & { personal: BookSignals } => {
@@ -309,7 +309,7 @@ describe("C3 personal plan", () => {
     });
   });
 
-  it("keeps 18 absent-personal plans byte-identical to the pre-change golden results", () => {
+  it("keeps 18 absent-personal plans at the approved warm-up shape", () => {
     for (const [key, hash] of Object.entries(GOLDEN)) {
       const [level, kind] = key.split("-");
       const i = samplePlanInput(BC, sampleChild(BC, level)!, kind as "first" | "second" | "test");

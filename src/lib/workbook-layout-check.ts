@@ -26,6 +26,7 @@ import type { DayContent, SlotName } from "@/lib/workbook-page";
 import type { DraftPage, FitProblem, MeasuredElement } from "@/lib/workbook-render";
 import type { QuestionPackage } from "@/lib/question-package";
 import type { PagePlan } from "@/lib/workbook-template";
+import { questionWorkSpace, WORK_INSTRUCTION } from "./workbook-work-space";
 
 /** How far measured things may differ and still count as lined up or even, in CSS pixels. */
 export const LAYOUT_TOLERANCE = {
@@ -77,7 +78,7 @@ function partsOf(n: number, measured: Measured): MeasuredElement[] {
   const out: MeasuredElement[] = [];
   for (const [name, m] of measured) {
     if (!shown(m)) continue;
-    if (name === `number-${n}` || name === `question-${n}-content` || name === `question-${n}-answer` || name.startsWith(`region-${n}-`)) out.push(m);
+    if (name === `number-${n}` || name === `question-${n}-content` || name === `question-${n}-answer` || name === `workspace-${n}` || name.startsWith(`region-${n}-`)) out.push(m);
   }
   return out;
 }
@@ -362,8 +363,26 @@ export function layoutProblems(page: DraftPage, measured: Measured, plan: PagePl
   const c = day(page);
   if (!c || !c.consistentLayout || !plan) return [];
   const repeat = measuredRepeat(page, c, measured);
+  const work: FitProblem[] = [];
+  if (page.type === "warm-up" && c.blocks.some(b => b.slot === "in-your-head" || /mental math|in your head/i.test(b.label ?? ""))) work.push({ question: null, slot: null, reason: "a warm-up prints a redundant mental-math block" });
+  const area = measured.get("slot-content");
+  // Check the physical cells too. A full-width row in the plan must actually span the grid.
+  if (shown(area)) for (const block of c.blocks.filter(b => ["warm-up", "remember-these", "now-you", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "mixed-set", "friday-5", "unit-check", "mini-test", "already-know-it"].includes(b.slot))) {
+    const cells = block.items.flatMap(n => {
+      const m = measured.get(`question-${n}`);
+      return shown(m) ? [{ n, m }] : [];
+    });
+    for (const { n, m } of cells) if (m.width < area.width * .7 && !cells.some(other => other.n !== n && Math.abs(other.m.y - m.y) <= LAYOUT_TOLERANCE.top)) work.push({ question: n, slot: block.slot, reason: `the printed question grid has an empty cell beside question ${n}` });
+  }
+  for (const q of page.questions) {
+    const need = questionWorkSpace(q.package, slotOf(c, q.number));
+    if (!need) continue;
+    const spaces = [measured.get(`workspace-${q.number}`), ...(q.package.item?.regions ?? []).flatMap(r => r.kind === "work" ? [measured.get(`region-${q.number}-${r.id}`)] : [])].filter(shown);
+    if (!spaces.some(m => m.height >= need - .5)) work.push({ question: q.number, slot: null, reason: `question ${q.number} needs at least ${need} px of white work space` });
+  }
+  if (page.questions.some(q => questionWorkSpace(q.package, slotOf(c, q.number)) > 0 || q.package.item?.regions.some(r => r.kind === "work")) && !c.subtitle.includes(WORK_INSTRUCTION)) work.push({ question: null, slot: null, reason: "the page with work space lacks its work instruction" });
   const all = hasLines(measured)
-    ? [...spacingProblems(page, c, measured), ...alignmentProblems(page, c, measured, plan), ...clippingProblems(page, c, measured), ...repeat]
-    : repeat;
+    ? [...spacingProblems(page, c, measured), ...alignmentProblems(page, c, measured, plan), ...clippingProblems(page, c, measured), ...repeat, ...work]
+    : [...repeat, ...work];
   return all.map((p) => ({ ...p, kind: "layout" as const }));
 }
