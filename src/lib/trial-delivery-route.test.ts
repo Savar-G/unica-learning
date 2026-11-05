@@ -7,6 +7,7 @@ vi.mock("@/lib/stripe", () => ({ startPlan: state.start, stripe: state.stripe })
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async () => [{ id: "book", childId: "child", parentId: "parent", number: 1, status: "shipped" }] }) }));
 vi.mock("@/lib/workbook-delivery-store", () => ({ workbookDeliveryStore: () => ({ receipt: async () => ({ workbookId: "book", childId: "child", parentId: "parent", number: 1 }) }) }));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => ({}) }));
+vi.mock("@/lib/family-deletion-store", () => ({ holdPlanStart: async () => "held", endCardOperation: async () => {} }));
 vi.mock("@/lib/workbook-email-server", () => ({ sendPlanStartEmail: state.confirm }));
 const { POST } = await import("@/app/api/admin/cards/[id]/start/route");
 const id = "11111111-1111-4111-8111-111111111111";

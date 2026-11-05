@@ -18,9 +18,9 @@ describe("the copy of a reminder", () => {
   it("keeps the email as it was sent: sender, recipient, subject and both bodies", () => {
     expect(row).toMatchObject({
       parent_id: "p1", email_log_id: "l1", outcome: "sent", email_id: "re_123", from_address: "Unica Learning <contact@unicalearning.com>",
-      to_address: "priya@family.ca", reply_to: "help@unicalearning.com", subject: "Last reminder: Maya's free math test",
+      to_address: "priya@family.ca", reply_to: "help@unicalearning.com", subject: "A quick question about Maya's math test",
     });
-    expect(row.text_body).toContain("Maya has not started the free math placement test yet.");
+    expect(row.text_body).toContain("Maya hasn't had a chance to take the free math test yet");
     expect(row.html_body).toContain("Start Maya&#39;s test");
     expect(row).not.toHaveProperty("report_id");
   });

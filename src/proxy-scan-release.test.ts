@@ -3,8 +3,10 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { proxy } from "./proxy";
 
 const release = vi.hoisted(() => ({ allowed: false }));
+// The secret key is read only when the deletion state read fails, which these tests never do.
+vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => release.allowed }));
-vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getClaims: async () => ({ data: { claims: { sub: "00000000-0000-4000-8000-000000000001" } }, error: null }) } }) }));
+vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getClaims: async () => ({ data: { claims: { sub: "00000000-0000-4000-8000-000000000001" } }, error: null }) }, rpc: async () => ({ data: null, error: null }) }) }));
 
 const lockedRequest = (path: string) => new NextRequest(`https://unicalearning.com${path}`, { headers: { Cookie: "unica_desk=00000000-0000-4000-8000-000000000001.00000000-0000-4000-8000-000000000002" } });
 beforeEach(() => { release.allowed = false; });

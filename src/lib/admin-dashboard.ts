@@ -114,10 +114,10 @@ export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | 
 export interface EmailKindInfo { kind: EmailKind; label: string; subject: string; to: string; trigger: string }
 /** Every email the site logs. The subjects follow reminder-email.ts and report-email.ts. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = [
-  { kind: "start", label: "Start reminder", subject: "{child} has not started the free math test", to: "Parent", trigger: "Account made, no test started" },
-  { kind: "start_followup", label: "Last start reminder", subject: "Last reminder: {child}'s free math test", to: "Parent", trigger: "Day 3, still no test started" },
-  { kind: "continue", label: "Continue reminder", subject: "{child} can finish the math test", to: "Parent", trigger: "Test started, not finished" },
-  { kind: "come_back", label: "Come back reminder", subject: "{child} can start the math test again", to: "Parent", trigger: "Test expired before the end" },
+  { kind: "start", label: "Start reminder", subject: "{child}'s free math check is ready", to: "Parent", trigger: "Account made, no test started" },
+  { kind: "start_followup", label: "Last start reminder", subject: "A quick question about {child}'s math test", to: "Parent", trigger: "Day 3, still no test started" },
+  { kind: "continue", label: "Continue reminder", subject: "{child}'s math test is saved", to: "Parent", trigger: "Test started, not finished" },
+  { kind: "come_back", label: "Come back reminder", subject: "{child} can start the math test fresh", to: "Parent", trigger: "Test expired before the end" },
   { kind: "report", label: "Report email", subject: "{child}'s math report is ready", to: "Parent", trigger: "Test finished, report built" },
   { kind: "alert", label: "Report alert", subject: "Test finished: {child}, grade {grade}, working at ...", to: "You", trigger: "Test finished, report built" },
   { kind: "unsubscribe", label: "Unsubscribe", subject: "No email: the parent turned reminders off", to: "-", trigger: "Parent clicked unsubscribe" },

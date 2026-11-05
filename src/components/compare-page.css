@@ -6,9 +6,6 @@
 /* The highlighter stroke of <Highlight>, but "How Unica Learning compares" is too long for its one-line mark on phones, so it wraps line by line. */
 .cmpp-hl { background: linear-gradient(transparent 58%, var(--sun) 58%, var(--sun) 92%, transparent 92%); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .cmpp-head .lead { margin: 0; max-width: 60ch; font-size: clamp(17px, 1.4vw, 20px); }
-.cmpp-jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 30px; }
-.cmpp-jump a { border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; font-size: 14px; color: var(--ink); text-decoration: none; }
-.cmpp-jump a:hover { border-color: var(--ink); }
 
 .cmpp-part { margin-top: clamp(56px, 8vw, 96px); }
 /* Section labels are h2s for the outline but look like the home table's mono kicker. */
