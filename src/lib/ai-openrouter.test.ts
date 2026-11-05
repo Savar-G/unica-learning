@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, aiClient, type AiJsonRequest } from "@/lib/ai-client";
-import { costingFetch, openRouterClient } from "@/lib/ai-openrouter";
+import { inspect } from "node:util";
+import { costingFetch, openRouterClient, providerWords } from "@/lib/ai-openrouter";
 import { REVIEW_DEFAULT_MODEL } from "@/lib/maya-talk-review";
 import { workbookAi } from "@/lib/workbook-ai";
 
@@ -243,5 +244,41 @@ describe("the pinned route (D-282), for every AI feature on this client", () => 
     expect(sent[0].url).toBe("https://openrouter.ai/api/v1/chat/completions");
     const other = fakeFetch({ status: 404, body: { error: { code: 404, message: "No endpoints found" } } });
     await expect(openRouterClient({ apiKey: "sk-or-test", model: "openai/gpt-6", fetch: other.fetch }).json(request(), signal())).rejects.toThrow("on the allowed route (zero data retention, no training): 404");
+  });
+});
+
+// The provider's own words stay inside the process: they can repeat request text, so no message or log line carries them.
+describe("the provider's words on a refusal", () => {
+  const refusal = { status: 400, body: { error: { code: 400, message: "Provider returned error", metadata: { provider_name: "Google", raw: "{\"error\":{\"message\":\"Schema is too complex: the child wrote 12\"}}" } } } };
+  const failed = async (...replies: Parameters<typeof fakeFetch>) => {
+    const { fetch } = fakeFetch(...replies);
+    return openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, maxRetries: 0 }).json(request(), signal()).then(() => { throw new Error("no failure"); }, (e: Error) => e);
+  };
+
+  it("keeps them where only providerWords reads them", async () => {
+    const e = await failed(refusal);
+    expect(providerWords(e)).toContain("Schema is too complex");
+    expect(providerWords(e)).toContain("Google");
+  });
+
+  it("keeps them out of the message and of what a log line prints", async () => {
+    const e = await failed(refusal);
+    expect(e.message).toBe("OpenRouter answered 400: Provider returned error");
+    expect(inspect(e, { showHidden: true, depth: 5 })).not.toContain("the child wrote");
+    expect(JSON.stringify(e)).not.toContain("the child wrote");
+    expect(JSON.stringify(Object.getOwnPropertyDescriptors(e))).not.toContain("the child wrote");
+  });
+
+  it("keeps them on a 5xx after its retry too, and reads an object as text", async () => {
+    const { fetch } = fakeFetch({ status: 503, body: { error: { message: "Provider returned error", metadata: { raw: { reason: "overloaded" } } } } });
+    const e = await openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, maxRetries: 0 }).json(request(), signal()).catch((x: Error) => x) as Error;
+    expect(providerWords(e)).toContain("overloaded");
+  });
+
+  it("has none for an error with none, and bounds their size", async () => {
+    expect(providerWords(await failed({ status: 400, body: { error: { message: "Bad" } } }))).toBeNull();
+    expect(providerWords(new Error("other"))).toBeNull();
+    const long = await failed({ status: 400, body: { error: { message: "Bad", metadata: { raw: "x".repeat(50_000) } } } });
+    expect(providerWords(long)!.length).toBeLessThanOrEqual(2_000);
   });
 });

@@ -9,12 +9,12 @@
 // (src/lib/maya-model.ts); "image_read" asks what the image shows, so a pass means the model read it. The image is a
 // 32 by 32 red square that this file holds. The words are about the sum 80 + 5.
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, type AiJsonRequest } from "@/lib/ai-client";
-import { isClaudeModel, openRouterClient } from "@/lib/ai-openrouter";
+import { isClaudeModel, openRouterClient, providerWords } from "@/lib/ai-openrouter";
 import { PROPOSAL_SCHEMA } from "@/lib/maya/proposal";
 import { REVIEW_DEFAULT_MODEL } from "@/lib/maya-talk-review";
 import { ITEMS_SCHEMA } from "@/lib/workbook-generator-items";
 
-export type RouteShape = "small" | "largest_schema_image" | "maya_proposal" | "image_read";
+export type RouteShape = "small" | "largest_schema_image" | "maya_proposal" | "image_read" | "maya_proposal_main_route";
 
 export interface RouteCheck {
   ok: boolean;
@@ -29,6 +29,8 @@ export interface RouteCheck {
   model: string | null;
   provider: string | null;
   error?: string;
+  /** What the provider said on a refusal. Shown to admins here because this request holds no child data. */
+  providerWords?: string;
 }
 
 const RED_SQUARE = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR42mM4ISdHU8QwasGoBaMWjFowasGoBaMWjFowasGoBaMWDBULACXLED1gHZEpAAAAAElFTkSuQmCC"), (c) => c.charCodeAt(0));
@@ -41,7 +43,17 @@ void _title;
 const answerOf = (output: unknown) => String((output as { answer?: unknown } | null)?.answer ?? "");
 
 /** Each shape's request, and what its output must hold to count as a pass. */
-const CHECKS: Record<RouteShape, { request: AiJsonRequest; proves(output: unknown): boolean }> = {
+const MAYA_REQUEST: AiJsonRequest = {
+  name: "route_check_proposal",
+  system: "This is a test of a request's size. You are a math tutor. Fill every field of the JSON for one turn, with null or an empty list where a field has nothing. Answer with JSON only.",
+  content: [{ type: "text", text: "The question is 80 + 5. The answer is 85. The child said: is it 85?" }],
+  schema: MAYA_SCHEMA,
+  effort: "low",
+  maxTokens: 4_000,
+};
+const isProposal = (output: unknown) => typeof output === "object" && output !== null && "version" in output;
+
+const CHECKS: Record<RouteShape, { request: AiJsonRequest; proves(output: unknown): boolean; mainRoute?: boolean }> = {
   small: {
     request: { name: "route_check", system: "You answer one sum. Answer with JSON only.", content: [{ type: "text", text: "What is 80 + 5?" }], schema: ANSWER_SCHEMA, effort: "low", maxTokens: 2000 },
     proves: (output) => answerOf(output).length > 0,
@@ -56,17 +68,9 @@ const CHECKS: Record<RouteShape, { request: AiJsonRequest; proves(output: unknow
     },
     proves: (output) => Array.isArray((output as { items?: unknown } | null)?.items),
   },
-  maya_proposal: {
-    request: {
-      name: "route_check_proposal",
-      system: "This is a test of a request's size. You are a math tutor. Fill every field of the JSON for one turn, with null or an empty list where a field has nothing. Answer with JSON only.",
-      content: [{ type: "text", text: "The question is 80 + 5. The answer is 85. The child said: is it 85?" }],
-      schema: MAYA_SCHEMA,
-      effort: "low",
-      maxTokens: 4_000,
-    },
-    proves: (output) => typeof output === "object" && output !== null && "version" in output,
-  },
+  maya_proposal: { request: MAYA_REQUEST, proves: isProposal },
+  // Today's route on main before D-282, for one comparison: no pin and no retention rule. The words are fixed.
+  maya_proposal_main_route: { request: MAYA_REQUEST, proves: isProposal, mainRoute: true },
   image_read: {
     request: {
       name: "route_check_image",
@@ -95,7 +99,7 @@ export function routeChecks(env: Readonly<Record<string, string | undefined>> = 
   const models = routeCheckModels(env);
   return [
     ...models.map((model) => ({ model, shape: "small" as const })),
-    ...(["largest_schema_image", "maya_proposal", "image_read"] as const).map((shape) => ({ model: models[0], shape })),
+    ...(["largest_schema_image", "maya_proposal", "image_read", "maya_proposal_main_route"] as const).map((shape) => ({ model: models[0], shape })),
   ];
 }
 
@@ -107,10 +111,11 @@ export async function checkAiRoute({ apiKey, model, shape = "small", fetch = glo
   fetch?: typeof globalThis.fetch;
   signal: AbortSignal;
 }): Promise<RouteCheck> {
-  const { request, proves } = CHECKS[shape];
+  const { request, proves, mainRoute } = CHECKS[shape];
   const result: RouteCheck = { ok: false, shape, requested: model, schemaBytes: JSON.stringify(request.schema).length, status: null, model: null, provider: null };
   const seen: typeof globalThis.fetch = async (input, init) => {
-    const res = await fetch(input, init);
+    const sent = mainRoute ? { ...init, body: JSON.stringify({ ...JSON.parse(String(init?.body)), provider: { require_parameters: true } }) } : init;
+    const res = await fetch(input, sent);
     result.status = res.status;
     try {
       const answer = JSON.parse(await res.clone().text()) as { model?: unknown; provider?: unknown };
@@ -125,10 +130,11 @@ export async function checkAiRoute({ apiKey, model, shape = "small", fetch = glo
   try {
     output = await openRouterClient({ apiKey, model, fetch: seen, maxRetries: 0 }).json(request, signal);
   } catch (e) {
-    return { ...result, error: e instanceof Error ? e.message : String(e) };
+    const words = providerWords(e);
+    return { ...result, error: e instanceof Error ? e.message : String(e), ...(words ? { providerWords: words } : {}) };
   }
   // OpenRouter's name of the Vertex host is "Google" (its endpoint lists, read 2026-11-05).
-  if (isClaudeModel(model) && !/google/i.test(result.provider ?? "")) {
+  if (!mainRoute && isClaudeModel(model) && !/google/i.test(result.provider ?? "")) {
     return { ...result, error: `A provider off the route answered: ${result.provider ?? "not named"}` };
   }
   if (!proves(output)) return { ...result, error: "The output is not what the request asked for" };

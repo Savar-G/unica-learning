@@ -62,9 +62,26 @@ function body(model: string, request: AiJsonRequest) {
 /** An error worth one more try: a time-out, a lost connection, a 408, a 429 or a 5xx. */
 class Retryable extends Error {}
 
+/**
+ * What the provider said on a failed request (OpenRouter's `error.metadata`). It can repeat request text, which can be a
+ * child's words, so it is never in an error's message and never on the error object: a log line that prints the error
+ * cannot print it. Only code that names `providerWords` reads it.
+ */
+const WORDS_LIMIT = 2_000;
+const wordsOf = new WeakMap<Error, string>();
+export const providerWords = (e: unknown): string | null => (e instanceof Error ? wordsOf.get(e) ?? null : null);
+
+function withWords<E extends Error>(error: E, metadata: ErrorBody["metadata"]): E {
+  if (metadata?.raw === undefined || metadata.raw === null) return error;
+  const raw = typeof metadata.raw === "string" ? metadata.raw : JSON.stringify(metadata.raw);
+  wordsOf.set(error, `${metadata.provider_name ? `${metadata.provider_name}: ` : ""}${raw}`.slice(0, WORDS_LIMIT));
+  return error;
+}
+
 interface ErrorBody {
   code?: number | string;
   message?: string;
+  metadata?: { raw?: unknown; provider_name?: string };
 }
 interface Completion {
   error?: ErrorBody;
@@ -100,15 +117,15 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
   }
   if (res.status === 404) {
     // No endpoint meets the route (D-282). Never retried, never sent another way.
-    throw new Error(`OpenRouter has no endpoint for this request on the allowed route (${route}): 404 ${short(data?.error?.message ?? text)}`);
+    throw withWords(new Error(`OpenRouter has no endpoint for this request on the allowed route (${route}): 404 ${short(data?.error?.message ?? text)}`), data?.error?.metadata);
   }
   if (!res.ok) {
     const error = `OpenRouter answered ${res.status}: ${short(data?.error?.message ?? text)}`;
-    throw retryableStatus(res.status) ? new Retryable(error) : new Error(error);
+    throw withWords(retryableStatus(res.status) ? new Retryable(error) : new Error(error), data?.error?.metadata);
   }
   if (!data) throw new Error("OpenRouter answered 200 with a body that is not JSON");
   // After the provider accepts the request, OpenRouter reports a failure inside a 200 answer.
-  if (data.error) throw new Error(`OpenRouter error ${short(data.error.code)}: ${short(data.error.message)}`);
+  if (data.error) throw withWords(new Error(`OpenRouter error ${short(data.error.code)}: ${short(data.error.message)}`), data.error.metadata);
   const choice = data.choices?.[0];
   if (!choice) throw new Error("OpenRouter answered with no choices");
   if (choice.error) throw new Error(`OpenRouter error ${short(choice.error.code)}: ${short(choice.error.message)}`);
@@ -158,7 +175,13 @@ export function openRouterClient({
         try {
           return await once(fetch, init, signal, timeout, routeWords(model), onDispatch);
         } catch (e) {
-          if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
+          if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) {
+            if (!(e instanceof Retryable)) throw e;
+            const plain = new Error(e.message);
+            const words = wordsOf.get(e);
+            if (words) wordsOf.set(plain, words);
+            throw plain;
+          }
         }
       }
     },

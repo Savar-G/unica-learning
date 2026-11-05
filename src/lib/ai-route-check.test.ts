@@ -117,6 +117,20 @@ describe("the route check (D-282)", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("shows an admin the provider's words on a refusal", async () => {
+    const { fetch } = fakeFetch(400, { error: { code: 400, message: "Provider returned error", metadata: { provider_name: "Google", raw: "too many union types" } } });
+    const result = await checkAiRoute({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, shape: "maya_proposal", fetch, signal: signal() });
+    expect(result.providerWords).toContain("too many union types");
+    expect(result.error).not.toContain("union types");
+  });
+
+  it("compares Maya's schema on today's route: no pin, no retention rule, any provider that answers", async () => {
+    const { fetch, sent } = fakeFetch(200, { ...reply({ version: 1 }), provider: "Anthropic" });
+    const result = await checkAiRoute({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, shape: "maya_proposal_main_route", fetch, signal: signal() });
+    expect(sent[0].provider).toEqual({ require_parameters: true });
+    expect(result).toMatchObject({ ok: true, shape: "maya_proposal_main_route", provider: "Anthropic" });
+  });
+
   it("runs the small check on each model, and the real-size checks on the model of the features that send them", () => {
     expect(routeChecks({})).toEqual([
       { model: AI_DEFAULT_MODEL, shape: "small" },
@@ -124,8 +138,9 @@ describe("the route check (D-282)", () => {
       { model: AI_DEFAULT_MODEL, shape: "largest_schema_image" },
       { model: AI_DEFAULT_MODEL, shape: "maya_proposal" },
       { model: AI_DEFAULT_MODEL, shape: "image_read" },
+      { model: AI_DEFAULT_MODEL, shape: "maya_proposal_main_route" },
     ]);
-    expect(routeChecks({ AI_MODEL: "anthropic/claude-opus-5.5" }).filter((c) => c.shape !== "small").map((c) => c.model)).toEqual(Array(3).fill("anthropic/claude-opus-5.5"));
+    expect(routeChecks({ AI_MODEL: "anthropic/claude-opus-5.5" }).filter((c) => c.shape !== "small").map((c) => c.model)).toEqual(Array(4).fill("anthropic/claude-opus-5.5"));
   });
 
   it("checks each model this deployment uses, each once", () => {
