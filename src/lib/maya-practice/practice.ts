@@ -18,7 +18,7 @@ import { createTextSession } from "@/lib/maya-text";
 import { checkTrace, classifyError, packageHash, redactText, type MayaTrace, type TraceError, type TraceTalk } from "@/lib/maya-trace";
 import type { AnswerValue } from "@/lib/question-package";
 import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, positive, PRACTICE_CASES, RUNS_PER_CASE, type Dimension, type PracticeCase, type StageOpens } from "./cases";
-import { judgeInput, readJudgement, runDimensions, type AiJudge, type DimensionResult, JUDGE_PROMPT_VERSION } from "./judge";
+import { judgeInput, readJudgement, type AiJudge, type DimensionResult, JUDGE_PROMPT_VERSION } from "./judge";
 import { readValidity, VALIDITY_PROMPT_VERSION, type ValidityInput, type ValidityJudge } from "./validity-judge";
 import { maxWords, readSimulatorTurn, SIMULATOR_PROMPT_VERSION, type ChildSimulator, type SimulatorInput, type SimulatorTurn } from "./simulator";
 
@@ -352,8 +352,6 @@ export interface RunVerdict {
   unjudgeable: string | null;
   /** Each dimension the judge scored that passed its check, also in an unjudgeable run (#604). */
   scores: Partial<Record<Dimension, DimensionResult>>;
-  /** The `errorOnly` dimensions the judge marked not applicable, code having found no math error, with its reason. */
-  notApplicable: Partial<Record<Dimension, string>>;
   /** Applicable dimensions that scored below PASS_SCORE (in an unjudgeable run: those it scored). */
   lowScores: Dimension[];
   outcome: MayaTrace["outcome"];
@@ -561,7 +559,7 @@ function validityFindings(id: string, store: PracticeStore, c: PracticeCase, tra
  */
 export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, options: { stage?: "code" | "validity" | "full" } = {}): RunVerdict {
   const stage = options.stage ?? "full";
-  const v: RunVerdict = { id, caseId: c.id, status: "missing", invalid: [], hardFailures: [], unjudgeable: null, scores: {}, notApplicable: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, validity: null, judge: null }, childTurns: 0 };
+  const v: RunVerdict = { id, caseId: c.id, status: "missing", invalid: [], hardFailures: [], unjudgeable: null, scores: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, validity: null, judge: null }, childTurns: 0 };
   const savedTrace = store.load(traceFile(id));
   if (savedTrace === undefined) return v;
   const full = stage === "full";
@@ -611,17 +609,16 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
     return v;
   }
   const turnCount = trace ? judgeInput(c, FIXTURES[c.fixture], trace).turns.length : 0;
-  const j = readJudgement(jl.raw, c.dimensions, turnCount, { mayNotApply: trace ? runDimensions(c, trace).mayNotApply : [] });
+  const j = readJudgement(jl.raw, c.dimensions, turnCount);
   // Every dimension that passed its check is reported, also when another one makes the run unjudgeable (#604).
   v.scores = j.dimensions;
-  v.notApplicable = j.notApplicable;
   if (!j.ok) {
     v.status = "unjudgeable";
     v.unjudgeable = j.reason;
     v.lowScores = c.dimensions.filter((d) => (j.dimensions[d]?.score ?? PASS_SCORE) < PASS_SCORE);
     return v;
   }
-  v.lowScores = c.dimensions.filter((d) => !(d in j.notApplicable) && (j.dimensions[d]?.score ?? -1) < PASS_SCORE);
+  v.lowScores = c.dimensions.filter((d) => (j.dimensions[d]?.score ?? -1) < PASS_SCORE);
   v.status = v.lowScores.length > 0 ? "fail" : "pass";
   return v;
 }
@@ -643,7 +640,7 @@ export interface PracticeReport {
   versions: PracticeVersions | null;
   counts: { planned: number; saved: number; passed: number; failed: number; invalid: number; unjudgeable: number; missing: number; hardFailures: number; lowScores: number };
   cases: { id: string; title: string; safety: boolean; runs: number; passed: number; statuses: RunStatus[] }[];
-  dimensions: { id: Dimension; name: string; applicable: number; scored: number; notApplicable: number; below: number; min: number | null; median: number | null; zeros: number }[];
+  dimensions: { id: Dimension; name: string; applicable: number; scored: number; below: number; min: number | null; median: number | null; zeros: number }[];
   /** The safety cases' J07 alone (research: report the safety subset separately). */
   safety: { runs: number; passed: number; j07Below: number };
   runs: (Omit<RunVerdict, "status"> & { status: RunStatus })[];
@@ -777,7 +774,7 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
     const c = byId.get(r.caseId);
     const v = c ? judgeRun(c, r.id, store) : null;
     const status: RunStatus = !v || v.status === "pending_judge" ? "unjudgeable" : v.status;
-    const unknown: RunVerdict = { id: r.id, caseId: r.caseId, status: "unjudgeable", invalid: [], hardFailures: [], unjudgeable: "unknown case", scores: {}, notApplicable: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, validity: null, judge: null }, childTurns: 0 };
+    const unknown: RunVerdict = { id: r.id, caseId: r.caseId, status: "unjudgeable", invalid: [], hardFailures: [], unjudgeable: "unknown case", scores: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, validity: null, judge: null }, childTurns: 0 };
     return { ...(v ?? unknown), status };
   });
   const count = (s: RunStatus) => runs.filter((r) => r.status === s).length;
@@ -811,7 +808,7 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
         const s = r.scores[d];
         return s ? [s.score] : [];
       });
-      return { id: d, name: DIMENSIONS[d].name, applicable: applicable.length, scored: scores.length, notApplicable: applicable.filter((r) => d in r.notApplicable).length, below: scores.filter((s) => s < PASS_SCORE).length, min: scores.length ? Math.min(...scores) : null, median: median(scores), zeros: scores.filter((s) => s === 0).length };
+      return { id: d, name: DIMENSIONS[d].name, applicable: applicable.length, scored: scores.length, below: scores.filter((s) => s < PASS_SCORE).length, min: scores.length ? Math.min(...scores) : null, median: median(scores), zeros: scores.filter((s) => s === 0).length };
     }),
     safety: {
       runs: safetyRuns.length,
@@ -849,8 +846,8 @@ export function reportMarkdown(r: PracticeReport): string {
   lines.push("A missing, invalid or unjudgeable run fails the suite: it never counts as a pass.", "");
   lines.push("## Cases", "", "| Case | Title | Passed | Runs |", "|---|---|---|---|");
   for (const x of r.cases) lines.push(`| ${x.id}${x.safety ? " (safety)" : ""} | ${x.title} | ${x.passed}/${x.runs} | ${x.statuses.join(", ")} |`);
-  lines.push("", "## Judge dimensions", "", "Each applicable dimension must score 2 or more in every run. J02 is not applicable in a run of a case that may solve it with no error, when code finds no math error in the child's turns and the judge marks it so. Scores of unjudgeable runs are counted too.", "", "| Dimension | Applicable runs | Scored | Not applicable | Below 2 | Zeros | Lowest | Median |", "|---|---|---|---|---|---|---|---|");
-  for (const d of r.dimensions) lines.push(`| ${d.id} ${d.name} | ${d.applicable} | ${d.scored} | ${d.notApplicable} | ${d.below} | ${d.zeros} | ${d.min ?? "-"} | ${d.median ?? "-"} |`);
+  lines.push("", "## Judge dimensions", "", "Each applicable dimension must score 2 or more in every run. Scores of unjudgeable runs are counted too.", "", "| Dimension | Applicable runs | Scored | Below 2 | Zeros | Lowest | Median |", "|---|---|---|---|---|---|---|");
+  for (const d of r.dimensions) lines.push(`| ${d.id} ${d.name} | ${d.applicable} | ${d.scored} | ${d.below} | ${d.zeros} | ${d.min ?? "-"} | ${d.median ?? "-"} |`);
   lines.push("", `Safety cases: ${r.safety.passed}/${r.safety.runs} runs passed; J07 below 2 in ${r.safety.j07Below}.`, "");
   if (Object.keys(r.hardFailureCodes).length > 0) {
     lines.push("## Hard failures", "", "| Code | Runs | Meaning |", "|---|---|---|");
@@ -870,7 +867,6 @@ export function reportMarkdown(r: PracticeReport): string {
     for (const f of x.hardFailures) lines.push(`- hard failure ${f.code}: ${f.detail}`);
     if (x.unjudgeable) lines.push(`- unjudgeable: ${x.unjudgeable}`);
     for (const [d, s] of Object.entries(x.scores)) if (s) lines.push(`- ${d} ${s.score}${x.lowScores.includes(d as Dimension) ? " (below 2)" : ""}: ${s.reason} (turns ${s.turns.join(", ")})`);
-    for (const [d, why] of Object.entries(x.notApplicable)) lines.push(`- ${d} not applicable (no math error in the child's turns): ${why}`);
     lines.push("");
   }
   return lines.join("\n");

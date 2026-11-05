@@ -5,10 +5,9 @@ import { fakeAiClient } from "@/lib/ai-client-fake";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { aiMayaModel, PROMPT_VERSION } from "@/lib/maya-model";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
-import type { MayaTrace } from "@/lib/maya-trace";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import {
-  aiChildSimulator, aiJudge, buildReport, childMathErrors, freeTalkMarkdown, MAX_CHILD_TURNS, runDimensions, cappedClient, estimateCost, fakeJudge, fileHash, judgeFile, JUDGE_PROMPT_VERSION, judgeSchema,
+  aiChildSimulator, aiJudge, buildReport, freeTalkMarkdown, JUDGE_SYSTEM, MAX_CHILD_TURNS, cappedClient, estimateCost, fakeJudge, fileHash, judgeFile, JUDGE_PROMPT_VERSION, judgeSchema,
   meteredFetch, memoryPracticeStore, PLAN_FILE, planSuite, PRACTICE_CASES, readJudgement, recordFile, reportMarkdown, runSuite, scriptedSimulator, simFile,
   SIMULATOR_PROMPT_VERSION, SIMULATOR_SYSTEM, Spending, traceFile, fakeValidityJudge, validityFile, VALIDITY_PROMPT_VERSION, VALIDITY_SYSTEM, type ValidityJudge, type AiJudge, type ChildSimulator, type PracticeCase, type PracticeDeps, type PracticeStore, type RunRecord,
 } from "./index";
@@ -394,113 +393,56 @@ describe("the judge", () => {
     expect(report.passed).toBe(false);
   });
 
-  describe("J02 applies only when the child made a math error (#604)", () => {
-    const C02 = byId("C02");
+  describe("J02 is scored on every call (#604, Codex review of #609)", () => {
     const notApplicable = { status: "not_applicable", score: null, turns: [], reason: "The child made no math error." };
-    /** A judge that marks each rubric item with `onlyIf` not applicable and scores the rest 3. */
-    const marksOnlyIf = () => fakeJudge({ answer: (input) => Object.fromEntries(input.rubric.map((d) => [d.id, d.onlyIf ? notApplicable : { status: "scored", score: 3, turns: [1], reason: "ok" }])) });
-
-    it("a case that may solve with no error passes when the judge marks J02 not applicable and code found no error", async () => {
-      const judge = marksOnlyIf();
-      const { report } = await suite([C07], { runs: 1, judge });
-      expect(judge.inputs[0].rubric.find((d) => d.id === "J02")?.onlyIf).toBeTruthy();
-      expect(judge.inputs[0].rubric.filter((d) => d.onlyIf).map((d) => d.id)).toEqual(["J02"]);
-      expect(report.runs[0]).toMatchObject({ status: "pass", notApplicable: { J02: "The child made no math error." } });
-      expect(report.dimensions.find((d) => d.id === "J02")).toMatchObject({ notApplicable: 1, scored: 0 });
-      expect(reportMarkdown(report)).toContain("J02 not applicable");
-    });
-
-    it("code allows J02 not applicable only with proof of no error: known-correct numbers, true equations, a certain reading", () => {
-      const turns = (...xs: [string, string][]) => ({ turns: xs.map(([who, text]) => (who === "child" ? { kind: "child", text } : { kind: "maya", output: { say: [text] } })) }) as unknown as MayaTrace;
-      const clean = (c: PracticeCase, ...xs: [string, string][]) => childMathErrors(c, turns(...xs));
-      // Proven clean: every number is correct work and every stated equation holds.
-      expect(clean(C07, ["child", "7 plus 9 is 16. 2 plus 3 plus 1 is 6. So I got 66."])).toEqual([]);
-      expect(clean(C07, ["child", "20 plus 30 is 50, and 7 plus 9 is 16. So I got 66."])).toEqual([]);
-      expect(clean(C07, ["child", "Seven plus nine is sixteen, so I carry the ten. I got sixty-six."])).toEqual([]);
-      expect(clean(byId("C09"), ["child", "I did 27 plus 40, then took away one, and got 66."])).toEqual([]);
-      expect(clean(byId("C09"), ["child", "27 plus 40 is 67, take away 1 is 66."])).toEqual([]);
-      // Codex review of #609 (P1): each number is correct work somewhere, but the equation is false.
-      expect(clean(C07, ["child", "7 plus 9 is 16. 2 plus 3 plus 1 is 5. So I got 66."])).toEqual([{ turn: 1, reason: "2 + 3 + 1 is not 5" }]);
-      // Codex review of #609 (P1): Maya said 15 in her example; a false equation is an error whoever said its numbers.
-      expect(clean(byId("C01"), ["maya", "Add the ones: 8 + 5 = 13. 18 + 15 = 33."], ["child", "7 plus 9 is 15. So I got 66."])).toEqual(
-        expect.arrayContaining([{ turn: 1, reason: "7 + 9 is not 15" }, { turn: 1, reason: "15 is not correct work on this question" }]));
-      // A number outside correct work is an error even when Maya said it first (the child echoing her example).
-      expect(clean(C07, ["maya", "Add the ones: 8 + 5 = 13."], ["child", "8 plus 5 is 13."])).toEqual([
-        { turn: 1, reason: "8 is not correct work on this question" }, { turn: 1, reason: "13 is not correct work on this question" }]);
-      expect(clean(C07, ["child", "I got 56."])).toEqual([{ turn: 1, reason: "56 is not correct work on this question" }]);
-      expect(clean(C07, ["child", "27 plus 40 is 67, take away 1 is 66."])).toEqual([
-        { turn: 1, reason: "40 is not correct work on this question" }, { turn: 1, reason: "67 is not correct work on this question" }]);
-      // Not certain, so J02 stays required: an operation with no number after it or before it, a stated sum with a
-      // number but no "is", or a reading code's own numbers disagree with.
-      expect(clean(C07, ["child", "2 plus 3 plus 1, 6. I got 66."])).toEqual([{ turn: 1, reason: "a sum with a number after it but no \"is\"" }]);
-      expect(clean(C07, ["child", "Plus the ones, I got 66."])).toEqual([{ turn: 1, reason: "an operation with no number before it" }]);
-      expect(clean(C07, ["child", "7 plus the ones is 16."])).toEqual([{ turn: 1, reason: "an operation with no number after it" }]);
-      expect(clean(C07, ["child", "Two plus three is five. Plus the ten I carried, that's six."])).toEqual([{ turn: 1, reason: "5 + 10 is not 6" }]);
-      // The verb "add": "add A and B" is a sum; "add" with no numbers says none unless a result follows in its sentence.
-      expect(clean(C07, ["child", "I got 66. I added 7 and 9 to get 16, wrote the 6, and carried the 1."])).toEqual([]);
-      expect(clean(C07, ["child", "Um, I add the ones. 7 plus 9 is 16."])).toEqual([]);
-      expect(clean(C07, ["child", "I added seven and nine. That's sixteen."])).toEqual([]);
-      expect(clean(C07, ["child", "Um, do I add 2 and 3 and 1?"])).toEqual([]);
-      expect(clean(C07, ["child", "I added 7 and 9 to get 15."])).toEqual(expect.arrayContaining([{ turn: 1, reason: "7 + 9 is not 15" }]));
-      expect(clean(C07, ["child", "I added 2 and 3 and 1 and got 5."])).toEqual([{ turn: 1, reason: "2 + 3 + 1 is not 5" }]);
-      expect(clean(C07, ["child", "I added the tens and got 5."])).toEqual([{ turn: 1, reason: "an addition with no numbers before a result" }]);
-      expect(clean(C07, ["child", "I added 1 to get 6."])).toEqual([{ turn: 1, reason: "an addition code cannot read" }]);
-      expect(clean(C07, ["child", "I think I add the tens: 2 + 3 + 1 is 6. So it's 66!"])).toEqual([]);
-      expect(clean(C07, ["child", "I think I add the tens: 2 + 3 + 1 is 5."])).toEqual([{ turn: 1, reason: "2 + 3 + 1 is not 5" }]);
-    });
-
-    it.each([
-      // Codex review of #609 (P1), through runSuite and buildReport with a judge that marks J02 not applicable.
+    const scoredBut = (j02: unknown) => fakeJudge({ answer: (input) => Object.fromEntries(input.rubric.map((d) => [d.id, d.id === "J02" ? j02 : { status: "scored", score: 3, turns: [1], reason: "ok" }])) });
+    // The child's math claims a code parser missed (Codex reviews of #609): each turn holds an error, and no reading of
+    // it by code decides whether J02 applies any more. A judge that marks J02 not applicable never gets a pass.
+    const inputs: [string, string, number][] = [
       ["C07", "7 plus 9 is 16. 2 plus 3 plus 1 is 5. So I got 66.", 0],
       ["C01", "7 plus 9 is 15. So I got 66.", 4],
-    ])("%s: J02 not applicable is refused when the child says '%s'", async (id, line, at) => {
+      ["C07", "Five = 2 + 3 + 1. So I got 66.", 0],
+      ["C07", "2 plus 3 plus 1 is 6 equals 5. So I got 66.", 0],
+      ["C07", "Two and three make six. So I got 66.", 0],
+      ["C07", "7 plus 9 is 16. So my final answer is 16.", 0],
+    ];
+    it.each(inputs)("%s: '%s' with J02 marked not applicable is unjudgeable, never a pass", async (id, line, at) => {
       const c = byId(id);
-      const script = id === "C07" ? [line, "Because the ones made sixteen.", "I wrote it."] : c.fakeScript.map((text, i) => (i === at ? line : text));
-      const notApplicableJudge = fakeJudge({ answer: (input) => Object.fromEntries(input.rubric.map((d) => [d.id, d.id === "J02" ? notApplicable : { status: "scored", score: 3, turns: [1], reason: "ok" }])) });
-      const { report } = await suite([c], { runs: 1, judge: notApplicableJudge, simulator: () => sayEach(script) });
+      // A wrong final answer is then corrected ("No wait, 66."): still an error the judge must score.
+      const script = id === "C07" ? [line, ...(line.endsWith("is 16.") ? ["No wait, 66."] : []), "Because the ones made sixteen.", "I wrote it."] : c.fakeScript.map((text, i) => (i === at ? line : text));
+      const { report } = await suite([c], { runs: 1, judge: scoredBut(notApplicable), simulator: () => sayEach(script) });
       expect(report.runs[0].invalid).toEqual([]);
-      expect(report.runs[0]).toMatchObject({ status: "unjudgeable", unjudgeable: expect.stringContaining("J02: marked not applicable") });
+      expect(report.runs[0]).toMatchObject({ status: "unjudgeable", unjudgeable: expect.stringContaining("J02: the status is \"not_applicable\"") });
       expect(report.passed).toBe(false);
     });
 
-    it("the judge's schema offers not_applicable for J02 only when code found no error", () => {
-      const statuses = (schema: Record<string, unknown>, id: string) => ((schema.properties as Record<string, { properties: { status: { enum: string[] } } }>)[id]).properties.status.enum;
-      const schema = judgeSchema(C07.dimensions, ["J02"]);
-      expect(statuses(schema, "J02")).toContain("not_applicable");
-      expect(statuses(schema, "J01")).not.toContain("not_applicable");
-      expect(statuses(judgeSchema(C07.dimensions), "J02")).not.toContain("not_applicable");
+    it("refuses J02 not applicable even on a call with no error, and J02 marked unjudgeable for 'no error' too", async () => {
+      expect((await suite([C07], { runs: 1, judge: scoredBut(notApplicable) })).report.runs[0].status).toBe("unjudgeable");
+      const noError = { status: "unjudgeable", score: null, turns: [], reason: "The child made no math error, so there was no error to respond to." };
+      expect((await suite([C07], { runs: 1, judge: scoredBut(noError) })).report.runs[0].status).toBe("unjudgeable");
     });
 
-    it("refuses J02 not applicable when the child said a number outside correct work (2 plus 3 plus 1 is 8)", async () => {
-      const judge = marksOnlyIf();
-      const { report } = await suite([C07], { runs: 1, judge, simulator: () => sayEach(["7 plus 9 is 16. 2 plus 3 plus 1 is 8. Oops, 6. So I got 66.", "Because the ones made sixteen.", "I wrote it."]) });
-      expect(report.runs[0].invalid).toEqual([]);
-      // Code found the error, so J02 is a plain rubric item: the judge cannot mark it not applicable.
-      expect(judge.inputs[0].rubric.find((d) => d.id === "J02")?.onlyIf).toBeUndefined();
-      const forced = await suite([C07], { runs: 1, judge: fakeJudge({ answer: () => ({ ...good, J02: notApplicable }) }), simulator: () => sayEach(["7 plus 9 is 16. 2 plus 3 plus 1 is 8. Oops, 6. So I got 66.", "Because the ones made sixteen.", "I wrote it."]) });
-      expect(forced.report.runs[0]).toMatchObject({ status: "unjudgeable", unjudgeable: expect.stringContaining("J02: marked not applicable") });
+    it("a call with no error passes on a J02 score: the judge scores it by the rubric for a call with no error", async () => {
+      const { report, judge } = await suite([C07], { runs: 1, judge: scoredBut({ status: "scored", score: 3, turns: [1], reason: "Maya invented no error and corrected no right work." }) });
+      expect(report.runs[0].status).toBe("pass");
+      const j02 = (judge as ReturnType<typeof fakeJudge>).inputs[0].rubric.find((d) => d.id === "J02")!;
+      expect(j02.levels[3]).toContain("With no child error: Maya invents no error and corrects no right work.");
+      expect(j02.levels[0]).toContain("corrects right work as if it were wrong");
+      expect(JUDGE_SYSTEM).toContain("J02 (error response) is scored on every call");
+      expect(JUDGE_SYSTEM).toContain("including a wrong answer the child corrects later");
+      expect(JUDGE_PROMPT_VERSION).toBe("practice-judge-5");
     });
 
-    it("refuses J02 not applicable in a case that always scores it (C02 says 56)", async () => {
-      const raw = Object.fromEntries(C02.dimensions.map((id) => [id, id === "J02" ? notApplicable : { status: "scored", score: 3, turns: [1], reason: "ok" }]));
-      const noTurns = { turns: [] } as unknown as MayaTrace;
-      expect(runDimensions(C02, noTurns).mayNotApply).toEqual([]);
-      expect(runDimensions(C07, noTurns).mayNotApply).toEqual(["J02"]);
-      expect(readJudgement(raw, C02.dimensions, 3, { mayNotApply: runDimensions(C02, noTurns).mayNotApply })).toMatchObject({ ok: false, reason: expect.stringContaining("J02: marked not applicable") });
+    it("the judge's schema never offers not_applicable", () => {
+      const statuses = (judgeSchema(C07.dimensions).properties as Record<string, { properties: { status: { enum: string[] } } }>).J02.properties.status.enum;
+      expect(statuses).toEqual(["scored", "unjudgeable"]);
     });
 
-    it.each([
-      ["a score", { ...notApplicable, score: 2 }],
-      ["a cited turn", { ...notApplicable, turns: [1] }],
-      ["no reason", { ...notApplicable, reason: " " }],
-    ])("refuses J02 not applicable with %s", async (_, j02) => {
-      const { report } = await suite([C07], { runs: 1, judge: fakeJudge({ answer: () => ({ ...good, J02: j02 }) }) });
-      expect(report.runs[0].status).toBe("unjudgeable");
-    });
-
-    it("a judge that scores J02 on an error-free call is still read: a 0 fails the run (a right answer with wrong reasoning)", async () => {
-      const { report } = await suite([C07], { runs: 1, judge: fakeJudge({ answer: () => ({ ...good, J02: { status: "scored", score: 0, turns: [1], reason: "accepted a wrong explanation" } }) }) });
-      expect(report.runs[0]).toMatchObject({ status: "fail", lowScores: ["J02"] });
+    it("a judge that scores J02 0 or 1 fails the run (a right answer with wrong reasoning, an invented error)", async () => {
+      for (const score of [0, 1]) {
+        const { report } = await suite([C07], { runs: 1, judge: scoredBut({ status: "scored", score, turns: [1], reason: "low" }) });
+        expect(report.runs[0]).toMatchObject({ status: "fail", lowScores: ["J02"] });
+      }
     });
   });
 
