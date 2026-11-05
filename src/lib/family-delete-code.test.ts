@@ -11,27 +11,33 @@ const ACCOUNT = { email: EMAIL, confirmed: true };
 const MINUTE = 60_000;
 
 function harness(over: Partial<MemoryFamily> = {}, seams: Partial<DeleteCodeSeams> = {}) {
-  const family = memoryFamily(over);
+  // family.time is the database's clock. The app's clock reads the same value here, so a test sets one time.
+  const family = memoryFamily({ time: 1_000_000, ...over });
   const store = memoryDeleteStore(family);
   const mail: EmailMessage[] = [];
-  let time = 1_000_000;
   let nextResult: SendResult = { status: "sent", emailId: "email_1" };
   let codes = 0;
+  let readDelay = 0;
+  const stored = memoryDeleteCodes(family);
   const shared: DeleteCodeSeams = {
-    codes: memoryDeleteCodes(family), store, now: () => time, configProblem: () => null,
+    // The read answers, then the answer takes readDelay to arrive.
+    codes: { ...stored, read: async (parent) => { const answer = await stored.read(parent); family.time += readDelay; return answer; } },
+    store, now: () => family.time, configProblem: () => null,
     newCode: () => String(100_000 + ++codes),
     send: async (message) => { mail.push(message); return nextResult; },
     ...seams,
   };
   return {
     family, mail,
-    advance: (ms: number) => { time += ms; },
+    advance: (ms: number) => { family.time += ms; },
+    at: (time: number) => { family.time = time; },
+    delayRead: (ms: number) => { readDelay = ms; },
     failSendWith: (result: SendResult) => { nextResult = result; },
     ask: (account: { email: string | null | undefined; confirmed: boolean } = ACCOUNT) => requestDeleteCode(PARENT, account, shared),
-    prove: (code: string, parent = PARENT, email = EMAIL) => codeProof(shared.codes, parent, email, () => time)(code),
+    prove: (code: string, parent = PARENT, email = EMAIL) => codeProof(shared.codes, parent, email)(code),
     codeIn: (message: EmailMessage) => /\b(\d{6})\b/.exec(message.text)![1],
-    confirm: (code: string) => requestFamilyDelete(PARENT, { code, confirm: DELETE_WORD }, codeProof(shared.codes, PARENT, EMAIL, () => time), { store, plans: memoryPlans(family), now: () => time }),
-    get now() { return time; },
+    confirm: (code: string) => requestFamilyDelete(PARENT, { code, confirm: DELETE_WORD }, codeProof(shared.codes, PARENT, EMAIL), { store, plans: memoryPlans(family), now: () => family.time }),
+    get now() { return family.time; },
   };
 }
 
@@ -91,6 +97,27 @@ describe("asking for a code", () => {
     for (let i = 0; i < 6; i++) { expect((await h.ask()).ok).toBe(true); h.advance(61 * MINUTE); }
     expect(await h.ask()).toEqual({ ok: false, error: "too_many", retryAt: first + DELETE_CODE_POLICY.dayMs });
     expect(h.mail).toHaveLength(6);
+  });
+  it("answers with the later time when both limits are full, as the next send needs both to have room", async () => {
+    // Three sends, a gap, three more: the hour has room again 60 minutes after the fourth, but the day has none until the first leaves it.
+    const day = harness();
+    const start = day.now;
+    for (const minutes of [0, 1, 2, 61, 62, 63]) { day.at(start + minutes * MINUTE); expect((await day.ask()).ok).toBe(true); }
+    day.at(start + 64 * MINUTE);
+    expect(await day.ask()).toEqual({ ok: false, error: "too_many", retryAt: start + DELETE_CODE_POLICY.dayMs });
+    day.at(start + DELETE_CODE_POLICY.dayMs - 1);
+    expect((await day.ask()).ok).toBe(false);
+    day.at(start + DELETE_CODE_POLICY.dayMs);
+    expect((await day.ask()).ok).toBe(true);
+
+    // The other order: the day has room first, and the hour is the later time.
+    const hour = harness();
+    const first = hour.now;
+    for (const minutes of [0, 60, 120, 1390, 1400, 1410]) { hour.at(first + minutes * MINUTE); expect((await hour.ask()).ok).toBe(true); }
+    hour.at(first + 1420 * MINUTE);
+    expect(await hour.ask()).toEqual({ ok: false, error: "too_many", retryAt: first + 1450 * MINUTE });
+    hour.at(first + 1450 * MINUTE);
+    expect((await hour.ask()).ok).toBe(true);
   });
   it("counts asks sent together", async () => {
     const h = harness();
@@ -169,7 +196,21 @@ describe("checking a code", () => {
     const live = await h.prove("000000");
     expect(live).toBe("wrong");
     h.advance(1);
+    expect(await h.prove("000000")).toBe("ended");
     expect(await h.prove(code)).toBe("ended");
+  });
+  it("answers ended when the check starts before the code ends and the read runs past the end, and does not spend it", async () => {
+    const { h, code } = await sent();
+    h.advance(DELETE_CODE_POLICY.ttlMs - 1_000);
+    h.delayRead(6_000);
+    expect(await h.prove(code)).toBe("ended");
+    expect(h.family.code).not.toBeNull();
+  });
+  it("takes the code after a slow read that still ends before the code does", async () => {
+    const { h, code } = await sent();
+    h.advance(DELETE_CODE_POLICY.ttlMs - 7_000);
+    h.delayRead(6_000);
+    expect(await h.prove(code)).toBe("ok");
   });
   it("answers ended when no code was ever sent", async () => {
     expect(await harness().prove("123456")).toBe("ended");

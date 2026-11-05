@@ -9,8 +9,8 @@ import { familyStripeCustomers, runFamilyDeletion } from "@/lib/family-deletion-
 import { runningPlans, stopPlanNow } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 
-// The self-serve delete's seams for the live site (#556): the database functions of migrations family_delete_self_serve, family_delete_hold
-// and family_delete_code, and Stripe with the site's key. The deletion worker's restricted key has no subscription write, so plans stop here.
+// The self-serve delete's seams for the live site (#556): the database functions of migrations family_delete_self_serve, family_delete_hold,
+// family_delete_code and family_delete_code_db_clock, and Stripe with the site's key. The deletion worker's restricted key has no subscription write, so plans stop here.
 
 const CHECKS = ["ready", "busy", "protected", "missing"] as const;
 const HOLDS = ["held", "busy", "protected", "missing"] as const;
@@ -77,10 +77,10 @@ export function supabaseDeleteCodes(db: SupabaseClient<Database>): DeleteCodeSto
       const { data, error } = await db.rpc("read_family_delete_code", { p_parent: parent });
       if (error) throw new Error(`Family delete code read: ${error.code}`);
       const row = data[0];
-      return row?.out_hash && row.out_expires_at ? { hash: row.out_hash, expiresAt: Date.parse(row.out_expires_at) } : null;
+      return row?.out_hash ?? null;
     },
-    async spend(parent, hash, now) {
-      const { data, error } = await db.rpc("spend_family_delete_code", { p_parent: parent, p_hash: hash, p_now: new Date(now).toISOString() });
+    async spend(parent, hash) {
+      const { data, error } = await db.rpc("consume_family_delete_code", { p_parent: parent, p_hash: hash });
       if (error) throw new Error(`Family delete code spend: ${error.code}`);
       if (typeof data !== "boolean") throw new Error("Family delete code spend: unexpected answer");
       return data;

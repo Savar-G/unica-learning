@@ -3,7 +3,7 @@ import type { AttemptClaim, FamilyDeleteStore, FamilyPlans } from "@/lib/family-
 
 // The self-serve delete's seams in memory, for tests. The store follows the database functions claim_family_delete_attempt,
 // begin_family_delete_hold, end_family_delete_hold and request_parent_family_deletion_held; the codes follow
-// begin_family_delete_code, read_family_delete_code and spend_family_delete_code. `memoryPlanStart` follows the admin's
+// begin_family_delete_code, read_family_delete_code and consume_family_delete_code. `memoryPlanStart` follows the admin's
 // start route. `log` records the order of every change, so a test can read what happened first.
 
 /** As `interval '5 minutes'` in begin_family_delete_hold. */
@@ -20,7 +20,7 @@ export interface MemoryFamily {
   plansStopped: boolean;
   /** The delete hold, as a row of family_delete_holds. A lease that has ended stays until it is replaced. */
   deleteHold: { token: string; until: number } | null;
-  /** The database's clock, for the lease. */
+  /** The database's clock, for the lease and the end of a code. */
   time: number;
   /** Stripe or the database fails here. `stop` lists plans whose stop fails; `stopLost` lists plans that stop with no answer. */
   fail: { customers?: boolean; read?: boolean; readAfterStop?: boolean; stop?: string[]; stopLost?: string[]; request?: boolean; check?: boolean; hold?: boolean; release?: boolean };
@@ -93,17 +93,17 @@ export function memoryDeleteCodes(f: MemoryFamily): DeleteCodeStore {
       if (f.attempts.lockedUntil !== null && f.attempts.lockedUntil > now) return { kind: "locked", until: f.attempts.lockedUntil };
       const day = f.codeSends.filter((at) => at > now - policy.dayMs);
       const hour = day.filter((at) => at > now - policy.windowMs);
-      if (hour.length >= policy.perWindow) return { kind: "too_many", until: hour[0] + policy.windowMs };
-      if (day.length >= policy.perDay) return { kind: "too_many", until: day[0] + policy.dayMs };
+      const full = [...(hour.length >= policy.perWindow ? [hour[0] + policy.windowMs] : []), ...(day.length >= policy.perDay ? [day[0] + policy.dayMs] : [])];
+      if (full.length > 0) return { kind: "too_many", until: Math.max(...full) };
       f.codeSends = [...day, now];
       f.code = { hash, expiresAt: now + policy.ttlMs };
       return { kind: "ok" };
     },
     async read() {
-      return f.code ? { ...f.code } : null;
+      return f.code && f.code.expiresAt > f.time ? f.code.hash : null;
     },
-    async spend(_parent, hash, now) {
-      if (f.code?.hash !== hash || f.code.expiresAt <= now) return false;
+    async spend(_parent, hash) {
+      if (f.code?.hash !== hash || f.code.expiresAt <= f.time) return false;
       f.code = null;
       return true;
     },

@@ -34,10 +34,10 @@ export interface DeleteCodeStore {
    * hash in place of any code before it.
    */
   begin(parent: string, hash: string, now: number, policy: DeleteCodePolicy): Promise<DeleteCodeBegin>;
-  /** The stored code, even when it has ended; null when there is none. */
-  read(parent: string): Promise<{ hash: string; expiresAt: number } | null>;
-  /** Ends the code when it is still this hash and still live. True for one caller only. */
-  spend(parent: string, hash: string, now: number): Promise<boolean>;
+  /** The hash of the live code, by the database's clock; null when none is live. */
+  read(parent: string): Promise<string | null>;
+  /** Ends the code when it is still this hash and still live by the database's clock, read after the row lock. True for one caller only. */
+  spend(parent: string, hash: string): Promise<boolean>;
 }
 
 export type DeleteCodeResult =
@@ -84,21 +84,23 @@ export async function requestDeleteCode(parent: string, account: { email: string
   const sent = await send({ sender: { to: "parent" }, to: account.email, replyTo: SUPPORT_EMAIL, ...deleteCodeEmail(code) });
   if (sent.status === "refused") {
     // No one has this code, so take it back. The send stays counted. If this fails, the code ends by itself.
-    await codes.spend(parent, hash, now()).catch(() => false);
+    await codes.spend(parent, hash).catch(() => false);
     console.error("[family-delete] code email refused");
     return { ok: false, error: "email_failed" };
   }
   return { ok: true, sentTo: account.email, unsure: sent.status === "unknown" };
 }
 
-/** The check of a code for this session's parent and address. Spends the code when it is right, once, across requests sent together. */
-export function codeProof(codes: Pick<DeleteCodeStore, "read" | "spend">, parent: string, email: string, now: () => number = Date.now): ProveCode {
+/**
+ * The check of a code for this session's parent and address. Spends the code when it is right, once, across requests sent
+ * together. It has no clock: the database decides when a code has ended, so time lost in a slow read or hash cannot pass one.
+ */
+export function codeProof(codes: Pick<DeleteCodeStore, "read" | "spend">, parent: string, email: string): ProveCode {
   return async (code) => {
-    const at = now();
-    const stored = await codes.read(parent);
-    if (!stored || stored.expiresAt <= at) return "ended";
-    if (!(await matches(bound(parent, email, code), stored.hash))) return "wrong";
-    return (await codes.spend(parent, stored.hash, at)) ? "ok" : "ended";
+    const hash = await codes.read(parent);
+    if (!hash) return "ended";
+    if (!(await matches(bound(parent, email, code), hash))) return "wrong";
+    return (await codes.spend(parent, hash)) ? "ok" : "ended";
   };
 }
 

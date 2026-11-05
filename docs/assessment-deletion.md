@@ -320,12 +320,12 @@ The password of D-247 proved little: a signed-in session can set a new password 
 |---|---|
 | Made and checked | On the server. The code is 6 random digits (`crypto.randomInt`). The browser never gets it |
 | Stored | Only a salted scrypt hash, in `code_hash`. No copy: the email goes through `sendEmail` with no ledger, so `email_copies` holds nothing. The code is in no log. The email provider keeps the body it sent, but the code has ended by then |
-| Life | 10 minutes, from the send |
+| Life | 10 minutes, from the send. The database decides when a code has ended, by its own clock (`clock_timestamp()`) after it holds the row lock. The app passes no time for this, so a slow read or hash cannot pass an ended code (migration `family_delete_code_db_clock`) |
 | A new code | Replaces the old one, in the same row. The old one then answers "wrong" |
-| Works once | The right code is spent when it is checked, by a conditional update, so of two requests sent together one gets it. A failure in any later step needs a new code |
+| Works once | The right code is spent when it is checked, by `consume_family_delete_code` under the row lock, so of two requests sent together one gets it. A failure in any later step needs a new code |
 | Only this parent and action | The hash covers the action name, the parent's id and the address, so a stored hash is worth nothing for another parent, another address or another action |
 | Wrong tries | `family_delete_attempts`, unchanged: counted before the check under a row lock, 5 tries, then 15 minutes locked, with the end of the lock in family time. Asking for a code never resets the count, and no code goes out during a lock. A code lives 10 minutes and a lock 15, so a lock always needs a new code |
-| Sends | Per parent, under the row lock: 3 in any hour and 6 in any day. A send counts when the provider refuses it too |
+| Sends | Per parent, under the row lock: 3 in any hour and 6 in any day. A send counts when the provider refuses it too. When both limits are full, the answer gives the later of their two times, the first time a send can go |
 | Address | `user.email` from the Auth server's answer for this session, and only when `email_confirmed_at` is set. Never the request and never `parents.email`. An account with no confirmed address is told to email us |
 | The email | Says what the code is for, that it ends in 10 minutes, that a delete cannot be undone, and what to do if the parent did not ask. No child's name and no link. The code is not in the subject |
 | Provider answers | Refused: the code is taken back and the parent is told. Unknown: the code stays live and the screen says it may have been sent |

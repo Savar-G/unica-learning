@@ -4667,6 +4667,10 @@ export type Database = {
         }
         Returns: Json
       }
+      consume_family_delete_code: {
+        Args: { p_hash: string; p_parent: string }
+        Returns: boolean
+      }
       correct_workbook_delivery: {
         Args: {
           p_child: string
