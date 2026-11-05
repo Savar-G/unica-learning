@@ -59,7 +59,7 @@ describe("the Supabase reader", () => {
   it("gives the stage from the stored rows, with no plan row as unknown", async () => {
     const r = reader();
     const [child] = await listChildren(r.reader, NOW);
-    expect(child).toEqual({ id: CHILD, firstName: "Leah", schoolGrade: 3, stage: "first_book_coming", opensOn: "overview", tabs: ["overview", "workbooks", "assessment", "account"], readOnly: false, currentWorkbook: { number: 1 }, reportIds: ["report-1"] });
+    expect(child).toEqual({ id: CHILD, firstName: "Leah", schoolGrade: 3, stage: "first_book_coming", opensOn: "overview", tabs: ["overview", "workbooks", "assessment", "account"], readOnly: false, currentWorkbook: { number: 1 }, reportIds: ["report-1"], finishedTests: [{ reportId: "report-1", finishedAt: expect.any(Number) }] });
   });
   it("reads only the tables it needs, and no raw profile, event or call table", async () => {
     const r = reader();

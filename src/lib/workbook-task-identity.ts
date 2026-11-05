@@ -1,5 +1,6 @@
 import type { QuestionPackage } from "./question-package";
 import { PEOPLE, THINGS } from "./workbook-wording";
+import { printedWorkbookQuestion } from "./workbook-maya-operation";
 
 /** A step template item's format ("missing", "true-false", ...), from its template id (#489); null for any other item. */
 const templateFormat = (p: QuestionPackage): string | null =>
@@ -61,6 +62,7 @@ export function reasoningSteps(p: QuestionPackage): number {
  * "=" sits is not part of it, so "9 × 2 = ?" and "? = 9 × 2" are one task. Region ids are left out too.
  */
 export function taskIdentity(p: QuestionPackage): string {
+  p = printedWorkbookQuestion(p);
   // One printed task for every path (#482 reviews at 3134252 and db3b1a0): template, hand-built and existing-writer
   // questions alike are their format family (a drill, a story, an error to spot, two ways, a colouring, an explanation),
   // the numbers they print with their sequence terms in any order (where the "?" sits does not matter), their answers

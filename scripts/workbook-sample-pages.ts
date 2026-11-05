@@ -5,6 +5,41 @@ import sharp, { type OverlayOptions } from "sharp";
 import { renderableDraft } from "@/lib/workbook-fit";
 import type { GeneratedWorkbook } from "@/lib/workbook-generator";
 import type { RenderProblem, WorkbookTemplate } from "@/lib/workbook-render";
+import { createSession } from "@/lib/maya/session";
+import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
+
+export interface MayaCoverage {
+  level: string;
+  kind: string;
+  questions: number;
+  operations: number;
+  accepted: number;
+}
+
+/** Count every question, including failed or absent packages, through Maya's public session entry point. */
+export function mayaCoverage(draft: GeneratedWorkbook): MayaCoverage[] {
+  const groups = new Map<string, MayaCoverage>();
+  for (const page of draft.pages) for (const question of page.questions) {
+    const pkg = question.package;
+    const level = pkg ? `U${pkg.level}` : draft.levels.map(n => `U${n}`).join(", ");
+    const kind = pkg?.templateId?.match(/#[0-9]+\.[0-9]+:([a-z-]+)$/)?.[1] ?? pkg?.item?.format ?? "no package";
+    const operation = pkg?.operation ? 1 : 0;
+    const accepted = createSession({ callId: "sample-coverage", package: pkg }).contentProblem === null ? 1 : 0;
+    for (const groupKind of ["All", kind]) {
+      const key = `${level}:${groupKind}`;
+      const row = groups.get(key) ?? { level, kind: groupKind, questions: 0, operations: 0, accepted: 0 };
+      row.questions++; row.operations += operation; row.accepted += accepted;
+      groups.set(key, row);
+    }
+  }
+  return [...groups.values()].sort((a, b) => Number(a.level.slice(1)) - Number(b.level.slice(1)) || (a.kind === "All" ? -1 : b.kind === "All" ? 1 : a.kind.localeCompare(b.kind)));
+}
+
+export function mayaCoverageMarkdown(rows: MayaCoverage[]): string {
+  return ["## Maya coverage", "", "| Level | Question kind | Questions | With operation | Maya accepts |", "|---|---|---:|---:|---:|",
+    ...rows.map(r => `| ${r.level} | ${r.kind} | ${r.questions} | ${r.operations} | ${r.accepted} |`), "",
+    "Maya accepts means createSession accepts the checked package. This count does not test a model or voice call.", ""].join("\n");
+}
 
 export interface SamplePage {
   number: number;
@@ -41,7 +76,7 @@ export async function samplePages(draft: GeneratedWorkbook, template: WorkbookTe
       if (!match) return [];
       const question = source.questions.find(q => q.number === Number(match[1]));
       if (!question) return [];
-      const pkg = question.package;
+      const pkg = question.package ? printedWorkbookQuestion(question.package) : null;
       return [
         `### Question ${question.number}`,
         `Printed: ${clean(element.textContent)}`,
@@ -66,8 +101,8 @@ export async function samplePages(draft: GeneratedWorkbook, template: WorkbookTe
   }); } finally { await window.happyDOM.close(); }
 }
 
-export function pagesMarkdown(label: string, pages: SamplePage[]): string {
-  return [`# ${label} printed pages`, "", ...pages.flatMap(page => [
+export function pagesMarkdown(label: string, pages: SamplePage[], coverage?: MayaCoverage[]): string {
+  return [`# ${label} printed pages`, "", ...(coverage ? [mayaCoverageMarkdown(coverage)] : []), ...pages.flatMap(page => [
     `## Page ${page.number}: ${page.kind}`, `Title: ${page.title}`, `Instruction: ${page.instruction}`, "", page.text,
     ...page.warnings.map(warning => `Warning: ${warning}`), "",
   ])].join("\n");
