@@ -9,6 +9,7 @@ export async function parentDashboardAccess(
   parent: string,
   db: SupabaseClient<Database> | null = adminClient(),
   env: Readonly<Record<string, string | undefined>> = process.env,
+  signal?: AbortSignal,
 ): Promise<boolean> {
-  return env.PARENT_DASHBOARD_ENABLED === "on" || markedFamily(parent, db);
+  return env.PARENT_DASHBOARD_ENABLED === "on" || markedFamily(parent, db, signal);
 }

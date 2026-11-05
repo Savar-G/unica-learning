@@ -36,7 +36,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-const child = (over: Partial<ChildView> = {}): ChildView => ({ id: "c1", firstName: "Leah", schoolGrade: 3, stage: "no_test", opensOn: "start_test", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null, reportIds: [], ...over });
+const child = (over: Partial<ChildView> = {}): ChildView => ({ id: "c1", firstName: "Leah", schoolGrade: 3, stage: "no_test", opensOn: "start_test", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null, reportIds: [], finishedTests: [], ...over });
 const family = (over: Partial<ParentDashboard> = {}): ParentDashboard => ({ children: [child()], remembered: null, pinSet: true, timeZoneSaved: true, ...over });
 const page = createElement("p", null, "the page");
 const settings = (card?: string) => AccountSettings({ params: Promise.resolve({}), searchParams: Promise.resolve(card ? { card } : {}) });

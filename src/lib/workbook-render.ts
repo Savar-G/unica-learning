@@ -11,6 +11,10 @@
 //
 // Pages are US Letter. Page numbers run through the whole workbook; question numbers restart on each page (the
 // template prints both); the QR code holds the page's desk link, https://unicalearning.com/tutor/p/<token> (#301).
+//
+// The renderer also captures the print contract of each page it renders (#536, src/lib/workbook-print-contract.ts): the
+// four scan marks, each question's answer regions and the image and PDF fingerprints. A page with missing, duplicate,
+// off-page or inconsistent marks still renders and prints: it has no contract, so it is never marked automatically.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import QRCode from "qrcode";
 import type {
@@ -26,6 +30,16 @@ import type {
   WorkbookWrite,
 } from "@/lib/workbook-content";
 import type { PageContent } from "@/lib/workbook-page";
+import { packageItem, type AnswerRegion } from "@/lib/question-package";
+import {
+  buildPrintContract,
+  imageBox,
+  isScanMarkName,
+  scanMarkName,
+  sha256Hex,
+  type PrintedRegion,
+  type ScanMark,
+} from "@/lib/workbook-print-contract";
 
 // ---------- Content in ----------
 
@@ -61,7 +75,16 @@ export const mark = {
   answerSpace: (n: number) => `data-measure="question-${n}-answer"`,
   /** A named space with a size limit: "title", "instruction". Its content must fit it. */
   slot: (name: string) => `data-measure="slot-${name}"`,
+  /** A scan mark (#536): an L at a sheet's corner. Its rect's outer corner is the point a photo is calibrated from. */
+  scanMark: (m: ScanMark) => `data-measure="${scanMarkName(m)}"`,
 } as const;
+
+/** The measured name of each region of a question: the first box or choice is its answer space (renderer), the rest regions. */
+export function regionNames(q: DraftQuestion): { region: AnswerRegion; name: string }[] {
+  const regions = packageItem(q.package).regions;
+  const first = Math.max(0, regions.findIndex((r) => r.kind === "box" || r.kind === "choice"));
+  return regions.map((region, i) => ({ region, name: i === first ? `question-${q.number}-answer` : `region-${q.number}-${region.id}` }));
+}
 
 export interface PageParts {
   /**
@@ -182,7 +205,8 @@ export type RenderResult =
     workbook: WorkbookInput;
     /** The PDF first, then one image per page; store them before the workbook. */
     files: WorkbookFile[];
-    pages: { number: number; qrUrl: string }[];
+    /** `contractProblem`: why the page has no print contract, when it has none. */
+    pages: { number: number; qrUrl: string; contractProblem: string | null }[];
   }
   | { status: "failed"; problems: RenderProblem[] };
 
@@ -232,7 +256,7 @@ const within = (m: MeasuredElement, box: MeasuredElement) =>
   m.x >= box.x - 0.5 && m.y >= box.y - 0.5 && m.x + m.width <= box.x + box.width + 0.5 && m.y + m.height <= box.y + box.height + 0.5;
 
 /** Whether a rect lies on its page, allowing for sub-pixel layout. */
-const insidePage = (m: MeasuredElement) =>
+const insidePage = (m: Pick<MeasuredElement, "x" | "y" | "width" | "height">) =>
   m.width > 0 && m.height > 0 && m.x >= -0.5 && m.y >= -0.5 && m.x + m.width <= PRINT_PAGE.width + 0.5 && m.y + m.height <= PRINT_PAGE.height + 0.5;
 
 /** A rect in CSS pixels as whole pixels of its page image: the smallest box that covers it, kept inside the image. */
@@ -242,6 +266,27 @@ function pixelBox(m: MeasuredElement, image: { width: number; height: number }):
   const x = Math.max(0, Math.floor(m.x * sx));
   const y = Math.max(0, Math.floor(m.y * sy));
   return { x, y, width: Math.min(Math.ceil((m.x + m.width) * sx), image.width) - x, height: Math.min(Math.ceil((m.y + m.height) * sy), image.height) - y };
+}
+
+/** A question's answer regions as printed, in the contract's units: a region the page did not measure has no box. */
+function printedRegions(q: DraftQuestion, measured: ReadonlyMap<string, MeasuredElement>, image: { width: number; height: number }): PrintedRegion[] {
+  // (A package with neither an item nor an answer has no regions: only a test's bare fixture.)
+  if (!q.package.item && !q.package.answer) return [];
+  const scale = { x: image.width / PRINT_PAGE.width, y: image.height / PRINT_PAGE.height };
+  return regionNames(q).map(({ region, name }) => {
+    const m = measured.get(name);
+    return { id: region.id, kind: region.kind, box: m?.visible && insidePage(m) ? imageBox(m, scale) : null };
+  });
+}
+
+/** A rendered workbook's pages as a draft revision and a new rendering keep them, with what the render measured. */
+export function renderedPages(result: Extract<RenderResult, { status: "rendered" }>) {
+  const problems = new Map(result.pages.map((p) => [p.number, p.contractProblem]));
+  return result.workbook.pages.map((p) => ({
+    number: p.number, image: p.image!,
+    questions: p.questions.map((q) => ({ number: q.number, box: q.box, regions: q.regions ?? null })),
+    printContract: p.printContract ?? null, contractProblem: problems.get(p.number) ?? null,
+  }));
 }
 
 /**
@@ -276,8 +321,9 @@ export async function renderWorkbook(o: {
     const path = `${folder}/${pageImageName(page.number, o.fileKey)}`;
     files.push({ path, contentType: "image/png", bytes: image.png });
     const fail = (question: number | null, reason: string, slot?: string, kind?: "layout") => problems.push({ page: page.number, question, ...(slot ? { slot } : {}), reason, ...(kind ? { kind } : {}) });
+    // (Scan marks print and calibrate, and no check of the page reads them: a bad one means no contract, not a failed page.)
     const measured = new Map<string, MeasuredElement>();
-    for (const m of out.measured.filter((m) => m.sheet === i)) {
+    for (const m of out.measured.filter((m) => m.sheet === i && !isScanMarkName(m.name))) {
       if (measured.has(m.name)) fail(null, `the template marks ${m.name} more than once`);
       measured.set(m.name, m);
     }
@@ -303,7 +349,7 @@ export async function renderWorkbook(o: {
       else if (!content?.visible || !content.textPrinted || !within(content, m)) fail(q.number, `question ${q.number}'s content is not printed`);
       else if (!answer?.visible || !within(answer, m) || answer.width < answerMin || answer.height < answerMin) {
         fail(q.number, `question ${q.number} has no answer space`);
-      } else questions.push({ ...q, box: pixelBox(m, image) });
+      } else questions.push({ ...q, box: pixelBox(m, image), regions: printedRegions(q, measured, image) });
     }
     for (const p of template.fit?.(page, measured, draft) ?? []) fail(p.question, p.reason, p.slot ?? undefined, p.kind);
     pages.push({ number: page.number, dayLabel: page.dayLabel, type: page.type, qrToken: page.qrToken, image: { path, width: image.width, height: image.height }, questions });
@@ -311,11 +357,21 @@ export async function renderWorkbook(o: {
   if (problems.length) return { status: "failed", problems };
 
   const { id, childId, number, levels, profileBuild } = draft;
+  const [pdfSha256, ...imageHashes] = await Promise.all([sha256Hex(out.pdf), ...out.images.map((x) => sha256Hex(x.png))]);
+  const contractProblems = new Map<number, string>();
+  draft.pages.forEach((page, i) => {
+    const { contract, problem } = buildPrintContract({
+      workbookId: id, page, css: PRINT_PAGE, marks: out.measured.filter((m) => m.sheet === i && isScanMarkName(m.name)),
+      image: { width: out.images[i].width, height: out.images[i].height, sha256: imageHashes[i] },
+    });
+    pages[i].printContract = contract;
+    if (problem) contractProblems.set(page.number, problem);
+  });
   return {
     status: "rendered",
-    workbook: { id, childId, number, levels, profileBuild, pdfPath, pages },
+    workbook: { id, childId, number, levels, profileBuild, pdfPath, pdfSha256, pages },
     files,
-    pages: draft.pages.map((p) => ({ number: p.number, qrUrl: pageUrl(p.qrToken) })),
+    pages: draft.pages.map((p) => ({ number: p.number, qrUrl: pageUrl(p.qrToken), contractProblem: contractProblems.get(p.number) ?? null })),
   };
 }
 
@@ -421,7 +477,11 @@ export async function replaceRendering(
   const rendering: WorkbookRendering = {
     workbookId: w.id,
     pdfPath: w.pdfPath!,
-    pages: w.pages.map((p) => ({ number: p.number, image: p.image!, questions: p.questions.map((q) => ({ number: q.number, box: q.box })) })),
+    pdfSha256: w.pdfSha256 ?? null,
+    pages: w.pages.map((p) => ({
+      number: p.number, image: p.image!, printContract: p.printContract ?? null,
+      questions: p.questions.map((q) => ({ number: q.number, box: q.box, regions: q.regions ?? null })),
+    })),
   };
   await putAll(rendered.files, o.files);
   let result: WorkbookWrite;

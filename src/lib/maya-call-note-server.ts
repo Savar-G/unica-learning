@@ -1,9 +1,10 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { callNotes, noteAiClient, noteStep, type CallNote, type CallNotes, type NoteStep } from "@/lib/maya-call-note";
+import { callNotes, noteAiClient, noteStep, type CallNote, type CallNotes, type ChildNames, type NoteStep } from "@/lib/maya-call-note";
 import { mayaCallNoteStore } from "@/lib/maya-call-note-store";
 import type { CallRecord } from "@/lib/maya-call";
+import { getsNoParentNotes } from "@/lib/maya-chat";
 import type { NewLearningEvent } from "@/lib/learning-events";
 import type { QuestionPackage } from "@/lib/question-package";
 
@@ -13,17 +14,24 @@ import type { QuestionPackage } from "@/lib/question-package";
 // family's notes. The AI: OpenRouter with OPENROUTER_API_KEY, the fake in development with AI_REVIEW_FAKE, else none
 // (then every note is code only).
 
+/** A test family gets no note, except the rehearsal family on the chat list (#530); the database trigger agrees. */
 async function isTestFamily(db: SupabaseClient<Database>, parentId: string): Promise<boolean> {
-  const { data, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parentId).maybeSingle();
-  if (error) throw new Error(`test family check: ${error.message}`);
-  return data !== null;
+  const [test, rehearsal] = await Promise.all([
+    db.from("test_accounts").select("parent_id").eq("parent_id", parentId).maybeSingle(),
+    db.from("maya_chat_families").select("parent_id").eq("parent_id", parentId).eq("rehearsal", true).maybeSingle(),
+  ]);
+  if (test.error || rehearsal.error) throw new Error(`test family check: ${(test.error ?? rehearsal.error)!.message}`);
+  return getsNoParentNotes({ test: test.data !== null, rehearsal: rehearsal.data !== null });
 }
 
-/** The child's first name; null when it cannot be read (then the note module asks nothing and writes nothing). */
-async function childName(db: SupabaseClient<Database>, childId: string): Promise<string | null> {
-  const { data, error } = await db.from("children").select("first_name").eq("id", childId).maybeSingle();
+/**
+ * The child's first name and the names before a rename (#555); null when they cannot be read (then the note module asks
+ * nothing and writes nothing).
+ */
+async function childNames(db: SupabaseClient<Database>, childId: string): Promise<ChildNames | null> {
+  const { data, error } = await db.from("children").select("first_name, former_names").eq("id", childId).maybeSingle();
   if (error) console.error("[call note] child name lookup failed", error.message);
-  return error ? null : (data?.first_name ?? null);
+  return error || !data ? null : { firstName: data.first_name, formerNames: data.former_names };
 }
 
 /** The note module with the secret key. `codeOnly`: no AI warm sentence (the sweep of abandoned calls, #528). */
@@ -32,7 +40,7 @@ export function serverCallNotes(admin: SupabaseClient<Database>, options: { code
     store: mayaCallNoteStore(admin),
     ai: options.codeOnly ? null : noteAiClient(),
     isTestFamily: (p) => isTestFamily(admin, p),
-    childName: (id) => childName(admin, id),
+    childNames: (id) => childNames(admin, id),
     clock: () => Date.now(),
   });
 }

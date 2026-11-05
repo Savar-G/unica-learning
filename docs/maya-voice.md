@@ -2,7 +2,7 @@
 
 An admin speaks to Maya as a test child on an assessment question. The call runs in Maya's voice worker (`worker/maya-voice`), a LiveKit Agents for Node worker outside the Vercel build. The worker wraps Maya's controller through the text adapter: the speech-to-text turns the child's speech into child turns, Maya's session (`src/lib/maya`) answers, and the voice says only the words the session accepted, plus a code-written acknowledgement when a turn is slow (below). LiveKit never asks a model itself.
 
-Everything runs with **fake providers** until the accounts below exist. The fake speech-to-text hears typed words from the call page, and the fake voice is silent. Nothing is paid and no account is needed.
+Everything runs with **fake providers** until the accounts below exist. The fake speech-to-text hears typed words from the call page, and the fake voice is silent. Nothing is paid and no account is needed. The real route is LiveKit Inference (D-238): speech-to-text and the voice through the LiveKit project's own key. The direct AssemblyAI and Inworld plugins stay as options (D-163). Packaging and deploying the worker, and the listening test that picks the voice: [Deploying Maya's voice worker](maya-voice-deploy.md).
 
 ## How a call runs
 
@@ -24,21 +24,42 @@ The saved live state keeps the accepted final words until playback completes. A 
 | `maya_calls.live` | While live: the session and, under `acknowledged`, the acknowledgement phrases saved before they are said (ids only). Dropped when the call ends. |
 | `maya_call_connections` (new, migration `add_maya_call_connections`) | One row per `agent_joined`, `agent_left`, `child_joined` and `child_left`, with the database receipt time. `append_maya_call_connection` checks the expected revision, raises it and inserts the event in one transaction. It serializes with replacement claims. Receipt times stay in order across worker clocks. `agent_joined` renews a 15-second connection lease every 5 seconds. Each new worker first closes the previous segment with `agent_left`. Connected seconds count overlapping child presence and valid worker leases. A crash can add at most 15 seconds after the last renewal. Reconnect gaps and longer crash gaps are excluded. |
 
-The app does not save audio. The worker starts its session with `record: false`. This setting does not establish the retention policy of LiveKit Cloud, AssemblyAI, or Inworld. Their effective settings and contracts must be verified before any claim that those systems do not store audio. The speech-to-text confidence marks a child turn as uncertain below 0.6, so Maya confirms the number. A cancelled call that Maya never joined writes no learning event. The saved JSON state keeps a cancellation marker until cleanup succeeds. Each recovery attempt reads that marker.
+The app does not save audio. The worker starts its session with `record: false`. This setting does not establish the retention policy of LiveKit Cloud, LiveKit Inference, AssemblyAI, or Inworld. Their effective settings and contracts must be verified before any claim that those systems do not store audio. The speech-to-text confidence marks a child turn as uncertain below 0.6, so Maya confirms the number. A cancelled call that Maya never joined writes no learning event. The saved JSON state keeps a cancellation marker until cleanup succeeds. Each recovery attempt reads that marker.
 
-## Direct-provider privacy gate
+## Privacy gate
+
+Each real route needs its own marker in `MAYA_VOICE_PRIVACY_CONFIRMED`, and every real route also needs `child-use-approved` (`requiredMarkers`, `src/lib/maya-voice.ts`). The worker refuses a job without them, and refuses an unknown marker, so a typo never passes. A marker records an operator's confirmation. It cannot verify an external account setting or contract.
+
+| Route | Setting | Markers |
+|---|---|---|
+| LiveKit Inference (preferred, D-238) | `MAYA_STT=inference` or `MAYA_TTS=inference` | `livekit-inference-zdr`, `child-use-approved` |
+| AssemblyAI direct | `MAYA_STT=assemblyai` | `assemblyai-optout`, `child-use-approved` |
+| Inworld direct | `MAYA_TTS=inworld` | `inworld-retention`, `child-use-approved` |
+
+A mixed setting (for example Inference speech-to-text with the direct Inworld voice) needs the markers of both routes.
+
+### LiveKit Inference
+
+LiveKit's page says: "LiveKit Inference is zero data retention (ZDR) by default", and "Neither LiveKit nor the underlying model providers log, store, or train on your data", for every speech-to-text and voice model, on every plan. It also says ZDR is separate from agent observability, which can keep session data in LiveKit Cloud, and from custom voices, which store a voice sample ([LiveKit Inference](https://docs.livekit.io/agents/models/inference/), read 2026-11-04). The page says nothing about children. Before `livekit-inference-zdr`:
+
+1. Turn off agent observability (session recording and audio) in the LiveKit project, and check it stays off. The worker's `record: false` only controls the session setting.
+2. Use no custom voice: `MAYA_VOICE` is one of the provider's own voices.
+3. Keep the models on the allow list (`INFERENCE_STT_MODELS`, `INFERENCE_TTS_MODELS`). Each is listed on the Inference page. The worker refuses any other.
+
+Before `child-use-approved`: get a written answer from LiveKit (and, through it, the providers of the chosen models) that a service for children aged 6 to 12 may use them, with parent consent, under the agreed processing locations. ZDR is not that answer. Keep real providers off until it arrives. This marker is still open.
+
+### AssemblyAI and Inworld direct
 
 These plugins connect directly to AssemblyAI and Inworld. LiveKit Inference retention terms do not cover this route. The research source is `.design/research/ta-voice-2026-10/voice-options.md`, section 8 (2026-10-29).
 
-Before real audio:
+1. In AssemblyAI, opt out of model improvement before the first request. Verify the effective opt-out for the worker's account and streaming endpoint. The research records that this opt-out is prospective. See [AssemblyAI data retention and model training](https://assemblyai.com/docs/data-retention-and-model-training). Then `assemblyai-optout`.
+2. Obtain and verify Inworld's retention arrangements for the direct TTS API. Confirm the plan or written agreement, retention exceptions, and training use. Do not infer these from LiveKit settings. See [Inworld zero data retention](https://docs.inworld.ai/portal/zero-data-retention). Then `inworld-retention`.
+3. Obtain written confirmation that the selected providers permit the downstream service for children aged 6-12. Check the [AssemblyAI terms](https://www.assemblyai.com/legal/terms-of-service) and [Inworld terms](https://inworld.ai/terms), parent consent, subprocessors, and the agreed processing locations. Then `child-use-approved`.
+4. Verify that LiveKit recording and audio observability are disabled.
 
-1. In AssemblyAI, opt out of model improvement before the first request. Verify the effective opt-out for the worker's account and streaming endpoint. The research records that this opt-out is prospective. See [AssemblyAI data retention and model training](https://assemblyai.com/docs/data-retention-and-model-training).
-2. Obtain and verify Inworld's retention arrangements for the direct TTS API. Confirm the plan or written agreement, retention exceptions, and training use. Do not infer these from LiveKit settings. See [Inworld zero data retention](https://docs.inworld.ai/portal/zero-data-retention).
-3. Obtain written confirmation that the selected providers permit the downstream service for children aged 6-12. The research does not establish this permission. Check the [AssemblyAI terms](https://www.assemblyai.com/legal/terms-of-service) and [Inworld terms](https://inworld.ai/terms), parent consent, subprocessors, and the agreed processing locations. Keep real providers disabled while these terms remain unresolved.
-4. Verify that LiveKit recording and audio observability are disabled. The worker's `record: false` only controls the session setting.
-5. After these checks, set `MAYA_VOICE_PRIVACY_CONFIRMED=assemblyai-optout,inworld-retention,child-use-approved` in the worker. Each real provider requires its own marker. Either real provider also requires `child-use-approved`. The worker refuses a job without the required markers. This flag records an operator confirmation. It cannot verify an external account setting or contract.
+ElevenLabs (a listening-test candidate) is not on LiveKit Inference, and the worker has no ElevenLabs route. If it wins the listening test, its direct route needs its own settings, marker and checks first.
 
-Voice sessions have no name personalization. Their saved variety state has no child name. Inworld receives Maya's accepted speech text. This does not remove names that a child supplies in free speech; the privacy gate still applies.
+Voice sessions have no name personalization. Their saved variety state has no child name. The voice provider (through LiveKit Inference or directly) receives Maya's accepted speech text. This does not remove names that a child supplies in free speech; the privacy gate still applies.
 
 ## Accounts and settings Savar must create
 
@@ -46,9 +67,10 @@ Agents create no accounts. Create these, then set the values below.
 
 | # | Account | Make | Value |
 |---|---|---|---|
-| 1 | **LiveKit Cloud** (livekit.io) | A project, for example `unica-maya` | The project URL `wss://<project>.livekit.cloud`, an API key and an API secret (Settings → Keys). In the project settings, turn off recording and audio in observability (#327 checks this). |
-| 2 | **AssemblyAI** (assemblyai.com) | An API key | The key. Universal-3.6 Pro streaming is billed per hour of audio. |
-| 3 | **Inworld** (inworld.ai) | An API key (Base64 "Basic" key from the Inworld Portal) and a voice | The key and the voice id. Savar picks the voice from 4 samples (#327). Until then any Inworld voice id works, for example `Ashley`. |
+| 1 | **LiveKit Cloud** (livekit.io) | A project, for example `unica-maya` | The project URL `wss://<project>.livekit.cloud`, an API key and an API secret (Settings → Keys). In the project settings, turn off recording and audio in observability. With LiveKit Inference this is the only voice account. |
+| 2 | **AssemblyAI** (assemblyai.com) | Only for the direct route: an API key | The key. Universal-3.6 Pro streaming is billed per hour of audio. |
+| 3 | **Inworld** (inworld.ai) | Only for the direct route: an API key (Base64 "Basic" key from the Inworld Portal) | The key. |
+| - | **ElevenLabs** (elevenlabs.io) | Only for the listening test: an API key | `ELEVEN_API_KEY`. The worker does not use it. |
 | 4 | **Supabase** key for the worker | Project `pagewise` → Settings → API keys → new secret key named `maya_voice_worker` | The `sb_secret_...` value. The worker reads and writes calls, connection events, learning events and the child profile with it. |
 | - | OpenRouter | Already exists | `OPENROUTER_API_KEY` (Maya's model, `AI_MODEL`). |
 
@@ -59,14 +81,14 @@ Agents create no accounts. Create these, then set the values below.
 | `LIVEKIT_URL` | Yes | Yes | `wss://<project>.livekit.cloud`. In Vercel it turns on the **Speak** option. |
 | `LIVEKIT_API_KEY` | Yes | Yes | Vercel mints tokens. The worker registers with LiveKit. |
 | `LIVEKIT_API_SECRET` | Yes (Secret) | Yes | Never sent to a browser. |
-| `MAYA_VOICE_PRIVACY_CONFIRMED` | No | Yes for real providers | `assemblyai-optout,inworld-retention,child-use-approved`, only after the checks above. |
-| `MAYA_STT` | No | Yes | `assemblyai`, or `fake` (default). |
+| `MAYA_VOICE_PRIVACY_CONFIRMED` | No | Yes for real providers | The route's markers (privacy gate above), for example `livekit-inference-zdr,child-use-approved`, only after the checks. |
+| `MAYA_STT` | No | Yes | `inference` (LiveKit Inference), `assemblyai` (direct), or `fake` (default). |
 | `ASSEMBLYAI_API_KEY` | No | Yes | Needed when `MAYA_STT=assemblyai`. |
-| `MAYA_STT_MODEL` | No | Optional | Default `universal-3-6-pro`. Other ids: `universal-streaming-english`, `universal-3-5-pro`. |
-| `MAYA_TTS` | No | Yes | `inworld`, or `fake` (default). |
+| `MAYA_STT_MODEL` | No | Optional | With `inference`: one of `assemblyai/universal-3-6-pro` (default), `assemblyai/universal-3-5-pro`, `assemblyai/universal-streaming`, `deepgram/flux-general-en`. With `assemblyai`: default `universal-3-6-pro`; other ids `universal-streaming-english`, `universal-3-5-pro`. |
+| `MAYA_TTS` | No | Yes | `inference` (LiveKit Inference), `inworld` (direct), or `fake` (default). |
 | `INWORLD_API_KEY` | No | Yes | Needed when `MAYA_TTS=inworld`. |
-| `MAYA_VOICE` | No | Yes | The Inworld voice id. Needed when `MAYA_TTS=inworld`. |
-| `MAYA_TTS_MODEL` | No | Optional | Default `inworld-tts-2`. `inworld-tts-2-flash` is the cheaper option. |
+| `MAYA_VOICE` | No | Yes | The voice id (for example Inworld `Ashley`, or a Cartesia voice id). Needed when `MAYA_TTS` is `inference` or `inworld`. The listening test picks it. |
+| `MAYA_TTS_MODEL` | No | Optional | With `inference`: `inworld/inworld-tts-2` (default) or `cartesia/sonic-3.6`. With `inworld`: default `inworld-tts-2`; `inworld-tts-2-flash` is the cheaper option. |
 | `OPENROUTER_API_KEY`, `AI_MODEL` | Already set | Yes | Maya's model. Without the key the worker uses the fake rule player. |
 | `MAYA_REVIEW_MODEL` | Already optional | Optional | The free-talk review model. |
 | `SUPABASE_URL` | No | Yes | `https://cdjobwsyzndtltzfpyqa.supabase.co`. |
@@ -74,19 +96,24 @@ Agents create no accounts. Create these, then set the values below.
 | `MAYA_ACK_LIMIT_MS` | No | Optional | The child's end of speech to the acknowledgement, in ms. Default 1500. `0` turns it off. |
 | `MAYA_VOICE_LOAD_LIMIT` | No | Optional | 0 to 1: the machine load above which the worker takes no new call. LiveKit's default otherwise. |
 
-A real provider set without its privacy confirmation, key or voice stops the worker's job with a clear log line. It never falls back to the fake quietly (`voiceProviders`, `src/lib/maya-voice.ts`).
+A real provider set without its privacy confirmation, key or voice, or with an Inference model off the allow list, stops the worker's job with a clear log line. It never falls back to the fake quietly (`voiceProviders`, `src/lib/maya-voice.ts`). With `inference`, the worker uses `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, which LiveKit Cloud injects.
 
-Deploying the worker to LiveKit Cloud, the privacy page text, the voice choice and the delay measurements are #327.
+**Word timings through Inference.** The board draws in time with Maya's words when the voice returns word timings. With `inference`, the worker asks for them with each model's option (Inworld `timestamp_type: "WORD"`, Cartesia `add_timestamps: true`), the options LiveKit Agents for Node 1.9.5 checks before it reads the gateway's word alignment into timed transcripts (`hasAlignedTranscript`, `inference/tts.js`). The Inference page does not mention word timings, so whether the gateway sends them to the Node worker is not verified. Where they do not come, the board follows sentence ends (below). The listening test reports it per voice, and each `board cue` log line says `word` or `sentence`.
+
+Deploying the worker: [Deploying Maya's voice worker](maya-voice-deploy.md). The privacy page text and the delay measurements are #327.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `npm run voice:test` | The worker's tests: a whole call through LiveKit Agents with the fake speech-to-text and voice, with no room or network, and provider choice by configuration. |
+| `npm run voice:test` | The worker's tests: a whole call through LiveKit Agents with the fake speech-to-text and voice, with no room or network, provider choice by configuration (Inference included), the listening-test kit and the image's packages. |
 | `npm run voice:typecheck` | Typechecks the worker (`worker/maya-voice/tsconfig.json`). |
 | `npm run voice:build` | Builds `worker/maya-voice/dist/main.mjs` (esbuild; npm packages stay outside, `server-only` is empty under the `react-server` condition). |
 | `npm run voice:dev` | Builds and runs the worker in development mode. |
 | `npm run voice:start` | Runs the built worker in production mode. |
+| `npm run voice:stage` | Stages the folder LiveKit Cloud builds the worker image from ([deploy](maya-voice-deploy.md)). |
+| `npm run voice:listen` | The listening-test kit: `make`, `record`, `score` ([listening test](maya-voice-deploy.md#listening-test)). `make --fake` needs no key. |
+| `npm run voice:lock` | Writes `worker/maya-voice/package-lock.json` from the root lockfile, so the image installs the tree the tests ran with ([deploy](maya-voice-deploy.md)). |
 
 The site's `npm test`, `npx eslint src` and `npm run build` do not include the worker. The root `tsconfig.json` excludes `worker/`, and nothing in `src/app` imports it. The site's own tests cover the shared parts: `src/lib/maya-voice.test.ts`, `src/lib/maya-voice-token.test.ts` and `src/lib/maya-voice-call.test.ts`.
 
@@ -117,8 +144,8 @@ A child's turn runs behind the speech. `llmNode` returns its stream at once, so 
 - No repeat in a call, across a worker replacement too. A phrase is saved in `live.acknowledged` before it is said (`VoiceCall.acknowledge`). That save writes only this list onto the last saved `live`, at the next revision, with the same revision check as every other save. It holds no turn in progress, so a replacement worker still restores the last finished turn. A worker that was replaced has its save refused and says nothing (`ackSkipped: save`). The cost is one more database write on a slow turn. A phrase saved and then cut by the child stays used. When the bank is used, Maya stays silent until the answer (`ackSkipped: bank_used`). With a slow model on every turn, a call reaches that after 8 phrases. Decide the limit and the bank's size from real measurements.
 - It stages no board. Its segment has an empty board plan (`stage(id, [])`), which gives its audio an owner through the normal cue output, so a child's speech stops it like any other speech. The answer's board is staged only after the phrase has played, because a new plan takes the audio from the old one. The answer's voice therefore starts after the phrase, and the wait shows as `ackHoldMs`. A turn that no longer owns the reply (a newer turn replaced it, or its speech was interrupted) stages nothing and writes no words, however late its work ends. It still sends its revision and keeps the check-ins and the call's end.
 - It does not start when the child is talking or absent, after a hang-up, or when the call has a safety flag, a content problem or the deadline close. All of this is read again after the board stage and after the save, just before the phrase is queued. The phrases say nothing about what the child said, because a disclosure that the model has not read yet can still get one.
-- Safety comes first. A finished turn with safety guidance, a child's disclosure the model has read, or the deadline close (`VoiceTurn.priority`) stops the reply at once, including a phrase that is playing, and queues its words with `session.say`. It waits for nothing before it: not the phrase, not a late board answer. A turn with no board batches does not wait for its own board answer either. If the child is talking at that moment, LiveKit plays the words when the child stops.
-- An ordinary answer waits for the phrase to finish, because cutting a phrase of a few words sounds worse than a short wait. If the phrase's audio never reports an end, the wait stops 3000 ms after the phrase was queued (`ACK_HOLD_LIMIT_MS`, 5000 ms before the review of PR #577). The longest phrase is about 1.5 s at a calm pace.
+- Safety comes first. Safety guidance, a child's disclosure the model has read, or words past the closing time (`VoiceTurn.priority`, including a close that ends as "solved") stop the reply at once, including a phrase that is playing, and queue the words with `session.say`. They wait for nothing before them: not the phrase, not a late board answer. A turn with no board batches does not wait for its own board answer either.
+- An ordinary answer waits for the phrase to finish, because cutting a phrase of a few words sounds worse than a short wait. If the phrase's audio never reports an end, its speech is stopped 3000 ms after it was queued (`ACK_HOLD_LIMIT_MS`, 5000 ms before the review of PR #577), and the answer is queued as speech of its own, because a word added to that reply would wait for the same end (#589). The longest phrase is about 1.5 s at a calm pace.
 - It is not in the call's transcript or trace, which hold only what the session accepted. The `voice turn` log holds the phrase id. Practice runs do not run it: they use the text adapter.
 
 **The measure.** The worker logs one `voice turn` line per child turn, and a `voice turn report` line when the call closes (counts, then p50 and p95). Logs hold times and phrase ids, never words. `fakeProviders` says which side was fake.
@@ -145,7 +172,24 @@ The parts add up to `answerMs`. `outcome` is `answered`, `no_words` (the session
 - How a phrase sounds to a child. Savar has not read the phrases yet (`docs/maya-practice-lines.md`).
 - How long the reply takes to stop on a real output. The tests prove the words are queued at once. LiveKit plays them when the stopped reply has unwound.
 
-**A limit this work does not change.** The worker gets a turn's words when the whole input has finished. After safety guidance, the text adapter also asks the model for the close, and the guidance reaches the worker only when that call returns or fails (up to the model's 30 s limit). The priority rule above starts from there. Changing it means changing the text adapter's `pump`, which needs its own ticket.
+## Safety guidance goes first (#589)
+
+**It does not wait for a model.** With the danger known (a reading in the model's answer), a refused proposal gets code's guidance with no repair call, and the session gives the accepted guidance to the worker at once (`VoiceCall.onGuidance`, from `onGuidance` in the text adapter). The model is then asked for the close, up to its 30 s limit, and the close waits for the guidance. A check-in cannot start while that call is out. A new worker that takes over after the guidance asks for the close when the child joins, and does not say the guidance again. A worker that lost the call to another stays silent. A failed save still stops media, as everywhere in a call, so it can cut the guidance; before #589 the save came first and a failed one meant no guidance at all.
+
+**A child who is talking is heard first (decided on #589).** The guidance is queued at once and plays when the child stops. It is not said over them. LiveKit's `ttsTask` holds an interruptible speech on `userSilenceEvent`; `allowInterruptions: false` would skip that wait and talk over the child. A child who is disclosing harm should be heard, and interruption stays possible for the same reason. The cost: sound that LiveKit keeps reading as speech holds the guidance for as long as it lasts, up to the call's end. Real noise has not tested this.
+
+**A cut guidance plays once more.** The start of the child's speech retires the current board plan, and a retired plan's frames do not reach the output, while the speech handle reports no interruption. So a noise can stop the guidance with nothing to show for it. The worker marks the guidance cut when its plan is retired or its speech is interrupted, and says the same words once more, whole, when that speech has ended and the child stops talking. A second cut gets no third. A dropped connection counts as a cut, and the guidance plays when the child is back; danger read while the child is away plays then too. A worker replacement between the cut and the repeat loses the repeat: the state is in the worker. Words after the guidance wait for it, because a queued speech takes the board plan that is current when it starts. Words from the silence clock wait the same way as a child's reply.
+
+**A call that ends while the child is away ends when they are back.** The controller has ended, so no later input can end the stored call. The worker keeps the last words the child was not there to hear, says them when the child is back (after any guidance owed), and then ends the stored call, so the close, the alert, the learning event and the note do not wait for the deadline. A child who does not come back within 30 seconds ends the call as before.
+
+**Desk chat answers one request.** It cannot send the guidance ahead of its reply, so its close is code's own (`fallbacks`) and no close call is made: the reply holds the guidance and the close together. The close call has no child turn to read (`turn` is cleared by the guidance), so this drops no reading of the child's words. No new sentences: the close comes from the same lines and bank phrases.
+
+**The other text callers are unchanged.** The admin text demo, the practice suite and the command line set neither `onGuidance` nor the chat channel, so one input still returns the guidance and the close together, and can wait for the close call. Only the repair skip applies to them.
+
+**What the tests prove.** `worker/maya-voice/src/silence.test.ts` measures, on the clock the test moves, from the danger known to the words given to `session.say`, with the close call held on a fake 30 s limit: 30000 ms before this work, 0 ms after. It runs the phrase, a talking child, a noise, words over the guidance, a dropped connection, a rise in severity and a replacement worker with the close call out. All of it uses the fake speech-to-text and voice. It proves nothing about real times or sound. These stay open until the accounts exist:
+
+- From reading the code: with Silero, a noise of 500 ms or more pauses the audio, and LiveKit resumes it if no words come within 2 s (`falseInterruptionTimeout`). The pause retires the board plan, so the rest of that audio is lost and the repeat plays. The fake speech-to-text has no voice activity detection, so this route has not run.
+- Whether a real output answers when a stopped speech clears its buffer. If it never does, LiveKit's queue stays stuck behind that speech, and neither the 3000 ms limit nor anything in this worker can free it.
 
 ## Not verified yet
 
@@ -165,7 +209,7 @@ The family zone uses a valid stored browser zone, then the postal mapping, then 
 
 `grant_maya_minutes` reserves seconds under a lock per child, or per parent for a demo. An unused grant expires after two minutes. A retry must reserve its original seconds again against the current remainder. The `reserve_maya_minutes_on_call` trigger also checks call creation under that lock. If the original seconds no longer fit, it refuses the call. It does not shorten an old grant because a delayed caller can still hold its original call limit. A new call ID can receive a shorter grant. The check uses the current database clock after the lock, including when a transaction waited for the lock.
 
-Once a call row exists, its whole grant counts until the call ends. A crashed call keeps its minutes counted only until the sweep of abandoned calls ends it (#528, `src/lib/maya-call-sweep.ts`, run by `/api/reminders` every 15 minutes). The sweep ends a live call 5 minutes after its own end time (its start, or its creation when Maya never joined, plus its limit), through the call module's public end, and stores the connected seconds from the stored connection events. When those events cannot be read, the end is refused, so a later sweep settles the minutes from them rather than at 0 seconds. The settle trigger then counts the connected seconds, up to the grant. Admin test calls with no grant remain uncounted. Child calls and parent demos will use the ledger when #337 and #336 connect them.
+Once a call row exists, its whole grant counts until the call ends. A crashed call keeps its minutes counted only until the sweep of abandoned calls ends it (#528, `src/lib/maya-call-sweep.ts`, run by `/api/reminders` every 15 minutes). The sweep ends a live call 5 minutes after its own end time (its start, or its creation when Maya never joined, plus its limit), through the call module's public end, and stores the connected seconds from the stored connection events. When those events cannot be read, the end is refused, so a later sweep settles the minutes from them rather than at 0 seconds. A worker's own end is refused the same way (#586): after a restart it holds none of the earlier events, so it leaves the call live for the sweep. The sweep counts the connected time through the last stored connection event, so the final speech after a "solved" close still counts. The settle trigger then counts the connected seconds, up to the grant. Admin test calls with no grant remain uncounted. Child calls and parent demos will use the ledger when #337 and #336 connect them.
 
 ## Weekly recap call coverage
 

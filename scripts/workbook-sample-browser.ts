@@ -36,7 +36,8 @@ export default {
   async launch(options: Parameters<typeof puppeteer.launch>[0]): Promise<Pick<Browser, "newPage" | "close">> {
     running ??= (async () => {
       browserStats.launches++;
-      return puppeteer.launch(options);
+      // A machine shared with other runs can take minutes to start Chromium or answer it: wait, never fail the sample.
+      return puppeteer.launch({ ...options, timeout: Math.max(options?.timeout ?? 0, 300_000), protocolTimeout: Math.max(options?.protocolTimeout ?? 0, 900_000) });
     })().catch(error => { running = undefined; throw error; });
     const browser = await running;
     const leased: Page[] = [];

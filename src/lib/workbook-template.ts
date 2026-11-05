@@ -17,6 +17,7 @@ import { packageItem, PATTERN_SHAPES, valueText, type AnswerRegion, type AnswerV
 import { dayLabel, type Block, type DayContent, type Figure, type PageContent, type SlotName, type WorkedLine } from "@/lib/workbook-page";
 import {
   mark,
+  regionNames,
   type DraftPage,
   type DraftQuestion,
   type FitProblem,
@@ -30,6 +31,12 @@ import { instructionProblem, feedbackItemProblem, generatedDayTime } from "@/lib
 import { titleProblem } from "@/lib/workbook-titles";
 import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
 import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
+import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
+
+/** Teaching data does not select a print layout or change a printed method. */
+function printedPage(page: DraftPage): DraftPage {
+  return { ...page, questions: page.questions.map(q => ({ ...q, package: printedWorkbookQuestion(q.package) })) };
+}
 
 /**
  * Numbers of 1,000 and up print with commas, everywhere a page prints text (Savar, 2026-11-03, D-230, replacing the BC
@@ -261,7 +268,7 @@ const CSS = `
 .ct>*{flex-shrink:0}
 .blk{display:flex;flex:1 0 auto;flex-direction:column;gap:8px}
 .blk.grow{flex-grow:1}
-.blk.optional-block{border:1px solid #5A4300;border-radius:2px}
+.blk.optional-block{border:1px solid #5A4300;border-radius:2px;padding-left:4px}
 .ft{position:absolute;left:64px;top:950px;width:688px;height:58px;display:flex;align-items:center;gap:12px}
 .ft [data-measure="qr"]{width:58px;height:58px;flex:none}
 .ft svg{width:58px;height:58px;display:block}
@@ -788,12 +795,7 @@ function unitAfter(p: QuestionPackage): string {
   return p.answer?.unit ?? "";
 }
 
-/** The measured name of each region of a question: the first box or choice is its answer space (renderer), the rest regions. */
-export function regionNames(q: DraftQuestion): { region: AnswerRegion; name: string }[] {
-  const regions = packageItem(q.package).regions;
-  const first = Math.max(0, regions.findIndex((r) => r.kind === "box" || r.kind === "choice"));
-  return regions.map((region, i) => ({ region, name: i === first ? `question-${q.number}-answer` : `region-${q.number}-${region.id}` }));
-}
+export { regionNames };
 
 const measureAttr = (name: string) => `data-measure="${name}"`;
 
@@ -1339,7 +1341,7 @@ const GROW = new Set<SlotName>(["challenge", "show-what-you-know", "level-test"]
 
 // ---------- Pages ----------
 
-const scanMarks = `<i class="scan tl"></i><i class="scan tr"></i><i class="scan bl"></i><i class="scan br"></i>`;
+const scanMarks = `<i class="scan tl" ${mark.scanMark("tl")}></i><i class="scan tr" ${mark.scanMark("tr")}></i><i class="scan bl" ${mark.scanMark("bl")}></i><i class="scan br" ${mark.scanMark("br")}></i>`;
 const wordmark = `<span class="wm"><span>Unica Learning</span><i></i></span>`;
 
 function footer(page: DraftPage, parts: PageParts, id: string): string {
@@ -1586,19 +1588,23 @@ export function workbookTemplate(fonts?: TemplateFonts): WorkbookTemplate {
   return {
     css: (fonts ? fontFace("Unica Sans", "300 700", fonts.sans) + fontFace("Unica Mono", "400 500", fonts.mono) : "") + CSS,
     page(page, parts, book) {
+      page = printedPage(page);
       const c = page.content;
       if (!c) return null;
       switch (c.kind) {
         case "day": return dayPage(page, parts, c);
         case "cover": return coverPage(page, parts, c);
-        case "how-plan": return howPlanPage(page, parts, c, book);
+        case "how-plan": return howPlanPage(page, parts, c, { ...book, pages: book.pages.map(printedPage) });
         case "back-cover": return blankPage(page, parts, { ...c, kind: "blank" });
         case "blank": return blankPage(page, parts, c);
       }
     },
     // (With the layout checks of Savar's page reviews: spacing, alignment, one number style, no repeated instruction,
     // no clipped text.)
-    fit: (page, measured) => [...fitProblems(page, measured), ...layoutProblems(page, measured, pagePlan(page))],
+    fit: (page, measured) => {
+      const printed = printedPage(page);
+      return [...fitProblems(printed, measured), ...layoutProblems(printed, measured, pagePlan(printed))];
+    },
     answerMin: ANSWER_MIN,
   };
 }

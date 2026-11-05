@@ -16,7 +16,7 @@ import { ParentShell } from "@/components/parent-shell";
 
 const kid = (id: string): ChildView => ({
   id, firstName: id, schoolGrade: 3, stage: "first_book_coming", opensOn: "overview", tabs: ["overview", "assessment", "account"], readOnly: false,
-  currentWorkbook: { number: 1 } as ChildView["currentWorkbook"], reportIds: [],
+  currentWorkbook: { number: 1 } as ChildView["currentWorkbook"], reportIds: [], finishedTests: [],
 });
 const kids = [kid("asha"), kid("omar")];
 

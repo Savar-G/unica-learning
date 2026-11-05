@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { ChildTab } from "@/lib/child-stage";
 import { notesPath } from "@/lib/parent-maya-notes";
+import { safeNext } from "@/lib/sign-in-link";
 import { reportPath } from "@/lib/report-view";
 import type { ChildView } from "@/lib/parent-view";
-import { activeTab, addressChild, lastChildCookie, phoneNav, pickChild, tabLinks, workbooksPath, type TabLink } from "@/lib/parent-shell";
+import { activeTab, addressChild, lastChildCookie, phoneNav, pickChild, signInPath, tabLinks, workbooksPath, type TabLink } from "@/lib/parent-shell";
 import { vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
 const child = (id: string, over: Partial<ChildView> = {}): ChildView => ({
-  id, firstName: id, schoolGrade: 3, stage: "no_test", opensOn: "start_test", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null, reportIds: [], ...over,
+  id, firstName: id, schoolGrade: 3, stage: "no_test", opensOn: "start_test", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null, reportIds: [], finishedTests: [], ...over,
 });
 const leah = child("leah", { reportIds: ["r2", "r1"] });
 const omar = child("omar");
@@ -120,5 +121,30 @@ describe("the phone layout (set 2, option A)", () => {
       const nav = phoneNav(links(...tabs));
       expect(nav).toEqual({ kind: "bar", bar: links(...tabs), more: [] });
     }
+  });
+});
+
+describe("the Assessment tab", () => {
+  const href = (over: Partial<ChildView>) => tabLinks(child("leah", over)).find((l) => l.tab === "assessment")?.href;
+  it("opens the newest report", () => {
+    expect(href({ stage: "report_ready_bc", opensOn: "report_start_free_month", reportIds: ["r2", "r1"] })).toBe(reportPath("r2"));
+  });
+  it("opens the child's home while a new test is open, where the test continues", () => {
+    expect(href({ stage: "test_running", opensOn: "continue_or_wait", reportIds: ["r1"] })).toBe("/account?child=leah");
+  });
+  it("opens the child's home with no test", () => {
+    expect(href({})).toBe("/account?child=leah");
+  });
+});
+
+describe("signInPath", () => {
+  it("comes back to the child the address named", () => {
+    const path = signInPath("c1&x=1");
+    expect(path).toBe("/sign-in?next=%2Faccount%3Fchild%3Dc1%2526x%253D1");
+    expect(safeNext(new URL(path, "https://unicalearning.com").searchParams.get("next"))).toBe("/account?child=c1%26x%3D1");
+  });
+  it("is plain sign-in with no child", () => {
+    expect(signInPath(null)).toBe("/sign-in");
+    expect(signInPath("")).toBe("/sign-in");
   });
 });

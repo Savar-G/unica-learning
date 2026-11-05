@@ -19,7 +19,9 @@ import { AddChild, SaveTimeZone, SendLink, SignOut, StartTest, TrackOnce } from 
 import { parentChatUsage } from "@/lib/maya-chat-server";
 import { DeskRow, MinutesRow } from "@/components/parent-home-rows";
 import { ParentDashboardHome } from "@/components/parent-dashboard-home";
-import { parentDashboard } from "@/lib/parent-dashboard-server";
+import { dashboardOverview, parentDashboard } from "@/lib/parent-dashboard-server";
+import { openingPath } from "@/lib/parent-assessment";
+import { pickChild, signInPath } from "@/lib/parent-shell";
 import { parentMinutes } from "@/lib/maya-minutes-server";
 import { DEMO_DAILY_MINUTES } from "@/lib/maya-minutes";
 import { SupportPage } from "@/components/support-page";
@@ -40,7 +42,15 @@ export const metadata = pageMetadata({
 export default async function Account({ searchParams }: PageProps<"/account">) {
   const db = await sessionClient();
   const parentUser = await parentId(db);
-  if (!parentUser) redirect("/sign-in");
+  const query = await searchParams;
+  // A link to one child's Overview (the monthly email, #563) comes back to that child after sign-in.
+  if (!parentUser) redirect(signInPath(typeof query.child === "string" ? query.child : null));
+  // The dashboard (#551), for the families its switch opens to. A child whose stage opens on the report goes there (#552).
+  const dashboard = await parentDashboard();
+  const addressed = typeof query.child === "string" ? query.child : null;
+  const opening = dashboard && pickChild(dashboard.children, addressed, dashboard.remembered);
+  const report = opening && openingPath(opening, query);
+  if (report) redirect(report);
   const [{ data: parent }, { data: kids }, states, { data: reports }, { data: cards }] = await Promise.all([
     db.from("parents").select("name, email, postal, time_zone").maybeSingle(),
     db.from("children").select(`id, created_at, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at").order("id"),
@@ -58,7 +68,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const newestReport = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
   const reportFor = (id: string, state: StartState) => (state.kind === "wait" ? testReport.get(`${id}@${state.completedAt}`) : newestReport.get(id));
   const phone = isPhone(await headers());
-  const { sent, password, existing, pin, desk, child } = await searchParams;
+  const { sent, password, existing, pin, desk } = query;
 
   const children = kids ?? [];
   const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: familyProvince(children) });
@@ -68,11 +78,11 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
     currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children),
     parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser), latestParentMayaNotes(db, parentUser, children.map((c) => c.id)),
   ]);
-  // The dashboard (#551), for the families its switch opens to. Everyone else gets today's Parent home below.
-  const dashboard = await parentDashboard();
+  // Everyone else gets today's Parent home below.
   if (dashboard) {
-    const facts = { dashboard, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled };
-    return <ParentDashboardHome {...facts} addressChild={typeof child === "string" ? child : null} alerts={{ password: password === "1", pin: pin === "1", deskError: desk === "error", existing: existing === "1" }} parentEmail={parent.email} />;
+    const overview = await dashboardOverview(dashboard, addressed);
+    const facts = { dashboard, overview, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled };
+    return <ParentDashboardHome {...facts} addressChild={addressed} alerts={{ password: password === "1", pin: pin === "1", deskError: desk === "error", existing: existing === "1" }} parentEmail={parent.email} />;
   }
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>

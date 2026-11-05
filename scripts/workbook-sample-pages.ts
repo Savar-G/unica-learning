@@ -5,6 +5,69 @@ import sharp, { type OverlayOptions } from "sharp";
 import { renderableDraft } from "@/lib/workbook-fit";
 import type { GeneratedWorkbook } from "@/lib/workbook-generator";
 import type { RenderProblem, WorkbookTemplate } from "@/lib/workbook-render";
+import { createSession } from "@/lib/maya/session";
+import { teachingContext, type TeachingFrame } from "@/lib/workbook-print-contract";
+
+/** Count the same permanent teaching context approval stores, including every excluded question. */
+export function masteryCoverageMarkdown(draft: GeneratedWorkbook, frame: TeachingFrame): string {
+  const groups = new Map<string, { total: number; excluded: number; noStep: number }>();
+  const excluded: string[] = [];
+  const cell = (value: string) => value.replace(/\|/g, "\\|").replace(/\s+/g, " ");
+  for (const page of draft.pages) for (const q of page.questions) {
+    const teaching = q.package ? teachingContext(frame, page, { ...q, package: q.package }) : null;
+    if (!teaching?.eligibility.mastery) {
+      const reason = teaching?.eligibility.reason === "no-item-step" ? q.itemStepReason ?? "No recorded tested step."
+        : teaching?.eligibility.reason ?? "No teaching context or package.";
+      excluded.push(`| ${page.number} | ${q.number} | ${q.place ?? q.part} | ${cell(q.package?.skill.skills.join(", ") ?? "none")} | ${cell(q.package?.text ?? "no package")} | ${cell(reason)} |`);
+    }
+    for (const kind of ["All", q.place ?? q.part]) {
+      const row = groups.get(kind) ?? { total: 0, excluded: 0, noStep: 0 };
+      row.total++;
+      if (!teaching?.eligibility.mastery) row.excluded++;
+      if (teaching?.eligibility.reason === "no-item-step") row.noStep++;
+      groups.set(kind, row);
+    }
+  }
+  return ["## Mastery exclusions (#597)", "", "| Kind | Questions | Excluded | No tested step |", "|---|---:|---:|---:|",
+    ...[...groups].sort(([a], [b]) => a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b))
+      .map(([kind, row]) => `| ${kind} | ${row.total} | ${row.excluded} | ${row.noStep} |`), "",
+    "Excluded includes missing context, unscored items, parent checks and Try first. A review-step list does not identify a tested step.", "",
+    "### Each excluded item", "", "| Page | Question | Kind | Selected skill | Printed question | Reason |", "|---|---|---|---|---|---|", ...excluded, ""].join("\n");
+}
+import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
+
+export interface MayaCoverage {
+  level: string;
+  kind: string;
+  questions: number;
+  operations: number;
+  accepted: number;
+}
+
+/** Count every question, including failed or absent packages, through Maya's public session entry point. */
+export function mayaCoverage(draft: GeneratedWorkbook): MayaCoverage[] {
+  const groups = new Map<string, MayaCoverage>();
+  for (const page of draft.pages) for (const question of page.questions) {
+    const pkg = question.package;
+    const level = pkg ? `U${pkg.level}` : draft.levels.map(n => `U${n}`).join(", ");
+    const kind = pkg?.templateId?.match(/#[0-9]+\.[0-9]+:([a-z-]+)$/)?.[1] ?? pkg?.item?.format ?? "no package";
+    const operation = pkg?.operation ? 1 : 0;
+    const accepted = createSession({ callId: "sample-coverage", package: pkg }).contentProblem === null ? 1 : 0;
+    for (const groupKind of ["All", kind]) {
+      const key = `${level}:${groupKind}`;
+      const row = groups.get(key) ?? { level, kind: groupKind, questions: 0, operations: 0, accepted: 0 };
+      row.questions++; row.operations += operation; row.accepted += accepted;
+      groups.set(key, row);
+    }
+  }
+  return [...groups.values()].sort((a, b) => Number(a.level.slice(1)) - Number(b.level.slice(1)) || (a.kind === "All" ? -1 : b.kind === "All" ? 1 : a.kind.localeCompare(b.kind)));
+}
+
+export function mayaCoverageMarkdown(rows: MayaCoverage[]): string {
+  return ["## Maya coverage", "", "| Level | Question kind | Questions | With operation | Maya accepts |", "|---|---|---:|---:|---:|",
+    ...rows.map(r => `| ${r.level} | ${r.kind} | ${r.questions} | ${r.operations} | ${r.accepted} |`), "",
+    "Maya accepts means createSession accepts the checked package. This count does not test a model or voice call.", ""].join("\n");
+}
 
 export interface SamplePage {
   number: number;
@@ -41,7 +104,7 @@ export async function samplePages(draft: GeneratedWorkbook, template: WorkbookTe
       if (!match) return [];
       const question = source.questions.find(q => q.number === Number(match[1]));
       if (!question) return [];
-      const pkg = question.package;
+      const pkg = question.package ? printedWorkbookQuestion(question.package) : null;
       return [
         `### Question ${question.number}`,
         `Printed: ${clean(element.textContent)}`,
@@ -61,12 +124,13 @@ export async function samplePages(draft: GeneratedWorkbook, template: WorkbookTe
     ];
     const text = [`All printed text: ${clean(body.textContent)}`, "", ...questions].join("\n");
     return { number: page.number, kind: page.type, title, instruction, text, warnings,
-      layout: createHash("sha256").update(template.css).update(html).digest("hex") };
+      // (A scan mark's measure name prints nothing, so it does not count as a layout change.)
+      layout: createHash("sha256").update(template.css).update(html.replace(/ data-measure="scan-[a-z]+"/g, "")).digest("hex") };
   }); } finally { await window.happyDOM.close(); }
 }
 
-export function pagesMarkdown(label: string, pages: SamplePage[]): string {
-  return [`# ${label} printed pages`, "", ...pages.flatMap(page => [
+export function pagesMarkdown(label: string, pages: SamplePage[], coverage?: MayaCoverage[]): string {
+  return [`# ${label} printed pages`, "", ...(coverage ? [mayaCoverageMarkdown(coverage)] : []), ...pages.flatMap(page => [
     `## Page ${page.number}: ${page.kind}`, `Title: ${page.title}`, `Instruction: ${page.instruction}`, "", page.text,
     ...page.warnings.map(warning => `Warning: ${warning}`), "",
   ])].join("\n");

@@ -57,7 +57,7 @@ describe("approval", () => {
     expect(w!.pages.map((p) => p.qrToken)).toEqual(d.draft.pages.map((p) => p.qrToken));
     expect(w!.pages[1].questions[0].box).toEqual(d.rendering!.pages[1].questions[0].box);
     expect(w!.pages.flatMap((p) => p.questions).every((q) => q.content.status === "found")).toBe(true);
-    expect(ship.audit).toEqual([{ at: NOW, workbookId: DRAFT, actor: ADMIN, action: "workbook-approved", detail: { revision: 1, number: 1 } }]);
+    expect(ship.audit).toEqual([{ at: NOW, workbookId: DRAFT, actor: ADMIN, action: "workbook-approved", detail: { revision: 1, number: 1, printedRevision: null } }]);
   });
 
   const failing: [string, (d: DraftForApproval) => void, RegExp][] = [

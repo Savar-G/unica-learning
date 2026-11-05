@@ -1,0 +1,18 @@
+/* The Scan pages tab (#564): the desktop screen (the QR code beside the words, stacked on a narrow screen), and the camera flow in the dashboard frame. */
+.scan-away { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 32px; align-items: start; margin-top: 8px; }
+.scan-away-qr { width: 200px; padding: 16px; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.scan-away-qr svg { display: block; width: 100%; height: auto; }
+.scan-away-text { display: grid; gap: 20px; max-width: 460px; }
+.support-page .scan-away-text .lead { margin: 0; }
+.scan-away-email { display: grid; gap: 12px; justify-items: start; }
+.scan-away-email .btn { min-height: 44px; }
+.scan-away-email .acct-alert { margin: 0; }
+.support-page .scan-away-here { margin: 0; color: var(--ink-2); }
+@media (max-width: 600px) {
+  .scan-away { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .scan-away-qr { width: 168px; }
+}
+/* In the dashboard frame on a phone, the camera button sits above the bottom bar instead of under it. */
+@media (max-width: 600px) {
+  .pd-has-bar .scan-file { bottom: calc(80px + env(safe-area-inset-bottom)); }
+}

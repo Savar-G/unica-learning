@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAreaLevels, type CheckedTest } from "@/lib/area-level-check";
+import { checkAreaLevels, reportShowsPlacement, type CheckedTest } from "@/lib/area-level-check";
 import type { AreaAnswer, Level, Placement, ReportedStrand, StrandResult } from "@/lib/assessment";
 
 const at = (area: ReportedStrand, level: Level, right: number, total: number): AreaAnswer[] =>
@@ -93,5 +93,24 @@ describe("the area level check", () => {
     expect(r.groups["test-family"].tests).toBe(1);
     expect(r.groups["copy-real"].tests).toBe(1);
     expect(r.groups["copy-test-family"].tests).toBe(0);
+  });
+});
+
+describe("whether a stored report shows the stored score", () => {
+  const stored = { ...placement(4, 4, at("number", 4, 5, 5), [strand("number", "secure", 5, 5)]), confidence: "normal", atCeiling: false } as Placement;
+  const model = (p: Placement) => ({
+    level: { working: p.workingLevel, grade: p.grade, atCeiling: p.atCeiling, confidence: p.confidence },
+    strands: p.strands.map((s) => ({ ...s, name: s.strand })),
+  });
+  it("does when the report was made from it", () => {
+    expect(reportShowsPlacement(model(stored), stored)).toBe(true);
+  });
+  it("does not after a rescore: another level, confidence, ceiling, area status or area count", () => {
+    expect(reportShowsPlacement(model({ ...stored, workingLevel: 0 }), stored)).toBe(false);
+    expect(reportShowsPlacement(model({ ...stored, confidence: "low" }), stored)).toBe(false);
+    expect(reportShowsPlacement(model({ ...stored, atCeiling: true }), stored)).toBe(false);
+    expect(reportShowsPlacement(model({ ...stored, strands: [strand("number", "developing", 5, 5)] }), stored)).toBe(false);
+    expect(reportShowsPlacement(model({ ...stored, strands: [strand("number", "secure", 4, 5)] }), stored)).toBe(false);
+    expect(reportShowsPlacement(model({ ...stored, strands: [] }), stored)).toBe(false);
   });
 });

@@ -1,8 +1,11 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Grade } from "@/lib/assessment";
+import { answersAddUp, reportShowsPlacement } from "@/lib/area-level-check";
+import { fromRemovedRound, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
+import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import type { ParentViewReader } from "@/lib/parent-view";
+import { pinIsSet } from "@/lib/parent-pin-server";
 import { scanPagesAccess } from "@/lib/scan-pages-access";
 import { withAnswers } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
@@ -18,6 +21,15 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 //     emails' delivery details (carrier and tracking, #558), which only admins may read in workbook_emails; it selects
 //     only the child, the workbook number and the delivery. Nothing it reads reaches the output except through
 //     parent-view.ts, which checks the delivery.
+// The Overview (#560): the scored answers of a finished test need the stored test, which only the secret key reads,
+// filtered on the parent's id (the test attempt store's `load`, as the start screen reads an open test); the report's level
+// comes from the parent's session. The scans, the pages of a shipped workbook and the learning card come from the session.
+// The test is replayed by the assessment core (restoreSession, testAreaAnswers), as `npm run area-levels:check` does, and
+// compared with the stored score with the same check, and the stored score with the stored report: a replay that differs
+// from either gives no answers, so no bars. A test scored again after its report was made keeps the report's level and
+// shows no bars, as the bars would rest on the new score.
+// The monthly summary (#562) counts Maya calls in the minutes ledger (maya_minute_grants, which a parent reads): the
+// database counts one child's calls that used time in the month, so no row leaves it and no page of rows can hide one.
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
 
 /** The reader of this parent, from their session and the secret key. */
@@ -74,6 +86,58 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       const { data, error } = await admin.from("child_plan_states").select("child_id, kind").eq("parent_id", parent);
       if (error) throw new Error(`plans read: ${error.message}`);
       return data.map((p) => ({ childId: p.child_id, kind: p.kind }));
+    },
+    async testResult(assessmentId) {
+      if (!admin) throw new Error("test result read: no secret key");
+      const [loaded, report, stored] = await Promise.all([
+        attemptStore(admin).load(parent, assessmentId),
+        session.from("reports").select("model").eq("assessment_id", assessmentId).maybeSingle(),
+        admin.from("assessments").select("placement").eq("id", assessmentId).eq("parent_id", parent).maybeSingle(),
+      ]);
+      if (report.error) throw new Error(`report read: ${report.error.message}`);
+      if (stored.error) throw new Error(`stored score read: ${stored.error.message}`);
+      if (!loaded || !report.data) return null;
+      let answers: AreaAnswer[] | null = null;
+      try {
+        // D-145: the removed extra round's answers are left out, as the test attempt module leaves them out.
+        const replay = testAreaAnswers(restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null));
+        // Bars that count other answers than the report did would tell a second story beside the Level tile: the replay
+        // must add up to the stored score, and the stored report must show that score.
+        const placement = stored.data?.placement;
+        if (placement && answersAddUp(replay, placement) && reportShowsPlacement(report.data.model, placement)) answers = replay;
+      } catch (e) {
+        console.error("[parent-view] test replay failed", e instanceof Error ? e.message : "failed");
+      }
+      return { level: report.data.model.level, answers };
+    },
+    async savedScans() {
+      const { data, error } = await session.from("scan_photos").select("workbook_id, page_id, expires_at, created_at").eq("state", "saved");
+      if (error) throw new Error(`scans read: ${error.message}`);
+      // A saved photo always has a page (a check constraint); the workbook is the page's.
+      return data.flatMap((s) => (s.workbook_id && s.page_id ? [{ workbookId: s.workbook_id, pageId: s.page_id, expiresAt: s.expires_at, takenAt: s.created_at }] : []));
+    },
+    async workbookPages(workbookId) {
+      const { data, error } = await session.from("workbook_pages").select("id, day_label").eq("workbook_id", workbookId);
+      if (error) throw new Error(`pages read: ${error.message}`);
+      return data.map((p) => ({ id: p.id, dayLabel: p.day_label }));
+    },
+    async learningCards() {
+      const { data, error } = await session.from("children").select(`id, ${LEARNING_COLUMNS}`);
+      if (error) throw new Error(`learning card read: ${error.message}`);
+      return data.map(({ id, ...card }) => ({ childId: id, ...card }));
+    },
+    async pinSet() {
+      return pinIsSet(parent);
+    },
+    async mayaCalls(childId, from, to) {
+      // The minutes ledger, which a parent reads: one grant per child call, settled with the seconds it used. Only the
+      // count leaves this read; maya_calls itself stays closed to parents (#295).
+      const { count, error } = await session.from("maya_minute_grants").select("child_id", { count: "exact", head: true })
+        .eq("kind", "child").eq("child_id", childId).gt("used_seconds", 0)
+        .gte("created_at", new Date(from).toISOString()).lt("created_at", new Date(to).toISOString());
+      if (error) throw new Error(`maya calls read: ${error.message}`);
+      if (count === null) throw new Error("maya calls read: no count");
+      return count;
     },
     async switches() {
       const [scanPages, testFamily] = await Promise.all([

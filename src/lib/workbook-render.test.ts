@@ -28,9 +28,9 @@ describe("renderWorkbook", () => {
     if (result.status !== "rendered") throw new Error(JSON.stringify(result));
 
     expect(result.pages).toEqual([
-      { number: 1, qrUrl: "https://unicalearning.com/tutor/p/first-page-token-1xx" },
-      { number: 2, qrUrl: "https://unicalearning.com/tutor/p/first-page-token-2xx" },
-      { number: 3, qrUrl: "https://unicalearning.com/tutor/p/first-page-token-3xx" },
+      { number: 1, contractProblem: "the page has no scan marks", qrUrl: "https://unicalearning.com/tutor/p/first-page-token-1xx" },
+      { number: 2, contractProblem: "the page has no scan marks", qrUrl: "https://unicalearning.com/tutor/p/first-page-token-2xx" },
+      { number: 3, contractProblem: "the page has no scan marks", qrUrl: "https://unicalearning.com/tutor/p/first-page-token-3xx" },
     ]);
     expect(result.files.map((f) => [f.path, f.contentType])).toEqual([
       [`${PARENT}/${WORKBOOK}/workbook.pdf`, "application/pdf"],

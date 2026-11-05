@@ -106,6 +106,134 @@ const withWeak = (i: ReturnType<typeof personalInput>, codes: string[], certaint
 const dayParts = (p: WorkbookPlan, day: number) => p.days[day - 1].pages.flatMap(pg => pg.parts);
 
 describe("C3 personal plan", () => {
+  it("R599-P1: plans the first Kindergarten book with today's steps when no earlier review exists", () => {
+    const profile = firstCustomerProfile();
+    profile.grade = 0;
+    profile.assessment!.profile.test.grade = 0;
+    profile.assessment!.profile.level = { working: 0, certainty: "clear", confidence: "normal", atCeiling: false };
+    profile.standards = BC.level("U1")!.units.map(code => ({ ...profile.standards[0], code, status: "needs-attention", certainty: "clear", aboveGrade: false }));
+    const r = planNextWorkbook({ curriculum: BC, grade: 0, profile, workbooks: [], number: 1 });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.levelId).toBe("U1");
+    const today = r.plan.newSteps.filter(s => s.day === 1).map(({ skill, step }) => ({ skill, step }));
+    expect(today.length).toBeGreaterThan(0);
+    const reviews = dayParts(r.plan, 1).filter(p => p.kind === "remember-these");
+    expect(reviews.length).toBeGreaterThan(0);
+    for (const p of reviews) {
+      expect(p.reviewSteps).toEqual(today);
+      expect(p.skills).toEqual(today.map(s => s.skill));
+      expect(p.items).toBeGreaterThan(0);
+    }
+    for (const d of r.plan.days) {
+      expect(d.pages.length).toBeGreaterThanOrEqual(4);
+      expect(d.pages.length).toBeLessThanOrEqual(6);
+      for (const p of dayParts(r.plan, d.day)) if (p.items > 0) expect(p.skills.length).toBeGreaterThan(0);
+    }
+    expect(r.plan.personal).toMatchObject({ reviewFallbacks: expect.arrayContaining([
+      expect.objectContaining({ day: 1, part: "remember-these", source: "today", steps: today }),
+    ]) });
+  });
+
+  it("R599-P1: leaves review empty when no past, current-day or below-start step exists", () => {
+    const i = personalInput("U1");
+    i.pausedWeeks = 2;
+    const p = plan(i);
+    expect(p.newSteps.some(s => s.day <= 2)).toBe(false);
+    const reviews = [1, 2].flatMap(day => dayParts(p, day).filter(p => p.kind === "remember-these"));
+    expect(reviews.length).toBeGreaterThan(0);
+    for (const r of reviews) expect(r).toMatchObject({ items: 0, skills: [], reviewSteps: [] });
+    expect(p.personal).toMatchObject({ reviewFallbacks: expect.arrayContaining([
+      expect.objectContaining({ day: 1, source: "no-review", steps: [] }),
+      expect.objectContaining({ day: 2, source: "no-review", steps: [] }),
+    ]) });
+  });
+
+  it("R599-P1: uses code steps below the start when the day has no teaching step", () => {
+    const i = personalInput("U4");
+    i.pausedWeeks = 2;
+    i.personal.secure = [];
+    i.profile.standards = [];
+    // Coins are not among U4's prerequisite review candidates.
+    i.level.codeReviewSteps = { "K11-describe-coins": [2] };
+    const p = plan(i);
+    expect(p.newSteps.some(s => s.day <= 2)).toBe(false);
+    const reviews = dayParts(p, 1).filter(p => p.kind === "remember-these");
+    expect(reviews.length).toBeGreaterThan(0);
+    for (const r of reviews) {
+      expect(r.reviewSteps).toEqual([{ skill: "K11-describe-coins", step: 2 }]);
+      for (const s of r.reviewSteps ?? []) {
+        expect(BC.levelOfSkill(s.skill)!.number).toBeLessThan(4);
+        expect(s.step !== null && i.level.codeReviewSteps![s.skill].includes(s.step)).toBe(true);
+      }
+    }
+    expect(p.personal).toMatchObject({ reviewFallbacks: expect.arrayContaining([
+      expect.objectContaining({ day: 1, source: "below-start" }),
+    ]) });
+  });
+
+  it("reviews only workbook-taught steps or code steps below the start in the first customer's book", () => {
+    const r = planNextWorkbook({ curriculum: BC, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1 });
+    if (!r.ok) throw new Error(r.reason);
+    const forbidden = new Set(["5.2", "5.3", "5.4", "5.5", "5.6"]);
+    for (const d of r.plan.days) for (const p of dayParts(r.plan, d.day)) {
+      if (p.step || ["warm-up", "in-your-head", "unit-check", "already-know-it", "level-test"].includes(p.kind)) continue;
+      for (const skill of p.skills) {
+        expect(forbidden.has(BC.skill(skill)!.unit), `day ${d.day} ${p.kind}: ${skill}`).toBe(false);
+        expect(p.reviewSteps?.some(s => s.skill === skill), `day ${d.day} ${p.kind}: ${skill} needs a review step`).toBe(true);
+      }
+      for (const s of p.reviewSteps ?? []) {
+        const level = BC.levelOfSkill(s.skill)!.number;
+        if (level < 16) {
+          const step = BC.skillSteps(s.skill)!.find(t => t.number === s.step);
+          expect(step?.templates?.length, s.skill).toBeGreaterThan(0);
+        } else expect(r.plan.newSteps.some(t => t.skill === s.skill && t.step === s.step && t.day < d.day)
+          || p.kind === "show-what-you-know" && r.plan.newSteps.some(t => t.skill === s.skill && t.step === s.step && t.day <= d.day), `day ${d.day}: ${s.skill}#${s.step}`).toBe(true);
+      }
+    }
+    expect(r.plan.personal).toMatchObject({ notReviewed: expect.arrayContaining([...forbidden].map(unit => expect.objectContaining({
+      unit, reason: "not reviewed: taught in a later book",
+    }))) });
+  });
+
+  it("keeps a same-level step passed in an earlier workbook in personal review", () => {
+    const i = personalInput();
+    const skill = BC.levelSkills("U16")!.find(s => s.unit === "5.5")!.id;
+    i.passed = { [skill]: 1 };
+    i.workbook = { number: 2, inLevel: 1 };
+    const p = plan(i);
+    const reviews = dayParts(p, 1).filter(p => p.kind === "remember-these");
+    expect(reviews.flatMap(p => p.skills)).toContain(skill);
+    expect(reviews.flatMap(p => p.reviewSteps ?? [])).toContainEqual({ skill, step: 1 });
+  });
+
+  it.each([{ codeSteps: [] }, { codeSteps: [2] }])("uses only the supplied code review steps for a lower-level skill: $codeSteps", ({ codeSteps }) => {
+    const i = withWeak(personalInput(), ["4.4"]);
+    const skill = BC_SKILL_MAP.standards.find(s => s.code === "4.4")!.skills[0].id;
+    i.level.codeReviewSteps = { ...i.level.codeReviewSteps, [skill]: codeSteps };
+    i.profile = { standards: [{ code: "4.4", status: "developing" }] };
+    const p = plan(i);
+    const refs = p.days.flatMap(d => dayParts(p, d.day).flatMap(p => p.reviewSteps ?? [])).filter(s => s.skill === skill);
+    if (!codeSteps.length) expect(refs).toEqual([]);
+    else {
+      expect(refs.length).toBeGreaterThan(0);
+      expect(refs.every(s => s.step !== null && codeSteps.includes(s.step))).toBe(true);
+    }
+  });
+
+  it("does not treat a missed workbook question as proof that its unit was taught", () => {
+    const i = personalInput();
+    const skill = BC.levelSkills("U16")!.find(s => s.unit === "5.5")!.id;
+    i.grade = 5;
+    i.workbook = { number: 2, inLevel: 1 };
+    i.profile = { standards: [{ code: "5.5", status: "needs-attention" }] };
+    i.misses = [{ skill, question: { source: "workbook", workbookId: "00000000-0000-4000-8000-000000000001", page: 9, question: 1 },
+      event: "untaught-review", result: "wrong", mistake: null, stuckStep: null }];
+    const p = plan(i);
+    const fixes = dayParts(p, 1).filter(p => p.kind === "fix-it");
+    expect(fixes.flatMap(p => p.skills)).not.toContain(skill);
+    expect(fixes.flatMap(p => p.fixIt ?? []).some(f => f.skill === skill)).toBe(false);
+  });
+
   it("R523-P1: keeps lower secure skills out of the first customer's Remember these candidates before their review is due", () => {
     const profile = firstCustomerProfile();
     const r = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1 });

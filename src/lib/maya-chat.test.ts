@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { chatIsEnabled, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
+import { chatFamilyGate, chatLimitLabel, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
 import { mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
-import { memoryWordingHistoryStore } from "@/lib/maya";
+import { memoryWordingHistoryStore, SAFETY_GUIDANCE } from "@/lib/maya";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { learningEvents } from "@/lib/learning-events";
 import { ruleMayaModel, fakeMayaModel } from "@/lib/maya-model-fake";
@@ -24,6 +24,41 @@ function setup(overrides: Partial<CallSeams> = {}) {
   return { calls, store, eventStore, note, alert, start };
 }
 describe("desk chat through the shared call interface", () => {
+  it("#589: answers a child in danger at once, with code's close and no close call", async () => {
+    const rule = ruleMayaModel();
+    let armed = false;
+    let asked = 0;
+    const never = new Promise<never>(() => {});
+    const s = setup({ model: () => ({ ...rule, propose: async (input, signal) => {
+      if (!armed) return rule.propose(input, signal);
+      if (++asked === 1) return { version: 2, act: "safety", parts: [], reading: { safety: "immediate" } };
+      return never;
+    } }) });
+    const r = success(await s.start());
+    armed = true;
+    const answered = await Promise.race([
+      s.calls.input(r.view.id, r.view.revision, { type: "child", text: "Someone is hurting me." }, "Leah"),
+      new Promise<"still waiting">((resolve) => setTimeout(() => resolve("still waiting"), 500)),
+    ]);
+    if (answered === "still waiting") throw Error("the reply waited for the close call");
+    const view = childChatView(success(answered).view);
+    expect(asked).toBe(1);
+    expect(view.ended).toBe(true);
+    expect(view.safetyMessage).toBe(SAFETY_GUIDANCE.immediate);
+    expect(view.transcript.map((t) => t.text)).toContain(SAFETY_GUIDANCE.immediate);
+    const row = s.store.rows()[0];
+    expect(row.trace && checkTrace(row.trace).ok).toBe(true);
+    expect(row.trace!.outcome).toMatchObject({ reason: "safety" });
+    expect(row.trace!.turns.flatMap((t) => t.kind === "maya" ? [t.output?.act] : [])).toEqual(["open", "safety", "close"]);
+    expect(s.alert).toHaveBeenCalled();
+    // Only that close may have no model attempt.
+    const close = row.trace!.turns.findLast((t) => t.kind === "maya")!;
+    const elsewhere = structuredClone(row.trace!);
+    Object.assign(elsewhere.turns[elsewhere.turns.lastIndexOf(elsewhere.turns.findLast((t) => t.kind === "maya")!)], { state: "GUIDE" });
+    expect(close).toMatchObject({ state: "SAFETY", attempts: [{ source: "fallback" }] });
+    expect(checkTrace(elsewhere)).toMatchObject({ ok: false });
+  });
+
   it("saves hints, board work, the common trace, one event and the parent note", async () => {
     const s = setup();
     let r = success(await s.start());
@@ -96,9 +131,30 @@ describe("family days and release switch", () => {
   it("uses the confirmed Vancouver offset, not stale runtime tz data or UTC", () => {
     expect(chatWindow(Date.parse("2026-11-02T01:00:00Z"), "America/Vancouver")).toEqual({ start: Date.parse("2026-11-01T07:00:00Z"), end: Date.parse("2026-11-02T07:00:00Z") });
   });
-  it("defaults off for real families in every environment", () => {
-    expect(chatIsEnabled(false, { NODE_ENV: "production" })).toBe(false);
-    expect(chatIsEnabled(false, { MAYA_CHAT_ENABLED: "on" })).toBe(true);
-    expect(chatIsEnabled(true, {})).toBe(true);
+  it("defaults off for real families in every environment, and opens only a listed family with the switch on (#530)", () => {
+    expect(chatFamilyGate({ test: false, listed: false }, { NODE_ENV: "production" })).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: false }, { MAYA_CHAT_ENABLED: "on" })).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: true }, {})).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: true }, { MAYA_CHAT_ENABLED: "true" })).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: true }, { MAYA_CHAT_ENABLED: "on" })).toBe("plan");
+    expect(chatFamilyGate({ test: true, listed: false }, {})).toBe("test");
+  });
+  it("labels the chat limit in the desk header: left today, Grade 3 and up for a younger child, else the daily limit", () => {
+    const zone = "America/Vancouver", now = Date.parse("2026-11-05T17:00:00Z");
+    expect(chatLimitLabel(chatUsage(12, now, zone), null)).toBe("48 left today");
+    expect(chatLimitLabel(null, "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.")).toBe("Grade 3 and up");
+    expect(chatLimitLabel(null, null)).toBe("60 messages a day");
+  });
+  it("serves Grade 3 and up only; kindergarten is grade 0", () => {
+    expect([0, 1, 2, 3, 7, 8, 9].map(chatServesGrade)).toEqual([false, false, false, true, true, true, true]);
+    expect(chatServesGrade(null)).toBe(false); expect(chatServesGrade(undefined)).toBe(false);
+  });
+  it("keeps test families from notes and recaps except the rehearsal family, which must be a listed test family", () => {
+    expect(getsNoParentNotes({ test: true, rehearsal: false })).toBe(true);
+    expect(getsNoParentNotes({ test: true, rehearsal: true })).toBe(false);
+    expect(getsNoParentNotes({ test: false, rehearsal: false })).toBe(false);
+    expect(rehearsalRefusal({ test: false, listed: true })).toBe("not_test_family");
+    expect(rehearsalRefusal({ test: true, listed: false })).toBe("not_listed");
+    expect(rehearsalRefusal({ test: true, listed: true })).toBeNull();
   });
 });

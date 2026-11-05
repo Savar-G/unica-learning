@@ -33,7 +33,7 @@
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
 import { sampleAiCache } from "./workbook-sample-cache";
 import { renderSamplePages, samplePrintCache } from "./workbook-sample-render";
-import { samplePages, pagesMarkdown, writePageDiff } from "./workbook-sample-pages";
+import { samplePages, pagesMarkdown, writePageDiff, mayaCoverage, mayaCoverageMarkdown, masteryCoverageMarkdown } from "./workbook-sample-pages";
 import { browserStats, closeSampleBrowser } from "./workbook-sample-browser";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -50,7 +50,7 @@ import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@
 import { openRouterClient } from "@/lib/ai-openrouter";
 import type { Database } from "@/lib/database";
 import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
-import { BC_CURRICULUM, curriculumFor, curriculumFromData, curriculumProblems } from "@/lib/workbook-curriculum";
+import { BC_CURRICULUM, curriculumFor, curriculumFromData, curriculumProblems, curriculumVersion } from "@/lib/workbook-curriculum";
 import { parseStepProgressions } from "@/lib/workbook-curriculum/step-source";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { workbookDraftStore } from "@/lib/workbook-draft-store";
@@ -60,12 +60,15 @@ import { measuredPageUse, workbookQuality, type PageUse } from "@/lib/workbook-q
 import { reviewDays } from "@/lib/workbook-review-days";
 import { planWorkbook } from "@/lib/workbook-plan";
 import { type PrintEngine, type PrintJob, type RenderProblem, type MeasuredElement } from "@/lib/workbook-render";
-import { sampleChild, samplePlanInput, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
+import { bookPersona, firstCustomerProfile, sampleChild, samplePlanInput, type BookPersona, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
+import { planNextWorkbook } from "@/lib/workbook-placement";
+import { bookSignals } from "@/lib/workbook-signals";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { aiSolver, keySolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 import { workbookBuilderCoverage } from "@/lib/workbook-builder-coverage";
+import { skillUnits } from "@/lib/workbook-teaching-frame";
 
 const PROJECT = "cdjobwsyzndtltzfpyqa";
 const URL = `https://${PROJECT}.supabase.co`;
@@ -78,8 +81,14 @@ const { values } = parseArgs({
     steps: { type: "string" }, days: { type: "string" }, out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
     replay: { type: "string" }, diff: { type: "string" }, "check-only": { type: "boolean", default: false },
     fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false }, "subscription-only": { type: "boolean", default: false },
+    persona: { type: "string" },
   },
 });
+// G1: --persona plans one first book from a made-up profile with production placement (P0 to P9), not the level sample.
+const PERSONAS = ["first-customer", "ahead", "catch-up", "on-level", "rushed"] as const;
+type PersonaName = (typeof PERSONAS)[number];
+if (values.persona && !PERSONAS.includes(values.persona as PersonaName)) throw new Error(`--persona must be one of ${PERSONAS.join(", ")}`);
+if (values.persona && (values.second || values.test || values["family-only"] || !values["no-store"])) throw new Error("--persona makes one first book with --no-store.");
 if (values.days && (values.second || values.test)) throw new Error("--days is only for first review books.");
 // A local comparison can change only the data while it keeps the generator and plan inputs fixed.
 if (values.steps && !values["no-store"]) throw new Error("--steps requires --no-store");
@@ -284,6 +293,7 @@ interface BookResult {
   pdf: string;
   sheet: string;
   draft: GeneratedWorkbook;
+  masteryCoverage: string;
   renderProblems: RenderProblem[];
   omissions: number;
   usd: number;
@@ -382,10 +392,11 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const child = family?.children.get(level)?.child ?? sampleChild(BC, level)!;
   const childId = family?.children.get(level)?.id ?? randomUUID();
   const parentId = family?.parentId ?? randomUUID();
-  const label = `${level}${kind === "first" ? "" : kind === "second" ? "-workbook-2" : "-test-workbook"}`;
+  const persona = values.persona as PersonaName | undefined;
+  const label = `${level}${persona ? `-${persona}` : kind === "first" ? "" : kind === "second" ? "-workbook-2" : "-test-workbook"}`;
   const input = samplePlanInput(BC, child, kind);
   const planStart = performance.now();
-  const planned = planWorkbook(input);
+  const planned = persona && !forcedLevel ? personaPlan(persona) : planWorkbook(persona ? personaProbe(persona, input) : input);
   profile.plan = { ms: performance.now() - planStart, calls: 1, sheets: 0 };
   if (!planned.ok) throw new Error(`${label}: plan refused: ${planned.reason}`);
   // Reuse the previous sample's seed, so selection/layout changes keep identical requests reusable.
@@ -465,7 +476,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   await writeFile(`${out}/${label}-draft.json`, JSON.stringify(draft, null, 2));
   const pages = await timed("text-dump", async () => samplePages(draft, template, [...problems, ...renderProblems]));
   await Promise.all([
-    writeFile(`${out}/${label}-pages.md`, pagesMarkdown(label, pages)),
+    writeFile(`${out}/${label}-pages.md`, pagesMarkdown(label, pages, mayaCoverage(draft))),
     writeFile(`${out}/${label}-pages.json`, JSON.stringify(pages, null, 2)),
   ]);
   const changed = values.diff ? await timed("diff", () => writePageDiff({ label, before: values.diff!, out, pages })) : undefined;
@@ -488,6 +499,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   return {
     label, level, kind, child, pageUse, profile: structuredClone(profile), replay: { ...cache.counts }, changed,
     draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems,
+    masteryCoverage: masteryCoverageMarkdown(draft, { curriculum: BC.key, curriculumVersion: curriculumVersion(BC.key)!, plan: reviewDays(planned.plan, values.days), units: skillUnits(BC) }),
     omissions: draft.pages.reduce((n, p) => n + (p.omissions?.length ?? 0), 0), usd: c?.usd ?? 0, calls: c?.calls ?? 0, minutes: (performance.now() - t0) / 60000,
     solve: { checks: solveLogs.length, disagreed: solveLogs.filter(l => l.verdict.status === "disagreed").length,
       failed: solveLogs.filter(l => l.verdict.status === "failed").length, usd: sc?.usd ?? 0 },
@@ -536,7 +548,28 @@ const family = db ? await testFamily(db) : null;
 if (family) console.log(`test family ${family.parentId}: ${family.children.size} children`);
 const drafts = db ? workbookDraftStore(db) : null;
 
-const jobs: { level: string; kind: SampleBookKind }[] = [
+function personaProfile(persona: PersonaName) {
+  return persona === "first-customer" ? firstCustomerProfile() : bookPersona(persona as BookPersona).profile;
+}
+/** A persona's first book, placed and planned as the workbook job does (Grade 4, no workbooks yet). */
+function personaPlan(persona: PersonaName) {
+  return planNextWorkbook({ curriculum: BC, grade: 4, profile: personaProfile(persona), workbooks: [], number: 1 });
+}
+/**
+ * A forced-level probe (--persona with --levels): the level's sample input with the persona's standards (early-sign
+ * secure as developing, P5a) and its book signals, as the PR #523 review probes did. It keeps lower-level weak units in
+ * a level that would not place them, so the stories and Mixed set rules are checked on a wider plan.
+ */
+function personaProbe(persona: PersonaName, input: ReturnType<typeof samplePlanInput>): ReturnType<typeof samplePlanInput> {
+  const p = personaProfile(persona);
+  return { ...input, grade: p.grade, profile: { standards: p.standards.map(s => s.status === "secure" && s.certainty !== "clear" ? { ...s, status: "developing" as const } : s) }, personal: bookSignals({ grade: p.grade, profile: p }) };
+}
+const forcedLevel = values.persona && process.argv.some(a => a === "--levels" || a.startsWith("--levels=")) ? levels : null;
+if (forcedLevel && forcedLevel.length !== 1) throw new Error("--persona with --levels takes one level.");
+const personaLevel = values.persona ? forcedLevel?.[0] ?? personaPlan(values.persona as PersonaName).levelId : null;
+if (values.persona && !personaLevel) throw new Error(`persona ${values.persona}: no placement`);
+if (personaLevel) console.log(`persona ${values.persona}: placed at ${personaLevel}`);
+const jobs: { level: string; kind: SampleBookKind }[] = personaLevel ? [{ level: personaLevel, kind: "first" }] : [
   ...levels.map((level) => ({ level, kind: "first" as const })),
   ...list(values.second!).map((level) => ({ level, kind: "second" as const })),
   ...list(values.test!).map((level) => ({ level, kind: "test" as const })),
@@ -587,6 +620,7 @@ async function writeIndex() {
     "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
     "",
+    ...ok.flatMap(r => [`### ${r.label}`, "", mayaCoverageMarkdown(mayaCoverage(r.draft)), r.masteryCoverage]),
     "## Builder coverage (#480, #489)",
     `Fully covered levels (level and fluency skills): ${workbookBuilderCoverage(BC).filter(c=>c.fullyCovered).map(c=>c.level).join(", ") || "none"}. A skill whose steps all have printable templates takes its questions from them; the warm-up's fluency facts and skills without printable templates use #482's builders or, with neither, the existing writer. Personal review skills are routed individually.`,
     "| Level | Step templates | Hand-built builders | Existing writer | Existing writer IDs |",

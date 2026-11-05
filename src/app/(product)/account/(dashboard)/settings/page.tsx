@@ -8,6 +8,7 @@ import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { familyProvince, familyZone } from "@/lib/family-time";
 import { pageMetadata } from "@/lib/metadata";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
+import { childDetails } from "@/components/account-child-details";
 import { ACCOUNT_PATH } from "@/lib/parent-shell";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 
@@ -47,6 +48,7 @@ export default async function AccountSettings({ searchParams }: PageProps<"/acco
         <li><Link href="/account/password">Add or change your password</Link></li>
         <li><Link href="/account/pin">Set or change your PIN</Link></li>
       </ul>
+      {await childDetails(db)}
       <AddChild province={kids?.at(-1)?.province ?? "BC"} />
       <p className="small acct-out">Signed in. <SignOut /></p>
     </SupportPage>

@@ -32,6 +32,19 @@ const MAYA_FAILED = (
     <p className="lead">Something went wrong on our side. Try the link again later, or reply to any of our emails and we will turn them off.</p>
   </>
 );
+// The monthly summary email's own link (#563) turns off only that email.
+const MONTHLY_OFF = (
+  <>
+    <h1>Monthly summary emails are off.</h1>
+    <p className="lead">We will not send you more monthly summary emails. Each summary stays on your child&apos;s Overview page. Other emails from us do not change.</p>
+  </>
+);
+const MONTHLY_FAILED = (
+  <>
+    <h1>We could not turn off monthly summary emails.</h1>
+    <p className="lead">Something went wrong on our side. Try the link again later, or reply to any of our emails and we will turn them off.</p>
+  </>
+);
 const FAILED = (
   <>
     <h1>We could not turn off reminders.</h1>
@@ -72,6 +85,22 @@ export default async function UnsubscribePage({ searchParams }: PageProps<"/unsu
       </SupportPage>
     );
   }
+  if (state === "subscribed" && scope === "monthly") {
+    return (
+      <SupportPage label="Monthly summary emails" title="">
+        <Unsubscribe token={token} done={MONTHLY_OFF} failed={MONTHLY_FAILED} working="Turning off monthly summary emails…" />
+        <noscript>
+          <h1>Turn off monthly summary emails.</h1>
+          <p className="lead">We will not send you more monthly summary emails. Each summary stays on your child&apos;s Overview page. Other emails from us do not change.</p>
+          <form method="post" action="/api/unsubscribe">
+            <input type="hidden" name="t" value={token} />
+            <input type="hidden" name="page" value="1" />
+            <button className="btn" type="submit">Turn off monthly summary emails <span className="arr">→</span></button>
+          </form>
+        </noscript>
+      </SupportPage>
+    );
+  }
   if (state === "subscribed") {
     return (
       <SupportPage label="Reminder emails" title="">
@@ -89,9 +118,9 @@ export default async function UnsubscribePage({ searchParams }: PageProps<"/unsu
     );
   }
   return (
-    <SupportPage label={scope === "maya" ? "Maya emails" : "Reminder emails"} title="">
+    <SupportPage label={scope === "maya" ? "Maya emails" : scope === "monthly" ? "Monthly summary emails" : "Reminder emails"} title="">
       <TrackOnce event="unsubscribe_page" props={{ status: state }} />
-      {state === "unsubscribed" && (scope === "maya" ? MAYA_OFF : OFF)}
+      {state === "unsubscribed" && (scope === "maya" ? MAYA_OFF : scope === "monthly" ? MONTHLY_OFF : OFF)}
       {state === "failed" && FAILED}
       {state === "unknown" && (
         <>
