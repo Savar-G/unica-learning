@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const form = await request.formData().catch(() => null);
   const childId = form?.get("child");
   if (!isUuid(childId)) return to("/account");
-  const { data: child } = await db.from("children").select("id").eq("id", childId).maybeSingle();
+  const { data: child } = await db.from("children").select("id, grade").eq("id", childId).maybeSingle();
   if (!child) return to("/account");
   if (open?.parentId === parent && open.childId !== child.id) return to(DESK_HOME);
   const pinSet = await pinIsSet(parent);
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   if (Number.isInteger(page) && page > 0) at.set("p", String(page));
   // A page QR code: the desk opens "Pick from my page" on that page and says how it opened.
   if (at.has("p") && form?.get("from") === "qr") at.set("from", "qr");
-  if (!open && form?.get("maya") !== "later" && await mayaNoticeDue(parent)) return to(`/account/maya-notice?child=${child.id}${at.size ? `&${at}` : ""}`);
+  if (!open && form?.get("maya") !== "later" && await mayaNoticeDue(parent, child.grade)) return to(`/account/maya-notice?child=${child.id}${at.size ? `&${at}` : ""}`);
   const response = to(at.size ? `${DESK_HOME}?${at}` : DESK_HOME);
   openDesk(response, parent, child.id);
   return response;

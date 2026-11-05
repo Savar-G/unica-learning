@@ -5,7 +5,8 @@ import { pageMetadata } from "@/lib/metadata";
 import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, type DeskView } from "@/lib/desk";
 import { formatInZone, familyZone, type FamilyZone } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
-import { parentChatUsage } from "@/lib/maya-chat-server";
+import { deskChat } from "@/lib/maya-chat-server";
+import { MAYA_NOTICE_DESK_LINE } from "@/lib/maya-notice";
 import { mayaNoticeDue } from "@/lib/maya-notice-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
@@ -40,7 +41,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
 
   const { w, p, q, pick, from } = await searchParams;
   const [{ data: child }, { data: family }, view] = await Promise.all([
-    db.from("children").select("id, first_name, province").eq("id", lock.childId).maybeSingle(),
+    db.from("children").select("id, first_name, grade, province").eq("id", lock.childId).maybeSingle(),
     db.from("parents").select("postal, time_zone").maybeSingle(),
     // A failed read still shows the desk, with Leave, and says the workbook cannot be shown.
     deskView(workbookStore(db), {
@@ -55,14 +56,14 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province });
 
   // Without a parent's agreement (#529), the desk shows chat as off and says who can turn it on.
-  const noticeDue = await mayaNoticeDue(parent);
-  const chatNote = noticeDue ? "Ask a grown-up to turn on Maya from their account." : null;
-  const chatUsage = child && !noticeDue ? (await parentChatUsage(db, parent, [child], timeZone)).get(child.id) ?? null : null;
+  const noticeDue = child ? await mayaNoticeDue(parent, child.grade) : false;
+  const chat = child && !noticeDue ? await deskChat(db, parent, child, timeZone) : { usage: null, note: null };
 
   if (!child || !view || view.status === "no-workbook") {
     return (
       <Desk
         name={name}
+        chatNote={chat.note}
         problem={view ? `There is no workbook here yet. When ${name ? `${name}'s` : "your"} workbook arrives, its pages show here.`
           : "Your workbook cannot be shown right now. Try again in a moment."}
       />
@@ -81,8 +82,9 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
       // A new workbook or page starts the desk again, with the question asked for.
       key={`${workbook.id}-${page.number}`}
       name={name}
-      chatUsage={chatUsage}
-      chatNote={chatNote}
+      chatUsage={chat.usage}
+      chatNote={chat.note}
+      noticeLine={noticeDue ? MAYA_NOTICE_DESK_LINE : null}
       notice={view.notice === "not-this-child" ? `That workbook is not on ${name}'s desk, so ${name}'s newest workbook is open.` : null}
       books={view.workbooks.map((w) => book(w, timeZone))}
       book={book(workbook, timeZone)}

@@ -67,7 +67,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   // Maya's minutes this week (#330), for test families until Maya opens to families (#337).
   const [current, pinSet, minutes, chats, scansEnabled, notes, noticeDue] = await Promise.all([
     currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children),
-    parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser), latestParentMayaNotes(db, parentUser, children.map((c) => c.id)), mayaNoticeDue(parentUser),
+    parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser), latestParentMayaNotes(db, parentUser, children.map((c) => c.id)), mayaNoticeDue(parentUser, children.length ? Math.max(...children.map((c) => c.grade)) : null),
   ]);
   // The dashboard (#551), for the families its switch opens to. Everyone else gets today's Parent home below.
   const dashboard = await parentDashboard();

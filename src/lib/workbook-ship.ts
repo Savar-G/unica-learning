@@ -14,11 +14,23 @@
 // workbook answers firstShipped, so the admin is led to the existing "Workbook shipped: start plan" step (D-140); no
 // plan starts here.
 //
+// Approval freezes the print contract (#536, src/lib/workbook-print-contract.ts) as one unit with the revision it
+// approves: each page's contract, each question's regions and teaching context, the scan manifest and the printed
+// revision. A draft whose rendering does not hold all of them for its current content (a revision rendered before #536,
+// or a page changed since it rendered) is still approved, with no revision: it is never marked automatically.
+//
 // Pure TypeScript: no Next.js, React, network, database or clock. Adapters: Supabase (src/lib/workbook-ship-store.ts)
 // and in memory (src/lib/workbook-ship-memory.ts).
 import type { WorkbookInput, WorkbookStatus } from "@/lib/workbook-content";
 import type { GeneratedWorkbook } from "@/lib/workbook-generator";
 import type { DraftRendering } from "@/lib/workbook-job";
+import {
+  pageContentFingerprint,
+  printedRevision,
+  scanManifest,
+  teachingContext,
+  type TeachingFrame,
+} from "@/lib/workbook-print-contract";
 import type { RenderProblem } from "@/lib/workbook-render";
 
 /** Who approves or marks: the admin. */
@@ -41,6 +53,8 @@ export interface DraftForApproval {
   draft: GeneratedWorkbook;
   rendering: DraftRendering | null;
   renderProblems: RenderProblem[];
+  /** The run's stored plan (RunFrame), or null: nothing to freeze a teaching context or a manifest from. */
+  frame?: TeachingFrame | null;
 }
 
 export type ApproveResult =
@@ -103,22 +117,43 @@ export function approvalProblems(d: DraftForApproval, seenRevision: number = d.r
   return problems;
 }
 
-/** The workbook to store from a draft that passes approvalProblems: the draft's id, pages, packages and rendering. */
+/**
+ * The workbook to store from a draft that passes approvalProblems: the draft's id, pages, packages and rendering, with
+ * the print contract when the whole book holds one. A page whose content is not what its contract printed, or a book
+ * with part of a contract, keeps no contract at all: a contract is one unit.
+ */
 export function approvedWorkbook(d: DraftForApproval): WorkbookInput {
   const r = d.rendering!;
   const rendered = new Map(r.pages.map((p) => [p.number, p]));
-  return {
+  const contracted = d.draft.pages.every((p) => {
+    const contract = rendered.get(p.number)?.printContract;
+    return !!contract && contract.workbookId === d.draftId && contract.page === p.number && contract.day === p.day && contract.pageOfDay === p.pageOfDay
+      && contract.fingerprints.content === pageContentFingerprint({
+      number: p.number, dayLabel: p.dayLabel, type: p.type, qrToken: p.qrToken, content: p.content,
+      questions: p.questions.flatMap((q) => (q.package ? [{ number: q.number, package: q.package }] : [])),
+    });
+  });
+  const manifest = d.frame ? scanManifest(d.frame, d.draft.pages).manifest : null;
+  const whole = contracted && !!manifest && !!r.pdfSha256;
+  const workbook: WorkbookInput = {
     id: d.draftId, childId: d.draft.childId, number: d.draft.number, levels: d.draft.levels, pdfPath: r.pdfPath,
     profileBuild: d.draft.profileBuild,
+    pdfSha256: whole ? r.pdfSha256 : null, printManifest: whole ? manifest : null,
     pages: d.draft.pages.map((p) => {
       const page = rendered.get(p.number)!;
-      const boxes = new Map(page.questions.map((q) => [q.number, q.box]));
+      const boxes = new Map(page.questions.map((q) => [q.number, q]));
       return {
         number: p.number, dayLabel: p.dayLabel, type: p.type, image: page.image, qrToken: p.qrToken,
-        questions: p.questions.map((q) => ({ number: q.number, box: boxes.get(q.number)!, package: q.package! })),
+        printContract: whole ? page.printContract : null,
+        questions: p.questions.map((q) => ({
+          number: q.number, box: boxes.get(q.number)!.box, package: q.package!,
+          regions: whole ? boxes.get(q.number)!.regions ?? null : null,
+          teaching: d.frame ? teachingContext(d.frame, p, { ...q, package: q.package! }) : null,
+        })),
       };
     }),
   };
+  return { ...workbook, printedRevision: printedRevision(workbook) };
 }
 
 /** Approves the current revision of a run's draft, refused while any check fails. */

@@ -17,6 +17,7 @@ import { packageItem, PATTERN_SHAPES, valueText, type AnswerRegion, type AnswerV
 import { dayLabel, type Block, type DayContent, type Figure, type PageContent, type SlotName, type WorkedLine } from "@/lib/workbook-page";
 import {
   mark,
+  regionNames,
   type DraftPage,
   type DraftQuestion,
   type FitProblem,
@@ -788,12 +789,7 @@ function unitAfter(p: QuestionPackage): string {
   return p.answer?.unit ?? "";
 }
 
-/** The measured name of each region of a question: the first box or choice is its answer space (renderer), the rest regions. */
-export function regionNames(q: DraftQuestion): { region: AnswerRegion; name: string }[] {
-  const regions = packageItem(q.package).regions;
-  const first = Math.max(0, regions.findIndex((r) => r.kind === "box" || r.kind === "choice"));
-  return regions.map((region, i) => ({ region, name: i === first ? `question-${q.number}-answer` : `region-${q.number}-${region.id}` }));
-}
+export { regionNames };
 
 const measureAttr = (name: string) => `data-measure="${name}"`;
 
@@ -1339,7 +1335,7 @@ const GROW = new Set<SlotName>(["challenge", "show-what-you-know", "level-test"]
 
 // ---------- Pages ----------
 
-const scanMarks = `<i class="scan tl"></i><i class="scan tr"></i><i class="scan bl"></i><i class="scan br"></i>`;
+const scanMarks = `<i class="scan tl" ${mark.scanMark("tl")}></i><i class="scan tr" ${mark.scanMark("tr")}></i><i class="scan bl" ${mark.scanMark("bl")}></i><i class="scan br" ${mark.scanMark("br")}></i>`;
 const wordmark = `<span class="wm"><span>Unica Learning</span><i></i></span>`;
 
 function footer(page: DraftPage, parts: PageParts, id: string): string {

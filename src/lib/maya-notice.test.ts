@@ -116,6 +116,7 @@ describe("the notice text", () => {
     expect(text).toMatch(/We keep each chat, a note about it and a learning record/);
     expect(text).toMatch(/A chat has no audio/);
     expect(text).toMatch(/60 messages a day/);
+    expect(text).toMatch(/Chat is for Grade 3 and up/);
   });
 
   it("says the chat can go to the AI after it ends, that other details can remain, and the recap's limit", () => {

@@ -12,6 +12,9 @@
 /** Raise it when the notice changes in an important way (voice calls opening, a new kind of company): every family is asked again. */
 export const MAYA_NOTICE_VERSION = "2026-11-05";
 
+/** What the child's desk says when chat is open to the family but no parent agreed. */
+export const MAYA_NOTICE_DESK_LINE = "Ask a grown-up to turn on Maya from their account.";
+
 /** The notice as a parent reads it. No company names here: DESIGN.md keeps them in the privacy disclosure. */
 export const MAYA_NOTICE: readonly { title: string; text: string }[] = [
   { title: "What Maya does", text: "Your child types a message on the desk. Maya helps with one workbook question, one step at a time, on a shared board. Maya is an AI, not a person, and can make a mistake." },
@@ -19,7 +22,7 @@ export const MAYA_NOTICE: readonly { title: string; text: string }[] = [
   { title: "What we keep", text: "We keep each chat, a note about it and a learning record. You can read the note and the whole chat in your account, and we email you a recap each week your child uses Maya, with the newest 10 chats or calls across your family. Our team can read them too. A company that stores our records holds them, and a company that sends our email handles the recap. We delete them with your family account." },
   { title: "If your child may not be safe", text: "If your child writes something that suggests they may not be safe, Maya stops the math and tells your child to talk to a grown-up they trust. Our team gets an alert, and your note says it happened. Maya cannot call for help, and Maya is not an emergency service." },
   { title: "What we do not keep", text: "A chat has no audio. Voice calls are not open yet. We will ask you again before they open." },
-  { title: "Limits", text: "Each child can send Maya up to 60 messages a day." },
+  { title: "Limits", text: "Chat is for Grade 3 and up, because it needs typing. Each child can send Maya up to 60 messages a day." },
 ];
 
 export interface NoticeAcceptance {
