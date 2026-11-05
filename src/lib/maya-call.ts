@@ -1189,6 +1189,18 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (found?.severity) {
             const severity = found.severity;
             input = () => session.safety(severity);
+          } else if (found?.unsafe && unsafe) {
+            // A request for harmful content: the flag is stored and the alert goes now, before the clock ends the call.
+            const level = unsafe;
+            later(async () => {
+              const flag = risen(record.flag, { level, at: iso(seams.clock()) });
+              if (lost || record.status === "ended" || !flag) return;
+              if (!(await store.update(record.id, record.revision, { flag }))) { lost = true; replaced = true; return; }
+              record = { ...record, flag, revision: record.revision + 1 };
+              await alert(record);
+            });
+            await queue;
+            if (inactive()) return none;
           }
         }
         refusal = null;

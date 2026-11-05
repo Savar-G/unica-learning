@@ -51,14 +51,14 @@ The cap never holds safety back. Code writes the guidance, and it needs no paid 
 - It counts toward the month's total only, never the child's week. At most one read goes for each live call, because the call then ends.
 - With no flag, none of the model's words are said, and code's closing line ends the call.
 - With a danger, code's guidance is said, the flag is stored, the team's alert goes, and the call ends, as in any call. Past the call's clock the danger goes into the session as a safety signal, which the session takes before its clock.
-- With a request for harmful content, its flag is stored and the team's alert goes; only code's closing line is said.
+- With a request for harmful content, its flag is stored and the team's alert goes, in chats and voice calls, at the cap and after the call's 10 minutes; only code's closing line is said, and nothing after the 10 minutes.
 - Whatever the session holds, this path says only code's guidance and code's closing line.
 
 A child with no live chat at the cap cannot type to Maya, because new chats are refused. That is a limit of this design: the desk then shows only the waiting message.
 
 ## The monthly alert
 
-When the month's total reaches `MAYA_MONTHLY_ALERT_CAD`, at a reservation or when a cost settles higher than its reservation, the team gets one email at `SIGNUP_NOTIFY_EMAIL` (claimed in `public.maya_spend_alerts`). Nothing changes for families. The month is claimed before the email is sent: if that email fails, the server logs it and does not send it again that month.
+When the month's total reaches `MAYA_MONTHLY_ALERT_CAD`, at a reservation or when a cost settles higher than its reservation (checked against the month the reservation is in, also when the cost comes back after the month changed: `settle_maya_spend_month`, migration `maya_spend_settle_month`), the team gets one email at `SIGNUP_NOTIFY_EMAIL` (claimed in `public.maya_spend_alerts`). Nothing changes for families. The month is claimed before the email is sent: if that email fails, the server logs it and does not send it again that month.
 
 ## Reading it
 

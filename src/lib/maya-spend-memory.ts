@@ -52,9 +52,10 @@ export function memorySpendStore(options: { clock?: () => number } = {}): Memory
     async settle(id, micros) {
       check();
       const r = rows.get(id);
-      if (!r || r.settled) return;
+      if (!r || r.settled) return null;
       r.settled = true;
       r.cost = micros;
+      return r.request.month;
     },
     async used(q) {
       check();

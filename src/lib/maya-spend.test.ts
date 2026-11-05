@@ -93,6 +93,17 @@ describe("reservations", () => {
     expect(t.alert).toHaveBeenCalledWith("2026-11-01");
   });
 
+  it("checks the reservation's own month when it settles after the month changed (review 3 of PR #640)", async () => {
+    const t = setup({ start: "2026-12-01T06:59:00Z" }); // Nov 30, 23:59 in Vancouver (UTC-7 all year)
+    t.store.spent({ charge: "global", parentId: null, childId: null, week: null, month: "2026-11-01" }, 399.75 * CAD);
+    const id = t.newId();
+    await t.ledger.reserve({ id, charge: child, what: "model", micros: model(t) });
+    expect(t.alert).not.toHaveBeenCalled();
+    t.at("2026-12-01T07:01:00Z"); // December 1, 00:01 in Vancouver
+    await t.ledger.settle(id, 0.3 * CAD);
+    expect(t.alert).toHaveBeenCalledWith("2026-11-01");
+  });
+
   it("settles a request at a lower actual cost, a higher one, or keeps it reserved when the cost is not known", async () => {
     const t = setup();
     const [low, high, unknown] = [t.newId(), t.newId(), t.newId()];

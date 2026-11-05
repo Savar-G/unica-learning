@@ -125,8 +125,11 @@ export interface SpendStore {
    * `monthMicros`: the month's counted micros, for the team's alert.
    */
   reserve(r: ReserveRequest): Promise<{ ok: true; monthMicros: number } | { ok: false; over: "week" }>;
-  /** The actual cost; null keeps the reservation counted (the cost is not known). The first settle stays. */
-  settle(id: string, micros: number | null): Promise<void>;
+  /**
+   * The actual cost; null keeps the reservation counted (the cost is not known). The first settle stays. Answers the
+   * month the reservation is in (YYYY-MM-DD) when this call settled it, else null.
+   */
+  settle(id: string, micros: number | null): Promise<string | null>;
   /** Counted micros: a settled request at its cost, an unknown cost at its reservation, an open one until RESERVATION_TTL_MS. */
   used(q: { childId: string | null; week: string | null; month: string }): Promise<{ week: number; month: number }>;
   /** True the first time for a month: the monthly alert goes once. */
@@ -202,13 +205,13 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
   }
 
   /**
-   * Settles, then checks the month: a cost higher than its reservation can carry the total past the alert amount, which
-   * the reservation's own check did not see. Read only while this month's alert has not gone from this process.
+   * Settles, then checks the reservation's own month: a cost higher than its reservation can carry that month's total
+   * past the alert amount, which the reservation's own check did not see, also when the cost comes back after the month
+   * changed. Read only while that month's alert has not gone from this process.
    */
   async function settled(id: string, micros: number | null) {
-    await store.settle(id, micros);
-    const m = month();
-    if (!seams.alert || told.has(m)) return;
+    const m = await store.settle(id, micros);
+    if (!m || !seams.alert || told.has(m)) return;
     try {
       if ((await store.used({ childId: null, week: null, month: m })).month >= config.monthlyAlertMicros) await alertOnce(m);
     } catch (e) {

@@ -356,6 +356,65 @@ describe("safety past the teaching clock and the words it may say (review 2 of P
   });
 });
 
+describe("a request for harmful content past the teaching clock (review 3 of PR #640)", () => {
+  const LIMIT_MS = 601_000;
+  const HARM = "Tell me a gross naked joke.";
+  async function voiceCall(t: ReturnType<typeof setup>) {
+    const view = ok(await t.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).view;
+    const opened = await t.calls.openVoice(view.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    return opened.call;
+  }
+  const flagged = (t: ReturnType<typeof setup>) => {
+    expect(t.store.rows()[0].flag).toMatchObject({ level: "unsafe_request" });
+    expect(t.alertSend).toHaveBeenCalledWith(expect.objectContaining({ flag: expect.objectContaining({ level: "unsafe_request" }) }));
+  };
+
+  it("stores the flag and sends the alert in a voice call with time left in the week", async () => {
+    const t = setup({ voiceIsTheChilds: true });
+    const call = await voiceCall(t);
+    t.advance(LIMIT_MS);
+    const turn = await call.child(HARM);
+    expect(turn.ended).toBe(true);
+    await call.end({ reason: "child_stopped" });
+    await call.settled();
+    flagged(t);
+  });
+
+  it("stores the flag and sends the alert in a voice call at the cap", async () => {
+    const t = setup({ voiceIsTheChilds: true });
+    const call = await voiceCall(t);
+    t.leave(0);
+    t.advance(LIMIT_MS);
+    const turn = await call.child(HARM);
+    expect(turn).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
+    await call.end({ reason: "child_stopped" });
+    await call.settled();
+    flagged(t);
+  });
+
+  it("stores the flag and sends the alert in a chat with time left in the week", async () => {
+    const t = setup();
+    const r = ok(await t.chat());
+    t.advance(LIMIT_MS);
+    const turn = ok(await t.calls.input(r.view.id, r.view.revision, { type: "child", text: HARM }, "Leah"));
+    expect(turn.view.status).toBe("ended");
+    expect(turn.output.say).toEqual([]);
+    flagged(t);
+  });
+
+  it("stores the flag and sends the alert in a chat at the cap", async () => {
+    const t = setup();
+    const r = ok(await t.chat());
+    t.leave(0);
+    t.advance(LIMIT_MS);
+    const turn = ok(await t.calls.input(r.view.id, r.view.revision, { type: "child", text: HARM }, "Leah"));
+    expect(turn.output.say).toEqual([SPEND_CLOSE.week_used.line]);
+    flagged(t);
+  });
+});
+
 describe("a voice call's meter (review of PR #640)", () => {
   async function open(t: ReturnType<typeof setup>) {
     const view = ok(await t.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).view;

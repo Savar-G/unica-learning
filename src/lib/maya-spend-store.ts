@@ -26,8 +26,10 @@ export function mayaSpendStore(db: SupabaseClient<Database>): SpendStore {
       return { ok: false, over: "week" };
     },
     async settle(id, micros) {
-      const { error } = await db.rpc("settle_maya_spend", { p_id: id, p_cost: micros === null ? null : Math.min(MAX_MICROS, micros) });
+      // settle_maya_spend_month answers the reservation's month (migration maya_spend_settle_month), or null when settled before.
+      const { data, error } = await db.rpc("settle_maya_spend_month", { p_id: id, p_cost: micros === null ? null : Math.min(MAX_MICROS, micros) });
       if (error) throw new Error(`maya spend settle failed: ${error.message}`);
+      return data ?? null;
     },
     async used(q) {
       const { data, error } = await db.rpc("maya_spend_used", { p_child: q.childId, p_week: q.week, p_month: q.month });

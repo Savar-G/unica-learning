@@ -5687,6 +5687,10 @@ export type Database = {
         Args: { p_cost: number; p_id: string }
         Returns: boolean
       }
+      settle_maya_spend_month: {
+        Args: { p_cost: number; p_id: string }
+        Returns: string
+      }
       spend_family_delete_code: {
         Args: { p_hash: string; p_now: string; p_parent: string }
         Returns: boolean
