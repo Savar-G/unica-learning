@@ -106,8 +106,8 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
   {
     id: "centre",
     tag: "vs Learning centres",
-    title: "Structured like a learning centre, without the drive.",
-    summary: `A centre gives your child a program and a routine. ${BRAND} does too, and builds each set of pages from how they did on the last.`,
+    title: `A learning centre moves every child along the same path. ${BRAND} builds the path from your child's own work.`,
+    summary: "Both give your child a program and a daily routine. Each new workbook brings back what they missed and spends less time on what they already know.",
     goodTitle: "A centre is good at",
     good: ["A set program and a daily habit", "A placement test to start", "Instructors at the centre"],
     hardTitle: "Harder with a centre",
