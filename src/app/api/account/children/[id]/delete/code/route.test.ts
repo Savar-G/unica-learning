@@ -65,6 +65,7 @@ it.each([
   [{ ok: false, error: "protected" }, 403],
   [{ ok: false, error: "not_found" }, 404],
   [{ ok: false, error: "busy" }, 409],
+  [{ ok: false, error: "plan_start" }, 409],
   [{ ok: false, error: "email_failed" }, 502],
   [{ ok: false, error: "unavailable" }, 503],
 ])("answers %j", async (result, status) => {

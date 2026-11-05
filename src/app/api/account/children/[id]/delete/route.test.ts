@@ -31,9 +31,17 @@ it("binds the shared code to the session and URL child, and keeps the parent ses
   expect(f.prove).toHaveBeenCalledWith("codes",parent,"parent@example.invalid",{ child });
   expect(f.run).toHaveBeenCalledWith({ db: true },parent,child);
 });
-it.each(["wrong_code","busy","unavailable","not_finished"])("does not remove rows or files after %s", async error => {
+it.each(["wrong_code","busy","plan_start","unavailable","not_finished"])("does not remove rows or files after %s", async error => {
   f.request.mockResolvedValue({ ok:false,error,attemptsLeft:4,plansStopped:0 });
   expect((await POST(req(),context)).status).toBeGreaterThanOrEqual(400); expect(f.run).not.toHaveBeenCalled();
+});
+it("returns 409 for an unresolved plan start and preserves the stopped-plan count", async () => {
+  const result = { ok: false, error: "plan_start", plansStopped: 1 };
+  f.request.mockResolvedValue(result);
+  const response = await POST(req(), context);
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual(result);
+  expect(f.run).not.toHaveBeenCalled();
 });
 it("reports a saved request without claiming the files are gone after a worker failure", async () => {
   f.run.mockRejectedValue(Error("files failed"));

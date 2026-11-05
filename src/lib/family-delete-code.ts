@@ -44,7 +44,7 @@ export interface DeleteCodeStore {
 export type DeleteCodeResult =
   /** `unsure`: the provider gave no clear answer, so the email may or may not have gone. */
   | { ok: true; sentTo: string; unsure: boolean }
-  | { ok: false; error: "no_confirmed_email" | "protected" | "busy" | "not_found" | "unavailable" | "email_failed" }
+  | { ok: false; error: "no_confirmed_email" | "protected" | "busy" | "plan_start" | "not_found" | "unavailable" | "email_failed" }
   | { ok: false; error: "too_many" | "locked"; retryAt: number };
 
 export interface DeleteCodeSeams {

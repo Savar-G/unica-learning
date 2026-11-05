@@ -38,8 +38,8 @@ describe("workbook emails", () => {
   });
   it("the founders sign the welcome; the team signs dispatch notices (D-225)", () => {
     const welcome = workbookEmail({ ...parent, kind: "welcome", delivery: null });
-    expect(welcome.text).toContain("Thank you,\nCedric & Savar\nCo-founders, Unica Learning");
-    expect(welcome.html).toContain("Cedric &amp; Savar");
+    expect(welcome.text).toContain("Thank you,\nSavar & Cedric\nCo-founders, Unica Learning");
+    expect(welcome.html).toContain("Savar &amp; Cedric");
     const dispatch = workbookEmail({ ...parent, kind: "dispatch", delivery: { method: "hand" } });
     expect(dispatch.text).toContain("The Unica Learning team");
     expect(dispatch.text).not.toContain("Co-founders");

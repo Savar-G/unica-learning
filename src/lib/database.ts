@@ -98,6 +98,13 @@ type KnownArgs<T extends { [F in keyof T]: F extends keyof Fns ? keyof Fns[F]["A
 type AnswerNulls = "p_misconception" | "p_read_aloud_count" | "p_read_aloud_at_ms" | "p_away_count" | "p_away_ms" | "p_work_text";
 type NullArgs = KnownArgs<{
   queue_workbook_edit: "p_question" | "p_item";
+  // A plan start on a child with no card update has no session.
+  finish_card_lock: "p_session";
+  settle_card_update: "p_session";
+  // A refused start has no plan, and a plan with no trial has no first charge.
+  finish_plan_start: "p_subscription" | "p_first_charge";
+  note_plan_start_alert: "p_email_id" | "p_error";
+  note_plan_start_email_send: "p_email_id" | "p_error";
   finish_workbook_edit: "p_content" | "p_rendering" | "p_error";
   admin_template_stats_v2: "school_grade" | "curriculum";
   // An idle worker has no run; a worker outside git has no build.

@@ -26,7 +26,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     });
     if (result.ok) return reply(200, result);
     if (result.error === "locked" || result.error === "too_many") return reply(429, { ...result, ...await familyRetryTime(db, result.retryAt) });
-    const statuses = { no_confirmed_email: 409, protected: 403, busy: 409, not_found: 404, unavailable: 503, email_failed: 502 };
+    const statuses = { no_confirmed_email: 409, protected: 403, busy: 409, plan_start: 409, not_found: 404, unavailable: 503, email_failed: 502 };
     return reply(statuses[result.error], result);
   } catch {
     return reply(503, { ok: false, error: "unavailable" });

@@ -32,7 +32,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     });
     if (!result.ok) {
       if (result.error === "locked") return reply(429, { ...result, ...await familyRetryTime(db, result.retryAt) });
-      const statuses = { invalid: 400, wrong_code: 403, code_ended: 403, protected: 403, not_found: 404, busy: 409, not_finished: 502, unavailable: 503 };
+      const statuses = { invalid: 400, wrong_code: 403, code_ended: 403, protected: 403, not_found: 404, busy: 409, plan_start: 409, not_finished: 502, unavailable: 503 };
       return reply(statuses[result.error], result);
     }
     // The request is durable. A failed copy or file removal stays pending for the scheduled retry.

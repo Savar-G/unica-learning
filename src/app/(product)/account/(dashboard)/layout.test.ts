@@ -1,8 +1,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardLayout from "./layout";
 import AccountSettings from "./settings/page";
+import { BillingSection } from "@/components/account-billing-section";
+import { memoryBilling, type MemoryBillingChild } from "@/lib/billing-memory";
+import { formatInZone, familyZone } from "@/lib/family-time";
+import type { PlanOwner } from "@/lib/plan-state";
+import { memoryPlanStates } from "@/lib/plan-state-memory";
 import type { ParentDashboard } from "@/lib/parent-dashboard-server";
 import type { ChildView } from "@/lib/parent-view";
 
@@ -16,13 +21,15 @@ vi.mock("next/navigation", () => ({
 }));
 const state = vi.hoisted(() => ({ dashboard: null as ParentDashboard | null, parent: "p1" as string | null, card: true }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => state.dashboard }));
+const billing = vi.hoisted(() => ({ seams: vi.fn(() => null as unknown) }));
+vi.mock("@/lib/billing-server", () => ({ liveFamilyBilling: billing.seams }));
 vi.mock("@/lib/supabase-auth", () => ({
   parentId: async () => state.parent,
   sessionClient: async () => ({
     from: (table: string) => ({
       select: () => {
-        const data = table === "card_setups" ? [{ card_saved_at: state.card ? "2026-11-01T00:00:00Z" : null }] : [{ province: "BC" }];
-        const query = { order: () => query, then: (resolve: (r: { data: unknown[] }) => unknown) => resolve({ data }) };
+        const data = table === "card_setups" ? [{ card_saved_at: state.card ? "2026-11-01T00:00:00Z" : null }] : [{ province: "BC", created_at: "2026-01-01", id: "c1" }];
+        const query = { order: () => query, maybeSingle: async () => ({ data: { postal: null, time_zone: "America/Vancouver" } }), then: (resolve: (r: { data: unknown[] }) => unknown) => resolve({ data }) };
         return query;
       },
     }),
@@ -32,9 +39,10 @@ vi.mock("@/lib/supabase-auth", () => ({
 const child = (over: Partial<ChildView> = {}): ChildView => ({ id: "c1", firstName: "Leah", schoolGrade: 3, stage: "no_test", opensOn: "start_test", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null, reportIds: [], finishedTests: [], ...over });
 const family = (over: Partial<ParentDashboard> = {}): ParentDashboard => ({ children: [child()], remembered: null, pinSet: true, timeZoneSaved: true, ...over });
 const page = createElement("p", null, "the page");
+const settings = (card?: string) => AccountSettings({ params: Promise.resolve({}), searchParams: Promise.resolve(card ? { card } : {}) });
 const render = async () => renderToStaticMarkup(createElement("div", null, await DashboardLayout({ children: page })));
 
-beforeEach(() => { state.dashboard = family(); state.parent = "p1"; state.card = true; nav.path = "/account"; nav.query = new URLSearchParams(); });
+beforeEach(() => { billing.seams.mockReset(); billing.seams.mockReturnValue(null); state.dashboard = family(); state.parent = "p1"; state.card = true; nav.path = "/account"; nav.query = new URLSearchParams(); });
 
 it("sends a parent whose family's deletion is queued to the confirmation, not to a live account", async () => {
   state.dashboard = family({ deletionRequested: true });
@@ -42,7 +50,7 @@ it("sends a parent whose family's deletion is queued to the confirmation, not to
 });
 it("shows the delete on the Account tab closed, and says what it does before any form", async () => {
   state.dashboard = family();
-  const html = renderToStaticMarkup(await AccountSettings());
+  const html = renderToStaticMarkup(await AccountSettings({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
   expect(html).toContain("Delete your family&#x27;s account");
   expect(html).toContain("stops every plan");
   expect(html).not.toContain("d-password");
@@ -107,15 +115,92 @@ it("has the bottom bar once the child has more tabs, and marks the current page"
 });
 
 it("has the account page's links, add a child and sign out for a family the switch opens to", async () => {
-  const out = renderToStaticMarkup(await AccountSettings());
+  const out = renderToStaticMarkup(await settings());
   for (const text of ['href="/account/plan"', 'href="/account/password"', 'href="/account/pin"', "Add another child", "Sign out"]) expect(out).toContain(text);
   state.card = false;
-  expect(renderToStaticMarkup(await AccountSettings())).not.toContain('href="/account/plan"');
+  expect(renderToStaticMarkup(await settings())).not.toContain('href="/account/plan"');
 });
 
 it("sends everyone else away from the new account page", async () => {
   state.dashboard = null;
-  await expect(AccountSettings()).rejects.toThrow("REDIRECT /account");
+  await expect(settings()).rejects.toThrow("REDIRECT /account");
+  expect(billing.seams).not.toHaveBeenCalled();
   state.parent = null;
-  await expect(AccountSettings()).rejects.toThrow("REDIRECT /sign-in?next=/account/settings");
+  await expect(settings()).rejects.toThrow("REDIRECT /sign-in?next=/account/settings");
+});
+
+describe("billing on the Account tab", () => {
+  const zone = familyZone({ timeZone: "America/Vancouver", postal: null, province: "BC" });
+  const leah: MemoryBillingChild = { parentId: "p1", childId: "c1", firstName: "Leah", card: { id: "11111111-1111-4111-8111-111111111111", customer: "cus_1", saved: true } };
+  const invoice = { id: "in_1", customer: "cus_1", status: "paid", created: 1_800_000_000, paidAt: 1_800_000_000, amountPaid: 7999, amountDue: 7999, total: 7999, currency: "cad", receiptUrl: "https://invoice.stripe.com/i/1" };
+  const live = (over: { children?: MemoryBillingChild[]; subscriptions?: Parameters<typeof memoryPlanStates>[0]["subscriptions"] } = {}) => {
+    const children = over.children ?? [leah];
+    const money = memoryBilling({ children, invoices: { cus_1: [invoice] } });
+    const cards: PlanOwner[] = children.flatMap((c) => (c.card?.customer ? [{ parentId: c.parentId, childId: c.childId, customer: c.card.customer, cardSaved: c.card.saved }] : []));
+    const plans = memoryPlanStates({ cards, subscriptions: over.subscriptions ?? {} });
+    billing.seams.mockReturnValue({ store: money.store, provider: money.provider, plans });
+    return { money, plans };
+  };
+  const section = async () => renderToStaticMarkup(await BillingSection({ parent: "p1", zone }));
+  const paying = { status: "active", cancelAtPeriodEnd: false, trialEnd: null, periodEnd: 1_800_000_000, cents: 7999, created: 1 };
+
+  it("shows each child's next charge, the invoice with its receipt link, and the card button", async () => {
+    live({ subscriptions: { cus_1: [paying] } });
+    const out = await section();
+    const day = formatInZone(new Date(1_800_000_000_000).toISOString(), zone, { year: "numeric", month: "long", day: "numeric" });
+    expect(out).toContain("Leah");
+    expect(out).toContain(`Next charge: ${day}.`);
+    expect(out).toContain("CAD 79.99");
+    expect(out).toContain('href="https://invoice.stripe.com/i/1"');
+    expect(out).toContain("Update card");
+    expect(out).not.toContain("cus_1");
+  });
+
+  it("fills a missing plan row on the load, and the next load asks Stripe nothing", async () => {
+    const { plans } = live({ subscriptions: { cus_1: [paying] } });
+    await section();
+    expect(plans.rows).toHaveLength(1);
+    await section();
+    expect(plans.calls.plan).toBe(1);
+  });
+
+  it("says we cannot load billing now, and claims nothing, with no seams", async () => {
+    const out = await section();
+    expect(out).toContain("We cannot load billing now");
+    for (const claim of ["No invoices yet", "Next charge", "Update card", "No plan yet"]) expect(out).not.toContain(claim);
+  });
+
+  it("makes no claim about a plan or invoices when Stripe fails", async () => {
+    const { money, plans } = live();
+    plans.fail.plan = new Error("Stripe down");
+    money.failInvoicesOf.add("cus_1");
+    const out = await section();
+    expect(out).toContain("We cannot load this plan now.");
+    expect(out).toContain("We cannot load billing now, so your invoices do not show.");
+    for (const claim of ["No invoices yet", "Next charge", "Update card", "nothing has been charged", "We will not charge"]) expect(out).not.toContain(claim);
+  });
+
+  it("offers no card button once the plan cannot charge", async () => {
+    live({ subscriptions: { cus_1: [{ ...paying, status: "canceled", endedAt: 1_700_000_000 }] } });
+    const out = await section();
+    expect(out).toContain("This plan has ended.");
+    expect(out).not.toContain("Update card");
+  });
+
+  it("has no plan and no card button for a child with no saved card", async () => {
+    live({ children: [{ ...leah, card: null }] });
+    const out = await section();
+    expect(out).toContain("No plan yet.");
+    expect(out).toContain("No invoices yet.");
+    expect(out).not.toContain("Update card");
+  });
+
+  it.each([["updated", "Your new card is saved."], ["unchanged", "Your card did not change."], ["failed", "We could not update your card."]])("says what happened after Stripe's page: %s", async (card, text) => {
+    expect(renderToStaticMarkup(await settings(card))).toContain(text);
+  });
+
+  it("says nothing about the card for another value in the address", async () => {
+    const out = renderToStaticMarkup(await settings("<script>"));
+    for (const text of ["Your new card", "did not change", "could not update", "<script>"]) expect(out).not.toContain(text);
+  });
 });

@@ -460,14 +460,18 @@ export interface MayaCalls {
    * Appends the child's ink events of a chat (#635): `events` (plain data, read here) at sequences `from`, `from + 1`, …;
    * the call keeps each sequence once. For a chat of this parent and child, live or ended a few minutes ago; never
    * raises the call's revision. `held` is the last sequence the call holds, which the desk sends on from.
+   * `not_this_desk`: a chat of this family that is another child's (#652): an answer about the desk that asked, which
+   * says nothing about the ink. `not_found`: no chat of this desk has this id (no call, another family's call or a call of
+   * another kind, all alike, R654), so the ink can never go.
    */
-  appendInk(id: string, owner: InkOwner, from: unknown, events: unknown): Promise<{ ok: true; held: number } | { ok: false; error: "invalid_input" | "not_found" | "busy" | "closed" | "gap"; held: number }>;
+  appendInk(id: string, owner: InkOwner, from: unknown, events: unknown): Promise<{ ok: true; held: number } | { ok: false; error: "invalid_input" | "not_found" | "not_this_desk" | "busy" | "closed" | "gap"; held: number }>;
   /**
-   * A chat's ink log for its own desk (#635), or null when it is not a chat of this parent and child. A chat from before
-   * the log (R639-4) that has no event yet answers its whole-board copy as a log; the store turns that copy into events
-   * before it appends the first new one, so the sequences are the same.
+   * A chat's ink log for its own desk (#635). `not_this_desk`: a chat of this family that is another child's (#652);
+   * `not_found`: no chat of this desk has this id (another family's call and a call of another kind answer the same). A chat from before the log (R639-4) that has no event yet answers its
+   * whole-board copy as a log; the store turns that copy into events before it appends the first new one, so the
+   * sequences are the same.
    */
-  readInk(id: string, owner: InkOwner): Promise<InkEvent[] | null>;
+  readInk(id: string, owner: InkOwner): Promise<{ ok: true; events: InkEvent[] } | { ok: false; error: "not_found" | "not_this_desk" }>;
   view(id: string): Promise<CallView | null>;
 }
 
@@ -633,6 +637,14 @@ export function recordView(record: CallRecord, alerts: AlertState[] = [], ink: r
   const session = createTextSession({ callId: record.id, package: record.live.package, model: idleModel(record), clock: () => 0, runner: "text", resume: record.live.text });
   return callView(record, session.trace(), alerts, ink);
 }
+
+/**
+ * A text chat of the same family that is another child's (#652): the one case a desk is told "not this desk", so a
+ * sibling's ink on a shared device is kept. Another family's call, a call of another kind and no call at all answer the
+ * same `not_found`, so no desk learns whether another family's call exists (R654).
+ */
+const siblingChat = (record: CallRecord | null, owner: InkOwner): boolean =>
+  !!record && record.kind === "chat" && record.mode === "text" && record.parentId === owner.parentId && record.childId !== owner.childId;
 
 /** A stand-in for a call's model where no model is asked: reading a saved call, or ending it. */
 const idleModel = (record: CallRecord): MayaModel => ({
@@ -1173,14 +1185,18 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const first = typeof from === "number" && Number.isInteger(from) ? from : 0;
       if (!read || read.some((e) => e === null) || first < 1 || first + read.length - 1 > MAX_INK_SEQ) return { ok: false, error: "invalid_input", held: 0 };
       const appended = await store.appendInk(id, owner, first, read as InkEvent[]);
-      return appended.status === "saved" ? { ok: true, held: appended.held } : { ok: false, error: appended.status, held: appended.held };
+      if (appended.status === "saved") return { ok: true, held: appended.held };
+      // The store answers not_found for a sibling's chat too: tell that one apart (#652).
+      if (appended.status === "not_found" && siblingChat(await store.get(id), owner)) return { ok: false, error: "not_this_desk", held: 0 };
+      return { ok: false, error: appended.status, held: appended.held };
     },
 
     async readInk(id, owner) {
       const record = await store.get(id);
-      if (!record || record.kind !== "chat" || record.mode !== "text" || record.parentId !== owner.parentId || record.childId !== owner.childId) return null;
+      if (siblingChat(record, owner)) return { ok: false, error: "not_this_desk" };
+      if (!record || record.kind !== "chat" || record.mode !== "text" || record.parentId !== owner.parentId || record.childId !== owner.childId) return { ok: false, error: "not_found" };
       const log = await store.readInk(id);
-      return log.length > 0 ? log : inkLog(record.childInk ?? createHistory());
+      return { ok: true, events: log.length > 0 ? log : inkLog(record.childInk ?? createHistory()) };
     },
 
     async view(id) {

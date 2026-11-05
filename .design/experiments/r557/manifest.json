@@ -26,18 +26,23 @@
     "desktop-empty.png": "After deleting the last child, Account stays signed in and offers Add another child.",
     "phone-empty.png": "The same empty account at phone width.",
     "desktop-open.png": "Final wording, including removal of affected parent-owned email copies. Temporary preview child, no code requested.",
-    "phone-open.png": "Final deletion wording at phone width, including affected stored email copies."
+    "phone-open.png": "Final deletion wording at phone width, including affected stored email copies.",
+    "email-scope-desktop.png": "Revised email-scope retention text at 1440 x 1200, using the real form and support/child-card styles in a temporary local route. T3 preview. No email or deletion.",
+    "email-scope-phone.png": "Revised email-scope retention text at 390 x 844, scrolled to What stays. T3 preview. No horizontal overflow. No email or deletion."
   },
   "verification": {
     "browser": "Two deletions through the visible form with codes read from the test mailbox. After the first, sibling row, test and Storage metadata hashes were identical. After the second: Auth 1, parent 1, children 0, tests 0, files 0, pending requests 0, folder guards 2. A late Storage upload to the removed child's folder failed with code 55000.",
     "copies": "Three saved copies match the expected name-free payload of this task's three seeded tests, including the initial shared-family fixture that was cleaned up through the server deletion interfaces. None contains the fixture names.",
-    "local": "14 touched and directly affected test files, 225 tests, exit 0. ESLint src exit 0. npm run build exit 0. The whole npm test was not run.",
-    "database": "Seven additive schema migrations applied through Supabase MCP. Child deletion and admission probes passed and rolled back. The unchanged billing recovery probe reached its intentional PROBE_OK rollback after the child guard correction. The mixed email-copy probe also passed and rolled back."
+    "local": "Final integrated candidate: npm test exit 0, 415 files, 16036 passed and one optional render case skipped. ESLint src exit 0. Production build exit 0 after clearing generated references to the removed temporary browser fixture.",
+    "database": "Seven additive schema migrations applied through Supabase MCP. Child deletion and admission probes passed and rolled back. The unchanged billing recovery probe reached its intentional PROBE_OK rollback after the child guard correction. The mixed email-copy probe also passed and rolled back.",
+    "email_scope": "Hosted migration 20261105221039 applied. Generated types refreshed. CHILD_EMAIL_SCOPE_PROBE_OK and CHILD_EMAIL_COPIES_PROBE_OK passed and rolled back. Billing recovery again reached PROBE_OK. No probe parents remain. Internal helper grants refused anon/authenticated/service_role; deletion RPCs remain service-only. Security advisors unchanged.",
+    "route_integration": "Three new assertions failed before both child routes mapped plan_start to HTTP 409. All 28 route tests passed after. A synthetic browser code response showed the child refusal, offered no code input, and made no claim of a team alert."
   },
   "limits": [
     "No Stripe cancellation ran in this browser check. Existing fake plan tests cover failed reads and stops.",
     "No two-connection hosted lock wait was measured.",
     "The scheduled Vercel retry is configured but has not run on a deployed build.",
-    "Visual and code review were self-review. Independent review is pending."
+    "Visual and code review were self-review. Independent review is pending.",
+    "The email-scope screenshots use a temporary render of the real component. They verify text wrapping, not account authentication or hosted send/deletion behavior. The temporary route was removed."
   ]
 }

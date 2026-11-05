@@ -29,6 +29,10 @@ function message(answer: Exclude<Answer, { ok: true }>): ReactNode {
       return lockedOut(answer);
     case "busy":
       return cardStep;
+    case "plan_start":
+      return answer.plansStopped > 0
+        ? <>We stopped {plans(answer.plansStopped)}, but our team must finish starting a plan for your family before we can delete this account. Your family&apos;s data is all still here. We have told the team. Try again later, or email {email}.</>
+        : <>Our team must finish starting a plan for your family before we can delete this account, so we changed nothing. We have told the team. Try again later, or email {email}.</>;
     case "protected":
       return "This account cannot be deleted here.";
     case "not_finished":
@@ -44,8 +48,12 @@ function message(answer: Exclude<Answer, { ok: true }>): ReactNode {
   }
 }
 
-function codeMessage(answer: Exclude<CodeAnswer, { ok: true }>): ReactNode {
+function codeMessage(answer: Exclude<CodeAnswer, { ok: true }>, childName?: string): ReactNode {
   switch (answer.error) {
+    case "plan_start":
+      return childName
+        ? <>A plan request for {childName} is still unresolved, so we changed nothing. Try again later, or email {email}.</>
+        : message({ ok: false, error: "plan_start", plansStopped: 0 });
     case "too_many":
       return <>We have sent as many codes as we can for now. Try again after <When at={answer.retryAt} text={answer.retryWhen ?? "an hour"} />.</>;
     case "locked":
@@ -92,7 +100,7 @@ export function FamilyDelete({ child }: { child?: { id: string; name: string } }
         setSentTo(answer.sentTo);
         setUnsure(answer.unsure);
         setCode("");
-      } else setError(codeMessage(answer));
+      } else setError(codeMessage(answer, child?.name));
     } catch {
       setError("We did not get an answer. Check your email. If no code came, try again.");
     }
@@ -160,6 +168,7 @@ export function FamilyDelete({ child }: { child?: { id: string; name: string } }
           <ul>
             <li>{child ? `A copy of each of ${child.name}'s tests without names.` : "A copy of each test without names."} It has the grade, province and month of the test, the questions, the answers and their times, the results, the learning choices you picked and the kind of device. It has no names, email, postal code, drawings, typed working or anything written in your own words, and it is not linked to your family. We use it to improve our tests and workbooks.</li>
             {child && <li>We keep a record of deleted file locations to prevent them from being saved again.</li>}
+            {child && <li>We keep email delivery records and a record of which children each email included to prevent deleted copies from being saved again. We remove these records when your family account is deleted.</li>}
             <li>Historical reservation records stay. Invoices and payment records stay with our payment provider. Emails you already received stay with you.</li>
           </ul>
           <p className="small">To stop a plan and keep your data, use <Link href="/account/plan">Manage or cancel plan</Link>. The <Link href="/privacy">privacy policy</Link> has the full detail.</p>

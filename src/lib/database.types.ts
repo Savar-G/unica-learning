@@ -883,6 +883,7 @@ export type Database = {
           call_ids: string[] | null
           child_id: string | null
           clicks: number
+          copy_child_ids: string[] | null
           copy_redacted: boolean
           created_at: string
           day: string | null
@@ -905,6 +906,7 @@ export type Database = {
           call_ids?: string[] | null
           child_id?: string | null
           clicks?: number
+          copy_child_ids?: string[] | null
           copy_redacted?: boolean
           created_at?: string
           day?: string | null
@@ -927,6 +929,7 @@ export type Database = {
           call_ids?: string[] | null
           child_id?: string | null
           clicks?: number
+          copy_child_ids?: string[] | null
           copy_redacted?: boolean
           created_at?: string
           day?: string | null
@@ -4834,6 +4837,7 @@ export type Database = {
         Args: { c: string; p: string; token: string }
         Returns: undefined
       }
+      assert_child_email_scopes: { Args: { p: string }; Returns: undefined }
       assert_family_writable: { Args: { p: string }; Returns: undefined }
       beat_workbook_worker: {
         Args: {
@@ -5285,6 +5289,10 @@ export type Database = {
         Args: { keep_family: boolean; p: string; token: string }
         Returns: boolean
       }
+      email_copy_child_scope: {
+        Args: { l: Database["public"]["Tables"]["email_log"]["Row"] }
+        Returns: string[]
+      }
       end_family_card_operation: { Args: { token: string }; Returns: undefined }
       end_family_delete_hold: {
         Args: { hold: string; p: string }
@@ -5644,6 +5652,10 @@ export type Database = {
       recover_scan_photo: {
         Args: { p_id: string; p_parent: string }
         Returns: string
+      }
+      redact_child_email_logs: {
+        Args: { c: string; p: string }
+        Returns: undefined
       }
       release_card_lock: {
         Args: { p_card: string; p_token: string }
