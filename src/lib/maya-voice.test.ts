@@ -28,20 +28,30 @@ const OTHER_PARENT = "44444444-4444-4444-8444-444444444444";
 const OTHER_CHILD = "55555555-5555-4555-8555-555555555555";
 
 describe("providers by configuration", () => {
-  it("runs on the fakes with nothing set", () => {
-    const p = voiceProviders({});
+  it("D-286: sends speech-to-text and the voice through LiveKit Inference when neither is set", () => {
+    const p = voiceProviders({ LIVEKIT_API_KEY: "lk-key", LIVEKIT_API_SECRET: "lk-secret", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr" });
+    expect(p).toMatchObject({ ok: true, speechToText: { provider: "inference" }, voice: { provider: "inference" }, ids: { speechToText: "inference/assemblyai/universal-3-6-pro", voice: "inference/inworld/inworld-tts-2/Ashley" } });
+    // With nothing set, it asks for the LiveKit key and the voice: never a quiet fake, never a direct plugin.
+    const bare = voiceProviders({});
+    expect(bare.ok).toBe(false);
+    expect(!bare.ok && bare.problems.join("; ")).toMatch(/MAYA_STT is inference, but LIVEKIT_API_KEY/);
+    expect(!bare.ok && bare.problems.join("; ")).not.toMatch(/assemblyai|inworld/i);
+  });
+
+  it("runs on the fakes only when both are set to fake", () => {
+    const p = voiceProviders({ MAYA_STT: "fake", MAYA_TTS: "fake" });
     expect(p).toMatchObject({ ok: true, speechToText: { provider: "fake" }, voice: { provider: "fake" }, ids: { speechToText: "fake", voice: "fake" } });
   });
 
   it("chooses AssemblyAI and Inworld by configuration, and stores ids without keys", () => {
-    const p = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention,child-use-approved", MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "aai-secret", MAYA_TTS: "inworld", INWORLD_API_KEY: "iw-secret", MAYA_VOICE: "Maya-warm" });
+    const p = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention", MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "aai-secret", MAYA_TTS: "inworld", INWORLD_API_KEY: "iw-secret", MAYA_VOICE: "Maya-warm" });
     expect(p).toMatchObject({
       ok: true,
       speechToText: { provider: "assemblyai", model: "universal-3-6-pro", apiKey: "aai-secret" },
       voice: { provider: "inworld", model: "inworld-tts-2", voice: "Maya-warm", apiKey: "iw-secret" },
       ids: { speechToText: "assemblyai/universal-3-6-pro", voice: "inworld/inworld-tts-2/Maya-warm" },
     });
-    const other = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention,child-use-approved", MAYA_STT: "assemblyai", MAYA_STT_MODEL: "universal-streaming-english", ASSEMBLYAI_API_KEY: "k", MAYA_TTS: "inworld", MAYA_TTS_MODEL: "inworld-tts-2-flash", INWORLD_API_KEY: "k", MAYA_VOICE: "Ashley" });
+    const other = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention", MAYA_STT: "assemblyai", MAYA_STT_MODEL: "universal-streaming-english", ASSEMBLYAI_API_KEY: "k", MAYA_TTS: "inworld", MAYA_TTS_MODEL: "inworld-tts-2-flash", INWORLD_API_KEY: "k", MAYA_VOICE: "Ashley" });
     expect(other.ok && other.ids).toEqual({ speechToText: "assemblyai/universal-streaming-english", voice: "inworld/inworld-tts-2-flash/Ashley" });
     if (p.ok) expect(JSON.stringify(p.ids)).not.toMatch(/secret/);
   });
@@ -55,7 +65,7 @@ describe("providers by configuration", () => {
   });
 
   const LK = { LIVEKIT_API_KEY: "lk-key", LIVEKIT_API_SECRET: "lk-secret" };
-  const INFERENCE_OK = "livekit-inference-zdr,child-use-approved";
+  const INFERENCE_OK = "livekit-inference-zdr";
 
   it("routes speech-to-text and the voice through LiveKit Inference by configuration, with the LiveKit key", () => {
     const p = voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
@@ -82,7 +92,7 @@ describe("providers by configuration", () => {
   });
 
   it("refuses every real route without its key, even with all its privacy markers", () => {
-    const ALL = "assemblyai-optout,inworld-retention,livekit-inference-zdr,child-use-approved";
+    const ALL = "assemblyai-optout,inworld-retention,livekit-inference-zdr";
     const refused = (env: Record<string, string>, problem: RegExp) => {
       const p = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: ALL, ...env });
       expect(p.ok).toBe(false);
@@ -96,19 +106,25 @@ describe("providers by configuration", () => {
     refused({ ...LK, MAYA_TTS: "inference" }, /MAYA_VOICE/);
   });
 
-  it("refuses a real route without its privacy markers, child-use-approved included, and an unknown marker", () => {
+  it("refuses a real route without its privacy markers, and an unknown marker", () => {
     const env = { ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_VOICE: "Ashley" };
-    expect(voiceProviders(env)).toMatchObject({ ok: false, problems: ["MAYA_VOICE_PRIVACY_CONFIRMED must include livekit-inference-zdr", "MAYA_VOICE_PRIVACY_CONFIRMED must include child-use-approved"] });
-    expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr" })).toMatchObject({ ok: false, problems: ["MAYA_VOICE_PRIVACY_CONFIRMED must include child-use-approved"] });
-    expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr,child-use-aproved" })).toMatchObject({ ok: false, problems: expect.arrayContaining(['MAYA_VOICE_PRIVACY_CONFIRMED has an unknown marker "child-use-aproved"', "MAYA_VOICE_PRIVACY_CONFIRMED must include child-use-approved"]) });
+    expect(voiceProviders(env)).toMatchObject({ ok: false, problems: ["MAYA_VOICE_PRIVACY_CONFIRMED must include livekit-inference-zdr"] });
+    expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr,inference-zdr" })).toMatchObject({ ok: false, problems: ['MAYA_VOICE_PRIVACY_CONFIRMED has an unknown marker "inference-zdr"'] });
     // The fakes need no marker.
-    expect(voiceProviders({})).toMatchObject({ ok: true });
+    expect(voiceProviders({ MAYA_STT: "fake", MAYA_TTS: "fake" })).toMatchObject({ ok: true });
     expect(requiredMarkers("fake", "fake")).toEqual([]);
-    expect(requiredMarkers("inference", "fake")).toEqual(["livekit-inference-zdr", "child-use-approved"]);
+    expect(requiredMarkers("inference", "fake")).toEqual(["livekit-inference-zdr"]);
+  });
+
+  it("D-283: needs no child-use confirmation for a real route, and still accepts the old marker in the list", () => {
+    const env = { ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_VOICE: "Ashley" };
+    expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr" })).toMatchObject({ ok: true });
+    expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr,child-use-approved" })).toMatchObject({ ok: true });
+    for (const stt of ["fake", "inference", "assemblyai"] as const) for (const tts of ["fake", "inference", "inworld"] as const) expect(requiredMarkers(stt, tts)).not.toContain("child-use-approved");
   });
 
   it("refuses an Inference model off the allow list and a voice id that could change the model string", () => {
-    const env = { ...LK, MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK };
+    const env = { ...LK, MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK, MAYA_STT: "fake", MAYA_TTS: "fake" };
     expect(voiceProviders({ ...env, MAYA_STT: "inference", MAYA_STT_MODEL: "universal-3-6-pro" })).toMatchObject({ ok: false, problems: [expect.stringMatching(/MAYA_STT_MODEL "universal-3-6-pro" is not one of/)] });
     expect(voiceProviders({ ...env, MAYA_TTS: "inference", MAYA_VOICE: "Ashley", MAYA_TTS_MODEL: "elevenlabs/eleven_v4_turbo" })).toMatchObject({ ok: false, problems: [expect.stringMatching(/MAYA_TTS_MODEL "elevenlabs\/eleven_v4_turbo" is not one of/)] });
     expect(voiceProviders({ ...env, MAYA_TTS: "inference", MAYA_TTS_MODEL: "deepgram/aura-2", MAYA_VOICE: "x" })).toMatchObject({ ok: false });
@@ -207,11 +223,11 @@ describe("ticks", () => {
 });
 
 
-it("R408-4: refuses direct providers until privacy and child-use settings are confirmed", () => {
+it("R408-4: refuses direct providers until their privacy settings are confirmed", () => {
   const env = { MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "fake-key", MAYA_TTS: "inworld", INWORLD_API_KEY: "fake-key", MAYA_VOICE: "Ashley" };
   expect(voiceProviders(env).ok).toBe(false);
-  expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention" }).ok).toBe(false);
-  expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention,child-use-approved" }).ok).toBe(true);
+  expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout" }).ok).toBe(false);
+  expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention" }).ok).toBe(true);
 });
 
 it("R408-11: bounds a crashed worker's connection lease and starts a separate segment", () => {

@@ -216,7 +216,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams
   const calls = mayaCalls(seams);
   const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1", ...(options.limitMs ? { limitMs: options.limitMs } : {}) });
   if (!started.ok) throw new Error(started.error);
-  const config = voiceProviders({});
+  const config = voiceProviders({ MAYA_STT: "fake", MAYA_TTS: "fake" });
   if (!config.ok) throw new Error("fake providers");
   const opened = await calls.openVoice(started.view.id, config.ids, "Leah");
   if (!opened.ok) throw new Error(opened.error);
@@ -1256,7 +1256,7 @@ describe("#589: the safety guidance does not wait for the close", () => {
     // The first worker's process is gone, with its close call. Its saved record has the guidance as said.
     const opened = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
     if (!opened.ok) throw new Error(opened.error);
-    const providers = voiceProviders({});
+    const providers = voiceProviders({ MAYA_STT: "fake", MAYA_TTS: "fake" });
     if (!providers.ok) throw new Error("fake providers");
     const made = await makeProviders(providers, { fakeMsPerChar: 1 });
     const session = voiceSession(made, { endpointingMs: 20, aecWarmupDuration: 0 });
@@ -1305,7 +1305,7 @@ describe("#589: the safety guidance does not wait for the close", () => {
 
     const opened = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
     if (!opened.ok) throw new Error(opened.error);
-    const config = voiceProviders({});
+    const config = voiceProviders({ MAYA_STT: "fake", MAYA_TTS: "fake" });
     if (!config.ok) throw new Error("fake providers");
     const made = await makeProviders(config, { fakeMsPerChar: 1 });
     const session = voiceSession(made, { endpointingMs: 20, aecWarmupDuration: 0 });

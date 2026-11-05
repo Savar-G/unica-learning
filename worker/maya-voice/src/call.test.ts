@@ -155,7 +155,7 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
   if (selected && !selected.ok) throw Error(selected.error);
   const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: selected?.ok ? selected.package : PKG, confirmWorkbook: !!selected?.ok, startedBy: "admin-1" });
   if (!started.ok) throw new Error(started.error);
-  const config = voiceProviders({});
+  const config = voiceProviders({ MAYA_STT: "fake", MAYA_TTS: "fake" });
   if (!config.ok) throw new Error("fake providers");
   const opened = await calls.openVoice(started.view.id, config.ids, "Leah");
   if (!opened.ok) throw new Error(opened.error);
@@ -380,7 +380,7 @@ describe("R408 controlled probes through public interfaces", () => {
     expect(c.call.ended).toBe(true);
     const opened = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
     if (!opened.ok) throw new Error(opened.error);
-    const config = voiceProviders({});
+    const config = voiceProviders({ MAYA_STT: "fake", MAYA_TTS: "fake" });
     if (!config.ok) throw new Error("fake providers");
     const providers = await makeProviders(config, { fakeMsPerChar: 1 });
     let flushed!: () => void;

@@ -396,7 +396,7 @@ async function main() {
       client = (role) => anthropicRole(key, models[role], spending, price[role]);
     } else {
       const key = apiKey(root);
-      client = (role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);
+      client = (role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], fetch: meteredFetch(globalThis.fetch, spending, price[role]), childData: false }), spending, price[role]);
     }
     maya = aiMayaModel(client("maya"));
     simulator = aiChildSimulator(client("simulator"));

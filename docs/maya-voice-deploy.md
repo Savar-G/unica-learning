@@ -37,8 +37,8 @@ Savar creates the LiveKit Cloud project (see [Accounts and settings](maya-voice.
    SUPABASE_SECRET_KEY=sb_secret_...        # the worker's own key, maya_voice_worker
    OPENROUTER_API_KEY=...
    AI_MODEL=anthropic/claude-sonnet-5.5
-   MAYA_STT=fake                            # inference only after the privacy gate
-   MAYA_TTS=fake                            # inference only after the privacy gate
+   MAYA_STT=fake                            # unset (Inference, the default) only after the privacy gate
+   MAYA_TTS=fake                            # unset (Inference, the default) only after the privacy gate
    ```
 
 4. Stage and create the agent:
@@ -68,13 +68,13 @@ Change one setting with `lk agent update-secrets --secrets "MAYA_TTS=inference"`
 
 ## Turn on LiveKit Inference
 
-The worker sends speech-to-text and the voice through LiveKit Inference with `MAYA_STT=inference` and `MAYA_TTS=inference` (D-238). It uses the project's own key, which LiveKit Cloud injects, so no other account is needed. Only after every check of the [privacy gate](maya-voice.md#privacy-gate):
+The worker sends speech-to-text and the voice through LiveKit Inference with `MAYA_STT=inference` and `MAYA_TTS=inference`, or with both unset: Inference is the default (D-238, D-286). It uses the project's own key, which LiveKit Cloud injects, so no other account is needed. Only after every check of the [privacy gate](maya-voice.md#privacy-gate):
 
 ```sh
 lk agent update-secrets \
   --secrets "MAYA_STT=inference" --secrets "MAYA_STT_MODEL=assemblyai/universal-3-6-pro" \
   --secrets "MAYA_TTS=inference" --secrets "MAYA_TTS_MODEL=<the listening test's winner>" --secrets "MAYA_VOICE=<its voice id>" \
-  --secrets "MAYA_VOICE_PRIVACY_CONFIRMED=livekit-inference-zdr,child-use-approved"
+  --secrets "MAYA_VOICE_PRIVACY_CONFIRMED=livekit-inference-zdr"
 ```
 
 Then run one admin test call and read `lk agent logs`: the `call running` line shows the provider ids and `wordTimings: "requested"`, and each `board cue` line shows `source` `word` (word timings came back) or `sentence` (they did not, and the board followed sentence ends).

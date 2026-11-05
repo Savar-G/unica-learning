@@ -15,9 +15,13 @@
 // logged in, or a crash): the fallback client then asks the API. Any other failure (the output does not match the
 // schema, a refusal, the time limit) is an ordinary error: the caller's own retry and checks handle it, as with OpenRouter.
 // The process seam (`spawn`) is passed in, so tests never start the real CLI.
+// What the process printed can repeat the request, which can be a child's words: an error's message names only the kind
+// and the status, and the printed words stay in `providerWords` (src/lib/ai-provider-words.ts), never in the stored call
+// note or on the admin run page (Codex, #642).
 import { spawn as nodeSpawnProcess } from "node:child_process";
 import { tmpdir } from "node:os";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
+import { keepProviderWords } from "@/lib/ai-provider-words";
 
 /** The page writer's model on the subscription: Claude Sonnet 5.5, the model of the API path (AI_MODEL's default). */
 export const CLAUDE_CLI_DEFAULT_MODEL = "claude-sonnet-5-5";
@@ -113,14 +117,16 @@ interface Envelope {
 }
 
 const short = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+/** The error with what the process printed kept privately beside it. */
+const kept = <E extends Error>(error: E, ...said: unknown[]) => keepProviderWords(error, said.map((x) => String(x ?? "")).join(" ").replace(/\s+/g, " ").trim());
 
 const LIMIT = /usage limit|limit reached|hit your (usage )?limit|reached your (usage )?limit|out of (extra )?usage|weekly limit|session limit|rate.?limit|too many requests/i;
 const LOGGED_OUT = /not logged in|please run \/login|\/login|log ?in again|invalid api key|authentication|unauthori[sz]ed|oauth token|credentials/i;
 
 /** What a failed call's words and status say: a usage limit, a lost login, or neither (null). */
 function unavailable(text: string, status: number | null | undefined): SubscriptionUnavailable | null {
-  if (status === 429 || LIMIT.test(text)) return new SubscriptionUnavailable("limit", `the Claude subscription hit its usage limit: ${short(text)}`);
-  if (status === 401 || status === 403 || LOGGED_OUT.test(text)) return new SubscriptionUnavailable("logged-out", `claude is not logged in: ${short(text)}`);
+  if (status === 429 || LIMIT.test(text)) return kept(new SubscriptionUnavailable("limit", `the Claude subscription hit its usage limit${status ? ` (${status})` : ""}`), text);
+  if (status === 401 || status === 403 || LOGGED_OUT.test(text)) return kept(new SubscriptionUnavailable("logged-out", `claude is not logged in${status ? ` (${status})` : ""}`), text);
   return null;
 }
 
@@ -174,8 +180,8 @@ export function claudeCliClient({
       const run = await spawn(command, cliArgs(model, request), { input, env: childEnv, cwd: tmpdir(), timeoutMs: timeout, signal });
       if (signal.aborted) throw new Error("time is up");
       if (run.error) {
-        if (run.error.code === "ENOENT") throw new SubscriptionUnavailable("missing", `claude is not installed or not on PATH (${short(run.error.message)})`);
-        throw new SubscriptionUnavailable("crash", `claude did not start: ${short(run.error.message)}`);
+        if (run.error.code === "ENOENT") throw kept(new SubscriptionUnavailable("missing", "claude is not installed or not on PATH (ENOENT)"), run.error.message);
+        throw kept(new SubscriptionUnavailable("crash", `claude did not start (${short(run.error.code) || "no code"})`), run.error.message);
       }
       if (run.timedOut) throw new Error(`claude -p did not answer in time (${timeout} ms)`);
       const out = run.stdout.trim();
@@ -187,7 +193,7 @@ export function claudeCliClient({
       }
       if (!envelope || typeof envelope !== "object") {
         const words = `${run.stderr} ${out}`;
-        throw unavailable(words, null) ?? new SubscriptionUnavailable("crash", `claude -p ${out ? "answered with something that is not JSON" : "returned no output"} (exit ${run.code ?? "by signal"}): ${short(words)}`);
+        throw unavailable(words, null) ?? kept(new SubscriptionUnavailable("crash", `claude -p ${out ? "answered with something that is not JSON" : "returned no output"} (exit ${run.code ?? "by signal"})`), words);
       }
       if (envelope.is_error || (envelope.subtype && envelope.subtype !== "success")) {
         const words = [envelope.result, ...(Array.isArray(envelope.errors) ? envelope.errors : []), envelope.startup_failure_reason, run.stderr].join(" ");
@@ -195,10 +201,10 @@ export function claudeCliClient({
         if (envelope.subtype === "error_max_structured_output_retries") throw new Error("the output did not match the schema");
         const lost = unavailable(words, envelope.api_error_status);
         if (lost) throw lost;
-        if (envelope.subtype === "error_during_execution") throw new SubscriptionUnavailable("crash", `claude -p could not execute: ${short(words)}`);
+        if (envelope.subtype === "error_during_execution") throw kept(new SubscriptionUnavailable("crash", "claude -p could not execute (error_during_execution)"), words);
         const status = envelope.api_error_status ?? 0;
-        if (status >= 500) throw new SubscriptionUnavailable("crash", `the Claude service answered ${status}: ${short(envelope.result)}`);
-        throw new Error(`claude -p failed (${short(envelope.subtype) || "error"}${status ? `, ${status}` : ""}): ${short(envelope.result)}`);
+        if (status >= 500) throw kept(new SubscriptionUnavailable("crash", `the Claude service answered ${status}`), words);
+        throw kept(new Error(`claude -p failed (${short(envelope.subtype) || "error"}${status ? `, ${status}` : ""})`), words);
       }
       if (envelope.stop_reason === "refusal") throw new Error("the model refused");
       return output(envelope);
