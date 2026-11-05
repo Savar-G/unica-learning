@@ -55,3 +55,22 @@ Before this change, failed free talk used a neutral reply, such as "Thanks for t
 For 27 + 39, the first carry wording is: "7 + 9 = 16. 16 is 1 ten and 6 ones. Write 6 in the ones. Carry 1 ten to the tens." It does not say 66.
 
 The saved WIP proposed D-204 for these corrections. PR #409 uses D-204 for fractions. This proposal has no decision number. It does not change the accepted D-202 record.
+
+## Acknowledgement phrases (#532)
+
+Status: pending Savar. Added after the set above, and outside it: the voice worker says these, not the controller. Each is code-written and passes the gate check in `src/lib/maya-voice-ack.test.ts`. "Mm-hm" and "Okay" are left out because they can sound like "yes" after "Is it 56?". Say if you want "Mm-hm" back: it is warmer, and the risk is the false "yes".
+
+| Id | Line |
+|---|---|
+| `ack.think.hmm` | Hmm, let me think. |
+| `ack.see.plain` | Let me see. |
+| `ack.moment.plain` | Just a moment. |
+| `ack.thinking.plain` | I'm thinking. |
+| `ack.think.this` | Let me think about this. |
+| `ack.see.hmm` | Hmm, let me see. |
+| `ack.think.plain` | Let me think. |
+| `ack.moment.hmm` | Hmm, just a moment. |
+| `ack.thinking.hmm` | Hmm, I'm thinking. |
+| `ack.see.here` | Let me see here. |
+
+For your reading: "I'm thinking." is a claim about an AI (D-197 forbids untrue claims about Maya); it is kept as an everyday way to say "wait". A child who says something hard can hear one of these before Maya's safety line, because the model has not read the child's words yet.

@@ -74,6 +74,31 @@ async function open(s: ReturnType<typeof setup>, id: string) {
 }
 
 describe("a voice call", () => {
+  it("says how long a child's input spent on the model, and keeps the acknowledgements said across a new worker (#532)", async () => {
+    const s = setup();
+    const rule = ruleMayaModel();
+    let asked = 0;
+    s.seams.model = () => ({ ...rule, propose: async (input, signal) => { asked++; s.advance(2); return rule.propose(input, signal); } });
+    const view = await newVoiceCall(s);
+    const call = await open(s, view.id);
+    await call.start();
+    expect(call.acknowledged).toEqual([]);
+    call.acknowledge("ack.see.plain");
+    call.acknowledge("ack.see.plain");
+    asked = 0;
+    const turn = await call.child("I got 56.");
+    // The rule player's proposal can be refused, so a repair can run: each call is counted once, in its own place.
+    expect(asked).toBeGreaterThan(0);
+    expect(turn.time!.modelMs).toBeGreaterThanOrEqual(2000);
+    expect(turn.time!.modelMs + turn.time!.repairMs).toBe(asked * 2000);
+    expect(turn.time!.reviewMs).toBe(0);
+    await call.settled();
+    const next = await open(s, view.id);
+    expect(next.acknowledged).toEqual(["ack.see.plain"]);
+    // The transcript holds only what the session accepted.
+    expect((await s.calls.view(view.id))!.transcript.map((l) => l.text).join(" ")).not.toContain("Let me see.");
+  });
+
   it("is made live and not started, and takes no typed turns while the worker holds it", async () => {
     const s = setup();
     const view = await newVoiceCall(s);

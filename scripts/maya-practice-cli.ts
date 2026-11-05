@@ -12,7 +12,9 @@
 //   --concurrency <n>        runs at the same time (default 3)
 //   --out <dir>              where to save the run (default traces/maya-practice/<time>)
 //   --report <dir>           rebuild report.md and report.json from a saved run, and stop
-//   --maya-model <id>        Maya's model (default AI_MODEL, else the AI client's default)
+//   --maya-model <id>        Maya's model, the turn model (default AI_MODEL, else the AI client's default; with
+//                            --anthropic or --subscription a Claude API id such as claude-haiku-5-5). Each run also saves
+//                            turn-time.md and .json: the real time of each model and review call, to compare two models.
 //   --sim-model <id>         the practice child's model (default MAYA_SIM_MODEL, else anthropic/claude-haiku-5.5)
 //   --validity-model <id>    the validity judge's model (default MAYA_VALIDITY_MODEL, else openai/gpt-5.4-mini: another
 //                            family than the child, the main judge's family, so it does not share the child's blind spots)
@@ -48,7 +50,7 @@ import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, runReview, type
 import { redactText } from "@/lib/maya-trace";
 import {
   aiChildSimulator, aiJudge, aiValidityJudge, buildReport, fakeValidityJudge, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, meteredFetch, planSuite, PRACTICE_CASES, reportMarkdown,
-  RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending,
+  RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending, timedTurns, turnTimeMarkdown,
   type AiJudge, type ByRole, type ChildSimulator, type ValidityJudge, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
 } from "@/lib/maya-practice";
 
@@ -311,6 +313,8 @@ async function main() {
   const o = parse(process.argv.slice(2));
   const cases = o.cases ? o.cases.map((id) => PRACTICE_CASES.find((c) => c.id === id) ?? (() => { throw new Error(`no case ${id}`); })()) : PRACTICE_CASES;
   if (o.report) process.exit(writeReport(cases, o.runs, resolve(o.report)) ? 0 : 1);
+  // The fake rule player is always Maya with --fake: a model named here would be ignored without a word.
+  if (o.fake && o.models.maya) throw new Error("--maya-model needs a real model: drop --fake.");
 
   const models: Record<Role, string> = o.fake
     ? { maya: "fake", simulator: "fake-child", validity: "fake-validity", judge: "fake-judge", reviewer: "fake-review" }
@@ -411,6 +415,9 @@ async function main() {
 
   const dir = resolve(o.out ?? join(root, "traces/maya-practice", new Date().toISOString().replace(/[:.]/g, "-")));
   const store = folderStore(dir);
+  const times = timedTurns(maya, reviewer, () => Date.now());
+  maya = times.maya;
+  reviewer = times.reviewer;
   const plan = planSuite(cases, {
     maya: { model: maya.id, promptVersion: maya.promptVersion },
     simulator: { model: simulator.id, promptVersion: simulator.promptVersion },
@@ -434,6 +441,10 @@ async function main() {
   });
   if (usageLimit !== null) console.log(`-- the Claude subscription's usage limit was reached: the runs left are missing. The finished runs are saved in ${dir}. Run the missing cases again after the limit resets (--cases).`);
   else if (spending.reached) console.log(`-- the spending cap was reached at ${usd(spending.spent)}: the runs left are missing.`);
+  const turnTime = times.report();
+  writeFileSync(join(dir, "turn-time.json"), `${JSON.stringify(turnTime, null, 2)}\n`);
+  writeFileSync(join(dir, "turn-time.md"), `${turnTimeMarkdown(turnTime, o.fake ? "fake" : o.provider)}\n`);
+  console.log(`-- turn time: ${turnTime.maya.id}: ${turnTime.maya.calls} calls, ${turnTime.maya.failed} failed, p50 ${turnTime.maya.p50Ms ?? "-"} ms, p95 ${turnTime.maya.p95Ms ?? "-"} ms: ${join(dir, "turn-time.md")}`);
   const passed = writeReport(cases, o.runs, dir);
   console.log(`-- provider: ${o.fake ? "fake" : o.provider}; ${spent(o, spending)}`);
   process.exit(passed ? 0 : 1);
