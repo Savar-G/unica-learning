@@ -5,7 +5,7 @@ import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import type { FactsTest, HelpAnswer, Placement, Province, Route, StoredTest } from "@/lib/assessment";
+import { givenQuestions, type FactsTest, type HelpAnswer, type Placement, type Province, type Route, type Stage3Route, type StoredTest } from "@/lib/assessment";
 import type { ProgressInput } from "@/lib/admin-progress";
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
@@ -184,6 +184,7 @@ export interface TestRow {
   completed_at: string | null;
   last_answer_at: string | null;
   route: string | null;
+  stage3_route: string | null;
   help: HelpAnswer | null;
   placement: Placement | null;
   answered: number;
@@ -194,7 +195,7 @@ export interface TestRow {
   reportId: string | null;
 }
 
-const TEST_COLUMNS = "id, created_at, status, grade, province, child_id, parent_id, started_at, completed_at, last_answer_at, route, help, placement, answers(count), work_reviews(confidence)";
+const TEST_COLUMNS = "id, created_at, status, grade, province, child_id, parent_id, started_at, completed_at, last_answer_at, route, stage3_route, help, placement, answers(count), work_reviews(confidence)";
 type TestQueryRow = Omit<TestRow, "answered" | "reviews" | "flags" | "child" | "parent" | "reportId"> & {
   answers: { count: number }[];
   work_reviews: { confidence: "high" | "low" }[];
@@ -1155,7 +1156,8 @@ type ProgressQueryRow = {
   id: string; status: AssessmentStatus; route: Route | null;
   started_at: string; last_answer_at: string | null; completed_at: string | null; resume_until: string;
   break_started_at: string | null; break_ended_at: string | null;
-  stage1: number; up: number; stay: number; down: number; answered: number;
+  stage3_route: Stage3Route | null;
+  stage1: number; up: number; stay: number; down: number; stage3_up: number; stage3_down: number; answered: number;
   last_shown_position: number | null; last_shown_at: string | null;
   facts_started_at: string | null; facts_answered: number; facts_tried: number; facts_drawn: number; next_prompt: string | null;
 };
@@ -1171,8 +1173,8 @@ export async function progressRows(a: AdminSession, ids: readonly string[]): Pro
   const rows = (await Promise.all(chunks.map(async (chunk) =>
     must<ProgressQueryRow[]>(await a.db.rpc("admin_test_progress_for", { ids: chunk }), "test progress")))).flat();
   return new Map(rows.map((r) => [r.id, {
-    status: r.status, route: r.route, answered: r.answered, nextPrompt: r.next_prompt,
-    lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down },
+    status: r.status, route: r.route, stage3Route: r.stage3_route, answered: r.answered, nextPrompt: r.next_prompt,
+    lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down, stage3Up: r.stage3_up, stage3Down: r.stage3_down },
     lastShown: r.last_shown_position === null || !r.last_shown_at ? null : { position: r.last_shown_position, at: r.last_shown_at },
     startedAt: r.started_at, lastAnswerAt: r.last_answer_at, completedAt: r.completed_at, resumeUntil: r.resume_until,
     breakStartedAt: r.break_started_at, breakEndedAt: r.break_ended_at,
@@ -1186,11 +1188,12 @@ export function detailProgress(d: TestDetail): ProgressInput {
   const route = d.test.route as Route | null;
   const shown = d.shows.reduce<ShownRecord | null>((a, s) => (!a || s.position > a.position ? s : a), null);
   const n = d.answers.length;
-  const onRoute = [...stored.stage1, ...(route ? stored.stage2[route] : [])];
+  const stage3Route = d.test.stage3_route as Stage3Route | null;
+  const onRoute = givenQuestions(stored, route, stage3Route);
   return {
-    status: d.test.status, route, answered: n,
+    status: d.test.status, route, stage3Route, answered: n,
     nextPrompt: n < stored.stage1.length || route ? (onRoute[n]?.prompt ?? null) : null,
-    lengths: { stage1: stored.stage1.length, up: stored.stage2.up.length, stay: stored.stage2.stay.length, down: stored.stage2.down.length },
+    lengths: { stage1: stored.stage1.length, up: stored.stage2.up.length, stay: stored.stage2.stay.length, down: stored.stage2.down.length, stage3Up: stored.stage3?.up.length ?? 0, stage3Down: stored.stage3?.down.length ?? 0 },
     lastShown: shown ? { position: shown.position, at: shown.shown_at } : null,
     startedAt: d.test.started_at, lastAnswerAt: d.test.last_answer_at, completedAt: d.test.completed_at, resumeUntil: d.test.resume_until,
     breakStartedAt: d.context.break_started_at, breakEndedAt: d.context.break_ended_at,

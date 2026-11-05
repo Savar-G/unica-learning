@@ -283,7 +283,7 @@ describe("the report inputs (#162)", () => {
       { questionId: "s1-4", prompt: asked[4].prompt, correct: true, required: true, image: null, text: "20.00 - 13.10" },
       { questionId: "s1-6", prompt: asked[6].prompt, correct: true, required: false, image: drawing("parent-1", 6), text: null },
       // A stage 2 question: its prompt comes from the stored test's "up" path.
-      { questionId: "up-8", prompt: "A purchase costs $114.10. You pay $500.00. How many dollars in change should you get?", correct: false, required: true, image: drawing("parent-1", 26), text: null },
+      { questionId: "up-8", prompt: asked[26].prompt, correct: false, required: asked[26].showWork === true, image: drawing("parent-1", 26), text: null },
     ]);
     expect(readers.reads).toEqual({ reports: 0, assessments: 1, answers: 1 });
   });
@@ -305,8 +305,8 @@ describe("the report inputs (#162)", () => {
       { questionId: "s1-4", prompt: asked[4].prompt, answer: "6.90", rightAnswer: "6.90", correct: true, level: 4, required: true, misconception: null, image: null, text: "20.00 - 13.10" },
       { questionId: "s1-6", prompt: asked[6].prompt, answer: "12", rightAnswer: "12", correct: true, level: 4, required: false, misconception: null, image: drawing("parent-1", 6), text: null },
       {
-        questionId: "up-8", prompt: "A purchase costs $114.10. You pay $500.00. How many dollars in change should you get?", answer: "614.1",
-        rightAnswer: "385.90", correct: false, level: 5, required: true, misconception: "Uses the wrong operation", image: drawing("parent-1", 26), text: null,
+        questionId: "up-8", prompt: asked[26].prompt, answer: "614.1",
+        rightAnswer: asked[26].answer, correct: false, level: 5, required: asked[26].showWork === true, misconception: "Uses the wrong operation", image: drawing("parent-1", 26), text: null,
       },
     ]);
     // No second read of the test or the answers.

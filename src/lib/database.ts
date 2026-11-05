@@ -3,7 +3,7 @@ import type { AdStep } from "@/lib/ad-visit-steps";
 import type { AnswerChange } from "@/lib/answer-events";
 import type { EventResult, EventSource, EvidenceKind } from "@/lib/learning-events";
 import type { QuestionRef } from "@/lib/question-package";
-import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, SkillEvidence, SkillState, SkillStateReason, StoredTest } from "@/lib/assessment";
+import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, SkillEvidence, SkillState, SkillStateReason, Stage3Route, StoredTest } from "@/lib/assessment";
 import type { KnownPlan } from "@/lib/parent-plan";
 import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
@@ -39,7 +39,7 @@ type ColumnTypes = KnownColumns<{
   anonymous_tests: { copy: AnonymousTestCopy };
   answers: { answer_changes: AnswerChange[] | null };
   assessment_facts: { test: FactsTest };
-  assessments: { status: AttemptStatus; province: Province; route: Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
+  assessments: { status: AttemptStatus; province: Province; route: Route | null; stage3_route: Stage3Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
   card_setups: { plan: PlanId };
   child_plan_states: { kind: KnownPlan["kind"] };
   children: { province: Province };

@@ -1,4 +1,4 @@
-import type { Route, StoredTest } from "@/lib/assessment";
+import type { Route, Stage3Route, StoredTest } from "@/lib/assessment";
 import { lookupStoredQuestion, type AssessmentQuestionReader } from "@/lib/question-package-assessment";
 
 // The assessment question reader (#298) in memory, for tests: the rows of public.assessments it reads, with the
@@ -8,6 +8,7 @@ import { lookupStoredQuestion, type AssessmentQuestionReader } from "@/lib/quest
 export interface MemoryAssessmentRow {
   id: string;
   route: Route | null;
+  stage3Route?: Stage3Route | null;
   test: StoredTest;
 }
 
@@ -15,7 +16,7 @@ export function memoryAssessmentQuestions(rows: readonly MemoryAssessmentRow[]):
   return {
     async question(ref) {
       const row = rows.find((r) => r.id === ref.assessmentId);
-      return lookupStoredQuestion(ref, row ? structuredClone({ test: row.test, route: row.route }) : null);
+      return lookupStoredQuestion(ref, row ? structuredClone({ test: row.test, route: row.route, stage3Route: row.stage3Route }) : null);
     },
   };
 }

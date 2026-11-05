@@ -143,8 +143,12 @@ describe("routing after stage 1 (18 questions, so 80% and 40% fall between whole
 });
 
 describe("working level: the highest level with 70% or more correct", () => {
-  // Stage 1 all right routes up; stage 2 has 18 level-5 questions, and the child gets the first k of them.
-  const withStage2Right = (k: number) => takeTest({ grade: 4, province: "BC" }, 9, firstRight(18 + k)).placement;
+  // Stage 1 all right routes up; stage 2 has 18 level-5 questions, and the child gets the first k of them. Its 6
+  // school-grade questions come first (easy to hard, D-282), all wrong.
+  const withStage2Right = (k: number) => {
+    let right = 0;
+    return takeTest({ grade: 4, province: "BC" }, 9, (q, i) => i < 18 || (q.level === 5 && right++ < k)).placement;
+  };
 
   it("13 of 18 (72%) at level 5 clears it", () => {
     const placement = withStage2Right(13);

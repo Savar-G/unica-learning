@@ -5,7 +5,7 @@
 // in one database statement. Answers (#147): one answer per place in a test (the unique index on assessment_id and
 // position), and the drawings bucket as a map by path. Finish (#150): a test is completed only while it is in progress.
 // Strokes (#186): the stroke files of the same bucket, as their own map by path, so a test can check them apart.
-import { fromRemovedRound, type Attempt, type HelpAnswer, type Placement, type Route, type StoredTest, type Submission } from "@/lib/assessment";
+import { fromRemovedRound, type Attempt, type HelpAnswer, type Placement, type Route, type Stage3Route, type StoredTest, type Submission } from "@/lib/assessment";
 import type { FactsTest } from "@/lib/assessment";
 import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from "@/lib/test-attempt";
 import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
@@ -28,6 +28,8 @@ export type MemoryTest = Attempt & {
   test: StoredTest;
   answers: MemoryAnswer[];
   route?: Route | null;
+  /** D-282: none until stage 2 is locked (the stage 2 lock record). */
+  stage3Route?: Stage3Route | null;
   placement?: Placement | null;
   help?: HelpAnswer | null;
 } & MemoryContext;
@@ -184,6 +186,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
         ...(row.breakStartedAt != null && { break: { startedAt: row.breakStartedAt, ended: row.breakEndedAt != null } }),
         help: row.help ?? null,
         route: row.route ?? null,
+        stage3Route: row.stage3Route ?? null,
       };
     },
     async expire(id, now) {
@@ -255,6 +258,8 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       if (!row || row.status !== "in_progress") return "closed";
       // #253: a stage 1 answer changes only while stage 1 is not locked (no route stored).
       if (position < row.test.stage1.length && row.route != null) return "closed";
+      // D-282: a stage 2 answer changes only while stage 2 is not locked (no third stage record stored).
+      if (row.stage3Route != null && position < row.test.stage1.length + row.test.stage2[row.route!].length) return "closed";
       const old = row.answers[position];
       // D-145: the removed extra round's answers (after the main ones) never change and never count as newer answers.
       if (fromRemovedRound(marked.questionId) || row.answers.filter((a) => !fromRemovedRound(a.questionId)).length > unansweredFrom || !old || old.questionId !== marked.questionId) return "closed";
@@ -282,6 +287,18 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       if (!same) return "changed";
       row.route = route;
       return route;
+    },
+    // D-282: the stage 2 lock, with its guards checked together with the write, as in the database function lock_stage2.
+    async lockStage2(id, { stage3Route, answers, resumeUntil }) {
+      await begin("lockStage2");
+      const row = tests.find((t) => t.id === id && t.status === "in_progress");
+      if (!row) return "closed";
+      if (row.stage3Route != null) return row.stage3Route;
+      const same = row.answers.length === answers.length && row.answers.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response);
+      if (!same) return "changed";
+      row.stage3Route = stage3Route;
+      if (stage3Route !== "none") row.resumeUntil = resumeUntil;
+      return stage3Route;
     },
     async complete(id, { at, placement, help, answers }) {
       await begin("complete");
