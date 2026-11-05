@@ -9,7 +9,7 @@
 // schema, effort and token limit as `aiMayaModel` sends them (src/lib/maya-model.ts); "image_read" asks what the image
 // shows, so a pass means the model read it. The image is a 32 by 32 red square that this file holds. The words are sums.
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, type AiJsonRequest } from "@/lib/ai-client";
-import { isClaudeModel, openRouterClient, providerWords } from "@/lib/ai-openrouter";
+import { openRouterClient, providerWords } from "@/lib/ai-openrouter";
 import { ACTS, PROPOSAL_SCHEMA, PROPOSAL_VERSION } from "@/lib/maya/proposal";
 import { REVIEW_DEFAULT_MODEL } from "@/lib/maya-talk-review";
 import { buildQuestion, ITEMS_SCHEMA } from "@/lib/workbook-generator-items";
@@ -152,8 +152,9 @@ export async function checkAiRoute({ apiKey, model, shape = "small", fetch = glo
     const words = providerWords(e);
     return { ...result, error: e instanceof Error ? e.message : String(e), ...(words ? { providerWords: words } : {}) };
   }
-  // OpenRouter's name of the Vertex host is "Google" (its endpoint lists, read 2026-11-05).
-  if (isClaudeModel(model) && !/google/i.test(result.provider ?? "")) {
+  // OpenRouter's name of the Vertex host is "Google" (its endpoint lists, read 2026-11-05). Every model a feature may name
+  // is pinned there (CHILD_DATA_MODELS), so any other provider, or none named, is off the route.
+  if (!/google/i.test(result.provider ?? "")) {
     return { ...result, error: `A provider off the route answered: ${result.provider ?? "not named"}` };
   }
   if (!proves(output)) return { ...result, error: "The output is not what the request asked for" };

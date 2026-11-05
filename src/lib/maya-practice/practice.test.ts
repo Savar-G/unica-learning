@@ -655,7 +655,7 @@ describe("cost and the spending cap", () => {
     ];
     let i = 0;
     const fetch = (async () => new Response(JSON.stringify(answers[i++]), { status: 200 })) as typeof globalThis.fetch;
-    const client = openRouterClient({ apiKey: "k", model: "m", fetch: meteredFetch(fetch, spending, price) });
+    const client = openRouterClient({ apiKey: "k", model: "openai/gpt-5.4", fetch: meteredFetch(fetch, spending, price), childData: false });
     await client.json({ name: "x", system: "s", content: [], schema: {} }, new AbortController().signal);
     expect(spending.spent).toBeCloseTo(0.0123);
     await client.json({ name: "x", system: "s", content: [], schema: {} }, new AbortController().signal);

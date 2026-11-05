@@ -14,7 +14,7 @@ describe("R404-8 dispatched API request counts", () => {
     const controller = new AbortController();
     const fetch = vi.fn(async () => answer());
     const onDispatch = vi.fn();
-    const client = openRouterClient({ apiKey: "fixture", model: "fixture", fetch, onDispatch, onRequest: async () => { controller.abort(); } });
+    const client = openRouterClient({ apiKey: "fixture", model: "anthropic/claude-sonnet-5.5", fetch, onDispatch, onRequest: async () => { controller.abort(); } });
     await expect(client.json(request, controller.signal)).rejects.toThrow("time is up");
     expect(fetch).not.toHaveBeenCalled();
     expect(onDispatch).not.toHaveBeenCalled();

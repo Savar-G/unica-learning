@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, aiClient, type AiJsonRequest } from "@/lib/ai-client";
 import { inspect } from "node:util";
-import { costingFetch, openRouterClient, providerWords } from "@/lib/ai-openrouter";
+import { CHILD_DATA_MODELS, costingFetch, isClaudeModel, openRouterClient, providerWords } from "@/lib/ai-openrouter";
 import { aiMayaModel } from "@/lib/maya-model";
 import { PROPOSAL_SCHEMA } from "@/lib/maya/proposal";
 import { REVIEW_DEFAULT_MODEL } from "@/lib/maya-talk-review";
@@ -203,7 +203,7 @@ describe("the pinned route (D-283), for every AI feature on this client", () => 
   afterEach(() => vi.unstubAllGlobals());
 
   it("pins every Anthropic model to Google Vertex, with no fallback, zero data retention and no training", async () => {
-    for (const model of [AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, REVIEW_DEFAULT_MODEL, "anthropic/claude-opus-5.5"]) {
+    for (const model of [AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, REVIEW_DEFAULT_MODEL]) {
       const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
       await openRouterClient({ apiKey: "sk-or-test", model, fetch }).json(request(), signal());
       expect(sent[0].body.provider).toEqual(PINNED);
@@ -215,9 +215,9 @@ describe("the pinned route (D-283), for every AI feature on this client", () => 
     vi.stubGlobal("fetch", fetch);
     const env = { OPENROUTER_API_KEY: "sk-or-test" };
     await aiClient(env)!.json(request(), signal());
-    await aiClient({ ...env, AI_MODEL: "anthropic/claude-opus-5.5" })!.json(request(), signal());
+    await aiClient({ ...env, AI_MODEL: AI_SOLVE_DEFAULT_MODEL })!.json(request(), signal());
     await aiClient(env, REVIEW_DEFAULT_MODEL)!.json(request({ name: "talk_review" }), signal());
-    expect(sent.map((s) => s.body.model)).toEqual([AI_DEFAULT_MODEL, "anthropic/claude-opus-5.5", REVIEW_DEFAULT_MODEL]);
+    expect(sent.map((s) => s.body.model)).toEqual([AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, REVIEW_DEFAULT_MODEL]);
     for (const s of sent) expect(s.body.provider).toEqual(PINNED);
   });
 
@@ -233,20 +233,22 @@ describe("the pinned route (D-283), for every AI feature on this client", () => 
     }
   });
 
-  it("a model of another maker still gets zero data retention and no training, never the pin of a Claude model", async () => {
+  it("a model of another maker, in a tool with no child data, still gets zero data retention and no training, never the pin of a Claude model", async () => {
     const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
-    await openRouterClient({ apiKey: "sk-or-test", model: "openai/gpt-6", fetch }).json(request(), signal());
+    await openRouterClient({ apiKey: "sk-or-test", model: "openai/gpt-6", fetch, childData: false }).json(request(), signal());
     expect(sent[0].body.provider).toEqual({ require_parameters: true, zdr: true, data_collection: "deny" });
   });
 
   it("fails plainly, once and on OpenRouter only, when no allowed endpoint can serve the request", async () => {
     const { fetch, sent } = fakeFetch({ status: 404, body: { error: { code: 404, message: "No endpoints found matching your data policy (Zero data retention)." } } });
     const failed = openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch }).json(request(), signal());
-    await expect(failed).rejects.toThrow("OpenRouter has no endpoint for this request on the allowed route (Google Vertex only, zero data retention, no training): 404 No endpoints found");
+    const e = await failed.catch((x: unknown) => x);
+    expect((e as Error).message).toBe("OpenRouter has no endpoint for this request on the allowed route (Google Vertex only, zero data retention, no training): 404");
+    expect(providerWords(e)).toContain("No endpoints found");
     expect(sent).toHaveLength(1);
     expect(sent[0].url).toBe("https://openrouter.ai/api/v1/chat/completions");
     const other = fakeFetch({ status: 404, body: { error: { code: 404, message: "No endpoints found" } } });
-    await expect(openRouterClient({ apiKey: "sk-or-test", model: "openai/gpt-6", fetch: other.fetch }).json(request(), signal())).rejects.toThrow("on the allowed route (zero data retention, no training): 404");
+    await expect(openRouterClient({ apiKey: "sk-or-test", model: "openai/gpt-6", fetch: other.fetch, childData: false }).json(request(), signal())).rejects.toThrow("on the allowed route (zero data retention, no training): 404");
   });
 });
 
@@ -266,7 +268,7 @@ describe("the provider's words on a refusal", () => {
 
   it("keeps them out of the message and of what a log line prints", async () => {
     const e = await failed(refusal);
-    expect(e.message).toBe("OpenRouter answered 400: Provider returned error");
+    expect(e.message).toBe("OpenRouter answered 400");
     expect(inspect(e, { showHidden: true, depth: 5 })).not.toContain("the child wrote");
     expect(JSON.stringify(e)).not.toContain("the child wrote");
     expect(JSON.stringify(Object.getOwnPropertyDescriptors(e))).not.toContain("the child wrote");
@@ -279,7 +281,8 @@ describe("the provider's words on a refusal", () => {
   });
 
   it("has none for an error with none, and bounds their size", async () => {
-    expect(providerWords(await failed({ status: 400, body: { error: { message: "Bad" } } }))).toBeNull();
+    expect(providerWords(await failed({ status: 400, body: { error: { code: 400 } } }))).toBeNull();
+    expect(providerWords(await failed({ status: 400, body: { error: { message: "Bad" } } }))).toBe("Bad");
     expect(providerWords(new Error("other"))).toBeNull();
     const long = await failed({ status: 400, body: { error: { message: "Bad", metadata: { raw: "x".repeat(50_000) } } } });
     expect(providerWords(long)!.length).toBeLessThanOrEqual(2_000);
@@ -297,7 +300,7 @@ describe("a schema over the limit of constrained output", () => {
     required: Array.from({ length: count }, (_, i) => `f${i}`),
     additionalProperties: false,
   });
-  const client = (fetch: typeof globalThis.fetch, model = AI_DEFAULT_MODEL) => openRouterClient({ apiKey: "sk-or-test", model, fetch, maxRetries: 0 });
+  const client = (fetch: typeof globalThis.fetch, model = AI_DEFAULT_MODEL) => openRouterClient({ apiKey: "sk-or-test", model, fetch, maxRetries: 0, childData: isClaudeModel(model) });
   const system = (s: Sent) => s.body.messages[0].content as string;
   const ok = completion(JSON.stringify({ answer: "85" }));
 
@@ -401,5 +404,83 @@ describe("a schema over the limit of constrained output", () => {
     const twice = fakeFetch(tooComplex);
     await expect(client(twice.fetch).json(request({ schema: SCHEMA }), signal())).rejects.toThrow("400");
     expect(twice.sent).toHaveLength(2);
+  });
+});
+
+// Codex P2 on #642: a routing alias (openrouter/auto, a ":online" variant, "~...") names no Claude model, so it would get no
+// Vertex pin. A feature with children's data names only an explicit model on the allowed list; anything else is refused
+// before any request, with words an admin can act on.
+describe("the allowed models for children's data (D-283)", () => {
+  const REFUSED = ["openrouter/auto", "openrouter/free", "~anthropic/claude-sonnet-latest", "anthropic/claude-sonnet-5.5:online", "anthropic/claude-sonnet-5.5:nitro", "anthropic/claude-opus-5.5", "openai/gpt-6", "", "claude-sonnet-5-5"];
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("allows only the explicit Claude models the route check proved on Vertex", () => {
+    expect([...CHILD_DATA_MODELS]).toEqual([AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL]);
+    expect(CHILD_DATA_MODELS).toContain(REVIEW_DEFAULT_MODEL);
+  });
+
+  it.each(REFUSED)("refuses %j before any request, and says what to set", async (model) => {
+    const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
+    const failed = openRouterClient({ apiKey: "sk-or-test", model, fetch }).json(request(), signal());
+    await expect(failed).rejects.toThrow(`The AI model ${JSON.stringify(model)} is not allowed for children's data. Use one of: anthropic/claude-sonnet-5.5, anthropic/claude-haiku-5.5 (AI_MODEL, AI_SOLVE_MODEL, MAYA_REVIEW_MODEL).`);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("refuses an alias set in AI_MODEL for every feature on aiClient, before any request", async () => {
+    const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
+    vi.stubGlobal("fetch", fetch);
+    await expect(aiClient({ OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: "openrouter/auto" })!.json(request(), signal())).rejects.toThrow("not allowed for children's data");
+    await expect(aiClient({ OPENROUTER_API_KEY: "sk-or-test" }, "openrouter/auto")!.json(request(), signal())).rejects.toThrow("not allowed for children's data");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("refuses an alias in the workbook generator on the API too", async () => {
+    const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
+    const { ai } = workbookAi({ OPENROUTER_API_KEY: "sk-or-test", WORKBOOK_AI_PRIMARY: "api", AI_MODEL: "openrouter/auto" }, { subscription: false, fetch });
+    await expect(ai!.json(request({ name: "day_page" }), signal())).rejects.toThrow("not allowed for children's data");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("lets a tool with no child data name another explicit model, but never an alias", async () => {
+    const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
+    await openRouterClient({ apiKey: "sk-or-test", model: "openai/gpt-5.4", fetch, childData: false }).json(request(), signal());
+    expect(sent).toHaveLength(1);
+    for (const model of ["openrouter/auto", "openai/gpt-5.4:online", "~openai/gpt-latest"]) {
+      await expect(openRouterClient({ apiKey: "sk-or-test", model, fetch, childData: false }).json(request(), signal())).rejects.toThrow(`The AI model ${JSON.stringify(model)} is not an explicit model id`);
+    }
+    expect(sent).toHaveLength(1);
+  });
+});
+
+// Codex P2 on #642: OpenRouter reports a provider's refusal in more than one place. Each one is read into the private
+// words, so a schema refusal anywhere sends the request once more in the instructions.
+describe("a schema refusal, wherever OpenRouter puts it", () => {
+  const withUnions = (count: number) => ({
+    type: "object",
+    properties: Object.fromEntries(Array.from({ length: count }, (_, i) => [`f${i}`, { anyOf: [{ type: "string" }, { type: "null" }] }])),
+    required: Array.from({ length: count }, (_, i) => `f${i}`),
+    additionalProperties: false,
+  });
+  const ok = completion(JSON.stringify({ answer: "85" }));
+  const words = "Schemas contains too many parameters with union types (17 parameters with type arrays or anyOf). The child wrote 12.";
+  const FORMS: [string, Reply][] = [
+    ["the top-level message of a 400", { status: 400, body: { error: { code: 400, message: words } } }],
+    ["the choice's metadata in a 200", { body: { choices: [{ finish_reason: "error", error: { code: 400, message: "Provider returned error", metadata: { provider_name: "Google", raw: words } } }] } }],
+    ["the choice's message in a 200", { body: { choices: [{ finish_reason: "error", error: { code: 400, message: words } }] } }],
+    ["the error's metadata in a 200", { body: { error: { code: 400, message: "Provider returned error", metadata: { raw: { error: { message: words } } } } } }],
+  ];
+
+  it.each(FORMS)("is read from %s, and the request goes once more in the instructions", async (_, refusal) => {
+    const { fetch, sent } = fakeFetch(refusal, ok);
+    await expect(openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, maxRetries: 0 }).json(request({ schema: withUnions(3) }), signal())).resolves.toEqual({ answer: "85" });
+    expect(sent.map((s) => s.body.response_format !== undefined)).toEqual([true, false]);
+  });
+
+  it.each(FORMS)("keeps the words of %s in providerWords only, never in the message", async (_, refusal) => {
+    const { fetch } = fakeFetch(refusal);
+    const e = await openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, maxRetries: 0 }).json(request({ schema: SCHEMA }), signal()).catch((x: unknown) => x);
+    expect(providerWords(e)).toContain("too many parameters with union types");
+    expect((e as Error).message).not.toContain("The child wrote 12");
+    expect(JSON.stringify(e)).not.toContain("The child wrote 12");
   });
 });

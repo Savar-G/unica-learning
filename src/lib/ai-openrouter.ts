@@ -31,6 +31,28 @@ export const CLAUDE_PROVIDER = "google-vertex";
 /** A Claude model: pinned to `CLAUDE_PROVIDER`. */
 export const isClaudeModel = (model: string) => model.startsWith("anthropic/");
 
+/**
+ * The only models a request with children's data may name (D-283): explicit Claude ids that the route check proved on
+ * Vertex (2026-11-05). Fail closed: a routing alias (`openrouter/auto`), a variant (`:online`, `:nitro`), a `~` alias or
+ * any other id would get no Vertex pin, or reach a host or plugin the route does not cover, so it is refused before any
+ * request. Another model joins the list only after `POST /api/admin/ai-route` passes on it.
+ */
+export const CHILD_DATA_MODELS = ["anthropic/claude-sonnet-5.5", "anthropic/claude-haiku-5.5"] as const;
+
+/** An explicit model id: maker/name, no alias maker, no variant suffix. */
+const EXPLICIT_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/;
+
+/** Why `model` may not be used, in words an admin can act on; null when it may. */
+export function modelRefusal(model: string, childData = true): string | null {
+  const named = JSON.stringify(model);
+  if (childData) {
+    if ((CHILD_DATA_MODELS as readonly string[]).includes(model)) return null;
+    return `The AI model ${named} is not allowed for children's data. Use one of: ${CHILD_DATA_MODELS.join(", ")} (AI_MODEL, AI_SOLVE_MODEL, MAYA_REVIEW_MODEL).`;
+  }
+  if (EXPLICIT_ID.test(model) && !model.startsWith("openrouter/")) return null;
+  return `The AI model ${named} is not an explicit model id: a routing alias or variant could send the request off the route.`;
+}
+
 /** The route in words, for an error message. */
 const routeWords = (model: string) => isClaudeModel(model) ? "Google Vertex only, zero data retention, no training" : "zero data retention, no training";
 
@@ -71,18 +93,25 @@ function body(model: string, request: AiJsonRequest, constrained: boolean) {
 class Retryable extends Error {}
 
 /**
- * What the provider said on a failed request (OpenRouter's `error.metadata`). It can repeat request text, which can be a
- * child's words, so it is never in an error's message and never on the error object: a log line that prints the error
- * cannot print it. Only code that names `providerWords` reads it.
+ * What the provider said on a failed request. OpenRouter puts it in more than one place: the error's `message` and its
+ * `metadata.raw`, at the top of the answer or on the choice (inside a 200). Any of them can repeat request text, which can
+ * be a child's words, so none is in an error's message or on the error object: a log line that prints the error cannot
+ * print it. All of them go into one private diagnostic, which only code that names `providerWords` reads, and the schema
+ * refusal is judged from it wherever it came.
  */
 const WORDS_LIMIT = 2_000;
 const wordsOf = new WeakMap<Error, string>();
 export const providerWords = (e: unknown): string | null => (e instanceof Error ? wordsOf.get(e) ?? null : null);
 
-function withWords<E extends Error>(error: E, metadata: ErrorBody["metadata"]): E {
-  if (metadata?.raw === undefined || metadata.raw === null) return error;
-  const raw = typeof metadata.raw === "string" ? metadata.raw : JSON.stringify(metadata.raw);
-  wordsOf.set(error, `${metadata.provider_name ? `${metadata.provider_name}: ` : ""}${raw}`.slice(0, WORDS_LIMIT));
+const asText = (v: unknown) => (v === undefined || v === null ? "" : typeof v === "string" ? v : JSON.stringify(v));
+
+function withWords<E extends Error>(error: E, ...bodies: (ErrorBody | undefined)[]): E {
+  const parts = bodies.flatMap((b) => {
+    if (!b) return [];
+    const said = [asText(b.message), asText(b.metadata?.raw)].filter(Boolean).join(" ");
+    return said ? [`${b.metadata?.provider_name ? `${b.metadata.provider_name}: ` : ""}${said}`] : [];
+  });
+  if (parts.length) wordsOf.set(error, parts.join(" | ").slice(0, WORDS_LIMIT));
   return error;
 }
 
@@ -123,20 +152,22 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
   } catch {
     data = null;
   }
+  // The status and the code only: what OpenRouter or the provider said goes to the private words (`withWords`).
+  const fallback: ErrorBody | undefined = data ? undefined : { message: text.slice(0, WORDS_LIMIT) };
   if (res.status === 404) {
     // No endpoint meets the route (D-283). Never retried, never sent another way.
-    throw withWords(new Error(`OpenRouter has no endpoint for this request on the allowed route (${route}): 404 ${short(data?.error?.message ?? text)}`), data?.error?.metadata);
+    throw withWords(new Error(`OpenRouter has no endpoint for this request on the allowed route (${route}): 404`), data?.error, fallback);
   }
   if (!res.ok) {
-    const error = `OpenRouter answered ${res.status}: ${short(data?.error?.message ?? text)}`;
-    throw withWords(retryableStatus(res.status) ? new Retryable(error) : new Error(error), data?.error?.metadata);
+    const error = `OpenRouter answered ${res.status}`;
+    throw withWords(retryableStatus(res.status) ? new Retryable(error) : new Error(error), data?.error, fallback);
   }
   if (!data) throw new Error("OpenRouter answered 200 with a body that is not JSON");
-  // After the provider accepts the request, OpenRouter reports a failure inside a 200 answer.
-  if (data.error) throw withWords(new Error(`OpenRouter error ${short(data.error.code)}: ${short(data.error.message)}`), data.error.metadata);
+  // After the provider accepts the request, OpenRouter reports a failure inside a 200 answer, at the top or on the choice.
+  if (data.error) throw withWords(new Error(`OpenRouter error ${short(data.error.code)}`), data.error, data.choices?.[0]?.error);
   const choice = data.choices?.[0];
   if (!choice) throw new Error("OpenRouter answered with no choices");
-  if (choice.error) throw new Error(`OpenRouter error ${short(choice.error.code)}: ${short(choice.error.message)}`);
+  if (choice.error) throw withWords(new Error(`OpenRouter error ${short(choice.error.code)}`), choice.error);
   if (choice.message?.refusal) throw new Error("the model refused");
   if (choice.native_finish_reason === "refusal") throw new Error("the model refused");
   if (choice.finish_reason !== "stop") throw new Error(`the model stopped: ${short(choice.finish_reason)} (${short(choice.native_finish_reason)})`);
@@ -163,9 +194,15 @@ export function openRouterClient({
   timeout = AI_REQUEST_TIMEOUT_MS,
   onRequest,
   onDispatch,
+  childData = true,
 }: {
   apiKey: string;
   model: string;
+  /**
+   * False only for a local tool whose requests hold no child data (the practice suite's simulated children and judges):
+   * it may name another explicit model. Every feature leaves it true, so only CHILD_DATA_MODELS run.
+   */
+  childData?: boolean;
   /** For tests: the fetch to use. */
   fetch?: typeof globalThis.fetch;
   maxRetries?: number;
@@ -179,6 +216,8 @@ export function openRouterClient({
   return {
     model,
     async json(request, signal) {
+      const refusal = modelRefusal(model, childData);
+      if (refusal) throw new Error(refusal);
       let constrained = !inText.has(request.name) && !(isClaudeModel(model) && overConstrainedLimit(request.schema));
       const init = (): RequestInit => ({
         method: "POST",

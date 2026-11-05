@@ -49,7 +49,8 @@ describe("the route check (D-283)", () => {
     const { fetch, sent } = fakeFetch(404, { error: { code: 404, message: "No endpoints found matching your data policy" } });
     const result = await checkAiRoute({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, signal: signal() });
     expect(result).toMatchObject({ ok: false, requested: AI_DEFAULT_MODEL, status: 404, provider: null });
-    expect(result.error).toContain("No endpoints found");
+    expect(result.error).toContain("no endpoint for this request on the allowed route");
+    expect(result.providerWords).toContain("No endpoints found");
     expect(sent).toHaveLength(1);
   });
 
@@ -64,6 +65,16 @@ describe("the route check (D-283)", () => {
     const result = await checkAiRoute({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, signal: signal() });
     expect(result).toMatchObject({ ok: false, status: 200, provider: "Anthropic" });
     expect(result.error).toContain("Anthropic");
+  });
+
+  it("reports an alias in AI_MODEL as refused before any request, never as a pass without the host check (Codex P2, #642)", async () => {
+    for (const model of ["openrouter/auto", "anthropic/claude-sonnet-5.5:online"]) {
+      const { fetch, sent } = fakeFetch(200, { ...answered, model, provider: "Anthropic" });
+      const result = await checkAiRoute({ apiKey: "sk-or-test", model, fetch, signal: signal() });
+      expect(result).toMatchObject({ ok: false, requested: model, status: null, provider: null });
+      expect(result.error).toContain("is not allowed for children's data");
+      expect(sent).toHaveLength(0);
+    }
   });
 
   // The real-size requests: what a small request could not prove (the features' schemas, an image, their reasoning).
@@ -131,7 +142,8 @@ describe("the route check (D-283)", () => {
     const { fetch, sent } = fakeFetch(400, { error: { code: 400, message: "Schema is too complex" } });
     const result = await checkAiRoute({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, shape: "maya_proposal", fetch, signal: signal() });
     expect(result).toMatchObject({ ok: false, status: 400 });
-    expect(result.error).toContain("Schema is too complex");
+    expect(result.error).toBe("OpenRouter answered 400");
+    expect(result.providerWords).toContain("Schema is too complex");
     expect(sent).toHaveLength(1);
   });
 
