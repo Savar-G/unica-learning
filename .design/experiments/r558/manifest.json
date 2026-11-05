@@ -1,0 +1,17 @@
+{
+  "round": "r558",
+  "ticket": "#558 (spec #544, parent dashboard): Workbooks tab, current book, tracking, next book range, PDF download",
+  "route": "Built in src/ behind the dashboard switch (D-236). Screenshots of the real page on npm run dev, for Savar's one review page (D-249). Not a variant round: the look is the mock's chosen direction (D-242).",
+  "picked": null,
+  "picked_by": "waiting for Savar's review page (D-249)",
+  "captured": "2026-11-05, T3 preview (the Aside CLI was down), signed in as the test family of the child 'QA E2E Three' (in test_accounts). Real stored data, nothing written: Workbook 2 shipped 2026-10-30 03:54 UTC (October 29 in Vancouver time), no delivery receipt, no dispatch email.",
+  "viewports": { "desktop": [1440, 900], "phone": [390, 844] },
+  "shots": [
+    { "file": "workbooks-desktop.png", "viewport": "desktop", "state": "first_book_coming with a shipped book: Workbook 2 on its way, next book November 12 to December 3 (shipped + 14, shipped + 35 with no confirmed delivery), PDF download" },
+    { "file": "workbooks-phone.png", "viewport": "phone", "state": "the same page at 390 px: child block on top, Workbooks active in the bottom bar, no horizontal scroll (scrollWidth 390)" }
+  ],
+  "not_captured": [
+    "Before the first book ships (status, no date): no test family has a child with a saved card and no shipped book. Covered by src/lib/next-book.test.ts and src/lib/parent-view.test.ts.",
+    "Tracking card (mail, not yet delivered) and Delivered: no test family has a dispatch email or a delivery receipt. Covered by src/lib/parent-view.test.ts."
+  ]
+}

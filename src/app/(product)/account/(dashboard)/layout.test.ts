@@ -91,7 +91,8 @@ it("has the bottom bar once the child has more tabs, and marks the current page"
   expect(out).toContain('class="pd-bar"');
   expect(out).not.toContain('class="pd-top-links"');
   expect(out).toContain('aria-current="page" href="/account?child=c1"');
-  expect(out).not.toContain("Workbooks");
+  expect(out).toContain('href="/account/workbooks/c1"><svg');
+  expect(out).not.toContain("Progress");
 });
 
 it("has the account page's links, add a child and sign out for a family the switch opens to", async () => {
