@@ -388,8 +388,15 @@ describe("the Overview (#560)", () => {
       expect(view?.level).toEqual({ working: 3, earlySign: false, testedOn: expect.any(String), unreliable: true });
       expect(view?.areas).toEqual([]);
     });
-    it("reads the stored test's pace flag too", async () => {
-      const view = await read({ tests: [test("t", { unreliable: true })], reports: [report("t")], results: [result("t", { answers })] });
+    it("follows the report the parent reads, not a later pace flag on the test (review of PR #634)", async () => {
+      // A rescore set the test's pace flag, but the stored report has no reliability note and offers no new test.
+      const view = await read({ tests: [test("t", { unreliable: true })], reports: [report("t")], results: [result("t", { answers, unreliable: false })] });
+      expect(view?.level?.unreliable).toBe(false);
+      expect(view?.areas).toHaveLength(2);
+    });
+    it("an older reliable test before a newer unreliable one: the newest decides", async () => {
+      const tests = [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })];
+      const view = await read({ tests, reports: [report("old"), report("new")], results: [result("old", { answers }), result("new", { answers, unreliable: true })] });
       expect(view?.level?.unreliable).toBe(true);
       expect(view?.areas).toEqual([]);
     });

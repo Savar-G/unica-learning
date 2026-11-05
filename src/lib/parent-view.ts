@@ -389,8 +389,9 @@ async function testLevel(reader: ParentViewReader, test: TestRecord, schoolGrade
   const result = await reader.testResult(test.id);
   if (!result) return { level: null, areas: [] };
   // D-258 (#579): a test the report calls unreliable shows no bars. A fall back to the overall level would invent a
-  // weakness (D-108). The report's note and the stored test's pace are the same flag; either one hides the bars.
-  const unreliable = result.unreliable || test.unreliable === true;
+  // weakness (D-108). Only the stored report's note decides: the sentence says the report offers a new test, and a
+  // rescore can change the test's pace flag without changing the report the parent reads.
+  const unreliable = result.unreliable;
   const level: LevelTileView = {
     working: result.level.working,
     earlySign: result.level.confidence === "low" || storedLevelCertainty(result.level) === "early-sign",
