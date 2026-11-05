@@ -295,7 +295,7 @@ describe("#534: the board in a chat", () => {
     expect(localStorage.getItem(OUTBOX)).not.toBeNull();
   });
 
-  it("R625b-3: ink waiting on the device stays when another child's desk or a signed-out session cannot send it, and goes when the call answers closed", async () => {
+  it("R625b-3: ink waiting on the device stays when a signed-out session, a closed desk or a server error says nothing about it, and goes when the call answers closed", async () => {
     localStorage.clear();
     const boards: string[] = [];
     let status = 503;
@@ -407,7 +407,7 @@ describe("#639: ink stays on the device until the call holds it", () => {
     }) : null;
   }
   /** The call: GET answers what it holds, POST answers from `post`. */
-  const theCall = (held: () => unknown[], post: (body: { from: number; events: unknown[] }, raw: string) => Response) =>
+  const theCall = (held: () => unknown[], post: (body: { from: number; events: unknown[] }, raw: string) => Response | Promise<Response>) =>
     vi.stubGlobal("fetch", async (url: string, options: RequestInit = {}) => {
       if (url.startsWith("/api/desk/chat/board?")) return Response.json({ events: held() });
       if (url === "/api/desk/chat/board") return post(JSON.parse(String(options.body)), String(options.body));
@@ -521,5 +521,125 @@ describe("#639: ink stays on the device until the call holds it", () => {
     await render(); await advance(100);
     expect(localStorage.getItem(OUTBOX)).toBeNull();
     expect(JSON.parse(posts.at(-1)!).events).toEqual(log);
+  });
+
+  it("R639b-1: four reloads in a row after a stale board add no strokes, with the draft or without it", async () => {
+    for (const keepDraft of [true, false]) {
+      localStorage.clear(); sessionStorage.clear();
+      const whole = threeEvents();
+      // A third line whose time overlaps the line before it, as a board that fell behind sends it.
+      const late = inkLog(line(accepted(takePen(createHistory(), 100)), 0.9))[1];
+      const server: unknown[] = [...inkLog(whole), late];
+      theCall(() => server, (body) => {
+        body.events.forEach((e, i) => { if (body.from + i > server.length) server.push(e); });
+        return Response.json({ held: server.length });
+      });
+      for (let reload = 0; reload < 4; reload++) {
+        boards = [];
+        if (!keepDraft) localStorage.removeItem(chatBoardKey(id));
+        await pickUp();
+        await advance(5000);
+        expect(server, `reload ${reload}, draft kept: ${keepDraft}`).toHaveLength(4);
+        expect(childStrokes(boards.at(-1)!)).toHaveLength(3);
+        await act(async () => root.unmount());
+        await advance(100);
+        root = createRoot(host);
+      }
+    }
+  });
+
+  const OLD = Array.from({ length: 8 }, (_, i) => `45100000-0000-4000-8000-0000000001${10 + i}`);
+  const leaveOldInk = () => {
+    const log = inkLog(threeEvents());
+    for (const old of OLD) localStorage.setItem(`unica-chat-ink:${old}`, JSON.stringify({ acked: 0, events: log }));
+  };
+  const oldLeft = () => OLD.filter((old) => localStorage.getItem(`unica-chat-ink:${old}`) !== null).length;
+
+  it("R639b-2: old ink going slowly never holds the current chat, and a call that is gone leaves the device", async () => {
+    leaveOldInk();
+    const started: string[] = [];
+    let inFlight = 0, most = 0;
+    vi.stubGlobal("fetch", (url: string, options: RequestInit = {}) => {
+      if (url === "/api/desk/chat/board") {
+        const body = JSON.parse(String(options.body)) as { id: string; from: number; events: unknown[] };
+        if (body.id === id) return Promise.resolve(Response.json({ held: body.from + body.events.length - 1 }));
+        started.push(body.id);
+        most = Math.max(most, ++inFlight);
+        return new Promise((resolve) => setTimeout(() => { inFlight--; resolve(Response.json({ error: "not_found", held: 0 }, { status: 404 })); }, 4900));
+      }
+      const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
+      return answer(action).then((r) => Response.json(r));
+    });
+    await render(); await send("start");
+    await act(async () => state.saveBoard(id, threeEvents()));
+    let ended = false;
+    await act(async () => { void state.act("end").then((ok) => { ended = ok; }); await vi.advanceTimersByTimeAsync(500); });
+    expect(ended).toBe(true);
+    expect(localStorage.getItem(OUTBOX)).toBeNull();
+    // One at a time, so a desk with much old ink makes one request at once.
+    await advance(60_000);
+    expect(most).toBe(1);
+    expect(started).toHaveLength(8);
+    expect(oldLeft()).toBe(0);
+    // The next desk load asks about none of them.
+    await act(async () => root.unmount());
+    await advance(100);
+    root = createRoot(host);
+    started.length = 0;
+    await render(); await advance(100);
+    expect(started).toEqual([]);
+  });
+
+  it("R639b-2: a definite refusal removes the ink; a server error, no answer, or a 404 that is not the call's keeps it", async () => {
+    const kept: [string, () => Promise<Response>][] = [
+      ["503", async () => Response.json({ error: "unavailable" }, { status: 503 })],
+      ["no answer", async () => { throw new TypeError("network"); }],
+      ["401", async () => Response.json({ error: "signed_out" }, { status: 401 })],
+      ["403", async () => Response.json({ error: "forbidden" }, { status: 403 })],
+      ["a 404 that is not the route's", async () => new Response("<html>not here</html>", { status: 404 })],
+    ];
+    const log = inkLog(threeEvents());
+    for (const [name, answerWith] of kept) {
+      localStorage.clear();
+      localStorage.setItem(OUTBOX, JSON.stringify({ acked: 0, events: log }));
+      theCall(() => [], answerWith);
+      await render(); await advance(100);
+      expect(localStorage.getItem(OUTBOX), name).not.toBeNull();
+      await act(async () => root.unmount());
+      await advance(100);
+      root = createRoot(host);
+    }
+    for (const [name, answerWith] of [
+      ["the call is gone, or another child's", () => Response.json({ error: "not_found", held: 0 }, { status: 404 })],
+      ["closed", () => Response.json({ error: "closed", held: 2 }, { status: 410 })],
+    ] as const) {
+      localStorage.clear();
+      localStorage.setItem(OUTBOX, JSON.stringify({ acked: 0, events: log }));
+      theCall(() => [], answerWith);
+      await render(); await advance(100);
+      expect(localStorage.getItem(OUTBOX), name).toBeNull();
+      await act(async () => root.unmount());
+      await advance(100);
+      root = createRoot(host);
+    }
+  });
+
+  it("R639b-2: a page going away sends this visit's ink first, not old ink that could use up what the browser allows", async () => {
+    leaveOldInk();
+    const sent: string[] = [];
+    vi.stubGlobal("fetch", (url: string, options: RequestInit = {}) => {
+      if (url === "/api/desk/chat/board") {
+        const body = JSON.parse(String(options.body)) as { id: string; from: number; events: unknown[] };
+        sent.push(body.id);
+        return new Promise(() => {});
+      }
+      const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
+      return answer(action).then((r) => Response.json(r));
+    });
+    await render(); await send("start");
+    await act(async () => state.saveBoard(id, threeEvents()));
+    sent.length = 0;
+    await act(async () => { window.dispatchEvent(new Event("pagehide")); await vi.advanceTimersByTimeAsync(0); });
+    expect(sent).toEqual([id]);
   });
 });

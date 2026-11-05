@@ -578,25 +578,48 @@ export function historyFromLog(log: readonly InkEvent[], batches: readonly Batch
   return decodeHistory(encodeHistory({ v: 1, revision: events.length, events }));
 }
 
-const sameInk = (a: InkEvent, b: InkEvent) => a === b || JSON.stringify(readInkEvent(a)) === JSON.stringify(readInkEvent(b));
+/** A stroke apart from when it was drawn: a board built from a log can move a stroke's times, never what it drew. */
+const strokeIdentity = (s: InkStroke): string => JSON.stringify([s.page, s.erase, s.w, s.boardWidth, s.pts.map(([x, y]) => [x, y])]);
+/**
+ * What an ink event is, apart from its time (R639b-1): `historyFromLog` moves up an event that overlaps the one before it,
+ * so the same event can come back with another time. Events that look alike (a second clear) are told apart by place.
+ */
+const inkIdentity = (e: InkEvent): string => {
+  if (e.kind === "stroke" || e.kind === "recovered") return `ink:${strokeIdentity(e)}`;
+  if (e.kind === "delivered") return `delivered:${e.batchId}`;
+  return e.kind === "pen" ? `pen:${e.to}` : e.kind;
+};
 /** How far two logs are the same, from the first event. `null`: only the call has that event, so it counts as the same. */
 const sharedInk = (a: readonly (InkEvent | null)[], b: readonly InkEvent[]): number => {
   let n = 0;
-  while (n < a.length && n < b.length && (a[n] === null || sameInk(a[n] as InkEvent, b[n]))) n++;
+  while (n < a.length && n < b.length && (a[n] === null || a[n] === b[n] || inkIdentity(a[n] as InkEvent) === inkIdentity(b[n]))) n++;
   return n;
 };
+/** Of `items`, those past what `held` already has: each thing `held` has counts once, so a real repeat stays. */
+function notHeld<T>(items: readonly T[], held: readonly string[], identity: (item: T) => string): T[] {
+  const counts = new Map<string, number>();
+  for (const id of held) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return items.filter((item) => {
+    const id = identity(item);
+    const left = counts.get(id) ?? 0;
+    if (left === 0) return true;
+    counts.set(id, left - 1);
+    return false;
+  });
+}
 
 /**
  * A log with what a board holds now (R639-1, R639-2). A sequence once given is never given to another event, because the
  * call keeps the first event at each sequence: a board that goes on from the log becomes the log; a shorter one changes
- * nothing; the new events of a board that went another way go at the end, once each.
+ * nothing; the new events of a board that went another way go at the end, once each. Events are the same by what they are,
+ * not when (R639b-1), so a log read back with a moved time adds nothing.
  */
 export function growInkLog<T extends InkEvent | null>(log: T[], board: InkEvent[]): (T | InkEvent)[] {
   const shared = sharedInk(log, board);
   if (shared === log.length) return board;
   if (shared === board.length) return log;
-  const on = new Set(log.flatMap((e) => (e ? [JSON.stringify(readInkEvent(e))] : [])));
-  return [...log, ...board.slice(shared).filter((e) => !on.has(JSON.stringify(readInkEvent(e))))];
+  const after = log.slice(shared).flatMap((e) => (e ? [inkIdentity(e)] : []));
+  return [...log, ...notHeld(board.slice(shared), after, inkIdentity)];
 }
 
 /**
@@ -611,8 +634,8 @@ export function startingChatBoard(call: BoardHistory | null, draft: BoardHistory
   const shared = sharedInk(held, device);
   if (shared === held.length) return draft;
   if (shared === device.length) return call;
-  const on = new Set(childStrokes(call).map((s) => JSON.stringify(s)));
-  return restoreKept(call, childStrokes(draft).filter((s) => !on.has(JSON.stringify(s))).map(keptStroke), historyLength(call) + 1).history;
+  const own = notHeld(childStrokes(draft), childStrokes(call).map(strokeIdentity), strokeIdentity);
+  return restoreKept(call, own.map(keptStroke), historyLength(call) + 1).history;
 }
 
 /** Whether `h` holds all of `other`'s log, in order: on a chat's board, nothing is lost by showing `h` in its place. */

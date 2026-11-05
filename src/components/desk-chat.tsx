@@ -35,11 +35,11 @@ const OUTBOX_ROOT = "unica-chat-ink:";
 type Ink = { log: (InkEvent | null)[]; acked: number };
 /**
  * What one request did: "sent" (the call holds more now), "again" (the call asked for an earlier start: send at once),
- * "closed" (the call takes no more ink: it ended long ago), "busy" (the call took an append less than a second ago),
- * "retry" (anything else: a server error, no answer, or a refusal of this session or desk, which says nothing about the
- * ink, R625b-3).
+ * "final" (the call will never take this ink: it ended long ago, it is gone, or it is not this child's, R639b-2), "busy"
+ * (the call took an append less than a second ago), "retry" (anything else: a server error, no answer, or a refusal of
+ * this session or desk, which says nothing about the ink, R625b-3).
  */
-type Sent = "sent" | "again" | "closed" | "busy" | "retry";
+type Sent = "sent" | "again" | "final" | "busy" | "retry";
 
 /** The next part of the log to send (R639-3): by count and by encoded size; always at least one event. Null: not sendable yet. */
 function nextPart(ink: Ink): InkEvent[] | null {
@@ -64,9 +64,11 @@ async function sendInk(id: string, ink: Ink): Promise<Sent> {
   const timer = setTimeout(() => stop.abort(), BOARD_TRY_MS);
   try {
     const res = await fetch("/api/desk/chat/board", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: body.length < KEEPALIVE_MAX, signal: stop.signal });
-    if (res.status === 410) return "closed";
+    if (res.status === 410) return "final";
     if (res.status === 429) return "busy";
-    const answer = (await res.json().catch(() => null)) as { held?: unknown } | null;
+    const answer = (await res.json().catch(() => null)) as { held?: unknown; error?: unknown } | null;
+    // Only the route's own answer: another 404 (a page that is not this route) says nothing about the call.
+    if (res.status === 404 && answer?.error === "not_found") return "final";
     const held = Number.isInteger(answer?.held) ? (answer!.held as number) : null;
     if (res.ok && held !== null && held >= ink.acked) {
       ink.acked = Math.min(held, ink.log.length);
@@ -110,12 +112,15 @@ function readOutbox(raw: string): Ink | null {
  * chat ends, and when the page goes. Each request carries only events from the first one the call does not hold, and
  * the call answers with the last sequence it holds; nothing is ever replaced, so there is no conflict to resolve.
  * Before the chat ends, the ink is tried three times; the chat ends either way (R625-5, R625b-2). The outbox goes from
- * the device only when the call holds every event in it, or answered closed (R625b-3, R635-1, R635-2, R639-5): the call
- * alone knows when its time is past. The next desk load sends what is left.
+ * the device only when the call holds every event in it, or says it never will (R625b-3, R635-1, R635-2, R639-5,
+ * R639b-2): the call alone knows when its time is past. The next desk load sends what is left: each chat has its own
+ * queue, and old chats go one at a time in the background, so they never hold the chat on the desk.
  */
 function useInkSaver() {
   const chats = useRef(new Map<string, Ink>());
-  const queue = useRef<Promise<boolean>>(Promise.resolve(true));
+  const queues = useRef(new Map<string, Promise<boolean>>());
+  /** The chats of this visit: what a page going away sends, before old ink can use up what the browser allows. */
+  const visit = useRef(new Set<string>());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   /** Keeps what the call does not hold on this device, or forgets it once the call holds all of it. */
   const keep = useCallback((id: string, ink: Ink) => {
@@ -126,14 +131,14 @@ function useInkSaver() {
   /** Sends a chat's events the call does not hold, one request after another; true when it holds them all. */
   const flush = useCallback((id: string) => {
     clearTimeout(timers.current.get(id));
-    queue.current = queue.current.then(async () => {
+    const run = (queues.current.get(id) ?? Promise.resolve(true)).then(async () => {
       const ink = chats.current.get(id);
       if (!ink) return true;
       let busy = 0;
       while (ink.acked < ink.log.length) {
         const sent = await sendInk(id, ink);
-        if (sent === "closed") {
-          // The call takes no more of this chat's ink.
+        if (sent === "final") {
+          // The call will never take this chat's ink.
           chats.current.delete(id);
           storage.remove(`${OUTBOX_ROOT}${id}`);
           return true;
@@ -146,7 +151,8 @@ function useInkSaver() {
       }
       return true;
     });
-    return queue.current;
+    queues.current.set(id, run);
+    return run;
   }, [keep]);
   /** The last ink before the chat ends: it is on the device already; tried with a pause between tries. */
   const finish = useCallback(async (id: string) => {
@@ -158,6 +164,7 @@ function useInkSaver() {
   }, [flush]);
   /** A change of the chat's board. The log only grows: a board that fell behind never takes back a sequence (R639-1, R639-2). */
   const save = useCallback((id: string, history: BoardHistory) => {
+    visit.current.add(id);
     const ink = chats.current.get(id) ?? { log: [], acked: 0 };
     ink.log = growInkLog(ink.log, inkLog(history));
     ink.acked = Math.min(ink.acked, ink.log.length);
@@ -171,6 +178,7 @@ function useInkSaver() {
    * on this device past them (R639-1). Ink of this device that the call does not hold at its place goes after them.
    */
   const restore = useCallback((id: string, held: InkEvent[]): InkEvent[] => {
+    visit.current.add(id);
     const ink = chats.current.get(id) ?? { log: [], acked: 0 };
     const device = ink.log.map((e, i) => e ?? held[i] ?? null).filter((e): e is InkEvent => e !== null);
     const log = growInkLog(held, device);
@@ -182,7 +190,8 @@ function useInkSaver() {
     return log;
   }, [keep]);
   useEffect(() => {
-    // Ink an earlier visit could not send: each chat's outbox is tried once now.
+    // Ink an earlier visit could not send: each chat's outbox is tried once now, one after another, behind the desk.
+    const waiting: string[] = [];
     for (const key of storage.keys()) {
       const raw = storage.read(key);
       const box = raw ? readOutbox(raw) : null;
@@ -192,12 +201,20 @@ function useInkSaver() {
       }
       const id = key.slice(OUTBOX_ROOT.length);
       if (!chats.current.has(id)) chats.current.set(id, box);
-      void flush(id);
+      waiting.push(id);
     }
-    const gone = () => { for (const id of chats.current.keys()) void flush(id); };
+    let left = true;
+    void (async () => {
+      for (const id of waiting) {
+        if (!left) return;
+        await flush(id);
+      }
+    })();
+    const gone = () => { for (const id of visit.current) void flush(id); };
     window.addEventListener("pagehide", gone);
     const pending = timers.current;
     return () => {
+      left = false;
       window.removeEventListener("pagehide", gone);
       for (const t of pending.values()) clearTimeout(t);
       gone();

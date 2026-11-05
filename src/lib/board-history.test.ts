@@ -564,6 +564,38 @@ describe("the child's ink as an event log (#635)", () => {
     expect(growInkLog([null, three[1]], three)).toEqual(three);
   });
 
+  it("R639b-1: four reloads of a log with an overlapping time add nothing: an event is the same whatever its time", () => {
+    const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
+    const late = inkLog(stroke(penned(), 0.9, 50))[1];
+    let log = [...three, late];
+    let draft: BoardHistory | null = null;
+    for (let reload = 0; reload < 4; reload++) {
+      const call = historyFromLog(log, [])!;
+      const board: BoardHistory = startingChatBoard(call, draft)!;
+      log = growInkLog(log, inkLog(board));
+      draft = board;
+      expect(log, `reload ${reload}`).toHaveLength(4);
+      expect(childStrokes(board).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.9]);
+    }
+  });
+
+  it("R639b-1: real events that look alike still count: a redraw of the same line, and a second clear", () => {
+    const one = stroke(penned(), 0.1, 100);
+    const again = stroke(one, 0.1, 200);
+    expect(growInkLog(inkLog(one), inkLog(again))).toHaveLength(inkLog(again).length);
+    // A board that went another way: its own events go on, once each, however many look like ones the log holds.
+    const log = inkLog(ok(clear(stroke(penned(), 0.5, 100), 200)));
+    const other = inkLog(ok(clear(stroke(stroke(ok(clear(stroke(penned(), 0.5, 100), 200)), 0.1, 300), 0.2, 400), 500)));
+    const theirs = inkLog(stroke(stroke(penned(), 0.7, 100), 0.7, 200));
+    const grown = growInkLog(log, theirs);
+    expect(grown).toHaveLength(log.length + 2);
+    expect(growInkLog(grown, theirs)).toEqual(grown);
+    expect(growInkLog(log, other)).toEqual(other);
+    expect(childStrokes(startingChatBoard(stroke(penned(), 0.7, 100), stroke(stroke(penned(), 0.7, 100), 0.7, 200))!)).toHaveLength(2);
+    const drawnTwice = startingChatBoard(stroke(stroke(penned(), 0.1, 100), 0.2, 200), stroke(stroke(penned(), 0.1, 100), 0.7, 150))!;
+    expect(childStrokes(drawnTwice).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.7]);
+  });
+
   it("R639-2: a log with an event earlier than the one before it still builds the board, with that event moved up", () => {
     const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
     const late = inkLog(stroke(penned(), 0.9, 50))[1];
