@@ -338,12 +338,13 @@ describe("the Supabase reader of the Progress tab (#561)", () => {
     } } }) as never;
   }
   const ADMIN_ROWS = {
-    assessments: [{ id: TEST, completed_at: FINISHED }, { id: "open", completed_at: null }],
-    learner_profiles: [{ assessment_id: TEST, profile }, { assessment_id: "open", profile }, { assessment_id: "gone", profile }],
+    // "pending": finished, with a learner profile, and no report yet.
+    assessments: [{ id: TEST, completed_at: FINISHED }, { id: "open", completed_at: null }, { id: "pending", completed_at: FINISHED }],
+    learner_profiles: [{ assessment_id: TEST, profile }, { assessment_id: "open", profile }, { assessment_id: "gone", profile }, { assessment_id: "pending", profile }],
     reports: [{ assessment_id: TEST, reliability: null }],
   };
 
-  it("reads the tallies with the secret key, filtered on the parent and the child, and gives only the tally", async () => {
+  it("reads the tallies with the secret key, filtered on the parent and the child, and gives only the tally, of a test with a report", async () => {
     const admin: URL[] = [];
     const session: URL[] = [];
     const r = parentViewReader(progressClient(session, {}), PARENT, progressClient(admin, ADMIN_ROWS), {});

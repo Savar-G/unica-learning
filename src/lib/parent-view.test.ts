@@ -650,7 +650,7 @@ describe("the Progress tab (#561)", () => {
   const level = { working: 3, top: 3, certainty: "clear", confidence: "high" } as unknown as ReportModel["level"];
   const result: MemoryResult = { parentId: "parent-1", childId: "child-1", assessmentId: "t1", level, answers: [] };
   const withTest = { ...card, tests: [finished], reports: [report("t1")], results: [result] };
-  const tally = (standard: string, correct: number, total: number) => ({ parentId: "parent-1", childId: "child-1", standard, correct, total, at: "2026-10-30T18:00:00Z" });
+  const tally = (standard: string, correct: number, total: number) => ({ parentId: "parent-1", childId: "child-1", assessmentId: "t1", standard, correct, total, at: "2026-10-30T18:00:00Z" });
   const read = (tables: Parameters<typeof parent>[0]) => readProgress(parent(tables), "child-1", NOW);
   const tile = (view: Awaited<ReturnType<typeof read>>, code: string) => view!.areas.flatMap((a) => a.tiles).find((t) => t.code === code);
 
@@ -753,6 +753,40 @@ describe("the Progress tab (#561)", () => {
       });
       expect(tile(view, "3.1")).toMatchObject({ state: "mastered", why: "Leah got every counted answer on this right on the test on September 1." });
       expect(view!.level?.unreliable).toBe(true);
+    });
+
+    describe("a test whose report is not built yet: no evidence until it is", () => {
+      // A good test, then a low test whose report is pending, then the newest test, reported, with no tally of 3.3.
+      const good = test("t0", { completedAt: Date.parse("2026-09-01T18:00:00Z") });
+      const low = test("t-low", { completedAt: Date.parse("2026-09-15T18:00:00Z") });
+      const tables = (lowReport: { unreliable: boolean } | null) => ({
+        ...withTest,
+        tests: [good, low, finished],
+        reports: [report("t0"), report("t1"), ...(lowReport ? [report("t-low")] : [])],
+        results: [{ ...result, assessmentId: "t0" }, result, ...(lowReport ? [{ ...result, assessmentId: "t-low", unreliable: lowReport.unreliable }] : [])],
+        workbooks: [{ parentId: "parent-1", childId: "child-1", number: 1, status: "shipped" as const }],
+        questions: [{ parentId: "parent-1", workbookId: "wb-child-1-1", standard: "3.3" }],
+        skillTests: [
+          { ...tally("3.3", 2, 2), at: "2026-09-01T18:00:00Z", assessmentId: "t0" },
+          { ...tally("3.3", 0, 4), at: "2026-09-15T18:00:00Z", assessmentId: "t-low" },
+          { ...tally("3.4", 0, 4), at: "2026-09-15T18:00:00Z", assessmentId: "t-low" },
+        ],
+      });
+      it("keeps an earlier Mastered beside a low test with its report pending", async () => {
+        const view = await read(tables(null));
+        expect(tile(view, "3.3")).toMatchObject({ state: "mastered", why: "Leah got every counted answer on this right on the test on September 1." });
+        expect(tile(view, "3.4")?.state).toBe("not_started");
+      });
+      it("keeps it too once the report calls that test unreliable", async () => {
+        const view = await read(tables({ unreliable: true }));
+        expect(tile(view, "3.3")?.state).toBe("mastered");
+        expect(tile(view, "3.4")?.state).toBe("not_started");
+      });
+      it("reads the test once its report exists and calls it reliable", async () => {
+        const view = await read(tables({ unreliable: false }));
+        expect(tile(view, "3.3")?.state).toBe("needs_review");
+        expect(tile(view, "3.4")?.state).toBe("needs_review");
+      });
     });
   });
 

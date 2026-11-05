@@ -30,7 +30,8 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // database counts one child's calls that used time in the month, so no row leaves it and no page of rows can hide one.
 // The Progress tab (#561): the skill states read each finished test's stored learner profile with the secret key, filtered
 // on the parent and the child; only each standard's tally leaves this read (profileSkillResults), with whether the test's
-// stored report calls it unreliable (only the report's reliability note is read, not its model). A shipped workbook's
+// stored report calls it unreliable (only the report's reliability note is read, not its model). A test with no report
+// yet gives no tally. A shipped workbook's
 // standards come from the session; only the code in each question package leaves that read.
 // Plan state: the plan state table does not exist yet (#548), so `plans` returns no rows and every plan reads as
 // `unknown`. No family can be `ended` until #548 fills this read in.
@@ -150,11 +151,13 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       if (tests.error) throw new Error(`skill tests read: ${tests.error.message}`);
       if (profiles.error) throw new Error(`learner profiles read: ${profiles.error.message}`);
       if (reports.error) throw new Error(`skill reports read: ${reports.error.message}`);
+      // A test with no report yet has unknown reliability: no tally of it leaves until its report exists.
+      const reported = new Set(reports.data.map((r) => r.assessment_id));
       const unreliable = new Set(reports.data.filter(reportCallsUnreliable).map((r) => r.assessment_id));
       const finished = new Map(tests.data.flatMap((t) => (t.completed_at ? [[t.id, new Date(t.completed_at).toISOString()] as const] : [])));
       return profiles.data.flatMap((p) => {
         const at = finished.get(p.assessment_id);
-        return at ? profileSkillResults(p.profile, at, unreliable.has(p.assessment_id)) : [];
+        return at && reported.has(p.assessment_id) ? profileSkillResults(p.profile, at, unreliable.has(p.assessment_id)) : [];
       });
     },
     async workbookStandards(workbookId) {

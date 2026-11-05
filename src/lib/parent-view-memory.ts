@@ -101,8 +101,8 @@ export interface MemorySkillTest extends Owned {
   correct: number;
   total: number;
   at: string;
-  /** The test the tally is from: its result says whether the stored report calls it unreliable. */
-  assessmentId?: string;
+  /** The test the tally is from: with no report of it, no tally leaves; its result says whether the report calls it unreliable. */
+  assessmentId: string;
 }
 /** One question of a workbook: its standard, as the question package names it. */
 export interface MemoryWorkbookQuestion {
@@ -230,9 +230,11 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       },
       async skillTests(childId) {
         read("skillTests");
-        // As the server: whether the test's stored report calls it unreliable comes from that report, not from the tally.
+        // As the server: a test with no report yet gives no tally, and whether the test's stored report calls it
+        // unreliable comes from that report, not from the tally.
+        const reported = new Set(own(tables.reports).map((r) => r.assessmentId));
         const unreliable = new Set(own(tables.results).filter((r) => r.unreliable).map((r) => r.assessmentId));
-        return own(tables.skillTests).filter((t) => t.childId === childId).map((t) => ({ ...t, unreliable: t.assessmentId !== undefined && unreliable.has(t.assessmentId) }));
+        return own(tables.skillTests).filter((t) => t.childId === childId && reported.has(t.assessmentId)).map((t) => ({ ...t, unreliable: unreliable.has(t.assessmentId) }));
       },
       async workbookStandards(workbookId) {
         read("questions");

@@ -20,7 +20,9 @@
 // A test the report calls unreliable (its stored reliability note, reportCallsUnreliable in report.ts; D-258) gives no
 // evidence for any state: its tally is as if it did not exist, so it neither earns nor takes away Mastered and makes no
 // weakness. A standard with no other evidence is Not started ("no_evidence"). The map and the rebuild's history both read
-// this rule. A row already stored from such a test stays, and the next rebuild adds one row for the changed state.
+// this rule. A row already stored from such a test stays, and the next rebuild adds one row for the changed state. A test
+// with no report yet has unknown reliability, so both readers leave it out until its report exists; the report job's
+// rebuild then picks it up.
 //
 // Choices the spec leaves open:
 // - The rule replays every test result and mark of the standard by date before it applies the order above, so a newer

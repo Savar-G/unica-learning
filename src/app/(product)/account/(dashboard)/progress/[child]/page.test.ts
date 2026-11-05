@@ -33,8 +33,8 @@ const tables = (over: Partial<MemoryParentViewTables> = {}): MemoryParentViewTab
   reports: [{ parentId: "p1", childId: "c1", assessmentId: "t1" }],
   results: [{ parentId: "p1", childId: "c1", assessmentId: "t1", level: { working: 3, top: 3, certainty: "clear", confidence: "high" } as never, answers: [] }],
   skillTests: [
-    { parentId: "p1", childId: "c1", standard: "3.1", correct: 2, total: 2, at: "2026-10-30T18:00:00Z" },
-    { parentId: "p1", childId: "c1", standard: "3.2", correct: 0, total: 4, at: "2026-10-30T18:00:00Z" },
+    { parentId: "p1", childId: "c1", assessmentId: "t1", standard: "3.1", correct: 2, total: 2, at: "2026-10-30T18:00:00Z" },
+    { parentId: "p1", childId: "c1", assessmentId: "t1", standard: "3.2", correct: 0, total: 4, at: "2026-10-30T18:00:00Z" },
   ],
   ...over,
 });

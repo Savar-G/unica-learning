@@ -25,6 +25,7 @@ const UNSCORED = "00000000-0000-4000-8000-0000000000e2";
 const OTHER_PARENT = "00000000-0000-4000-8000-0000000000a3";
 const OTHER_CHILD = "00000000-0000-4000-8000-0000000000c3";
 const OTHER_TEST = "00000000-0000-4000-8000-0000000000e3";
+const PENDING = "00000000-0000-4000-8000-0000000000e4";
 const GONE = "00000000-0000-4000-8000-0000000000e9";
 
 const { asked, placement } = takeTest({ grade: 3, province: "BC" }, 7, knowsUpTo(2));
@@ -40,9 +41,11 @@ const BASE: LearnerProfile = learnerProfile({
 const PROFILE = childProfileFacts({ grade: 3, learning: null, assessment: { assessmentId: NEW, completedAt: null, buildId: null, profile: BASE }, events: [] })!;
 const LEARNING = { styles: ["pictures" as const], interests: [], feeling: "avoids" as const, goal: null, weeklyTime: null };
 
-// Three finished tests of the child: an older one with a profile, a newer one with a profile, and the newest, which has
-// no profile (not scored against BC). The latest assessment profile is the newer one's.
+// Four finished tests of the child: the oldest, with a profile and no report yet; an older one with a profile, a newer
+// one with a profile, and the newest, which has no profile (not scored against BC). The latest assessment profile is the
+// newer one's.
 const TESTS = [
+  { id: PENDING, completedAt: "2026-08-01T18:00:00.000Z", profile: { ...BASE, buildId: "build-pending" }, unreliable: false, reported: false },
   { id: OLD, completedAt: "2026-09-01T18:00:00.000Z", profile: { ...BASE, buildId: "build-old" }, unreliable: true },
   { id: NEW, completedAt: "2026-10-20T18:00:00.000Z", profile: { ...BASE, buildId: "build-new" }, unreliable: false },
   { id: UNSCORED, completedAt: "2026-10-25T18:00:00.000Z", profile: null, unreliable: false },
@@ -70,8 +73,8 @@ function fakePostgrest(history: Record<string, unknown>[] = []): ChildProfileSto
       { id: OTHER_TEST, child_id: OTHER_CHILD, parent_id: OTHER_PARENT, status: "completed", completed_at: "2026-10-01T18:00:00.000Z" },
     ],
     learner_profiles: TESTS.filter((t) => t.profile).map((t) => ({ assessment_id: t.id, child_id: CHILD, profile: t.profile })),
-    // The older test's report has the reliability note; the newer test's does not.
-    reports: TESTS.map((t) => ({ assessment_id: t.id, child_id: CHILD, model: t.unreliable ? { reliability: { veryFast: 28, answers: 42 } } : {} })),
+    // The older test's report has the reliability note; the newer test's does not; the oldest has none yet.
+    reports: TESTS.filter((t) => t.reported !== false).map((t) => ({ assessment_id: t.id, child_id: CHILD, model: t.unreliable ? { reliability: { veryFast: 28, answers: 42 } } : {} })),
     child_profiles: [],
     workbooks: WORKBOOKS.map((w) => ({ id: w.id, child_id: CHILD, number: w.number, status: w.status })),
     workbook_questions: WORKBOOKS.flatMap((w) => w.standards.map((standard) => ({ workbook_id: w.id, package: { skill: { standard } } }))),
@@ -193,7 +196,7 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     expect(await store.current(CHILD)).toBeNull();
   });
 
-  it("gives the skill states every finished test with a stored profile, and the latest shipped workbook's standards", async () => {
+  it("gives the skill states every finished test with a stored profile and a report, and the latest shipped workbook's standards", async () => {
     const store = open();
     const inputs = await store.skillInputs(CHILD);
     expect(inputs.tests.map((t) => t.assessmentId).sort()).toEqual([OLD, NEW]);
