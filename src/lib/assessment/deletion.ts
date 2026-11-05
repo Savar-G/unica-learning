@@ -71,7 +71,7 @@ export interface FamilyDeletionStore extends FamilyCopyStore {
 }
 
 /** Drain bounded pages from offset zero. Each removal persists progress and cannot shift an unread offset. */
-async function removeFamilyImages(store: FamilyDeletionStore, prefix: string, bucket: FamilyBucket): Promise<number> {
+export async function removeDeletionImages(store: Pick<FamilyDeletionStore, "renew" | "listImages" | "removeImages">, prefix: string, bucket: FamilyBucket): Promise<number> {
   const read = async () => {
     await store.renew();
     return store.listImages(prefix, 0, 100, bucket);
@@ -89,7 +89,7 @@ async function removeFamilyImages(store: FamilyDeletionStore, prefix: string, bu
       await store.removeImages(files.map((entry) => `${prefix}/${entry.name}`), bucket);
       removed += files.length;
     }
-    for (const folder of page.filter((entry) => entry.folder)) removed += await removeFamilyImages(store, `${prefix}/${folder.name}`, bucket);
+    for (const folder of page.filter((entry) => entry.folder)) removed += await removeDeletionImages(store, `${prefix}/${folder.name}`, bucket);
     const next = await read();
     if (next.some((entry) => !entry.folder && files.some((file) => file.name === entry.name))
       || (removed === before && next.some((entry) => page.some((old) => old.name === entry.name)))) throw new Error("Storage not empty");
@@ -109,7 +109,7 @@ export async function deleteFamily(store: FamilyDeletionStore, parentId: string)
   await store.renew();
   const copies = await copyFamilyTests(store);
   let images = 0;
-  for (const bucket of FAMILY_BUCKETS) images += await removeFamilyImages(store, parentId, bucket);
+  for (const bucket of FAMILY_BUCKETS) images += await removeDeletionImages(store, parentId, bucket);
   await store.renew();
   await store.removeAuth();
   await store.complete();

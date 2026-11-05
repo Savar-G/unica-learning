@@ -236,7 +236,7 @@ describe("the desk lock", () => {
   });
 
   it("refuses the account and admin APIs while the desk is open", () => {
-    for (const path of ["/api/account/pin", "/api/account/card", "/api/account/family/delete", "/api/account/family/delete/code", "/api/admin/cards/1/start"]) expect(deskGate(path, lock, PARENT), path).toBe("refuse");
+    for (const path of ["/api/account/pin", "/api/account/card", "/api/account/family/delete", "/api/account/family/delete/code", "/api/account/children/child/delete", "/api/account/children/child/delete/code", "/api/admin/cards/1/start"]) expect(deskGate(path, lock, PARENT), path).toBe("refuse");
   });
 
   it("lets the desk, its own APIs and the sign-in callback through", () => {

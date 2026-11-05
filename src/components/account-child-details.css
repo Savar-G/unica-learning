@@ -13,3 +13,7 @@
 .support-page .acd-child .acd-saved:empty { display: none; }
 .support-page .acd-child .lrn-summary { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .support-page .acd-child .lrn-summary li { margin: 0; padding: 0; }
+.support-page .acd-child .pd-delete { margin-top: 8px; padding-top: 18px; }
+.support-page .acd-child .pd-delete h2 { font-size: 19px; }
+.support-page .acd-child .pd-delete h3 { margin-top: 24px; font-size: 16px; }
+.support-page .acd-child .pd-delete p { margin: 0 0 16px; }
