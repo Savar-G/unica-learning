@@ -196,6 +196,8 @@ export class VoiceCallRun {
   private guidance: { speech: voice.SpeechHandle; over: Promise<void>; scope: SpeechScope | null; cut: boolean; repeated: boolean } | null = null;
   /** Guidance cut while the child was away. They hear it when they are back. */
   private guidanceOwed: string | null = null;
+  /** The last words of a call that ended while the child was away. They come first when the child is back, and then the stored call ends. */
+  private finalOwed: VoiceTurn | null = null;
   readonly agent: MayaVoiceAgent;
   /** Immutable revision claimed when this worker opened the call. */
   readonly segment: number;
@@ -365,12 +367,25 @@ export class VoiceCallRun {
       // A plan with no batches has nothing to wait for, and a late board answer must not hold back these words.
       try { await this.stageBoard(last, !!last.boardCues?.length); }
       catch { if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
-      if (this.finishing || !this.childHere || generation !== this.generation) return this.closeTurn(pace);
+      if (this.finishing || !this.childHere || generation !== this.generation) {
+        this.finalDropped({ ...last, say: turns.flatMap(t => t.say) });
+        return this.closeTurn(pace);
+      }
       pace?.clock.staged();
       speech = this.session.say(text, { addToChatCtx: true });
       if (guidance) this.followGuidance(guidance, speech);
     } else this.closeTurn(pace, "no_words");
     for (const turn of turns) await this.after(turn, speech, () => false);
+  }
+
+  /**
+   * A call's last words that the child was not there to hear. The controller has ended, so no later input can end the
+   * stored call, and it would stay live until the deadline, with its note, alert and learning event waiting.
+   */
+  private finalDropped(turn: VoiceTurn) {
+    if (!turn.ended || this.finishing) return;
+    if (!this.childHere) { this.finalOwed = turn; return; }
+    void this.sayFirst(null, [turn]).catch(() => this.finish({ detail: "the final speech failed" }));
   }
 
   /** A guidance a newer one replaces stops, and is not said again. */
@@ -545,11 +560,15 @@ export class VoiceCallRun {
     this.speechEndedAt = this.timers.now();
     this.lastTickAt = this.timers.now();
     const owed = this.guidanceOwed;
-    this.guidanceOwed = null;
-    if (owed) {
-      // The call can have ended while the child was away: it ends here, once they have heard this.
-      void this.repeatGuidance(owed).then(() => { if (this.call.ended) return this.finish({ reason: "child_stopped" }); },
-        () => this.finish({ detail: "the safety guidance failed" }));
+    const lastWords = this.finalOwed;
+    this.guidanceOwed = this.finalOwed = null;
+    if (owed || lastWords) {
+      // The guidance first. Then the call that ended while the child was away ends here, after its own last words.
+      void (async () => {
+        if (owed) await this.repeatGuidance(owed);
+        if (lastWords) await this.sayFirst(null, [lastWords]);
+        else if (this.call.ended) await this.finish({ reason: "child_stopped" });
+      })().catch(() => this.finish({ detail: "the final speech failed" }));
     }
     // Bound the opening model request too, before the first session state can be saved.
     this.scheduleLimit(this.call.session.startedAt ?? this.timers.now());
@@ -608,9 +627,14 @@ export class VoiceCallRun {
       const turn = await this.call.tick();
       if (this.call.lost) return this.finish({ detail: "the call could not be saved" });
       if (this.finishing) return;
-      await this.stageBoard(turn);
-      if (generation !== this.generation || !this.childHere || this.finishing) return;
       // A check-in's sound is not an earlier answer's.
+      if (turn.priority) {
+        // The same way as a child's reply: a new plan must not take the audio of guidance that is still playing.
+        this.closeTurn();
+        return await this.sayFirst(null, [turn]);
+      }
+      await this.stageBoard(turn);
+      if (generation !== this.generation || !this.childHere || this.finishing) return this.finalDropped(turn);
       this.closeTurn();
       const speech = turn.say.length ? this.session.say(turn.say.join(" "), { addToChatCtx: true }) : null;
       await this.after(turn, speech, () => false);
@@ -620,13 +644,13 @@ export class VoiceCallRun {
   private async after(turn: VoiceTurn, handle = this.speech, stage: () => boolean = () => true): Promise<boolean> {
     await this.call.settled();
     if (this.call.lost) { void this.finish({ detail: "the call could not be saved" }); return false; }
-    if (this.finishing || !this.childHere) return false;
+    if (this.finishing || !this.childHere) { this.finalDropped(turn); return false; }
     const generation = this.generation;
     if (stage()) {
       try { await this.stageBoard(turn); }
       catch { if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return false; }
     }
-    if (this.finishing || generation !== this.generation || !this.childHere) return false;
+    if (this.finishing || generation !== this.generation || !this.childHere) { this.finalDropped(turn); return false; }
     this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
     this.scheduleLimit();
     if (turn.ended) {

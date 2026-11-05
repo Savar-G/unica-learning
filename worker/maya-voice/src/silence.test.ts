@@ -1278,6 +1278,187 @@ describe("#589: the safety guidance does not wait for the close", () => {
     expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety" });
   });
 
+  // P1 of the review of PR #616: a check-in or close from the silence clock went past the guidance's wait.
+  it("a takeover whose close call reads worse danger: the close does not take the new guidance's audio", async () => {
+    const inner = ruleMayaModel();
+    let armed = false;
+    let asks = 0;
+    let releaseFinal = () => {};
+    const final = new Promise<void>((r) => { releaseFinal = r; });
+    const never = new Promise<never>(() => {});
+    const model: MayaModel = { id: "fake", promptVersion: inner.promptVersion, propose: async (input, signal) => {
+      if (!armed || !input.transcript.some((l) => l.speaker === "child")) return inner.propose(input, signal);
+      asks++;
+      if (asks === 1) return { version: PROPOSAL_VERSION, act: "safety", reading: { safety: "concern" }, parts: [] };
+      // The first worker's close call. Its process is gone, so this never comes back.
+      if (asks === 2) return never;
+      if (asks === 3) return { version: PROPOSAL_VERSION, act: "close", reading: { safety: "immediate" }, parts: [{ warm: "closing" }] };
+      await final;
+      return inner.propose(input, signal);
+    } };
+    const c = await voiceCall({ model });
+    armed = true;
+    c.say("Someone is hurting me.");
+    await waitFor(() => c.said().includes(LAST.concern) && asks === 2, "the concern guidance, with the close call out");
+    await waitFor(() => c.session.agentState === "listening", "the concern guidance's end");
+    await c.call.settled();
+
+    const opened = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw new Error(opened.error);
+    const config = voiceProviders({});
+    if (!config.ok) throw new Error("fake providers");
+    const made = await makeProviders(config, { fakeMsPerChar: 1 });
+    const session = voiceSession(made, { endpointingMs: 20, aecWarmupDuration: 0 });
+    const speaker = new Speaker();
+    session.input.audio = new SilentMicrophone();
+    session.output.audio = speaker;
+    const receiver = createBoardReceiver({ sessionId: c.id, clock: () => Date.now() });
+    const sender = createBoardSender({ sessionId: c.id, senderId: "worker-2", transport: createMemoryTransport(receiver) });
+    const board = createBoardSpeech({ sender, now: () => Date.now(), observe: (snapshot) => opened.call.observeBoard(snapshot) });
+    const run = new VoiceCallRun(session, opened.call, { board, timers: c.clock.timers, notify: () => {} });
+    await run.agentJoined();
+    await session.start({ agent: run.agent });
+    run.attachBoardAudio();
+    const says = vi.spyOn(session, "say");
+    speaker.pace(1);
+    await run.childJoined();
+    await c.clock.advance(0);
+    const spoken = () => (made.tts as FakeTTS).spoken;
+    await waitFor(() => asks === 4 && speaker.waitingToPlay && spoken().includes(WORDS.immediate), "the immediate guidance's first frame, with the last close call out");
+
+    // The close comes back with the guidance still playing.
+    releaseFinal();
+    await pause();
+    expect(says.mock.calls.map(([text]) => text)).toEqual([SAFETY_GUIDANCE.immediate]);
+    speaker.play();
+    await waitFor(() => run.done !== null, "the new worker's end of the call");
+    await run.done;
+    expect(speaker.plays.filter((seconds) => seconds >= WHOLE_GUIDANCE_S).length).toBeGreaterThan(0);
+    expect(says.mock.calls).toHaveLength(2);
+    expect(says.mock.calls[1][0]).not.toContain(WORDS.immediate);
+    expect(count(spoken(), WORDS.immediate)).toBe(1);
+    expect((await c.store.get(c.id))!.status).toBe("ended");
+    expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety", safetySeverity: "immediate" });
+  });
+
+  // P2 of the review of PR #616: with the close dropped and no guidance owed, nothing ended the stored call.
+  it("the child hears the guidance, leaves during the close call and comes back after it: the close plays and the call ends", async () => {
+    const m = closeHangs();
+    const c = await voiceCall({ model: m.model });
+    m.arm(c.clock.timers);
+    const says = vi.spyOn(c.session, "say");
+    c.say("Someone is hurting me.");
+    await waitFor(() => m.asked === 1, "the child turn's model call");
+    m.releaseDanger();
+    await waitFor(() => c.said().includes(LAST.immediate) && c.session.agentState === "listening", "the whole guidance");
+    await waitFor(() => m.hanging === 1, "the close call");
+    await c.run.childLeft("dropped");
+    m.releaseClose();
+    await waitFor(() => c.call.ended, "the controller's close");
+    await pause();
+    await c.call.settled();
+    expect(says).toHaveBeenCalledTimes(1);
+    expect((await c.store.get(c.id))!.status).toBe("live");
+    expect(c.call.pendingFinal).toBeNull();
+
+    await c.run.childJoined();
+    await waitFor(() => c.run.done !== null, "the call's end, long before the deadline");
+    await c.run.done;
+    expect(says).toHaveBeenCalledTimes(2);
+    expect(says.mock.calls[1][0]).not.toContain(WORDS.immediate);
+    expect(count(c.said(), WORDS.immediate)).toBe(1);
+    const stored = (await c.store.get(c.id))!;
+    expect(stored.status).toBe("ended");
+    expect(stored.trace!.outcome).toMatchObject({ reason: "safety" });
+    expect(stored.learningEventId).not.toBeNull();
+  });
+
+  it("an ordinary close that ends while the child is away plays when they are back, and the call ends", async () => {
+    const m = heldModel();
+    const c = await voiceCall({ model: m.model, ackLimitMs: 0 });
+    // The rule player's whole ending, as a saved call replays it: the answer, the writing, then the close.
+    for (const [n, text] of ["66", "I wrote it."].entries()) {
+      c.say(text);
+      await waitFor(() => c.samples.length === n + 1 && c.session.agentState === "listening", `the answer to "${text}"`);
+    }
+    const before = c.said().length;
+    const says = vi.spyOn(c.session, "say");
+    const asked = m.asked;
+    m.hold();
+    c.say("yes");
+    await waitFor(() => m.asked > asked, "the slow model call");
+    await c.run.childLeft("dropped");
+    m.release();
+    await waitFor(() => c.call.ended, "the controller's close");
+    await pause();
+    await c.call.settled();
+    expect(c.said().length).toBe(before);
+    expect((await c.store.get(c.id))!.status).toBe("live");
+    await c.run.childJoined();
+    await waitFor(() => c.run.done !== null, "the call's end");
+    await c.run.done;
+    expect(says).toHaveBeenCalledTimes(1);
+    expect(c.said().length).toBeGreaterThan(before);
+    expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "solved" });
+    expect((await c.store.get(c.id))!.status).toBe("ended");
+  });
+
+  it("a silence close that ends while the child is away plays when they are back, and the call ends", async () => {
+    const m = heldModel();
+    const c = await voiceCall({ model: m.model, ackLimitMs: 0 });
+    c.say("I don't know.");
+    await waitFor(() => c.samples.length === 1 && c.session.agentState === "listening", "the answer");
+    // The check-in after the quiet, then the tick that closes for no response, held at the model.
+    await c.clock.advance(15_000);
+    await waitFor(() => c.call.session.silence === "checked" && c.session.agentState === "listening", "the check-in");
+    const asked = m.asked;
+    m.hold();
+    await c.clock.advance(30_000);
+    await waitFor(() => m.asked > asked, "the close's model call");
+    const before = c.said().length;
+    await c.run.childLeft("dropped");
+    m.release();
+    await waitFor(() => c.call.ended, "the controller's close");
+    await pause();
+    await c.call.settled();
+    expect(c.said().length).toBe(before);
+    expect((await c.store.get(c.id))!.status).toBe("live");
+    await c.run.childJoined();
+    await waitFor(() => c.run.done !== null, "the call's end");
+    await c.run.done;
+    expect(c.said().length).toBeGreaterThan(before);
+    expect((await c.store.get(c.id))!.status).toBe("ended");
+  });
+
+  it("a deadline close whose connection changed during the model call still plays, and the call ends", async () => {
+    const inner = ruleMayaModel();
+    let writing = false;
+    let release = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    let asked = 0;
+    const model: MayaModel = { id: "fake", promptVersion: inner.promptVersion, propose: async (input, signal) => {
+      if (!writing) return inner.propose(input, signal);
+      asked++;
+      await gate;
+      return { version: PROPOSAL_VERSION, act: "close", parts: [{ warm: "closing" }] };
+    } };
+    const c = await voiceCall({ model, ackLimitMs: 0, limitMs: 62_000 });
+    c.say("I got 66.");
+    await waitFor(() => c.samples.length === 1 && c.session.agentState === "listening", "the accepted answer");
+    writing = true;
+    const says = vi.spyOn(c.session, "say");
+    c.say("I wrote it.");
+    await waitFor(() => asked === 1, "the slow model call");
+    await c.run.childLeft("dropped");
+    await c.run.childJoined();
+    c.clock.move(3000);
+    release();
+    await waitFor(() => c.run.done !== null, "the call's end");
+    await c.run.done;
+    expect(says).toHaveBeenCalledTimes(1);
+    expect((await c.store.get(c.id))!.status).toBe("ended");
+  });
+
   it("guidance heard whole plays once, whatever the child says after it", async () => {
     const m = closeHangs();
     const speech = new ProbeSTT();
