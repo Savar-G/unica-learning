@@ -21,12 +21,13 @@ export function workbookShipStore(db: SupabaseClient<Database>): WorkbookShipSto
       if (run.error) throw new Error(`approval run load: ${run.error.message}`);
       if (!run.data?.draft_id) return null;
       const draftId = run.data.draft_id;
-      const [draft, revision] = await Promise.all([
+      const [draft, revision, frame] = await Promise.all([
         db.from("workbook_drafts").select("schema_version, draft").eq("id", draftId).maybeSingle(),
         db.from("workbook_draft_revisions").select("revision, content, rendering, render_problems").eq("draft_id", draftId)
           .order("revision", { ascending: false }).limit(1).maybeSingle(),
+        db.from("workbook_run_frames").select("frame").eq("run_id", runId).maybeSingle(),
       ]);
-      const error = draft.error ?? revision.error;
+      const error = draft.error ?? revision.error ?? frame.error;
       if (error) throw new Error(`approval draft load: ${error.message}`);
       if (!draft.data || !revision.data) return null;
       const content = (revision.data.content ?? draft.data.draft) as GeneratedWorkbook;
@@ -36,6 +37,7 @@ export function workbookShipStore(db: SupabaseClient<Database>): WorkbookShipSto
         draft: content,
         rendering: revision.data.rendering as DraftRendering | null,
         renderProblems: revision.data.render_problems as RenderProblem[],
+        frame: frame.data ? { curriculum: frame.data.frame.curriculum, curriculumVersion: frame.data.frame.versions.curriculum, plan: frame.data.frame.plan } : null,
       };
     },
 

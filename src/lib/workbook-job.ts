@@ -41,7 +41,7 @@
 import { isGrade, type Grade } from "@/lib/assessment";
 import type { AiClient } from "@/lib/ai-client";
 import type { ChildLearnerProfile } from "@/lib/child-profile";
-import type { PageImage, QuestionBox, WorkbookFiles } from "@/lib/workbook-content";
+import type { RenderedPage, WorkbookFiles } from "@/lib/workbook-content";
 import { curriculumFor, curriculumVersion } from "@/lib/workbook-curriculum";
 import {
   bookOutline,
@@ -62,7 +62,7 @@ import {
 import { planNextWorkbook } from "@/lib/workbook-placement";
 import type { WorkbookPlan } from "@/lib/workbook-plan";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
-import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
+import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderedPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
 /** Attempts of one run in all: the first and one retry. */
 export const RUN_ATTEMPTS = 2;
@@ -120,11 +120,14 @@ export type RunRunner = "server" | "mac";
 
 /**
  * A draft revision's rendering: the PDF of the pages that rendered, and each page's image with its question boxes. A
- * page that did not render has a proof image (`proof`): its failure marked on it, no boxes, never printed.
+ * page that did not render has a proof image (`proof`): its failure marked on it, no boxes, never printed. Each rendered
+ * page keeps its print contract and each question its regions (#536); `contractProblem` says why a page has no contract.
+ * A revision stored before #536 has none of these.
  */
 export interface DraftRendering {
   pdfPath: string | null;
-  pages: { number: number; image: PageImage; questions: { number: number; box: QuestionBox }[]; proof?: boolean }[];
+  pdfSha256?: string | null;
+  pages: (RenderedPage & { proof?: boolean; contractProblem?: string | null })[];
 }
 
 export type StartResult =
@@ -443,8 +446,7 @@ async function renderDraft(draft: GeneratedWorkbook, parentId: string, deps: Wor
         continue;
       }
       for (const file of result.files) await put(file);
-      const rendered = result.workbook.pages.map((p) => ({ number: p.number, image: p.image!, questions: p.questions.map((q) => ({ number: q.number, box: q.box })) }));
-      return { rendering: { pdfPath: result.workbook.pdfPath!, pages: [...rendered, ...proofs].sort((a, b) => a.number - b.number) }, problems, paths: stored };
+      return { rendering: { pdfPath: result.workbook.pdfPath!, pdfSha256: result.workbook.pdfSha256 ?? null, pages: [...renderedPages(result), ...proofs].sort((a, b) => a.number - b.number) }, problems, paths: stored };
     }
   } catch (e) {
     await deps.files.remove(stored).catch(() => undefined);

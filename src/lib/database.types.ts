@@ -3089,6 +3089,7 @@ export type Database = {
           page_number: number
           page_type: string
           parent_id: string
+          print_contract: Json | null
           qr_token: string
           workbook_id: string
         }
@@ -3102,6 +3103,7 @@ export type Database = {
           page_number: number
           page_type: string
           parent_id: string
+          print_contract?: Json | null
           qr_token: string
           workbook_id: string
         }
@@ -3115,6 +3117,7 @@ export type Database = {
           page_number?: number
           page_type?: string
           parent_id?: string
+          print_contract?: Json | null
           qr_token?: string
           workbook_id?: string
         }
@@ -3141,7 +3144,9 @@ export type Database = {
           parent_id: string
           question_key: string
           question_number: number
+          regions: Json | null
           schema_version: number
+          teaching: Json | null
           workbook_id: string
         }
         Insert: {
@@ -3156,7 +3161,9 @@ export type Database = {
           parent_id: string
           question_key: string
           question_number: number
+          regions?: Json | null
           schema_version: number
+          teaching?: Json | null
           workbook_id: string
         }
         Update: {
@@ -3171,7 +3178,9 @@ export type Database = {
           parent_id?: string
           question_key?: string
           question_number?: number
+          regions?: Json | null
           schema_version?: number
+          teaching?: Json | null
           workbook_id?: string
         }
         Relationships: [
@@ -3674,7 +3683,10 @@ export type Database = {
           number: number
           parent_id: string
           pdf_path: string | null
+          pdf_sha256: string | null
+          print_manifest: Json | null
           printed_at: string | null
+          printed_revision: string | null
           profile_build: string | null
           shipped_at: string | null
           status: string
@@ -3688,7 +3700,10 @@ export type Database = {
           number: number
           parent_id: string
           pdf_path?: string | null
+          pdf_sha256?: string | null
+          print_manifest?: Json | null
           printed_at?: string | null
+          printed_revision?: string | null
           profile_build?: string | null
           shipped_at?: string | null
           status?: string
@@ -3702,7 +3717,10 @@ export type Database = {
           number?: number
           parent_id?: string
           pdf_path?: string | null
+          pdf_sha256?: string | null
+          print_manifest?: Json | null
           printed_at?: string | null
+          printed_revision?: string | null
           profile_build?: string | null
           shipped_at?: string | null
           status?: string
@@ -4018,6 +4036,10 @@ export type Database = {
       append_maya_call_connection: {
         Args: { p_call: string; p_kind: string; p_revision: number }
         Returns: string
+      }
+      apply_workbook_print_contract: {
+        Args: { p_workbook: Json }
+        Returns: undefined
       }
       approve_workbook_draft: {
         Args: {

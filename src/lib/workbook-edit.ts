@@ -41,7 +41,7 @@ export interface EditJobDeps {
   store: WorkbookEditStore; runner: RunRunner; newId(): string;
   generation: Omit<GenerateDeps, "ai"> & { ai: AiClient | null };
   renderPage(snapshot: EditSnapshot, draft: GeneratedWorkbook, page: number): Promise<{ page: DraftRendering["pages"][number]; paths: string[] }>;
-  assemble(snapshot: EditSnapshot, pages: DraftRendering["pages"]): Promise<{ pdfPath: string; paths: string[] }>;
+  assemble(snapshot: EditSnapshot, pages: DraftRendering["pages"]): Promise<{ pdfPath: string; pdfSha256?: string; paths: string[] }>;
   remove(paths: string[]): Promise<void>;
   shouldYield?(): boolean;
   handOff?(id: string): Promise<void>;
@@ -121,7 +121,7 @@ export async function runWorkbookEdit(id: string, deps: EditJobDeps): Promise<"d
     const pdf = await deps.assemble(snapshot, pages); paths.push(...pdf.paths);
     let saved: Awaited<ReturnType<WorkbookEditStore["finish"]>>;
     try {
-      saved = await deps.store.finish(id, lease, { draft, rendering: { pdfPath: pdf.pdfPath, pages }, problems: failures });
+      saved = await deps.store.finish(id, lease, { draft, rendering: { pdfPath: pdf.pdfPath, pdfSha256: pdf.pdfSha256 ?? null, pages }, problems: failures });
     } catch {
       // A lost response can follow a committed revision. Keep its files and let the stored batch settle the outcome.
       return "failed";

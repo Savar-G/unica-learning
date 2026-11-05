@@ -6,7 +6,8 @@
 //
 // The store seam (WorkbookStore) has two adapters that pass the same tests: Supabase (src/lib/workbook-store.ts; the
 // secret key writes, a parent's session reads only that family's workbooks) and in memory
-// (src/lib/workbook-store-memory.ts). This file holds the shapes and the checks both adapters share.
+// (src/lib/workbook-store-memory.ts). This file holds the shapes and the checks both adapters share. What a photo of a
+// printed page is later read against (#536) is in src/lib/workbook-print-contract.ts.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import {
   checkQuestionPackage,
@@ -15,6 +16,21 @@ import {
   type QuestionPackage,
   type WorkbookQuestionRef,
 } from "@/lib/question-package";
+import {
+  isPrintedRevision,
+  isSha256,
+  manifestProblem,
+  printContractProblem,
+  printedRevision,
+  regionsProblem,
+  storedRegions,
+  storedTeaching,
+  teachingProblem,
+  type PagePrintContract,
+  type PrintedRegion,
+  type ScanManifest,
+  type TeachingContext,
+} from "@/lib/workbook-print-contract";
 
 /**
  * The private Storage bucket for page images and workbook PDFs. A file is `<parent id>/<workbook id>/<name>`, so a
@@ -59,6 +75,10 @@ export interface QuestionInput {
   box: QuestionBox;
   /** Its ref must name this workbook, page and question. */
   package: QuestionPackage;
+  /** Where each answer region printed (#536); absent or null: not measured. */
+  regions?: PrintedRegion[] | null;
+  /** What it teaches, frozen from the run's plan at approval (#536); absent or null: none is known. */
+  teaching?: TeachingContext | null;
 }
 
 export interface PageInput {
@@ -73,6 +93,8 @@ export interface PageInput {
   /** The token in the page's QR code: it names this workbook and page. Unique across all workbooks. */
   qrToken: string;
   questions: QuestionInput[];
+  /** Where its scan marks printed (#536); absent or null: no automatic marking of this page. */
+  printContract?: PagePrintContract | null;
 }
 
 /** A whole workbook to write. It starts as a draft. */
@@ -89,16 +111,32 @@ export interface WorkbookInput {
   /** The learner profile build the workbook was made from, or null. */
   profileBuild: string | null;
   pages: PageInput[];
+  /** The SHA-256 of the PDF's bytes (#536). */
+  pdfSha256?: string | null;
+  /** The pages each printed day requires (#536). */
+  printManifest?: ScanManifest | null;
+  /** The book's one printed identity (#536): printedRevision of all the above. Null: a legacy book, no automatic marking. */
+  printedRevision?: string | null;
+}
+
+/** A page of a rendering, with what the render measured. */
+export interface RenderedPage {
+  number: number;
+  image: PageImage;
+  questions: { number: number; box: QuestionBox; regions?: PrintedRegion[] | null }[];
+  printContract?: PagePrintContract | null;
 }
 
 /**
  * A new rendering of a stored workbook (#309): its PDF, each page's image and each question's box. Saving it changes
  * only those, in one step: the workbook's id, page tokens, content and status stay, so its learning events stay too.
+ * New bytes end the printed revision (#536): the workbook has none until it is approved again.
  */
 export interface WorkbookRendering {
   workbookId: string;
   pdfPath: string;
-  pages: { number: number; image: PageImage; questions: { number: number; box: QuestionBox }[] }[];
+  pdfSha256?: string | null;
+  pages: RenderedPage[];
 }
 
 export type WorkbookWrite = { status: "written"; workbookId: string } | { status: "refused"; reason: string };
@@ -108,6 +146,9 @@ export interface WorkbookQuestion {
   number: number;
   box: QuestionBox;
   content: Exclude<QuestionLookup, { status: "not-found" }>;
+  /** Null when it was not measured, or the stored value cannot be trusted. */
+  regions: PrintedRegion[] | null;
+  teaching: TeachingContext | null;
 }
 
 export interface WorkbookPage {
@@ -117,6 +158,8 @@ export interface WorkbookPage {
   image: PageImage | null;
   qrToken: string;
   questions: WorkbookQuestion[];
+  /** Null: no automatic marking of this page. */
+  printContract: PagePrintContract | null;
 }
 
 export interface WorkbookSummary {
@@ -136,6 +179,10 @@ export interface WorkbookSummary {
 
 export interface Workbook extends WorkbookSummary {
   pages: WorkbookPage[];
+  pdfSha256: string | null;
+  printManifest: ScanManifest | null;
+  /** Null on a legacy book, or on a book taken back to draft: its photos stay attached, with no automatic marking. */
+  printedRevision: string | null;
 }
 
 export interface WorkbookStore {
@@ -235,6 +282,10 @@ export function workbookProblem(w: WorkbookInput): string | null {
     }
     if (!Array.isArray(p.questions)) return `${at}: the questions are not a list`;
     if (p.questions.length > 0 && p.image === null) return `${at} has questions but no image`;
+    if (p.printContract) {
+      const problem = printContractProblem(p.printContract, { workbookId: w.id, page: p.number, image: p.image });
+      if (problem) return `${at}: ${problem}`;
+    }
 
     const questionNumbers = new Set<number>();
     for (const q of p.questions) {
@@ -243,6 +294,14 @@ export function workbookProblem(w: WorkbookInput): string | null {
       questionNumbers.add(q.number);
       const where = `${at}, question ${q.number}`;
       if (!q.box || !boxInside(q.box, p.image!)) return `${where}: the box is not inside the page image`;
+      if (q.regions) {
+        const problem = regionsProblem(q.regions, p.image);
+        if (problem) return `${where}: ${problem}`;
+      }
+      if (q.teaching) {
+        const problem = teachingProblem(q.teaching);
+        if (problem) return `${where}: ${problem}`;
+      }
       const check = checkQuestionPackage(q.package);
       if (!stores(check)) return `${where}: ${check.reason}`;
       const ref = check.package.ref;
@@ -254,6 +313,14 @@ export function workbookProblem(w: WorkbookInput): string | null {
       keys.add(check.package.id);
     }
   }
+  if (w.pdfSha256 != null && (!isSha256(w.pdfSha256) || w.pdfPath === null)) return "the PDF's fingerprint is not a SHA-256 of a stored PDF";
+  if (w.printManifest) {
+    const problem = manifestProblem(w.printManifest, w.pages);
+    if (problem) return problem;
+  }
+  if (w.printedRevision != null && (!isPrintedRevision(w.printedRevision) || w.printedRevision !== printedRevision(w))) {
+    return "the printed revision is not this workbook's";
+  }
   return null;
 }
 
@@ -263,6 +330,7 @@ export function renderingProblem(r: WorkbookRendering): string | null {
   const pdf = pathProblem(r.pdfPath, r.workbookId);
   if (pdf) return pdf;
   if (!Array.isArray(r.pages) || r.pages.length === 0 || r.pages.length > 500) return "the rendering does not have 1 to 500 pages";
+  if (r.pdfSha256 != null && !isSha256(r.pdfSha256)) return "the PDF's fingerprint is not a SHA-256";
   const pageNumbers = new Set<number>();
   for (const p of r.pages) {
     if (!isWhole(p.number, 1, 1000) || pageNumbers.has(p.number)) return "a page number is not from 1 to 1000 or is used twice";
@@ -272,11 +340,19 @@ export function renderingProblem(r: WorkbookRendering): string | null {
     if (image) return image;
     if (!isWhole(p.image.width, 1, 10000) || !isWhole(p.image.height, 1, 10000)) return `${at}: the image size is not 1 to 10000 pixels`;
     if (!Array.isArray(p.questions) || p.questions.length > MAX_QUESTIONS) return `${at}: the questions are not a list`;
+    if (p.printContract) {
+      const problem = printContractProblem(p.printContract, { workbookId: r.workbookId, page: p.number, image: p.image });
+      if (problem) return `${at}: ${problem}`;
+    }
     const questionNumbers = new Set<number>();
     for (const q of p.questions) {
       if (!isWhole(q.number, 1, 1000) || questionNumbers.has(q.number)) return `${at}: a question number is not from 1 to 1000 or is used twice`;
       questionNumbers.add(q.number);
       if (!q.box || !boxInside(q.box, p.image)) return `${at}, question ${q.number}: the box is not inside the page image`;
+      if (q.regions) {
+        const problem = regionsProblem(q.regions, p.image);
+        if (problem) return `${at}, question ${q.number}: ${problem}`;
+      }
     }
   }
   return null;
@@ -294,6 +370,8 @@ export interface StoredQuestion {
   box: QuestionBox;
   schemaVersion: number;
   package: unknown;
+  regions?: unknown;
+  teaching?: unknown;
 }
 
 /**
@@ -313,6 +391,10 @@ export function storedContent(stored: StoredQuestion, at: WorkbookQuestionRef): 
 }
 
 /** A question read from its stored form. */
-export function storedQuestion(stored: StoredQuestion, at: WorkbookQuestionRef): WorkbookQuestion {
-  return { number: stored.number, box: stored.box, content: storedContent(stored, at) };
+export function storedQuestion(stored: StoredQuestion, at: WorkbookQuestionRef, image: { width: number; height: number } | null = null): WorkbookQuestion {
+  return {
+    number: stored.number, box: stored.box, content: storedContent(stored, at),
+    regions: stored.regions == null ? null : storedRegions(stored.regions, image),
+    teaching: stored.teaching == null ? null : storedTeaching(stored.teaching),
+  };
 }

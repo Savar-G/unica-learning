@@ -2,6 +2,15 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import { QUESTION_PACKAGE_VERSION, type Item } from "@/lib/question-package";
 import type { WorkbookInput, WorkbookRendering, WorkbookStore } from "@/lib/workbook-content";
+import {
+  buildPrintContract,
+  printedRevision,
+  printContractForPhoto,
+  type PagePrintContract,
+  type PrintedRegion,
+  type ScanManifest,
+  type TeachingContext,
+} from "@/lib/workbook-print-contract";
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { workbookStore } from "@/lib/workbook-store";
 import { memoryWorkbookStore } from "@/lib/workbook-store-memory";
@@ -57,14 +66,16 @@ function writeWorkbook(tables: Tables, w: WorkbookInput): unknown {
   const refused = insert("workbooks", {
     id: w.id, created_at: NOW, parent_id: child.parentId, child_id: w.childId, number: w.number, levels: w.levels, status: "draft",
     pdf_path: w.pdfPath, profile_build: w.profileBuild, approved_at: null, printed_at: null, shipped_at: null,
+    printed_revision: w.printedRevision ?? null, pdf_sha256: w.pdfSha256 ?? null, print_manifest: w.printManifest ?? null,
   }) ?? w.pages.reduce<string | null>((done, p) => done ?? (() => {
     const pageId = uuid();
     return insert("workbook_pages", {
       id: pageId, workbook_id: w.id, parent_id: child.parentId, page_number: p.number, day_label: p.dayLabel, page_type: p.type,
-      image_path: p.image?.path ?? null, image_width: p.image?.width ?? null, image_height: p.image?.height ?? null, qr_token: p.qrToken,
+      image_path: p.image?.path ?? null, image_width: p.image?.width ?? null, image_height: p.image?.height ?? null, qr_token: p.qrToken, print_contract: p.printContract ?? null,
     }) ?? p.questions.reduce<string | null>((d, q) => d ?? insert("workbook_questions", {
       id: uuid(), workbook_id: w.id, page_id: pageId, parent_id: child.parentId, question_number: q.number, question_key: q.package.id,
       schema_version: QUESTION_PACKAGE_VERSION, package: q.package, box_x: q.box.x, box_y: q.box.y, box_width: q.box.width, box_height: q.box.height,
+      regions: q.regions ?? null, teaching: q.teaching ?? null,
     }), null);
   })(), null);
   if (refused) return { status: "refused", reason: refused };
@@ -90,13 +101,14 @@ function saveRendering(tables: Tables, r: WorkbookRendering): unknown {
   if (![r.pdfPath, ...r.pages.map((p) => p.image.path)].every((path) => path.startsWith(folder))) {
     return { status: "refused", reason: "a file is not in the family's folder" };
   }
-  book.pdf_path = r.pdfPath;
+  // As the migration workbook_print_contract: new bytes end the printed revision; a caller with no contract clears it.
+  Object.assign(book, { pdf_path: r.pdfPath, pdf_sha256: r.pdfSha256 ?? null, printed_revision: null });
   for (const p of r.pages) {
     const row = pages.find((x) => x.page_number === p.number)!;
-    Object.assign(row, { image_path: p.image.path, image_width: p.image.width, image_height: p.image.height });
+    Object.assign(row, { image_path: p.image.path, image_width: p.image.width, image_height: p.image.height, print_contract: p.printContract ?? null });
     for (const q of p.questions) {
       const qRow = tables.workbook_questions.find((x) => x.page_id === row.id && x.question_number === q.number)!;
-      Object.assign(qRow, { box_x: q.box.x, box_y: q.box.y, box_width: q.box.width, box_height: q.box.height });
+      Object.assign(qRow, { box_x: q.box.x, box_y: q.box.y, box_width: q.box.width, box_height: q.box.height, regions: q.regions ?? null });
     }
   }
   return { status: "written", workbookId: r.workbookId };
@@ -278,6 +290,129 @@ describe.each(stores)("the %s workbook store", (_name, make) => {
     expect(read.status === "found" && read.package.text).toBe("268 + 157 = ?");
   });
 
+  describe("the print contract (#536)", () => {
+    const SHA = "a".repeat(64);
+    const IMAGE = { width: 1275, height: 1650 };
+    const contractOf = (workbookId: string, page: number): PagePrintContract => {
+      const css = { width: 816, height: 1056 };
+      const rect = (name: string, x: number, y: number) => ({ name, visible: true, x, y, width: 18, height: 18 });
+      const { contract, problem } = buildPrintContract({
+        workbookId, css, image: { ...IMAGE, sha256: SHA },
+        page: { number: page, dayLabel: null, type: "practice", qrToken: "t", questions: [] },
+        marks: [rect("scan-tl", 22, 22), rect("scan-tr", 776, 22), rect("scan-br", 776, 1016), rect("scan-bl", 22, 1016)],
+      });
+      if (!contract) throw new Error(problem);
+      return contract;
+    };
+    const REGIONS: PrintedRegion[] = [{ id: "answer", kind: "box", box: { x: 10.5, y: 20.25, width: 100, height: 50 } }, { id: "work", kind: "work", box: null }];
+    const TEACHING: TeachingContext = {
+      version: 1, curriculum: { key: "bc", version: "v1" }, practiceType: "now-you", part: "new-idea", slot: "1.1", extra: false, track: "A", unit: "2.4", skill: "2.4-add",
+      plannedStep: 3, itemStep: null, reviewSteps: [], eligibility: { format: "write-number", scorable: true, parentChecked: false, mastery: true, reason: null },
+    };
+    /** The sample with a whole contract: every page, every question, the manifest, the PDF's fingerprint and the revision. */
+    const contracted = (): WorkbookInput => {
+      const base = sample();
+      const pages = base.pages.map((p, i) => ({
+        ...p, dayLabel: i === 0 ? null : "Day 1", image: { path: p.image!.path, ...IMAGE }, printContract: contractOf(base.id, p.number),
+        questions: p.questions.map((q) => ({ ...q, regions: REGIONS, teaching: TEACHING })),
+      }));
+      const withQuestions = pages.filter((p) => p.questions.length > 0).map((p) => p.number);
+      const printManifest: ScanManifest = { version: 1, curriculum: { key: "bc", version: "v1" }, testWorkbook: false, snapshotDay: 7, days: [{ day: 1, pages: withQuestions }], levelTest: null };
+      const whole: WorkbookInput = { ...base, pdfPath: `${PARENT}/${base.id}/workbook.pdf`, pages, pdfSha256: SHA, printManifest };
+      return { ...whole, printedRevision: printedRevision(whole) };
+    };
+
+    it("writes and reads back every part of the contract", async () => {
+      const store = make();
+      const input = contracted();
+      expect(input.printedRevision).toMatch(/^[0-9a-f]{28}$/);
+      expect(await store.write(input)).toEqual({ status: "written", workbookId: WORKBOOK });
+      const w = (await store.workbook(WORKBOOK))!;
+      expect(w).toMatchObject({ printedRevision: input.printedRevision, pdfSha256: SHA, printManifest: input.printManifest });
+      expect(w.pages.map((p) => p.printContract)).toEqual(input.pages.map((p) => p.printContract));
+      expect(w.pages[1].questions[0]).toMatchObject({ regions: REGIONS, teaching: TEACHING });
+      const page = await store.page(WORKBOOK, 2);
+      expect(page?.printContract).toEqual(input.pages[1].printContract);
+      expect(page?.questions[0].regions).toEqual(REGIONS);
+      expect(printContractForPhoto(w, page!, { printedRevision: input.printedRevision! })).toMatchObject({ status: "available" });
+    });
+
+    it("a workbook written with none of the new fields reads as a legacy book, with no contract", async () => {
+      const store = make();
+      expect(await store.write(sample())).toEqual({ status: "written", workbookId: WORKBOOK });
+      const w = (await store.workbook(WORKBOOK))!;
+      expect(w).toMatchObject({ printedRevision: null, pdfSha256: null, printManifest: null });
+      expect(w.pages.every((p) => p.printContract === null && p.questions.every((q) => q.regions === null && q.teaching === null))).toBe(true);
+      expect(printContractForPhoto(w, w.pages[0], { printedRevision: "2026-11-01 00:00:00+00" })).toEqual({ status: "unavailable", reason: "no-contract" });
+    });
+
+    it("refuses a contract that does not fit, and stores nothing", async () => {
+      const page = (w: WorkbookInput, change: (p: WorkbookInput["pages"][number]) => void) => { change(w.pages[1]); return w; };
+      const mark = (w: WorkbookInput, x: number) => page(w, (p) => { p.printContract!.marks.points.bl.x = x; });
+      const cases: [string, WorkbookInput, RegExp][] = [
+        ["another page", page(contracted(), (p) => { p.printContract!.page = 99; }), /names another page/],
+        ["another image size", page(contracted(), (p) => { p.printContract!.coordinates.image.width = 500; }), /image size/],
+        ["other coordinates", page(contracted(), (p) => { (p.printContract!.coordinates as { origin: string }).origin = "centre"; }), /declared ones/],
+        ["no rectangle", mark(contracted(), 300), /do not form a rectangle/],
+        ["a mark off the image", mark(contracted(), 5000), /not on the page image/],
+        ["a version this code does not read", page(contracted(), (p) => { p.printContract!.version = 2; }), /does not read/],
+        ["a region off the image", page(contracted(), (p) => { p.questions[0].regions = [{ id: "a", kind: "box", box: { x: 1270, y: 0, width: 100, height: 5 } }]; }), /not inside the page image/],
+        ["a region twice", page(contracted(), (p) => { p.questions[0].regions = [{ id: "a", kind: "box", box: null }, { id: "a", kind: "box", box: null }]; }), /listed twice/],
+        ["teaching of another version", page(contracted(), (p) => { p.questions[0].teaching = { ...TEACHING, version: 9 }; }), /teaching context/],
+        ["a cover in a required set", { ...contracted(), printManifest: { ...contracted().printManifest!, days: [{ day: 1, pages: [1] }] } }, /not a page of Day 1/],
+        ["a revision of other contents", page(contracted(), (p) => { p.questions[0].regions = []; }), /printed revision is not this workbook's/],
+        ["a timestamp for a revision", { ...contracted(), printedRevision: "2026-11-01 00:00:00+00" }, /printed revision is not this workbook's/],
+        ["a PDF fingerprint that is not one", { ...contracted(), pdfSha256: "x" }, /fingerprint/],
+      ];
+      for (const [name, w, reason] of cases) {
+        const store = make();
+        const r = await store.write(w);
+        expect(r.status, name).toBe("refused");
+        expect(r.status === "refused" ? r.reason : "", name).toMatch(reason);
+        expect(await store.workbook(WORKBOOK), name).toBeNull();
+      }
+    });
+
+    it("a new rendering ends the printed revision and replaces the geometry as one unit; content and teaching stay", async () => {
+      const store = make();
+      const input = contracted();
+      await store.write(input);
+      const before = (await store.workbook(WORKBOOK))!;
+      const rendering: WorkbookRendering = {
+        workbookId: WORKBOOK, pdfPath: `${PARENT}/${WORKBOOK}/workbook-r2.pdf`, pdfSha256: "b".repeat(64),
+        pages: input.pages.map((p) => ({
+          number: p.number, image: { path: `${PARENT}/${WORKBOOK}/page-${p.number}-r2.png`, ...IMAGE }, printContract: { ...contractOf(WORKBOOK, p.number), label: "r2" },
+          questions: p.questions.map((q) => ({ number: q.number, box: q.box, regions: [{ id: "answer", kind: "box", box: null }] })),
+        })),
+      };
+      expect(await store.saveRendering(rendering)).toEqual({ status: "written", workbookId: WORKBOOK });
+      const after = (await store.workbook(WORKBOOK))!;
+      expect(after.printedRevision).toBeNull();
+      expect(after.pdfSha256).toBe("b".repeat(64));
+      expect(after.pages[1].printContract?.label).toBe("r2");
+      expect(after.pages[1].questions[0].regions).toEqual([{ id: "answer", kind: "box", box: null }]);
+      expect(after.pages[1].questions[0].teaching).toEqual(TEACHING);
+      expect(after.printManifest).toEqual(before.printManifest);
+      // An old photo cannot use the new geometry: the book has no revision until it is approved again.
+      expect(printContractForPhoto(after, after.pages[1], { printedRevision: before.printedRevision })).toEqual({ status: "unavailable", reason: "no-contract" });
+    });
+
+    it("a new rendering from a caller with no contract clears the old one: stale calibration is never kept", async () => {
+      const store = make();
+      const input = contracted();
+      await store.write(input);
+      const { printedRevision: _r, printManifest: _m, pdfSha256: _s, ...old } = input;
+      void [_r, _m, _s];
+      await store.saveRendering({
+        workbookId: WORKBOOK, pdfPath: `${PARENT}/${WORKBOOK}/workbook-r3.pdf`,
+        pages: old.pages.map((p) => ({ number: p.number, image: { path: `${PARENT}/${WORKBOOK}/page-${p.number}-r3.png`, ...IMAGE }, questions: p.questions.map((q) => ({ number: q.number, box: q.box })) })),
+      });
+      const w = (await store.workbook(WORKBOOK))!;
+      expect(w).toMatchObject({ printedRevision: null, pdfSha256: null });
+      expect(w.pages.every((p) => p.printContract === null && p.questions.every((q) => q.regions === null))).toBe(true);
+    });
+  });
+
   describe("saving a new rendering of a stored workbook", () => {
     const folder = `${PARENT}/${WORKBOOK}`;
     /** The sample rendered again: new file names and new boxes for every page and question. */
@@ -325,6 +460,24 @@ describe.each(stores)("the %s workbook store", (_name, make) => {
       for (const [r, reason] of cases) expect(await store.saveRendering(r)).toEqual({ status: "refused", reason });
       expect(await store.workbook(WORKBOOK)).toEqual(before);
     });
+  });
+});
+
+describe("the Supabase workbook store reading a stored print contract (#536)", () => {
+  it("reads a contract or regions it cannot trust as none, and the page and its question still read", async () => {
+    // Disproved if a stored value of another version reaches a caller as a usable contract.
+    const { store, tables } = supabase();
+    await store.write(sample());
+    const page = tables.workbook_pages.find((p) => p.page_number === 2)!;
+    page.print_contract = { version: 99, workbookId: WORKBOOK, page: 2 };
+    const question = tables.workbook_questions.find((q) => q.page_id === page.id)!;
+    question.regions = [{ id: "a", kind: "box", box: { x: 5000, y: 0, width: 5, height: 5 } }];
+    question.teaching = { version: 99 };
+    const read = await store.page(WORKBOOK, 2);
+    expect(read?.printContract).toBeNull();
+    expect(read?.questions[0].regions).toBeNull();
+    expect(read?.questions[0].teaching).toBeNull();
+    expect(read?.questions[0].content.status).toBe("found");
   });
 });
 
