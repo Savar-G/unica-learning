@@ -22,6 +22,56 @@ import { prepareTemplate, seededRandom, slotDomain } from "@/lib/workbook-curric
 import { isChallengeOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curriculum/house-templates";
 import type { AiItem, BuiltQuestion, SlotPlace } from "@/lib/workbook-generator-items";
 import type { SlotName } from "@/lib/workbook-page";
+import type { StepReference } from "@/lib/workbook-print-contract";
+
+/** A hand-built candidate's tested step, selected from code's item data, never a review-step list or writer text. */
+export function handBuiltStep(curriculum: Curriculum, item: AiItem): StepReference | null {
+  const skill = curriculum.skill(item.skill);
+  if (!skill) return null;
+  const op = item.operation;
+  const [a, b] = op?.operands.map(v => v.type === "number" ? v.value : null) ?? [];
+  let number: number | null = null;
+  if (a != null && b != null) {
+    // These branches name the exact task the code builder selected. A skill label alone is insufficient.
+    if (item.skill === "5.8-extend-facts" && ["add", "subtract"].includes(op!.kind)) {
+      const result = op!.kind === "add" ? a + b : a - b;
+      for (const [step, scale] of [[2, 1000], [1, 100]] as const) {
+        if ([a, b, result].every(n => n >= scale && n <= 20 * scale && n % scale === 0)) { number = step; break; }
+      }
+    } else if (item.skill === "5.9-recall-facts") {
+      if (op!.kind === "multiply" && [a, b].every(n => Number.isInteger(n) && n >= 2 && n <= 10)) number = 1;
+      if (op!.kind === "divide" && Number.isInteger(b) && b >= 2 && b <= 10 && a % b === 0 && a / b >= 2 && a / b <= 10) number = 2;
+    } else if (item.skill === "4.7-addition-facts-fluency" && ["add", "subtract"].includes(op!.kind)) {
+      if ([a, b].every(n => Number.isInteger(n) && n >= 0) && (op!.kind === "add" ? a + b <= 20 : a <= 20 && a >= b)) number = 3;
+    } else if (item.skill === "3.4-subtraction-facts-20" && op!.kind === "subtract") {
+      if ([a, b].every(Number.isInteger) && a <= 20 && a >= b && b >= 0) number = 3;
+    } else if (item.skill === "4.8-multiplication-facts" && op!.kind === "multiply") {
+      if ([a, b].every(n => Number.isInteger(n) && n >= 2 && n <= 10)) {
+        number = [a, b].some(n => [2, 5, 10].includes(n)) ? 1 : [a, b].some(n => [3, 4].includes(n)) ? 2 : 3;
+      }
+    } else if (item.skill === "4.8-division-facts" && op!.kind === "divide") {
+      if (Number.isInteger(b) && b >= 2 && b <= 10 && a % b === 0 && a / b >= 2 && a / b <= 10) number = [2, 5, 10].includes(b) ? 1 : [3, 4].includes(b) ? 2 : 3;
+    } else if (["K5-one-more-less", "K5-two-more-less", "1.1-one-more-less-20"].includes(item.skill) && ["add", "subtract"].includes(op!.kind)) {
+      const change = item.skill === "K5-two-more-less" ? 2 : 1;
+      if (b === change && a >= change && a + (op!.kind === "add" ? b : -b) <= (item.skill.startsWith("K") ? 10 : 20)) {
+        number = item.skill.startsWith("K") ? op!.kind === "add" ? 1 : 2 : a + b <= 10 ? 1 : 2;
+      }
+    }
+  }
+  if (item.format === "places" && item.numbers.length === 1 && item.numbers[0].type === "number") {
+    const n = item.numbers[0].value;
+    if (n != null && Number.isInteger(n)) {
+      if (item.skill === "2.1-place-value-tens-ones" && n >= 10 && n <= 99) number = 1;
+      if (item.skill === "3.1-place-value-1000" && n >= 100 && n <= 999) number = String(n).includes("0") ? 2 : 1;
+      if (item.skill === "4.1-place-value-10000" && n >= 1000 && n <= 10000) number = n === 10000 ? 3 : String(n).includes("0") ? 2 : 1;
+      if (item.skill === "5.1-place-value-million" && n >= 10000 && n <= 1000000) {
+        const zeros = (String(n).match(/0/g) ?? []).length;
+        number = n < 100000 ? zeros === 0 ? 1 : null : n === 1000000 || zeros > 2 ? 4 : zeros ? 3 : 2;
+      }
+    }
+  }
+  return number !== null && stepOf(curriculum, item.skill, number) ? { unit: skill.unit, skill: item.skill, step: number } : null;
+}
 
 /** How the question is answered on the page. */
 export type StepItemKind = "box" | "story" | "choice" | "spot" | "two-ways" | "sequence";

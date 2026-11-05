@@ -8,6 +8,7 @@ import { checkQuestionPackage } from "./question-package";
 import { LIKELIHOOD_EVENTS } from "./workbook-likelihood-bank";
 import { STORY_FRAMES, COMPACT_STORY_FRAMES } from "./workbook-story-bank";
 import { buildStepItem, type StepTemplateRef } from "./workbook-step-items";
+import type { StepReference } from "./workbook-print-contract";
 
 /** An approved hand-built type, or "template": a question filled from its step's templates (#489). */
 export type QuestionType = keyof typeof approvedSkills | "template";
@@ -22,6 +23,8 @@ export interface ItemPlan {
   textBudget?: { lines: number; perLine: number; characters: number };
   /** #489: the step template the item was filled from; absent on a hand-built item. */
   template?: StepTemplateRef;
+  /** The tested step selected with a hand-built item. Absent when no true step is known. */
+  itemStep?: StepReference;
 }
 
 export function itemTextLines(text: string, perLine: number): number {

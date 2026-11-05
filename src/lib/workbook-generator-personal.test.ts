@@ -15,6 +15,10 @@ import { bookPersona, firstCustomerProfile, type BookPersona } from "@/lib/workb
 import { keySolver } from "@/lib/workbook-solve-check";
 import type { WorkbookPlan } from "@/lib/workbook-plan";
 import { THINGS } from "@/lib/workbook-wording";
+import { curriculumVersion } from "@/lib/workbook-curriculum";
+import { skillUnits } from "@/lib/workbook-teaching-frame";
+import { teachingContext } from "@/lib/workbook-print-contract";
+import { masteryCoverageMarkdown } from "../../scripts/workbook-sample-pages";
 
 const BC = curriculumFor("bc")!;
 const DAYS = "1,6,9";
@@ -77,6 +81,17 @@ describe("G1 persona books", () => {
     for (const persona of PERSONAS) {
       const { plan, draft } = await book(bookPersona(persona).profile);
       made.set(persona, features(plan, draft));
+      if (persona === "ahead") {
+        const frame = { curriculum: "bc", curriculumVersion: curriculumVersion("bc")!, plan, units: skillUnits(BC) };
+        const facts = draft.pages.flatMap(p => p.questions.filter(q => q.place === "warm-up" && q.package?.operation?.kind === "multiply").map(q => ({ p, q })));
+        expect(facts.length).toBeGreaterThan(0);
+        for (const { p, q } of facts) {
+          expect(q.itemStep).toEqual({ unit: "5.9", skill: "5.9-recall-facts", step: 1 });
+          expect(teachingContext(frame, p, { ...q, package: q.package! })).toMatchObject({ plannedStep: null, itemStep: q.itemStep, eligibility: { mastery: true } });
+        }
+        const all = draft.pages.flatMap(p => p.questions.map(q => q.package ? teachingContext(frame, p, { ...q, package: q.package }) : null));
+        expect(masteryCoverageMarkdown(draft, frame)).toContain(`| All | ${all.length} | ${all.filter(t => !t?.eligibility.mastery).length} |`);
+      }
       // No personal choice fails a question the same plan's book without them passes.
       const failed = (d: GeneratedWorkbook) => d.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `${p.type} d${p.day} ${q.place}: ${(q.check as { reason: string }).reason}`)).sort();
       const plainBook = await book(bookPersona(persona).profile, false);

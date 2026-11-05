@@ -201,7 +201,7 @@ describe("render, job, approval and store", () => {
           if (!part.step) counts.earlierReview++;
         } else {
           counts.withoutTemplate++;
-          if (t.itemStep) expect(t.itemStep).toEqual(t.plannedStep);
+          if (t.itemStep) expect(t.itemStep).toEqual(q.itemStep ?? t.plannedStep);
         }
         if (part.step) counts.planned++;
         expect("unit" in t || "skill" in t).toBe(false);
@@ -622,6 +622,15 @@ describe("teaching context", () => {
 
   it("a review question with no step of its own is not eligible", () => {
     expect(teachingContext(frame, page, { slot: "2.1", part: "remember-these", package: pkg(item({}), ["2.1-count"]) })!.eligibility).toMatchObject({ mastery: false, reason: "no-item-step" });
+  });
+
+  it("keeps a code-selected hand-built step without borrowing the review list", () => {
+    const q = { slot: "2.1", part: "remember-these" as const, package: pkg(item({}), ["2.1-count"]), itemStep: { unit: "2.1", skill: "2.1-count", step: 1 } };
+    const t = teachingContext(frame, page, q)!;
+    expect(t).toMatchObject({ plannedStep: null, itemStep: q.itemStep, reviewSteps: ["2.1-count#2"], eligibility: { mastery: true } });
+    for (const itemStep of [{ ...q.itemStep, unit: "2.4" }, { unit: "2.4", skill: "2.4-add", step: 1 }]) {
+      expect(teachingContext(frame, page, { ...q, itemStep })!.eligibility).toMatchObject({ mastery: false, reason: "no-item-step" });
+    }
   });
 
   it("a slot the stored plan does not hold has no context: it is not rebuilt from anything else", () => {

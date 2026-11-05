@@ -58,7 +58,7 @@ import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
-import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
+import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, selectedItemStep, type AiItem, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
 import { attachWorkbookMayaOperations, withWorkbookMayaOperation, printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
@@ -83,7 +83,8 @@ import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNum
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
 import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
-import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
+import { buildStepItem, challengeTemplateCount, handBuiltStep, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
+import type { StepReference } from "@/lib/workbook-print-contract";
 
 /** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
 function needsOwnPractice(input: GenerateInput, w: PageWork, slot: Slot): boolean {
@@ -190,7 +191,7 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
     if (count && !Array.isArray(count)) {
       const r = count as { min: number; max: number };
       const planned = planItem({ skill: at.skill, slot: slot.id, level, day: w.day, ordinal: w.number * 31 + ordinal + 1, attempt, range: { min: r.min, max: r.max, pictures: false, help: "none" } });
-      if (planned?.type === "count" && planned.numbers[0] >= r.min && planned.numbers[0] <= r.max) return planned;
+      if (planned?.type === "count" && planned.numbers[0] >= r.min && planned.numbers[0] <= r.max) return { ...planned, itemStep: { unit: input.curriculum.skill(at.skill)!.unit, skill: at.skill, step: at.step } };
     }
   }
   const panel = /^e\d+$/.test(slot.id);
@@ -528,7 +529,10 @@ function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0,
     const candidate = contractFor(input, w, slot, attempt, other);
     if (candidate) return candidate;
   }
-  return planned && slot.interest ? withInterestNoun(input, w, slot, planned, attempt) : planned;
+  if (!planned) return null;
+  const itemStep = handBuiltStep(input.curriculum, planned.item);
+  const selected = itemStep ? { ...planned, itemStep } : planned;
+  return slot.interest ? withInterestNoun(input, w, slot, selected, attempt) : selected;
 }
 
 /**
@@ -578,7 +582,7 @@ function personalMistakes<T extends { name: string }>(input: GenerateInput, mist
 }
 
 /** A code fact as the writer's item shape (G1, item 4): code's operation, operands, text and one careless wrong answer. */
-function factItem(id: string, f: WarmUpFact) {
+function factItem(id: string, f: WarmUpFact): AiItem {
   const [a, b] = f.operands;
   const right = f.kind === "add" ? a + b : f.kind === "subtract" ? a - b : f.kind === "multiply" ? a * b : a / b;
   const op = (x: number, y: number) => ({ kind: f.kind, operands: [itemNumber(x), itemNumber(y)], expression: null, unit: null, denominator: null, values: [] });
@@ -664,6 +668,8 @@ export interface GeneratedQuestion {
   package: QuestionPackage | null;
   /** Saved with the question so an edit keeps its approved type and fixed math. */
   itemPlan?: ItemPlan;
+  /** Code's tested-step selection, kept with the generated question for the permanent print contract. */
+  itemStep?: StepReference | null;
   /** This skill still uses the existing writer until its approved builder exists. */
   existing?: boolean;
   /** The text code wrote for a question with no plan (code's wording of its operation): a story prints it exactly (B1). */
@@ -940,6 +946,7 @@ interface Slot {
   interest?: boolean;
   /** G1 (item 4): the warm-up fact code chose from the child's fact family; the writer is not asked for it. */
   fact?: WarmUpFact;
+  factStep?: StepReference | null;
   /** The skill and the kind of question code chose for the slot (#380): the skill's kinds in turn through the book. */
   aim?: { skill: string; kind: QuestionKind; orElse: QuestionKind[] };
   /**
@@ -1107,7 +1114,7 @@ function planBook(input: GenerateInput, work: PageWork[]) {
       if (fact) slot.aim = { skill: fact, kind: "fact", orElse: [] };
       // (A warm-up fact is code's: its operation and operands come from the aimed family, never from the writer.)
       const chosen = fact && slot.place === "warm-up" ? warmUpFact(curriculum, plan, fact, hashOf(`${w.day}:${w.page.number}:${slot.id}`) % 997, pageFacts) : null;
-      if (chosen) { slot.fact = chosen; pageFacts.add(chosen.text); }
+      if (chosen) { slot.fact = chosen; slot.factStep = handBuiltStep(curriculum, factItem(slot.id, chosen)); pageFacts.add(chosen.text); }
       if (slot.place === "spot-the-error") {
         // Sam's sum: on the slot's skill with the widest range, so the sum fits each of its rules.
         const skill = [...slot.part.skills].sort((a, b) => skillRange(curriculum, plan.level, b).max - skillRange(curriculum, plan.level, a).max)[0];
@@ -1968,6 +1975,7 @@ function rewordRepeat(input: GenerateInput, b: BuiltQuestion, slot: Slot, memory
 const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: GeneratedQuestion["attempts"]): GeneratedQuestion => ({
   number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
   ...(w.slots[i].contract ? { itemPlan: structuredClone(w.slots[i].contract!) } : {}),
+  itemStep: selectedItemStep(b.package, w.slots[i].contract?.itemStep ?? w.slots[i].factStep),
   ...(w.slots[i].existing ? { existing: true } : {}),
   ...(!w.slots[i].contract && b.package && b.wordings?.includes(b.package.text) ? { codeText: b.package.text } : {}),
 });

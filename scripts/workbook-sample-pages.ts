@@ -6,6 +6,26 @@ import { renderableDraft } from "@/lib/workbook-fit";
 import type { GeneratedWorkbook } from "@/lib/workbook-generator";
 import type { RenderProblem, WorkbookTemplate } from "@/lib/workbook-render";
 import { createSession } from "@/lib/maya/session";
+import { teachingContext, type TeachingFrame } from "@/lib/workbook-print-contract";
+
+/** Count the same permanent teaching context approval stores, including every excluded question. */
+export function masteryCoverageMarkdown(draft: GeneratedWorkbook, frame: TeachingFrame): string {
+  const groups = new Map<string, { total: number; excluded: number; noStep: number }>();
+  for (const page of draft.pages) for (const q of page.questions) {
+    const teaching = q.package ? teachingContext(frame, page, { ...q, package: q.package }) : null;
+    for (const kind of ["All", q.place ?? q.part]) {
+      const row = groups.get(kind) ?? { total: 0, excluded: 0, noStep: 0 };
+      row.total++;
+      if (!teaching?.eligibility.mastery) row.excluded++;
+      if (teaching?.eligibility.reason === "no-item-step") row.noStep++;
+      groups.set(kind, row);
+    }
+  }
+  return ["## Mastery exclusions (#597)", "", "| Kind | Questions | Excluded | No tested step |", "|---|---:|---:|---:|",
+    ...[...groups].sort(([a], [b]) => a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b))
+      .map(([kind, row]) => `| ${kind} | ${row.total} | ${row.excluded} | ${row.noStep} |`), "",
+    "Excluded includes missing context, unscored items, parent checks and Try first. A review-step list does not identify a tested step.", ""].join("\n");
+}
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 
 export interface MayaCoverage {

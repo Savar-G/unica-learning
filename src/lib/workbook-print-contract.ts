@@ -389,6 +389,7 @@ interface TeachingQuestion {
   part: string;
   place?: string;
   package: QuestionPackage;
+  itemStep?: StepReference | null;
   itemPlan?: { template?: { skill: string; step: number } };
 }
 
@@ -426,8 +427,8 @@ export function teachingContext(frame: TeachingFrame, page: { content?: PageCont
 
 /**
  * The step a question really tests, whole or not at all: its template's step (with that skill's own unit), when the
- * package names that skill; else the planned step, for an item written on the planned skill. A review item with no
- * template names no step here: its slot's list says only what it may draw from.
+ * package names that skill; else code's hand-built selection, then the planned step for an item on the planned skill.
+ * A review list never supplies a tested step.
  */
 function testedStep(frame: TeachingFrame, planned: StepReference | null, q: TeachingQuestion): StepReference | null {
   const skills = q.package.skill.skills;
@@ -435,6 +436,10 @@ function testedStep(frame: TeachingFrame, planned: StepReference | null, q: Teac
   if (template) {
     const unit = frame.units[template.skill];
     return unit && skills.includes(template.skill) ? { unit, skill: template.skill, step: template.step } : null;
+  }
+  if (q.itemStep) {
+    return frame.units[q.itemStep.skill] === q.itemStep.unit && skills.includes(q.itemStep.skill)
+      ? { ...q.itemStep } : null;
   }
   return planned && skills[0] === planned.skill ? planned : null;
 }

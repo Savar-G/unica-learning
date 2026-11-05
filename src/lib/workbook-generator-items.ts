@@ -26,6 +26,7 @@
 // key goes to the solve check (src/lib/workbook-solve-check.ts) in the generator.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { BC_SKILL_MAP } from "@/lib/assessment";
+import type { StepReference } from "@/lib/workbook-print-contract";
 import { isNumberStory } from "@/lib/workbook-code-story";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
@@ -623,6 +624,11 @@ export interface BuiltQuestion {
    * the generator may print instead (so a page never asks one shape twice).
    */
   wordings?: string[];
+}
+
+/** Keep code's selected reference only on a package for the same skill. Raw writer fields are never a source. */
+export function selectedItemStep(pkg: QuestionPackage | null, selected: StepReference | null | undefined): StepReference | null {
+  return selected && pkg?.skill.skills.includes(selected.skill) ? { ...selected } : null;
 }
 
 /** Where a slot's question goes, and what the plan lets it be. */
