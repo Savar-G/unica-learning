@@ -9,7 +9,7 @@ import { vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const child = (id: string, over: Partial<ChildView> = {}): ChildView => ({
-  id, firstName: id, schoolGrade: 3, stage: "no_test", opensOn: "start_test", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null, reportIds: [], ...over,
+  id, firstName: id, schoolGrade: 3, stage: "no_test", opensOn: "start_test", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null, reportIds: [], finishedTests: [], ...over,
 });
 const leah = child("leah", { reportIds: ["r2", "r1"] });
 const omar = child("omar");
@@ -120,5 +120,18 @@ describe("the phone layout (set 2, option A)", () => {
       const nav = phoneNav(links(...tabs));
       expect(nav).toEqual({ kind: "bar", bar: links(...tabs), more: [] });
     }
+  });
+});
+
+describe("the Assessment tab", () => {
+  const href = (over: Partial<ChildView>) => tabLinks(child("leah", over)).find((l) => l.tab === "assessment")?.href;
+  it("opens the newest report", () => {
+    expect(href({ stage: "report_ready_bc", opensOn: "report_start_free_month", reportIds: ["r2", "r1"] })).toBe(reportPath("r2"));
+  });
+  it("opens the child's home while a new test is open, where the test continues", () => {
+    expect(href({ stage: "test_running", opensOn: "continue_or_wait", reportIds: ["r1"] })).toBe("/account?child=leah");
+  });
+  it("opens the child's home with no test", () => {
+    expect(href({})).toBe("/account?child=leah");
   });
 });

@@ -4,9 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Account from "./page";
 import StartScreen from "../start/[child]/page";
 import type { ParentNote } from "@/lib/parent-maya-notes";
+import type { ChildView } from "@/lib/parent-view";
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 const minutes = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>() }));
 vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: async () => minutes.value }));
@@ -150,7 +151,7 @@ it("gives a family the switch does not open to today's Parent home, byte for byt
 });
 
 describe("a family the switch opens to", () => {
-  const view = (id: string, firstName: string) => ({ id, firstName, schoolGrade: 3 as const, stage: "test_running" as const, opensOn: "continue_or_wait" as const, tabs: ["assessment" as const, "account" as const], readOnly: false, currentWorkbook: null, reportIds: [] });
+  const view = (id: string, firstName: string): ChildView => ({ id, firstName, schoolGrade: 3, stage: "test_running", opensOn: "continue_or_wait", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null, reportIds: [], finishedTests: [] });
   const open = async (query: Record<string, string> = {}) => {
     dashboard.value = { children: [view("z-old", "Sam"), view("c1", "Asha")], remembered: null, pinSet: true, timeZoneSaved: true };
     return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve(query) })));
@@ -160,16 +161,16 @@ describe("a family the switch opens to", () => {
   it("opens on the last child viewed, with only that child's part", async () => {
     dashboard.value = null;
     const first = await open();
-    expect(first).toContain("<h1>Sam</h1>");
+    expect(first).toContain("<h1>Sam&#x27;s math test</h1>");
     dashboard.value = { children: [view("z-old", "Sam"), view("c1", "Asha")], remembered: "c1", pinSet: true, timeZoneSaved: true };
     const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
-    expect(out).toContain("<h1>Asha</h1>");
+    expect(out).toContain("<h1>Asha&#x27;s math test</h1>");
     expect(out).not.toContain("Sam");
   });
 
   it("follows the address, and ignores a child who is not the family's", async () => {
-    expect(await open({ child: "c1" })).toContain("<h1>Asha</h1>");
-    expect(await open({ child: "another-family" })).toContain("<h1>Sam</h1>");
+    expect(await open({ child: "c1" })).toContain("<h1>Asha&#x27;s math test</h1>");
+    expect(await open({ child: "another-family" })).toContain("<h1>Sam&#x27;s math test</h1>");
   });
 
   it("keeps the test, its date and the saved messages, and adds no panel", async () => {
@@ -213,5 +214,56 @@ describe("a family the switch opens to", () => {
     expect(out).toContain("Asha finished it after a small hint.");
     expect(out).toContain('href="/account/notes/c1"');
     expect(out).toContain('href="/account/scan"');
+  });
+
+  describe("each stage before the plan", () => {
+    const withStage = (over: Partial<ChildView>): ChildView => ({ ...view("c1", "Asha"), ...over });
+    const openOne = async (child: ChildView, query: Record<string, string> = {}) => {
+      dashboard.value = { children: [child], remembered: null, pinSet: true, timeZoneSaved: true };
+      return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve(query) })));
+    };
+    const finished = { reportIds: ["r2", "r1"] };
+
+    it("opens report_ready_bc on the newest report", async () => {
+      await expect(openOne(withStage({ stage: "report_ready_bc", opensOn: "report_start_free_month", ...finished }))).rejects.toThrow("REDIRECT /account/report/r2");
+    });
+
+    it("opens report_ready_waitlist on the newest report", async () => {
+      await expect(openOne(withStage({ stage: "report_ready_waitlist", opensOn: "report_waitlist", ...finished }))).rejects.toThrow("REDIRECT /account/report/r2");
+    });
+
+    it("keeps a saved message on the way to the report", async () => {
+      await expect(openOne(withStage({ stage: "report_ready_bc", opensOn: "report_start_free_month", ...finished }), { password: "1" })).rejects.toThrow("REDIRECT /account/report/r2?password=1");
+    });
+
+    it("opens the child the address names, not the oldest", async () => {
+      dashboard.value = { children: [view("z-old", "Sam"), withStage({ stage: "report_ready_bc", opensOn: "report_start_free_month", ...finished })], remembered: null, pinSet: true, timeZoneSaved: true };
+      await expect(Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })).rejects.toThrow("REDIRECT /account/report/r2");
+      expect(renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "z-old" }) })))).toContain("Sam&#x27;s math test");
+    });
+
+    it("opens no_test on Start test, with how it works and no report", async () => {
+      const out = await openOne({ ...withStage({ stage: "no_test", opensOn: "start_test" }), id: "z-old", firstName: "Sam" });
+      expect(out).toContain("Start Sam&#x27;s free math test");
+      expect(out).toContain('href="/account/test/z-old"');
+      expect(out).toContain("How it works");
+      expect(out).toContain('href="/sample-report"');
+      expect(out).not.toContain("Start free month");
+    });
+
+    it("opens test_running on the test's state: here a test waiting for its report", async () => {
+      const out = await openOne(withStage({ stage: "test_running", opensOn: "continue_or_wait" }));
+      expect(out).toContain("Asha finished the test");
+      expect(out).toContain("What the report shows");
+      expect(out).toContain("The next test opens at");
+      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+    });
+
+    it("sends no one anywhere when the family's own page is Parent home", async () => {
+      dashboard.value = null;
+      const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+      expect(out).toContain("Your account");
+      expect(out).not.toContain("pd-");
+    });
   });
 });
