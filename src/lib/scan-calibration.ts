@@ -60,10 +60,8 @@ export interface Calibration {
  * - ambiguous-page: more than one rectangle in the photo follows it, as with two copies of a page;
  * - orientation-unclear: two ways up fit about equally well;
  * - qr-mismatch: where the page printed its QR code, the photo's code is missing, moved, or another page's;
- * - another-page: somewhere on the sheet, another printed page explains the photo clearly better than this one: a code
- *   pasted on another page, or another sheet lying over this one.
  */
-export type CalibrationRefusal = "marks-missing" | "marks-inconsistent" | "page-mismatch" | "ambiguous-page" | "orientation-unclear" | "qr-mismatch" | "another-page";
+export type CalibrationRefusal = "marks-missing" | "marks-inconsistent" | "page-mismatch" | "ambiguous-page" | "orientation-unclear" | "qr-mismatch";
 
 export type CalibrationResult =
   | { status: "calibrated"; calibration: Calibration }
@@ -345,6 +343,14 @@ const photoCache = new WeakMap<Raster, PreparedPhoto>();
 function preparedPrinted(printed: Raster): PreparedPrinted {
   const held = printedCache.get(printed);
   if (held) return held;
+  const prepared = printedPixels(printed);
+  prepared.qr = readQr(printed);
+  if (prepared.qr) prepared.qrGrid = printedGrid(printed, prepared.qr);
+  printedCache.set(printed, prepared);
+  return prepared;
+}
+
+function printedPixels(printed: Raster): PreparedPrinted {
   // Only dark print: a pale panel's edge or a faint rule does not survive every photo, and says little about which page it is.
   const mask = inkMask(printed), grey = toGrey(printed);
   for (let i = 0; i < mask.length; i++) if (grey[i] >= DARK_PRINT) mask[i] = 0;
@@ -354,10 +360,7 @@ function preparedPrinted(printed: Raster): PreparedPrinted {
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     if (boxMean(sums, printed.width, printed.height, x * 2, y * 2, x * 2 + 2, y * 2 + 2) >= 0.3) ink[y * width + x] = 1;
   }
-  const prepared = { ink, greySums: summed(grey, printed.width, printed.height), width, height, source: { width: printed.width, height: printed.height }, qr: readQr(printed), qrGrid: null as QrGrid | null };
-  if (prepared.qr) prepared.qrGrid = printedGrid(printed, prepared.qr);
-  printedCache.set(printed, prepared);
-  return prepared;
+  return { ink, greySums: summed(grey, printed.width, printed.height), width, height, source: { width: printed.width, height: printed.height }, qr: null, qrGrid: null };
 }
 
 function preparedPhoto(photo: Raster): PreparedPhoto {
@@ -423,7 +426,7 @@ function fitGrids(printed: Pick<PreparedPrinted, "width" | "height" | "greySums"
  * out thin or missing, and the same page would pass from close up and fail from further away. A correlation does not care
  * about shade or contrast.
  */
-function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform): number {
+function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform, atLeast = MIN_PAGE_FIT): number {
   const { width, cells } = printed;
   if (cells.length === 0) return 0;
   const { a, b } = fitGrids(printed, photoSums, photo, t);
@@ -439,7 +442,7 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
     if (spreadA >= n * n * FLAT_SPREAD) shaped.push({ ...c, sumA, spreadA });
   }
   if (shaped.length === 0) return 0;
-  const allowedMisses = Math.floor(shaped.length * (1 - MIN_PAGE_FIT));
+  const allowedMisses = Math.floor(shaped.length * (1 - atLeast));
   let misses = 0;
   for (const { x, y, sumA, spreadA } of shaped) {
     let held = false;
@@ -460,66 +463,248 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
 
 // ---------- One sheet, this page ----------
 
+/** A map that leaves a page image's pixels where they are: for comparing two prints with each other. */
+const SAME_PLACE: Transform = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 /**
- * How little of a photo cell's grey a printed cell leaves unexplained: the least error of photo = gain × print + light
- * (gain at least 0, so ink must stay ink), over the comparison's small shifts, per pixel, in grey levels squared.
+ * How much of a page's print another page must also hold, compared print against print as a photo is compared, to be its
+ * near twin: a page whose photo the ink comparison could take for this one, and so a page only the sheet check can tell
+ * from it. Well below MIN_PAGE_FIT, as a sheet that only partly lies over this page fits this page better than its own print
+ * does. Over 192 pairs of real pages, the only pair a photo ever passed the ink comparison for fit 0.96 or more, the next
+ * pairs 0.75 to 0.93, and every other pair 0.55 or less. From the print alone, so glare on a photo cannot take a page out of
+ * the comparison.
  */
-function cellError(a: Float32Array, b: Float32Array, width: number, height: number, x: number, y: number): number {
+const NEAR_TWIN_FIT = 0.75;
+/** A cell whose two prints differ by less than this after the comparison's shifts, per pixel in grey levels squared, does not tell them apart: a sliver of a stroke. */
+const SPOT_APART = 800;
+/**
+ * How much the two prints must differ in a spot at the photo's own contrast there, per pixel in grey levels squared, for the
+ * photo to be able to say which it holds. A standard deviation of 8 grey levels: about what a photo's noise and JPEG give.
+ */
+const READABLE = 64;
+/**
+ * Where the photo sits between the two prints in a spot: (its error from this page − its error from the other) / how far
+ * apart the prints are there, at the contrast read around the spot. About -1 when it holds this page's print, about +1 when
+ * it holds the other's, and near 0 when it holds neither clearly. This page must win by this much. Scores of a right
+ * page's spots and of a near twin's mirror each other (.design/experiments/r456/spot-scores.txt).
+ */
+const SHEET_MARGIN = 0.12;
+/**
+ * The score at which a spot holds the other page's print. No right page's spot passed 0.23 in the matrix, and 90% of a near
+ * twin's spots reach this (.design/experiments/r456/spot-scores.txt).
+ */
+const OTHER_PRINT = 0.4;
+/**
+ * A digit can look like its twin at a photo's resolution, whichever page is right. The share of a twin's spots that may stay
+ * unclear (readable, but no margin either way) while all the others hold this page's print.
+ */
+const MAX_UNCLEAR = 0.2;
+/** A print explains a spot at the contrast read around it or a little less: a thin stroke blurs paler than its surroundings. */
+const LEAST_CONTRAST = 0.6;
+/**
+ * How much of the contrast around a spot the photo must keep on this page's own print there, for the spot to show it. A
+ * right page's spots kept 0.73 or more, and a glared one 0.10 (.design/experiments/r456/spot-scores.txt). Without this, an even patch of glare
+ * looks more like whichever page prints less ink.
+ */
+const MIN_SHOWN = 0.5;
+/** The light's contrast is read over tiles of this many grid pixels, each with its own small shift. */
+const CONTRAST_TILE = FIT_CELL * 4;
+
+/**
+ * Why a photo is not all this page:
+ * - another-page: at a spot where a near-twin page prints differently, the photo holds the twin's print;
+ * - faint: such a spot is too bright, faint, covered or small in the photo to say that it holds this page's print.
+ */
+export type SheetRefusal = "another-page" | "faint";
+
+export interface SheetCheck {
+  verdict: "this-page" | SheetRefusal;
+  /** The near twins compared, and the spots where a twin prints differently from this page. */
+  twins: number;
+  spots: number;
+  /** Over the spots that could be read: the score nearest the other page, from about -1 to about +1. */
+  closest: number;
+  /** Spots too faint, glared, covered or small to decide. */
+  faint: number;
+  /** Spots that could be read and show neither page by a margin. */
+  unclear: number;
+}
+
+/** The photo's contrast against the print over each tile: how much of the print's grey range the photo keeps there. */
+function contrastTiles(a: Float32Array, b: Float32Array, width: number, height: number) {
+  const cols = Math.ceil(width / CONTRAST_TILE), rows = Math.ceil(height / CONTRAST_TILE);
+  const shared = new Float64Array(cols * rows), spread = new Float64Array(cols * rows);
+  for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+    const x0 = col * CONTRAST_TILE, y0 = row * CONTRAST_TILE, x1 = Math.min(width, x0 + CONTRAST_TILE), y1 = Math.min(height, y0 + CONTRAST_TILE), n = (x1 - x0) * (y1 - y0);
+    let sumA = 0, sumAA = 0;
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const v = a[y * width + x]; sumA += v; sumAA += v * v; }
+    spread[row * cols + col] = sumAA - (sumA * sumA) / n;
+    if (spread[row * cols + col] <= 0) continue;
+    let best = 0;
+    for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT; dx++) {
+      if (y0 + dy < 0 || x0 + dx < 0 || y1 + dy > height || x1 + dx > width) continue;
+      let sumB = 0, sumAB = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const q = b[(y + dy) * width + x + dx]; sumB += q; sumAB += a[y * width + x] * q; }
+      best = Math.max(best, sumAB - (sumA * sumB) / n);
+    }
+    shared[row * cols + col] = best;
+  }
+  const page = { shared: shared.reduce((s, v) => s + v, 0), spread: spread.reduce((s, v) => s + v, 0) };
+  /** The contrast around a grid point: the nearest tiles that hold print, or the whole page's. */
+  return (x: number, y: number): number => {
+    const col = Math.floor(x / CONTRAST_TILE), row = Math.floor(y / CONTRAST_TILE);
+    for (const reach of [1, 2]) {
+      let s = 0, v = 0, pixels = 0;
+      for (let r = Math.max(0, row - reach); r <= Math.min(rows - 1, row + reach); r++) for (let c = Math.max(0, col - reach); c <= Math.min(cols - 1, col + reach); c++) { s += shared[r * cols + c]; v += spread[r * cols + c]; pixels += CONTRAST_TILE * CONTRAST_TILE; }
+      if (v >= pixels * FLAT_SPREAD) return Math.min(1.5, Math.max(0, s / v));
+    }
+    return page.spread > 0 ? Math.min(1.5, Math.max(0, page.shared / page.spread)) : 0;
+  };
+}
+
+/** How far apart two prints are in a cell, in the sum of squares over its pixels, after the shift that brings them closest. */
+function cellApart(p: Float32Array, q: Float32Array, width: number, height: number, x: number, y: number): number {
   const n = FIT_CELL * FIT_CELL;
-  let sumA = 0, sumAA = 0;
-  for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) { const v = a[(y + j) * width + x + i]; sumA += v; sumAA += v * v; }
-  const spreadA = sumAA - (sumA * sumA) / n;
   let best = Infinity;
   for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT; dx++) {
     if (y + dy < 0 || x + dx < 0 || y + dy + FIT_CELL > height || x + dx + FIT_CELL > width) continue;
-    let sumB = 0, sumBB = 0, sumAB = 0;
-    for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
-      const p = a[(y + j) * width + x + i], q = b[(y + dy + j) * width + x + dx + i];
-      sumB += q; sumBB += q * q; sumAB += p * q;
-    }
-    const spreadB = sumBB - (sumB * sumB) / n, shared = sumAB - (sumA * sumB) / n;
-    best = Math.min(best, spreadA > 0 && shared > 0 ? spreadB - (shared * shared) / spreadA : spreadB);
+    let sum = 0, squares = 0;
+    for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) { const d = p[(y + j) * width + x + i] - q[(y + dy + j) * width + x + dx + i]; sum += d; squares += d * d; }
+    best = Math.min(best, squares - (sum * sum) / n);
   }
-  return Math.max(0, best) / n;
+  return best;
 }
 
-/** How much error, in grey levels squared, any photo has in a cell that its print explains: noise, blur and JPEG. */
-const CELL_NOISE = 64;
-/**
- * How much better another page must explain one cell of the photo than this page, as (this page's error − the other's) /
- * (both + noise), for the photo to be refused. Measured on 24 real pages from U4, U16 and U26 at 50% to 95% of the photo's
- * height, upright, rotated 7 degrees and tilted (.design/experiments/r456): a right page's strongest such cell came to 0.25
- * at most, and every near twin's to 0.51 or more, its own digits printed where this page prints others. Between the two.
- */
-export const ANOTHER_PAGE_MARGIN = 0.38;
+/** Groups touching cells into spots: a digit or a word, read as one. */
+function spotsOf(cells: readonly { x: number; y: number; apart: number }[]) {
+  const at = new Map(cells.map((c) => [`${c.x},${c.y}`, c]));
+  const out: { x: number; y: number; apart: number }[][] = [];
+  for (const start of cells) {
+    if (!at.delete(`${start.x},${start.y}`)) continue;
+    const spot = [start], stack = [start];
+    while (stack.length) {
+      const c = stack.pop()!;
+      for (const dy of [-FIT_CELL, 0, FIT_CELL]) for (const dx of [-FIT_CELL, 0, FIT_CELL]) {
+        const key = `${c.x + dx},${c.y + dy}`, next = at.get(key);
+        if (next) { at.delete(key); spot.push(next); stack.push(next); }
+      }
+    }
+    out.push(spot);
+  }
+  return out;
+}
+
+/** The contrast the photo itself shows in a spot against one print: 0 where the spot holds none of that print. */
+function spotContrast(spot: readonly { x: number; y: number }[], p: Float32Array, b: Float32Array, width: number, height: number): number {
+  const n = FIT_CELL * FIT_CELL;
+  let best = 0;
+  for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT; dx++) {
+    if (spot.some((c) => c.y + dy < 0 || c.x + dx < 0 || c.y + dy + FIT_CELL > height || c.x + dx + FIT_CELL > width)) continue;
+    let bp = 0, pp = 0;
+    for (const c of spot) {
+      let sb = 0, sp = 0, sbp = 0, spp = 0;
+      for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
+        const u = p[(c.y + j) * width + c.x + i], v = b[(c.y + dy + j) * width + c.x + dx + i];
+        sb += v; sp += u; sbp += v * u; spp += u * u;
+      }
+      bp += sbp - (sb * sp) / n; pp += spp - (sp * sp) / n;
+    }
+    if (pp > 0) best = Math.max(best, bp / pp);
+  }
+  return Math.min(1.5, best);
+}
+
+/** Whether a print has any shape in a spot, as opposed to white paper. */
+function spotPrints(spot: readonly { x: number; y: number }[], p: Float32Array, width: number): boolean {
+  const n = FIT_CELL * FIT_CELL;
+  let spread = 0;
+  for (const c of spot) {
+    let sum = 0, squares = 0;
+    for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) { const v = p[(c.y + j) * width + c.x + i]; sum += v; squares += v * v; }
+    spread += squares - (sum * sum) / n;
+  }
+  return spread >= spot.length * n * SPOT_APART;
+}
+
+/** A spot's score: where the photo sits between the two prints, at a contrast known from around it, under one shift each. */
+function spotScore(spot: readonly { x: number; y: number; apart: number }[], p: Float32Array, q: Float32Array, b: Float32Array, width: number, height: number, contrast: number): number {
+  const n = FIT_CELL * FIT_CELL;
+  let mine = Infinity, theirs = Infinity;
+  for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT; dx++) {
+    if (spot.some((c) => c.y + dy < 0 || c.x + dx < 0 || c.y + dy + FIT_CELL > height || c.x + dx + FIT_CELL > width)) continue;
+    let bb = 0, bp = 0, pp = 0, bq = 0, qq = 0;
+    for (const c of spot) {
+      let sb = 0, sp = 0, sq = 0, sbb = 0, sbp = 0, spp = 0, sbq = 0, sqq = 0;
+      for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
+        const at = (c.y + j) * width + c.x + i, v = b[(c.y + dy + j) * width + c.x + dx + i], u = p[at], w = q[at];
+        sb += v; sp += u; sq += w; sbb += v * v; sbp += v * u; spp += u * u; sbq += v * w; sqq += w * w;
+      }
+      bb += sbb - (sb * sb) / n; bp += sbp - (sb * sp) / n; pp += spp - (sp * sp) / n; bq += sbq - (sb * sq) / n; qq += sqq - (sq * sq) / n;
+    }
+    const fit = (cross: number, own: number) => { const g = Math.min(contrast, Math.max(contrast * LEAST_CONTRAST, own > 0 ? cross / own : 0)); return bb - 2 * g * cross + g * g * own; };
+    mine = Math.min(mine, fit(bp, pp)); theirs = Math.min(theirs, fit(bq, qq));
+  }
+  const apart = spot.reduce((s, c) => s + c.apart, 0) * contrast * contrast;
+  return apart > 0 ? (mine - theirs) / apart : 0;
+}
 
 /**
- * The strongest evidence that the photo is not all this page: over the near twins among `others` (printed pages of the
- * same size that the photo's ink also follows, as pages that differ by a few digits do), and over each cell where the two
- * prints differ, how much better the twin explains the photo than this page does, from -1 to 1. Cells where a child writes
- * are left out. -Infinity when no other page is a near twin.
+ * Whether the photo is all this page, a few of `others` at a time (printed page images of the same size): fail closed on
+ * evidence. A near twin is another page that holds this page's print, as pages that differ by a few digits do. Wherever a
+ * twin prints differently from this page (outside the QR code, which a sticker can carry, and outside where a child
+ * writes), the photo must hold this page's print, by a margin, with enough contrast there to tell the two apart. Missing
+ * evidence refuses, so glare cannot pass a sheet. A twin with no such spot prints the same as this page apart from its code,
+ * and cannot be told from it.
  */
-export function anotherPageEvidence(o: { photo: Raster; printed: Raster; others: readonly Raster[]; transform: Transform; writing?: readonly Box[] }): number {
+export function sheetChecker(o: { photo: Raster; printed: Raster; transform: Transform; writing?: readonly Box[] }): (others: readonly Raster[]) => SheetCheck {
   const self = preparedPrinted(o.printed), { greySums } = preparedPhoto(o.photo);
   const { width, height } = self;
-  const skip = [...(o.writing ?? []), ...(self.qr ? [boundsOf(self.qr.corners)] : [])];
-  const mine = fitGrids(self, greySums, o.photo, o.transform);
-  let strongest = -Infinity;
-  for (const raster of o.others) {
-    if (raster === o.printed || raster.width !== o.printed.width || raster.height !== o.printed.height) continue;
-    const other = preparedPrinted(raster);
-    if (pageFit(printedInk(other, skip), greySums, o.photo, o.transform) < MIN_PAGE_FIT) continue;
-    const theirs = fitGrids(other, greySums, o.photo, o.transform);
-    for (let y = 0; y + FIT_CELL <= height; y += FIT_CELL) for (let x = 0; x + FIT_CELL <= width; x += FIT_CELL) {
-      if ((o.writing ?? []).some((b) => overlaps(b, { x: x * 2, y: y * 2, width: FIT_CELL * 2, height: FIT_CELL * 2 }))) continue;
-      let differ = 0;
-      for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) differ += self.ink[(y + j) * width + x + i] ^ other.ink[(y + j) * width + x + i];
-      if (differ < CELL_MIN_INK) continue;
-      const e = cellError(mine.a, mine.b, width, height, x, y), f = cellError(theirs.a, theirs.b, width, height, x, y);
-      strongest = Math.max(strongest, (e - f) / (e + f + CELL_NOISE));
+  const qr = self.qr ? [boundsOf(self.qr.corners)] : [];
+  const skip = [...(o.writing ?? []), ...qr];
+  const inked = printedInk(self, skip);
+  let grids: { a: Float32Array; b: Float32Array; contrast: (x: number, y: number) => number } | null = null;
+  return (others) => {
+    let tooUnclear = false;
+    const out: SheetCheck = { verdict: "this-page", twins: 0, spots: 0, closest: -Infinity, faint: 0, unclear: 0 };
+    for (const raster of others) {
+      if (raster === o.printed || raster.width !== o.printed.width || raster.height !== o.printed.height) continue;
+      // (Another page's code says nothing here, reading one is slow, and nothing of this page is kept once its batch is done.)
+      const other = printedCache.get(raster) ?? printedPixels(raster);
+      if (pageFit(inked, other.greySums, other.source, SAME_PLACE, NEAR_TWIN_FIT) < NEAR_TWIN_FIT) continue;
+      out.twins++;
+      if (!grids) { const g = fitGrids(self, greySums, o.photo, o.transform); grids = { ...g, contrast: contrastTiles(g.a, g.b, width, height) }; }
+      const { a, b, contrast } = grids;
+      const theirs = fitGrids(other, greySums, o.photo, o.transform).a;
+      const cells: { x: number; y: number; apart: number }[] = [];
+      for (let y = 0; y + FIT_CELL <= height; y += FIT_CELL) for (let x = 0; x + FIT_CELL <= width; x += FIT_CELL) {
+        if (skip.some((s) => overlaps(s, { x: x * 2, y: y * 2, width: FIT_CELL * 2, height: FIT_CELL * 2 }))) continue;
+        let differ = 0;
+        for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) differ += self.ink[(y + j) * width + x + i] ^ other.ink[(y + j) * width + x + i];
+        if (differ < CELL_MIN_INK) continue;
+        const apart = Math.max(cellApart(a, theirs, width, height, x, y), cellApart(theirs, a, width, height, x, y));
+        if (apart >= SPOT_APART * FIT_CELL * FIT_CELL) cells.push({ x, y, apart });
+      }
+      const spots = spotsOf(cells);
+      let unclear = 0;
+      for (const spot of spots) {
+        const n = spot.length, mid = spot[Math.floor(n / 2)];
+        const own = spotContrast(spot, a, b, width, height), gain = Math.max(contrast(mid.x + FIT_CELL / 2, mid.y + FIT_CELL / 2), own, spotContrast(spot, theirs, b, width, height));
+        const seen = (gain * gain * spot.reduce((s, c) => s + c.apart, 0)) / (n * FIT_CELL * FIT_CELL);
+        if (seen < READABLE) { out.faint++; continue; }
+        const score = spotScore(spot, a, theirs, b, width, height, gain);
+        out.closest = Math.max(out.closest, score);
+        if (score >= OTHER_PRINT) continue;
+        // This page's print not to be seen though it prints there: an even patch of glare looks like whichever page prints less.
+        if (spotPrints(spot, a, width) && own < MIN_SHOWN * gain) out.faint++;
+        else if (score > -SHEET_MARGIN) unclear++;
+      }
+      out.spots += spots.length;
+      out.unclear += unclear;
+      if (unclear > MAX_UNCLEAR * spots.length) tooUnclear = true;
     }
-  }
-  return strongest;
+    if (out.closest >= OTHER_PRINT) out.verdict = "another-page";
+    else if (out.faint > 0 || tooUnclear) out.verdict = "faint";
+    return out;
+  };
 }
 
 // ---------- The page's QR code ----------
@@ -707,10 +892,11 @@ function armsFit(marks: readonly MarkShape[], t: Transform): boolean {
 /**
  * Finds the scan marks in a photo and maps it to the contract: the photo's own marks and the stored mark points only. A
  * photo with no contract, or of another revision (printContractForPhoto), gets none. `pageLink`: the page's own QR link.
- * `writing`: where a child writes on this page, which says nothing about which page it is. `others`: the other printed
- * page images of the child's books that this photo could be instead (anotherPageEvidence).
+ * `writing`: where a child writes on this page, which says nothing about which page it is. This says the sheet is this
+ * page's by its marks, ink and code. Pages that differ by a few digits pass all three for each other, so the crop job then
+ * asks sheetChecker about the child's other pages, a few at a time.
  */
-export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: PhotoContract; pageLink: string; writing?: readonly Box[]; others?: readonly Raster[] }): CalibrationResult {
+export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: PhotoContract; pageLink: string; writing?: readonly Box[] }): CalibrationResult {
   if (o.contract.status !== "available") return { status: "unavailable", reason: o.contract.reason };
   const { contract, revision } = o.contract;
   const { photo, printed } = o;
@@ -752,10 +938,6 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   // Two ways up that both follow the page: the marks alone cannot say which is right.
   if (best.next !== null && best.next >= MIN_PAGE_FIT) return { status: "refused", reason: "orientation-unclear" };
   if (!qrBound(photo, best.t, printedQr, prepared.qrGrid, pageSize)) return { status: "refused", reason: "qr-mismatch" };
-  // The code and the marks are this page's: the print between them must be too, wherever a near twin prints otherwise.
-  if (anotherPageEvidence({ photo, printed, others: o.others ?? [], transform: best.t, writing: o.writing }) >= ANOTHER_PAGE_MARGIN) {
-    return { status: "refused", reason: "another-page" };
-  }
   return {
     status: "calibrated",
     calibration: {

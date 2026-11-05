@@ -32,6 +32,12 @@ Limits: synthetic drawn digits on real printed pages. No real handwriting, real 
 
 ## Which page a photo shows
 
-The preview is ready only when the photo is one sheet, this page (#456, D-285). Calibration finds the four corner marks, compares the photo's ink with the printed page image, reads the QR code where the page printed it, and then compares the photo with the child's other printed pages of the same page type. Wherever one of those near twins prints differently from this page, the photo must hold this page's print. A QR code pasted on another page, or another page lying over this one, is refused with "another-page", and the parent is asked for another photo. The crop job reads those other page images from `workbook-pages` for each photo.
+The preview is ready only when the photo is shown to be one sheet, this page (#456, D-285). Calibration finds the four corner marks, compares the photo's ink with the printed page image, and reads the QR code where the page printed it. The job then compares the photo with the child's other printed pages of the same page type (`sheetChecker`), a few page images at a time, in at most 35 s from the start of the job. Near twins are the pages that hold at least 75% of this page's print, decided from the prints alone, so glare cannot take a page out of the comparison. At each spot where a near twin prints differently, the photo must hold this page's print by a margin, read at the contrast the photo has around that spot.
+
+- `another-page`: a spot holds the twin's print: a QR code pasted on another page, or another page lying over this one. The parent is asked for another photo of this page alone.
+- `faint`: a spot is too bright, faint or covered to read, or more than one spot in five shows neither page clearly. The parent is asked for another photo without glare.
+- `check-timeout`: the job ran out of time. This refusal is not stored: the parent is asked to try again in a minute, and the next call after the 90 s lease does the whole check.
+
+The comparison also takes approved books that have not shipped, as approval gives a book its printed revision. Comparing against more pages is safe. The evidence is in `.design/experiments/r456/`.
 
 #454 stays open. Physical iPhone Safari and Android Chrome camera checks and deployed cleanup checks remain.

@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
-import { isFenceRefusal, readScanPreview, runScanCrops, scanPartPath, type ScanFrame } from "@/lib/scan-crops";
+import { isFenceRefusal, readScanPreview, runScanCrops, scanPartPath, type ScanCropStore, type ScanFrame } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
 import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
 import { SCAN_MARKS, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
@@ -279,4 +279,52 @@ describe("leases", () => {
     }
     expect(await runScanCrops(m.store, ref, token(6))).toEqual({ status: "refused", reason: "failed" });
   });
+});
+
+describe("comparing with the child's other pages", () => {
+  /** A photo whose frame lists `count` other pages, and a store that counts how many it reads at once and can be slow. */
+  function among(count: number, delay = 0) {
+    const m = setup();
+    m.photos.get(PHOTO)!.frame.page.others = Array.from({ length: count }, (_, i) => `other-${i}.png`);
+    for (let i = 0; i < count; i++) m.printed.set(`other-${i}.png`, printedPng);
+    let reading = 0, most = 0, reads = 0;
+    const store: ScanCropStore = {
+      ...m.store,
+      async printedBytes(path) {
+        if (!path.startsWith("other-")) return m.store.printedBytes(path);
+        reading++; reads++; most = Math.max(most, reading);
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+        reading--;
+        return m.store.printedBytes(path);
+      },
+    };
+    return { m, store, most: () => most, reads: () => reads };
+  }
+
+  it("reads them a few at a time, however long the child's history is", async () => {
+    // Disproved if the job holds every page at once: 200 pages took 2.21 GB (the PR #637 review).
+    const c = among(10, 2);
+    const preview = await runScanCrops(c.store, ref, token(1));
+    expect(preview.status).toBe("ready");
+    expect(c.reads()).toBe(10);
+    expect(c.most()).toBeLessThanOrEqual(4);
+  }, 60_000);
+
+  it("runs out of time safely: it refuses, stores nothing, and a later call checks again", async () => {
+    // Disproved if a photo gets crops with its pages unchecked, or a slow day leaves a lasting refusal on it.
+    const c = among(8, 400);
+    expect(await runScanCrops(c.store, ref, token(1), { sheetCheckMs: 50 })).toEqual({ status: "refused", reason: "check-timeout" });
+    expect(c.m.filesOf(PHOTO)).toEqual([]);
+    expect(await readScanPreview(c.store, ref)).toEqual({ status: "busy" });
+    // Once the lease has run out, the next call does the whole check.
+    c.m.advance(91_000);
+    expect((await runScanCrops(c.store, ref, token(2))).status).toBe("ready");
+  }, 60_000);
+
+  it("a page image it cannot read fails the job rather than passing the page unchecked", async () => {
+    const c = among(2);
+    c.m.printed.delete("other-1.png");
+    await expect(runScanCrops(c.store, ref, token(1))).rejects.toThrow(/another page's image/);
+    expect(c.m.filesOf(PHOTO)).toEqual([]);
+  }, 60_000);
 });

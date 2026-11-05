@@ -15,6 +15,8 @@ const REFUSED: Record<ScanRefusal, string> = {
   "ambiguous-page": "This photo seems to show more than one page. To check it, take another photo with only this page in view.",
   "qr-mismatch": "We could not read this page's QR code in the photo. To check it, take another photo with the code clear and in view.",
   "another-page": "Part of this photo looks like a different page. To check it, take another photo of this page on its own, flat, with nothing on top of it.",
+  faint: "Part of the page is too bright or faint to read. Take another photo without glare.",
+  "check-timeout": "We couldn't check this page right now. Try again in a minute.",
   "printed-page-changed": "We cannot line up this photo with the printed page.",
   failed: "We cannot line up this photo with the printed page.",
 };
