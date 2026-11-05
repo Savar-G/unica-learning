@@ -19,6 +19,18 @@ The Maya tab is `/account/notes/<child>`, the notes page that already existed, s
 
 The tab shows for test families only, until a child can call Maya (#337); the `maya` switch in `src/lib/parent-view-server.ts` holds that. Admin test calls never appear: the database writes no note for them, `parent_maya_note_sessions` returns only family calls and chats, `withSessions` drops any other row, and they take no child minutes. There is no pattern line: no code counts a pattern across calls yet, and the tab shows only what code counted.
 
+## Child details on the Account tab (#555)
+
+`src/components/account-child-details.tsx` shows one section per child: the first name, the school grade and the learning card. The learning card's questions stay at `/account/learning/<child>` with their route, `/api/account/learning`, which rebuilds the profiles after a save. A grade change goes through the support email.
+
+`PATCH /api/account/children/<id>` changes the first name. It answers only to a family the switch opens to, and answers not found to every other family and for another family's child. Parents have no update right on `first_name`, so the server's key writes it, with a `parent_id` filter, and the family write fence still applies. It takes the name by the signup rule (`cleanFirstName`).
+
+The route refuses while the child has a `queued` or `running` workbook run. A kept page prints the name in its id, and a resume with another name fails the run.
+
+What a name change updates, because these read `children.first_name` when they show or send: the dashboard, the report and report email (the stored report holds a token), Maya's notes and transcripts (stored with `{child}`), the desk and Maya's next request, reminders and workbook emails, the next workbook, and the file name of a workbook PDF.
+
+What it does not update: a workbook draft or shipped workbook already made (its pages, page ids, images and PDF print the old name, so an unshipped draft ships with the old name unless an admin makes a new one), and an email already sent, with its copy in `email_copies`. An old name that a child says aloud in a later call, or in a call running during the change, is not hidden in that note's transcript, because only the current name is hidden.
+
 ## Adding a tab's page
 
 A tab with no page does not appear. When a ticket builds a tab's page, change that tab's line in `TAB_PAGE` in `src/lib/parent-shell.ts`. The stage rule (`src/lib/child-stage.ts`) still decides which tabs a child may have.

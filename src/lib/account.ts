@@ -75,10 +75,17 @@ export interface Child {
   province: CurriculumId;
 }
 
+/** A child's first name from untrusted input, or null. One rule for signup, adding a child and changing a name (#555). */
+export const cleanFirstName = (raw: unknown): string | null => clip(raw, 60) || null;
+
+/** What /api/account/children/<id> answers when a parent changes a child's first name (#555). */
+export type ChildNameError = "bad_json" | "too_large" | "forbidden" | "signed_out" | "invalid" | "not_found" | "book_in_progress" | "unavailable" | "store_failed";
+export type ChildNameResult = { ok: true } | { ok: false; error: ChildNameError };
+
 /** A valid child from untrusted input, or null. */
 export function cleanChild(raw: unknown): ChildInput | null {
   const c = (raw ?? {}) as Partial<Record<keyof ChildInput, unknown>>;
-  const firstName = clip(c.firstName, 60);
+  const firstName = cleanFirstName(c.firstName);
   // 0 is Kindergarten, so a missing or empty grade must not become 0 the way Number(null) and Number("") do.
   const grade = typeof c.grade === "number" ? c.grade : typeof c.grade === "string" && c.grade.trim() !== "" ? Number(c.grade) : NaN;
   const province = typeof c.province === "string" && Object.hasOwn(CURRICULA, c.province) ? (c.province as CurriculumId) : null;

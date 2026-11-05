@@ -62,6 +62,20 @@ function OneChoice<T extends string>({ name, legend, hint, options, value, onCha
   );
 }
 
+/** The saved answers, as this step and the Account tab (#555) show them. */
+export function LearningSummary({ answers }: { answers: LearningAnswers }) {
+  return (
+    <ul className="lrn-summary">
+      {answers.feeling && <li><b>Feeling about math:</b> {feelingLabel(answers.feeling)}</li>}
+      {answers.styles.length > 0 && <li><b>Learns best from:</b> {answers.styles.map(styleLabel).join("; ")}</li>}
+      {answers.interests.length > 0 && <li><b>Interested in:</b> {joinWithAnd(answers.interests.map(interestLabel))}</li>}
+      {answers.note && <li><b>Finds hard in math:</b> {answers.note}</li>}
+      {answers.goal && <li><b>Your main goal:</b> {goalLabel(answers.goal)}</li>}
+      {answers.weeklyTime && <li><b>Time each week:</b> {weeklyTimeLabel(answers.weeklyTime)}</li>}
+    </ul>
+  );
+}
+
 /** `place`: on the report (with Skip) or on its own account page. */
 export function LearningStep({ childId, name, start, place }: { childId: string; name: string; start: LearningAnswers | null; place: "report" | "account" }) {
   const [saved, setSaved] = useState<LearningAnswers | null>(start);
@@ -133,14 +147,7 @@ export function LearningStep({ childId, name, start, place }: { childId: string;
     return (
       <div className="lrn is-saved">
         <h3>Thank you. {name}&apos;s next book will use your answers.</h3>
-        <ul className="lrn-summary">
-          {saved.feeling && <li><b>Feeling about math:</b> {feelingLabel(saved.feeling)}</li>}
-          {saved.styles.length > 0 && <li><b>Learns best from:</b> {saved.styles.map(styleLabel).join("; ")}</li>}
-          {saved.interests.length > 0 && <li><b>Interested in:</b> {joinWithAnd(saved.interests.map(interestLabel))}</li>}
-          {saved.note && <li><b>Finds hard in math:</b> {saved.note}</li>}
-          {saved.goal && <li><b>Your main goal:</b> {goalLabel(saved.goal)}</li>}
-          {saved.weeklyTime && <li><b>Time each week:</b> {weeklyTimeLabel(saved.weeklyTime)}</li>}
-        </ul>
+        <LearningSummary answers={saved} />
         <button className="btn sm ghost" type="button" onClick={edit}>Change answers</button>
         {liveRegion}
       </div>
