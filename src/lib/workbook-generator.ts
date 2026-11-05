@@ -58,7 +58,7 @@ import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
-import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
+import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, selectedItemStep, type AiItem, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
 import { attachWorkbookMayaOperations, withWorkbookMayaOperation, printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
@@ -84,6 +84,7 @@ import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
 import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
 import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
+import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
 /** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
 function needsOwnPractice(input: GenerateInput, w: PageWork, slot: Slot): boolean {
@@ -528,7 +529,8 @@ function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0,
     const candidate = contractFor(input, w, slot, attempt, other);
     if (candidate) return candidate;
   }
-  return planned && slot.interest ? withInterestNoun(input, w, slot, planned, attempt) : planned;
+  if (!planned) return null;
+  return slot.interest ? withInterestNoun(input, w, slot, planned, attempt) : planned;
 }
 
 /**
@@ -590,7 +592,7 @@ export function withPersonalIssues(input: Pick<GenerateInput, "curriculum" | "pl
 }
 
 /** A code fact as the writer's item shape (G1, item 4): code's operation, operands, text and one careless wrong answer. */
-function factItem(id: string, f: WarmUpFact) {
+function factItem(id: string, f: WarmUpFact): AiItem {
   const [a, b] = f.operands;
   const right = f.kind === "add" ? a + b : f.kind === "subtract" ? a - b : f.kind === "multiply" ? a * b : a / b;
   const op = (x: number, y: number) => ({ kind: f.kind, operands: [itemNumber(x), itemNumber(y)], expression: null, unit: null, denominator: null, values: [] });
@@ -676,6 +678,10 @@ export interface GeneratedQuestion {
   package: QuestionPackage | null;
   /** Saved with the question so an edit keeps its approved type and fixed math. */
   itemPlan?: ItemPlan;
+  /** Code's tested-step selection, kept with the generated question for the permanent print contract. */
+  itemStep?: StepReference | null;
+  stepDeclaration?: StepDeclaration;
+  itemStepReason?: string | null;
   /** This skill still uses the existing writer until its approved builder exists. */
   existing?: boolean;
   /** The text code wrote for a question with no plan (code's wording of its operation): a story prints it exactly (B1). */
@@ -1982,12 +1988,19 @@ function rewordRepeat(input: GenerateInput, b: BuiltQuestion, slot: Slot, memory
   return again.check.status === "failed" ? b : again;
 }
 
-const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: GeneratedQuestion["attempts"]): GeneratedQuestion => ({
-  number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
-  ...(w.slots[i].contract ? { itemPlan: structuredClone(w.slots[i].contract!) } : {}),
-  ...(w.slots[i].existing ? { existing: true } : {}),
-  ...(!w.slots[i].contract && b.package && b.wordings?.includes(b.package.text) ? { codeText: b.package.text } : {}),
-});
+const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: GeneratedQuestion["attempts"]): GeneratedQuestion => {
+  const fact = w.slots[i].fact;
+  const declared = fact?.declaration ?? b.stepDeclaration;
+  const itemStep = selectedItemStep(b.package, declared?.reference);
+  return {
+    number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
+    ...(w.slots[i].contract ? { itemPlan: structuredClone(w.slots[i].contract!) } : {}),
+    itemStep, ...(itemStep && declared ? { stepDeclaration: structuredClone(declared) } : {}),
+    itemStepReason: itemStep ? null : fact ? "The G1 family builder did not declare a curriculum step." : b.itemStepReason ?? "No step-specific builder declared this item.",
+    ...(w.slots[i].existing ? { existing: true } : {}),
+    ...(!w.slots[i].contract && b.package && b.wordings?.includes(b.package.text) ? { codeText: b.package.text } : {}),
+  };
+};
 
 /** What to do about a failed check, said plainly for the redo; null when the reason says it all. */
 function hintFor(reason: string): string | null {
@@ -2755,7 +2768,7 @@ function layOut(input: GenerateInput) {
 export function bookOutline(input: GenerateInput): string {
   const { work, total } = layOut(input.book ? { ...input, book: { child: "" } } : input);
   return digestOf({
-    number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 5, examples: ITEM_EXAMPLES, compactExamples: COMPACT_STORY_FRAMES } } : {}),
+    number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 6, examples: ITEM_EXAMPLES, compactExamples: COMPACT_STORY_FRAMES } } : {}),
     pages: work.map((w) => ({
       number: w.number, day: w.day, page: w.page.number, type: w.page.type, layout: w.layout, panels: w.panels,
       slots: w.slots.map((x) => ({
