@@ -339,6 +339,23 @@ describe("a page that does not fit", () => {
     expect(page.fit).toEqual({ status: "failed", problems: [problem] });
   });
 
+  it("leaves out a question for a page's lack of room only, never for its layout problem, and reports both", async () => {
+    // (Codex at bfdae35, P2: a misaligned box named question 2 beside an overflow, and question 2 was left out.)
+    const total = DAY_PAGES[0].parts.reduce((n, p) => n + p.items, 0);
+    const layout = { question: 2, reason: "question 2's answer box starts 9 px above its first line", kind: "layout" as const };
+    const fit: FitCheck = {
+      fits: async (page) => (page.number !== 3 ? { ok: true }
+        : { ok: false, problems: page.questions.length === total ? [layout, { question: null, reason: "the slot runs past" }] : [layout] }),
+    };
+    const page = (await generate(deps({ fit }))).pages[2];
+    expect(page.questions).toHaveLength(total - 1);
+    const part = DAY_PAGES[0].parts.findLast(p => ["practice", "warm-up", "remember-these"].includes(p.kind) && p.items > 0)!;
+    const lastSlot = `${DAY_PAGES[0].parts.indexOf(part) + 1}.${part.items}`;
+    expect(page.leftOut).toEqual([expect.objectContaining({ slot: lastSlot, reason: "the slot runs past" })]);
+    expect(page.questions.map((q) => q.slot)).toContain("1.2");
+    expect(page.fit).toEqual({ status: "failed", problems: [layout] });
+  });
+
   it("is checked with the page's content and numbers, not the failed questions with no package", async () => {
     const seen: { number: number; questions: number[] }[] = [];
     const fit: FitCheck = { fits: async (page) => { seen.push({ number: page.number, questions: page.questions.map((q) => q.number) }); return { ok: true }; } };

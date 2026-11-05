@@ -6,16 +6,18 @@
 //    60 px, less where the page's rows are shorter; `bottomGapLimit`, read by the template's fullness check).
 // 2. Even spacing: the gaps between the rows of a slot vary by at most 4 px across the page; a section label (a chip,
 //    a heading, Remember these) has the same room above it as the page's other labels, at least a row gap, and more
-//    than below it (on a page that grows its rows to fill it, the rows' gaps grow alone); nothing sits closer than
+//    than below it (on a page that grows its rows to fill it, its rows' ink may be further apart than a label's gap,
+//    and a label's gap is from the grown cells of the row above it; the other rules hold); nothing sits closer than
 //    4 px to the next thing.
-// 3. Alignment: in a two-column row, both questions' numbers and first lines share their baselines; an answer box or a
-//    circle target beside a question sits at its first line (a box's top at the line's top, a word's baseline on its
-//    baseline) and at its column's right edge.
+// 3. Alignment: the questions of a row the template prints (its plan, never where they printed) share their numbers'
+//    and first lines' baselines; each answer region the template prints beside a question's first line sits at that
+//    line (a box's top at the line's top, a word on its baseline, a fact's box centred on it) and the answers end at
+//    the column's edge the template gives. A region missing from its place fails.
 // 4. One number style: every question number on a page is in one font, on its sentence's baseline (Spot the error's
 //    too).
 // 5. Circle instruction: a page with a question to circle says "circle" in its instruction (`circleProblem`).
-// 6. No instruction twice: no sentence of the page's instruction lines is printed twice on the page
-//    (`repeatedInstruction`).
+// 6. No instruction twice: no sentence of the page's instruction lines is printed twice on the page, in one line or in
+//    two (`repeatedInstruction`).
 // 7. Clipping: no line of printed text is cut by a box.
 // The measured checks (2, 3, 4, 7) read what only the real print engine gives (MeasuredElement.firstLine); with a print
 // engine that gives no lines (the test fake) they do not run.
@@ -23,6 +25,7 @@
 import type { DayContent, SlotName } from "@/lib/workbook-page";
 import type { DraftPage, FitProblem, MeasuredElement } from "@/lib/workbook-render";
 import type { QuestionPackage } from "@/lib/question-package";
+import type { PagePlan } from "@/lib/workbook-template";
 
 /** How far measured things may differ and still count as lined up or even, in CSS pixels. */
 export const LAYOUT_TOLERANCE = {
@@ -50,7 +53,15 @@ export const LAYOUT_TOLERANCE = {
 const BOTTOM_MOST = 60;
 
 type Measured = ReadonlyMap<string, MeasuredElement>;
-interface Band { top: number; bottom: number; kind: "row" | "label" | "box"; name: string; questions: number[] }
+interface Band {
+  top: number;
+  bottom: number;
+  /** A row's cells' bottom (its questions' measured rects): below its ink where the row grew to fill its page. */
+  cell?: number;
+  kind: "row" | "label" | "box";
+  name: string;
+  questions: number[];
+}
 
 const bottomOf = (m: { y: number; height: number }) => m.y + m.height;
 const shown = (m: MeasuredElement | undefined): m is MeasuredElement => !!m && m.visible && m.width > 0 && m.height > 0;
@@ -104,6 +115,7 @@ function merge(bands: Band[]): Band[] {
     // (A note under a label is the label's: "Mental math", then "Work it out without writing it down.")
     if (last && (b.top < last.bottom - 0.5 || (b.name.startsWith("note-") && last.kind === "label" && b.top - last.bottom < 8))) {
       last.bottom = Math.max(last.bottom, b.bottom);
+      if (b.cell !== undefined) last.cell = Math.max(last.cell ?? b.cell, b.cell);
       if (b.kind === "row") { last.kind = "row"; last.questions.push(...b.questions); }
       else if (last.kind !== "row" && b.kind === "box") last.kind = "box";
     } else out.push({ ...b, questions: [...b.questions] });
@@ -125,6 +137,7 @@ function spacingProblems(page: DraftPage, c: DayContent, measured: Measured): Fi
   const area = measured.get("slot-content");
   if (!shown(area)) return [];
   const T = LAYOUT_TOLERANCE;
+  const stretched = !!(c.fillingComplete && c.atMaximum);
   const frames = [...measured].filter(([name, m]) => /^(?:frame|panel)-/.test(name) && shown(m)).map(([name, m]) => ({ name, m }));
   const containers = [{ name: "slot-content", m: area }, ...frames.filter((f) => f.name.startsWith("frame-"))];
   // The innermost frame or panel holding an element (the content area when none).
@@ -136,10 +149,12 @@ function spacingProblems(page: DraftPage, c: DayContent, measured: Measured): Fi
     const el = measured.get(`question-${q.number}`);
     if (!shown(el)) continue;
     const slot = slotOf(c, q.number);
+    // (A card or a story: the card itself is what shows. A row that grew to fill its page is measured by its ink too,
+    // so rows that grew unevenly fail: the full U4 books of seeds ed6ecc9f and 19bacf2a.)
     const card = c.level <= 3 || (slot !== null && CARDS.has(slot));
     const parts = card ? [el] : partsOf(q.number, measured);
     const ink = parts.length ? parts : [el];
-    add(holder(el), { top: Math.min(...ink.map((m) => m.y)), bottom: Math.max(...ink.map(bottomOf)), kind: "row", name: `question ${q.number}`, questions: [q.number] });
+    add(holder(el), { top: Math.min(...ink.map((m) => m.y)), bottom: Math.max(...ink.map(bottomOf)), cell: bottomOf(el), kind: "row", name: `question ${q.number}`, questions: [q.number] });
   }
   for (const [name, m] of measured) {
     if (!shown(m)) continue;
@@ -168,7 +183,8 @@ function spacingProblems(page: DraftPage, c: DayContent, measured: Measured): Fi
       const block = (x: Band) => c.blocks.findIndex((k) => k.items.includes(x.questions[0]));
       if (a.kind === "row" && b.kind === "row" && block(a) === block(b)) rowGaps.push({ gap, below: b });
       else if (a.kind === "row" && b.kind === "row") return;
-      else if (b.kind !== "row") sectionGaps.push({ gap, below: b, above: a });
+      // (On a page whose rows grew, a label's gap is from the cells of the row above: its grown room is the row's.)
+      else if (b.kind !== "row") sectionGaps.push({ gap: stretched && a.kind === "row" ? b.top - (a.cell ?? a.bottom) : gap, below: b, above: a });
       else if (a.kind === "label") labelGaps.push({ gap, label: a });
     });
   }
@@ -178,11 +194,10 @@ function spacingProblems(page: DraftPage, c: DayContent, measured: Measured): Fi
     if (most.gap - least > T.rows + 0.5) fail(most.below.questions[0] ?? null, `the gaps between rows run from ${px(least)} to ${px(most.gap)} (above ${what(most.below)}); keep them within ${T.rows} px`);
   }
   // (A box, outlined or shaded, stands apart by its own edge: only a label needs the room. A page at its maximum grows
-  // its rows into the room left, not its labels' gaps: the label rules hold on the pages that do not stretch.)
+  // its rows, so its rows' gap may be wider than a label's; every other label rule holds there too.)
   const rowGap = rowGaps.length ? Math.max(...rowGaps.map((g) => g.gap)) : 0;
-  const stretched = c.fillingComplete && c.atMaximum;
-  const labels = stretched ? [] : sectionGaps.filter((s) => s.above.kind === "row" && s.below.kind === "label");
-  for (const s of labels) {
+  const labels = sectionGaps.filter((s) => s.above.kind === "row" && s.below.kind === "label");
+  for (const s of stretched ? [] : labels) {
     if (s.gap < rowGap - T.rows - 0.5) fail(s.above.questions[0] ?? null, `${what(s.above)} sits ${px(s.gap)} above ${what(s.below)}, closer than the ${px(rowGap)} between rows`);
   }
   if (labels.length > 1) {
@@ -190,23 +205,15 @@ function spacingProblems(page: DraftPage, c: DayContent, measured: Measured): Fi
     const most = Math.max(...labels.map((g) => g.gap));
     if (most - least.gap > T.rows + 0.5) fail(least.above.questions[0] ?? null, `the gaps above the page's labels run from ${px(least.gap)} (above ${what(least.below)}) to ${px(most)}; keep them within ${T.rows} px`);
   }
-  for (const l of stretched ? [] : labelGaps) {
+  for (const l of labelGaps) {
     const above = sectionGaps.find((s) => s.below === l.label);
     if (above && above.above.kind === "row" && above.gap < l.gap - 0.5) fail(above.above.questions[0] ?? null, `${what(l.label)} sits ${px(above.gap)} under ${what(above.above)} and ${px(l.gap)} above its questions; it belongs to the questions under it`);
   }
   return problems;
 }
 
-/** The answer regions printed beside a question's text (to its right, beside its lines): boxes and circle targets. */
-function besideRegions(n: number, measured: Measured): MeasuredElement[] {
-  const content = measured.get(`question-${n}-content`);
-  if (!shown(content)) return [];
-  return [...measured].filter(([name, m]) => (name === `question-${n}-answer` || name.startsWith(`region-${n}-`)) && shown(m)
-    && m.x >= content.x + content.width - 1 && m.y < bottomOf(content) && bottomOf(m) > content.y).map(([, m]) => m);
-}
-
 /** Checks 3 and 4: rows, answer spaces and numbers lined up; one number style. */
-function alignmentProblems(page: DraftPage, c: DayContent, measured: Measured): FitProblem[] {
+function alignmentProblems(page: DraftPage, c: DayContent, measured: Measured, plan: PagePlan): FitProblem[] {
   const T = LAYOUT_TOLERANCE;
   const problems: FitProblem[] = [];
   const fail = (question: number | null, reason: string) => problems.push({ question, slot: question ? slotOf(c, question) : null, reason: `${where(page, c)}: ${reason}` });
@@ -226,13 +233,11 @@ function alignmentProblems(page: DraftPage, c: DayContent, measured: Measured): 
     const [main] = [...fonts].sort((a, b) => b[1].length - a[1].length);
     for (const [font, qs] of fonts) if (font !== main[0]) fail(qs[0], `question ${qs.join(", ")}'s number is in ${font}; the page's other numbers are in ${main[0]}`);
   }
-  // 3: a row's questions share their numbers' and first lines' baselines.
-  for (const row of questionRows(page, measured)) {
-    if (row.questions.length < 2) continue;
-    const tops = row.questions.map((n) => measured.get(`question-${n}`)!.y);
-    if (Math.max(...tops) - Math.min(...tops) > T.baseline) continue;
+  // 3: the questions of each printed row (the template's grid, however they printed) share their numbers' and first
+  // lines' baselines.
+  for (const row of plan.rows) {
     for (const part of ["number", "content"] as const) {
-      const lines = row.questions.flatMap((n) => { const l = line(part === "number" ? `number-${n}` : `question-${n}-content`); return l ? [{ n, l }] : []; });
+      const lines = row.flatMap((n) => { const l = line(part === "number" ? `number-${n}` : `question-${n}-content`); return l ? [{ n, l }] : []; });
       if (lines.length < 2) continue;
       const base = lines.map((x) => x.l.baseline);
       if (Math.max(...base) - Math.min(...base) > T.baseline) {
@@ -240,40 +245,31 @@ function alignmentProblems(page: DraftPage, c: DayContent, measured: Measured): 
       }
     }
   }
-  // 3: an answer box or circle target beside a question sits at its first line and at its column's right edge.
-  const insets: { q: number; key: string; inset: number }[] = [];
-  for (const q of page.questions) {
-    const text = line(`question-${q.number}-content`);
-    const el = measured.get(`question-${q.number}`);
+  // 3: each answer region the template prints beside a question's first line (by its role) sits at that line, and the
+  // answers end at the column's edge the template gives (the question's right edge less a card's border and padding);
+  // a unit word after a box ends there instead.
+  for (const [n, at] of plan.beside) {
+    const text = line(`question-${n}-content`);
+    const el = measured.get(`question-${n}`);
     if (!text || !shown(el)) continue;
-    const beside = besideRegions(q.number, measured);
-    for (const r of beside) {
-      if (r.firstLine) {
-        if (Math.abs(r.firstLine.baseline - text.baseline) > T.baseline) fail(q.number, `question ${q.number}'s "${r.text.split(/\s+/)[0]}" sits ${px(Math.abs(r.firstLine.baseline - text.baseline))} ${r.firstLine.baseline < text.baseline ? "above" : "below"} its first line`);
-      } else {
-        // A box at the line's top, or (a one-line fact beside its box) centred on it.
-        const centre = Math.abs(r.y + r.height / 2 - (text.y + text.height / 2));
-        if (Math.abs(r.y - text.y) > T.top && centre > T.top) fail(q.number, `question ${q.number}'s answer box starts ${px(Math.abs(r.y - text.y))} ${r.y < text.y ? "above" : "below"} its first line`);
-      }
+    const regions = at.regions.map((name) => ({ name, m: measured.get(name) }));
+    const missing = regions.find((r) => !shown(r.m));
+    if (missing) { fail(n, `question ${n}'s answer space ${missing.name} is not printed beside it`); continue; }
+    for (const { m: r } of regions as { m: MeasuredElement }[]) {
+      if (at.align === "centre") {
+        const centre = r.y + r.height / 2 - (text.y + text.height / 2);
+        if (Math.abs(centre) > T.top) fail(n, `question ${n}'s answer box is ${px(Math.abs(centre))} ${centre < 0 ? "above" : "below"} the middle of its line`);
+      } else if (r.firstLine) {
+        const d = r.firstLine.baseline - text.baseline;
+        if (Math.abs(d) > T.baseline) fail(n, `question ${n}'s "${r.text.split(/\s+/)[0]}" sits ${px(Math.abs(d))} ${d < 0 ? "above" : "below"} its first line`);
+      } else if (Math.abs(r.y - text.y) > T.top) fail(n, `question ${n}'s answer box starts ${px(Math.abs(r.y - text.y))} ${r.y < text.y ? "above" : "below"} its first line`);
     }
-    // Its column's edge: the same room between the answer space and the question's right edge as every question of its
-    // slot and width (0 in a list; a card's padding on a card). A unit word after a box takes the edge instead.
-    if (beside.length && !unitOf(q.package)) insets.push({ q: q.number, key: `${slotOf(c, q.number)}:${Math.round(el.width)}`, inset: el.x + el.width - Math.max(...beside.map((r) => r.x + r.width)) });
-  }
-  const groups = new Map<string, typeof insets>();
-  for (const x of insets) groups.set(x.key, [...(groups.get(x.key) ?? []), x]);
-  for (const group of groups.values()) {
-    const least = Math.min(...group.map((x) => x.inset));
-    for (const x of group) if (x.inset - least > T.edge) fail(x.q, `question ${x.q}'s answer space ends ${px(x.inset - least)} short of its column's edge`);
+    const units = [...measured].filter(([name, m]) => name.startsWith(`unit-${n}-`) && shown(m)).map(([, m]) => m);
+    const right = Math.max(...[...regions.map((r) => r.m!), ...units].map((m) => m.x + m.width));
+    const edge = el.x + el.width - at.inset;
+    if (Math.abs(edge - right) > T.edge) fail(n, `question ${n}'s answer space ends ${px(Math.abs(edge - right))} ${right < edge ? "short of" : "past"} its column's edge`);
   }
   return problems;
-}
-
-/** The unit word printed after a question's answer box, which takes the column's edge instead. */
-function unitOf(p: QuestionPackage): string {
-  const v = p.answer?.value;
-  if (v?.type === "quantity") return v.unit === "$" ? "" : v.unit;
-  return p.answer?.unit ?? "";
 }
 
 /** Check 7: no line of printed text is cut by a box. */
@@ -302,14 +298,13 @@ function measuredRepeat(page: DraftPage, c: DayContent, measured: Measured): Fit
 /** The sentences of a line of text, for comparing ("Read how it works, then try it." → "read how it works then try it"). */
 const sentences = (t: string) => t.split(/(?<=[.!?])\s+/).map((s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim()).filter((s) => s.split(" ").length >= 3);
 
-/** Check 6: the first sentence (of three words or more) that two of the lines both print, or null. */
+/** Check 6: the first sentence (of three words or more) the lines print twice, in one line or in two; or null. */
 export function repeatedInstruction(lines: readonly (string | null | undefined)[]): string | null {
-  const seen = new Map<string, number>();
-  for (const [i, line] of lines.entries()) {
-    for (const s of new Set(sentences(line ?? ""))) {
-      const at = seen.get(s);
-      if (at !== undefined && at !== i) return s;
-      seen.set(s, i);
+  const seen = new Set<string>();
+  for (const line of lines) {
+    for (const s of sentences(line ?? "")) {
+      if (seen.has(s)) return s;
+      seen.add(s);
     }
   }
   return null;
@@ -325,13 +320,17 @@ export function circleProblem(content: DayContent | null | undefined, questions:
   return "the page has a question to circle, but its instruction does not say to circle";
 }
 
-/** Every measured layout problem of a day page (checks 2, 3, 4, 6 and 7); none for other pages or without line data. */
-export function layoutProblems(page: DraftPage, measured: Measured): FitProblem[] {
+/**
+ * Every measured layout problem of a day page (checks 2, 3, 4, 6 and 7), with the template's plan of the page
+ * (`pagePlan` in src/lib/workbook-template.ts): its printed rows and the answers it prints beside each first line. None
+ * for other pages; only check 6 without line data.
+ */
+export function layoutProblems(page: DraftPage, measured: Measured, plan: PagePlan | null): FitProblem[] {
   const c = day(page);
-  if (!c || !c.consistentLayout) return [];
+  if (!c || !c.consistentLayout || !plan) return [];
   const repeat = measuredRepeat(page, c, measured);
   const all = hasLines(measured)
-    ? [...spacingProblems(page, c, measured), ...alignmentProblems(page, c, measured), ...clippingProblems(page, c, measured), ...repeat]
+    ? [...spacingProblems(page, c, measured), ...alignmentProblems(page, c, measured, plan), ...clippingProblems(page, c, measured), ...repeat]
     : repeat;
   return all.map((p) => ({ ...p, kind: "layout" as const }));
 }
