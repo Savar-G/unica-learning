@@ -7,6 +7,7 @@ import { likelihoodChoicesProblem, likelihoodWord } from "@/lib/workbook-likelih
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { stepBounds, stepOf, stepTemplateOf } from "@/lib/workbook-step-items";
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
+import type { PageContent } from "@/lib/workbook-page";
 
 export function instructionProblem(text: string): string | null {
   if (!text.trim() || /[\r\n]/.test(text)) return "Every page needs a plain instruction on one line.";
@@ -95,7 +96,7 @@ export function scheduledItemProblem(p: QuestionPackage, curriculum: Curriculum,
   }
 }
 
-/** Conservative planning estimate. The #480 whole-book gate applies the 30-minute limit. */
+/** Conservative planning estimate. D-232 keeps the whole day under 35 minutes. */
 export function estimatedDayMinutes(questions: readonly QuestionPackage[], panels = 0): number {
   return Math.round((2 + panels * .5 + questions.reduce((n, q) => n + (["two-ways", "written-reason"].includes(q.item?.format ?? "") ? 1
     : ["show-work", "draw"].includes(q.item?.format ?? "") || ["solve", "evaluate"].includes(q.operation?.kind ?? "") ? .75 : .3), 0)) * 10) / 10;
@@ -105,4 +106,50 @@ export function dayTimeProblem(questions: readonly QuestionPackage[], panels = 0
   const minutes=estimatedDayMinutes(questions,panels);
   // (An estimate: a day fills its pages up to about 33 minutes and never reaches 35, Savar 2026-11-04.)
   return minutes >= 35 ? `The day needs an estimated ${minutes} minutes; it must stay under 35.` : null;
+}
+
+/** Reading and work estimate from the generated question, including all its answer boxes. */
+export function printedQuestionMinutes(p: QuestionPackage | null): number {
+  if (!p) return .5;
+  const text = p.text.trim().split(/\s+/).length / 80;
+  const f = p.item?.format;
+  const work = f === "written-reason" || f === "two-ways" ? 1.25 : f === "show-work" || f === "draw" ? .8 : .25;
+  const boxes = Math.max(0, (p.item?.regions.filter(r => r.kind === "box").length ?? 1) - 1) * .08;
+  return text + work + boxes;
+}
+
+interface TimePage {
+  content?: PageContent;
+  questions: readonly { number: number; package: QuestionPackage | null }[];
+}
+
+const TEACHING_PANELS = new Set(["worked-example", "watch-one", "reminder"]);
+
+/** L1/G1: Block.extra is whole-block only; DayContent.requiredTimeTarget is the plan's daily target.
+ * The draft's questions, panels and page turns determine both estimates. Unmapped questions stay required. */
+export function generatedDayTime(pages: readonly TimePage[]): { minutes: number; requiredMinutes: number; hasExtra: boolean } {
+  const estimate = (required: boolean) => {
+    let panels = 0, turns = 0;
+    const questions: TimePage["questions"][number][] = [];
+    for (const page of pages) {
+      const blocks = page.content?.kind === "day" ? page.content.blocks : [];
+      const kept = page.questions.filter(q => {
+        const owners = blocks.filter(b => b.items.includes(q.number));
+        return !required || !owners.length || owners.some(b => !b.extra);
+      });
+      questions.push(...kept);
+      panels += blocks.filter(b => TEACHING_PANELS.has(b.slot) && (!required || !b.extra)).length;
+      if (!required || kept.length || blocks.some(b => !b.extra)) turns++;
+    }
+    return Math.max(questions.reduce((n, q) => n + printedQuestionMinutes(q.package), 0) + turns * .35,
+      estimatedDayMinutes(questions.flatMap(q => q.package ? [q.package] : []), panels));
+  };
+  const hasExtra = pages.some(p => p.content?.kind === "day" && p.content.blocks.some(b => b.extra));
+  const minutes = estimate(false);
+  return { minutes, requiredMinutes: hasExtra ? estimate(true) : minutes, hasExtra };
+}
+
+export function requiredTimeProblem(minutes: number, target: number): string | null {
+  if (!Number.isFinite(target) || target <= 0) return "The required time target must be a positive number of minutes.";
+  return minutes > target + 1e-9 ? `Required work needs an estimated ${minutes.toFixed(1)} minutes; keep it at or below ${target} minutes.` : null;
 }

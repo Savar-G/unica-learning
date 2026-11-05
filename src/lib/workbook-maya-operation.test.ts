@@ -11,6 +11,7 @@ import { fakeWorkbookItems } from "./workbook-ai-fake";
 import { keySolver, toSolve } from "./workbook-solve-check";
 import { renderableDraft } from "./workbook-fit";
 import { workbookTemplate } from "./workbook-template";
+import { sampleBook } from "./workbook-sample-book";
 import { workbookQuality } from "./workbook-quality";
 import { readNumbers } from "./number-words";
 import { taskIdentity } from "./workbook-task-identity";
@@ -211,6 +212,35 @@ function assertPrintedOperands(pkg: QuestionPackage) {
   expect(operands.length, pkg.text).toBeGreaterThan(0);
   for (const operand of operands) expect(printed.has(operand), `${pkg.text}: hidden operand ${operand}`).toBe(true);
 }
+
+it("keeps Extra plan minutes unchanged when Maya adds a multi-step operation", () => {
+  const pkg = question("a + b * 2", 9, 3, 15);
+  pkg.text = "What is 9 + 3 × 2?";
+  pkg.item!.format = "write-number";
+  pkg.item!.regions = pkg.item!.regions.filter(r => r.kind === "box");
+  const attached = withWorkbookMayaOperation(pkg);
+  expect(attached.operation?.kind).toBe("evaluate");
+  expect(checkQuestionPackage(attached).ok).toBe(true);
+  const draft = sampleBook({ level: "U4", workbookId: "17fc5da1-2442-488a-a450-611a471e73e6", childId: "00000000-0000-4000-8000-000000000525", child: "Iris", number: 1 }).draft;
+  const plan = draft.pages.find(p => p.type === "how-plan")!;
+  const day = draft.pages.find(p => p.type === "practice")!;
+  if (day.content?.kind !== "day") throw new Error("missing day");
+  const numbers = Array.from({ length: 8 }, (_, i) => i + 1);
+  day.questions = numbers.map(number => ({ ...day.questions[0], number, package: pkg }));
+  day.content = { ...day.content, requiredTimeTarget: 20, blocks: [
+    { slot: "on-your-own", items: numbers }, { slot: "challenge", items: [], extra: true },
+  ] };
+  const original = { ...draft, pages: [plan, day] };
+  const current = { ...original, pages: original.pages.map(p => ({ ...p,
+    questions: p.questions.map(q => ({ ...q, package: attached })),
+  })) };
+  const template = workbookTemplate(), parts = { qr: "", qrUrl: "sample" };
+  const before = template.page(plan, parts, original)!;
+  expect(before).toContain('data-measure="slot-required-time-1">5 min');
+  expect(before).toContain("Extra blocks are optional.");
+  expect(template.page(plan, parts, current)).toBe(before);
+  expect(template.page(current.pages[1], parts, current)).toBe(template.page(day, parts, original));
+});
 
 const BC = curriculumFor("bc")!;
 describe("generated Maya coverage by print band", () => {

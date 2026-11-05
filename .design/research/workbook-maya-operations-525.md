@@ -1,6 +1,6 @@
 # Workbook teaching data, issue 525
 
-Base: `9b5c35f5` from `origin/main`. Branch: `site/wb-maya-operations`.
+Original base: `9b5c35f5` from `origin/main`. Branch: `site/wb-maya-operations`.
 Seed: `17fc5da1-2442-488a-a450-611a471e73e6`.
 
 The generator adds teaching data after selection, fit and book checks. The page editor calls the same checked attachment function before its number-preservation check. It compares the original printed data when it checks preservation. The module parses the printed relationship and the position of its unknown. It uses the checked template source only to verify the answer key. It never follows a derived answer construction as a teaching method. Existing operations stay intact. The template's answer regions stay intact. The package checker must accept the operation, answer, steps, wrong answer and smaller example together. Otherwise the module returns the original package.
@@ -91,3 +91,32 @@ The unfiltered `VITEST_MAX_WORKERS=2 npm test` ran once. It reported 316 passing
 Gate result: passed after the required isolated timeout reruns. No existing timeout limit changed. The original full-run log is `/tmp/580-test.log`. The full run also passed the new exact-five generated-book regression and the generated operand checks. The final coverage recount calls `createSession` for both saved samples and every question kind: `/tmp/580-final-coverage.jsonl`.
 
 The template audit proves key equality and printed operand provenance for the supported forms. The fake generated-book test proves the five inverse operations through the public generation and session interfaces. The strict print samples prove local text, layout and measurement preservation. The tests do not prove hosted storage or a model conversation. No paid API, live family write or Maya controller change is part of this correction.
+
+
+## Merge with main after review
+
+The scoped re-check passed at `4f41e66dcb6c2495c280237e68031548a49e0474` (`/tmp/pr580-recheck-report.md`). This round merges main through `cfefb53e9262307786265844370186876a316d7f`. It includes #582 Extra markup, #524 verified Watch out data, #587 scan print contracts and the #600 build correction. No changes were made to their data or CSS.
+
+The two conflict resolutions keep both shared-check imports and the renderer's new book argument plus the print guard. The plan page also uses the same guard for the book pages it reads to compute required minutes. A new public template regression first failed because teaching metadata changed the printed plan from 5 to 8 minutes. It passes after the guard is applied. The test also retains the Extra labels. All 101 focused tests passed. Logs: `/tmp/580-merge-extra-before.log` and `/tmp/580-merge-focused.log`.
+
+The new-main source archive is `/tmp/pr580-main-ee1143e0`, pinned at `ee1143e042f0da30d37f268a142e7704ec922963`. Main then advanced to `cfefb53e9262307786265844370186876a316d7f` with only the #600 notes-loader correction. All workbook source and sample tooling are identical between those two main commits. Both source versions ran the public fake sample CLI with strict physical fit, no store, days 1,5,10, concurrency 3 and the same fixed seed above. Main output: `/tmp/ui-review/580-merge-main`. Merged output: `/tmp/ui-review/580-merge-final`, with `--diff /tmp/ui-review/580-merge-main`.
+
+| Level | Pages | Questions | With operation | Maya accepts | Changed pages against new main |
+|---|---:|---:|---:|---:|---:|
+| U4 | 28 | 196 | 64 | 56 | 0 |
+| U16 | 28 | 223 | 115 | 101 | 0 |
+
+Both page-data files and both measurements files are byte-identical to new main. Both printed Markdown bodies are identical. Only the added coverage report differs. Every question-kind coverage row equals the pre-merge reviewed sample. Comparison: `/tmp/580-merge-print-comparison.json`. Public `createSession` recount: `/tmp/580-merge-coverage.jsonl`. Both fake runs passed with zero failed questions, fit failures, omissions and render problems.
+
+The final subscription replay pair ran once in parallel: `/tmp/ui-review/580-merge-real-u4` and `/tmp/ui-review/580-merge-real-u16`. U4 reused zero calls; U16 reused 47 calls, including 42 solve checks. Both made zero new AI calls and passed all generation and strict print checks. Their diffs against the previous main version mark all pages for incoming CSS. The new-main fake comparison above has zero changed pages. These replay samples do not add model-conversation proof.
+
+Merge gate: passed after the isolated known timeout and main's build correction.
+
+- The full unfiltered `VITEST_MAX_WORKERS=2 npm test` ran once: 349 passing files, one failed file; 14,584 passing tests and one 30-second timeout in the approved-policy `workbook-job` case. Log: `/tmp/580-merge-test.log`.
+- `VITEST_MAX_WORKERS=1 npx vitest run src/lib/workbook-job.test.ts`: 38 passed at the original limits. Log: `/tmp/580-merge-rerun-job.log`.
+- `npx eslint src`: passed with no output. Log: `/tmp/580-merge-eslint.log`.
+- The first build compiled but failed TypeScript on main's missing `grade` in `parent-maya-notes-server.ts`. Main merged #600 during this run. Its exact one-file correction is included. It changes no workbook source. Log: `/tmp/580-merge-build.log`.
+- The public notes-page tests passed all 36 cases after that correction. Targeted lint on the corrected loader also passed. Logs: `/tmp/580-merge-notes.log` and `/tmp/580-merge-notes-eslint.log`.
+- `RAYON_NUM_THREADS=2 npm run build` then passed compilation, TypeScript and page generation. Log: `/tmp/580-merge-build-fixed.log`.
+
+No existing timeout limit changed. There are no unresolved check failures. No paid API, live family write or new AI call ran.

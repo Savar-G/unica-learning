@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { gradeName } from "@/lib/assessment/grades";
 import { RUNNING_PLAN } from "@/lib/parent-plan";
 import { cad, priceWithOffer } from "@/lib/site";
+import { customerSubscriptions } from "@/lib/stripe-subscriptions";
 import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
@@ -187,13 +188,13 @@ async function planProduct(s: Stripe) {
  * D-139: starts the paid plan of a saved card when the first workbook arrives at your home. A monthly subscription at the card's
  * price on the child's customer, charged to the saved card: the free first month first (a 30-day trial, nothing
  * charged), then the full price on day 30 and each month after until the parent cancels. Refuses when the
- * customer already has a subscription that is not over, or no saved card. The card setup's id keys the create, so a
- * double click starts one subscription.
+ * customer already has a subscription that is not over, or no saved card. Throws, and starts nothing, when it cannot
+ * read the customer's whole list. The card setup's id keys the create, so a double click starts one subscription.
  */
 export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean }, now = new Date()): Promise<StartPlanOutcome> {
   if (p.deliveryConfirmed !== true) return { ok: false, error: "not_delivered" };
-  const current = await s.subscriptions.list({ customer: p.customer, status: "all", limit: 20 });
-  if (current.data.some((x) => x.status !== "canceled" && x.status !== "incomplete_expired")) return { ok: false, error: "already" };
+  const current = await customerSubscriptions(s, p.customer);
+  if (current.some((x) => x.status !== "canceled" && x.status !== "incomplete_expired")) return { ok: false, error: "already" };
   const cards = await s.paymentMethods.list({ customer: p.customer, type: "card", limit: 1 });
   const card = cards.data[0]?.id;
   if (!card) return { ok: false, error: "no_card" };
@@ -217,11 +218,12 @@ export type CancelPlanOutcome =
 /**
  * The parent's cancel button. A plan in its free month or a paid month stops at the end of that month and charges
  * nothing more (terms: "takes effect at the end of the month you are in"). A plan with a failed payment stops now, so
- * Stripe does not try the card again.
+ * Stripe does not try the card again. Throws when it cannot read the customer's whole list, so `no_plan` always means
+ * that no plan can charge the card.
  */
 export async function cancelPlan(s: Stripe, customer: string): Promise<CancelPlanOutcome> {
-  const current = await s.subscriptions.list({ customer, status: "all", limit: 20 });
-  const live = current.data.filter((x) => RUNNING_PLAN.has(x.status));
+  const current = await customerSubscriptions(s, customer);
+  const live = current.filter((x) => RUNNING_PLAN.has(x.status));
   if (live.length === 0) return { ok: false, error: "no_plan" };
   let changed = false;
   let endsAt: string | null = null;

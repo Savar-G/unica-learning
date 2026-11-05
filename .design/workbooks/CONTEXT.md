@@ -54,7 +54,7 @@ public curriculum page `/curriculum`.
 
 - **30 levels, U1 to U30**, from the BC Mathematics curriculum, Kindergarten to Grade 9: K = U1 to U3, Grade 1 = U4 to
   U6, ... Grade 9 = U28 to U30. Written "Level U12", "Levels U1-U9", or "U12" where space is tight.
-- **Never show a school grade** to a child or on any page. Parents may be told once that U1 to U30 cover K to Grade 9,
+- **Never show a school grade** to a child, on any printed page or on the desk. The parent dashboard and report may show it (D-243). Parents may be told once that U1 to U30 cover K to Grade 9,
   and a rough grade range per group of levels on the website.
 - **Layers:** level, unit (one BC standard, e.g. `3.3`), skill (skill-map id, e.g. `3.3-add-within-1000`), step (3 to 5
   small increases in difficulty inside a skill). The BC skill id is the stable key. Position codes (U12.3.2.4 = level

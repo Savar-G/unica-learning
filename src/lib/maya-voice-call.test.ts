@@ -74,6 +74,70 @@ async function open(s: ReturnType<typeof setup>, id: string) {
 }
 
 describe("a voice call", () => {
+  it("says how long a child's input spent on the model, and keeps the acknowledgements said across a new worker (#532)", async () => {
+    const s = setup();
+    const rule = ruleMayaModel();
+    let asked = 0;
+    s.seams.model = () => ({ ...rule, propose: async (input, signal) => { asked++; s.advance(2); return rule.propose(input, signal); } });
+    const view = await newVoiceCall(s);
+    const call = await open(s, view.id);
+    await call.start();
+    expect(call.acknowledged).toEqual([]);
+    expect(await call.acknowledge("ack.see.plain")).toBe(true);
+    expect(await call.acknowledge("ack.see.plain")).toBe(true);
+    expect(call.acknowledged).toEqual(["ack.see.plain"]);
+    asked = 0;
+    const turn = await call.child("I got 56.");
+    // The rule player's proposal can be refused, so a repair can run: each call is counted once, in its own place.
+    expect(asked).toBeGreaterThan(0);
+    expect(turn.time!.modelMs).toBeGreaterThanOrEqual(2000);
+    expect(turn.time!.modelMs + turn.time!.repairMs).toBe(asked * 2000);
+    expect(turn.time!.reviewMs).toBe(0);
+    await call.settled();
+    const next = await open(s, view.id);
+    expect(next.acknowledged).toEqual(["ack.see.plain"]);
+    // The transcript holds only what the session accepted.
+    expect((await s.calls.view(view.id))!.transcript.map((l) => l.text).join(" ")).not.toContain("Let me see.");
+  });
+
+  it("saves an acknowledgement before it is said, with no half-done turn, and a replaced worker cannot save one (R577-3)", async () => {
+    const s = setup();
+    const rule = ruleMayaModel();
+    let release = () => {};
+    let hold = false;
+    let asked = 0;
+    s.seams.model = () => ({ ...rule, propose: async (input, signal) => {
+      asked++;
+      if (hold) await new Promise<void>((r) => { release = r; });
+      return rule.propose(input, signal);
+    } });
+    const view = await newVoiceCall(s);
+    const call = await open(s, view.id);
+    await call.start();
+    await call.settled();
+    const saved = () => s.store.rows()[0];
+    const before = { revision: saved().revision, text: JSON.stringify(saved().live!.text) };
+    // The model is still working: the phrase's save holds the last saved session, not the turn in progress.
+    hold = true;
+    const seen = asked;
+    const turn = call.child("I got 56.");
+    await vi.waitFor(() => expect(asked).toBeGreaterThan(seen));
+    expect(await call.acknowledge("ack.see.plain")).toBe(true);
+    expect(saved().revision).toBe(before.revision + 1);
+    expect(saved().live!.acknowledged).toEqual(["ack.see.plain"]);
+    expect(JSON.stringify(saved().live!.text)).toBe(before.text);
+    // A second worker reads it at once. The first can then save nothing, and is told so.
+    const next = await open(s, view.id);
+    expect(next.acknowledged).toEqual(["ack.see.plain"]);
+    expect(await call.acknowledge("ack.see.here")).toBe(false);
+    expect(call.replaced).toBe(true);
+    expect(next.acknowledged).toEqual(["ack.see.plain"]);
+    expect(saved().live!.acknowledged).toEqual(["ack.see.plain"]);
+    hold = false;
+    release();
+    await turn;
+  });
+
   it("is made live and not started, and takes no typed turns while the worker holds it", async () => {
     const s = setup();
     const view = await newVoiceCall(s);

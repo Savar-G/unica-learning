@@ -9,6 +9,8 @@ import { StageChip } from "@/components/admin-dashboard-parts";
 import { FamilyRecords, RecordFacts } from "@/components/admin-records";
 import { DeleteFamily } from "@/components/delete-family";
 import { TestAccount } from "@/components/test-account";
+import { ChatFamily } from "@/components/chat-family";
+import { chatFamilyState } from "@/lib/admin-maya-chat";
 
 export default async function ParentPage({ params }: PageProps<"/admin/parents/[id]">) {
   const admin = await requireAdmin();
@@ -16,11 +18,11 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
   // the family's stage and payment, the same way the dashboard works them out (D-099). All three reads run at once,
   // but the family decides first: an unknown family is a 404 even when another read failed.
   if (!isUuid(id)) notFound();
-  const others = Promise.all([dashboardRows(admin), testAccountState(admin, id)]);
+  const others = Promise.all([dashboardRows(admin), testAccountState(admin, id), chatFamilyState(admin, id)]);
   others.catch(() => {});
   const family = await getParent(admin, id);
   if (!family) notFound();
-  const [rows, test] = await others;
+  const [rows, test, chat] = await others;
   const p = family.parent;
   const f = buildFamilies(rows).find((x) => x.id === p.id);
   const now = new Date().toISOString();
@@ -37,6 +39,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
     ]} />
     <p className="adm-row"><Link href={`${ADMIN_PATH}?family=${p.id}${test.marked || test.admin ? "&tests=1" : ""}`}>Open in the dashboard</Link><Link href={`${ADMIN_PATH}/activity?family=${p.id}${test.marked || test.admin ? "&tests=1" : ""}`}>Open in the activity log</Link></p>
     <TestAccount parentId={p.id} marked={test.marked} admin={test.admin} />
+    <ChatFamily parentId={p.id} listed={chat.listed} rehearsal={chat.rehearsal} test={chat.test} />
     <FamilyRecords family={family} />
     <DeleteFamily parentId={p.id} email={p.email} />
   </AdminFrame>;

@@ -96,7 +96,8 @@ export async function samplePages(draft: GeneratedWorkbook, template: WorkbookTe
     ];
     const text = [`All printed text: ${clean(body.textContent)}`, "", ...questions].join("\n");
     return { number: page.number, kind: page.type, title, instruction, text, warnings,
-      layout: createHash("sha256").update(template.css).update(html).digest("hex") };
+      // (A scan mark's measure name prints nothing, so it does not count as a layout change.)
+      layout: createHash("sha256").update(template.css).update(html.replace(/ data-measure="scan-[a-z]+"/g, "")).digest("hex") };
   }); } finally { await window.happyDOM.close(); }
 }
 
