@@ -3,7 +3,7 @@ import type { AdStep } from "@/lib/ad-visit-steps";
 import type { AnswerChange } from "@/lib/answer-events";
 import type { EventResult, EventSource, EvidenceKind } from "@/lib/learning-events";
 import type { QuestionRef } from "@/lib/question-package";
-import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, StoredTest } from "@/lib/assessment";
+import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, SkillEvidence, SkillState, SkillStateReason, Stage3Route, StoredTest } from "@/lib/assessment";
 import type { KnownPlan } from "@/lib/parent-plan";
 import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
@@ -39,7 +39,7 @@ type ColumnTypes = KnownColumns<{
   anonymous_tests: { copy: AnonymousTestCopy };
   answers: { answer_changes: AnswerChange[] | null };
   assessment_facts: { test: FactsTest };
-  assessments: { status: AttemptStatus; province: Province; route: Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
+  assessments: { status: AttemptStatus; province: Province; route: Route | null; stage3_route: Stage3Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
   card_setups: { plan: PlanId };
   child_plan_states: { kind: KnownPlan["kind"] };
   children: { province: Province };
@@ -58,6 +58,7 @@ type ColumnTypes = KnownColumns<{
   maya_wording_history: { heard: WordingHistory };
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
+  skill_state_history: { state: SkillState; reason: SkillStateReason; evidence_source: SkillEvidence };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
   scan_calibrations: { state: "running" | "ready" | "refused"; result: ScanCalibrationResult | null };
   workbooks: { status: WorkbookStatus; print_manifest: ScanManifest | null };
@@ -101,6 +102,8 @@ type NullArgs = KnownArgs<{
   admin_template_stats_v2: "school_grade" | "curriculum";
   // An idle worker has no run; a worker outside git has no build.
   beat_workbook_worker: "p_build" | "p_run" | "p_note";
+  save_child_profile_and_skill_changes: "p_assessment" | "p_expected";
+  save_child_profile_and_skill_changes_from_tests: "p_assessment" | "p_expected";
   change_answer: AnswerNulls | "p_work_path" | "p_strokes_path";
   change_answer_keep_drawing: AnswerNulls;
   claim_maya_weekly: "p_retry";

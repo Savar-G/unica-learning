@@ -31,6 +31,17 @@ function input(answered: number, over: Partial<ProgressInput> = {}): ProgressInp
 }
 
 describe("testProgress", () => {
+  it("counts the third stage once stage 2 locked into it, and names it Part 3 (D-282)", () => {
+    const lengths = { stage1: 18, up: 24, stay: 18, down: 18, stage3Up: 8, stage3Down: 8 };
+    const open = { lengths, route: "up", nextPrompt: "Next?" } as const;
+    // On the Part 2 grid, before the lock: the test ends at Part 2 as far as anyone can tell.
+    expect(testProgress(input(42, { ...open, lastShown: null }), NOW)).toMatchObject({ total: 42, part3: 0, phase: "check", current: null });
+    const going = testProgress(input(43, { ...open, stage3Route: "up" }), NOW);
+    expect(going).toMatchObject({ total: 50, part3: 8, answered: 43, current: { number: 44, part: "Part 3" } });
+    // Locked with no third stage: same as a test that had none.
+    expect(testProgress(input(42, { ...open, stage3Route: "none", lastShown: null }), NOW)).toMatchObject({ total: 42, part3: 0, phase: "check" });
+  });
+
   it("names the next question to answer, its part and prompt, and when it was shown", () => {
     const p = testProgress(input(25, { breakStartedAt: iso(16), breakEndedAt: iso(20), factsStartedAt: iso(21), factsAnswered: 37 }), NOW);
     expect(p).toMatchObject({ phase: "question", text: "Next question: 26 of 42", short: "Next: Q 26 of 42", answered: 25, total: 42, part1: 21, open: true, since: iso(27), sinceText: "shown" });

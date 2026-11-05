@@ -25,7 +25,7 @@ begin
   select * into c from public.claim_family_delete_attempt(p, t0 + interval '15 minutes', 5, 900);
   if c.out_status <> 'open' or c.out_attempts_left <> 4 then raise exception 'after lock: % left %', c.out_status, c.out_attempts_left; end if;
 
-  -- A right password clears the count.
+  -- A right code clears the count.
   perform public.clear_family_delete_attempts(p);
   select * into c from public.claim_family_delete_attempt(p, t0, 5, 900);
   if c.out_attempts_left <> 4 then raise exception 'after clear left %', c.out_attempts_left; end if;
@@ -102,7 +102,7 @@ begin
   select count(*) into n from public.family_deletions where parent_id = p and reason = 'request' and phase = 'checking';
   if n <> 1 then raise exception 'request rows: %', n; end if;
 
-  -- A second request is the same request. The password claim still works for a retry.
+  -- A second request is the same request. The tries claim still works for a retry.
   set local role service_role;
   r := public.request_parent_family_deletion(p);
   if r <> 'requested' then raise exception 'second request: %', r; end if;

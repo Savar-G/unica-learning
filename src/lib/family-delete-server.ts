@@ -3,13 +3,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import type { Database } from "@/lib/database";
 import { sendEmail } from "@/lib/email-delivery";
+import type { DeleteCodeStore } from "@/lib/family-delete-code";
 import type { AttemptClaim, FamilyDeleteStore, FamilyPlans } from "@/lib/family-delete";
 import { familyStripeCustomers, runFamilyDeletion } from "@/lib/family-deletion-store";
 import { runningPlans, stopPlanNow } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 
-// The self-serve delete's seams for the live site (#556): the database functions of migrations family_delete_self_serve and family_delete_hold,
-// and Stripe with the site's key. The deletion worker's restricted key has no subscription write, so plans stop here.
+// The self-serve delete's seams for the live site (#556): the database functions of migrations family_delete_self_serve, family_delete_hold,
+// family_delete_code, family_delete_code_db_clock and family_delete_code_begin_db_clock, and Stripe with the site's key. The deletion worker's restricted key has no subscription write, so plans stop here.
 
 const CHECKS = ["ready", "busy", "protected", "missing"] as const;
 const HOLDS = ["held", "busy", "protected", "missing"] as const;
@@ -55,6 +56,34 @@ export function supabaseDeleteStore(db: SupabaseClient<Database>): FamilyDeleteS
       const { data, error } = await db.rpc("request_parent_family_deletion_held", { p: parent, hold: token });
       if (error) throw new Error(`Family delete request: ${error.code}`);
       return answer(data, REQUESTS);
+    },
+  };
+}
+
+export function supabaseDeleteCodes(db: SupabaseClient<Database>): DeleteCodeStore {
+  return {
+    async begin(parent, hash, policy) {
+      const { data, error } = await db.rpc("begin_family_delete_code", {
+        p_parent: parent, p_hash: hash, p_ttl_seconds: policy.ttlMs / 1000,
+        p_per_window: policy.perWindow, p_window_seconds: policy.windowMs / 1000, p_per_day: policy.perDay, p_day_seconds: policy.dayMs / 1000,
+      });
+      if (error) throw new Error(`Family delete code: ${error.code}`);
+      const row = data[0];
+      if (row?.out_status === "ok") return { kind: "ok" };
+      if ((row?.out_status === "too_many" || row?.out_status === "locked") && row.out_retry_at) return { kind: row.out_status, until: Date.parse(row.out_retry_at) };
+      throw new Error("Family delete code: unexpected answer");
+    },
+    async read(parent) {
+      const { data, error } = await db.rpc("read_family_delete_code", { p_parent: parent });
+      if (error) throw new Error(`Family delete code read: ${error.code}`);
+      const row = data[0];
+      return row?.out_hash ?? null;
+    },
+    async spend(parent, hash) {
+      const { data, error } = await db.rpc("consume_family_delete_code", { p_parent: parent, p_hash: hash });
+      if (error) throw new Error(`Family delete code spend: ${error.code}`);
+      if (typeof data !== "boolean") throw new Error("Family delete code spend: unexpected answer");
+      return data;
     },
   };
 }

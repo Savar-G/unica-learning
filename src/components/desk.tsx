@@ -52,6 +52,8 @@ export interface DeskCard {
 
 type DeskProps = {
   name: string | null;
+  /** The child this desk is open for: the chat's ink on this device is kept under this child (R639c). */
+  childId: string;
   notice?: string | null;
   chatUsage?: ChatUsage | null;
   /** Why this child has no chat (a younger child), in place of "start soon". */
@@ -90,7 +92,7 @@ export function Desk(props: DeskProps) {
   const books = useRef<HTMLDialogElement>(null);
   const talk = useRef<HTMLDivElement>(null);
   const still = useStill();
-  const chat = useDeskChat(props.chatUsage ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked });
+  const chat = useDeskChat(props.chatUsage ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked }, props.childId);
 
   useEffect(() => {
     if (ready?.openPicker) picker.current?.showModal();
@@ -187,7 +189,7 @@ export function Desk(props: DeskProps) {
         </div>}
 
         {chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
-          saved={chat.savedBoard?.id === chat.chat.id ? chat.savedBoard.history : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)} /> : <OurBoard
+          restore={chat.callInk?.id === chat.chat.id ? chat.callInk.log : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)} /> : <OurBoard
           key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}
           question={card?.board ?? null}
           at={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
