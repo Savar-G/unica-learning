@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { answersAddUp } from "@/lib/area-level-check";
 import { fromRemovedRound, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
@@ -21,7 +22,8 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // The Overview (#560): the scored answers of a finished test need the stored test, which only the secret key reads,
 // filtered on the parent's id (the test attempt store's `load`, as the start screen reads an open test); the report's level
 // comes from the parent's session. The scans, the pages of a shipped workbook and the learning card come from the session.
-// The test is replayed by the assessment core (restoreSession, testAreaAnswers), as `npm run area-levels:check` does.
+// The test is replayed by the assessment core (restoreSession, testAreaAnswers), as `npm run area-levels:check` does, and
+// compared with the stored score with the same check: a replay that differs gives no answers, so no bars.
 // Plan state: the plan state table does not exist yet (#548), so `plans` returns no rows and every plan reads as
 // `unknown`. No family can be `ended` until #548 fills this read in.
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
@@ -80,16 +82,20 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
     },
     async testResult(assessmentId) {
       if (!admin) throw new Error("test result read: no secret key");
-      const [loaded, report] = await Promise.all([
+      const [loaded, report, stored] = await Promise.all([
         attemptStore(admin).load(parent, assessmentId),
         session.from("reports").select("model").eq("assessment_id", assessmentId).maybeSingle(),
+        admin.from("assessments").select("placement").eq("id", assessmentId).eq("parent_id", parent).maybeSingle(),
       ]);
       if (report.error) throw new Error(`report read: ${report.error.message}`);
+      if (stored.error) throw new Error(`stored score read: ${stored.error.message}`);
       if (!loaded || !report.data) return null;
       let answers: AreaAnswer[] | null = null;
       try {
         // D-145: the removed extra round's answers are left out, as the test attempt module leaves them out.
-        answers = testAreaAnswers(restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null));
+        const replay = testAreaAnswers(restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null));
+        // Bars that count other answers than the report did would tell a second story beside the Level tile.
+        if (stored.data?.placement && answersAddUp(replay, stored.data.placement)) answers = replay;
       } catch (e) {
         console.error("[parent-view] test replay failed", e instanceof Error ? e.message : "failed");
       }

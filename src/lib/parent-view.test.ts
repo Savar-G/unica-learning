@@ -307,7 +307,7 @@ describe("the Overview (#560)", () => {
 
   it("before the first test: no tile, no bar, and Start the test as the one thing to do", async () => {
     expect(await read({})).toEqual({
-      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], workbook: null, action: "start_test",
+      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], resultPreparing: false, workbook: null, action: "start_test",
     });
   });
 
@@ -326,10 +326,26 @@ describe("the Overview (#560)", () => {
     expect((await read({ ...tested, results: [result("t", { level: stored })] }))?.level?.earlySign).toBe(earlySign);
   });
 
-  it("uses the latest finished test that has a report", async () => {
-    const tests = [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR }), test("newest", { completedAt: NOW - HOUR })];
+  it("uses the newest finished test", async () => {
+    const tests = [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })];
     const view = await read({ tests, reports: [report("old"), report("new")], results: [result("old", { level: level({ working: 1 }) }), result("new", { level: level({ working: 4 }) })] });
     expect(view?.level?.working).toBe(4);
+    expect(view?.resultPreparing).toBe(false);
+  });
+
+  it("the newest finished test with no report yet: no level and no bars from any test, and the new result is being prepared", async () => {
+    const tests = [test("old", { completedAt: NOW - 90 * HOUR }), test("newest", { completedAt: NOW - HOUR })];
+    const view = await read({ ...delivered, tests, reports: [report("old")], results: [result("old", { level: level({ working: 1 }), answers: at("number", 3, 4, 0) })] });
+    expect(view?.child.stage).toBe("active");
+    expect(view?.level).toBeNull();
+    expect(view?.areas).toEqual([]);
+    expect(view?.resultPreparing).toBe(true);
+  });
+
+  it("an open test does not hide the newest finished test's result", async () => {
+    const view = await read({ tests: [test("t"), open("o")], reports: [report("t")], results: [result("t", { level: level({ working: 2 }) })] });
+    expect(view?.level?.working).toBe(2);
+    expect(view?.resultPreparing).toBe(false);
   });
 
   it("the area bars follow the area rule against the school grade, with an Early sign below 4 answers", async () => {
@@ -413,8 +429,24 @@ describe("the Overview (#560)", () => {
       expect((await read(ended))?.child.stage).toBe("ended");
       expect((await read(ended))?.action).toBe("learning_card_empty");
     });
-    it("a test still open is not Start the test", async () => {
-      expect((await read({ tests: [open("t")] }))?.action).toBeNull();
+    it("no finished test and an open test: the test action continues it, before every other item", async () => {
+      expect((await read({ tests: [open("t")], ...empty, pinSet: false }))?.action).toBe("continue_test");
+      expect((await read({ ...delivered, tests: [open("t")], plans: [{ ...own, kind: "payment_failed" }] }))?.action).toBe("continue_test");
+    });
+    it("no finished test and a test that ran out of time: the test action starts a new one", async () => {
+      expect((await read({ tests: [open("t", { status: "expired", resumeUntil: NOW - HOUR })] }))?.action).toBe("start_test");
+      expect((await read({ tests: [open("t", { resumeUntil: NOW - HOUR })] }))?.action).toBe("start_test");
+    });
+    it("a finished test and a new open test: no test action", async () => {
+      expect((await read({ tests: [test("t"), open("o")], reports: [report("t")], results: [result("t")] }))?.action).toBeNull();
+    });
+    it("a finished test with no report yet: no test action", async () => {
+      expect((await read({ tests: [test("t")] }))?.action).toBeNull();
+    });
+    it("an ended plan with an open test: no test action", async () => {
+      const ended = { ...delivered, tests: [open("t")], plans: [{ ...own, kind: "ended" as const }] };
+      expect((await read(ended))?.child.stage).toBe("ended");
+      expect((await read(ended))?.action).toBeNull();
     });
   });
 

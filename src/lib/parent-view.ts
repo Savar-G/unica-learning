@@ -100,7 +100,7 @@ export interface ParentViewReader {
 export interface TestResultRecord {
   /** The stored report's level (public.reports.model), before storedLevelCertainty. */
   level: ReportModel["level"];
-  /** One answer per scored question, tagged with its reported area and grade (testAreaAnswers); null when the stored test cannot be replayed. */
+  /** One answer per scored question, tagged with its reported area and grade (testAreaAnswers); null when the stored test cannot be replayed, or the replay does not add up to the stored score. */
   answers: AreaAnswer[] | null;
 }
 export interface SavedScanRecord {
@@ -270,14 +270,16 @@ export interface LevelTileView {
 }
 
 /** One thing to do, in the spec's order; the Overview shows only the first that applies (D-248). */
-export type ActionItem = "start_test" | "payment_failed" | "no_pin" | "learning_card_empty";
+export type ActionItem = "start_test" | "continue_test" | "payment_failed" | "no_pin" | "learning_card_empty";
 
 export interface OverviewView {
   child: ChildView;
-  /** Null before the first finished test with a report. */
+  /** From the newest finished test. Null before the first one, and while its report is not ready. */
   level: LevelTileView | null;
-  /** One bar per reported area with answers; empty before the first finished test. */
+  /** One bar per reported area with answers, from the same test; empty when `level` is null. */
   areas: AreaBarView[];
+  /** The newest finished test's report is not ready, so no older result shows in its place. */
+  resultPreparing: boolean;
   /** The current workbook and its scanned days; null when no day of it is scanned. */
   workbook: { number: number; scannedDays: number; days: number } | null;
   action: ActionItem | null;
@@ -309,8 +311,9 @@ function scannedDays(pages: readonly WorkbookPageRecord[], scans: readonly Saved
 /**
  * One child's Overview (#560, spec #544): the Level tile, the area bars, This workbook and the one action card. Null for
  * a child that is not the parent's, and for a child whose stage has no Overview. A panel with no data is null or empty.
- * The level and the bars come from the latest finished test with a report, scored by the assessment core; nothing comes
- * from a raw profile, a learning event, a Maya call or an AI finding. Marked pages do not count yet: no marking is live.
+ * The level and the bars come from the newest finished test, scored by the assessment core; while its report is not
+ * ready, they come from no test. Nothing comes from a raw profile, a learning event, a Maya call or an AI finding. Marked
+ * pages do not count yet: no marking is live.
  */
 export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
   const [child, children, family, tests, reports, workbooks, plans, cards, pinSet, scans] = await Promise.all([
@@ -322,9 +325,10 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
 
   const own = tests.filter((t) => t.childId === child.id);
   const latest = own
-    .filter((t) => t.status === "completed" && t.completedAt !== null && reports.some((r) => r.assessmentId === t.id))
+    .filter((t) => t.status === "completed" && t.completedAt !== null)
     .reduce<TestRecord | null>((best, t) => (!best || t.completedAt! > best.completedAt! ? t : best), null);
-  const result = latest ? await reader.testResult(latest.id) : null;
+  const reportReady = latest !== null && reports.some((r) => r.assessmentId === latest.id);
+  const result = reportReady ? await reader.testResult(latest.id) : null;
   const level: LevelTileView | null = latest && result ? {
     working: result.level.working,
     earlySign: result.level.confidence === "low" || storedLevelCertainty(result.level) === "early-sign",
@@ -345,8 +349,8 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
 
   const card = cards.find((c) => c.childId === child.id);
   const items: [ActionItem, boolean][] = [
-    // A saved card with no finished test: the test comes first (spec #544, "Stage order").
-    ["start_test", !child.readOnly && testFact(own, reports.filter((r) => r.childId === child.id), now).state === "none"],
+    // A saved card with no finished test: the test comes first (spec #544, "Stage order"). An open test continues.
+    [own.some((t) => attemptState(t, now) === "open") ? "continue_test" : "start_test", !child.readOnly && latest === null],
     ["payment_failed", plans.find((p) => p.childId === child.id)?.kind === "payment_failed"],
     // "Pages to scan" waits for marking (#457, #475).
     ["no_pin", child.currentWorkbook !== null && pinSet === false],
@@ -354,5 +358,5 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
   ];
   const action = ACTION_STAGES.has(child.stage) ? items.find(([, applies]) => applies)?.[0] ?? null : null;
 
-  return { child, level, areas, workbook, action };
+  return { child, level, areas, resultPreparing: latest !== null && !reportReady, workbook, action };
 }
