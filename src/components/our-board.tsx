@@ -11,9 +11,9 @@
 // to her while she writes, then back to the child), the child keeps the pen tools all through the chat, and every
 // change goes to `onChange`, which sends the board to the call.
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { boardDraftKey, chatBoardKey, childStrokes, createHistory, keptStroke, loadDraft, markClosed, markOpen, mayaSteps, mayaWrites, mayaWritingEnds, penHasMoved, penHolder, restoreKept, type BoardHistory, type DraftStore } from "@/lib/board-history";
+import { boardDraftKey, chatBoardKey, chatBoardView, childStrokes, createHistory, keptStroke, loadDraft, markClosed, markOpen, mayaSteps, mayaWrites, mayaWritingEnds, penHasMoved, penHolder, restoreKept, type BoardHistory, type DraftStore } from "@/lib/board-history";
 import type { Batch } from "@/lib/board";
-import { BATCH_GAP_MS, fitView, timeline } from "@/lib/board-svg";
+import { BATCH_GAP_MS, timeline } from "@/lib/board-svg";
 import { createBoardSession, type SessionNote } from "@/lib/board-session";
 import { boardWidthOf, canvasViewBox, eraserLine, inkLayers, inkOutline, parseViewBox, toBoard, type Box, type CapturePoint, type InkLayer, type ViewBox } from "@/lib/child-ink-svg";
 import { leaseLocks, openBoardTab, type BoardChannel, type BoardLocks, type BoardMessage, type BoardTab, type TabTimers } from "@/lib/board-tab";
@@ -147,6 +147,8 @@ export interface OurBoardProps {
   chat?: { id: string; batches: readonly Batch[]; carry?: { book: string; page: number; question: number | null } };
   /** Hears every change of the board this tab holds (a chat sends it to the call). */
   onChange?: (history: BoardHistory) => void;
+  /** A copy of this board the call keeps (a chat, R625b-4): the board is rebuilt on it, keeping its own newer lines. */
+  saved?: BoardHistory | null;
   label: string;
   caption: ReactNode;
   /** Less motion: Maya's strokes show at once. */
@@ -191,7 +193,7 @@ const NOTES: Record<SessionNote, string> = {
   not_added: NOT_ADDED_NOTE,
 };
 
-function LiveBoard({ question, chat, onChange, label, caption, still, draftKey, store }: OurBoardProps & { draftKey: string; store: DraftStore | null }) {
+function LiveBoard({ question, chat, onChange, saved, label, caption, still, draftKey, store }: OurBoardProps & { draftKey: string; store: DraftStore | null }) {
   const [restored] = useState(() => (store ? loadDraft(store, draftKey) : null));
   const [session] = useState(() =>
     createBoardSession({
@@ -230,9 +232,12 @@ function LiveBoard({ question, chat, onChange, label, caption, still, draftKey, 
   const mayaIds = history.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : [])).join("\n");
   // Only a new batch changes Maya's steps: the child's later ink never moves what she wrote before it.
   const isChat = chat !== undefined;
+  // Her view takes in the child's ink too, so a line drawn before her reply stays in sight (R625b-6). It changes only
+  // when she writes, never under the child's pen.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const steps = useMemo(() => (isChat ? mayaSteps(history) : null), [isChat, mayaIds]);
-  const chatView = useMemo(() => (steps ? fitView(steps.flatMap((s) => s.drawn), 0.06) : null), [steps]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const chatView = useMemo(() => (isChat ? chatBoardView(history) : null), [isChat, mayaIds]);
   const [played, setPlayed] = useState(restored ? Infinity : 0);
   const handTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const handAt = useRef<number | null>(null);
@@ -358,6 +363,11 @@ function LiveBoard({ question, chat, onChange, label, caption, still, draftKey, 
     clearTimeout(handTimer.current);
     handTimer.current = undefined;
   }, []);
+
+  // The call's copy of a chat's board: a board with no draft takes it back, and a newer one is put together with this one.
+  useEffect(() => {
+    if (saved && role === "holder") session.rebase(saved);
+  }, [saved, role, session]);
 
   // Every change of the board this tab holds goes to the caller (a chat sends it to the call).
   const onChangeRef = useRef(onChange);

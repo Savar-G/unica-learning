@@ -163,11 +163,14 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
       if (error) throw new Error(`maya call pending notes: ${error.message}`);
       return (data ?? []).map(fromCallRow);
     },
-    async saveInk(id, ink) {
-      if (!UUID.test(id)) return "not_found";
+    async saveInk(id, owner, ink) {
+      if (!UUID.test(id) || !UUID.test(owner.parentId) || !UUID.test(owner.childId)) return "not_found";
       // One statement compares and writes (R625-2); the revision and the call's write time stay (#534). The board goes as
       // the JSON of its saved copy: Maya's commands are plain JSON, which their type (unknown) does not say.
-      const { data, error } = await admin.rpc("save_maya_call_ink", { p_id: id.toLowerCase(), p_ink: JSON.parse(encodeHistory(ink)) as Json, p_gap_ms: INK_SAVE_GAP_MS, p_after_end_ms: INK_AFTER_END_MS });
+      const { data, error } = await admin.rpc("save_maya_call_ink", {
+        p_id: id.toLowerCase(), p_parent: owner.parentId.toLowerCase(), p_child: owner.childId.toLowerCase(),
+        p_ink: JSON.parse(encodeHistory(ink)) as Json, p_gap_ms: INK_SAVE_GAP_MS, p_after_end_ms: INK_AFTER_END_MS,
+      });
       if (error) throw new Error(`maya call save ink: ${error.message}`);
       if (data === "saved" || data === "stale" || data === "busy" || data === "closed" || data === "not_found") return data;
       throw new Error(`maya call save ink: unexpected answer ${String(data)}`);

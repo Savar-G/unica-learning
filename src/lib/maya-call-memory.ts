@@ -60,11 +60,11 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
       wrote(id);
       return true;
     },
-    async saveInk(id, ink) {
+    async saveInk(id, owner, ink) {
       // No await between the checks and the write: the database function is one statement too.
       const now = (options.clock ?? Date.now)();
       const r = rows.get(id);
-      if (!r || r.mode !== "text") return "not_found";
+      if (!r || r.mode !== "text" || r.kind !== "chat" || r.parentId !== owner.parentId || r.childId !== owner.childId) return "not_found";
       if (r.status === "ended" && r.endedAt && Date.parse(r.endedAt) < now - INK_AFTER_END_MS) return "closed";
       if ((inkAt.get(id) ?? -Infinity) > now - INK_SAVE_GAP_MS) return "busy";
       if (r.childInk && r.childInk.revision > ink.revision) return "stale";

@@ -32,6 +32,7 @@ import {
   saveDraft,
   takePen,
   undo,
+  chatBoardView,
   refusedBatches,
   withChildInk,
   type BoardHistory,
@@ -502,5 +503,24 @@ describe("the call's board with the child's ink (#534)", () => {
     expect(historyLength(merged)).toBeLessThanOrEqual(60_000);
     expect(childStrokes(merged)).toHaveLength(2);
     expect(decodeHistory(encodeHistory(merged))).not.toBeNull();
+  });
+
+  it("R625b-6: a chat's board view keeps the child's ink in sight when Maya's work comes after it", () => {
+    let h = ok(takePen(createHistory(), 0));
+    // A line far down the board, before Maya writes anything.
+    h = ok(drawStroke(h, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1, 0.8, 100], [0.4, 0.88, 300]] }));
+    h = ok(givePen(h, 400));
+    h = ok(mayaWrites(h, QUESTION, 500));
+    const [x, y, w, hh] = chatBoardView(h).split(" ").map(Number);
+    for (const [px, py] of [[0.1, 0.8], [0.4, 0.88]]) {
+      expect(px * 1000).toBeGreaterThan(x);
+      expect(px * 1000).toBeLessThan(x + w);
+      expect(py * 1000).toBeGreaterThan(y);
+      expect(py * 1000).toBeLessThan(y + hh);
+    }
+    // Maya's work is in sight too.
+    const maya = boardPaths(boardScene(h)).flatMap((p) => p.pts);
+    expect(Math.min(...maya.map((p) => p[0])) * 1000).toBeGreaterThan(x);
+    expect(Math.max(...maya.map((p) => p[1])) * 1000).toBeLessThan(y + hh);
   });
 });

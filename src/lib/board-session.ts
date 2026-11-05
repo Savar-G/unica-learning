@@ -18,8 +18,10 @@ import {
   mayaWritingEnds,
   penHasMoved,
   keptStroke,
+  mayaSkipped,
   mayaWrites,
   penHolder,
+  rebaseOnto,
   restoreKept,
   takePen,
   undo,
@@ -123,11 +125,17 @@ export interface BoardSession {
   /**
    * Maya's reply in a chat (#534): the batches of `batches` not on the board yet. The pen goes to her first (a stroke in
    * progress ends as if the pointer went up, and is kept), then she writes them; the child's ink stays. Only in the tab
-   * that holds the board. Returns how many batches went on the board; a batch the board refuses is not tried again.
+   * that holds the board. Returns how many batches went on the board. A batch the board refuses (it would cover the
+   * child's ink) is recorded as skipped where it came (R625b-1), and not tried again.
    */
   mayaReply(batches: readonly Batch[]): number;
   /** Maya has finished writing her reply: the pen passes back to the child, in the tab that holds the board. */
   handBack(): void;
+  /**
+   * The call's saved copy of this board (R625b-4), when the draft was lost or a save found a newer copy: the board is
+   * rebuilt on it, with this tab's own lines it lacks added back (`rebaseOnto`). The child keeps the pen if they had it.
+   */
+  rebase(stored: BoardHistory): void;
   /** The one way out of holding the board. */
   endHolding(reason: EndReason): void;
   /** The board tab's news: this tab's role, and the stored board. */
@@ -263,8 +271,6 @@ export function createBoardSession(o: SessionOptions): BoardSession {
 
   /** Maya's question is written: the pen passes to the child, once, when this tab holds a board whose pen never moved. */
   let written = false;
-  /** Maya's batches the board refused: never tried again. */
-  const refusedBatches = new Set<string>();
   const passPen = () => {
     if (!written || role !== "holder" || penHasMoved(history)) return;
     const passed = mayaFinished(history, now());
@@ -370,31 +376,53 @@ export function createBoardSession(o: SessionOptions): BoardSession {
     },
     mayaReply(batches) {
       if (!holds()) return 0;
-      const on = new Set(history.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : [])));
-      const missing = batches.filter((b) => !on.has(b.transactionId) && !refusedBatches.has(b.transactionId));
+      const on = new Set(history.events.flatMap((e) => (e.kind === "maya" || e.kind === "skipped" ? [e.batchId] : [])));
+      const missing = batches.filter((b) => !on.has(b.transactionId));
       if (missing.length === 0) return 0;
       // The pen goes to Maya: a stroke in progress is ended first, as if the pointer went up.
       if (live) penUp(live.pointer);
       if (role !== "holder") return 0;
-      let next = history;
-      if (penHolder(next) === "child") {
-        const given = givePen(next, now());
-        if (given.ok) next = given.history;
-      }
+      /** The board with the pen moved to Maya. */
+      const toMaya = (h: BoardHistory) => {
+        const given = penHolder(h) === "child" ? givePen(h, now()) : null;
+        return given?.ok ? given.history : h;
+      };
+      // First which batches go on the board, then the record in the order they came: the pen moves to Maya only when
+      // she writes something, and each refused batch is recorded as skipped where it came.
       let count = 0;
+      const skipped = new Set<string>();
+      let trial = toMaya(history);
       for (const b of missing) {
-        const r = mayaWrites(next, b, now());
+        const r = mayaWrites(trial, b, now());
         if (r.ok) {
-          next = r.history;
+          trial = r.history;
           count++;
-        } else if (r.code === "full") say("full");
-        else refusedBatches.add(b.transactionId);
+        } else if (r.code === "full") {
+          say("full");
+          break;
+        } else skipped.add(b.transactionId);
       }
-      // Nothing written: the pen stays where it was.
-      if (count > 0) history = next;
+      let after = count > 0 ? toMaya(history) : history;
+      for (const b of missing) {
+        const r = skipped.has(b.transactionId) ? mayaSkipped(after, b.transactionId, now()) : count > 0 ? mayaWrites(after, b, now()) : null;
+        if (r?.ok) after = r.history;
+      }
+      history = after;
       persist();
       emit();
       return count;
+    },
+    rebase(stored) {
+      if (!holds()) return;
+      let next = rebaseOnto(stored, history, now());
+      if (next === history) return;
+      if (penHolder(history) === "child" && penHolder(next) !== "child") {
+        const taken = takePen(next, now());
+        if (taken.ok) next = taken.history;
+      }
+      history = next;
+      persist();
+      emit();
     },
     handBack() {
       if (holds() && penHolder(history) === "maya") apply(takePen(history, now()));

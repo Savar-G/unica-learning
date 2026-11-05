@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState, useEffect, useCallback, type FormEvent } from "react";
-import { encodeHistory, type BoardHistory } from "@/lib/board-history";
+import { decodeHistory, encodeHistory, historyLength, rebaseOnto, type BoardHistory } from "@/lib/board-history";
 import { chatCapLine, type ChatUsage, type ChatView, type ChatReply } from "@/lib/maya-chat";
 import { OurBoard } from "@/components/our-board";
 import { Icon } from "@/components/desk-icons";
@@ -12,19 +12,52 @@ const BOARD_SAVE_MS = 1500;
 const KEEPALIVE_MAX = 60_000;
 /** The last board before a chat ends is tried this many times, waiting 1 s, then 2 s, between tries (R625-5). */
 const FINAL_TRIES = 3;
+/** One try of sending a board gives up after this long (R625b-2): a request that never answers never holds the chat. */
+const BOARD_TRY_MS = 5000;
 /** A chat's board that could not reach the call before the chat ended, kept on this device by the chat's id. */
 const UNSENT_ROOT = "unica-chat-board-unsent:";
+/**
+ * How long a board waits on the device: the call takes it until 5 minutes after the chat's end (INK_AFTER_END_MS in
+ * src/lib/maya-call.ts), and a minute more for the clocks. Past that the device forgets it without asking.
+ */
+const UNSENT_KEEP_MS = 6 * 60_000;
 
 type BoardSave = { id: string; board: string };
-/** "sent"; "retry" (busy, a server error or no answer); "dropped" (refused for good, as a chat ended long ago). */
-async function sendBoard(save: BoardSave): Promise<"sent" | "retry" | "dropped"> {
+/**
+ * What one try did: "sent"; "stale" (the call keeps a newer board, given back); "closed" (the call takes no more boards:
+ * it ended long ago); "retry" (anything else: busy, a server error, no answer, or a refusal of this session or desk,
+ * which says nothing about the board, R625b-3).
+ */
+type Sent = { kind: "sent" | "closed" | "retry" } | { kind: "stale"; board: BoardHistory };
+async function sendBoard(save: BoardSave): Promise<Sent> {
   const body = JSON.stringify(save);
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), BOARD_TRY_MS);
   try {
-    const res = await fetch("/api/desk/chat/board", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: body.length < KEEPALIVE_MAX });
-    if (res.ok) return "sent";
-    return res.status === 429 || res.status >= 500 ? "retry" : "dropped";
+    const res = await fetch("/api/desk/chat/board", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: body.length < KEEPALIVE_MAX, signal: stop.signal });
+    if (res.ok) return { kind: "sent" };
+    if (res.status === 410) return { kind: "closed" };
+    if (res.status === 409) {
+      const answer = (await res.json()) as { board?: unknown };
+      const board = typeof answer.board === "string" ? decodeHistory(answer.board) : null;
+      if (board) return { kind: "stale", board };
+    }
+    return { kind: "retry" };
   } catch {
-    return "retry";
+    return { kind: "retry" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** A board kept on this device: the board and when it was kept. A copy kept as the board alone counts from now. */
+function readUnsent(raw: string): { board: string; at: number } | null {
+  try {
+    const entry = JSON.parse(raw) as { board?: unknown; at?: unknown; v?: unknown };
+    if (typeof entry.board === "string") return { board: entry.board, at: typeof entry.at === "number" ? entry.at : Date.now() };
+    return entry.v === 1 ? { board: raw, at: Date.now() } : null;
+  } catch {
+    return null;
   }
 }
 
@@ -37,14 +70,33 @@ const storage = {
 
 /**
  * Sends the chat's board to the call (#534): the newest copy, one request at a time, 1.5 s after the last change, and
- * at once before the chat ends or the page goes. A copy that could not be sent goes again with the next one. Before the
- * chat ends, the last copy is tried three times (R625-5); when it still cannot go, the chat ends anyway and the copy
- * stays on this device, sent the next time the desk opens (the call takes it until a few minutes after its end).
+ * at once before the chat ends or the page goes. Each try gives up after 5 s. A copy that could not be sent goes again
+ * with the next one. When the call keeps a newer board (`stale`), this copy is rebuilt on it and sent again, and
+ * `onSaved` hears the call's board so the board on screen takes it too (R625b-4).
+ *
+ * Before the chat ends, the last copy is first kept on this device, then tried three times (R625-5, R625b-2); the chat
+ * ends either way. A copy left on the device is sent the next time the desk opens. It goes from the device only when
+ * the call took it or said it is closed, or once the call's time for it is past (R625b-3): never because this session
+ * or this desk was refused, which is about the desk, not the board.
  */
-function useBoardSaver() {
+function useBoardSaver(onSaved: (id: string, board: BoardHistory) => void) {
   const next = useRef<BoardSave | null>(null);
   const queue = useRef<Promise<boolean>>(Promise.resolve(true));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const heard = useRef(onSaved);
+  useEffect(() => {
+    heard.current = onSaved;
+  });
+  /** One try, with a conflict resolved once: this copy rebuilt on the call's board, and sent again when it adds to it. */
+  const send = useCallback(async (save: BoardSave): Promise<Sent> => {
+    const sent = await sendBoard(save);
+    if (sent.kind !== "stale") return sent;
+    heard.current(save.id, sent.board);
+    const mine = decodeHistory(save.board);
+    const rebuilt = mine ? rebaseOnto(sent.board, mine, Math.max(historyLength(mine), historyLength(sent.board)) + 1) : sent.board;
+    if (rebuilt === sent.board) return { kind: "sent" };
+    return sendBoard({ id: save.id, board: encodeHistory(rebuilt) });
+  }, []);
   /** Sends the newest copy; true when nothing is left to send. */
   const flush = useCallback(() => {
     clearTimeout(timer.current);
@@ -53,21 +105,26 @@ function useBoardSaver() {
       const save = next.current;
       if (!save) return true;
       next.current = null;
-      if ((await sendBoard(save)) !== "retry") return true;
+      if ((await send(save)).kind !== "retry") return true;
       next.current ??= save;
       return false;
     });
     return queue.current;
-  }, []);
-  /** The last copy before the chat ends: tried again with a pause, then kept on this device. */
+  }, [send]);
+  /** The last copy before the chat ends: kept on this device first, then tried with a pause between tries. */
   const finish = useCallback(async () => {
+    const last = next.current;
+    const key = last && `${UNSENT_ROOT}${last.id}`;
+    if (last && key) storage.write(key, JSON.stringify({ board: last.board, at: Date.now() }));
     for (let i = 0; i < FINAL_TRIES; i++) {
       if (i > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** (i - 1)));
-      if (await flush()) return true;
+      if (await flush()) {
+        if (key) storage.remove(key);
+        return true;
+      }
     }
-    const left = next.current;
+    // Still not sent: it stays on this device for the next time the desk opens.
     next.current = null;
-    if (left) storage.write(`${UNSENT_ROOT}${left.id}`, left.board);
     return false;
   }, [flush]);
   const save = useCallback((id: string, history: BoardHistory) => {
@@ -76,12 +133,16 @@ function useBoardSaver() {
     timer.current = setTimeout(() => void flush(), BOARD_SAVE_MS);
   }, [flush]);
   useEffect(() => {
-    // Boards an earlier visit could not send: each goes once; a busy server or no answer keeps it for the next visit.
+    // Boards an earlier visit could not send: each is tried once.
     for (const key of storage.keys()) {
-      const board = storage.read(key);
-      if (!board) continue;
+      const raw = storage.read(key);
+      const entry = raw ? readUnsent(raw) : null;
+      if (!entry || Date.now() - entry.at > UNSENT_KEEP_MS) {
+        storage.remove(key);
+        continue;
+      }
       queue.current = queue.current.then(async () => {
-        if ((await sendBoard({ id: key.slice(UNSENT_ROOT.length), board })) !== "retry") storage.remove(key);
+        if ((await send({ id: key.slice(UNSENT_ROOT.length), board: entry.board })).kind !== "retry") storage.remove(key);
         return true;
       });
     }
@@ -91,7 +152,7 @@ function useBoardSaver() {
       window.removeEventListener("pagehide", gone);
       void flush();
     };
-  }, [flush]);
+  }, [flush, send]);
   return { save, flush, finish };
 }
 
@@ -107,7 +168,10 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
   const requestBusy = useRef(false);
   const key = `unica-chat:${at.book}:${at.page}:${at.question}`;
   const [uncertain, setUncertain] = useState(false);
-  const board = useBoardSaver();
+  /** The call's board for a chat, when the desk took it from the call (`n` counts each time it did, R625b-4). */
+  const [savedBoard, setSavedBoard] = useState<{ id: string; history: BoardHistory; n: number } | null>(null);
+  const takeSaved = useCallback((id: string, history: BoardHistory) => setSavedBoard((was) => ({ id, history, n: (was?.n ?? 0) + 1 })), []);
+  const board = useBoardSaver(takeSaved);
   const request = useCallback(async (action: { type: string; [field: string]: unknown }, generation = epoch.current) => {
     const res = await fetch("/api/desk/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
     const answer = await res.json() as ChatReply;
@@ -149,7 +213,18 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       if (generation !== epoch.current) return;
       setChat(null); setError(null); setBusy(false); setUncertain(false); setOwnerKey(key);
       pending.current = null; startId.current = id;
-      if (initial && id) void request({ type: "read", id }, generation).catch(() => { if (generation === epoch.current) setError(ERROR); });
+      if (initial && id) {
+        const chatId = id;
+        void request({ type: "read", id: chatId }, generation).catch(() => { if (generation === epoch.current) setError(ERROR); });
+        // The chat's board as the call keeps it: a board with no draft on this device takes it back (R625b-4).
+        void fetch(`/api/desk/chat/board?id=${chatId}`)
+          .then((res) => (res.ok ? (res.json() as Promise<{ board?: unknown }>) : null))
+          .then((answer) => {
+            const saved = typeof answer?.board === "string" ? decodeHistory(answer.board) : null;
+            if (saved && generation === epoch.current) takeSaved(chatId, saved);
+          })
+          .catch(() => { /* The board on this device stands as it is. */ });
+      }
     });
     return () => { epoch.current = generation + 1; };
     // Each picked question owns its conversation. No child text goes in browser storage.
@@ -205,7 +280,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       return false;
     } finally { requestBusy.current = false; if (generation === epoch.current) setBusy(false); }
   };
-  return { usage, chat: ownerKey === key ? chat : null, busy, error, act, retry: refresh, uncertain, saveBoard: board.save };
+  return { usage, chat: ownerKey === key ? chat : null, busy, error, act, retry: refresh, uncertain, saveBoard: board.save, savedBoard };
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 
@@ -236,11 +311,13 @@ export function ChatControls({ state, picked }: { state: DeskChatState; picked: 
  * The chat's board (#534): "Our board" with Maya's replies on it. The child keeps the pen tools all through the chat;
  * Maya takes the pen only while she writes, never removes the child's ink, and every change goes to `onBoard`.
  */
-export function ChatBoard({ chat, still, carry, onBoard }: {
+export function ChatBoard({ chat, still, carry, saved, onBoard }: {
   chat: ChatView;
   still: boolean;
   /** The question's board the chat started from: its ink comes onto the chat's board. */
   carry?: { book: string; page: number; question: number | null };
+  /** The call's board for this chat, when the desk took it from the call: the board is rebuilt on it (R625b-4). */
+  saved?: BoardHistory | null;
   onBoard?: (history: BoardHistory) => void;
 }) {
   return <OurBoard
@@ -249,6 +326,7 @@ export function ChatBoard({ chat, still, carry, onBoard }: {
     at={{ book: "chat", page: 0, question: null }}
     chat={{ id: chat.id, batches: chat.batches, carry }}
     onChange={onBoard}
+    saved={saved ?? null}
     still={still}
     label="Maya's drawing for your question"
     caption="Follow each step. Then write on your paper."

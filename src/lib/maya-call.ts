@@ -221,9 +221,9 @@ export interface CallStore {
    * Keeps a text call's board from the child's desk (#534), without raising its revision, in one step (R625-2): it
    * compares and writes together, so of two saves the newer board stays whatever their order. `closed`: the call ended
    * more than INK_AFTER_END_MS ago. `busy`: a board was saved less than INK_SAVE_GAP_MS ago. `stale`: the kept board has
-   * a higher revision; nothing was written. `not_found`: no text call with this id.
+   * a higher revision; nothing was written. `not_found`: no chat with this id of this parent and child (R625b-5).
    */
-  saveInk(id: string, ink: BoardHistory): Promise<InkSave>;
+  saveInk(id: string, owner: InkOwner, ink: BoardHistory): Promise<InkSave>;
 }
 
 export interface CallSeams {
@@ -284,6 +284,8 @@ export const INK_SAVE_GAP_MS = 1000;
 export const INK_AFTER_END_MS = 5 * 60_000;
 /** What one save of the desk's board did (`CallStore.saveInk`). */
 export type InkSave = "saved" | "stale" | "busy" | "closed" | "not_found";
+/** Whose desk sends a chat's board: the store keeps it only for a chat of this parent and child. */
+export interface InkOwner { parentId: string; childId: string }
 
 /** One line of the transcript, as the admin reads it. */
 export interface TranscriptLine {
@@ -447,10 +449,11 @@ export interface MayaCalls {
   openVoice(id: string, providers: { speechToText: string; voice: string }, childName: string | null): Promise<OpenVoiceResult>;
   input(id: string, revision: number, input: CallInput, childName: string | null): Promise<CallResult>;
   /**
-   * Keeps the child's desk copy of a text call's board (#534): the encoded board history, live or ended. An older copy
-   * (a lower revision) than the one kept changes nothing. Never raises the call's revision.
+   * Keeps the child's desk copy of a chat's board (#534): the encoded board history, for a chat of this parent and
+   * child, live or ended a few minutes ago. Never raises the call's revision. A copy older than the one kept (a lower
+   * revision) is a conflict (R625b-4): nothing is written, and `board` is the kept copy for the desk to build on.
    */
-  saveInk(id: string, board: string): Promise<{ ok: true } | { ok: false; error: "not_found" | "invalid_input" | "busy" | "closed" }>;
+  saveInk(id: string, owner: InkOwner, board: string): Promise<{ ok: true } | { ok: false; error: "not_found" | "invalid_input" | "busy" | "closed" } | { ok: false; error: "stale"; board: BoardHistory }>;
   view(id: string): Promise<CallView | null>;
 }
 
@@ -1150,13 +1153,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       return result(saved2, saved2.trace ?? session.trace(), out);
     },
 
-    async saveInk(id, board) {
+    async saveInk(id, owner, board) {
       if (typeof board !== "string" || board.length > MAX_INK_TEXT) return { ok: false, error: "invalid_input" };
       const ink = decodeHistory(board);
       if (!ink) return { ok: false, error: "invalid_input" };
-      // The store compares and writes in one step: a copy that comes after a newer one (a slow request) changes nothing.
-      const saved = await store.saveInk(id, ink);
-      return saved === "saved" || saved === "stale" ? { ok: true } : { ok: false, error: saved };
+      // The store compares and writes in one step: a copy that comes after a newer one (a slow request) writes nothing.
+      const saved = await store.saveInk(id, owner, ink);
+      if (saved === "saved") return { ok: true };
+      if (saved !== "stale") return { ok: false, error: saved };
+      const kept = (await store.get(id))?.childInk ?? null;
+      return kept ? { ok: false, error: "stale", board: kept } : { ok: false, error: "not_found" };
     },
 
     async view(id) {

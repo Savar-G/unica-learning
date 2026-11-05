@@ -163,6 +163,7 @@ describe("family days and release switch", () => {
 });
 
 describe("#534: the child's ink is saved with the chat", () => {
+  const owner = { parentId: parent, childId: child };
   const accepted = (change: Change) => { if (!change.ok) throw Error(change.reason); return change.history; };
   /** The desk's copy of the chat's board: Maya's batches as the chat showed them, then the child's lines. */
   function deskBoard(batches: readonly Batch[], lines: number) {
@@ -180,16 +181,17 @@ describe("#534: the child's ink is saved with the chat", () => {
     const s = await clocked();
     const r = s.r;
     const id = r.view.id;
-    expect(await s.calls.saveInk(id, encodeHistory(deskBoard(r.view.batches, 1)))).toEqual({ ok: true });
+    expect(await s.calls.saveInk(id, owner, encodeHistory(deskBoard(r.view.batches, 1)))).toEqual({ ok: true });
     // The chat's next message still goes in at the revision the child's desk holds.
     expect(s.memory.rows()[0].revision).toBe(r.view.revision);
     const next = success(await s.calls.input(id, r.view.revision, { type: "child", text: "I don't know" }, "Leah"));
     // A newer copy replaces the older one; an older copy that comes late changes nothing.
     const two = deskBoard(next.view.batches, 2);
     s.advance(INK_SAVE_GAP_MS);
-    expect(await s.calls.saveInk(id, encodeHistory(two))).toEqual({ ok: true });
+    expect(await s.calls.saveInk(id, owner, encodeHistory(two))).toEqual({ ok: true });
     s.advance(INK_SAVE_GAP_MS);
-    expect(await s.calls.saveInk(id, encodeHistory(deskBoard(r.view.batches, 1)))).toEqual({ ok: true });
+    // An older copy is a conflict, never a silent success: the desk gets the kept board back to build on (R625b-4).
+    expect(await s.calls.saveInk(id, owner, encodeHistory(deskBoard(r.view.batches, 1)))).toMatchObject({ ok: false, error: "stale", board: { revision: two.revision } });
     const ended = success(await s.calls.input(id, next.view.revision, { type: "end" }, "Leah"));
     expect(ended.view.status).toBe("ended");
 
@@ -212,8 +214,8 @@ describe("#534: the child's ink is saved with the chat", () => {
   it("refuses a board that does not read back, and an unknown call", async () => {
     const s = setup();
     const r = success(await s.start());
-    expect(await s.calls.saveInk(r.view.id, "not a board")).toEqual({ ok: false, error: "invalid_input" });
-    expect(await s.calls.saveInk("99999999-9999-4999-8999-999999999999", encodeHistory(createHistory()))).toEqual({ ok: false, error: "not_found" });
+    expect(await s.calls.saveInk(r.view.id, owner, "not a board")).toEqual({ ok: false, error: "invalid_input" });
+    expect(await s.calls.saveInk("99999999-9999-4999-8999-999999999999", owner, encodeHistory(createHistory()))).toEqual({ ok: false, error: "not_found" });
     expect(s.store.rows()[0].childInk ?? null).toBeNull();
   });
 
@@ -242,36 +244,58 @@ describe("#534: the child's ink is saved with the chat", () => {
     c.advance(5000);
     const older = deskBoard(c.r.view.batches, 1), newer = deskBoard(c.r.view.batches, 2);
     const reading = new Promise<void>((resolve) => (hold = resolve));
-    const slow = c.calls.saveInk(c.r.view.id, encodeHistory(older));
+    const slow = c.calls.saveInk(c.r.view.id, owner, encodeHistory(older));
     // A module that compares in the store's one write never reads first: then the slow save simply lands first.
     await Promise.race([reading, slow]);
     c.advance(INK_SAVE_GAP_MS);
-    expect(await c.calls.saveInk(c.r.view.id, encodeHistory(newer))).toEqual({ ok: true });
+    expect(await c.calls.saveInk(c.r.view.id, owner, encodeHistory(newer))).toEqual({ ok: true });
     release();
     await slow;
     expect(c.memory.rows()[0].childInk?.revision).toBe(newer.revision);
     expect(childStrokes(c.memory.rows()[0].childInk!)).toHaveLength(2);
     // The store compares and writes in one step: an older board after a newer one writes nothing.
     c.advance(INK_SAVE_GAP_MS);
-    expect(await c.memory.saveInk(c.r.view.id, older)).toBe("stale");
+    expect(await c.memory.saveInk(c.r.view.id, owner, older)).toBe("stale");
     expect(c.memory.rows()[0].childInk?.revision).toBe(newer.revision);
   });
 
   it("R625-6: takes at most one board a second per chat, and none once the chat ended more than a few minutes ago", async () => {
     const c = await clocked();
     const id = c.r.view.id;
-    expect(await c.calls.saveInk(id, encodeHistory(deskBoard(c.r.view.batches, 1)))).toEqual({ ok: true });
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 1)))).toEqual({ ok: true });
     c.advance(200);
-    expect(await c.calls.saveInk(id, encodeHistory(deskBoard(c.r.view.batches, 2)))).toEqual({ ok: false, error: "busy" });
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 2)))).toEqual({ ok: false, error: "busy" });
     c.advance(INK_SAVE_GAP_MS);
-    expect(await c.calls.saveInk(id, encodeHistory(deskBoard(c.r.view.batches, 2)))).toEqual({ ok: true });
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 2)))).toEqual({ ok: true });
     const ended = success(await c.calls.input(id, c.memory.rows()[0].revision, { type: "end" }, "Leah"));
     expect(ended.view.status).toBe("ended");
     // A line finished just after the end still goes in; a board long after it does not.
     c.advance(INK_SAVE_GAP_MS);
-    expect(await c.calls.saveInk(id, encodeHistory(deskBoard(c.r.view.batches, 3)))).toEqual({ ok: true });
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 3)))).toEqual({ ok: true });
     c.advance(INK_AFTER_END_MS + 1);
-    expect(await c.calls.saveInk(id, encodeHistory(deskBoard(c.r.view.batches, 4)))).toEqual({ ok: false, error: "closed" });
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 4)))).toEqual({ ok: false, error: "closed" });
     expect(childStrokes(c.memory.rows()[0].childInk!)).toHaveLength(3);
+  });
+
+  it("R625b-4: an older board is a conflict that hands back the kept board, never a silent success", async () => {
+    const c = await clocked();
+    const id = c.r.view.id;
+    const newer = deskBoard(c.r.view.batches, 3), older = deskBoard(c.r.view.batches, 1);
+    expect(await c.calls.saveInk(id, owner, encodeHistory(newer))).toEqual({ ok: true });
+    c.advance(INK_SAVE_GAP_MS);
+    const answer = await c.calls.saveInk(id, owner, encodeHistory(older));
+    expect(answer).toMatchObject({ ok: false, error: "stale" });
+    expect(answer.ok === false && answer.error === "stale" && childStrokes(answer.board)).toHaveLength(3);
+    expect(childStrokes(c.memory.rows()[0].childInk!)).toHaveLength(3);
+  });
+
+  it("R625b-5: keeps a board only for a chat of that parent and child", async () => {
+    const c = await clocked();
+    const id = c.r.view.id;
+    const board = encodeHistory(deskBoard(c.r.view.batches, 1));
+    expect(await c.calls.saveInk(id, { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" }, board)).toEqual({ ok: false, error: "not_found" });
+    expect(await c.calls.saveInk(id, { parentId: "66666666-6666-4666-8666-666666666666", childId: child }, board)).toEqual({ ok: false, error: "not_found" });
+    expect(c.memory.rows()[0].childInk ?? null).toBeNull();
+    expect(await c.calls.saveInk(id, owner, board)).toEqual({ ok: true });
   });
 });

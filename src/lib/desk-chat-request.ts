@@ -11,8 +11,10 @@ import { chatGate, type ChatContext } from "@/lib/maya-chat-server";
  * a request from this site, a signed-in parent, the desk open for one of their children, and chat open for the family
  * and the child's grade. The chat's context, or the answer to give.
  */
-export async function deskChatContext(request: Request): Promise<{ ok: true; ctx: ChatContext } | { ok: false; error: "forbidden" | "signed_out" | "unavailable"; status: number }> {
-  if (request.headers.get("origin") !== new URL(request.url).origin) return { ok: false, error: "forbidden", status: 403 };
+export async function deskChatContext(request: Request, options: { sameSite?: boolean } = {}): Promise<{ ok: true; ctx: ChatContext } | { ok: false; error: "forbidden" | "signed_out" | "unavailable"; status: number }> {
+  // A read (GET) checks that the browser says it came from this site, as a GET carries no Origin header.
+  const fromSite = options.sameSite ? request.headers.get("sec-fetch-site") === "same-origin" : request.headers.get("origin") === new URL(request.url).origin;
+  if (!fromSite) return { ok: false, error: "forbidden", status: 403 };
   const session = await sessionClient(), parent = await parentId(session);
   if (!parent) return { ok: false, error: "signed_out", status: 401 };
   const lock = readLock((await cookies()).get(DESK_COOKIE)?.value);

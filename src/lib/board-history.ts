@@ -10,7 +10,7 @@
 // stroke that ends after the pen moved to Maya is refused. The child's undo and clear touch the child's ink only, and
 // nothing of Maya's ever removes or covers it (the board core's rule).
 import { addChildInk, applyBatch, boardView, createScene, type Batch, type BoardPath, type Refusal, type Scene } from "@/lib/board";
-import { frameAt, type FrameStroke, type PlayStep, type Timeline } from "@/lib/board-svg";
+import { fitView, frameAt, SVG_UNITS, type FrameStroke, type PlayStep, type Timeline } from "@/lib/board-svg";
 import type { BoardSnapshot, PenHolder } from "@/lib/board-protocol";
 import type { StrokeRecording, TimedPoint } from "@/lib/strokes";
 
@@ -38,6 +38,11 @@ export type HistoryEvent =
   | ({ kind: "recovered"; t: number } & InkStroke)
   | { kind: "undo"; t: number }
   | { kind: "clear"; t: number }
+  /**
+   * A batch of Maya's that reached this board at `t` and that the board refused where it came (it would have covered the
+   * child's ink): it is not on the board. A call's replay keeps it out the same way (R625b-1).
+   */
+  | { kind: "skipped"; t: number; batchId: string }
   | { kind: "pen"; t: number; to: PenHolder };
 
 /**
@@ -123,6 +128,9 @@ export function mayaWrites(h: BoardHistory, batch: Batch, t: number): Change {
   if (!r.ok) return { ok: false, code: "refused", reason: r.refusal.reason, refusal: r.refusal };
   return push(h, { kind: "maya", t: at(h, t), batchId: batch.transactionId, commands: [...batch.commands] });
 }
+
+/** A batch of Maya's reached the board at `t`, and the board refused it (`mayaWrites` said no): it is recorded as skipped. */
+export const mayaSkipped = (h: BoardHistory, batchId: string, t: number): Change => push(h, { kind: "skipped", t: at(h, t), batchId });
 
 /** Moves the pen. Nothing changes when `to` has it already. */
 function movePen(h: BoardHistory, to: PenHolder, t: number): Change {
@@ -382,6 +390,27 @@ export function mayaSteps(h: BoardHistory): PlayStep[] {
   return steps;
 }
 
+/**
+ * The SVG view of a chat's board (R625b-6): Maya's work and the child's ink, with room around them (`pad`, in board
+ * widths), so a line the child drew before her reply stays in sight when her work comes. The whole board when there is
+ * nothing on it.
+ */
+export function chatBoardView(h: BoardHistory, pad = 0.06): string {
+  const [x, y, w, height] = fitView(mayaSteps(h).flatMap((s) => s.drawn), pad).split(" ").map(Number);
+  let [left, top, right, bottom] = [x, y, x + w, y + height];
+  for (const s of childStrokes(h)) {
+    if (s.erase) continue;
+    const room = (s.w / s.boardWidth + pad) * SVG_UNITS;
+    for (const [px, py] of s.pts) {
+      left = Math.min(left, px * SVG_UNITS - room);
+      top = Math.min(top, py * SVG_UNITS - room);
+      right = Math.max(right, px * SVG_UNITS + room);
+      bottom = Math.max(bottom, py * SVG_UNITS + room);
+    }
+  }
+  return [left, top, right - left, bottom - top].map((n) => Math.round(n * 10) / 10).join(" ");
+}
+
 /** An event with each of its times passed through `at`, which keeps their order. */
 function timed(e: HistoryEvent, at: (t: number) => number): HistoryEvent {
   if (e.kind === "stroke") return { ...e, pts: e.pts.map(([x, y, t]): TimedPoint => [x, y, at(t)]) };
@@ -389,57 +418,83 @@ function timed(e: HistoryEvent, at: (t: number) => number): HistoryEvent {
   return { ...e, t: at(e.t) };
 }
 
+/** The child's side of a board: everything that is not Maya's batches. */
+const childSide = (e: HistoryEvent) => e.kind !== "maya" && e.kind !== "skipped";
+
 /**
- * A call's board with the child's ink (#534): Maya's batches as the call recorded them (`call`), and the child's
- * strokes, undos, clears and pen moves from the desk's copy of the board (`desk`). Maya's batches in the desk's copy are
- * not taken: the call's own are the record, and their times never move. The desk's clock starts when its board opened;
- * the first batch both copies hold moves it onto the call's clock (with none, it is left as it is). The child's times
- * then stay inside the call: from 0 to `endMs` (or Maya's last batch, when later), and between the batches they came
- * between (R625-3). A batch of Maya's the board cannot draw over the child's ink stays in the history as recorded: the
- * replay leaves it out (`refusedBatches` names it), and the child's ink is always kept (R625-1).
+ * A call's board with the child's ink (#534): Maya's batches as the call recorded them (`call`, their commands), and the
+ * child's strokes, undos, clears and pen moves from the desk's copy of the board (`desk`).
+ *
+ * The desk's copy decides the order (R625b-1): its batches come where they reached the child's board, each drawn or
+ * skipped as the desk did (a batch the desk refused stays out of the replay, `skipped`), and the call's batches the
+ * desk had not received yet come after them by the call's times. Times: the desk's clock is moved onto the call's by the
+ * first batch both hold; a batch shows when it reached the desk, never before the call recorded it; the child's times
+ * stay inside the call (from 0 to `endMs`) and between the batches they came between (R625-3). Batches in the desk's
+ * copy that the call never recorded are not taken. The child's ink is always kept (R625-1).
  */
 export function withChildInk(call: BoardHistory, desk: BoardHistory | null, options: { endMs?: number } = {}): BoardHistory {
-  const child = desk?.events.filter((e) => e.kind !== "maya") ?? [];
-  if (!desk || child.length === 0) return call;
-  const recorded = new Map(call.events.flatMap((e) => (e.kind === "maya" ? [[e.batchId, e.t] as const] : [])));
-  const anchor = desk.events.find((e) => e.kind === "maya" && recorded.has(e.batchId));
-  const by = anchor?.kind === "maya" ? recorded.get(anchor.batchId)! - anchor.t : 0;
+  if (!desk || !desk.events.some(childSide)) return call;
+  const recorded = new Map(call.events.flatMap((e) => (e.kind === "maya" ? [[e.batchId, e] as const] : [])));
+  const delivered = (e: HistoryEvent): e is Extract<HistoryEvent, { kind: "maya" | "skipped" }> => (e.kind === "maya" || e.kind === "skipped") && recorded.has(e.batchId);
+  const anchor = desk.events.find(delivered);
+  const by = anchor ? recorded.get(anchor.batchId)!.t - anchor.t : 0;
   const end = Math.max(options.endMs ?? Infinity, historyLength(call));
   const inCall = (t: number) => Math.min(end, Math.max(0, Math.round(t + by)));
-  // At the same time, the child's side first: the desk moves the pen to Maya before she writes.
-  const both = [
-    ...call.events.map((e, i) => ({ e, side: 0, i })),
-    ...child.map((e, i) => ({ e: timed(e, inCall), side: 1, i })),
+  // The desk's events up to its last batch, in its order; then the rest of its events with the call's batches it never
+  // received, by time (the child's side first at the same time: the desk moves the pen to Maya before she writes).
+  const lastDelivered = desk.events.findLastIndex(delivered);
+  const seen = new Set(desk.events.filter(delivered).map((e) => e.batchId));
+  type Item = { e: HistoryEvent; maya: boolean };
+  const asDelivered = (e: Extract<HistoryEvent, { kind: "maya" | "skipped" }>): Item => {
+    const r = recorded.get(e.batchId)!;
+    const t = Math.min(end, Math.max(r.t, inCall(e.t)));
+    return { e: e.kind === "maya" ? { ...r, t } : { kind: "skipped", t, batchId: e.batchId }, maya: true };
+  };
+  const ordered: Item[] = [];
+  desk.events.slice(0, lastDelivered + 1).forEach((e) => {
+    if (delivered(e)) ordered.push(asDelivered(e));
+    else if (childSide(e)) ordered.push({ e: timed(e, inCall), maya: false });
+  });
+  const rest = [
+    ...desk.events.slice(lastDelivered + 1).filter(childSide).map((e, i) => ({ e: timed(e, inCall), maya: false, side: 1, i })),
+    ...call.events.filter((e) => e.kind === "maya" && !seen.has(e.batchId)).map((e, i) => ({ e, maya: true, side: 0, i })),
   ].sort((a, b) => startOf(a.e) - startOf(b.e) || b.side - a.side || a.i - b.i);
-  // Each child event stays after the event before it and before Maya's next batch.
+  ordered.push(...rest);
+  // Maya's times only go forward; each child event stays after the event before it and before Maya's next batch.
+  let mayaAt = 0;
+  for (const item of ordered) {
+    if (!item.maya) continue;
+    const t = Math.max(mayaAt, (item.e as { t: number }).t);
+    if (t !== (item.e as { t: number }).t) item.e = { ...item.e, t } as HistoryEvent;
+    mayaAt = t;
+  }
   const nextMaya: number[] = [];
   let next = Infinity;
-  for (let i = both.length - 1; i >= 0; i--) {
+  for (let i = ordered.length - 1; i >= 0; i--) {
     nextMaya[i] = next;
-    if (both[i].side === 0 && both[i].e.kind === "maya") next = (both[i].e as { t: number }).t;
+    if (ordered[i].maya) next = (ordered[i].e as { t: number }).t;
   }
   const events: HistoryEvent[] = [];
   let last = 0;
-  both.forEach(({ e, side }, i) => {
-    if (side === 0) {
-      events.push(e);
-      last = e.kind === "stroke" ? e.pts[e.pts.length - 1][2] : e.t;
-      return;
-    }
-    const lo = last, hi = Math.max(lo, nextMaya[i]);
-    const kept = timed(e, (t) => Math.min(hi, Math.max(lo, t)));
+  ordered.forEach(({ e, maya }, i) => {
+    const kept = maya ? e : timed(e, (t) => Math.min(Math.max(last, nextMaya[i]), Math.max(last, t)));
     events.push(kept);
     last = kept.kind === "stroke" ? kept.pts[kept.pts.length - 1][2] : kept.t;
   });
-  return readHistory(JSON.parse(encodeHistory({ v: 1, revision: call.revision + child.length, events }))) ?? call;
+  const childCount = desk.events.filter(childSide).length;
+  return readHistory(JSON.parse(encodeHistory({ v: 1, revision: call.revision + childCount, events }))) ?? call;
 }
 
-/** Maya's batches in a history that the board core refuses where they stand (a call's batch over the child's ink). */
+/**
+ * Maya's batches in a history that are not on its board: those the board refused where they came (`skipped`, R625b-1),
+ * and those that do not draw where they stand when replayed. In order.
+ */
 export function refusedBatches(h: BoardHistory): string[] {
   let scene = createScene();
   const refused: string[] = [];
   for (const e of h.events) {
-    if (e.kind === "maya") {
+    if (e.kind === "skipped") refused.push(e.batchId);
+    else if (e.kind === "maya") {
       const r = applyBatch(scene, { transactionId: e.batchId, commands: e.commands });
       if (r.ok) scene = r.scene;
       else refused.push(e.batchId);
@@ -452,6 +507,26 @@ export function refusedBatches(h: BoardHistory): string[] {
     }
   }
   return refused;
+}
+
+/**
+ * A board rebuilt on another copy of itself (R625b-4): the call's saved board (`saved`), with this board's own lines
+ * that are not on it added back at `t` (as strokes the child drew holding the pen). Its revision is above both, so the
+ * next save is the newest. `saved` itself when this board has nothing it lacks; `local` when `saved` has nothing
+ * `local` lacks.
+ */
+export function rebaseOnto(saved: BoardHistory, local: BoardHistory, t: number): BoardHistory {
+  const key = (s: InkStroke) => JSON.stringify([s.erase, s.w, s.boardWidth, s.page, s.pts.map(([x, y]) => [x, y])]);
+  const batches = (h: BoardHistory) => new Set(h.events.flatMap((e) => (e.kind === "maya" || e.kind === "skipped" ? [e.batchId] : [])));
+  const savedInk = new Set(childStrokes(saved).map(key));
+  const localInk = new Set(childStrokes(local).map(key));
+  const localBatches = batches(local);
+  const savedHasMore = [...savedInk].some((k) => !localInk.has(k)) || [...batches(saved)].some((b) => !localBatches.has(b));
+  if (!savedHasMore) return local;
+  const missing = childStrokes(local).filter((s) => !savedInk.has(key(s)));
+  if (missing.length === 0 && saved.revision >= local.revision) return saved;
+  const back = restoreKept(saved, missing.map(keptStroke), t).history;
+  return { ...back, revision: Math.max(back.revision, local.revision + 1) };
 }
 
 // ---------- the saved copy ----------
@@ -469,6 +544,8 @@ function readEvent(raw: unknown): HistoryEvent | null {
       return isTime(raw.t) ? { kind: raw.kind, t: raw.t } : null;
     case "pen":
       return isTime(raw.t) && (raw.to === "maya" || raw.to === "child") ? { kind: "pen", t: raw.t, to: raw.to } : null;
+    case "skipped":
+      return isTime(raw.t) && typeof raw.batchId === "string" ? { kind: "skipped", t: raw.t, batchId: raw.batchId } : null;
     case "maya":
       return isTime(raw.t) && typeof raw.batchId === "string" && Array.isArray(raw.commands) ? { kind: "maya", t: raw.t, batchId: raw.batchId, commands: raw.commands } : null;
     case "recovered":

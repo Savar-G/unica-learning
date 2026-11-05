@@ -4788,9 +4788,11 @@ export type Database = {
       save_maya_call_ink: {
         Args: {
           p_after_end_ms: number
+          p_child: string
           p_gap_ms: number
           p_id: string
           p_ink: Json
+          p_parent: string
         }
         Returns: string
       }
