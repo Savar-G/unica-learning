@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { chatFamilyGate, chatLimitLabel, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
-import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, mayaCalls, type CallResult, type CallSeams, type CallStore } from "@/lib/maya-call";
+import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, mayaCalls, type CallChange, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import { memoryWordingHistoryStore, SAFETY_GUIDANCE } from "@/lib/maya";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -9,7 +9,7 @@ import { ruleMayaModel, fakeMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import { NOTE_CALL_KINDS } from "@/lib/maya-call-note";
-import { childStrokes, createHistory, decodeHistory, drawStroke, encodeHistory, mayaWrites, replayFrame, takePen, type Change } from "@/lib/board-history";
+import { childStrokes, createHistory, drawStroke, givePen, inkLog, mayaWrites, penHolder, replayFrame, takePen, type BoardHistory, type Change, type InkEvent } from "@/lib/board-history";
 import type { Batch } from "@/lib/board";
 import { callReplay } from "@/lib/maya-call-review";
 
@@ -162,140 +162,135 @@ describe("family days and release switch", () => {
   });
 });
 
-describe("#534: the child's ink is saved with the chat", () => {
+describe("#534, #635: the child's ink is kept with the chat as a log", () => {
   const owner = { parentId: parent, childId: child };
   const accepted = (change: Change) => { if (!change.ok) throw Error(change.reason); return change.history; };
-  /** The desk's copy of the chat's board: Maya's batches as the chat showed them, then the child's lines. */
-  function deskBoard(batches: readonly Batch[], lines: number) {
-    let h = createHistory();
-    for (const b of batches) h = accepted(mayaWrites(h, b, 1));
-    h = accepted(takePen(h, 4000));
+  /** The desk's board as a desk grows it: Maya's new batches (the pen goes to her), then the child's new lines. */
+  function grow(h: BoardHistory, batches: readonly Batch[], lines: number, at: number) {
+    const on = new Set(h.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : [])));
+    const missing = batches.filter((b) => !on.has(b.transactionId));
+    if (missing.length && penHolder(h) === "child") h = accepted(givePen(h, at));
+    for (const b of missing) h = accepted(mayaWrites(h, b, at + 1));
+    h = accepted(takePen(h, at + 100));
     for (let i = 0; i < lines; i++) {
-      const at = 4100 + i * 1000;
-      h = accepted(drawStroke(h, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1 + i * 0.05, 0.6, at], [0.14 + i * 0.05, 0.64, at + 300]] }));
+      const t = at + 200 + i * 1000, x = 0.1 + (childStrokes(h).length) * 0.05;
+      h = accepted(drawStroke(h, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[x, 0.6, t], [x + 0.04, 0.64, t + 300]] }));
     }
     return h;
   }
+  /** A chat on a store and module that share a clock the test moves. */
+  async function clocked() {
+    let now = Date.parse("2026-11-02T17:00:00Z");
+    const memory = memoryCallStore({ testFamilies: [], clock: () => now });
+    const s = setup({ store: memory, clock: () => now });
+    const r = success(await s.start());
+    return { ...s, memory, r, advance: (ms: number) => (now += ms) };
+  }
 
-  it("keeps the ink beside the chat without changing its revision, and the admin replay shows it with Maya's work", async () => {
+  it("keeps the log beside the chat without changing its revision, sends only what is new, and the admin replay shows it", async () => {
     const s = await clocked();
-    const r = s.r;
-    const id = r.view.id;
-    expect(await s.calls.saveInk(id, owner, encodeHistory(deskBoard(r.view.batches, 1)))).toEqual({ ok: true });
+    const id = s.r.view.id;
+    const one = grow(createHistory(), s.r.view.batches, 1, 1000);
+    expect(await s.calls.appendInk(id, owner, 1, inkLog(one))).toEqual({ ok: true, held: inkLog(one).length });
     // The chat's next message still goes in at the revision the child's desk holds.
-    expect(s.memory.rows()[0].revision).toBe(r.view.revision);
-    const next = success(await s.calls.input(id, r.view.revision, { type: "child", text: "I don't know" }, "Leah"));
-    // A newer copy replaces the older one; an older copy that comes late changes nothing.
-    const two = deskBoard(next.view.batches, 2);
+    expect(s.memory.rows()[0].revision).toBe(s.r.view.revision);
+    const next = success(await s.calls.input(id, s.r.view.revision, { type: "child", text: "I don't know" }, "Leah"));
+    const two = grow(one, next.view.batches, 1, 9000);
+    const held = inkLog(one).length;
     s.advance(INK_SAVE_GAP_MS);
-    expect(await s.calls.saveInk(id, owner, encodeHistory(two))).toEqual({ ok: true });
-    s.advance(INK_SAVE_GAP_MS);
-    // An older copy is a conflict, never a silent success: the desk gets the kept board back to build on (R625b-4).
-    expect(await s.calls.saveInk(id, owner, encodeHistory(deskBoard(r.view.batches, 1)))).toMatchObject({ ok: false, error: "stale", board: { revision: two.revision } });
+    expect(await s.calls.appendInk(id, owner, held + 1, inkLog(two).slice(held))).toEqual({ ok: true, held: inkLog(two).length });
     const ended = success(await s.calls.input(id, next.view.revision, { type: "end" }, "Leah"));
     expect(ended.view.status).toBe("ended");
 
     const view = (await s.calls.view(id))!;
     expect(view.batches.length).toBeGreaterThan(0);
     const saved = view.boardHistory;
-    // Maya's batches are the call's own; the child's lines come from the desk.
+    // Maya's batches are the call's own; the child's lines come from the log, on the call's clock.
     expect(saved.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : []))).toEqual(view.batches.map((b) => b.transactionId));
-    // The child's lines, moved onto the call's clock.
-    const where = (h: typeof saved) => childStrokes(h).map((k) => k.pts.map(([x, y]) => [x, y]));
+    const where = (h: BoardHistory) => childStrokes(h).map((k) => k.pts.map(([x, y]) => [x, y]));
     expect(where(saved)).toEqual(where(two));
-    const firstBatch = saved.events.find((e) => e.kind === "maya");
-    expect(childStrokes(saved)[0].pts[0][2]).toBeGreaterThanOrEqual(firstBatch?.kind === "maya" ? firstBatch.t : 0);
-    expect(decodeHistory(encodeHistory(saved))).not.toBeNull();
     const frame = replayFrame(callReplay(view), Infinity);
     expect(frame.child).toHaveLength(2);
-    expect(frame.maya.length).toBe(replayFrame(callReplay({ ...view, boardHistory: { v: 1, revision: 0, events: saved.events.filter((e) => e.kind === "maya") } }), Infinity).maya.length);
   });
 
-  it("refuses a board that does not read back, and an unknown call", async () => {
-    const s = setup();
-    const r = success(await s.start());
-    expect(await s.calls.saveInk(r.view.id, owner, "not a board")).toEqual({ ok: false, error: "invalid_input" });
-    expect(await s.calls.saveInk("99999999-9999-4999-8999-999999999999", owner, encodeHistory(createHistory()))).toEqual({ ok: false, error: "not_found" });
-    expect(s.store.rows()[0].childInk ?? null).toBeNull();
+  it("R635: keeps each sequence once: a repeated or late request changes nothing the chat holds", async () => {
+    const s = await clocked();
+    const id = s.r.view.id;
+    const log = inkLog(grow(createHistory(), s.r.view.batches, 2, 1000));
+    expect(await s.calls.appendInk(id, owner, 1, log)).toEqual({ ok: true, held: log.length });
+    // The same request again, and a late one with other content at held sequences: nothing held changes.
+    s.advance(INK_SAVE_GAP_MS);
+    expect(await s.calls.appendInk(id, owner, 1, log)).toEqual({ ok: true, held: log.length });
+    s.advance(INK_SAVE_GAP_MS);
+    expect(await s.calls.appendInk(id, owner, 2, [{ kind: "clear", t: 99_999 }])).toEqual({ ok: true, held: log.length });
+    expect(await s.memory.readInk(id)).toEqual(log);
+    // A start past the next sequence is refused with what the chat holds, for the desk to send on from there.
+    s.advance(INK_SAVE_GAP_MS);
+    expect(await s.calls.appendInk(id, owner, log.length + 5, [{ kind: "clear", t: 99_999 }])).toEqual({ ok: false, error: "gap", held: log.length });
   });
 
-  /** A chat on a store and module that share a clock the test moves. */
-  async function clocked(wrap?: (store: CallStore) => CallStore) {
-    let now = Date.parse("2026-11-02T17:00:00Z");
-    const memory = memoryCallStore({ testFamilies: [], clock: () => now });
-    const s = setup({ store: wrap ? wrap(memory) : memory, clock: () => now });
-    const r = success(await s.start());
-    return { ...s, memory, r, advance: (ms: number) => (now += ms) };
-  }
-
-  it("R625-2: a slow save from the board's earlier holder never replaces newer ink, however the two interleave", async () => {
-    let hold: (() => void) | null = null;
-    let release!: () => void;
-    const held = new Promise<void>((resolve) => (release = resolve));
-    const c = await clocked((store) => ({
-      ...store,
-      // The first read after the trap is set answers with what it read, but only after the newer save has written.
-      async get(id) {
-        const read = await store.get(id);
-        if (hold) { const wait = hold; hold = null; wait(); await held; }
-        return read;
-      },
-    }));
-    c.advance(5000);
-    const older = deskBoard(c.r.view.batches, 1), newer = deskBoard(c.r.view.batches, 2);
-    const reading = new Promise<void>((resolve) => (hold = resolve));
-    const slow = c.calls.saveInk(c.r.view.id, owner, encodeHistory(older));
-    // A module that compares in the store's one write never reads first: then the slow save simply lands first.
-    await Promise.race([reading, slow]);
-    c.advance(INK_SAVE_GAP_MS);
-    expect(await c.calls.saveInk(c.r.view.id, owner, encodeHistory(newer))).toEqual({ ok: true });
-    release();
-    await slow;
-    expect(c.memory.rows()[0].childInk?.revision).toBe(newer.revision);
-    expect(childStrokes(c.memory.rows()[0].childInk!)).toHaveLength(2);
-    // The store compares and writes in one step: an older board after a newer one writes nothing.
-    c.advance(INK_SAVE_GAP_MS);
-    expect(await c.memory.saveInk(c.r.view.id, owner, older)).toBe("stale");
-    expect(c.memory.rows()[0].childInk?.revision).toBe(newer.revision);
+  it("refuses events that do not read back, and an unknown call", async () => {
+    const s = await clocked();
+    const id = s.r.view.id;
+    expect(await s.calls.appendInk(id, owner, 1, "not events")).toEqual({ ok: false, error: "invalid_input", held: 0 });
+    expect(await s.calls.appendInk(id, owner, 1, [{ kind: "maya", t: 0, batchId: "b", commands: [] }])).toEqual({ ok: false, error: "invalid_input", held: 0 });
+    expect(await s.calls.appendInk(id, owner, 0, [{ kind: "clear", t: 0 }])).toEqual({ ok: false, error: "invalid_input", held: 0 });
+    expect(await s.calls.appendInk("99999999-9999-4999-8999-999999999999", owner, 1, [{ kind: "clear", t: 0 }])).toEqual({ ok: false, error: "not_found", held: 0 });
+    expect(await s.memory.readInk(id)).toEqual([]);
   });
 
-  it("R625-6: takes at most one board a second per chat, and none once the chat ended more than a few minutes ago", async () => {
+  it("R625-6: takes at most one append a second per chat, and none once the chat ended more than a few minutes ago", async () => {
     const c = await clocked();
     const id = c.r.view.id;
-    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 1)))).toEqual({ ok: true });
+    const log = inkLog(grow(createHistory(), c.r.view.batches, 4, 1000));
+    expect(await c.calls.appendInk(id, owner, 1, log.slice(0, 2))).toEqual({ ok: true, held: 2 });
     c.advance(200);
-    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 2)))).toEqual({ ok: false, error: "busy" });
+    expect(await c.calls.appendInk(id, owner, 3, log.slice(2, 4))).toEqual({ ok: false, error: "busy", held: 2 });
     c.advance(INK_SAVE_GAP_MS);
-    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 2)))).toEqual({ ok: true });
+    expect(await c.calls.appendInk(id, owner, 3, log.slice(2, 4))).toEqual({ ok: true, held: 4 });
     const ended = success(await c.calls.input(id, c.memory.rows()[0].revision, { type: "end" }, "Leah"));
     expect(ended.view.status).toBe("ended");
-    // A line finished just after the end still goes in; a board long after it does not.
+    // A line finished just after the end still goes in; ink long after it does not.
     c.advance(INK_SAVE_GAP_MS);
-    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 3)))).toEqual({ ok: true });
+    expect(await c.calls.appendInk(id, owner, 5, log.slice(4, 5))).toEqual({ ok: true, held: 5 });
     c.advance(INK_AFTER_END_MS + 1);
-    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 4)))).toEqual({ ok: false, error: "closed" });
-    expect(childStrokes(c.memory.rows()[0].childInk!)).toHaveLength(3);
+    expect(await c.calls.appendInk(id, owner, 6, [{ kind: "clear", t: 99_999 }])).toEqual({ ok: false, error: "closed", held: 5 });
   });
 
-  it("R625b-4: an older board is a conflict that hands back the kept board, never a silent success", async () => {
+  it("R639-4: a chat from before the log keeps its old ink: read back, turned into the log before new events, and in the replay", async () => {
     const c = await clocked();
     const id = c.r.view.id;
-    const newer = deskBoard(c.r.view.batches, 3), older = deskBoard(c.r.view.batches, 1);
-    expect(await c.calls.saveInk(id, owner, encodeHistory(newer))).toEqual({ ok: true });
-    c.advance(INK_SAVE_GAP_MS);
-    const answer = await c.calls.saveInk(id, owner, encodeHistory(older));
-    expect(answer).toMatchObject({ ok: false, error: "stale" });
-    expect(answer.ok === false && answer.error === "stale" && childStrokes(answer.board)).toHaveLength(3);
-    expect(childStrokes(c.memory.rows()[0].childInk!)).toHaveLength(3);
+    const old = grow(createHistory(), c.r.view.batches, 1, 1000);
+    const legacy = inkLog(old);
+    expect(await c.memory.update(id, c.memory.rows()[0].revision, { childInk: old } as CallChange)).toBe(true);
+    // A desk with no draft reads the old ink, and a desk from another child reads nothing.
+    expect(await c.calls.readInk(id, owner)).toEqual(legacy);
+    expect(await c.calls.readInk(id, { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" })).toBeNull();
+    const next: InkEvent = { kind: "clear", t: 900_000 };
+    // A new event goes after the old ink, and the old ink is kept as it was.
+    expect(await c.calls.appendInk(id, owner, legacy.length + 1, [next])).toEqual({ ok: true, held: legacy.length + 1 });
+    expect(await c.memory.readInk(id)).toEqual([...legacy, next]);
+    expect(await c.calls.readInk(id, owner)).toEqual([...legacy, next]);
+    const view = (await c.calls.view(id))!;
+    expect(view.boardHistory.events.some((e) => e.kind === "stroke")).toBe(true);
   });
 
-  it("R625b-5: keeps a board only for a chat of that parent and child", async () => {
+  it("R639-4: the replay of a chat from before the log, with no new event, shows its old ink", async () => {
     const c = await clocked();
     const id = c.r.view.id;
-    const board = encodeHistory(deskBoard(c.r.view.batches, 1));
-    expect(await c.calls.saveInk(id, { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" }, board)).toEqual({ ok: false, error: "not_found" });
-    expect(await c.calls.saveInk(id, { parentId: "66666666-6666-4666-8666-666666666666", childId: child }, board)).toEqual({ ok: false, error: "not_found" });
-    expect(c.memory.rows()[0].childInk ?? null).toBeNull();
-    expect(await c.calls.saveInk(id, owner, board)).toEqual({ ok: true });
+    const old = grow(createHistory(), c.r.view.batches, 1, 1000);
+    expect(await c.memory.update(id, c.memory.rows()[0].revision, { childInk: old } as CallChange)).toBe(true);
+    expect(childStrokes((await c.calls.view(id))!.boardHistory)).toHaveLength(1);
+    expect(await c.memory.readInk(id)).toEqual([]);
+  });
+
+  it("R625b-5: keeps ink only for a chat of that parent and child", async () => {
+    const c = await clocked();
+    const id = c.r.view.id;
+    const log = inkLog(grow(createHistory(), c.r.view.batches, 1, 1000));
+    expect(await c.calls.appendInk(id, { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" }, 1, log)).toEqual({ ok: false, error: "not_found", held: 0 });
+    expect(await c.calls.appendInk(id, { parentId: "66666666-6666-4666-8666-666666666666", childId: child }, 1, log)).toEqual({ ok: false, error: "not_found", held: 0 });
+    expect(await c.memory.readInk(id)).toEqual([]);
+    expect(await c.calls.appendInk(id, owner, 1, log)).toEqual({ ok: true, held: log.length });
   });
 });

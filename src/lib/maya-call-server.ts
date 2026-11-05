@@ -6,7 +6,7 @@ import { assessmentQuestionReader } from "@/lib/assessment-questions";
 import { mayaCalls, recordView, FAKE_MODEL_ID, type CallStatus, type CallView, type FlagLevel, type MayaCalls } from "@/lib/maya-call";
 import { alertState } from "@/lib/maya-call-alert-store";
 import { callModel, callSeams } from "@/lib/maya-call-seams";
-import { fromCallRow } from "@/lib/maya-call-store";
+import { fromCallRow, readInkLog } from "@/lib/maya-call-store";
 import type { Outcome } from "@/lib/maya";
 import { livekitProject } from "@/lib/maya-voice";
 import { lookupStoredQuestion, SUPPORTED_ASSESSMENT_TEMPLATES, templateSkillName } from "@/lib/question-package-assessment";
@@ -241,7 +241,9 @@ export async function readCall(a: AdminSession, id: string): Promise<{ view: Cal
   const alerts = row.flag
     ? must<Database["public"]["Tables"]["maya_call_alerts"]["Row"][]>(await a.db.from("maya_call_alerts").select("*").eq("call_id", row.id).order("created_at"), "maya call alerts").map(alertState)
     : [];
-  const view = recordView(fromCallRow(row), alerts);
+  // A chat's ink log (#635), read with the admin's own session.
+  const ink = row.mode === "text" && row.kind === "chat" ? await readInkLog(a.db, row.id) : [];
+  const view = recordView(fromCallRow(row), alerts, ink);
   if (!view) return null;
   const child = must<{ first_name: string } | null>(await a.db.rpc("admin_children").select("first_name").eq("id", row.child_id).maybeSingle(), "child");
   return { view, childName: child?.first_name ?? null };

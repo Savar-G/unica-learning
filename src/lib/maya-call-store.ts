@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database";
-import { encodeHistory } from "@/lib/board-history";
+import { readInkEvent, type InkEvent } from "@/lib/board-history";
 import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, type CallChange, type CallRecord, type CallStore, type ConnectionLog } from "@/lib/maya-call";
 import type { SweepCallSource, SweepCursor } from "@/lib/maya-call-sweep";
 import type { QuestionRef } from "@/lib/question-package";
@@ -163,18 +163,20 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
       if (error) throw new Error(`maya call pending notes: ${error.message}`);
       return (data ?? []).map(fromCallRow);
     },
-    async saveInk(id, owner, ink) {
-      if (!UUID.test(id) || !UUID.test(owner.parentId) || !UUID.test(owner.childId)) return "not_found";
-      // One statement compares and writes (R625-2); the revision and the call's write time stay (#534). The board goes as
-      // the JSON of its saved copy: Maya's commands are plain JSON, which their type (unknown) does not say.
-      const { data, error } = await admin.rpc("save_maya_call_ink", {
+    async appendInk(id, owner, from, events) {
+      if (!UUID.test(id) || !UUID.test(owner.parentId) || !UUID.test(owner.childId)) return { status: "not_found", held: 0 };
+      // One transaction under the call's row lock appends each sequence once (#635); the call's revision stays.
+      const { data, error } = await admin.rpc("append_maya_call_ink", {
         p_id: id.toLowerCase(), p_parent: owner.parentId.toLowerCase(), p_child: owner.childId.toLowerCase(),
-        p_ink: JSON.parse(encodeHistory(ink)) as Json, p_gap_ms: INK_SAVE_GAP_MS, p_after_end_ms: INK_AFTER_END_MS,
+        p_from: from, p_events: events as unknown as Json, p_gap_ms: INK_SAVE_GAP_MS, p_after_end_ms: INK_AFTER_END_MS,
       });
-      if (error) throw new Error(`maya call save ink: ${error.message}`);
-      if (data === "saved" || data === "stale" || data === "busy" || data === "closed" || data === "not_found") return data;
-      throw new Error(`maya call save ink: unexpected answer ${String(data)}`);
+      if (error) throw new Error(`maya call append ink: ${error.message}`);
+      const answer = data as { status?: unknown; held?: unknown } | null;
+      const status = answer?.status;
+      if ((status === "saved" || status === "busy" || status === "closed" || status === "gap" || status === "not_found") && Number.isInteger(answer?.held)) return { status, held: answer!.held as number };
+      throw new Error(`maya call append ink: unexpected answer ${JSON.stringify(data)}`);
     },
+    readInk: (id) => readInkLog(admin, id),
     async clearNote(id) {
       if (!UUID.test(id)) return false;
       const { data, error } = await admin
@@ -261,3 +263,24 @@ export function mayaConnectionLog(admin: SupabaseClient<Database>): ConnectionLo
     },
   };
 }
+
+/**
+ * A chat's ink log in sequence order (#635), read in pages (the API returns at most 1000 rows a request). The server
+ * reads with the secret key; an admin page reads with the admin's own session (admins read the table).
+ */
+export async function readInkLog(db: SupabaseClient<Database>, id: string): Promise<InkEvent[]> {
+  if (!UUID.test(id)) return [];
+  const log: InkEvent[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from("maya_call_ink_events").select("seq, event").eq("call_id", id.toLowerCase()).order("seq").range(from, from + 999);
+    if (error) throw new Error(`maya call ink: ${error.message}`);
+    for (const row of data ?? []) {
+      // The log is contiguous from 1; an event that does not read back ends it there.
+      const e = row.seq === log.length + 1 ? readInkEvent(row.event) : null;
+      if (!e) return log;
+      log.push(e);
+    }
+    if ((data ?? []).length < 1000) return log;
+  }
+}
+
