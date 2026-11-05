@@ -351,3 +351,7 @@ Not proved: the whole flow with a real password, real Stripe and a real deletion
 The service role may only read the table and call `save_child_plan_state` and `take_plan_read_order`. The sequence behind that function holds no family data. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent and anon read nothing.
 
 Checked on the live database (5 November 2026, UTC), in a transaction that was rolled back (`supabase/tests/child_plan_states.sql`): with the family's deletion requested, the fence refused a write (55000); deleting the parent row left 0 rows; the owner and another parent read no row; anon had no grant; a parent and anon could not call the function; the service role could not update or delete directly.
+
+## Scan link emails (#564)
+
+`public.scan_link_emails` holds one row per "Email me the link" email a parent asked for on the Scan pages tab (when it was asked, the child it named, and the send status), so the server sends at most 3 an hour to one parent. The email holds only the page's address, never a token. `parent_id` and `child_id` reference `public.parents` and `public.children` with `on delete cascade`, so the family deletion removes the rows. Checked on the live database (5 November 2026): both foreign keys cascade; the table has the family write fence trigger; row-level security is on with no policy and no grant for anon or authenticated; only the secret key can call `claim_scan_link_email`.
