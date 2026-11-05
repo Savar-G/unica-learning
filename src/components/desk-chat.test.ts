@@ -8,18 +8,19 @@ import type { ChatReply, ChatView } from "@/lib/maya-chat";
 
 const book = "45100000-0000-4000-8000-000000000031";
 const id = "45100000-0000-4000-8000-000000000021";
+const CHILD = "45100000-0000-4000-8000-000000000041", SIBLING = "45100000-0000-4000-8000-000000000042";
 const view = (revision: number, pending = false): ChatView => ({ id, revision, pending, ended: false, transcript: [], batches: [], hint: 0, safetyMessage: null });
 const reply = (revision: number, extra: Partial<ChatReply> = {}): ChatReply => ({ usage: { used: 1, left: 59, resetsAt: Date.now() + 86400000, backAt: "tomorrow" }, chat: view(revision), ...extra });
 type RequestAction = { type: string; id: string; revision?: number; messageId?: string; text?: string };
 let root: Root, host: HTMLDivElement, state: DeskChatState;
 let answer: (action: RequestAction) => Promise<ChatReply>;
 const requests: RequestAction[] = [];
-function Harness({ question = 1 }: { question?: number }) {
-  const chat = useDeskChat(reply(1).usage, { book, page: 1, question });
+function Harness({ question = 1, child = CHILD }: { question?: number; child?: string }) {
+  const chat = useDeskChat(reply(1).usage, { book, page: 1, question }, child);
   useLayoutEffect(() => { state = chat; }, [chat]);
   return createElement(ChatControls, { state: chat, picked: true });
 }
-const render = async (question = 1) => act(async () => root.render(createElement(Harness, { question })));
+const render = async (question = 1, child = CHILD) => act(async () => root.render(createElement(Harness, { question, child })));
 const send = async (type: "start" | "child" | "end", text?: string) => {
   let ok = false;
   await act(async () => { ok = await state.act(type, text); });
@@ -399,7 +400,7 @@ describe("#639: ink stays on the device until the call holds it", () => {
   let boards: BoardHistory[];
   /** The desk's wiring: a chat picked up again, its board started from the call's answer, each change sent back. */
   function Desk() {
-    const chat = useDeskChat(reply(1).usage, { book, page: 1, question: 1 });
+    const chat = useDeskChat(reply(1).usage, { book, page: 1, question: 1 }, CHILD);
     useLayoutEffect(() => { state = chat; }, [chat]);
     return chat.chat ? createElement(ChatBoard, {
       chat: chat.chat, still: true, restore: chat.callInk?.id === chat.chat.id ? chat.callInk.log : null,
@@ -641,5 +642,79 @@ describe("#639: ink stays on the device until the call holds it", () => {
     sent.length = 0;
     await act(async () => { window.dispatchEvent(new Event("pagehide")); await vi.advanceTimersByTimeAsync(0); });
     expect(sent).toEqual([id]);
+  });
+
+  describe("R639c: a sibling's ink on a shared device", () => {
+    const next = async () => { await act(async () => root.unmount()); await advance(100); root = createRoot(host); };
+    const box = () => JSON.parse(localStorage.getItem(OUTBOX) ?? "null") as { acked: number; events: unknown[]; child?: string } | null;
+    const ask = (posts: { id: string; from: number }[], answerWith: (body: { from: number; events: unknown[] }) => Response) =>
+      theCall(() => [], (body) => { posts.push(body as unknown as { id: string; from: number }); return answerWith(body); });
+
+    it("one child's desk leaves a sibling's ink untouched with no request, and the sibling's desk sends it", async () => {
+      const log = inkLog(threeEvents());
+      const left = JSON.stringify({ acked: 0, events: log, child: SIBLING });
+      localStorage.setItem(OUTBOX, left);
+      const posts: { id: string; from: number }[] = [];
+      // This child's desk would be told not_found, as the route answers for another child's chat.
+      ask(posts, () => Response.json({ error: "not_found", held: 0 }, { status: 404 }));
+      await render(1, CHILD); await advance(60_000);
+      expect(posts).toEqual([]);
+      expect(localStorage.getItem(OUTBOX)).toBe(left);
+      await next();
+      // And it goes nowhere as this desk's page goes away.
+      await render(1, CHILD); await advance(100);
+      await act(async () => { window.dispatchEvent(new Event("pagehide")); await vi.advanceTimersByTimeAsync(0); });
+      expect(posts).toEqual([]);
+      await next();
+      const sent: { from: number; events: unknown[] }[] = [];
+      theCall(() => [], (body) => { sent.push(body); return Response.json({ held: body.from + body.events.length - 1 }); });
+      await render(1, SIBLING); await advance(100);
+      expect(sent).toHaveLength(1);
+      expect(sent[0].events).toEqual(log);
+      expect(localStorage.getItem(OUTBOX)).toBeNull();
+    });
+
+    it("a sibling's ink stays even when it cannot be read", async () => {
+      const left = JSON.stringify({ acked: 0, events: [{ kind: "not an event" }], child: SIBLING });
+      localStorage.setItem(OUTBOX, left);
+      const posts: { id: string; from: number }[] = [];
+      ask(posts, () => Response.json({ held: 0 }));
+      await render(1, CHILD); await advance(100);
+      expect(localStorage.getItem(OUTBOX)).toBe(left);
+    });
+
+    it("marks the ink a desk keeps with its child", async () => {
+      const posts: { id: string; from: number }[] = [];
+      ask(posts, () => Response.json({ error: "unavailable" }, { status: 503 }));
+      await render(1, CHILD); await send("start");
+      await act(async () => state.saveBoard(id, threeEvents()));
+      expect(box()?.child).toBe(CHILD);
+      await advance(2000);
+      expect(box()?.child).toBe(CHILD);
+    });
+
+    it("this child's own ink still goes when the route answers not_found", async () => {
+      localStorage.setItem(OUTBOX, JSON.stringify({ acked: 0, events: inkLog(threeEvents()), child: CHILD }));
+      const posts: { id: string; from: number }[] = [];
+      ask(posts, () => Response.json({ error: "not_found", held: 0 }, { status: 404 }));
+      await render(1, CHILD); await advance(100);
+      expect(posts).toHaveLength(1);
+      expect(localStorage.getItem(OUTBOX)).toBeNull();
+    });
+
+    it("ink with no mark, from before the mark, is tried by any desk, dropped on not_found, and never takes that desk's mark", async () => {
+      localStorage.setItem(OUTBOX, JSON.stringify({ acked: 0, events: inkLog(threeEvents()) }));
+      const posts: { id: string; from: number }[] = [];
+      ask(posts, () => Response.json({ error: "unavailable" }, { status: 503 }));
+      await render(1, CHILD); await advance(100);
+      expect(posts).toHaveLength(1);
+      expect(box()).not.toBeNull();
+      expect(box()?.child).toBeUndefined();
+      await next();
+      ask(posts, () => Response.json({ error: "not_found", held: 0 }, { status: 404 }));
+      await render(1, SIBLING); await advance(100);
+      expect(posts).toHaveLength(2);
+      expect(box()).toBeNull();
+    });
   });
 });

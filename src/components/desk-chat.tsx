@@ -25,14 +25,18 @@ const BYTES_PER_REQUEST = 250_000;
 const PART_GAP_MS = 1100;
 /** How many "busy" answers in a row one send waits through before it stops and tries again later. */
 const BUSY_TRIES = 5;
-/** Ink events the call does not hold yet, kept on this device by the chat's id (#635), until the call holds them or answers closed. */
+/**
+ * Ink events the call does not hold yet, kept on this device by the chat's id (#635), with the child they are of (R639c):
+ * two children can share a device, and a desk sends and removes only its own child's ink.
+ */
 const OUTBOX_ROOT = "unica-chat-ink:";
 
 /**
  * One chat's ink on this device (#635): its log (`log[i]` has sequence i + 1; null where only the call still has it, for
- * an outbox read back after a reload) and the last sequence the call said it holds.
+ * an outbox read back after a reload), the last sequence the call said it holds, and the child it is of. `null`: an outbox
+ * from before the mark, which only test families can hold; it stays unmarked until this desk's call owns it.
  */
-type Ink = { log: (InkEvent | null)[]; acked: number };
+type Ink = { log: (InkEvent | null)[]; acked: number; child: string | null };
 /**
  * What one request did: "sent" (the call holds more now), "again" (the call asked for an earlier start: send at once),
  * "final" (the call will never take this ink: it ended long ago, it is gone, or it is not this child's, R639b-2), "busy"
@@ -94,13 +98,14 @@ const storage = {
   remove: (key: string) => { try { window.localStorage.removeItem(key); } catch { /* Nothing to remove. */ } },
 };
 
-/** An outbox read back: the sequence the call held, and the events after it. */
-function readOutbox(raw: string): Ink | null {
+/** An outbox read back for this child's desk: its ink; "sibling" when it is another child's, read no further; null when it cannot be read. */
+function readOutbox(raw: string, child: string): Ink | "sibling" | null {
   try {
-    const box = JSON.parse(raw) as { acked?: unknown; events?: unknown };
+    const box = JSON.parse(raw) as { acked?: unknown; events?: unknown; child?: unknown };
+    if (typeof box.child === "string" && box.child !== child) return "sibling";
     const events = Array.isArray(box.events) ? box.events.map(readInkEvent) : null;
     if (!Number.isInteger(box.acked) || (box.acked as number) < 0 || !events || events.some((e) => e === null)) return null;
-    return { log: [...Array<null>(box.acked as number).fill(null), ...events], acked: box.acked as number };
+    return { log: [...Array<null>(box.acked as number).fill(null), ...events], acked: box.acked as number, child: typeof box.child === "string" ? box.child : null };
   } catch {
     return null;
   }
@@ -114,9 +119,10 @@ function readOutbox(raw: string): Ink | null {
  * Before the chat ends, the ink is tried three times; the chat ends either way (R625-5, R625b-2). The outbox goes from
  * the device only when the call holds every event in it, or says it never will (R625b-3, R635-1, R635-2, R639-5,
  * R639b-2): the call alone knows when its time is past. The next desk load sends what is left: each chat has its own
- * queue, and old chats go one at a time in the background, so they never hold the chat on the desk.
+ * queue, and old chats go one at a time in the background, so they never hold the chat on the desk. A sibling's outbox is
+ * never read, sent or removed here: it waits on the device for that child's desk (R639c).
  */
-function useInkSaver() {
+function useInkSaver(child: string) {
   const chats = useRef(new Map<string, Ink>());
   const queues = useRef(new Map<string, Promise<boolean>>());
   /** The chats of this visit: what a page going away sends, before old ink can use up what the browser allows. */
@@ -126,7 +132,7 @@ function useInkSaver() {
   const keep = useCallback((id: string, ink: Ink) => {
     const key = `${OUTBOX_ROOT}${id}`;
     if (ink.acked >= ink.log.length) storage.remove(key);
-    else storage.write(key, JSON.stringify({ acked: ink.acked, events: ink.log.slice(ink.acked) }));
+    else storage.write(key, JSON.stringify({ acked: ink.acked, events: ink.log.slice(ink.acked), ...(ink.child ? { child: ink.child } : {}) }));
   }, []);
   /** Sends a chat's events the call does not hold, one request after another; true when it holds them all. */
   const flush = useCallback((id: string) => {
@@ -165,21 +171,24 @@ function useInkSaver() {
   /** A change of the chat's board. The log only grows: a board that fell behind never takes back a sequence (R639-1, R639-2). */
   const save = useCallback((id: string, history: BoardHistory) => {
     visit.current.add(id);
-    const ink = chats.current.get(id) ?? { log: [], acked: 0 };
+    const ink = chats.current.get(id) ?? { log: [], acked: 0, child };
+    ink.child = child;
     ink.log = growInkLog(ink.log, inkLog(history));
     ink.acked = Math.min(ink.acked, ink.log.length);
     chats.current.set(id, ink);
     keep(id, ink);
     clearTimeout(timers.current.get(id));
     timers.current.set(id, setTimeout(() => void flush(id), BOARD_SAVE_MS));
-  }, [flush, keep]);
+  }, [child, flush, keep]);
   /**
    * The call's log of a chat read back: the whole log the board starts from, the call's events first, then the ink still
    * on this device past them (R639-1). Ink of this device that the call does not hold at its place goes after them.
    */
   const restore = useCallback((id: string, held: InkEvent[]): InkEvent[] => {
     visit.current.add(id);
-    const ink = chats.current.get(id) ?? { log: [], acked: 0 };
+    const ink = chats.current.get(id) ?? { log: [], acked: 0, child };
+    // The call answered this child's desk with this chat's log, so the chat is this child's.
+    ink.child = child;
     const device = ink.log.map((e, i) => e ?? held[i] ?? null).filter((e): e is InkEvent => e !== null);
     const log = growInkLog(held, device);
     // A device's place in the log counts only where its log is the call's.
@@ -188,13 +197,14 @@ function useInkSaver() {
     chats.current.set(id, ink);
     keep(id, ink);
     return log;
-  }, [keep]);
+  }, [child, keep]);
   useEffect(() => {
     // Ink an earlier visit could not send: each chat's outbox is tried once now, one after another, behind the desk.
     const waiting: string[] = [];
     for (const key of storage.keys()) {
       const raw = storage.read(key);
-      const box = raw ? readOutbox(raw) : null;
+      const box = raw ? readOutbox(raw, child) : null;
+      if (box === "sibling") continue;
       if (!box) {
         storage.remove(key);
         continue;
@@ -219,11 +229,11 @@ function useInkSaver() {
       for (const t of pending.values()) clearTimeout(t);
       gone();
     };
-  }, [flush]);
+  }, [child, flush]);
   return { save, flush, finish, restore };
 }
 
-export function useDeskChat(initial: ChatUsage | null, at: { book: string; page: number; question: number | null }) {
+export function useDeskChat(initial: ChatUsage | null, at: { book: string; page: number; question: number | null }, child: string) {
   const [usage, setUsage] = useState(initial);
   const [chat, setChat] = useState<ChatView | null>(null);
   const [ownerKey, setOwnerKey] = useState<string | null>(null);
@@ -241,7 +251,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
    * log would not match).
    */
   const [callInk, setCallInk] = useState<{ id: string; log: InkEvent[] | "loading" } | null>(null);
-  const board = useInkSaver();
+  const board = useInkSaver(child);
   const request = useCallback(async (action: { type: string; [field: string]: unknown }, generation = epoch.current) => {
     const res = await fetch("/api/desk/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
     const answer = await res.json() as ChatReply;
