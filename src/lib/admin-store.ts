@@ -1076,11 +1076,9 @@ export async function testAccountState(a: AdminSession, parentId: string): Promi
   return { marked: !!marked, admin: team.includes(parentId) };
 }
 
-/** Marks or unmarks a family as a test. Row-level security allows it for admins only. */
+/** Marks or unmarks a family as a test. The admin-session function locks the parent first (#621). */
 export async function setTestAccount(a: AdminSession, parentId: string, test: boolean): Promise<void> {
-  const { error } = test
-    ? await a.db.from("test_accounts").upsert({ parent_id: parentId, marked_by: a.userId }, { onConflict: "parent_id", ignoreDuplicates: true })
-    : await a.db.from("test_accounts").delete().eq("parent_id", parentId);
+  const { error } = await a.db.rpc("admin_set_test_account", { p_parent: parentId, p_test: test });
   if (error) throw new Error(`[admin] test account: ${error.message}`);
 }
 

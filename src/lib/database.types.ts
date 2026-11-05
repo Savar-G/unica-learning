@@ -4589,6 +4589,14 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_set_maya_chat_family: {
+        Args: { p_change: string; p_enabled: boolean; p_parent: string }
+        Returns: string
+      }
+      admin_set_test_account: {
+        Args: { p_parent: string; p_test: boolean }
+        Returns: undefined
+      }
       admin_team_ids: { Args: never; Returns: string[] }
       admin_template_stats: {
         Args: {
