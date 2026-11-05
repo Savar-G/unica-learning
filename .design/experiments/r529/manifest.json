@@ -6,7 +6,7 @@
   "approval": "Pending. Savar must approve the privacy and terms wording and the notice before merge.",
   "browser": "T3 preview tools, incognito profile. aside status hung at 'Waiting for Aside to restart', so the brief's fallback applied.",
   "model": "No model calls. The local server had no OPENROUTER_API_KEY, and the check stopped before a chat ran.",
-  "fixture": "The marked test family QA E2E Three (grade 3, shipped workbook, PIN set). Its acceptance row was made by the real form, then removed through the Management API, so the family still sees the notice.",
+  "fixture": "The marked test family QA E2E Three (grade 3, shipped workbook, PIN set). Its acceptance row was made by the real form, then removed through the Management API, both rounds, so the family still sees the notice.",
   "viewports": {
     "laptop": [
       1440,
@@ -14,7 +14,7 @@
     ],
     "tablet": [
       820,
-      1180
+      1600
     ],
     "phone": [
       390,
@@ -32,25 +32,25 @@
       "path": ".design/experiments/r529/notice-laptop.png",
       "state": "The notice, reached from Open the desk.",
       "viewport": "laptop",
-      "sha256": "4cfa07dc04f14a561c128ce35369f2cdf92b017d57bf5c67d47061505e5e0235"
+      "sha256": "ce8290ccea158881967435dc03c88be4e028f014efd67cd25445f716cce2c7d7"
     },
     {
       "path": ".design/experiments/r529/notice-tablet.png",
       "state": "The notice.",
       "viewport": "tablet",
-      "sha256": "98fbe491d1fc0c44a410f7dfc5d2ecd2eb58ad628b15b841fe069e3d8b4606bb"
+      "sha256": "76dbd11e7ec5b6ff5759eb75c1ec1b7186d87db95c7290c3c5508bd8d65b7638"
     },
     {
       "path": ".design/experiments/r529/notice-phone.png",
       "state": "The notice. Full-height capture.",
       "viewport": "phone",
-      "sha256": "0b8a312d2fb82515b1941c455b51a8ee92793b2c3f98048a39c2b72ef624cf7f"
+      "sha256": "744c3a731ffab1f11ff14a613e8c4d15123fe4a7154b29bedf23fe2ad40b624b"
     },
     {
       "path": ".design/experiments/r529/notice-saved-laptop.png",
-      "state": "After I agree: the answer is saved, with Open the desk next.",
+      "state": "After I agree: the answer is saved, with no promise of access to chat, and Open the desk next.",
       "viewport": "laptop",
-      "sha256": "f31710ae2304121934261b7b7105f9a7bde723ed69aa48a2ca034cc880a5e69f"
+      "sha256": "114902da56b7bec532f3b7c4a7296062eb8e516960d642ee27f619364631269a"
     },
     {
       "path": ".design/experiments/r529/desk-no-agreement-laptop.png",
@@ -74,13 +74,13 @@
       "path": ".design/experiments/r529/privacy-maya-laptop.png",
       "state": "Privacy policy: the Maya and voice sections.",
       "viewport": "laptop",
-      "sha256": "e8d84c748b2af04f045f7f56d4f99b23a3fd0580a5ce8bcc4af739488e9afe6b"
+      "sha256": "116b9a102055571c229f4cffc392d55eff6467636dfbd748c5989d34e7e9c0ce"
     },
     {
       "path": ".design/experiments/r529/terms-maya-phone.png",
       "state": "Terms: the Maya section.",
       "viewport": "phone",
-      "sha256": "c68aa0a642fd3cb369d8660e6d023da121849b8a967a99a393512e97f2f6ee65"
+      "sha256": "75a3744a472f12e77f83305df1857df16dbee6c4436a0b805536979bca5308a9"
     },
     {
       "path": ".design/experiments/r529/dashboard-card-laptop.png",
@@ -94,5 +94,6 @@
       "viewport": "phone",
       "sha256": "8b8793c924bd8bc0eff386f003fbaa6156eb652c35cdd0e6ef0ba845f932ed9b"
     }
-  ]
+  ],
+  "review_round": "Codex review of 110919a: notice, saved, privacy and terms screens retaken after the five fixes."
 }

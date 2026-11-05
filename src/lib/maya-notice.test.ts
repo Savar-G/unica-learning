@@ -117,4 +117,12 @@ describe("the notice text", () => {
     expect(text).toMatch(/A chat has no audio/);
     expect(text).toMatch(/60 messages a day/);
   });
+
+  it("says the chat can go to the AI after it ends, that other details can remain, and the recap's limit", () => {
+    expect(text).toMatch(/After a chat ends, we can also send the chat to the AI company/);
+    expect(text).toMatch(/other personal details your child typed can remain/);
+    expect(text).toMatch(/newest 10 chats or calls across your family/);
+    expect(text).toMatch(/stores our records/);
+    expect(text).toMatch(/sends our email/);
+  });
 });

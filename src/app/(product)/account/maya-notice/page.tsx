@@ -52,8 +52,8 @@ export default async function MayaNotice({ searchParams }: PageProps<"/account/m
 
   if (saved === "1" && accepted) {
     return (
-      <SupportPage label="Your account" title="Thank you. Maya is on for your family.">
-        <p className="lead">Your child can chat with Maya on the desk. We saved your answer. You can read this notice again from your account.</p>
+      <SupportPage label="Your account" title="Thank you. We saved your answer.">
+        <p className="lead">This does not open chat with Maya by itself. We open chat to families on a workbook plan in stages. You can read this notice again from your account.</p>
         <div className="acct-notice-actions">
           {openDesk}
           <Link className={openDesk ? "btn ghost" : "btn"} href="/account">Back to your account</Link>
@@ -66,7 +66,7 @@ export default async function MayaNotice({ searchParams }: PageProps<"/account/m
     <SupportPage label="Your account" title="Before your child uses Maya.">
       {error === "1" && <p role="alert" className="acct-alert">We could not save your answer. Try again in a moment.</p>}
       {changed === "1" && <p role="status" className="acct-alert">This notice changed. Please read it again.</p>}
-      {readFailed && <p role="alert" className="acct-alert">We cannot check your answer right now. Try again in a moment.</p>}
+      {readFailed && <p role="alert" className="acct-alert">We cannot check whether you agreed. You can still choose below, or try again in a moment.</p>}
       {accepted && <p role="status" className="acct-alert acct-saved">You agreed on {formatInZone(Date.parse(accepted.acceptedAt), zone, { year: "numeric", month: "long", day: "numeric" })}.</p>}
       <p className="lead">Maya is our AI Teaching Assistant. A parent or guardian must read this and agree before a child&apos;s first chat. One agreement covers all your children.</p>
       {MAYA_NOTICE.map((part) => (
@@ -75,8 +75,8 @@ export default async function MayaNotice({ searchParams }: PageProps<"/account/m
           <p>{part.text}</p>
         </section>
       ))}
-      <p className="small acct-notice-more">To turn Maya off later, email us. The <Link href="/privacy">privacy policy</Link> names the companies and explains how long we keep each record. See also the <Link href="/terms">terms</Link>.</p>
-      {!accepted && !readFailed ? (
+      <p className="small acct-notice-more">To turn Maya off later, email us. A chat already open can continue until it ends, at most 10 minutes. The <Link href="/privacy">privacy policy</Link> names the companies and explains how long we keep each record. See also the <Link href="/terms">terms</Link>.</p>
+      {!accepted ? (
         <div className="acct-notice-actions">
           <form method="post" action="/api/account/maya-notice">
             {fields}
