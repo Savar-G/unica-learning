@@ -5,6 +5,7 @@ import {
   isQrToken,
   isUuid,
   renderingProblem,
+  storedContent,
   storedQuestion,
   workbookProblem,
   WORKBOOK_FILES_BUCKET,
@@ -15,6 +16,7 @@ import {
   type WorkbookSummary,
   type WorkbookWrite,
 } from "@/lib/workbook-content";
+import { storedPrintContract, type ScanManifest } from "@/lib/workbook-print-contract";
 
 // The workbook store (#299) in Supabase (migration add_workbooks). Writes go through the service-only function
 // write_workbook, so pass a client with the secret key to write; it stores a whole workbook in one transaction or
@@ -26,9 +28,9 @@ type BookRow = Tables<"workbooks">;
 type PageRow = Tables<"workbook_pages">;
 type QuestionRow = Tables<"workbook_questions">;
 
-const BOOK_COLUMNS = "id, created_at, parent_id, child_id, number, levels, status, pdf_path, profile_build, approved_at, printed_at, shipped_at";
-const PAGE_COLUMNS = "id, page_number, day_label, page_type, image_path, image_width, image_height, qr_token";
-const QUESTION_COLUMNS = "page_id, question_number, schema_version, package, box_x, box_y, box_width, box_height";
+const BOOK_COLUMNS = "id, created_at, parent_id, child_id, number, levels, status, pdf_path, profile_build, approved_at, printed_at, shipped_at, pdf_sha256, print_manifest, printed_revision";
+const PAGE_COLUMNS = "id, page_number, day_label, page_type, image_path, image_width, image_height, qr_token, print_contract";
+const QUESTION_COLUMNS = "page_id, question_number, schema_version, package, box_x, box_y, box_width, box_height, regions, teaching";
 
 function summary(r: Pick<BookRow, "id" | "created_at" | "parent_id" | "child_id" | "number" | "levels" | "status" | "pdf_path" | "profile_build" | "approved_at" | "printed_at" | "shipped_at">): WorkbookSummary {
   return {
@@ -42,10 +44,10 @@ function summary(r: Pick<BookRow, "id" | "created_at" | "parent_id" | "child_id"
   };
 }
 
-type QuestionFields = Pick<QuestionRow, "question_number" | "schema_version" | "package" | "box_x" | "box_y" | "box_width" | "box_height">;
+type QuestionFields = Pick<QuestionRow, "question_number" | "schema_version" | "package" | "box_x" | "box_y" | "box_width" | "box_height" | "regions" | "teaching">;
 
 const stored = (q: QuestionFields): StoredQuestion => ({
-  number: q.question_number, box: { x: q.box_x, y: q.box_y, width: q.box_width, height: q.box_height }, schemaVersion: q.schema_version, package: q.package,
+  number: q.question_number, box: { x: q.box_x, y: q.box_y, width: q.box_width, height: q.box_height }, schemaVersion: q.schema_version, package: q.package, regions: q.regions, teaching: q.teaching,
 });
 
 /** write_workbook's jsonb answer, checked: a change of its shape fails here, not in a caller. */
@@ -56,13 +58,14 @@ function writeAnswer(data: unknown): WorkbookWrite {
   throw new Error("workbook write: unexpected answer");
 }
 
-function page(workbookId: string, p: Pick<PageRow, "page_number" | "day_label" | "page_type" | "image_path" | "image_width" | "image_height" | "qr_token">,
+function page(workbookId: string, p: Pick<PageRow, "page_number" | "day_label" | "page_type" | "image_path" | "image_width" | "image_height" | "qr_token" | "print_contract">,
   questions: QuestionFields[]): WorkbookPage {
+  const image = p.image_path !== null && p.image_width !== null && p.image_height !== null ? { path: p.image_path, width: p.image_width, height: p.image_height } : null;
   return {
-    number: p.page_number, dayLabel: p.day_label, type: p.page_type,
-    image: p.image_path !== null && p.image_width !== null && p.image_height !== null ? { path: p.image_path, width: p.image_width, height: p.image_height } : null,
+    number: p.page_number, dayLabel: p.day_label, type: p.page_type, image,
     qrToken: p.qr_token,
-    questions: questions.map((q) => storedQuestion(stored(q), { source: "workbook", workbookId, page: p.page_number, question: q.question_number })),
+    questions: questions.map((q) => storedQuestion(stored(q), { source: "workbook", workbookId, page: p.page_number, question: q.question_number }, image)),
+    printContract: p.print_contract === null ? null : storedPrintContract(p.print_contract, { workbookId, page: p.page_number, image }),
   };
 }
 
@@ -96,6 +99,9 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       if (!book.data) return null;
       return {
         ...summary(book.data),
+        pdfSha256: book.data.pdf_sha256,
+        printManifest: book.data.print_manifest as ScanManifest | null,
+        printedRevision: book.data.printed_revision,
         pages: (pages.data ?? []).map((p) => page(id, p, (questions.data ?? []).filter((q) => q.page_id === p.id))),
       };
     },
@@ -126,7 +132,7 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
         .eq("page_id", p.id).eq("question_number", ref.question).maybeSingle();
       if (qError) throw new Error(`workbook question load: ${qError.message}`);
       if (!q) return { status: "not-found" };
-      return storedQuestion(stored(q), ref).content;
+      return storedContent(stored(q), ref);
     },
 
     async pageByToken(token) {

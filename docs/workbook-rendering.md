@@ -65,6 +65,29 @@ Storing:
   failed attempt. A file no workbook names (for example the unused rendering after a lost answer) stays in the
   family's folder and is deleted with the family.
 
+## The print contract (#536)
+
+A photo of a printed page is read against what that exact print measured, never against a later template. The contract
+is in `src/lib/workbook-print-contract.ts`.
+
+- **At render.** Each page gets a contract: where the four scan marks printed (`scan-tl`, `scan-tr`, `scan-br`,
+  `scan-bl`, as outer corners, in that order), in declared units (image pixels, top left origin, x right, y down, portrait, with the image size and the
+  CSS-to-image scale), and the fingerprints of its content and its PNG. Each question keeps a box for each answer
+  region. A page with missing, duplicate, off-page or inconsistent marks still renders and prints. It has no contract, and
+  its rendering says why (`contractProblem`). No check of a page reads a scan mark.
+- **Through the draft.** A revision's rendering keeps the contract, the regions and the PDF's SHA-256. An edit renders
+  only the changed page, so the other pages keep theirs.
+- **At approval.** `approvedWorkbook` freezes each question's teaching context and the scan manifest from the run's
+  stored plan (`workbook_run_frames`): the required pages of each printed day and the test workbook's Day 7 level test.
+  `printedRevision` joins all of it into one identity. A contract is one unit: if any page has none, or a page's content
+  is not what its contract printed, the book keeps no contract and no revision. It is still approved.
+- **Teaching context.** `plannedStep` is the step the planned part teaches. `itemStep` is the step the question really tests: its template's step, else the planned step for an item written on that skill. Each is a whole unit, skill and step number, or null, so read `itemStep` to know what a mark says about the child. A skill's unit comes from the run's stored frame (`RunFrame.units`), never from a later curriculum.
+- **Afterwards.** Taking a workbook back to draft or saving a new rendering ends its revision. `identify_scan_photo`
+  gives a photo the revision of its book. `printContractForPhoto` answers only for a photo of the book's current revision. The printed-book lock covers the revision, the PDF fingerprint, the manifest and the page and question rows.
+- **Legacy books.** A book with no revision keeps its photos, with no automatic marking. Never render a stored book
+  again to invent its contract. A draft rendered before #536 has no contract, so prepare it again before approving it if
+  it needs automatic marking.
+
 ## The workbook templates (#310)
 
 `workbookTemplate` (`src/lib/workbook-template.ts`) lays out every page type of `.design/workbooks/DESIGN.md` section

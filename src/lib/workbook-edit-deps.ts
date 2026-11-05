@@ -1,5 +1,5 @@
 // Shared by the dev/server route and the Mac worker. The AI factory keeps the D-200 subscription fallback.
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { workbookAi } from "@/lib/workbook-ai";
@@ -9,7 +9,7 @@ import { runWorkbookEdit } from "@/lib/workbook-edit";
 import { workbookEditStore } from "@/lib/workbook-edit-store";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { PDFDocument } from "pdf-lib";
-import { renderWorkbook } from "@/lib/workbook-render";
+import { renderedPages, renderWorkbook } from "@/lib/workbook-render";
 import { renderableDraft } from "@/lib/workbook-fit";
 import type { RunPlace } from "@/lib/workbook-job-deps";
 import { runAiCallLog, saveRunAiCalls } from "@/lib/workbook-job-store";
@@ -51,7 +51,7 @@ export async function runWorkbookEditWith(db: SupabaseClient<Database>, id: stri
         const p = result.workbook.pages[0];
         const image = result.files.find((f) => f.path === p.image!.path)!;
         try { await files.put(image); } catch (e) { await files.remove([image.path]).catch(() => undefined); throw e; }
-        return { page: { number: page, image: p.image!, questions: p.questions.map((q) => ({ number: q.number, box: q.box })) }, paths: [image.path] };
+        return { page: renderedPages(result)[0], paths: [image.path] };
       },
       async assemble(snapshot, pages) {
         const pdf = await PDFDocument.create();
@@ -62,9 +62,10 @@ export async function runWorkbookEditWith(db: SupabaseClient<Database>, id: stri
           pdf.addPage([612, 792]).drawImage(image, { x: 0, y: 0, width: 612, height: 792 });
         }
         const pdfPath = `${snapshot.parentId}/${snapshot.draft.id}/workbook-${randomBytes(12).toString("hex")}.pdf`;
-        try { await files.put({ path: pdfPath, bytes: await pdf.save(), contentType: "application/pdf" }); }
+        const bytes = await pdf.save();
+        try { await files.put({ path: pdfPath, bytes, contentType: "application/pdf" }); }
         catch (e) { await files.remove([pdfPath]).catch(() => undefined); throw e; }
-        return { pdfPath, paths: [pdfPath] };
+        return { pdfPath, pdfSha256: createHash("sha256").update(bytes).digest("hex"), paths: [pdfPath] };
       },
     });
   } finally { clearInterval(timer); await log.flush(); }
