@@ -475,7 +475,7 @@ function photoBox(photo: Raster, b: Box): Raster {
 }
 
 /** Where the printed code's modules are: the centre of each column and each row, in page pixels, and a module's size. */
-interface QrGrid { columns: number[]; rows: number[]; module: number }
+interface QrGrid { columns: number[]; rows: number[]; pitch: number }
 
 /**
  * The printed code's module grid, from the printed page image. The code's box is its dark pixels' bounding box around
@@ -496,15 +496,15 @@ function printedGrid(printed: Raster, qr: FoundQr): QrGrid | null {
     left = Math.min(left, x); right = Math.max(right, x + 1); top = Math.min(top, y); bottom = Math.max(bottom, y + 1);
   }
   if (!(right > left && bottom > top)) return null;
-  const module = (right - left) / n;
+  const pitch = (right - left) / n;
   // (A box that is not the code's size or shape, as when other ink touches it, gives no grid.)
-  if (Math.abs(module - b.width / n) > 0.5 * module || Math.abs((bottom - top) / n - module) > 0.25 * module) return null;
+  if (Math.abs(pitch - b.width / n) > 0.5 * pitch || Math.abs((bottom - top) / n - pitch) > 0.25 * pitch) return null;
   const edges = (from: number, to: number, changes: (k: number) => number) => {
     const at = [from];
     for (let i = 1; i < n; i++) {
       const even = from + ((to - from) * i) / n;
       let best = Math.round(even), most = -1;
-      for (let k = Math.ceil(even - module / 2); k <= Math.floor(even + module / 2); k++) {
+      for (let k = Math.ceil(even - pitch / 2); k <= Math.floor(even + pitch / 2); k++) {
         const c = changes(k);
         if (c > most || (c === most && Math.abs(k - even) < Math.abs(best - even))) { most = c; best = k; }
       }
@@ -515,7 +515,7 @@ function printedGrid(printed: Raster, qr: FoundQr): QrGrid | null {
   };
   const columnChanges = (k: number) => { let c = 0; for (let y = top; y < bottom; y++) if (dark(k - 1, y) !== dark(k, y)) c++; return c; };
   const rowChanges = (k: number) => { let c = 0; for (let x = left; x < right; x++) if (dark(x, k - 1) !== dark(x, k)) c++; return c; };
-  return { columns: edges(left, right, columnChanges), rows: edges(top, bottom, rowChanges), module };
+  return { columns: edges(left, right, columnChanges), rows: edges(top, bottom, rowChanges), pitch };
 }
 
 /** How far from where the page printed it the module read looks for the code, in modules, and in what steps. */
@@ -544,7 +544,7 @@ function gridQr(photo: Raster, t: Transform, printed: FoundQr, grid: QrGrid | nu
   const across = { x: (tr.x - tl.x) / n, y: (tr.y - tl.y) / n }, down = { x: (bl.x - tl.x) / n, y: (bl.y - tl.y) / n };
   // Each module's middle, moved by (dx, dy) modules: from the measured grid, or else evenly between the reader's corners.
   const centre = (i: number, j: number, dx: number, dy: number) => grid
-    ? { x: grid.columns[i] + dx * grid.module, y: grid.rows[j] + dy * grid.module }
+    ? { x: grid.columns[i] + dx * grid.pitch, y: grid.rows[j] + dy * grid.pitch }
     : { x: tl.x + across.x * (i + 0.5 + dx) + down.x * (j + 0.5 + dy), y: tl.y + across.y * (i + 0.5 + dx) + down.y * (j + 0.5 + dy) };
   const side = (n + 2 * QR_GRID_QUIET) * QR_GRID_PIXELS;
   const offsets: { dx: number; dy: number }[] = [];
