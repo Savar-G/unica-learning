@@ -5,7 +5,7 @@ import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
 import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
-import { chatIsEnabled, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
+import { chatFamilyGate, chatGradeLine, chatServesGrade, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
 import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
@@ -14,12 +14,20 @@ import { type FamilyZone } from "@/lib/family-time";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
 
 type DB = SupabaseClient<Database>;
-/** Stripe remains the plan authority. Unknown, canceled and past due fail closed. */
+/**
+ * The family part of the chat check (#530): a test family, or a family on the admin list with the switch on and a
+ * running plan. Stripe remains the plan authority. Unknown, canceled and past due fail closed. A family off the list
+ * is refused before Stripe is read.
+ */
 export async function chatAccess(db: DB, parent: string): Promise<boolean> {
-  const { data: test, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
-  if (error) throw Error(error.message);
-  if (!chatIsEnabled(!!test, process.env)) return false;
-  if (test) return true;
+  const [{ data: test, error }, { data: listed, error: listError }] = await Promise.all([
+    db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle(),
+    db.from("maya_chat_families").select("parent_id").eq("parent_id", parent).maybeSingle(),
+  ]);
+  if (error || listError) throw Error((error ?? listError)!.message);
+  const gate = chatFamilyGate({ test: !!test, listed: !!listed }, process.env);
+  if (gate === "closed") return false;
+  if (gate === "test") return true;
   const s = stripe();
   if (!s) return false;
   const { data, error: cardsError } = await db.rpc("family_retention_cards", { p: parent });
@@ -49,12 +57,31 @@ export async function readChatUsage(db: DB, parent: string, child: string, zone:
   return chatUsage(count, now, zone);
 }
 
-export async function parentChatUsage(session: DB, parent: string, children: readonly { id: string }[], zone: FamilyZone): Promise<Map<string, ChatUsage>> {
+/** The whole chat check on every chat request: the family first, then the child's grade (Grade 3 and up). */
+export async function chatGate(db: DB, parent: string, grade: number | null | undefined): Promise<"open" | "too_young" | "closed"> {
+  if (!await chatAccess(db, parent)) return "closed";
+  return chatServesGrade(grade) ? "open" : "too_young";
+}
+
+/** Chat usage for the children who can chat; a younger child has none. An empty map when the family has no chat. */
+export async function parentChatUsage(session: DB, parent: string, children: readonly { id: string; grade: number }[], zone: FamilyZone): Promise<Map<string, ChatUsage>> {
   try {
     const admin = adminClient();
     if (!admin || !await chatAccess(admin, parent)) return new Map();
-    return new Map(await Promise.all(children.map(async (c) => [c.id, await readChatUsage(session, parent, c.id, zone)] as const)));
+    return new Map(await Promise.all(children.filter((c) => chatServesGrade(c.grade))
+      .map(async (c) => [c.id, await readChatUsage(session, parent, c.id, zone)] as const)));
   } catch { return new Map(); }
+}
+
+/** What the desk shows for one child: the chat usage, or why a younger child has none. Nothing when the family has no chat. */
+export async function deskChat(session: DB, parent: string, child: { id: string; grade: number }, zone: FamilyZone): Promise<{ usage: ChatUsage | null; note: string | null }> {
+  try {
+    const admin = adminClient();
+    const gate = admin ? await chatGate(admin, parent, child.grade) : "closed";
+    if (gate === "too_young") return { usage: null, note: chatGradeLine() };
+    if (gate === "open") return { usage: await readChatUsage(session, parent, child.id, zone), note: null };
+  } catch { /* The desk shows chat as not open yet. */ }
+  return { usage: null, note: null };
 }
 
 export interface ChatContext { db: DB; parent: string; child: string; name: string; grade?: number; zone: FamilyZone }

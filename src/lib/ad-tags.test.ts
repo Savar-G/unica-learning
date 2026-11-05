@@ -153,6 +153,8 @@ describe("ad tags on the child's desk", () => {
   it("block every desk page", () => {
     for (const path of ["/tutor", "/tutor/", QR, "/tutor/forgot-pin", "/Tutor", "/%74utor/p/x", "//tutor/p/x"]) expect(adsBlockedPath(path), path).toBe(true);
     for (const path of ["/tutoring", "/our-story"]) expect(adsBlockedPath(path), path).toBe(false);
+    for (const path of ["/account/settings", "/account/settings/", "/Account/Settings", "/account/workbooks/child-id"]) expect(adsBlockedPath(path), path).toBe(true);
+    expect(adsBlockedPath("/account"), "/account").toBe(false);
   });
 
   it("never load on a QR code page, even after consent, and send no page location", () => {
@@ -293,6 +295,14 @@ describe("ad conversions", () => {
     const p = sent("report_open", REPORT);
     expect(p.meta).toEqual([]);
     expect(p.google[0][2]).toMatchObject({ send_to: "AW-1234567890/reportLbl" });
+  });
+
+  it("send report_open to Google only, once, when the dashboard shows the report on /account (#552)", () => {
+    for (const path of ["/account", "/account?child=3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f"]) {
+      const p = sent("report_open", path);
+      expect(p.meta).toEqual([]);
+      expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/reportLbl", page_location: "https://unicalearning.com/account", page_referrer: "" }]]);
+    }
   });
 
   it("send card_saved to Google only, worth the first charge (CAD 79.99): the thank-you address holds a Stripe reference", () => {

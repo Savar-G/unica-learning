@@ -26,6 +26,7 @@
 // key goes to the solve check (src/lib/workbook-solve-check.ts) in the generator.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { BC_SKILL_MAP } from "@/lib/assessment";
+import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 import { isNumberStory } from "@/lib/workbook-code-story";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
@@ -618,11 +619,20 @@ export interface BuiltQuestion {
   package: QuestionPackage | null;
   /** The worked step ids of the AI's operation, when it is valid: the names a wrong answer's step may use. */
   stepIds: string[];
+  /** Only a step-specific builder can declare the step it was asked to build. */
+  stepDeclaration?: StepDeclaration;
+  itemStep?: StepReference | null;
+  itemStepReason?: string | null;
   /**
    * Code's sound wordings of the question, when code writes its text (round 7): the printed one first, then the others
    * the generator may print instead (so a page never asks one shape twice).
    */
   wordings?: string[];
+}
+
+/** Keep code's selected reference only on a package for the same skill. Raw writer fields are never a source. */
+export function selectedItemStep(pkg: QuestionPackage | null, selected: StepReference | null | undefined): StepReference | null {
+  return selected && pkg?.skill.skills.includes(selected.skill) ? { ...selected } : null;
 }
 
 /** Where a slot's question goes, and what the plan lets it be. */
@@ -705,6 +715,9 @@ export function buildQuestion(given: unknown, place: SlotPlace): BuiltQuestion {
   const raw: unknown = twoWaysCode(given, place);
   try {
     const made = build(raw, place);
+    // This generic builder was given a skill and arithmetic, not a step-specific construction request.
+    made.itemStep = null;
+    made.itemStepReason = "The generic item builder has no declared curriculum step.";
     // (A minus prints as "−" whoever wrote the text, the U16 r14 review.)
     const built = made.package ? { ...made, package: { ...made.package, text: printedMinus(made.package.text) }, ...(made.wordings ? { wordings: made.wordings.map(printedMinus) } : {}) } : made;
     if (built.check.status === "failed" || !built.package || !isObject(raw)) return built;

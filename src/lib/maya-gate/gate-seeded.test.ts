@@ -144,6 +144,36 @@ async function savedTrace(b: Behaviour): Promise<MayaTrace> {
 }
 const codes = (b: Behaviour, trace: unknown, call = calls.get(b.id)) => [...new Set(judge(b, JSON.stringify(trace), call).failures.map((f) => f.code))];
 const mayaAt = (t: MayaTrace, n: number) => t.turns.filter((x) => x.kind === "maya")[n] as Extract<MayaTrace["turns"][number], { kind: "maya" }>;
+/** The trace with a note drawn in Maya's turn `n`, as the session draws a line's board text (session.ts, `note-...`). */
+function withNote(t: MayaTrace, n: number, text: string): MayaTrace {
+  const m = mayaAt(t, n);
+  const transactionId = `${t.callId}-note-${t.board.length}`;
+  t.board.push({ at: m.at, turn: t.turns.indexOf(m), transactionId, commands: [{ op: "write", id: `note-9-${t.board.length}-check-right_step`, text, place: { below: "question" } } as unknown as Command] });
+  m.output!.board.push(transactionId);
+  return t;
+}
+
+describe("board notes (#604): a note with a number is exactly a code line's board text", () => {
+  // The practice run of 2026-11-05 (C37, 3 of 3): code's own equation for the regrouped ones of 52 - 28 failed the gate,
+  // because 12 is not a number of the package's steps.
+  it.each(["12 − 8 = 4", "12 − 8", "52 − 28 = 24", "52 − 28"])("passes code's board text %s", async (text) => {
+    const t = withNote(await savedTrace(byId("C37")), 1, text);
+    expect(checkTrace(t)).toMatchObject({ ok: true });
+    expect(codes(byId("C37"), t)).not.toContain("math_not_from_code");
+  });
+
+  it.each(["12 − 8 = 5", "13 − 8 = 5", "52 − 28 = 14", "12 − 8 = 4. So 36", "12 - 8 = 4", " 12 − 8 = 4", "7 + 9 = 16"])("fails %s", async (text) => {
+    const t = withNote(await savedTrace(byId("C37")), 1, text);
+    expect(checkTrace(t)).toMatchObject({ ok: true });
+    expect(codes(byId("C37"), t)).toContain("math_not_from_code");
+  });
+
+  it("still checks a column operand and a written digit by the question's own numbers", async () => {
+    const t = await savedTrace(byId("C07"));
+    (t.board[0].commands as { operands: { value: string }[] }[])[0].operands[1].value = "12";
+    expect(codes(byId("C07"), t)).toContain("math_not_from_code");
+  });
+});
 
 describe("every C38 text check uses complete approved variants (R439-1, R439-2)", () => {
   // Fill the public templates with the research case's literal values, independently of the behaviour's expectations.
@@ -217,6 +247,8 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
     ["unchecked_output", "C02", (t) => { mayaAt(t, 1).output!.say = ["You are so smart."]; return t; }],
     ["math_not_from_code", "C02", (t) => { mayaAt(t, 1).output!.say = ["27 plus 39 is 56."]; return t; }],
     ["math_not_from_code", "C07", (t) => { (t.board[0].commands as { operands: { value: string }[] }[])[0].operands[0].value = "28"; return t; }],
+    // #604: a note of the question's own numbers that is not a code line's board text (the number list alone passed it).
+    ["math_not_from_code", "C37", (t) => withNote(t, 1, "52 − 28 = 14")],
     ["wrong_outcome", "C02", (t) => ({ ...t, outcome: { ...t.outcome!, assistance: "independent" } })],
     ["accepted_wrong_answer", "C07", (t) => {
       const c = t.turns.find((x) => x.kind === "child")!;

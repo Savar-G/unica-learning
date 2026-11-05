@@ -1,4 +1,4 @@
-import type { WorkbookStore, WorkbookStatus } from "@/lib/workbook-content";
+import { workbookProblem, type WorkbookInput, type WorkbookStore, type WorkbookStatus } from "@/lib/workbook-content";
 import { isLocked, type DraftForApproval, type ShipActor, type WorkbookShipStore } from "@/lib/workbook-ship";
 
 // The ship store (#314) in memory, for tests: it keeps the database's behaviour (migration workbook_ship). Approval
@@ -16,7 +16,7 @@ export interface MemoryShipAudit {
 }
 
 export function memoryShipStore(o: {
-  workbooks: WorkbookStore & { setStatus(id: string, status: WorkbookStatus): void };
+  workbooks: WorkbookStore & { setStatus(id: string, status: WorkbookStatus): void; applyPrintContract(workbook: WorkbookInput): void };
   drafts: Map<string, DraftForApproval>;
   now: () => Date;
 }): WorkbookShipStore & { audit: MemoryShipAudit[]; addRevision(runId: string): Promise<{ status: "added"; revision: number } | { status: "refused"; reason: string }> } {
@@ -38,10 +38,16 @@ export function memoryShipStore(o: {
       if (workbook.id !== draftId || workbook.childId !== d.draft.childId || workbook.number !== d.draft.number) {
         return { status: "refused", reason: "the workbook is not this draft" };
       }
-      const written = await o.workbooks.write(workbook);
-      if (written.status !== "written") return written;
+      const problem = workbookProblem(workbook);
+      if (problem) return { status: "refused", reason: problem };
+      // A workbook an edit took back to draft is stored already: approval takes its whole print contract (#536).
+      if ((await statusOf(draftId)) === "draft") o.workbooks.applyPrintContract(workbook);
+      else {
+        const written = await o.workbooks.write(workbook);
+        if (written.status !== "written") return written;
+      }
       o.workbooks.setStatus(draftId, "approved");
-      audit.push({ at: o.now().toISOString(), workbookId: draftId, actor, action: "workbook-approved", detail: { revision, number: workbook.number } });
+      audit.push({ at: o.now().toISOString(), workbookId: draftId, actor, action: "workbook-approved", detail: { revision, number: workbook.number, printedRevision: workbook.printedRevision ?? null } });
       return { status: "approved", workbookId: draftId };
     },
 

@@ -9,6 +9,8 @@ export interface PlanSubscription {
   /** The monthly price, in cents. */
   cents: number | null;
   created: number;
+  /** When Stripe ended the subscription. */
+  endedAt?: number | null;
 }
 
 export type ParentPlan =
@@ -20,9 +22,13 @@ export type ParentPlan =
   | { kind: "payment_failed" }
   /** Cancelled, and running to the end of the month. `free` means that no charge was ever made. */
   | { kind: "ending"; endsOn: string | null; free: boolean }
-  | { kind: "ended" }
+  /** `endedOn`: when the last subscription ended, where Stripe says so. */
+  | { kind: "ended"; endedOn?: string }
   /** Stripe did not answer. */
   | { kind: "unknown" };
+
+/** A plan Stripe answered for. `unknown` is what a read that could not answer says, and it is never stored. */
+export type KnownPlan = Exclude<ParentPlan, { kind: "unknown" }>;
 
 const iso = (seconds: number | null) => (seconds ? new Date(seconds * 1000).toISOString() : null);
 const dollars = (cents: number | null) => (cents === null ? null : cents / 100);
@@ -30,10 +36,13 @@ const dollars = (cents: number | null) => (cents === null ? null : cents / 100);
 /** The Stripe statuses of a plan that can still charge the card. `canceled` and `incomplete_expired` are over. */
 export const RUNNING_PLAN: ReadonlySet<string> = new Set(["trialing", "active", "past_due", "unpaid", "paused", "incomplete"]);
 
-export function parentPlan(subscriptions: readonly PlanSubscription[]): ParentPlan {
+export function parentPlan(subscriptions: readonly PlanSubscription[]): KnownPlan {
   if (subscriptions.length === 0) return { kind: "not_started" };
   const running = subscriptions.filter((s) => RUNNING_PLAN.has(s.status)).sort((a, b) => b.created - a.created)[0];
-  if (!running) return { kind: "ended" };
+  if (!running) {
+    const ended = Math.max(0, ...subscriptions.map((s) => s.endedAt ?? 0));
+    return ended ? { kind: "ended", endedOn: iso(ended)! } : { kind: "ended" };
+  }
   const free = running.status === "trialing";
   const end = free ? running.trialEnd : running.periodEnd;
   if ((free || running.status === "active") && running.cancelAtPeriodEnd) return { kind: "ending", endsOn: iso(end), free };

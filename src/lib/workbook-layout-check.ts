@@ -278,7 +278,7 @@ function clippingProblems(page: DraftPage, c: DayContent, measured: Measured): F
   for (const [name, m] of measured) {
     if (!shown(m) || !m.clip || !m.firstLine || name === "sheet") continue;
     // (A box that holds marked text is measured with it: report the innermost.)
-    if (/^(?:block|slot-content|frame|panel|chip-\d+$)/.test(name)) continue;
+    if (/^(?:block|slot-content|frame|panel|scan-|chip-\d+$)/.test(name)) continue;
     const T = LAYOUT_TOLERANCE, h = m.firstLine.height;
     if (m.clip.top > T.clipTop * h || m.clip.bottom > T.clipBottom * h || m.clip.left > T.clipSide || m.clip.right > T.clipSide) {
       const q = /^(?:question|number|region)-(\d+)/.exec(name);

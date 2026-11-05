@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { feedbackItemProblem, instructionProblem, scheduledItemProblem, estimatedDayMinutes, dayTimeProblem } from "@/lib/workbook-feedback-check";
+import { feedbackItemProblem, instructionProblem, scheduledItemProblem, estimatedDayMinutes, dayTimeProblem, generatedDayTime, requiredTimeProblem } from "@/lib/workbook-feedback-check";
 import { dayHeader, bookPageContent } from "@/lib/workbook-book";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { sampleChild, samplePlanInput } from "@/lib/workbook-sample-profiles";
@@ -8,6 +8,7 @@ import { sampleBook } from "@/lib/workbook-sample-book";
 import { fullnessProblem, pageFullness } from "@/lib/workbook-template";
 import { operationResult, workedSteps, type QuestionPackage } from "@/lib/question-package";
 import type { MeasuredElement } from "@/lib/workbook-render";
+import type { Block } from "@/lib/workbook-page";
 
 const BC = curriculumFor("bc")!;
 const sample = sampleBook({ level: "U4", workbookId: "11111111-1111-4111-8111-111111111111", childId: "22222222-2222-4222-8222-222222222222", child: "Noah" }).draft;
@@ -22,6 +23,32 @@ const q = (over: Partial<QuestionPackage> = {}): QuestionPackage => {
     easierExample:{text:"1 + 2 = ?",operation:easier,answer:operationResult(easier),steps:workedSteps(easier)},
     steps:workedSteps(operation), ...over };
 };
+
+it("estimates required questions, teaching panels and page turns from whole Extra blocks", () => {
+  if (page.content?.kind !== "day") throw new Error("not a day");
+  const blocks: Block[] = [{ slot: "on-your-own", items: [1] }, { slot: "reminder", items: [], extra: true },
+    { slot: "challenge", items: [2], extra: true }];
+  const printed = { ...page, questions: [{ number: 1, package: q() }, { number: 2, package: q() }], content: {
+    ...page.content, blocks,
+  } };
+  expect(generatedDayTime([printed])).toEqual({ minutes: 3.1, requiredMinutes: 2.3, hasExtra: true });
+  // An unassigned question, or one also in a required block, cannot become optional.
+  printed.content.blocks[2].items = [];
+  expect(generatedDayTime([printed]).requiredMinutes).toBe(2.6);
+  printed.content.blocks[2].items = [2];
+  printed.content.blocks[0].items.push(2);
+  expect(generatedDayTime([printed]).requiredMinutes).toBe(2.6);
+  printed.questions[1].package = q({ text: "Explain ".repeat(200) });
+  expect(generatedDayTime([printed]).requiredMinutes).toBeGreaterThan(2.6);
+});
+
+it("accepts exactly 20 or 25 required minutes and rejects an invalid target", () => {
+  expect(requiredTimeProblem(20, 20)).toBeNull();
+  expect(requiredTimeProblem(20.01, 20)).not.toBeNull();
+  expect(requiredTimeProblem(25, 25)).toBeNull();
+  expect(requiredTimeProblem(25.01, 25)).not.toBeNull();
+  for (const target of [0, -1, NaN, Infinity]) expect(requiredTimeProblem(10, target)).not.toBeNull();
+});
 
 describe("Savar's workbook feedback as permanent checks", () => {
   it("refuses missing instructions, internal unit labels and the rejected wording", () => {

@@ -28,7 +28,7 @@ export interface WeeklyParent {
   /** The stored browser zone takes precedence over postal and province. */
   timeZone?: string | null;
   postal: string | null;
-  /** A test family (public.test_accounts): never emailed (R421W-5). */
+  /** A test family (public.test_accounts): never emailed (R421W-5). The rehearsal family (#530) is loaded as not a test. */
   test?: boolean;
 }
 

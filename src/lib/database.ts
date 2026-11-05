@@ -4,8 +4,10 @@ import type { AnswerChange } from "@/lib/answer-events";
 import type { EventResult, EventSource, EvidenceKind } from "@/lib/learning-events";
 import type { QuestionRef } from "@/lib/question-package";
 import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, SkillEvidence, SkillState, SkillStateReason, StoredTest } from "@/lib/assessment";
+import type { KnownPlan } from "@/lib/parent-plan";
 import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
+import type { ScanCalibrationResult } from "@/lib/scan-crops";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
@@ -14,6 +16,7 @@ import type { DraftRendering, RunError, RunFrame, RunRunner, RunSolve, RunStatus
 import type { AiCallRecord, AiProvider } from "@/lib/ai-fallback";
 import type { AiCallKind } from "@/lib/workbook-ai";
 import type { RenderProblem } from "@/lib/workbook-render";
+import type { PagePrintContract, PrintedRegion, ScanManifest, TeachingContext } from "@/lib/workbook-print-contract";
 import type { BoardHistory } from "@/lib/board-history";
 import type { Outcome, WordingHistory } from "@/lib/maya";
 import type { AlertStatus, CallKind, CallRecord, CallStatus, FlagLevel } from "@/lib/maya-call";
@@ -38,6 +41,7 @@ type ColumnTypes = KnownColumns<{
   assessment_facts: { test: FactsTest };
   assessments: { status: AttemptStatus; province: Province; route: Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
   card_setups: { plan: PlanId };
+  child_plan_states: { kind: KnownPlan["kind"] };
   children: { province: Province };
   email_log: { kind: LogKind; status: LogStatus | null };
   learning_events: { source: EventSource; question_source: QuestionRef["source"]; result: EventResult; evidence_kind: EvidenceKind | null };
@@ -56,7 +60,10 @@ type ColumnTypes = KnownColumns<{
   reports: { model: ReportModel };
   skill_state_history: { state: SkillState; reason: SkillStateReason; evidence_source: SkillEvidence };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
-  workbooks: { status: WorkbookStatus };
+  scan_calibrations: { state: "running" | "ready" | "refused"; result: ScanCalibrationResult | null };
+  workbooks: { status: WorkbookStatus; print_manifest: ScanManifest | null };
+  workbook_pages: { print_contract: PagePrintContract | null };
+  workbook_questions: { regions: PrintedRegion[] | null; teaching: TeachingContext | null };
   workbook_drafts: { draft: GeneratedWorkbook };
   workbook_emails: { kind: WorkbookEmailKind; status: WorkbookEmailStatus; delivery: WorkbookDelivery | Record<string, never> };
   workbook_runs: { status: RunStatus; step: RunStep | null; errors: RunError[]; runner: RunRunner };
@@ -113,6 +120,8 @@ type NullArgs = KnownArgs<{
   save_workbook_run_draft: "p_profile_build";
   pending_family_payment_operations: "after_id";
   record_reminder_click: "p_assessment";
+  // A plan with no charge or end date; a row filled from Stripe has no event.
+  save_child_plan_state: "p_next_charge_at" | "p_ends_at" | "p_monthly_cents" | "p_event_at" | "p_event_id";
   save_family_payment_progress: "head_id" | "after_id";
 }>;
 type WithNullArgs<Fn, K> = Fn extends unknown

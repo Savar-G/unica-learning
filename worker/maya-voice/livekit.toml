@@ -1,0 +1,8 @@
+# Maya's voice worker on LiveKit Cloud (docs/maya-voice-deploy.md). Both values stay empty until the first
+# `lk agent create`, which writes them into the staged folder's livekit.toml: copy them here and commit them. The
+# staging script (scripts/voice-deploy-context.mjs) copies this file only when the agent id is set.
+[project]
+  subdomain = ""
+
+[agent]
+  id = ""

@@ -1,0 +1,23 @@
+{
+  "round": "r562",
+  "ticket": "#562 (spec #544, D-248): monthly summary PDF",
+  "route": "Build check, not a design round. The page follows the Overview's cards (round r544) and the report's ruler colours. Hidden behind PARENT_DASHBOARD_ENABLED until Savar approves on the review page (D-236, D-249).",
+  "picked": null,
+  "files": {
+    "sample-all-sections.png": "Page image (150 dpi, 1275 by 1650) from the real Chromium print engine, written by src/lib/print-engine-chromium.test.ts with RENDER_OUT: a sample view with every section (level, four area bars with Early signs, two workbooks mailed, days scanned, Maya calls, next book range). Sample data; Leah is the sample child.",
+    "sample-all-sections.pdf": "The PDF of the same render: one Letter page.",
+    "route-test-family.pdf": "The PDF the route answered on npm run dev (GET /api/account/children/<id>/monthly-summary?month=2026-10) for test family 988b64d2 (child QA E2E Three), signed in, with a temporary delivery receipt (removed after the check). Sections with no data are hidden: no area bars (the stored test gives none), no scans, no Maya calls.",
+    "route-test-family-page.png": "That PDF's page, converted with sips.",
+    "overview-desktop.png": "The Overview at 1280 by 800 on npm run dev, the Monthly summary card under the To do card.",
+    "overview-phone.png": "The same at 390 by 844 (iPhone 12 Pro size; CSS size only, desktop user agent). No horizontal scroll."
+  },
+  "invariants": [
+    "One page per child per calendar month in family time; the Overview offers the last finished month, from the month after the first confirmed delivery",
+    "Made on request, never stored; answers are private, no-store",
+    "No transcripts, photos, guesses, percent right, wrong-answer counts or comparison with other children",
+    "Names the child, never she or her",
+    "Skills mastered that month is left out until #578 and #575"
+  ],
+  "viewports": { "desktop": [1280, 800], "phone": [390, 844] },
+  "date": "2026-11-05"
+}

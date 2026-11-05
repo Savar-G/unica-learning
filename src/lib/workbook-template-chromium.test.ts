@@ -37,6 +37,58 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
 }
 
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
+  it.each(["U4", "U16"])("prints one whole-page Extra label and generated required minutes in %s", async level => {
+    const draft = book(level, 1);
+    for (const p of draft.pages) if (p.content?.kind === "day") {
+      p.content.requiredTimeTarget = 20;
+      for (const b of p.content.blocks) if (["practice-2", "challenge"].includes(p.type)) b.extra = true;
+    }
+    const selected = draft.pages.filter(p => p.type === "how-plan" || p.content?.kind === "day" && p.content.day === 1 && ["practice-2", "challenge"].includes(p.type));
+    expect(selected.length).toBeGreaterThan(1);
+    const printed: Awaited<ReturnType<typeof engine.print>>[] = [];
+    const result = await renderWorkbook({ draft: { ...draft, pages: selected }, parentId: PARENT,
+      template: { ...template, page: (p, parts) => template.page(p, parts, draft) },
+      engine: { print: async job => {
+        const output = await engine.print(job);
+        printed.push(output);
+        return output;
+      } },
+    });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    const badges = printed.flatMap(p => p.measured.filter(m => m.name.startsWith("chipbadge-extra-")));
+    expect(badges.length).toBe(selected.filter(p => p.content?.kind === "day").length);
+    expect(badges.every(m => m.name === "chipbadge-extra-page" && m.visible && m.text === "Extra page: optional" && m.width > 30 && m.height >= 15)).toBe(true);
+    expect(printed.flatMap(p => p.measured).some(m => m.name.startsWith("slot-required-time-"))).toBe(true);
+  }, 60_000);
+
+  it.each(["U4", "U16"].flatMap(level => ["example", "split block", "none"].map(kind => [level, kind])))("keeps Extra scope clear in %s with %s optional", async (level, kind) => {
+    const draft = book(level, 1);
+    const page = structuredClone(draft.pages.find(p => p.type === "practice")!);
+    if (page.content?.kind !== "day") throw new Error("not a day page");
+    const slot = kind === "example" ? "watch-one" : kind === "split block" ? "on-your-own" : null;
+    for (const b of page.content.blocks) {
+      b.extra = b.slot === slot;
+      if (kind === "split block" && b.extra) b.reviewFrom = b.items[Math.floor(b.items.length / 2)];
+    }
+    let measured: Awaited<ReturnType<typeof engine.print>>["measured"] = [];
+    const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT, template,
+      engine: { print: async job => { const output = await engine.print(job); measured = output.measured; return output; } },
+    });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    if (result.status !== "rendered") throw new Error("page did not render");
+    expect(result.workbook.pages[0].questions).toHaveLength(page.questions.length);
+    const badges = measured.filter(m => m.name.startsWith("chipbadge-extra-"));
+    expect(badges).toHaveLength(kind === "none" ? 0 : 1);
+    if (kind === "none") return;
+    const at = page.content.blocks.findIndex(b => b.extra);
+    const boundary = measured.find(m => m.name === `${kind === "example" ? "panel" : "block"}-${at}`)!;
+    const inside = (m: typeof boundary) => m.x >= boundary.x - .5 && m.y >= boundary.y - .5 && m.x + m.width <= boundary.x + boundary.width + .5 && m.y + m.height <= boundary.y + boundary.height + .5;
+    expect(badges[0].visible && inside(badges[0])).toBe(true);
+    const optional = page.content.blocks[at].items;
+    for (const q of page.questions) expect(inside(measured.find(m => m.name === `question-${q.number}`)!)).toBe(optional.includes(q.number));
+    if (kind === "split block") expect(inside(measured.find(m => m.name === `review-${at}`)!)).toBe(true);
+  }, 60_000);
+
   it.each([["U2", 1, false], ["U6", 2, false], ["U12", 3, false], ["U22", 4, false], ["U12", 5, true]] as const)(
     "lay out one page of each type of a %s book (test book: %s) within its content area",
     async (level, n, test) => {

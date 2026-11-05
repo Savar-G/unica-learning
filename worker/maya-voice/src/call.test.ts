@@ -110,6 +110,11 @@ function handTimers() {
   };
 }
 
+/** A child's reply is a stream that returns at once (#532); it is done, and its board staged, when the stream ends. */
+const readReply = async (reply: Awaited<ReturnType<VoiceCallRun["agent"]["llmNode"]>>) => {
+  if (reply) for await (const chunk of reply) void chunk;
+};
+
 const waitFor = async (check: () => boolean, what: string, ms = 10_000) => {
   const end = Date.now() + ms;
   while (!check()) {
@@ -613,7 +618,7 @@ it("R450-2 keeps a dropped call recoverable when the board stop cannot reach the
   await run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
   const context = new llm.ChatContext();
   context.addMessage({ role: "user", content: "I don't know." });
-  await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+  await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
   const pending = c.receiver.staged();
   expect(pending).toHaveLength(3);
   const scope = c.board.capture(pending[0].utteranceId!)!;
@@ -655,7 +660,7 @@ it("R450-8 old playback completion cannot cancel the next controller turn", asyn
     session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "speaking" });
     const context = new llm.ChatContext();
     context.addMessage({ role: "user", content: "I don't know." });
-    await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
     const expected = c.receiver.staged().map(b => b.batchId);
     expect(expected).toHaveLength(3);
     const newScope = c.board.capture(stages.mock.calls.at(-1)![0])!;
@@ -695,7 +700,7 @@ it("R450-9 an interrupt before native forwarding leaves no unmatched playback se
     await output.waitForPlayout();
     const context = new llm.ChatContext();
     context.addMessage({ role: "user", content: "I don't know." });
-    await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
     expect(c.receiver.staged()).toHaveLength(3);
     const scope = c.board.capture(stages.mock.calls.at(-1)![0])!;
     const next = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);

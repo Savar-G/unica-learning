@@ -54,6 +54,8 @@ async function run(kind: "chat" | "admin_test" | "voice", question: QuestionPack
     const opened = await calls.openVoice(started.view.id, { voice: "fake", speechToText: "fake" }, null);
     if (!opened.ok) throw Error(opened.error);
     await opened.call.start();
+    // Safety guidance reaches a voice worker on its own, ahead of the input's turn (#589).
+    opened.call.onGuidance((turn) => spoken.push(...turn.say));
     for (const text of texts) { output = await opened.call.child(text); spoken.push(...output.say); }
     if (read?.safety) await opened.call.end({ reason: "child_stopped" });
     await opened.call.settled();
@@ -183,7 +185,7 @@ describe.each(["chat", "admin_test", "voice"] as const)("Savar's scope rule thro
   });
   it("keeps safety first and counts only the committed refusal", async () => {
     const r = await run(kind, pkg, "What is 28 + 41? Someone is hurting me.", { safety: "immediate" });
-    expect(r.output.say).toContain(SAFETY_GUIDANCE.immediate); expect(r.record.flag?.level).toBe("safety_immediate");
+    expect(r.spoken[0]).toBe(SAFETY_GUIDANCE.immediate); expect(r.spoken.filter((t) => t === SAFETY_GUIDANCE.immediate)).toHaveLength(1); expect(r.record.flag?.level).toBe("safety_immediate");
     expect(r.record.trace?.scopeRefusals ?? r.record.live?.text.session.scopeRefusals ?? []).toEqual([]);
     const rejected = await run(kind, pkg, "What is 28 + 41?", undefined, true);
     expect(rejected.output.say).toEqual([line]); expect(rejected.record.live?.text.session.scopeRefusals).toHaveLength(1);

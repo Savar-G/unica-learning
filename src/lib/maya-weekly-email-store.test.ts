@@ -191,6 +191,18 @@ describe("weekly store completeness and concurrent deletion", () => {
     expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(finalDay), finalDay)).toEqual([]);
   });
 
+  it("#530: emails the rehearsal family's recap, and no other test family's", async () => {
+    const at = new Date(pdt(3, 15)).toISOString();
+    const db = fakeDb({ maya_call_notes: [], maya_calls: [
+      { id: "rehearsal", parent_id: "p1", child_id: "c1", status: "ended", kind: "chat", ended_at: at, note_pending: null },
+      { id: "listed", parent_id: "p2", child_id: "c2", status: "ended", kind: "chat", ended_at: at, note_pending: null },
+    ], parents: [parent("p1"), parent("p2")], children: [child("c1", "p1"), child("c2", "p2")],
+    test_accounts: [{ parent_id: "p1" }, { parent_id: "p2" }],
+    maya_chat_families: [{ parent_id: "p1", rehearsal: true }, { parent_id: "p2", rehearsal: false }], email_log: [] });
+    const finalDay = pdt(15, 8);
+    expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(finalDay), finalDay).map((d) => d.parentId)).toEqual(["p1"]);
+  });
+
   it.each([false, true])("R421W-2: keeps the last note after deletion from page one, same timestamp=%s", async (sameTime) => {
     const notes = Array.from({ length: 1001 }, (_, i) => noteRow(`call-${String(i).padStart(4, "0")}`, "p1", "c1", sameTime ? pdt(2, 15) : pdt(2, 15) + i * 1000));
     let deleted = false;

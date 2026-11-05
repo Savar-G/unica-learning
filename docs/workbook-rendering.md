@@ -65,6 +65,29 @@ Storing:
   failed attempt. A file no workbook names (for example the unused rendering after a lost answer) stays in the
   family's folder and is deleted with the family.
 
+## The print contract (#536)
+
+A photo of a printed page is read against what that exact print measured, never against a later template. The contract
+is in `src/lib/workbook-print-contract.ts`.
+
+- **At render.** Each page gets a contract: where the four scan marks printed (`scan-tl`, `scan-tr`, `scan-br`,
+  `scan-bl`, as outer corners, in that order), in declared units (image pixels, top left origin, x right, y down, portrait, with the image size and the
+  CSS-to-image scale), and the fingerprints of its content and its PNG. Each question keeps a box for each answer
+  region. A page with missing, duplicate, off-page or inconsistent marks still renders and prints. It has no contract, and
+  its rendering says why (`contractProblem`). No check of a page reads a scan mark.
+- **Through the draft.** A revision's rendering keeps the contract, the regions and the PDF's SHA-256. An edit renders
+  only the changed page, so the other pages keep theirs.
+- **At approval.** `approvedWorkbook` freezes each question's teaching context and the scan manifest from the run's
+  stored plan (`workbook_run_frames`): the required pages of each printed day and the test workbook's Day 7 level test.
+  `printedRevision` joins all of it into one identity. A contract is one unit: if any page has none, or a page's content
+  is not what its contract printed, the book keeps no contract and no revision. It is still approved.
+- **Teaching context.** `plannedStep` is the step the planned part teaches. `itemStep` is the step the question really tests: its template's step, else the planned step for an item written on that skill. Each is a whole unit, skill and step number, or null, so read `itemStep` to know what a mark says about the child. A skill's unit comes from the run's stored frame (`RunFrame.units`), never from a later curriculum.
+- **Afterwards.** Taking a workbook back to draft or saving a new rendering ends its revision. `identify_scan_photo`
+  gives a photo the revision of its book. `printContractForPhoto` answers only for a photo of the book's current revision. The printed-book lock covers the revision, the PDF fingerprint, the manifest and the page and question rows.
+- **Legacy books.** A book with no revision keeps its photos, with no automatic marking. Never render a stored book
+  again to invent its contract. A draft rendered before #536 has no contract, so prepare it again before approving it if
+  it needs automatic marking.
+
 ## The workbook templates (#310)
 
 `workbookTemplate` (`src/lib/workbook-template.ts`) lays out every page type of `.design/workbooks/DESIGN.md` section
@@ -205,6 +228,28 @@ Check with `/api/workbook-render-check?pages=<3 to 60>` and `Authorization: Bear
 `npx vercel@latest curl`). It renders the sample with placeholder ids, stores nothing and answers with the time and
 sizes. It is off in production unless the variable `RENDER_CHECK` is `on`, and each function instance runs one check
 at a time (a second call while one runs gets 429).
+
+## The monthly summary PDF (#562)
+
+The same print engine prints the parent's monthly summary (`src/lib/monthly-summary.ts`): one Letter page per child per
+calendar month in family time, made on request by `GET /api/account/children/<id>/monthly-summary?month=YYYY-MM` and
+never stored. The page has one measured mark, an empty `summary-end` after the footer; the render fails when that mark
+lies past 24 px above the page's bottom edge or the PDF has more than one page, so a long summary is never cut off. The
+mark has no text, so the ink check has nothing to do. The route allows 60 s (`maxDuration`); each function instance
+renders at most 2 summaries at once, and a parent may try 5 times in 10 minutes, counted in the database so that every
+instance shares one count (`public.monthly_summary_renders`, through `claim_monthly_summary_render` under a per-parent
+lock). A busy instance does not count the try. The page fits the fullest summary a family can have: a 60-character name
+(the longest `public.children` allows; a long name gets a smaller heading), an Early sign level, four area bars and four
+workbooks mailed in the month (`src/lib/print-engine-chromium.test.ts`). The child's name is escaped, so a name with
+markup prints as text and loads nothing, though the engine runs scripts and allows network requests for its other
+callers (checked with real Chromium in the same test file).
+
+`outputFileTracingIncludes` in `next.config.ts` gives every route that runs Chromium the serverless build's files. Its
+keys are route globs, which Turbopack matches itself, so a dynamic segment's brackets are escaped
+(`/api/account/children/\[id\]/monthly-summary`); unescaped, `[id]` is a character class and the route gets no
+Chromium. Checked in two builds on 5 November 2026: with the brackets unescaped, the `route.js.nft.json` of each of the
+three dynamic Chromium routes listed no file of `@sparticuz/chromium/bin` and no `THIRD_PARTY_NOTICES.md`; escaped, each
+listed the 4 browser files and the notices.
 
 ## The sample workbook
 

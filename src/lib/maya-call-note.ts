@@ -13,7 +13,9 @@
 // - The child's name is never stored in the note and never sent to the AI (R403-2): sentences hold the token {child},
 //   and so does the stored transcript, where every word that is the name (Unicode letters, any case, accent or width,
 //   invisible characters removed, see `hideName`) becomes {child}; `noteSentences` and `noteTranscriptLines` put the
-//   name in when the note is shown. When the name cannot be read, nothing is asked and no note is written; the call keeps the note pending (src/lib/maya-call.ts).
+//   name in when the note is shown. The names the child had before a parent's rename (children.former_names, #555)
+//   are hidden the same way, so a note written after a rename, or a call that ran under the old name, keeps none of
+//   them. When the name cannot be read, nothing is asked and no note is written; the call keeps the note pending (src/lib/maya-call.ts).
 //
 // Test calls never get a note: the writer refuses an admin test call (any kind not in NOTE_CALL_KINDS) and any call of
 // a family marked as a test family, before it reads or asks anything; the database refuses both again.
@@ -119,11 +121,20 @@ export interface NoteSeams {
   store: NoteStore;
   /** The AI client, or null when the AI is off: then every note is code only. */
   ai: AiClient | null;
-  /** True when the family is marked as a test family (public.test_accounts). */
+  /** True when the family is marked as a test family (public.test_accounts) and is not the rehearsal family (#530). */
   isTestFamily(parentId: string): Promise<boolean>;
-  /** The child's first name, or null when it cannot be read (then no note is written yet). */
-  childName(childId: string): Promise<string | null>;
+  /**
+   * The child's first name and every name the child had before (a parent's rename, #555), or null when they cannot
+   * be read (then no note is written yet). Every one of them is hidden.
+   */
+  childNames(childId: string): Promise<ChildNames | null>;
   clock(): number;
+}
+
+/** The child's first name now and the names before it. */
+export interface ChildNames {
+  firstName: string | null;
+  formerNames: readonly string[];
 }
 
 export type NoteResult =
@@ -322,11 +333,13 @@ const UNIT = /\P{M}\p{M}*|\p{M}+/gu;
  * or "Annual") is another word and stays. A name in an unspaced script (see UNSPACED_SCRIPTS) is hidden as a whole
  * wherever it is, also inside a longer run ("我叫小明", "민수가"), without case, and only where it ends on a whole
  * character; a part of it never matches ("ジョギング" stays for "ジョージ"). A Latin name written next to such letters
- * ("我叫Zoe") is a word of its own (review R403-2, rounds 2 and 3).
+ * ("我叫Zoe") is a word of its own (review R403-2, rounds 2 and 3). Given several names (the name now and the names
+ * before a rename), every word of each is hidden, in one pass.
  */
-export function hideName(text: string, childName: string, token: string): string {
+export function hideName(text: string, childName: string | readonly string[], token: string): string {
   const plain = plainText(text);
-  const parts = nameParts(plainText(childName));
+  const all = (typeof childName === "string" ? [childName] : childName).flatMap((n) => nameParts(plainText(n)));
+  const parts = all.filter((p, i) => all.findIndex((q) => q.folded === p.folded && q.unspaced === p.unspaced) === i);
   const spaced = parts.filter((p) => !p.unspaced).map((p) => p.folded);
   const unspaced = parts.filter((p) => p.unspaced).map((p) => p.folded);
   // A name spelled letter by letter ("L e a h", "L-E-A-H", "L.e.a.h") is the name too (review R403-7).
@@ -447,8 +460,11 @@ async function warmLine(ai: AiClient, lines: readonly NoteTranscriptLine[], choi
   }
 }
 
-/** The transcript as the parent reads it, from the call's trace, with the child's name as {child}. */
-export function noteTranscript(trace: MayaTrace, childName: string): NoteTranscriptLine[] {
+/**
+ * The transcript as the parent reads it, from the call's trace, with the child's name as {child}: `childName` is the
+ * name now, or every name the child had (the name now first).
+ */
+export function noteTranscript(trace: MayaTrace, childName: string | readonly string[]): NoteTranscriptLine[] {
   const start = trace.turns.find((t) => t.kind === "start")?.at ?? trace.turns[0]?.at ?? 0;
   const second = (at: number) => Math.max(0, Math.round((at - start) / 1000));
   // The trace already holds the exact name as {name} (redactTrace in src/lib/maya-trace.ts); every other form of it
@@ -520,10 +536,11 @@ export function callNotes(seams: NoteSeams): CallNotes {
       const stored = await seams.store.get(call.id);
       if (stored) return { ok: true, note: stored, created: false };
       // Without the child's name nothing can be hidden: no AI request and no note now (the call keeps it pending).
-      const childName = (await seams.childName(call.childId))?.trim();
-      if (!childName) return { ok: false, error: "no_name" };
+      const names = await seams.childNames(call.childId);
+      const childName = names?.firstName?.trim();
+      if (!names || !childName) return { ok: false, error: "no_name" };
       const facts = noteFacts({ outcome, event, package: pkg, question: call.question });
-      const transcript = noteTranscript(call.trace, childName);
+      const transcript = noteTranscript(call.trace, [childName, ...names.formerNames.map((n) => n.trim()).filter(Boolean)]);
       const choices = warmChoices(facts);
       const asked = seams.ai !== null && choices.length > 0;
       const warm = asked ? await warmLine(seams.ai!, transcript, choices) : null;

@@ -1,6 +1,6 @@
 import "server-only";
 import { readChildProfile, rebuildChildProfile, type ChildProfileSeams, type RebuildResult } from "@/lib/child-profile";
-import { learnerProfile, PROFILE_SCHEMA_VERSION, type LearnerProfile } from "@/lib/assessment";
+import { learnerProfile, type LearnerProfile } from "@/lib/assessment";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AiClient } from "@/lib/ai-client";
 import type { Database } from "@/lib/database";
@@ -16,8 +16,8 @@ import { profileAiClient, writeProfileAi } from "@/lib/learner-profile-ai";
 import { secretKeyReportReader } from "@/lib/report-loading-server";
 import { loadReportInputs, type ReportReader } from "@/lib/report-loading";
 
-/** Bump when this builder can derive more fields, including P1's fact families after its derivation is available. */
-export const WORKBOOK_LEARNER_DERIVED_VERSION = 1;
+import { staleLearnerProfile, WORKBOOK_LEARNER_DERIVED_VERSION } from "@/lib/workbook-profile-freshness";
+export { WORKBOOK_LEARNER_DERIVED_VERSION } from "@/lib/workbook-profile-freshness";
 
 // The child profile's rebuild (src/lib/child-profile.ts, #303) on the server, with the secret key. The report job
 // calls it last, after a finished test's profile and its AI parts are stored; the learning card's route calls it after
@@ -90,13 +90,6 @@ export interface WorkbookProfileSeams {
   latestFinishedBc(childId: string): Promise<{ assessmentId: string; completedAt: string | null; schemaVersion: number | null; profile: unknown } | null>;
   rebuildLearner(assessmentId: string): Promise<LearnerProfile | null>;
   child: ChildProfileSeams;
-}
-
-/** Require only fields this builder can produce. The marker makes a successful rebuild current until a version bump. */
-function staleLearnerProfile(schemaVersion: number | null, value: unknown): boolean {
-  const profile = value as { schemaVersion?: unknown; workbookDerivedVersion?: unknown; facts?: unknown } | null;
-  return schemaVersion !== PROFILE_SCHEMA_VERSION || profile?.schemaVersion !== PROFILE_SCHEMA_VERSION
-    || profile.workbookDerivedVersion !== WORKBOOK_LEARNER_DERIVED_VERSION || profile.facts === undefined;
 }
 
 /** P2: called only when a run plans. A failed build or read must not give a child with a test a generic book. */

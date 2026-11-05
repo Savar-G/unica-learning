@@ -58,9 +58,11 @@ export function NoteTranscript({ note, name }: { note: ParentNoteSession; name: 
   </section>;
 }
 
-export function ParentSessionView({ note, name, zone }: { note: ParentNoteSession; name: string; zone: FamilyZone }) {
+export function ParentSessionView({ note, name, zone, back = { href: "/account", label: "← Back to your account" } }: {
+  note: ParentNoteSession; name: string; zone: FamilyZone; back?: { href: string; label: string };
+}) {
   return <SupportPage label={`${sessionKind(note)} with Maya`} title={`${name} · ${notePlace(note)}`}>
-    <Link className="maya-notes-back" href="/account">← Back to your account</Link>
+    <Link className="maya-notes-back" href={back.href}>{back.label}</Link>
     <p><time dateTime={note.startedAt}>{sessionWhen(note, zone)}</time></p>
     <div className="maya-note-summary">
       <NoteText note={note} name={name} />

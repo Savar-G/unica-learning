@@ -151,7 +151,7 @@ function PrintAndShip({ detail }: { detail: WorkbookDetail }) {
   </section>;
 }
 
-export function AdminWorkbook({ email, detail }: { email: string; detail: WorkbookDetail }) {
+export function AdminWorkbook({ email, detail, why }: { email: string; detail: WorkbookDetail; why?: ReactNode }) {
   const { workbook: w, child, images, audit } = detail;
   const questions = w.pages.flatMap((p) => p.questions);
   return (
@@ -171,6 +171,7 @@ export function AdminWorkbook({ email, detail }: { email: string; detail: Workbo
         ["Workbook id", <span key="id" className="adm-mono">{w.id}</span>],
       ]} />
       <PrintAndShip detail={detail} />
+      {why}
       <p className="adm-note"><Link href={`${ADMIN_PATH}/maya?workbook=${w.id}`}>Try Maya on a workbook question</Link>. Only printed workbooks from test families can start a session.</p>
       {w.status === "shipped" && <WorkbookDelivery workbookId={w.id} childId={w.childId} number={w.number}
         timeZone={detail.deliveryZone} receipt={detail.delivery} actor={audit.find((e) => e.id === (detail.delivery?.correction?.auditId ?? detail.delivery?.auditId))?.actor_email} />}

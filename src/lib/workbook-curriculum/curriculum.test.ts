@@ -183,7 +183,7 @@ describe("skills and steps", () => {
   });
 
   it("keeps a misconception id on an expected mistake", () => {
-    expect(bc.skillSteps("3.1-place-value-1000")![1].mistakes[0]).toEqual({
+    expect(bc.skillSteps("3.1-place-value-1000")![1].mistakes[0]).toMatchObject({
       answer: "30 + 5",
       why: "Leaves out the zero that holds the tens place",
       kind: "conceptual",

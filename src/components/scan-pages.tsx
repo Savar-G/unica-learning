@@ -5,6 +5,7 @@ import Link from "next/link";
 import { browserClient } from "@/lib/supabase-browser";
 import Image from "next/image";
 import { prepareScanPhoto } from "@/lib/scan-photo-browser";
+import { ScanPreview } from "@/components/scan-preview";
 import "./scan-pages.css";
 
 type Photo = { id: string; child_id: string; state: string; child?: string; book?: number; day?: string; page?: number; expires_at: string };
@@ -27,7 +28,7 @@ async function api(path: string, init?: RequestInit) {
   return data;
 }
 
-export function ScanPages({ childrenList, parent, noticeAcknowledged }: { childrenList: { id: string; first_name: string }[]; parent: string; noticeAcknowledged: boolean }) {
+export function ScanPages({ childrenList, parent, noticeAcknowledged, preview = false }: { childrenList: { id: string; first_name: string }[]; parent: string; noticeAcknowledged: boolean; preview?: boolean }) {
   const [child, setChild] = useState(childrenList[0]?.id ?? "");
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [current, setCurrent] = useState<Photo | null>(null);
@@ -185,6 +186,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged }: { childr
         <button className="btn ghost" disabled={busy} onClick={() => { clearImage(); setCurrent(null); setMessage(""); }}>Another page</button>
         </>}
       </div>
+      {preview && ["pending", "saved"].includes(current.state) && <ScanPreview key={current.id} photo={current.id} child={current.child} />}
     </section>}
     {photos.length > 0 && <section aria-label="Your page photos"><h2>Your page photos</h2><ul className="scan-list">{photos.map((photo) => <li key={photo.id}><span><b>Workbook {photo.book}</b><br />{photo.day ?? "Workbook page"} · Page {photo.page}</span><button className="btn ghost" disabled={busy} onClick={() => void run(() => show(photo))}>{photo.state === "pending" ? "Confirm page" : "View photo"}</button></li>)}</ul></section>}
   </div>;

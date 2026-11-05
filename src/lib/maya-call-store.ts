@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import type { CallChange, CallRecord, CallStore, ConnectionLog } from "@/lib/maya-call";
+import type { SweepCallSource, SweepCursor } from "@/lib/maya-call-sweep";
 import type { QuestionRef } from "@/lib/question-package";
 
 // The call store of Maya's calls (src/lib/maya-call.ts, #323) in Supabase: public.maya_calls with the secret key (only
@@ -171,6 +172,58 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
         .select("id");
       if (error) throw new Error(`maya call clear note: ${error.message}`);
       return (data ?? []).length === 1;
+    },
+  };
+}
+
+/** A stored time as the database writes it, microseconds and offset kept (so the cursor is exact). */
+const STORED_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** A PostgREST filter for rows after a cursor, by `column`, then id. Only a stored time and an id reach the filter text. */
+function afterFilter(column: string, c: SweepCursor): string {
+  const at = c.at;
+  if (!STORED_TIME.test(at) || !Number.isFinite(Date.parse(at)) || !UUID.test(c.id)) throw new Error("maya sweep: bad cursor");
+  return `${column}.gt.${at},and(${column}.eq.${at},id.gt.${c.id.toLowerCase()})`;
+}
+
+/** An ended call with a step missing (src/lib/maya-call-sweep.ts `unfinished`), as the partial index of migration maya_calls_unfinished_index reads it. */
+const UNFINISHED = "live.not.is.null,note_pending.not.is.null,and(learning_event_id.not.is.null,profile_rebuilt_at.is.null)";
+
+/**
+ * The calls the sweep of abandoned calls (#528) reads, on the partial indexes of migrations maya_calls_live_index and
+ * maya_calls_unfinished_index. "Last written" is updated_at, which every write of the call store sets.
+ */
+export function sweepCallSource(admin: SupabaseClient<Database>): SweepCallSource {
+  const bounded = (limit: number) => Math.max(1, Math.min(limit, 50));
+  return {
+    async liveCalls(createdBefore, after, limit) {
+      let q = admin.from("maya_calls").select("*").eq("status", "live").lte("created_at", createdBefore);
+      if (after) q = q.or(afterFilter("created_at", after));
+      const { data, error } = await q.order("created_at", { ascending: true }).order("id", { ascending: true }).limit(bounded(limit));
+      if (error) throw new Error(`maya live calls: ${error.message}`);
+      return (data ?? []).map(fromCallRow);
+    },
+    async unfinishedCalls(endedFrom, writtenBefore, after, limit) {
+      let q = admin.from("maya_calls").select("*").eq("status", "ended").gte("ended_at", endedFrom).lte("updated_at", writtenBefore);
+      q = after ? q.or(`and(or(${UNFINISHED}),or(${afterFilter("ended_at", after)}))`) : q.or(UNFINISHED);
+      const { data, error } = await q.order("ended_at", { ascending: true }).order("id", { ascending: true }).limit(bounded(limit));
+      if (error) throw new Error(`maya unfinished calls: ${error.message}`);
+      return (data ?? []).map(fromCallRow);
+    },
+    // The sweep's place in each list (#586): public.maya_call_sweep_cursors, one row per kind.
+    async readPlace(kind) {
+      const { data, error } = await admin.from("maya_call_sweep_cursors").select("at, call_id, until_at").eq("kind", kind).maybeSingle();
+      if (error) throw new Error(`maya sweep place: ${error.message}`);
+      return data?.at && data.call_id && data.until_at ? { after: { at: data.at, id: data.call_id }, until: data.until_at } : null;
+    },
+    async writePlace(kind, place) {
+      const good = (at: string) => STORED_TIME.test(at) && Number.isFinite(Date.parse(at));
+      if (place && (!good(place.after.at) || !good(place.until) || !UUID.test(place.after.id))) throw new Error("maya sweep: bad cursor");
+      const { error } = await admin.from("maya_call_sweep_cursors").upsert(
+        { kind, at: place?.after.at ?? null, call_id: place?.after.id.toLowerCase() ?? null, until_at: place?.until ?? null, updated_at: new Date().toISOString() },
+        { onConflict: "kind" },
+      );
+      if (error) throw new Error(`maya sweep place write: ${error.message}`);
     },
   };
 }
