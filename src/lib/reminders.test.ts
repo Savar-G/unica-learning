@@ -414,7 +414,7 @@ describe("the reminder job", () => {
       expect(await run(store, T0 + 2 * DAY - 15 * MIN, mail.transport)).toEqual(counts({}));
       expect(await run(store, T0 + 2 * DAY, mail.transport)).toEqual(counts({ due: 1, sent: 1 }));
       expect(mail.delivered.map(whichReminder)).toEqual(["c2:start", "c2:start_followup"]);
-      expect(mail.delivered[1].subject).toBe("Last reminder: Arjun's free math test");
+      expect(mail.delivered[1].subject).toBe("A quick question about Arjun's math test");
       // The day-3 email's link names its own log row, so unsubscribing from it works too.
       expect(rows().map((r) => [r.row, r.hash])).toEqual([
         ["start:c2", hashToken(tokenIn(mail.delivered[0]))],
