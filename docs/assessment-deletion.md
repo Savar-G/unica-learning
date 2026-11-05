@@ -301,3 +301,11 @@ These rows add no retention activity and no storage objects. The existing family
 
 
 Delivery time corrections use `workbook_delivery_corrections`. Each append-only row keeps the previous and corrected delivery time, short reason, actor, server time, request ID, and current/previous audit links. Its foreign keys bind it to the original receipt and workbook's family/child/number. The latest correction supplies the effective time through `DeliveryStore.receipt`; the original receipt is never updated. Owning parents read only their own corrections; admins read all. Direct browser writes and service updates are refused. The correction RPC checks live admin membership and the family write fence, including retries. Family deletion cascades through the correction rows and their audit rows. The real hosted worker check includes these rows. Retention deadlines and anonymous copies do not use correction activity or reasons.
+
+## Plan state (#548)
+
+`public.child_plan_states` (migration `add_child_plan_states`) holds one row per child: the plan kind, next charge, end date, monthly cents and the Stripe event that wrote it. It holds no card data. `parent_id` references `public.parents`, and `child_id` with `parent_id` references `public.children (id, parent_id)`, both `on delete cascade`. There are no files. The existing family deletion removes the row when it deletes the parent's Auth user, so the worker needs no change and no table list. The retention rules need no change: the row adds no activity, and the worker still reads Stripe for the customer state.
+
+The service role may only read the table and call `save_child_plan_state` and `take_plan_read_order`. The sequence behind that function holds no family data. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent and anon read nothing.
+
+Checked on the live database (5 November 2026, UTC), in a transaction that was rolled back (`supabase/tests/child_plan_states.sql`): with the family's deletion requested, the fence refused a write (55000); deleting the parent row left 0 rows; the owner and another parent read no row; anon had no grant; a parent and anon could not call the function; the service role could not update or delete directly.
