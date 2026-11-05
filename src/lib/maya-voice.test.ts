@@ -10,6 +10,9 @@ import {
   connectedSeconds,
   livekitProject,
   nextTickAt,
+  asksWordTimings,
+  INFERENCE_TTS_MODELS,
+  requiredMarkers,
   voiceProviders,
   voiceRoom,
   type ConnectionEvent,
@@ -49,6 +52,67 @@ describe("providers by configuration", () => {
     expect(tts.ok).toBe(false);
     expect(!tts.ok && tts.problems.join(" ")).toMatch(/MAYA_VOICE/);
     expect(voiceProviders({ MAYA_STT: "deepgram", MAYA_TTS: "eleven" })).toMatchObject({ ok: false, problems: [expect.stringMatching(/MAYA_STT/), expect.stringMatching(/MAYA_TTS/)] });
+  });
+
+  const LK = { LIVEKIT_API_KEY: "lk-key", LIVEKIT_API_SECRET: "lk-secret" };
+  const INFERENCE_OK = "livekit-inference-zdr,child-use-approved";
+
+  it("routes speech-to-text and the voice through LiveKit Inference by configuration, with the LiveKit key", () => {
+    const p = voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
+    expect(p).toMatchObject({
+      ok: true,
+      speechToText: { provider: "inference", model: "assemblyai/universal-3-6-pro", apiKey: "lk-key", apiSecret: "lk-secret" },
+      voice: { provider: "inference", model: "inworld/inworld-tts-2", voice: "Ashley", modelOptions: { timestamp_type: "WORD" } },
+      ids: { speechToText: "inference/assemblyai/universal-3-6-pro", voice: "inference/inworld/inworld-tts-2/Ashley" },
+    });
+    if (p.ok) {
+      expect(JSON.stringify(p.ids)).not.toMatch(/lk-/);
+      expect(asksWordTimings(p.voice)).toBe(true);
+    }
+    const cartesia = voiceProviders({ ...LK, MAYA_TTS: "inference", MAYA_TTS_MODEL: "cartesia/sonic-3.6", MAYA_VOICE: "a0e99841-438c-4a64-b679-ae501e7d6091", MAYA_STT: "inference", MAYA_STT_MODEL: "deepgram/flux-general-en", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
+    expect(cartesia).toMatchObject({ ok: true, voice: { modelOptions: { add_timestamps: true } }, ids: { speechToText: "inference/deepgram/flux-general-en", voice: "inference/cartesia/sonic-3.6/a0e99841-438c-4a64-b679-ae501e7d6091" } });
+    // Every voice on the allow list asks for word timings.
+    for (const options of Object.values(INFERENCE_TTS_MODELS)) expect(Object.keys(options).length).toBeGreaterThan(0);
+  });
+
+  it("mixes routes: Inference speech-to-text with the direct Inworld voice needs both routes' markers", () => {
+    const env = { ...LK, MAYA_STT: "inference", MAYA_TTS: "inworld", INWORLD_API_KEY: "iw", MAYA_VOICE: "Ashley" };
+    expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK })).toMatchObject({ ok: false, problems: ["MAYA_VOICE_PRIVACY_CONFIRMED must include inworld-retention"] });
+    expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: `${INFERENCE_OK},inworld-retention` })).toMatchObject({ ok: true, ids: { speechToText: "inference/assemblyai/universal-3-6-pro", voice: "inworld/inworld-tts-2/Ashley" } });
+  });
+
+  it("refuses every real route without its key, even with all its privacy markers", () => {
+    const ALL = "assemblyai-optout,inworld-retention,livekit-inference-zdr,child-use-approved";
+    const refused = (env: Record<string, string>, problem: RegExp) => {
+      const p = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: ALL, ...env });
+      expect(p.ok).toBe(false);
+      expect(!p.ok && p.problems.join("; ")).toMatch(problem);
+    };
+    refused({ MAYA_STT: "assemblyai" }, /ASSEMBLYAI_API_KEY is not set/);
+    refused({ MAYA_TTS: "inworld", MAYA_VOICE: "Ashley" }, /INWORLD_API_KEY is not set/);
+    refused({ MAYA_STT: "inference" }, /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/);
+    refused({ MAYA_STT: "inference", LIVEKIT_API_KEY: "k" }, /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/);
+    refused({ MAYA_TTS: "inference", MAYA_VOICE: "Ashley", LIVEKIT_API_SECRET: "s" }, /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/);
+    refused({ ...LK, MAYA_TTS: "inference" }, /MAYA_VOICE/);
+  });
+
+  it("refuses a real route without its privacy markers, child-use-approved included, and an unknown marker", () => {
+    const env = { ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_VOICE: "Ashley" };
+    expect(voiceProviders(env)).toMatchObject({ ok: false, problems: ["MAYA_VOICE_PRIVACY_CONFIRMED must include livekit-inference-zdr", "MAYA_VOICE_PRIVACY_CONFIRMED must include child-use-approved"] });
+    expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr" })).toMatchObject({ ok: false, problems: ["MAYA_VOICE_PRIVACY_CONFIRMED must include child-use-approved"] });
+    expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr,child-use-aproved" })).toMatchObject({ ok: false, problems: expect.arrayContaining(['MAYA_VOICE_PRIVACY_CONFIRMED has an unknown marker "child-use-aproved"', "MAYA_VOICE_PRIVACY_CONFIRMED must include child-use-approved"]) });
+    // The fakes need no marker.
+    expect(voiceProviders({})).toMatchObject({ ok: true });
+    expect(requiredMarkers("fake", "fake")).toEqual([]);
+    expect(requiredMarkers("inference", "fake")).toEqual(["livekit-inference-zdr", "child-use-approved"]);
+  });
+
+  it("refuses an Inference model off the allow list and a voice id that could change the model string", () => {
+    const env = { ...LK, MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK };
+    expect(voiceProviders({ ...env, MAYA_STT: "inference", MAYA_STT_MODEL: "universal-3-6-pro" })).toMatchObject({ ok: false, problems: [expect.stringMatching(/MAYA_STT_MODEL "universal-3-6-pro" is not one of/)] });
+    expect(voiceProviders({ ...env, MAYA_TTS: "inference", MAYA_VOICE: "Ashley", MAYA_TTS_MODEL: "elevenlabs/eleven_v4_turbo" })).toMatchObject({ ok: false, problems: [expect.stringMatching(/MAYA_TTS_MODEL "elevenlabs\/eleven_v4_turbo" is not one of/)] });
+    expect(voiceProviders({ ...env, MAYA_TTS: "inference", MAYA_TTS_MODEL: "deepgram/aura-2", MAYA_VOICE: "x" })).toMatchObject({ ok: false });
+    expect(voiceProviders({ ...env, MAYA_TTS: "inference", MAYA_VOICE: "Ashley:other" })).toMatchObject({ ok: false, problems: [expect.stringMatching(/MAYA_VOICE must be a voice id/)] });
   });
 
   it("knows the LiveKit project only with its URL, key and secret", () => {

@@ -145,6 +145,23 @@ export function dayOf(at: number, zone: FamilyZone): Period {
   return { start, resetsAt: localDateTime(addDays(start, 1), zone) };
 }
 
+/** YYYY-MM: the family's local calendar month of an instant. */
+export const localMonth = (at: Instant, zone: FamilyZone): string => localDay(at, zone).slice(0, 7);
+
+/** A calendar month (YYYY-MM) moved by whole months. */
+export function addMonths(month: string, months: number): string {
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+  if (!m || !Number.isInteger(months)) throw new RangeError("Month must be YYYY-MM");
+  const index = Number(m[1]) * 12 + Number(m[2]) - 1 + months;
+  return `${String(Math.floor(index / 12)).padStart(4, "0")}-${String((index % 12) + 1).padStart(2, "0")}`;
+}
+
+/** The local calendar month of an instant: its first day and the instant the next month starts. */
+export function monthOf(at: number, zone: FamilyZone): Period {
+  const month = localMonth(at, zone);
+  return { start: `${month}-01`, resetsAt: localDateTime(`${addMonths(month, 1)}-01`, zone) };
+}
+
 /** Test/startup diagnostic. Probe behaviour where no tz version is exposed. */
 export function warnIfTimeZoneDataIsOld(warn: (message: string) => void = console.warn): void {
   const probe = Date.parse("2026-11-18T12:00:00Z");

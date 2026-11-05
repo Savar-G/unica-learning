@@ -19,7 +19,7 @@ import { AddChild, SaveTimeZone, SendLink, SignOut, StartTest, TrackOnce } from 
 import { parentChatUsage } from "@/lib/maya-chat-server";
 import { DeskRow, MinutesRow } from "@/components/parent-home-rows";
 import { ParentDashboardHome } from "@/components/parent-dashboard-home";
-import { parentDashboard } from "@/lib/parent-dashboard-server";
+import { dashboardOverview, parentDashboard } from "@/lib/parent-dashboard-server";
 import { openingPath } from "@/lib/parent-assessment";
 import { pickChild } from "@/lib/parent-shell";
 import { parentMinutes } from "@/lib/maya-minutes-server";
@@ -79,7 +79,8 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   ]);
   // Everyone else gets today's Parent home below.
   if (dashboard) {
-    const facts = { dashboard, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled };
+    const overview = await dashboardOverview(dashboard, addressed);
+    const facts = { dashboard, overview, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled };
     return <ParentDashboardHome {...facts} addressChild={addressed} alerts={{ password: password === "1", pin: pin === "1", deskError: desk === "error", existing: existing === "1" }} parentEmail={parent.email} />;
   }
   return (
