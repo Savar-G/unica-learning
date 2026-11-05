@@ -3,34 +3,37 @@
 //
 // Commands:
 //   make   --dir <folder> [--fake] [--candidates inworld,cartesia,elevenlabs] [--seed <n>] [--timeout-ms <n>] [--force]
-//          Renders the 12 sentences (and the math lines as written) with every voice, shuffles them under letters, and
-//          writes audio/, answer-sheet.md, answers-template.csv, key-do-not-open.json, measures.json and
-//          operator-report.md. --fake uses the fake voice (silent files, fake word timings, no key). Without it each
-//          candidate needs its keys and two voice ids (docs/maya-voice-deploy.md, "Listening test"); a missing one stops
-//          the run before any request.
-//   record --dir <folder> --listener <name>
-//          Asks for one listener's choices in the terminal and writes answers/<name>.csv.
-//   score  --dir <folder>
-//          Reads answers/*.csv, unblinds them with the key and writes results.md.
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+//          Renders the 12 sentences (and the math lines as written) with every voice and shuffles them under letters.
+//          Writes <folder>/listener (what listeners get: audio/ at one sample rate and one timestamp, written in a
+//          shuffled order, answer-sheet.md, answers-template.csv, letters.json, answers/) and <folder>/operator (never
+//          for listeners: key-do-not-open.json, measures.json, operator-report.md). --fake uses the fake voice (silent
+//          files, fake word timings, no key). Without it each candidate needs its keys and two voice ids
+//          (docs/maya-voice-deploy.md, "Listening test"); a missing one stops the run before any request.
+//   record --dir <listener folder> --listener <name>
+//          Asks for one listener's choices in the terminal and writes answers/<name>.csv. Needs no key.
+//   score  --dir <folder> [--answers <folder>]
+//          Reads the answers (default <folder>/listener/answers), refuses an incomplete set, unblinds them with the key
+//          in <folder>/operator and writes <folder>/operator/results.md.
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { randomInt } from "node:crypto";
 import { initializeLogger } from "@livekit/agents";
 import {
-  answerSheet,
-  answersTemplate,
   blindPlan,
   CANDIDATES,
   kitConfig,
   makeVoice,
+  MIN_LISTENERS,
   readAnswers,
   renderLine,
   score,
+  seeded,
   SENTENCES,
   sentenceProblems,
-  wav,
+  writeListenerFolder,
   type Answer,
+  type Clip,
   type Measure,
   type PlanItem,
   type VoiceUnderTest,
@@ -63,7 +66,7 @@ function folder(): string {
 }
 
 function readKey(dir: string): Key {
-  const path = join(dir, "key-do-not-open.json");
+  const path = join(dir, "operator", "key-do-not-open.json");
   if (!existsSync(path)) fail(`no key in ${dir}: run make first`);
   return JSON.parse(readFileSync(path, "utf8")) as Key;
 }
@@ -103,7 +106,10 @@ function operatorReport(key: Key, measures: Measure[]): string {
 
 async function make() {
   const dir = folder();
-  if (existsSync(join(dir, "key-do-not-open.json")) && !flag("force")) fail(`${dir} already holds a test; use another folder, or --force to replace it`);
+  if (existsSync(dir) && readdirSync(dir).length) {
+    if (!existsSync(join(dir, "operator", "key-do-not-open.json"))) fail(`${dir} is not empty and holds no listening test; use an empty folder`);
+    if (!flag("force")) fail(`${dir} already holds a test; use another folder, or --force to replace it`);
+  }
   const problems = sentenceProblems();
   if (problems.length) fail(`the sentences are not Maya's lines any more:\n${problems.join("\n")}`);
   const candidates = option("candidates")?.split(",").map(s => s.trim()).filter(Boolean);
@@ -114,9 +120,9 @@ async function make() {
   if (!Number.isSafeInteger(seed)) fail("--seed must be a whole number");
   const timeoutMs = option("timeout-ms") ? Number(option("timeout-ms")) : 30_000;
   const plan = blindPlan(config.voices, seed);
-  mkdirSync(join(dir, "audio"), { recursive: true });
-  mkdirSync(join(dir, "answers"), { recursive: true });
   const measures: Measure[] = [];
+  // Rendered voice by voice into memory; written to the listener folder in a shuffled order afterwards.
+  const clips: Clip[] = [];
   for (const v of config.voices) {
     const voice = await makeVoice(v, config);
     try {
@@ -124,12 +130,12 @@ async function make() {
         const s = SENTENCES.find(x => x.id === item.sentence)!;
         const text = item.part === "voice" ? s.spoken : s.written;
         const r = await renderLine(voice, text, { timeoutMs });
-        writeFileSync(join(dir, "audio", item.file), wav(r.samples, r.sampleRate));
+        clips.push({ file: item.file, samples: r.samples, sampleRate: r.sampleRate });
         measures.push({
           voice: v.key, part: item.part, sentence: s.id, timedWords: r.timedWords, matched: r.matched, expected: r.expected, firstAudioMs: r.firstAudioMs,
           audioMs: Math.round((r.samples.length / r.sampleRate) * 1000), error: r.error, timedText: r.timed.map(t => t.text.trim()).join(" "),
         });
-        console.log(`${item.file}${r.error ? ` error: ${r.error}` : ""}`);
+        process.stdout.write(r.error ? `\n${item.file} error: ${r.error}\n` : ".");
       }
     } finally {
       await voice.close();
@@ -139,21 +145,34 @@ async function make() {
     seed, fake: config.fake, madeAt: new Date().toISOString(), plan,
     voices: config.voices.map(v => { const c = CANDIDATES.find(x => x.id === v.candidate)!; return { ...v, name: c.name, route: c.route }; }),
   };
-  writeFileSync(join(dir, "key-do-not-open.json"), `${JSON.stringify(key, null, 2)}\n`);
-  writeFileSync(join(dir, "measures.json"), `${JSON.stringify(measures, null, 2)}\n`);
-  writeFileSync(join(dir, "answer-sheet.md"), answerSheet(plan));
-  writeFileSync(join(dir, "answers-template.csv"), answersTemplate());
-  writeFileSync(join(dir, "operator-report.md"), operatorReport(key, measures));
+  if (flag("force")) rmSync(dir, { recursive: true, force: true });
+  const operator = join(dir, "operator");
+  const listener = join(dir, "listener");
+  mkdirSync(operator, { recursive: true });
+  // The write order comes from the seed too, so a run can be checked; the seed stays in the key.
+  writeListenerFolder(listener, plan, clips, { random: seeded(seed ^ 0x5bd1e995), time: new Date("2026-01-01T00:00:00Z") });
+  writeFileSync(join(operator, "key-do-not-open.json"), `${JSON.stringify(key, null, 2)}\n`);
+  writeFileSync(join(operator, "measures.json"), `${JSON.stringify(measures, null, 2)}\n`);
+  writeFileSync(join(operator, "operator-report.md"), operatorReport(key, measures));
   const errors = measures.filter(m => m.error).length;
-  console.log(`\n${plan.length} files in ${join(dir, "audio")}${config.fake ? " (fake voice)" : ""}. Answer sheet: ${join(dir, "answer-sheet.md")}.${errors ? ` ${errors} files had errors; see operator-report.md.` : ""}`);
+  console.log(`\n${plan.length} files${config.fake ? " (fake voice)" : ""}.\nGive listeners only ${listener}.\nKeep ${operator} from them until they are done.${errors ? `\n${errors} files had errors; see operator-report.md.` : ""}`);
   if (errors) process.exitCode = 1;
+}
+
+interface Letters {
+  part: "voice" | "math";
+  sentence: string;
+  letters: string[];
 }
 
 async function record() {
   const dir = folder();
   const listener = option("listener")?.trim() ?? "";
   if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/.test(listener)) fail("--listener <name>: letters, digits, spaces, '_' or '-', at most 40");
-  const key = readKey(dir);
+  if (!existsSync(join(dir, "letters.json"))) fail(`no letters.json in ${dir}: pass the listener folder that make wrote`);
+  const sheet = JSON.parse(readFileSync(join(dir, "letters.json"), "utf8")) as Letters[];
+  const path = join(dir, "answers", `${listener}.csv`);
+  if (existsSync(path)) fail(`${path} already exists; each listener answers once`);
   // A line iterator, not rl.question: it keeps lines that arrive before the question (piped answers).
   const rl = createInterface({ input: process.stdin, terminal: false });
   const lines = rl[Symbol.asyncIterator]();
@@ -171,7 +190,8 @@ async function record() {
   for (const part of ["voice", "math"] as const) {
     console.log(part === "voice" ? "\nPart 1: your favourite voice for each sentence." : "\nPart 2: which files read the math wrong?");
     for (const s of SENTENCES.filter(x => part === "voice" || x.math)) {
-      const letters = key.plan.filter(p => p.part === part && p.sentence === s.id).map(p => p.letter);
+      const letters = sheet.find(l => l.part === part && l.sentence === s.id)?.letters ?? [];
+      if (!letters.length) { rl.close(); fail(`letters.json has no letters for ${part} ${s.id}`); }
       console.log(`\n${part === "voice" ? s.id : `m${s.id.slice(1)}`} (${letters.join(", ")}): "${s.spoken}"`);
       const within = (a: string) => a.split(/[^A-Z]+/).filter(Boolean).every(l => letters.includes(l));
       const favourite = part === "voice" ? await ask("Favourite letter: ", a => letters.includes(a)) : "";
@@ -180,7 +200,6 @@ async function record() {
     }
   }
   rl.close();
-  const path = join(dir, "answers", `${listener}.csv`);
   mkdirSync(join(dir, "answers"), { recursive: true });
   writeFileSync(path, `${rows.join("\n")}\n`);
   console.log(`\nSaved ${path}.`);
@@ -189,8 +208,8 @@ async function record() {
 function scoreCommand() {
   const dir = folder();
   const key = readKey(dir);
-  const measures = JSON.parse(readFileSync(join(dir, "measures.json"), "utf8")) as Measure[];
-  const answersDir = join(dir, "answers");
+  const measures = JSON.parse(readFileSync(join(dir, "operator", "measures.json"), "utf8")) as Measure[];
+  const answersDir = resolve(option("answers") ?? join(dir, "listener", "answers"));
   const files = existsSync(answersDir) ? readdirSync(answersDir).filter(f => f.endsWith(".csv")) : [];
   if (!files.length) fail(`no answers in ${answersDir}`);
   const answers: Answer[] = [];
@@ -200,16 +219,17 @@ function scoreCommand() {
     answers.push(...r.answers);
   }
   const result = score(key.plan, answers, measures);
+  if (!result.ok) return fail(`not scored, the answers are not complete:\n- ${result.problems.join("\n- ")}`);
   const name = (k: string) => { const v = key.voices.find(x => x.key === k)!; return `${v.name}, ${v.voice}`; };
   const out = ["# Listening test: results", ""];
   if (key.fake) out.push("**Fake voice.** These results test the kit only.", "");
-  out.push(`Listeners: ${result.listeners.join(", ")}. A voice passes when at least ${Math.ceil((result.listeners.length * 2) / 3)} of ${result.listeners.length} listeners chose it most often, no listener marked a misread on its math lines, and its word timings matched every word of s04.`, "");
+  out.push(`Listeners: ${result.listeners.join(", ")}. A voice passes when at least ${Math.ceil((result.listeners.length * 2) / 3)} of ${result.listeners.length} listeners chose it most often, no listener marked a misread on its math lines, and its word timings matched every word of s04. No voice passes with fewer than ${MIN_LISTENERS} listeners.`, "");
   out.push(`| Voice | ${result.listeners.map(l => `${l} (favourites)`).join(" | ")} | First choice of | Math misreads | Word timings on s04 | Files with timed words | Pass |`);
   out.push(`|---|${result.listeners.map(() => "---|").join("")}---|---|---|---|---|`);
   for (const v of result.voices) out.push(`| ${name(v.voice)} | ${result.listeners.map(l => v.favourites[l]).join(" | ")} | ${v.firstChoiceOf.join(", ") || "-"} | ${v.mathMisreads} | ${v.wordTimingsOnCheck ? "yes" : "no"} | ${v.timedFiles} | ${v.pass ? "yes" : "no"} |`);
   const passed = result.voices.filter(v => v.pass).map(v => name(v.voice));
   out.push("", passed.length ? `Passed: ${passed.join("; ")}.` : "No voice passed.", "");
-  writeFileSync(join(dir, "results.md"), `${out.join("\n")}\n`);
+  writeFileSync(join(dir, "operator", "results.md"), `${out.join("\n")}\n`);
   console.log(out.join("\n"));
 }
 

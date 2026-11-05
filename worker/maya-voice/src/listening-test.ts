@@ -12,6 +12,11 @@
 //   "3/4 = 6/8"). Listeners mark misreads; the report lists the timed words the voice returned. Those words can be the
 //   provider's copy of the input text, not what it said, so only the listeners judge the reading.
 //
+// Blind (R598-1): listeners get only the listener folder (writeListenerFolder). Every clip in it has one sample rate
+// (LISTENER_RATE) and one timestamp, and the files are written in a shuffled order, so neither a vendor's sample rate
+// nor the order of rendering (voice by voice) shows. The key, the measures and the operator report stay in the
+// operator folder.
+//
 // Only Maya's fixed sentences go to a voice provider: no child data, no name. The fake voice needs no key and writes
 // silent files with fake word timings. A real candidate without its key or its two voice ids is refused.
 import { allLineTexts, PHRASES, speechKey, writtenFractions } from "@/lib/maya";
@@ -19,7 +24,10 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { ACK_PHRASES } from "@/lib/maya-voice-ack";
 import { speechSentences, speechWords } from "@/lib/board-speech";
 import type { AnswerValue, OperationPackage, QuestionPackage } from "@/lib/question-package";
+import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { tts } from "@livekit/agents";
+import { AudioFrame, AudioResampler, AudioResamplerQuality } from "@livekit/rtc-node";
 import { FakeTTS } from "./fake-providers";
 
 // ---------- the sentences ----------
@@ -416,9 +424,9 @@ export function answerSheet(plan: readonly PlanItem[]): string {
     "",
     "Listen to each sentence's files in `audio/`. They are the same sentence in different voices. The letters are shuffled for every sentence, so a letter is not the same voice twice.",
     "",
-    "Do not open `key-do-not-open.json` or `operator-report.md` until every listener is done.",
+    "Everything you need is in this folder. Please do not ask which voice is which until every listener is done.",
     "",
-    "Record your choices with `npm run voice:listen -- record --dir <this folder> --listener <your name>`, or fill a copy of `answers-template.csv` and put it in `answers/<your name>.csv`.",
+    "Record your choices with `npm run voice:listen -- record --dir <this folder> --listener <your name>`, or fill a copy of `answers-template.csv` and put it in `answers/<your name>.csv`. Answer every sentence of both parts once.",
     "",
     "## Part 1: which voice do you like best?",
     "",
@@ -437,6 +445,61 @@ export const ANSWER_HEADER = "listener,part,sentence,favourite,misread";
 export function answersTemplate(): string {
   const rows = [ANSWER_HEADER, ...SENTENCES.map(s => `,voice,${s.id},,`), ...SENTENCES.filter(s => s.math).map(s => `,math,${s.id},,`)];
   return `${rows.join("\n")}\n`;
+}
+
+// ---------- the listener folder ----------
+
+/** The one sample rate of every file listeners get (the fake voice's and the worker's playback rate). */
+export const LISTENER_RATE = 24_000;
+
+/** A clip at the listener rate, resampled with LiveKit's own (Sox) resampler at its best quality. */
+export function toListenerRate(samples: Int16Array, sampleRate: number): Int16Array {
+  if (sampleRate === LISTENER_RATE) return samples.slice();
+  if (!samples.length) return new Int16Array(0);
+  const resampler = new AudioResampler(sampleRate, LISTENER_RATE, 1, AudioResamplerQuality.VERY_HIGH);
+  try {
+    const frames = [...resampler.push(new AudioFrame(samples, sampleRate, 1, samples.length)), ...resampler.flush()];
+    const out = new Int16Array(frames.reduce((n, f) => n + f.data.length, 0));
+    let at = 0;
+    for (const f of frames) { out.set(f.data, at); at += f.data.length; }
+    return out;
+  } finally {
+    resampler.close();
+  }
+}
+
+/** One rendered file of the plan. */
+export interface Clip {
+  file: string;
+  samples: Int16Array;
+  sampleRate: number;
+}
+
+/**
+ * The folder listeners get: audio/ (every plan file at LISTENER_RATE), answer-sheet.md, answers-template.csv,
+ * letters.json (each sentence's letters, never their voices) and an empty answers/ for `record`. Files are written and
+ * then touched in a shuffled order, and every file and folder gets the same access and change time, `time`. Times the
+ * system sets itself (the inode change time, the inode number) can only show that shuffled order. Returns the write order.
+ */
+export function writeListenerFolder(dir: string, plan: readonly PlanItem[], clips: readonly Clip[], options: { random: () => number; time: Date }): string[] {
+  const byFile = new Map(clips.map(c => [c.file, c]));
+  const files = plan.map(p => p.file);
+  if (byFile.size !== clips.length || files.length !== clips.length || files.some(f => !byFile.has(f))) throw new Error("the clips do not match the plan: one clip per plan file");
+  mkdirSync(join(dir, "audio"), { recursive: true });
+  mkdirSync(join(dir, "answers"), { recursive: true });
+  const order = shuffle(files, options.random);
+  for (const f of order) {
+    const c = byFile.get(f)!;
+    writeFileSync(join(dir, "audio", f), wav(toListenerRate(c.samples, c.sampleRate), LISTENER_RATE));
+  }
+  writeFileSync(join(dir, "answer-sheet.md"), answerSheet(plan));
+  writeFileSync(join(dir, "answers-template.csv"), answersTemplate());
+  const letters = [...new Map(plan.map(p => [`${p.part} ${p.sentence}`, { part: p.part, sentence: p.sentence, letters: plan.filter(q => q.part === p.part && q.sentence === p.sentence).map(q => q.letter).sort() }])).values()];
+  writeFileSync(join(dir, "letters.json"), `${JSON.stringify(letters, null, 2)}\n`);
+  // On macOS a time before a file's creation also moves its creation time, so this sets that too.
+  for (const f of shuffle(order, options.random)) utimesSync(join(dir, "audio", f), options.time, options.time);
+  for (const f of ["answer-sheet.md", "answers-template.csv", "letters.json", "audio", "answers", "."]) utimesSync(join(dir, f), options.time, options.time);
+  return order;
 }
 
 // ---------- answers and the score ----------
@@ -503,12 +566,38 @@ export interface VoiceScore {
   pass: boolean;
 }
 
+/** The test design's three listeners: Savar, one parent and one child. */
+export const MIN_LISTENERS = 3;
+
+/** Why the answers are not one complete set per listener, or [] (R598-2). */
+export function answerSetProblems(plan: readonly PlanItem[], answers: readonly Answer[]): string[] {
+  if (!answers.length) return ["no answers"];
+  const needed = [...new Set(plan.map(p => `${p.part} ${p.sentence}`))];
+  const problems: string[] = [];
+  for (const listener of [...new Set(answers.map(a => a.listener))].sort()) {
+    const mine = answers.filter(a => a.listener === listener);
+    const count = new Map<string, number>();
+    for (const a of mine) count.set(`${a.part} ${a.sentence}`, (count.get(`${a.part} ${a.sentence}`) ?? 0) + 1);
+    const missing = needed.filter(k => !count.has(k));
+    if (missing.length) problems.push(`${listener} is missing ${missing.length} answer${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`);
+    for (const [k, n] of count) if (n > 1) problems.push(`${listener} answered ${k} ${n} times`);
+    for (const a of mine) if (a.part === "voice" && !a.favourite) problems.push(`${listener} gave no favourite for ${a.sentence}`);
+  }
+  return problems;
+}
+
 /**
  * The score, against the pass bar of the test design: a voice passes when it is the first choice of at least two thirds
  * of the listeners (2 of 3), no listener marked a misread on any of its math lines, and its word timings covered every
- * word of the timing check sentence. Several voices can pass; the report lists them all.
+ * word of the timing check sentence. Several voices can pass; the report lists them all. With fewer than MIN_LISTENERS
+ * listeners no voice passes.
+ *
+ * It scores only complete answers (R598-2): every listener answers each sentence of both parts exactly once, with a
+ * favourite for each sentence of part 1. A missing math row would otherwise count as no misread.
  */
-export function score(plan: readonly PlanItem[], answers: readonly Answer[], measures: readonly Measure[]): { voices: VoiceScore[]; listeners: string[] } {
+export function score(plan: readonly PlanItem[], answers: readonly Answer[], measures: readonly Measure[]): { ok: true; voices: VoiceScore[]; listeners: string[] } | { ok: false; problems: string[] } {
+  const problems = answerSetProblems(plan, answers);
+  if (problems.length) return { ok: false, problems };
   const listeners = [...new Set(answers.map(a => a.listener))].sort();
   const voiceKeys = [...new Set(plan.map(p => p.voice))];
   const of = (part: Part, sentence: string, letter: string) => plan.find(p => p.part === part && p.sentence === sentence && p.letter === letter)?.voice;
@@ -540,8 +629,8 @@ export function score(plan: readonly PlanItem[], answers: readonly Answer[], mea
     return {
       voice: v, favourites: favourites.get(v)!, firstChoiceOf, mathMisreads: misreads.get(v)!, wordTimingsOnCheck,
       timedFiles: `${mine.filter(m => m.timedWords > 0).length} of ${mine.length}`,
-      pass: listeners.length > 0 && firstChoiceOf.length >= needed && misreads.get(v) === 0 && wordTimingsOnCheck,
+      pass: listeners.length >= MIN_LISTENERS && firstChoiceOf.length >= needed && misreads.get(v) === 0 && wordTimingsOnCheck,
     };
   });
-  return { voices, listeners };
+  return { ok: true, voices, listeners };
 }

@@ -113,6 +113,7 @@ Deploying the worker: [Deploying Maya's voice worker](maya-voice-deploy.md). The
 | `npm run voice:start` | Runs the built worker in production mode. |
 | `npm run voice:stage` | Stages the folder LiveKit Cloud builds the worker image from ([deploy](maya-voice-deploy.md)). |
 | `npm run voice:listen` | The listening-test kit: `make`, `record`, `score` ([listening test](maya-voice-deploy.md#listening-test)). `make --fake` needs no key. |
+| `npm run voice:lock` | Writes `worker/maya-voice/package-lock.json` from the root lockfile, so the image installs the tree the tests ran with ([deploy](maya-voice-deploy.md)). |
 
 The site's `npm test`, `npx eslint src` and `npm run build` do not include the worker. The root `tsconfig.json` excludes `worker/`, and nothing in `src/app` imports it. The site's own tests cover the shared parts: `src/lib/maya-voice.test.ts`, `src/lib/maya-voice-token.test.ts` and `src/lib/maya-voice-call.test.ts`.
 

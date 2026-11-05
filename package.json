@@ -24,6 +24,7 @@
     "voice:start": "node --conditions=react-server worker/maya-voice/dist/main.mjs start",
     "voice:listen": "node scripts/voice-listening-test.mjs",
     "voice:stage": "node scripts/voice-deploy-context.mjs",
+    "voice:lock": "node scripts/voice-lockfile.mjs",
     "workbooks:samples": "node scripts/workbook-samples.mjs",
     "workbook:fast": "node scripts/workbook-samples.mjs --fake --no-store --check-only --levels U4,U16 --days 1,5,10 --concurrency 3",
     "workbooks:worker": "node scripts/workbook-worker.mjs",

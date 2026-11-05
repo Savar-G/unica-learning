@@ -166,12 +166,19 @@ describe("answers and the score", () => {
     firstAudioMs: 100, audioMs: 1000, error: null, timedText: "",
   }));
 
+  const read = (csv: string) => {
+    const r = readAnswers(csv, plan, "x");
+    expect(r.problems).toEqual([]);
+    return r.answers;
+  };
+  const scored = (answers: ReturnType<typeof read>, m: Measure[]) => {
+    const r = score(plan, answers, m);
+    if (!r.ok) throw new Error(r.problems.join("; "));
+    return r;
+  };
+
   it("passes a voice that two of three listeners chose, with no math misread and full word timings", () => {
-    const a = readAnswers(csvFor("Savar", "cartesia/fake-1"), plan, "x");
-    const b = readAnswers(csvFor("Parent", "cartesia/fake-1"), plan, "x");
-    const c = readAnswers(csvFor("Child", "inworld/fake-2"), plan, "x");
-    expect([a.problems, b.problems, c.problems]).toEqual([[], [], []]);
-    const result = score(plan, [...a.answers, ...b.answers, ...c.answers], measures(true));
+    const result = scored([...read(csvFor("Savar", "cartesia/fake-1")), ...read(csvFor("Parent", "cartesia/fake-1")), ...read(csvFor("Child", "inworld/fake-2"))], measures(true));
     expect(result.listeners).toEqual(["Child", "Parent", "Savar"]);
     const cartesia = result.voices.find(v => v.voice === "cartesia/fake-1")!;
     expect(cartesia).toMatchObject({ firstChoiceOf: ["Parent", "Savar"], mathMisreads: 0, wordTimingsOnCheck: true, pass: true });
@@ -180,13 +187,34 @@ describe("answers and the score", () => {
   });
 
   it("fails the favourite when a listener marked a math misread, or when its word timings miss the check sentence", () => {
-    const answers = [
-      ...readAnswers(csvFor("Savar", "cartesia/fake-1", { s05: "cartesia/fake-1" }), plan, "x").answers,
-      ...readAnswers(csvFor("Parent", "cartesia/fake-1"), plan, "x").answers,
-    ];
-    expect(score(plan, answers, measures(true)).voices.find(v => v.voice === "cartesia/fake-1")).toMatchObject({ mathMisreads: 1, pass: false });
-    const clean = [...readAnswers(csvFor("Savar", "cartesia/fake-1"), plan, "x").answers, ...readAnswers(csvFor("Parent", "cartesia/fake-1"), plan, "x").answers];
-    expect(score(plan, clean, measures(false)).voices.find(v => v.voice === "cartesia/fake-1")).toMatchObject({ wordTimingsOnCheck: false, pass: false });
+    const child = read(csvFor("Child", "inworld/fake-2"));
+    const misread = [...read(csvFor("Savar", "cartesia/fake-1", { s05: "cartesia/fake-1" })), ...read(csvFor("Parent", "cartesia/fake-1")), ...child];
+    expect(scored(misread, measures(true)).voices.find(v => v.voice === "cartesia/fake-1")).toMatchObject({ firstChoiceOf: ["Parent", "Savar"], mathMisreads: 1, pass: false });
+    const clean = [...read(csvFor("Savar", "cartesia/fake-1")), ...read(csvFor("Parent", "cartesia/fake-1")), ...child];
+    expect(scored(clean, measures(false)).voices.find(v => v.voice === "cartesia/fake-1")).toMatchObject({ firstChoiceOf: ["Parent", "Savar"], wordTimingsOnCheck: false, pass: false });
+  });
+
+  it("refuses to score unless every listener gave one complete answer set, each row once (R598-2)", () => {
+    // Three listeners with one s01 row each scored and passed a voice before.
+    const one = (l: string) => read(`listener,part,sentence,favourite,misread\n${l},voice,s01,${letterOf("voice", "s01", "cartesia/fake-1")},`);
+    const partial = score(plan, [...one("Savar"), ...one("Parent"), ...one("Child")], measures(true));
+    expect(partial.ok).toBe(false);
+    expect(!partial.ok && partial.problems.join("; ")).toMatch(/Savar is missing 20 answers: voice s02.*math s03/);
+    // A math row left out, a row given twice, a voice row with no favourite.
+    const full = csvFor("Savar", "cartesia/fake-1").split("\n");
+    const others = [...read(csvFor("Parent", "cartesia/fake-1")), ...read(csvFor("Child", "inworld/fake-2"))];
+    const withoutMath = score(plan, [...read(full.filter(r => !r.includes(",math,s11,")).join("\n")), ...others], measures(true));
+    expect(withoutMath).toEqual({ ok: false, problems: ["Savar is missing 1 answer: math s11"] });
+    const twice = score(plan, [...read([...full, full[1]].join("\n")), ...others], measures(true));
+    expect(twice).toEqual({ ok: false, problems: ["Savar answered voice s01 2 times"] });
+    const noFavourite = score(plan, [...read(full.map(r => (r.includes(",voice,s07,") ? "Savar,voice,s07,," : r)).join("\n")), ...others], measures(true));
+    expect(noFavourite).toEqual({ ok: false, problems: ["Savar gave no favourite for s07"] });
+    expect(score(plan, [], measures(true))).toEqual({ ok: false, problems: ["no answers"] });
+  });
+
+  it("gives no pass with fewer than three listeners, whatever they chose", () => {
+    const two = scored([...read(csvFor("Savar", "cartesia/fake-1")), ...read(csvFor("Parent", "cartesia/fake-1"))], measures(true));
+    expect(two.voices.find(v => v.voice === "cartesia/fake-1")).toMatchObject({ firstChoiceOf: ["Parent", "Savar"], pass: false });
   });
 
   it("refuses an answer row with a letter, sentence or part that is not in the plan", () => {

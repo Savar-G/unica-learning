@@ -8,7 +8,7 @@ Maya's voice worker (`worker/maya-voice`, [Maya voice calls](maya-voice.md)) run
 |---|---|
 | `worker/maya-voice/Dockerfile` | The image. Stage 1 bundles `worker/maya-voice/src/main.ts` with `src/lib` into `dist/main.mjs` (esbuild). Stage 2 holds only that file and the npm packages it leaves outside, on `node:22-bookworm-slim` (glibc: LiveKit's native module has no musl build, and LiveKit Cloud does not support Alpine). It runs `node dist/main.mjs start` as a non-root user, with `NODE_OPTIONS=--conditions=react-server`, so `server-only` is the empty module in the worker and in each job process. |
 | `worker/maya-voice/Dockerfile.dockerignore` | Lets in only `src/lib` and the worker's own files. No `.env` file, test or build output. |
-| `worker/maya-voice/package.json`, `package-lock.json` | The image's packages: the five npm packages the bundle imports, plus `server-only`, at the root lockfile's versions. `worker/maya-voice/src/packaging.test.ts` fails when the bundle imports a package that is not listed, or when a version differs from the root lockfile. After you change a LiveKit or Supabase version in the root `package.json`, change it here too and run `npm install --package-lock-only` in `worker/maya-voice`. |
+| `worker/maya-voice/package.json`, `package-lock.json` | The image's packages: the five npm packages the bundle imports, plus `server-only`. The lockfile is the root lockfile's own tree for them, transitive packages included, with the same paths, versions and integrity, made by `npm run voice:lock` (`scripts/voice-lockfile.mjs`). `worker/maya-voice/src/packaging.test.ts` fails when the bundle imports a package that is not listed, when any package in the image's tree differs from the root lockfile, or when the committed lockfile is not what `npm run voice:lock` makes. After a LiveKit or Supabase version changes in the root, set it in the worker's `package.json` and run `npm run voice:lock`. Never run `npm install` in `worker/maya-voice`: it resolves a newer tree than the one the tests ran with. |
 | `worker/maya-voice/livekit.toml` | LiveKit Cloud's agent file: the project subdomain and the agent id. Both are empty until the first `lk agent create` writes them. |
 | `scripts/voice-deploy-context.mjs` (`npm run voice:stage`) | Stages the folder LiveKit builds from (below). |
 | `scripts/voice-listening-test.mjs` (`npm run voice:listen`) | The listening-test kit (below). |
@@ -104,19 +104,25 @@ npm run voice:listen -- make --dir ~/maya-listening-1
 
 `--candidates inworld,cartesia` runs a subset. It writes:
 
-- `audio/`: `s01-A.wav` and so on. Each sentence has its own random order of the 6 voices, so a letter never means the same voice twice.
-- `answer-sheet.md` and `answers-template.csv`: what each file should say. They name no vendor.
-- `key-do-not-open.json`: the letters' voices and the seed.
-- `measures.json` and `operator-report.md`: per voice, whether word timings came back, how many words the worker's board alignment matched (all words of `s04` is the check), the first audio time, and the timed words returned for each math line. These name the vendors.
+- `listener/`: the only folder listeners get.
+  - `audio/` holds `s01-A.wav` and so on. Each sentence has its own random order of the 6 voices, so a letter never means the same voice twice.
+  - Every file is resampled to 24,000 Hz mono, 16-bit, so a vendor's own sample rate (16,000 Hz through Inference, 22,050 Hz for ElevenLabs) does not show.
+  - The files are written in a shuffled order and all get one timestamp, so sorting by date does not group a voice.
+  - Also in the folder: `answer-sheet.md`, `answers-template.csv`, `letters.json` (each sentence's letters, not their voices) and an empty `answers/`. None of them names a vendor.
+- `operator/`: never for listeners.
+  - `key-do-not-open.json` holds the letters' voices and the seed.
+  - `measures.json` and `operator-report.md` give, per voice: whether word timings came back, how many words the worker's board alignment matched (all words of `s04` is the check), the first audio time, and the timed words returned for each math line. They name the vendors and give each file's length.
 
-Three listeners (Savar, one parent, one child aged 6 to 12) each record their choices:
+Copy only `listener/` to each listener. Three listeners (Savar, one parent, one child aged 6 to 12) each record their choices there; `record` needs no key:
 
 ```sh
-npm run voice:listen -- record --dir ~/maya-listening-1 --listener Savar
+npm run voice:listen -- record --dir ~/maya-listening-1/listener --listener Savar
 npm run voice:listen -- score --dir ~/maya-listening-1
 ```
 
-`score` writes `results.md`. A voice passes when at least 2 of 3 listeners chose it most often, no listener marked a misread on its math lines (in either part), and its word timings matched every word of `s04`. If no voice passes on word timings, the board follows sentence ends with that voice; say so before choosing it.
+`score` reads `listener/answers/` (or `--answers <folder>`) and writes `operator/results.md`. It refuses to score until every listener has answered every sentence of both parts exactly once, with a favourite for each sentence of part 1. A missing math row would otherwise count as no misread. A voice passes when at least 2 of 3 listeners chose it most often, no listener marked a misread on its math lines (in either part), and its word timings matched every word of `s04`. With fewer than 3 listeners no voice passes. If no voice passes on word timings, the board follows sentence ends with that voice; say so before choosing it.
+
+A listener can still tell voices apart by ear and by length, which a blind test allows. The kit hides only which vendor made which file.
 
 **What the kit cannot tell.** The timed words a provider returns can be its copy of the text sent, not what it said, so only listeners judge how a voice reads math. It measures first audio from a laptop, not from LiveKit Cloud. It does not test speech-to-text, a child's voice, or the whole call (parts B and C of the design).
 

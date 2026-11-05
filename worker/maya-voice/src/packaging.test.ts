@@ -28,6 +28,27 @@ describe("the worker image's packages", () => {
     expect(workerLock["node_modules/@livekit/rtc-ffi-bindings-linux-x64-gnu"]).toBeDefined();
   });
 
+  it("are the root lockfile's tree, transitive packages included: same paths, versions and integrity (R598-3)", () => {
+    const drift: string[] = [];
+    for (const [path, entry] of Object.entries(workerLock as Record<string, { version: string; integrity?: string }>)) {
+      if (!path) continue;
+      const root = (rootLock as Record<string, { version: string; integrity?: string }>)[path];
+      if (!root) drift.push(`${path} ${entry.version}: not in the root lockfile`);
+      else if (root.version !== entry.version || root.integrity !== entry.integrity) drift.push(`${path}: root ${root.version}, image ${entry.version}`);
+    }
+    expect(drift).toEqual([]);
+    // The image runs these with --omit=dev: none of the runtime tree may be marked dev.
+    const flags = workerLock as Record<string, { dev?: boolean }>;
+    expect(flags["node_modules/@livekit/agents"].dev).toBeUndefined();
+    expect(flags["node_modules/@livekit/protocol"].dev).toBeUndefined();
+    expect(flags["node_modules/esbuild"].dev).toBe(true);
+  });
+
+  it("are exactly what scripts/voice-lockfile.mjs makes from the root lockfile (npm run voice:lock)", async () => {
+    const generator = (await import(resolve(root, "scripts/voice-lockfile.mjs") as string)) as { workerLock(root: unknown, pkg: unknown): unknown };
+    expect(json(resolve(worker, "package-lock.json"))).toEqual(generator.workerLock(json(resolve(root, "package-lock.json")), json(resolve(worker, "package.json"))));
+  });
+
   it("hold every package the bundle imports, and nothing else", async () => {
     const r = await build({
       absWorkingDir: root, entryPoints: [resolve(worker, "src/main.ts")], bundle: true, platform: "node", target: "node22", format: "esm",
