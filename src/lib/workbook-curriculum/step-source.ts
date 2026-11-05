@@ -61,7 +61,7 @@ export function parseStepProgressions(input: unknown): StepProgressions {
     if (!pair(step.example, ["problem", "answer"])) error("example");
     if (!pair(step.spotTheError, ["wrong", "fix"])) error("spotTheError");
     if (!["checked", "none"].includes(String(step.arithmetic))) error("arithmetic");
-    if (!Array.isArray(step.mistakes) || !step.mistakes.every(m => pair(m, ["answer", "why"]) && object(m) && ["careless", "conceptual"].includes(String(m.kind)) && (m.misconception === null || typeof m.misconception === "string") && (m.watchOut === undefined || pair(m.watchOut, ["wrong", "fix"])))) error("mistakes");
+    if (!Array.isArray(step.mistakes) || !step.mistakes.every(m => pair(m, ["answer", "why"]) && object(m) && ["careless", "conceptual"].includes(String(m.kind)) && (m.misconception === null || typeof m.misconception === "string") && (m.watchOut === undefined || pair(m.watchOut, ["wrong", "fix"]) && object(m.watchOut) && (m.watchOut.verified === undefined || typeof m.watchOut.verified === "boolean") && (m.watchOut.verifierModel === undefined || typeof m.watchOut.verifierModel === "string") && (m.watchOut.verificationHash === undefined || typeof m.watchOut.verificationHash === "string")))) error("mistakes");
     if (step.regrouping !== undefined && typeof step.regrouping !== "boolean") error("regrouping");
     if (step.values !== undefined && !scalarList(step.values)) error("values");
     if (step.numbers !== undefined && (!object(step.numbers) || !Object.values(step.numbers).every(domain))) error("numbers");

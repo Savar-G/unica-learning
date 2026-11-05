@@ -102,6 +102,11 @@ export interface CurriculumSkill {
 export interface WatchOutPair {
   wrong: string;
   fix: string;
+  /** Only a separate verifier can mark a pair accepted. Old candidates have no mark. */
+  verified?: boolean;
+  verifierModel?: string;
+  /** Binds acceptance to this step's context and this exact text. */
+  verificationHash?: string;
 }
 
 /** An expected wrong answer on a step. */

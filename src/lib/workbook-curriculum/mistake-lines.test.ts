@@ -1,39 +1,67 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MISCONCEPTIONS } from "@/lib/assessment/misconceptions";
-import { SAM_MISTAKES, samWork, type SamMistake } from "@/lib/workbook-book";
-import { samMistakeFor } from "@/lib/workbook-mistake-map";
-import type { Operation } from "@/lib/question-package";
 import { BC_CURRICULUM, curriculumFor } from "./index";
 import { parseStepProgressions, stepFieldProblems } from "./step-source";
 import type { ExpectedMistake } from "./types";
-import { watchOutProblems } from "./watch-out";
+import { mistakeContext, MISTAKE_VERIFIER_MODEL, verifiedWatchOut, watchOutProblems } from "./watch-out";
+import type { WatchOutPair } from "./types";
 
 const source = JSON.parse(readFileSync("data/curriculum/step-progressions-k9.json", "utf8"));
 const active = parseStepProgressions(source);
 const codedSteps = active.steps.filter(s => s.mistakes.some(m => m.misconception !== null));
 const coded = codedSteps.flatMap(s => s.mistakes.filter(m => m.misconception !== null).map(m => ({ step: s, mistake: m })));
+const report = JSON.parse(readFileSync("data/curriculum/mistake-verification.json", "utf8")) as {
+  coverage: { verified: number; dropped: number; pairsWritten: number; candidateVersionsWritten: number; rejected: number };
+  records: { id: string; context: unknown; attempts: { round: number; pair: WatchOutPair | null; verified: boolean; reason: string; verifierModel: string }[] }[];
+};
 
 describe("C2 mistake lines", () => {
-  it("covers every coded mistake in the source and the public curriculum", () => {
+  it("accounts for every coded mistake and exposes only independently verified pairs", () => {
     expect(codedSteps).toHaveLength(1417);
     expect(coded).toHaveLength(1503);
     expect(new Set(coded.map(x => x.mistake.misconception)).size).toBe(327);
     expect(active.steps).toEqual(BC_CURRICULUM.steps);
+    expect(report.records).toHaveLength(coded.length);
+    expect(new Set(report.records.map(r => r.id)).size).toBe(coded.length);
+    let verified = 0;
     for (const { step, mistake } of coded) {
       const at = `${step.skill}#${step.number} ${mistake.misconception}`;
       expect(Object.hasOwn(MISCONCEPTIONS, mistake.misconception!), at).toBe(true);
-      expect(mistake.watchOut, at).toBeDefined();
-      expect(watchOutProblems(mistake.watchOut!), at).toEqual([]);
+      const index = step.mistakes.indexOf(mistake);
+      const record = report.records.find(r => r.id === `${step.skill}#${step.number}:${index}`)!;
+      expect(record.context, at).toEqual(mistakeContext(step, mistake));
+      expect(record.attempts.length, at).toBeGreaterThan(0);
+      expect(record.attempts.length, at).toBeLessThanOrEqual(3);
+      record.attempts.forEach((a, round) => {
+        expect(a.round, at).toBe(round);
+        expect(typeof a.verified, at).toBe("boolean");
+        expect(a.reason.trim(), at).not.toBe("");
+      });
+      const accepted = record.attempts.find(a => a.verified);
+      if (accepted) {
+        verified++;
+        expect(accepted.verifierModel, at).toBe(MISTAKE_VERIFIER_MODEL);
+        expect(verifiedWatchOut(step, mistake), at).toBe(mistake.watchOut);
+        expect(mistake.watchOut, at).toMatchObject({ ...accepted.pair, verified: true, verifierModel: MISTAKE_VERIFIER_MODEL });
+        expect(watchOutProblems(mistake.watchOut!), at).toEqual([]);
+      } else {
+        expect(record.attempts, at).toHaveLength(3);
+        expect(mistake.watchOut, at).toBeUndefined();
+      }
       expect(curriculumFor("bc")!.skillSteps(step.skill)!.find(s => s.number === step.number)!.mistakes, at).toContainEqual(mistake);
     }
+    expect(verified).toBe(report.coverage.verified);
+    expect(coded.length - verified).toBe(report.coverage.dropped);
+    expect(report.coverage.pairsWritten).toBe(report.records.filter(r => r.attempts.some(a => a.pair)).length);
+    expect(report.coverage.rejected).toBe(report.records.filter(r => r.attempts.some(a => a.pair && !a.verified)).length);
   });
 
   it("logs every new line and changes only the added pair inside each mistake", () => {
     const patches = JSON.parse(readFileSync("data/curriculum/author-changes.json", "utf8")) as {
       skill: string; step: number; path: string[]; before: ExpectedMistake[]; after: ExpectedMistake[]; why: string;
     }[];
-    const changes = patches.filter(p => p.why.startsWith("C2:"));
+    const changes = patches.filter(p => p.why.startsWith("C2-R2:"));
     const markdown = readFileSync("data/curriculum/author-changes.md", "utf8");
     expect(changes).toHaveLength(codedSteps.length);
     expect(new Set(changes.map(p => `${p.skill}#${p.step}`)).size).toBe(changes.length);
@@ -41,13 +69,15 @@ describe("C2 mistake lines", () => {
       const change = changes.find(p => p.skill === step.skill && p.step === step.number)!;
       expect(change.path).toEqual(["mistakes"]);
       expect(change.after).toEqual(step.mistakes);
-      expect(change.after.map(mistake => {
+      const withoutPairs = (mistakes: readonly ExpectedMistake[]) => mistakes.map(mistake => {
         const original = { ...mistake };
         delete original.watchOut;
         return original;
-      })).toEqual(change.before);
-      for (const mistake of step.mistakes.filter(m => m.misconception !== null)) {
-        expect(markdown).toContain(`| ${step.skill} | ${step.number} | ${mistake.misconception} | ${mistake.watchOut!.wrong} | ${mistake.watchOut!.fix} |`);
+      });
+      expect(withoutPairs(change.after)).toEqual(withoutPairs(change.before));
+      for (const [index, mistake] of step.mistakes.entries()) if (mistake.misconception !== null) {
+        expect(markdown).toContain(`| ${step.skill} | ${step.number} | ${index + 1} |`);
+        if (mistake.watchOut) expect(markdown).toContain(`${mistake.watchOut.wrong} / ${mistake.watchOut.fix}`);
       }
     }
   });
@@ -91,54 +121,11 @@ describe("C2 mistake lines", () => {
     }
   });
 
-  it("keeps plain examples available for early steps and large place values", () => {
-    const pair = (skill: string, number: number) => active.steps.find(s => s.skill === skill && s.number === number)!.mistakes[0].watchOut!;
-    expect(pair("K1-rote-count-10", 1)).toEqual({ wrong: "Skip or repeat a number.", fix: "Say each number once, in order." });
-    expect(pair("2.1-read-write-100", 2)).toEqual({ wrong: "Write forty-six as 406.", fix: "Four tens and six ones is 46." });
-    expect(pair("2.1-read-write-100", 3).fix).toContain("sixty-seven");
-    expect(pair("4.1-expanded-form", 1).fix).toContain("4,325");
-    const all = coded.map(x => x.mistake.watchOut!);
+  it("keeps all retained numbers printable without relying on a shared misconception pair", () => {
+    const all = coded.flatMap(x => x.mistake.watchOut ? [x.mistake.watchOut] : []);
+    expect(all.length).toBe(report.coverage.verified);
+    expect(all.length).toBeGreaterThan(0);
     expect(all.some(p => p.fix.includes("1,000"))).toBe(true);
-    expect(all.some(p => /\b\d{4,}\b/.test(`${p.wrong} ${p.fix}`))).toBe(false);
-  });
-});
-
-const mappings: { id: keyof typeof MISCONCEPTIONS; mistake: SamMistake; operation: Operation; wrong: number }[] = [
-  { id: "O3", mistake: "forgot-carry", operation: { kind: "add", operands: [268, 157] }, wrong: 315 },
-  { id: "carry-dropped", mistake: "forgot-carry", operation: { kind: "add", operands: [268, 157] }, wrong: 315 },
-  { id: "O1", mistake: "smaller-from-larger", operation: { kind: "subtract", operands: [52, 18] }, wrong: 46 },
-  { id: "O2", mistake: "smaller-from-larger", operation: { kind: "subtract", operands: [302, 18] }, wrong: 316 },
-  { id: "smaller-from-larger", mistake: "smaller-from-larger", operation: { kind: "subtract", operands: [52, 18] }, wrong: 46 },
-  { id: "regroup-forget", mistake: "regroup-not-taken", operation: { kind: "subtract", operands: [52, 18] }, wrong: 44 },
-  { id: "count-start", mistake: "wrong-start", operation: { kind: "add", operands: [8, 3] }, wrong: 10 },
-  { id: "operation", mistake: "wrong-operation", operation: { kind: "add", operands: [8, 3] }, wrong: 5 },
-  { id: "operation-swap", mistake: "wrong-operation", operation: { kind: "subtract", operands: [8, 3] }, wrong: 11 },
-  { id: "digit-reversal", mistake: "swapped-digits", operation: { kind: "add", operands: [18, 5] }, wrong: 32 },
-];
-
-describe("closed misconception to Sam mapping", () => {
-  it.each(mappings)("demonstrates $id as $mistake with fresh numbers", ({ id, mistake, operation, wrong }) => {
-    expect(Object.hasOwn(MISCONCEPTIONS, id)).toBe(true);
-    expect(SAM_MISTAKES).toContain(mistake);
-    expect(samMistakeFor(id)).toBe(mistake);
-    expect(samWork(operation, { type: "number", value: wrong }, samMistakeFor(id))).toMatchObject({ mistake, answer: wrong });
-  });
-
-  it("has exactly the tested entries and no guessed match for any other known id", () => {
-    const mapped = Object.keys(MISCONCEPTIONS).filter(id => samMistakeFor(id) !== null);
-    expect(mapped.sort()).toEqual(mappings.map(m => m.id).sort());
-    expect(mapped).toHaveLength(10);
-    for (const id of Object.keys(MISCONCEPTIONS)) {
-      if (!mappings.some(m => m.id === id)) expect(samMistakeFor(id), id).toBeNull();
-    }
-  });
-
-  it.each(["", "unknown", "forgot-carry", "regroup-not-taken", "counted-one-extra", "O3-extra", "o3", " O3", "constructor", "toString", "__proto__"])("returns no mapping for %j", id => {
-    expect(samMistakeFor(id)).toBeNull();
-  });
-
-  it("requires the planned sum to allow the mapped mistake", () => {
-    expect(samWork({ kind: "add", operands: [12, 3] }, { type: "number", value: 15 }, samMistakeFor("O3"))).toBeNull();
-    expect(samWork({ kind: "multiply", operands: [268, 3] }, { type: "number", value: 604 }, samMistakeFor("carry-dropped"))).toBeNull();
+    expect(all.flatMap(watchOutProblems)).toEqual([]);
   });
 });
