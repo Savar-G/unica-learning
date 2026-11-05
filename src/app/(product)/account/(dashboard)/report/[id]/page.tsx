@@ -10,7 +10,9 @@ import { reportReturnPath } from "@/lib/report-view";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { recordReportEmailClick } from "@/lib/email-clicks";
 import { TrackOnce } from "@/components/account";
+import { ParentReport } from "@/components/parent-assessment";
 import { ReportCard, type NewTestOffer, type ReportNextContext } from "@/components/report";
+import { parentDashboard } from "@/lib/parent-dashboard-server";
 import { startPath } from "@/lib/sign-in-link";
 import { parentRetakeState } from "@/lib/test-attempt-server";
 import type { NextStepStart } from "@/components/report-next";
@@ -46,10 +48,12 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   if (!report) notFound();
   const { view, childId } = report;
 
+  // The dashboard (#551, #552), for the families its switch opens to; everyone else gets the page below, as it was.
+  const shown = (await parentDashboard())?.children.find((c) => c.id === childId) ?? null;
   const [start, learning, newTest] = await Promise.all([
     nextStepStart(db, childId),
     learningStart(db, childId),
-    view.model.reliability ? newTestOffer(parent, childId) : null,
+    view.model.reliability || shown ? newTestOffer(parent, childId) : null,
   ]);
   // Back from the payment page without a card: not a new report open.
   const cancelled = query.card === "cancelled";
@@ -67,6 +71,10 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     // #126: how the child learns, asked above the plan choice; the parent can skip it.
     learning: { childId, start: learning },
   };
+  if (shown) {
+    const alerts = { password: query.password === "1", pin: query.pin === "1", deskError: query.desk === "error", existing: query.existing === "1" };
+    return <ParentReport view={view} child={shown} next={next} newTest={newTest} learning={learning} alerts={alerts} tracked={!cancelled} src={src} />;
+  }
   return (
     <SupportPage label="" title="" wide>
       {!cancelled && <TrackOnce event="report_open" props={{ src }} />}

@@ -2024,6 +2024,51 @@ export type Database = {
         }
         Relationships: []
       }
+      scan_link_emails: {
+        Row: {
+          child_id: string
+          created_at: string
+          email_id: string | null
+          error: string | null
+          id: string
+          parent_id: string
+          status: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          parent_id: string
+          status?: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          parent_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_link_emails_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_link_emails_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scan_photo_notices: {
         Row: {
           acknowledged_at: string
@@ -4221,6 +4266,15 @@ export type Database = {
           out_locked_until: string
           out_status: string
         }[]
+      }
+      claim_scan_link_email: {
+        Args: {
+          p_child: string
+          p_max: number
+          p_parent: string
+          p_window_seconds: number
+        }
+        Returns: string
       }
       claim_workbook_edit: {
         Args: { p_id: string; p_lease: string; p_runner: string }
