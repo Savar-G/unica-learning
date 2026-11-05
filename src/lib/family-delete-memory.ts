@@ -1,7 +1,11 @@
 import type { AttemptClaim, FamilyDeleteStore, FamilyPlans } from "@/lib/family-delete";
 
-// The self-serve delete's seams in memory, for tests. The store follows the database functions claim_family_delete_attempt
-// and request_parent_family_deletion. `log` records the order of every change, so a test can read what happened first.
+// The self-serve delete's seams in memory, for tests. The store follows the database functions claim_family_delete_attempt,
+// begin_family_delete_hold, end_family_delete_hold and request_parent_family_deletion_held. `memoryPlanStart` follows the admin's
+// start route. `log` records the order of every change, so a test can read what happened first.
+
+/** As `interval '5 minutes'` in begin_family_delete_hold. */
+export const HOLD_LEASE_MS = 5 * 60_000;
 
 export interface MemoryFamily {
   /** Every running plan, by Stripe customer. A stopped plan leaves its list. */
@@ -10,8 +14,14 @@ export interface MemoryFamily {
   admin: boolean;
   gone: boolean;
   fenced: boolean;
+  /** The request's record that the plans stopped, as family_deletions.plans_stopped_at. */
+  plansStopped: boolean;
+  /** The delete hold, as a row of family_delete_holds. A lease that has ended stays until it is replaced. */
+  deleteHold: { token: string; until: number } | null;
+  /** The database's clock, for the lease. */
+  time: number;
   /** Stripe or the database fails here. `stop` lists plans whose stop fails; `stopLost` lists plans that stop with no answer. */
-  fail: { customers?: boolean; read?: boolean; readAfterStop?: boolean; stop?: string[]; stopLost?: string[]; request?: boolean; check?: boolean };
+  fail: { customers?: boolean; read?: boolean; readAfterStop?: boolean; stop?: string[]; stopLost?: string[]; request?: boolean; check?: boolean; hold?: boolean; release?: boolean };
   /** The family's card hold appears after the check and before the final request. */
   holdBeforeRequest: boolean;
   log: string[];
@@ -19,11 +29,12 @@ export interface MemoryFamily {
 }
 
 export function memoryFamily(over: Partial<MemoryFamily> = {}): MemoryFamily {
-  return { plans: {}, holds: 0, admin: false, gone: false, fenced: false, fail: {}, holdBeforeRequest: false, log: [], attempts: { failed: 0, lockedUntil: null }, ...over };
+  return { plans: {}, holds: 0, admin: false, gone: false, fenced: false, plansStopped: false, deleteHold: null, time: 0, fail: {}, holdBeforeRequest: false, log: [], attempts: { failed: 0, lockedUntil: null }, ...over };
 }
 
 export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
   const verdict = () => (f.admin ? "protected" as const : f.gone ? "missing" as const : f.holds > 0 ? "busy" as const : null);
+  const live = () => (f.deleteHold && f.deleteHold.until > f.time ? f.deleteHold : null);
   return {
     async claimAttempt(_parent, now, policy): Promise<AttemptClaim> {
       const a = f.attempts;
@@ -39,14 +50,31 @@ export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
     },
     async check() {
       if (f.fail.check) throw new Error("Database down");
-      return verdict() ?? "ready";
+      return verdict() ?? (live() ? "busy" : "ready");
     },
-    async request() {
+    async hold(_parent, token) {
+      if (f.fail.hold) throw new Error("Database down");
+      const refused = verdict();
+      if (refused) return refused;
+      const other = live();
+      if (other && other.token !== token) return "busy";
+      f.deleteHold = { token, until: f.time + HOLD_LEASE_MS };
+      f.log.push("hold");
+      return "held";
+    },
+    async release(_parent, token) {
+      if (f.fail.release) throw new Error("Database down");
+      if (f.deleteHold?.token === token) { f.deleteHold = null; f.log.push("release"); }
+    },
+    async request(_parent, token) {
       if (f.holdBeforeRequest) { f.holds += 1; f.holdBeforeRequest = false; }
       if (f.fail.request) throw new Error("Database down");
       const refused = verdict();
       if (refused) return refused;
+      if (live()?.token !== token) return "busy";
       f.fenced = true;
+      f.plansStopped = true;
+      f.deleteHold = null;
       f.log.push("queued");
       return "requested";
     },
@@ -72,5 +100,18 @@ export function memoryPlans(f: MemoryFamily): FamilyPlans {
       f.log.push(`stop ${plan}`);
       if (f.fail.stopLost?.includes(plan)) throw new Error("The answer was lost");
     },
+  };
+}
+
+/**
+ * The admin's start route, whole: its hold, its Stripe call, its release. A hold is refused under the fence and under a live
+ * delete hold, as begin_family_card_operation is. Started, the plan is in Stripe and the hold has ended.
+ */
+export function memoryPlanStart(f: MemoryFamily) {
+  return (customer: string, plan: string): "started" | "family_unavailable" => {
+    if (f.fenced || (f.deleteHold && f.deleteHold.until > f.time)) return "family_unavailable";
+    (f.plans[customer] ??= []).push(plan);
+    f.log.push(`start ${plan}`);
+    return "started";
   };
 }

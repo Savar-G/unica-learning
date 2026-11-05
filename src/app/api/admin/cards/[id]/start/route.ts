@@ -37,8 +37,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     const s = stripe();
     if (!s) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
     // #556: a family's deletion request reads no plans, so a plan must not start under one. Started first, this hold makes
-    // the request wait for a retry that sees the plan. Requested first, the fence refuses the hold. A throw below may mean
-    // that the plan started, so the hold stays until a retry with the same Stripe key settles it.
+    // the request wait for a retry that sees the plan. Requested first, the fence refuses the hold, and so does the delete's
+    // hold, from before its final plan read. A throw below may mean that the plan started, so the hold stays until a retry
+    // with the same Stripe key settles it.
     const service = adminClient();
     if (!service) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
     if (await holdPlanStart(service, card.parent_id, card.id) === "fenced") return Response.json({ ok: false, error: "family_unavailable" }, { status: 409 });

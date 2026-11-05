@@ -968,6 +968,32 @@ export type Database = {
           kind: string
           object_id: string
           origin_token: string
+      family_delete_holds: {
+        Row: {
+          lease_token: string
+          lease_until: string
+          parent_id: string
+        }
+        Insert: {
+          lease_token: string
+          lease_until: string
+          parent_id: string
+        }
+        Update: {
+          lease_token?: string
+          lease_until?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_delete_holds_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
           outcome: string | null
           parent_id: string
           started_at: string
@@ -989,6 +1015,7 @@ export type Database = {
           outcome?: string | null
           parent_id?: string
           started_at?: string
+          plans_stopped_at: string | null
         }
         Relationships: [
           {
@@ -997,6 +1024,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "family_deletions"
             referencedColumns: ["parent_id"]
+          plans_stopped_at?: string | null
           },
         ]
       }
@@ -1005,6 +1033,7 @@ export type Database = {
           after_id: string | null
           customer_id: string
           done: boolean
+          plans_stopped_at?: string | null
           head_id: string | null
           parent_id: string
         }
@@ -4368,6 +4397,10 @@ export type Database = {
           p_question: string
           p_result: Json
         }
+      begin_family_delete_hold: {
+        Args: { hold: string; p: string }
+        Returns: string
+      }
         Returns: boolean
       }
       confirm_family_copies: {
@@ -4438,6 +4471,7 @@ export type Database = {
         Args: { p_error: string; p_lease: string; p_run: string }
         Returns: boolean
       }
+      check_parent_family_deletion: { Args: { p: string }; Returns: string }
       family_copy_sources: { Args: { p: string }; Returns: Json }
       family_deletion_candidates: {
         Args: { after_id: string; page_size?: number }
@@ -4650,6 +4684,10 @@ export type Database = {
       recover_scan_photo: {
         Args: { p_id: string; p_parent: string }
         Returns: string
+      end_family_delete_hold: {
+        Args: { hold: string; p: string }
+        Returns: undefined
+      }
       }
       release_family_deletion: {
         Args: { p: string; token: string }
@@ -4820,6 +4858,7 @@ export type Database = {
         Args: { p_session: string; p_user: string }
         Returns: boolean
       }
+      my_family_deletion_state: { Args: never; Returns: string }
       send_workbook_comments: {
         Args: {
           p_by: string
@@ -4933,6 +4972,10 @@ export type TablesInsert<
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
+      request_parent_family_deletion_held: {
+        Args: { hold: string; p: string }
+        Returns: string
+      }
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {

@@ -74,17 +74,23 @@ describe("the database seam", () => {
     const store = supabaseDeleteStore(database({ claim_family_delete_attempt: [{ out_status: "locked", out_attempts_left: null, out_locked_until: "2026-11-05T00:15:00Z" }] }));
     expect(await store.claimAttempt(parent, 0, { maxAttempts: 5, lockMs: 900_000 })).toEqual({ kind: "locked", until: Date.parse("2026-11-05T00:15:00Z") });
   });
-  it("checks without queueing, and then queues with the same function", async () => {
+  it("checks, holds, lets go and queues, each with its own function and the hold's token", async () => {
     const calls: { name: string; args: Record<string, unknown> }[] = [];
-    const db = database({ request_parent_family_deletion: "ready" }, calls);
-    expect(await supabaseDeleteStore(db).check(parent)).toBe("ready");
-    expect(calls[0]).toEqual({ name: "request_parent_family_deletion", args: { p: parent, check_only: true } });
-    const queued = supabaseDeleteStore(database({ request_parent_family_deletion: "requested" }, calls));
-    expect(await queued.request(parent)).toBe("requested");
-    expect(calls[1]).toEqual({ name: "request_parent_family_deletion", args: { p: parent, check_only: false } });
+    const store = supabaseDeleteStore(database({ check_parent_family_deletion: "ready", begin_family_delete_hold: "held", end_family_delete_hold: null, request_parent_family_deletion_held: "requested" }, calls));
+    expect(await store.check(parent)).toBe("ready");
+    expect(await store.hold(parent, "token-1")).toBe("held");
+    await store.release(parent, "token-1");
+    expect(await store.request(parent, "token-1")).toBe("requested");
+    expect(calls).toEqual([
+      { name: "check_parent_family_deletion", args: { p: parent } },
+      { name: "begin_family_delete_hold", args: { p: parent, hold: "token-1" } },
+      { name: "end_family_delete_hold", args: { p: parent, hold: "token-1" } },
+      { name: "request_parent_family_deletion_held", args: { p: parent, hold: "token-1" } },
+    ]);
   });
   it("throws on an answer the function never gives", async () => {
-    await expect(supabaseDeleteStore(database({ request_parent_family_deletion: "maybe" })).request(parent)).rejects.toThrow("unexpected");
+    await expect(supabaseDeleteStore(database({ request_parent_family_deletion_held: "maybe" })).request(parent, "token-1")).rejects.toThrow("unexpected");
+    await expect(supabaseDeleteStore(database({ begin_family_delete_hold: "maybe" })).hold(parent, "token-1")).rejects.toThrow("unexpected");
   });
 });
 

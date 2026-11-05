@@ -8,10 +8,11 @@ import { familyStripeCustomers, runFamilyDeletion } from "@/lib/family-deletion-
 import { runningPlans, stopPlanNow } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 
-// The self-serve delete's seams for the live site (#556): the database functions of migration family_delete_attempts,
+// The self-serve delete's seams for the live site (#556): the database functions of migrations family_delete_self_serve and family_delete_hold,
 // and Stripe with the site's key. The deletion worker's restricted key has no subscription write, so plans stop here.
 
 const CHECKS = ["ready", "busy", "protected", "missing"] as const;
+const HOLDS = ["held", "busy", "protected", "missing"] as const;
 const REQUESTS = ["requested", "busy", "protected", "missing"] as const;
 
 function answer<T extends string>(data: unknown, allowed: readonly T[]): T {
@@ -20,11 +21,6 @@ function answer<T extends string>(data: unknown, allowed: readonly T[]): T {
 }
 
 export function supabaseDeleteStore(db: SupabaseClient<Database>): FamilyDeleteStore {
-  const call = async (p: string, checkOnly: boolean) => {
-    const { data, error } = await db.rpc("request_parent_family_deletion", { p, check_only: checkOnly });
-    if (error) throw new Error(`Family delete request: ${error.code}`);
-    return data as unknown;
-  };
   return {
     async claimAttempt(parent, now, policy): Promise<AttemptClaim> {
       const { data, error } = await db.rpc("claim_family_delete_attempt", {
@@ -41,8 +37,25 @@ export function supabaseDeleteStore(db: SupabaseClient<Database>): FamilyDeleteS
       const { error } = await db.rpc("clear_family_delete_attempts", { p_parent: parent });
       if (error) throw new Error(`Family delete clear: ${error.code}`);
     },
-    check: async (parent) => answer(await call(parent, true), CHECKS),
-    request: async (parent) => answer(await call(parent, false), REQUESTS),
+    async check(parent) {
+      const { data, error } = await db.rpc("check_parent_family_deletion", { p: parent });
+      if (error) throw new Error(`Family delete check: ${error.code}`);
+      return answer(data, CHECKS);
+    },
+    async hold(parent, token) {
+      const { data, error } = await db.rpc("begin_family_delete_hold", { p: parent, hold: token });
+      if (error) throw new Error(`Family delete hold: ${error.code}`);
+      return answer(data, HOLDS);
+    },
+    async release(parent, token) {
+      const { error } = await db.rpc("end_family_delete_hold", { p: parent, hold: token });
+      if (error) throw new Error(`Family delete release: ${error.code}`);
+    },
+    async request(parent, token) {
+      const { data, error } = await db.rpc("request_parent_family_deletion_held", { p: parent, hold: token });
+      if (error) throw new Error(`Family delete request: ${error.code}`);
+      return answer(data, REQUESTS);
+    },
   };
 }
 

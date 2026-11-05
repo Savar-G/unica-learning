@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { after } from "next/server";
 import { passwordProver } from "@/lib/desk-server";
-import { requestFamilyDelete } from "@/lib/family-delete";
+import { FAMILY_DELETED_PATH, PLANS_STOPPED_COOKIE, requestFamilyDelete } from "@/lib/family-delete";
 import { familyDeleteAlert, finishFamilyDelete, stripeFamilyPlans, supabaseDeleteStore } from "@/lib/family-delete-server";
 import { familyRetryTime } from "@/lib/family-time-server";
 import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
@@ -14,6 +14,24 @@ export const maxDuration = 120;
 
 const reply = (status: number, body: Record<string, unknown>) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const STATUS = { invalid: 400, wrong_password: 403, protected: 403, not_found: 404, busy: 409, locked: 429, not_finished: 502, unavailable: 503 } as const;
+
+/**
+ * Ends every device's session, with one retry. Supabase answers a failure as `{ error }`, and only a broken network call
+ * rejects, so both count. A failure changes nothing about the request: the deletion removes the Auth user and its sessions,
+ * and until then src/proxy.ts refuses this family on the account paths, whatever access token a device still has.
+ */
+async function endEverySession(db: Awaited<ReturnType<typeof sessionClient>>): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { error } = await db.auth.signOut({ scope: "global" });
+      if (!error) return true;
+      console.error("[family-delete] sign-out failed", error.code ?? error.status ?? "failed");
+    } catch (e) {
+      console.error("[family-delete] sign-out failed", e instanceof Error ? e.message : "failed");
+    }
+  }
+  return false;
+}
 
 // The parent deletes the whole family (#556): body `{ password, confirm }`. JSON and the site's origin only. While the
 // child's desk is open, src/proxy.ts answers this path with 423. The parent and the email come from the session, and the
@@ -50,10 +68,11 @@ export async function POST(request: Request) {
   }
 
   // The request is saved, so the rest cannot change the answer. Every device signs out while the Auth user still exists.
-  await db.auth.signOut({ scope: "global" }).catch((e: unknown) => console.error("[family-delete] sign-out failed", e instanceof Error ? e.message : "failed"));
+  await endEverySession(db);
   const jar = await cookies();
   for (const { name } of jar.getAll()) if (/^sb-.+-auth-token/.test(name)) jar.delete(name);
   jar.set({ name: LAST_CHILD_COOKIE, value: "", path: "/account", maxAge: 0 });
+  jar.set({ name: PLANS_STOPPED_COOKIE, value: "1", path: FAMILY_DELETED_PATH, maxAge: 24 * 3600, httpOnly: true, secure: true, sameSite: "lax" });
   const plansStopped = result.plansStopped;
   after(() => finishFamilyDelete(parent, plansStopped));
   return reply(200, { ok: true });

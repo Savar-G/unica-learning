@@ -111,6 +111,7 @@ it("after the request, ends the session on every device, clears its cookies and 
   expect(f.signOut).toHaveBeenCalledExactlyOnceWith({ scope: "global" });
   expect(f.cookieDelete.mock.calls.flat()).toEqual(["sb-project-auth-token.0", "sb-project-auth-token.1"]);
   expect(f.cookieSet).toHaveBeenCalledWith({ name: "unica_last_child", value: "", path: "/account", maxAge: 0 });
+  expect(f.cookieSet).toHaveBeenCalledWith(expect.objectContaining({ name: "unica_plans_stopped", value: "1", path: "/family-deleted", httpOnly: true }));
   expect(f.finish).not.toHaveBeenCalled();
   await f.after.mock.calls[0][0]();
   expect(f.finish).toHaveBeenCalledExactlyOnceWith(parent, 2);
@@ -121,4 +122,24 @@ it("still answers ok and still runs the deletion when the sign-out fails: the re
   expect(response.status).toBe(200);
   expect(f.after).toHaveBeenCalledTimes(1);
   expect(f.cookieDelete).toHaveBeenCalled();
+});
+it("checks the error Supabase returns from the sign-out, logs it and tries once more", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  f.signOut.mockResolvedValueOnce({ error: { code: "unexpected_failure", status: 500 } }).mockResolvedValueOnce({ error: null });
+  const response = await POST(request());
+  expect(response.status).toBe(200);
+  expect(f.signOut).toHaveBeenCalledTimes(2);
+  expect(log).toHaveBeenCalledWith("[family-delete] sign-out failed", "unexpected_failure");
+  log.mockRestore();
+});
+it("keeps the request and claims no sign-out when both tries return an error", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  f.signOut.mockResolvedValue({ error: { status: 500 } });
+  const response = await POST(request());
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ ok: true });
+  expect(f.signOut).toHaveBeenCalledTimes(2);
+  expect(log).toHaveBeenCalledTimes(2);
+  expect(f.after).toHaveBeenCalledTimes(1);
+  log.mockRestore();
 });

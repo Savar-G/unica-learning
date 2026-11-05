@@ -3,11 +3,17 @@ import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/lib/database";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/supabase-public";
 import { DESK_COOKIE, DESK_HOME, deskGate } from "@/lib/desk";
+import { FAMILY_DELETED_PATH, FAMILY_DELETED_STATUS, familyPath } from "@/lib/family-delete";
 import { scanPagesAccess } from "@/lib/scan-pages-access";
 
 // Refreshes an expired Supabase session before account pages render, because Server Components cannot set cookies.
 // Runs only on the account paths, so the public site is untouched. While the child's desk is open on this device
 // (#301, src/lib/desk.ts), it sends every account page back to the desk and refuses the account APIs.
+//
+// A family whose deletion request is queued (#556) gets no account page, account API or desk, even with an access token
+// that a global sign-out cannot take back before it expires. This costs one read per signed-in request on those paths, and
+// it is the only check that covers the reads: the database's write fence covers only writes. A failed read lets the request
+// pass, because a family's account must keep working when this read does not; the write fence still holds.
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   const supabase = createServerClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -22,6 +28,18 @@ export async function proxy(request: NextRequest) {
     },
   });
   const { data, error } = await supabase.auth.getClaims();
+  const family = familyPath(request.nextUrl.pathname);
+  if (family && data?.claims.sub) {
+    const state = await supabase.rpc("my_family_deletion_state");
+    if (state.error) console.error("[family-delete] state read failed", state.error.code);
+    else if (state.data) {
+      const gone = family === "page"
+        ? NextResponse.redirect(new URL(FAMILY_DELETED_PATH, request.url))
+        : NextResponse.json({ ok: false, error: "family_deleted" }, { status: FAMILY_DELETED_STATUS });
+      for (const cookie of response.cookies.getAll()) gone.cookies.set(cookie);
+      return gone;
+    }
+  }
   // An Auth error (not a signed-out visitor) keeps an open desk closed to the account.
   const known = !error || error.name === "AuthSessionMissingError";
   const gate = deskGate(request.nextUrl.pathname, request.cookies.get(DESK_COOKIE)?.value, data?.claims.sub ?? null, known);

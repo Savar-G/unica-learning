@@ -5,7 +5,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { FamilyTime as When } from "@/components/family-time";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { DESK_HOME } from "@/lib/desk";
-import { DELETE_WORD, FAMILY_DELETED_PATH, type FamilyDeleteResult } from "@/lib/family-delete";
+import { DELETE_WORD, FAMILY_DELETED_PATH, FAMILY_DELETED_STATUS, type FamilyDeleteResult } from "@/lib/family-delete";
 import type { RetryTime } from "@/lib/family-time";
 
 type Answer = (FamilyDeleteResult & Partial<RetryTime>) | { ok: false; error: "signed_out" | "bad_json" | "forbidden" };
@@ -54,6 +54,8 @@ export function FamilyDelete() {
       const res = await fetch("/api/account/family/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password, confirm }) });
       // 423: the child's desk is open on this device (#301); an old page goes to the desk.
       if (res.status === 423) { window.location.replace(DESK_HOME); return; }
+      // The request is already queued: an earlier answer was lost, or another device sent it.
+      if (res.status === FAMILY_DELETED_STATUS) { window.location.replace(FAMILY_DELETED_PATH); return; }
       const answer = (await res.json()) as Answer;
       if (answer.ok) { window.location.replace(FAMILY_DELETED_PATH); return; }
       setError(message(answer));

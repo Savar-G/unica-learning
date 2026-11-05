@@ -28,7 +28,7 @@ export async function endCardOperation(db: SupabaseClient<Database>, token: stri
 /**
  * A plan start holds the family across its Stripe call (#556). The hold's id is the card setup's id: a start whose answer
  * was lost keeps the hold, and a retry with the same Stripe key takes the same hold and ends it. `fenced`: the family asked
- * for deletion, so no plan may start.
+ * for deletion, or its delete has read its plans and is about to ask, so no plan may start.
  */
 export async function holdPlanStart(db: SupabaseClient<Database>, parent: string, card: string): Promise<"held" | "fenced"> {
   const { error } = await db.rpc("begin_family_card_operation", { p: parent, token: card });
