@@ -36,7 +36,8 @@
     "local": "Final integrated candidate: npm test exit 0, 415 files, 16036 passed and one optional render case skipped. ESLint src exit 0. Production build exit 0 after clearing generated references to the removed temporary browser fixture.",
     "database": "Seven additive schema migrations applied through Supabase MCP. Child deletion and admission probes passed and rolled back. The unchanged billing recovery probe reached its intentional PROBE_OK rollback after the child guard correction. The mixed email-copy probe also passed and rolled back.",
     "email_scope": "Hosted migration 20261105221039 applied. Generated types refreshed. CHILD_EMAIL_SCOPE_PROBE_OK and CHILD_EMAIL_COPIES_PROBE_OK passed and rolled back. Billing recovery again reached PROBE_OK. No probe parents remain. Internal helper grants refused anon/authenticated/service_role; deletion RPCs remain service-only. Security advisors unchanged.",
-    "route_integration": "Three new assertions failed before both child routes mapped plan_start to HTTP 409. All 28 route tests passed after. A synthetic browser code response showed the child refusal, offered no code input, and made no claim of a team alert."
+    "route_integration": "Three new assertions failed before both child routes mapped plan_start to HTTP 409. All 28 route tests passed after. A synthetic browser code response showed the child refusal, offered no code input, and made no claim of a team alert.",
+    "assessment_merge": "Integrated main 59af67dc after a generated-type-only conflict. npm run db:types reproduced the prior child candidate types exactly. The child worker, monthly claim code and email-scope SQL are unchanged. Focused assessment-copy and child-worker checks: four files, 35 tests passed. Full gate: 417 files, 16288 passed, one optional render skip; lint and build exit 0."
   },
   "limits": [
     "No Stripe cancellation ran in this browser check. Existing fake plan tests cover failed reads and stops.",
