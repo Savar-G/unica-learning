@@ -26,7 +26,7 @@ const GRANTED: Record<string, Set<string>> = {
 
 const ROWS: Record<string, unknown> = {
   children: [{ id: CHILD, first_name: "Leah", grade: 3 }],
-  reports: [{ child_id: CHILD, assessment_id: TEST, assessment: { province: "BC" } }],
+  reports: [{ id: "report-1", child_id: CHILD, assessment_id: TEST, assessment: { province: "BC" } }],
   card_setups: [{ child_id: CHILD }],
   workbook_delivery_receipts: [],
   workbooks: [{ child_id: CHILD, number: 1 }],
@@ -55,7 +55,7 @@ describe("the Supabase reader", () => {
   it("gives the stage from the stored rows, with no plan row as unknown", async () => {
     const r = reader();
     const [child] = await listChildren(r.reader, NOW);
-    expect(child).toEqual({ id: CHILD, firstName: "Leah", schoolGrade: 3, stage: "first_book_coming", opensOn: "overview", tabs: ["overview", "workbooks", "assessment", "account"], readOnly: false, currentWorkbook: { number: 1 } });
+    expect(child).toEqual({ id: CHILD, firstName: "Leah", schoolGrade: 3, stage: "first_book_coming", opensOn: "overview", tabs: ["overview", "workbooks", "assessment", "account"], readOnly: false, currentWorkbook: { number: 1 }, reportIds: ["report-1"] });
   });
   it("reads only the tables it needs, and no raw profile, event or call table", async () => {
     const r = reader();
@@ -67,8 +67,8 @@ describe("the Supabase reader", () => {
     const r = reader();
     await listChildren(r.reader, NOW);
     const select = (table: string) => r.session.find((u) => u.pathname.endsWith(`/${table}`))!.searchParams.get("select")!;
-    expect(select("reports")).toBe("child_id,assessment_id,assessment:assessments!inner(province)");
-    for (const column of ["child_id", "assessment_id"]) expect(GRANTED.reports.has(column)).toBe(true);
+    expect(select("reports")).toBe("id,child_id,assessment_id,assessment:assessments!inner(province)");
+    for (const column of ["id", "child_id", "assessment_id"]) expect(GRANTED.reports.has(column)).toBe(true);
     expect(GRANTED.assessments.has("province")).toBe(true);
     expect(select("card_setups")).toBe("child_id");
     for (const column of ["child_id", "card_saved_at"]) expect(GRANTED.card_setups.has(column)).toBe(true);
