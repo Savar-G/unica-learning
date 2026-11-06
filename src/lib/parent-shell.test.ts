@@ -4,7 +4,7 @@ import { notesPath } from "@/lib/parent-maya-notes";
 import { safeNext } from "@/lib/sign-in-link";
 import { reportPath } from "@/lib/report-view";
 import type { ChildView } from "@/lib/parent-view";
-import { activeTab, addressChild, lastChildCookie, phoneNav, pickChild, signInPath, tabLinks, workbooksPath, type TabLink } from "@/lib/parent-shell";
+import { activeTab, addressChild, lastChildCookie, phoneNav, pickChild, progressPath, signInPath, tabLinks, workbooksPath, type TabLink } from "@/lib/parent-shell";
 import { vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -59,13 +59,23 @@ describe("tabs by stage", () => {
   it("sends Assessment to the child's own home before the first report", () => {
     expect(tabLinks(omar)[0].href).toBe("/account?child=omar");
   });
-  it("leaves out a tab with no page yet, even when the stage and its switch allow it", () => {
+  it("links every tab the stage and its switches give", () => {
     const all: ChildTab[] = ["overview", "progress", "workbooks", "scan_pages", "maya", "assessment", "account"];
     const links = tabLinks(child("leah", { tabs: all }));
-    expect(tabsOf(links)).toEqual(["overview", "workbooks", "scan_pages", "maya", "assessment", "account"]);
+    expect(tabsOf(links)).toEqual(all);
     expect(links.find((l) => l.tab === "maya")?.href).toBe(notesPath("leah"));
     expect(links.find((l) => l.tab === "scan_pages")?.href).toBe("/account/scan");
     expect(links.find((l) => l.tab === "overview")?.href).toBe("/account?child=leah");
+  });
+  it("links Progress to the child's own page only when the stage and the switch give the tab (#561)", () => {
+    const links = tabLinks(child("leah", { stage: "active", opensOn: "overview", tabs: ["overview", "progress", "workbooks", "assessment", "account"] }));
+    expect(links.find((l) => l.tab === "progress")).toEqual({ tab: "progress", label: "Progress", href: progressPath("leah") });
+    expect(progressPath("a b")).toBe("/account/progress/a%20b");
+    const off = tabLinks(child("leah", { stage: "active", opensOn: "overview", tabs: ["overview", "workbooks", "assessment", "account"] }));
+    expect(tabsOf(off)).not.toContain("progress");
+    expect(activeTab("/account/progress/leah", off)).toBeNull();
+    expect(activeTab("/account/progress/leah", links)).toBe("progress");
+    expect(addressChild("/account/progress/omar", null, [])).toBe("omar");
   });
   it("links Workbooks to the child's own Workbooks page when the stage gives the tab", () => {
     const links = tabLinks(child("leah", { stage: "first_book_coming", opensOn: "overview", tabs: ["overview", "workbooks", "assessment", "account"] }));

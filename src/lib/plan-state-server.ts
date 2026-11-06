@@ -43,7 +43,9 @@ export function supabasePlanStore(db: SupabaseClient<Database>): PlanStateStore 
       return ownerOf(data);
     },
     async load({ parentId, childId }) {
-      const { data, error } = await db.from("child_plan_states").select(STATE_COLUMNS).eq("child_id", childId).eq("parent_id", parentId).maybeSingle();
+      // A signal opts out of the fetch memoization of a page render, which would answer fillChildPlan's read after its write
+      // with the read before it, so a filled row would read as unknown on that load (#554).
+      const { data, error } = await db.from("child_plan_states").select(STATE_COLUMNS).eq("child_id", childId).eq("parent_id", parentId).abortSignal(new AbortController().signal).maybeSingle();
       if (error) throw new Error(`Plan state read failed: ${error.message}`);
       if (!data) return null;
       const plan = planFromColumns(data);

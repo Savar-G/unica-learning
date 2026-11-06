@@ -48,7 +48,7 @@ it.each(["queued", "plans_stopped"])("sends a queued family's account pages and 
 });
 it("refuses a queued family's account and desk APIs with 410", async () => {
   auth.state = "queued";
-  for (const path of ["/api/account/children", "/api/account/family/delete", "/api/desk/open"]) {
+  for (const path of ["/api/account/children", "/api/account/family/delete", "/api/account/family/delete/code", "/api/account/children/child/delete", "/api/account/children/child/delete/code", "/api/desk/open"]) {
     const response = await get(path);
     expect(response.status).toBe(410);
     expect(await response.json()).toEqual({ ok: false, error: "family_deleted" });

@@ -2,9 +2,18 @@ import { dayOf, familyWhen, localDateTime, type FamilyZone } from "@/lib/family-
 import type { Batch } from "@/lib/board";
 import { SAFETY_GUIDANCE } from "@/lib/maya";
 import type { CallView, TranscriptLine } from "@/lib/maya-call";
+import { childSpendLine, type SpendState } from "@/lib/maya-spend";
 
 export const CHAT_MESSAGES = 60;
-export interface ChatUsage { used: number; left: number; resetsAt: number; backAt: string }
+export interface ChatUsage {
+  used: number; left: number; resetsAt: number; backAt: string;
+  /** Maya's spending cap this week (D-290): its state, the 80% notice, and when the week resets in the family's zone. */
+  spend?: ChatSpend | null;
+}
+export interface ChatSpend { state: SpendState; notice: boolean; resetsAt: number; zone: FamilyZone }
+/** What the desk shows the child when Maya's week is used or Maya is paused; null while she is open. */
+export const chatSpendLine = (usage: ChatUsage | null): string | null =>
+  usage?.spend ? childSpendLine(usage.spend.state, usage.spend.resetsAt, usage.spend.zone) : null;
 export interface ChatView {
   id: string; revision: number; ended: boolean; transcript: TranscriptLine[]; batches: Batch[];
   pending?: boolean;

@@ -1,11 +1,13 @@
 import Stripe from "stripe";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { memoryBilling } from "@/lib/billing-memory";
 import { readChildPlan } from "@/lib/plan-state";
 import { memoryPlanStates } from "@/lib/plan-state-memory";
 
-const f = vi.hoisted(() => ({ seams: vi.fn() }));
+const f = vi.hoisted(() => ({ seams: vi.fn(), cards: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/plan-state-server", () => ({ livePlanStates: f.seams }));
+vi.mock("@/lib/card-sweep-server", () => ({ liveCardChecks: f.cards }));
 import { POST } from "./route";
 
 const SECRET = "whsec_test_secret";
@@ -122,4 +124,68 @@ it("answers 500 when Stripe or the store fails, so Stripe sends the event again"
   states.fail.save = undefined;
   expect((await POST(signed(payload()))).status).toBe(204);
   expect(states.rows).toHaveLength(1);
+});
+
+describe("the card comparison", () => {
+  const withRow = async () => {
+    const b = memoryBilling({ children: [{ parentId: "parent-1", childId: "child-1", firstName: "Leah", card: { id: "card-1", customer: "cus_1", saved: true } }], subscriptions: [{ id: "sub_1", customer: "cus_1", status: "active", defaultCard: "pm_stray" }], customerDefaults: { cus_1: "pm_new" } });
+    await b.store.recordCard("card-1", { parentId: "parent-1", session: "cs_1", created: 1, paymentMethod: "pm_new" });
+    await b.store.settleCard("card-1", "cs_1", true);
+    const announced: string[] = [];
+    f.cards.mockReturnValue({ rows: b.store, stripe: b.provider, canWrite: () => true, announcePlan: async (_row: unknown, plan: { id: string }) => { announced.push(plan.id); } });
+    return { b, announced };
+  };
+
+  it.each(["customer.subscription.created", "customer.subscription.updated"])("%s brings the plan to the row's card, and keeps the plan state's work and its answer", async (type) => {
+    const { b } = await withRow();
+    expect((await POST(signed(payload({ type })))).status).toBe(204);
+    expect(b.subscriptions[0].defaultCard).toBe("pm_new");
+    expect(states.rows).toHaveLength(1);
+  });
+
+  it.each(["customer.subscription.deleted", "invoice.paid", "invoice.payment_failed"])("%s does not", async (type) => {
+    const { b } = await withRow();
+    expect((await POST(signed(payload({ type })))).status).toBe(204);
+    expect(b.subscriptions[0].defaultCard).toBe("pm_stray");
+    expect(f.cards).not.toHaveBeenCalled();
+  });
+
+  it("the event of a correction finds nothing to change", async () => {
+    const { b } = await withRow();
+    await POST(signed(payload()));
+    const reads = b.calls.state;
+    const writes = b.calls.setDefault;
+    expect((await POST(signed(payload({ id: "evt_2" })))).status).toBe(204);
+    expect(b.calls.state).toBe(reads + 1);
+    expect(b.calls.setDefault).toBe(writes);
+  });
+
+  it("does nothing for a customer with no row", async () => {
+    const b = memoryBilling({ children: [] });
+    f.cards.mockReturnValue({ rows: b.store, stripe: b.provider, canWrite: () => true, announcePlan: async () => {} });
+    expect((await POST(signed(payload()))).status).toBe(204);
+    expect(b.calls.state).toBe(0);
+  });
+
+  it("answers 204 when Stripe fails, as the row is flagged and the sweep comes back", async () => {
+    const { b } = await withRow();
+    b.fail.setDefault = new Error("Stripe down");
+    expect((await POST(signed(payload()))).status).toBe(204);
+    expect(b.updates.get("child-1")).toMatchObject({ needsRepair: true });
+    expect(states.rows).toHaveLength(1);
+  });
+
+  it("answers 500 when the row cannot be read, and still stores the plan state", async () => {
+    const { b } = await withRow();
+    b.fail.rows = new Error("Database down");
+    expect((await POST(signed(payload()))).status).toBe(500);
+    expect(states.rows).toHaveLength(1);
+  });
+
+  it("still compares the card when the plan state fails, and answers 500", async () => {
+    const { b } = await withRow();
+    states.fail.plan = new Error("Stripe down");
+    expect((await POST(signed(payload()))).status).toBe(500);
+    expect(b.subscriptions[0].defaultCard).toBe("pm_new");
+  });
 });

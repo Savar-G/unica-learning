@@ -12,6 +12,7 @@ export * from "./rushing";
 export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comparison";
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export {
+  reportCallsUnreliable,
   reportModel,
   storedReportModel,
   type Comparison,
@@ -88,3 +89,5 @@ export { PROFILE_AI_SCHEMA, PROFILE_AI_TEXT_MAX, checkProfileAi, profileAiFacts,
 export * from "./findings";
 // The copy without names (#201): each test of a family, copied before the family is deleted.
 export * from "./anonymous-copy";
+
+export * from "./adaptive";

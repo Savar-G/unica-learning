@@ -1,3 +1,4 @@
+import { UNKNOWN_RESPONSE } from "@/lib/assessment";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { detailProgress, getStrokes, getTest, requireAdmin } from "@/lib/admin-store";
@@ -31,6 +32,8 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       ["Grade and curriculum", gradeAndPlace(t.grade, t.province)], ["Status", <StatusChip key="status" status={t.status} />],
       ["Started (Pacific)", when(t.started_at)], ["Last answer (Pacific)", when(t.last_answer_at)], ["Completed (Pacific)", when(t.completed_at)],
       ["Resume until (Pacific)", when(t.resume_until)], ["Working level", t.placement ? levelText(t.placement.workingLevel) : "-"], ["Route", t.route ?? "-"],
+      ["Unknown answers", detail.answers.filter(a => a.response === UNKNOWN_RESPONSE).length],
+      ["Assessment format", t.stored.adaptive ? "Six-question blocks" : "Stages"],
       ["Did anyone help?", helpAnswerText(t.help)], ["Seed", t.seed], ["Test id", t.id],
       ["Learner profile", t.status === "completed" ? <Link key="profile" href={adminProfilePath(t.id)}>Open the profile</Link> : "-"],
     ]} />
@@ -47,7 +50,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
     {report ? <><p><Link href={adminReportPath(report.id)}>Open the report</Link></p><RecordFacts facts={[["Created (Pacific)", when(report.created_at)], ["Questions", report.questions], ["Minutes", report.minutes], ["Parent email (Pacific)", when(report.emailed_at)], ["Parent email error", report.email_error], ["Alert (Pacific)", when(report.alerted_at)], ["Alert error", report.alert_error]]} /></> : <p className="adm-note">No report has been stored.</p>}
     <h2>Answers and times</h2>
     <p className="adm-note">Thinking time is measured in the browser. Time on the server runs from when the server sent the question to when the answer arrived (#184). Changes, read aloud and away: what the child did before Next. A dash: not recorded (a test from before #184).</p>
-    <Table label="Answers" head={["#", "Stage", "Level / strand", "Template / BC", "Question", "Right answer", "Child answer", "Result", "Thinking time", "Time on the server", "Changes", "Read aloud", "Away", "Mistake"]} empty="No answers yet.">
+    <Table label="Answers" head={["#", t.stored.adaptive ? "Block" : "Stage", "Level / strand", "Template / BC", "Question", "Right answer", "Child answer", "Result", "Thinking time", "Time on the server", "Changes", "Read aloud", "Away", "Mistake"]} empty="No answers yet.">
       {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td><a href={`#question-${a.number}`}>{a.number}</a></td><td>{a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td><span className="adm-mono">{a.templateId ?? "-"}</span><span className="adm-sub">BC {a.standard ?? "-"}</span></td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}{a.leftOut && <span className="adm-sub">Left out: rushed</span>}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td className="adm-nowrap">{a.timeline.serverMs === null ? "-" : duration(a.timeline.serverMs)}</td><td className="adm-num">{changeCount(a)}</td><td className="adm-num">{readAloudCount(a)}</td><td className="adm-nowrap">{awayCount(a)}</td><td>{a.misconception ?? "-"}</td></tr>)}
     </Table>
     <ShownWithoutAnswer lines={shownWithoutAnswer(t.stored, detail.shows, detail.answers)} />

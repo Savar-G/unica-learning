@@ -6,7 +6,7 @@
 // The server sees answers and a few screens, not every screen: a child can go Back to an answered question, or open one
 // from a check grid, and nothing is stored. So the view names the next question to answer, not the one on screen, and
 // says "or on the last step" where the records cannot tell a check grid from the end.
-import { FACTS_SECONDS, type Route, type Stage3Route } from "@/lib/assessment";
+import { ADAPTIVE_BREAK_AFTER, FACTS_SECONDS, type Route, type Stage3Route } from "@/lib/assessment";
 import type { AssessmentStatus } from "@/lib/test-api";
 
 /** One test's records, as public.admin_test_progress() returns them (migration add_admin_test_progress). Times are ISO. */
@@ -15,6 +15,7 @@ export interface ProgressInput {
   route: Route | null;
   /** D-282: the stage 2 lock record: null or absent while stage 2 is not locked. */
   stage3Route?: Stage3Route | null;
+  blocks?: { lengths: number[]; locked: number; complete: boolean };
   /** How many questions each stored part has. `stage3Up` and `stage3Down` (D-282) are absent on older tests. */
   lengths: { stage1: number; up: number; stay: number; down: number; stage3Up?: number; stage3Down?: number };
   /**
@@ -51,7 +52,7 @@ export type ProgressPhase =
   | "finished"
   | "closed"; // expired: no answer for 24 hours
 
-export type ProgressPart = "Part 1" | "Part 2" | "Part 3";
+export type ProgressPart = `Part ${number}`;
 
 export interface TestProgress {
   phase: ProgressPhase;
@@ -97,16 +98,16 @@ const newest = (...times: (string | null)[]) => times.reduce<string | null>((a, 
 
 export function testProgress(t: ProgressInput, now: number): TestProgress {
   const { lengths: l } = t;
-  const part1 = l.stage1;
+  const part1 = t.blocks ? ADAPTIVE_BREAK_AFTER : l.stage1;
   // Before routing, the child's screen counts the longest stored form (testStep); once routed, the routed one.
   const part3 = t.stage3Route === "up" ? l.stage3Up ?? 0 : t.stage3Route === "down" ? l.stage3Down ?? 0 : 0;
-  const total = part1 + (t.route ? l[t.route] : Math.max(l.up, l.stay, l.down)) + part3;
+  const total = t.blocks ? t.blocks.lengths.reduce((n,x) => n+x, 0) : part1 + (t.route ? l[t.route] : Math.max(l.up, l.stay, l.down)) + part3;
   const n = Math.min(t.answered, total);
   // A test from before the stage 1 lock can have Part 2 answers and no stored route (restoreSession routes it by its
   // Part 1 answers). Its route is not known here: it counts as Part 2, without a prompt, and never as closed too early.
-  const legacy = !t.route && t.answered > part1;
+  const legacy = !t.blocks && !t.route && t.answered > part1;
   // Every answer is in: the test never expires (test-attempt.ts).
-  const allDone = t.route ? t.answered >= total : legacy && t.answered >= part1 + Math.min(l.up, l.stay, l.down);
+  const allDone = t.blocks ? t.blocks.complete : t.route ? t.answered >= total : legacy && t.answered >= part1 + Math.min(l.up, l.stay, l.down);
   // The facts end when the time is up, or earlier when every drawn fact has a response (factsStep).
   const factsEnd = t.factsStartedAt ? ms(t.factsStartedAt) + FACTS_SECONDS * 1000 : null;
   const factsEarly = t.factsDrawn > 0 && t.factsTried >= t.factsDrawn;
@@ -114,9 +115,9 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
   const facts = factsEnd === null ? null : { answered: t.factsAnswered, done: factsDone };
   const lastActivityAt = newest(t.startedAt, t.lastAnswerAt, t.lastShown?.at ?? null, t.breakStartedAt, t.breakEndedAt, t.factsStartedAt, t.completedAt)!;
 
-  const next = n < total && (n < part1 || t.route || legacy) ? {
+  const next = n < total && (t.blocks || n < part1 || t.route || legacy) ? {
     number: n + 1,
-    part: (n < part1 ? "Part 1" : n < total - part3 ? "Part 2" : "Part 3") as ProgressPart,
+    part: (t.blocks ? `Part ${t.blocks.locked + 1}` : n < part1 ? "Part 1" : n < total - part3 ? "Part 2" : "Part 3") as ProgressPart,
     prompt: t.nextPrompt,
   } : null;
   const of = (number: number) => `${number} of ${total}`;
@@ -136,9 +137,11 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
     };
   }
 
+  if (t.blocks && n === total) return { ...base, phase: "check", text: t.blocks.complete ? "On the last step" : `Checking the Part ${t.blocks.locked + 1} answers`, short: t.blocks.complete ? "Finishing" : `Checking Part ${t.blocks.locked + 1}`, ...lastAnswer };
+  if (t.blocks && n !== ADAPTIVE_BREAK_AFTER) return onQuestion();
   // Part 1
   if (n < part1) return onQuestion();
-  if (!t.route && !legacy) return { ...base, phase: "check", text: "Checking the Part 1 answers", short: "Checking Part 1", ...lastAnswer };
+  if (!t.blocks && !t.route && !legacy) return { ...base, phase: "check", text: "Checking the Part 1 answers", short: "Checking Part 1", ...lastAnswer };
   // Halfway: the break, then the quick facts, then the first Part 2 question (its serve is recorded after the facts).
   if (n === part1 && !shownNow) {
     if (factsEnd !== null && !factsDone) return { ...base, phase: "facts", text: `Doing the quick facts: ${t.factsAnswered} answered`, short: "Quick facts", since: t.factsStartedAt!, sinceText: "started" };

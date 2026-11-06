@@ -37,6 +37,7 @@ import {
   type Outcome,
   type Session,
   type SessionEvent,
+  type Severity,
   type WordingHistory,
 } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
@@ -163,6 +164,11 @@ export interface TextSession {
   writing(status: "started" | "done"): Promise<TextOutput>;
   /** The connection or a service failed: the call ends. */
   technical(detail: string): Promise<TextOutput>;
+  /**
+   * A danger the session could not read itself (D-290): a read of the child's words outside the session found it, as when
+   * the call's own clock has run out. Taken before the clock, so code's guidance is said even then.
+   */
+  safety(severity: Severity): Promise<TextOutput>;
   /**
    * Ends the call if it has not ended (starting it first when it never started), and returns the finished trace. Call
    * it in a `finally`: every caller gets a trace with an outcome, whatever failed. Safe to call more than once.
@@ -379,6 +385,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     tick: () => receive({ type: "tick", at: now() }),
     writing: (status) => receive({ type: "writing", at: now(), status }),
     technical: (detail) => receive({ type: "technical", at: now(), detail: redactText(detail) }, false),
+    safety: (severity) => receive({ type: "safety", at: now(), severity }),
     get session() { return structuredClone(folded.session); },
     get ended() { return folded.session.outcome !== null; },
     finish: async (end = {}, oldFailed) => {

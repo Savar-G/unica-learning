@@ -139,6 +139,7 @@ export type TestStep =
       takeYourTime: boolean;
       /** D-282: the number of questions before the third stage, while it runs; absent otherwise. */
       stage3After?: number;
+      block?: { number: number; first: number; end: number };
       /**
        * #249: the answered questions of the open section, in order, so Back shows them at once. Only the test attempt
        * module adds it (it knows when the test moved past a section); absent when no answer can change.
@@ -154,7 +155,7 @@ export type TestStep =
        */
       status: "check";
       /** The section to check: stage 1 (before the halfway break), stage 2 (the routed form) or stage 3 (D-282). */
-      section: "stage1" | "stage2" | "stage3";
+      section: "stage1" | "stage2" | "stage3" | `block-${number}`;
       /** The section's question numbers in the test, from 1, in order. Every one is answered. */
       numbers: number[];
       total: number;
@@ -162,7 +163,7 @@ export type TestStep =
       /** The section's answered questions (as on a question step), so a tap opens one at once. Only the test attempt module adds it. */
       answered?: AnsweredQuestion[];
     }
-  | { status: "complete"; total: number };
+  | { status: "complete"; total: number; sufficientEvidence?: boolean };
 
 /** #249: an answered question the child can go back to: its number in the test, the question without its answer, and the child's response. */
 export interface AnsweredQuestion {
@@ -212,13 +213,14 @@ export interface Session {
   /** D-282: set when stage 2 of an up or down route is locked; absent or null before it, and on every stay route. */
   stage3Route?: Stage3Route | null;
   answers: Answer[];
+  adaptive?: AdaptiveTest;
 }
 
 /**
  * What the server stores when a test starts. Never sent to the browser: it holds the answers. D-145: two tests from
  * before the extra round was removed (#190) also hold that round's questions under `extra`; no code reads them.
  */
-export type StoredTest = Pick<Session, "profile" | "seed" | "stage1" | "stage2" | "stage3">;
+export type StoredTest = Pick<Session, "profile" | "seed" | "stage1" | "stage2" | "stage3" | "adaptive">;
 
 export type StrandStatus = "secure" | "developing" | "needs-attention";
 
@@ -261,4 +263,19 @@ export interface Placement {
   flags: Flag[];
   /** #189: very fast answers, the ones left out of the score, and whether the result may not be reliable. Absent before #189. */
   pace?: Pace;
+}
+
+/** Versioned, fully drawn bank and durable block locks. Old tests have no adaptive field. */
+export interface AdaptiveBlock {
+  level: Level;
+  purpose: "search" | "confirm" | "coverage";
+  questions: Question[];
+}
+export interface AdaptiveTest {
+  version: 1;
+  pool: Question[];
+  blocks: AdaptiveBlock[];
+  locked: number;
+  complete: boolean;
+  sufficientEvidence: boolean;
 }

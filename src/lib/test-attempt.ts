@@ -1,3 +1,4 @@
+import { createAdaptiveSession, lockAdaptiveBlock, UNKNOWN_RESPONSE, type AdaptiveTest } from "@/lib/assessment";
 // One child's test attempt on the server (spec #144, #146): start or continue it ("Start test", "Continue test",
 // "Finish test", "Start again", #72), read its next step, answer a question with its whiteboard work (#147), run the
 // timed facts section (#148), and finish it: score it once and store the placement (#150).
@@ -14,7 +15,6 @@ import {
   attemptState,
   breakDue,
   changeAnswer as remark,
-  createSession,
   decideStart,
   finish,
   fromRemovedRound,
@@ -153,6 +153,7 @@ export interface AnswerTimeline {
  * the test context (#185) in ContextStore.
  */
 export interface AttemptStore extends FactsStore, ShownStore, ContextStore {
+  lockBlock(id: string, lock: { expected: number; adaptive: AdaptiveTest; answers: readonly Submission[]; resumeUntil: number }): Promise<"stored" | "changed" | "closed">;
   /** One of the parent's children; null when the parent has no child with this id. */
   child(parent: string, childId: string): Promise<AttemptChild | null>;
   /** The parent's tests: of one child, or of every child. A completed test whose result may not be reliable has `unreliable` (#189). */
@@ -328,7 +329,7 @@ async function startFor(
     while (used.has(seed)) seed = newSeed();
     let session: Session;
     try {
-      session = createSession({ grade: child.grade, province: child.province }, seed);
+      session = createAdaptiveSession({ grade: child.grade, province: child.province }, seed);
     } catch (e) {
       console.error("[test] cannot build a test", child.grade, messageOf(e));
       return { ok: false, error: "not_ready" };
@@ -468,7 +469,7 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
     return { ok: false, error: "conflict", step };
   }
   const response = input.response.trim();
-  const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
+  const valid = response === UNKNOWN_RESPONSE || (q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX);
   if (!valid || !Number.isFinite(input.timeMs) || input.timeMs < 0) return { ok: false, error: "invalid" };
   // #67: Kindergarten to grade 2 draw only. The whiteboard is optional (D-125).
   const problem = workProblem(session, { drawn: input.work.png !== null, text: input.work.text });
@@ -566,7 +567,7 @@ export interface ChangeInput extends AnswerInput {
  * locked with no third stage ("none") is the end of the test: nothing changes while it waits to be finished.
  */
 function changeable(read: ReadTest): OpenSection | null {
-  return takesAnswers(read) && read.session.stage3Route !== "none" ? openSection(read.session) : null;
+  return takesAnswers(read) && read.session.stage3Route !== "none" && !read.session.adaptive?.complete ? openSection(read.session) : null;
 }
 
 /**
@@ -585,7 +586,7 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
   if (!section || !at) return { ok: false, error: "conflict", step: await sendStep(store, id, open) };
   const q = at.question;
   const response = input.response.trim();
-  const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
+  const valid = response === UNKNOWN_RESPONSE || (q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX);
   if (!valid || !Number.isFinite(input.timeMs) || input.timeMs < 0) return { ok: false, error: "invalid" };
   if (input.workChanged) {
     // The work rules (D-125) for the question being changed: after the last main answer there is no next question.
@@ -688,7 +689,7 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
 // goes on to "Did anyone help?" and locks with the finish.
 
 /** #253: a section of the test that ends on a "Check your answers" grid. */
-export type CheckSection = "stage1" | "stage2" | "stage3";
+export type CheckSection = "stage1" | "stage2" | "stage3" | `block-${number}`;
 
 /**
  * #253: "Done checking" on the grid of `section` of the parent's test at `now`: sends the next step. Stage 1: sets the
@@ -705,6 +706,21 @@ export async function doneChecking(store: AttemptStore, parent: string, id: stri
     const open = await openTest(store, parent, id, now);
     if (!open.ok) return open;
     const step = stepOf(open);
+    if (open.session.adaptive) {
+      const a = open.session.adaptive;
+      const requested = /^block-([1-9][0-9]*)$/.exec(section);
+      if (!requested) return { ok: false, error: "conflict", step };
+      const index = Number(requested[1]);
+      if (index <= a.locked) return carryOn(store, id, open, now);
+      if (step.status !== "check" || step.section !== section) return { ok: false, error: "conflict", step };
+      const next = lockAdaptiveBlock(open.session);
+      try {
+        const result = await store.lockBlock(id, { expected: a.locked, adaptive: next.adaptive!, answers: open.session.answers, resumeUntil: recordAnswer(open.attempt, now).resumeUntil });
+        if (result === "changed") continue;
+        if (result === "closed") return freshConflict(store, parent, id, now);
+      } catch (e) { return storeFailed(e); }
+      return carryOn(store, id, { ...open, session: next }, now);
+    }
     if (step.status !== "check" || step.section !== section) {
       if (!passed(open, section)) return { ok: false, error: "conflict", step: await withWork(store, id, open, step) };
       // Review of #253: the press that stored the stage 1 lock may have lost its answer (or another tab pressed at the
@@ -1102,7 +1118,7 @@ async function finishOnce(store: AttemptStore, parent: string, id: string, help:
   if (!open.ok) return open;
   const { attempt, session } = open;
   if (attempt.status === "completed") return { ok: true, id: attempt.id, finished: "already" };
-  if (attempt.status !== "in_progress" || testStep(session).status !== "complete") return { ok: false, error: "incomplete" };
+  if (attempt.status !== "in_progress" || testStep(session).status !== "complete" || (session.adaptive && !session.adaptive.sufficientEvidence)) return { ok: false, error: "incomplete" };
   // As before the module, the help answer is checked only for a test that can be finished now.
   if (help === "invalid") return { ok: false, error: "invalid" };
   // The timed facts section (#70) goes into the placement beside the test; none when the child had none.
@@ -1260,7 +1276,7 @@ const takesAnswers = ({ attempt }: ReadTest): boolean => attempt.status === "in_
 function stepOf(read: ReadTest): TestStep {
   const main = testStep(read.session);
   const section = changeable(read);
-  const step: TestStep = main.status === "complete" && section && section.name !== "stage1"
+  const step: TestStep = main.status === "complete" && !read.session.adaptive && section && section.name !== "stage1"
     ? { status: "check", section: section.name, numbers: section.answered.map((a) => a.position + 1), total: main.total, breakAfter: read.session.stage1.length }
     : main;
   if (step.status === "complete") return step;

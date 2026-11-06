@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
+import type { MailTransport } from "@/lib/email-delivery";
 import { mayaCalls } from "@/lib/maya-call";
 import { writeNoteAfterCall } from "@/lib/maya-call-note-server";
 import { callSeams } from "@/lib/maya-call-seams";
@@ -13,10 +14,10 @@ import { SWEEP_START_MS, SWEEP_TIME_LIMIT_MS, sweepAbandonedCalls, sweepSeams, t
 
 /**
  * Ends the abandoned calls and finishes unfinished ones. It starts no new end after SWEEP_START_MS from `startedAt` and
- * answers within SWEEP_TIME_LIMIT_MS. `origin`: the safety alert's site.
+ * answers within SWEEP_TIME_LIMIT_MS. `origin`: the safety alert's site. `transport`: the safety alert's, so it shares the run's send rate.
  */
-export function sweepAbandonedCallsNow(admin: SupabaseClient<Database>, options: { origin?: string; startedAt?: number; dry?: boolean } = {}): Promise<SweepResult> {
-  const seams = sweepSeams({ ...callSeams(admin, { origin: options.origin }), note: writeNoteAfterCall(admin, { codeOnly: true }) });
+export function sweepAbandonedCallsNow(admin: SupabaseClient<Database>, options: { origin?: string; startedAt?: number; dry?: boolean; transport?: MailTransport } = {}): Promise<SweepResult> {
+  const seams = sweepSeams({ ...callSeams(admin, { origin: options.origin, transport: options.transport }), note: writeNoteAfterCall(admin, { codeOnly: true }) });
   const startedAt = options.startedAt ?? Date.now();
   return sweepAbandonedCalls({
     calls: mayaCalls(seams), source: sweepCallSource(admin), clock: () => Date.now(), dry: options.dry,

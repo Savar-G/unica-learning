@@ -1,16 +1,18 @@
-import type { ProvePassword } from "@/lib/parent-pin";
-
-// A parent deletes the whole family from the Account tab (#556, spec #544, D-247). The order of the steps is the point:
+// A parent deletes the whole family from the Account tab (#556, spec #544, D-247, D-255). The order of the steps is the point:
 //
-// 1. The form, then the password: each try is counted before the password is checked, 5 tries, then 15 minutes locked.
-// 2. A check that changes nothing: an admin account, a family with a card hold, or a family already gone stops here.
+// 1. The form, then the one-time code from the account's email (src/lib/family-delete-code.ts): each try is counted before
+//    the code is checked, 5 tries, then 15 minutes locked. A right code is spent here, whatever happens next, so a retry
+//    after any later failure needs a new code.
+// 2. A check that changes nothing: an admin account, a family with a card hold, a family with an open plan start record, or a family
+//    already gone stops here. An open record means that Stripe may still make a plan no read can see yet, so only the team can end it
+//    (#554). Steps 5 and 7 check it again, as a record can open in between.
 // 3. Every Stripe customer and every plan is read before any plan stops. A failed read leaves the family untouched.
 // 4. Each plan stops at once, with no refund. After a failed stop, later plans are left alone.
 // 5. The family's delete hold is taken. From here no plan can start: the admin's start route is refused while it is live.
 // 6. Every customer is read again. Only "no plan can charge" goes on, so a lost answer from step 4 is settled here, and a
 //    plan that started before step 5 stops this request.
-// 7. The request is written, under the hold, which fences the family and ends the hold. The deletion worker never reads
-//    plans for a request, so a live plan would survive the family: step 6 must come first, and steps 5 to 7 must exclude a
+// 7. The request is written, under the hold, which fences the family and ends the hold. The deletion worker normally reads no
+//    plans for a request (except a start resolved after the fence), so step 6 must come first, and steps 5 to 7 must exclude a
 //    plan start. Any other live hold refuses the write. The hold has a lease, so a server that dies here strands nothing:
 //    the lease ends, and a request that names a lease that has ended is refused, because a plan may have started since.
 //
@@ -18,8 +20,19 @@ import type { ProvePassword } from "@/lib/parent-pin";
 // plan no longer reads as running, and the request is written once. The module has no Next.js, Stripe or database import.
 // Seams: src/lib/family-delete-server.ts (the live site), src/lib/family-delete-memory.ts (tests).
 
-/** The word a parent types, as well as the password, so that no single slip deletes a family. */
+/** The word a parent types, as well as the code, so that no single slip deletes a family. */
 export const DELETE_WORD = "DELETE";
+
+/** The code's digits. Here and not in the code's own module, because the browser's form needs it. */
+export const DELETE_CODE_LENGTH = 6;
+const CODE_FORM = new RegExp(`^[0-9]{${DELETE_CODE_LENGTH}}$`);
+export const validDeleteCode = (code: unknown): code is string => typeof code === "string" && CODE_FORM.test(code);
+
+/**
+ * Whether `code` is the live code of this parent, and spends it when it is. "ended": no live code (never sent, too old, or
+ * spent). "wrong": a live code exists and this is not it. Throws when the code cannot be read: nothing changes then.
+ */
+export type ProveCode = (code: string) => Promise<"ok" | "wrong" | "ended">;
 
 /** The plain confirmation, outside the account pages: the session has ended when the parent lands on it. */
 export const FAMILY_DELETED_PATH = "/family-deleted";
@@ -50,20 +63,20 @@ export type AttemptClaim =
   | { kind: "open"; attemptsLeft: number; lockedUntil: number | null };
 
 export interface FamilyDeleteStore {
-  /** Counts one try, in one atomic step, before the password is checked. */
+  /** Counts one try, in one atomic step, before the code is checked. */
   claimAttempt(parent: string, now: number, policy: DeletePolicy): Promise<AttemptClaim>;
   clearAttempts(parent: string): Promise<void>;
   /** Changes nothing. */
-  check(parent: string): Promise<"ready" | "busy" | "protected" | "missing">;
+  check(parent: string): Promise<"ready" | "busy" | "plan_start" | "protected" | "missing">;
   /** Takes the family's delete hold for `token`, with a lease. While it is live, a plan start is refused. Refused for any other live hold. */
-  hold(parent: string, token: string): Promise<"held" | "busy" | "protected" | "missing">;
+  hold(parent: string, token: string): Promise<"held" | "busy" | "plan_start" | "protected" | "missing">;
   /** Ends this token's hold only. A hold already gone changes nothing. */
   release(parent: string, token: string): Promise<void>;
   /**
    * Fences the family, queues its deletion once, records that its plans stopped, and ends the hold. Refused unless `token`
    * still holds a live lease, and for any other hold, decided under the row lock.
    */
-  request(parent: string, token: string): Promise<"requested" | "busy" | "protected" | "missing">;
+  request(parent: string, token: string): Promise<"requested" | "busy" | "plan_start" | "protected" | "missing">;
 }
 
 export interface FamilyPlans {
@@ -77,11 +90,13 @@ export interface FamilyPlans {
 
 export type FamilyDeleteResult =
   | { ok: true; plansStopped: number }
-  | { ok: false; error: "invalid" | "unavailable" | "busy" | "protected" | "not_found" }
-  | { ok: false; error: "wrong_password"; attemptsLeft: number }
+  | { ok: false; error: "invalid" | "unavailable" | "busy" | "protected" | "not_found" | "code_ended" }
+  | { ok: false; error: "wrong_code"; attemptsLeft: number }
   | { ok: false; error: "locked"; retryAt: number }
   /** Stopping or queueing failed. No request exists, the family's data is all there, and `plansStopped` plans ended. */
-  | { ok: false; error: "not_finished"; plansStopped: number };
+  | { ok: false; error: "not_finished"; plansStopped: number }
+  /** The team must finish a plan start first. No request exists, the family's data is all there, and `plansStopped` plans ended. */
+  | { ok: false; error: "plan_start"; plansStopped: number };
 
 export interface FamilyDeleteSeams {
   store: FamilyDeleteStore;
@@ -91,23 +106,23 @@ export interface FamilyDeleteSeams {
   newToken?: () => string;
 }
 
-export async function requestFamilyDelete(parent: string, input: unknown, prove: ProvePassword, { store, plans, now = Date.now, policy = DELETE_POLICY, newToken = () => crypto.randomUUID() }: FamilyDeleteSeams): Promise<FamilyDeleteResult> {
-  const { password, confirm } = (input ?? {}) as { password?: unknown; confirm?: unknown };
+export async function requestFamilyDelete(parent: string, input: unknown, prove: ProveCode, { store, plans, now = Date.now, policy = DELETE_POLICY, newToken = () => crypto.randomUUID() }: FamilyDeleteSeams): Promise<FamilyDeleteResult> {
+  const { code, confirm } = (input ?? {}) as { code?: unknown; confirm?: unknown };
   // A malformed form cannot be right, so it costs no try.
-  if (confirm !== DELETE_WORD || typeof password !== "string" || password === "" || password.length > 1000) return { ok: false, error: "invalid" };
+  if (confirm !== DELETE_WORD || !validDeleteCode(code)) return { ok: false, error: "invalid" };
 
   const claim = await store.claimAttempt(parent, now(), policy);
   if (claim.kind === "locked") return { ok: false, error: "locked", retryAt: claim.until };
-  const proof = await prove(password);
-  if (proof === "unavailable") return { ok: false, error: "unavailable" };
-  if (proof === "wrong") {
+  const proof = await prove(code);
+  if (proof !== "ok") {
     if (claim.attemptsLeft <= 0 && claim.lockedUntil !== null) return { ok: false, error: "locked", retryAt: claim.lockedUntil };
-    return { ok: false, error: "wrong_password", attemptsLeft: claim.attemptsLeft };
+    return proof === "ended" ? { ok: false, error: "code_ended" } : { ok: false, error: "wrong_code", attemptsLeft: claim.attemptsLeft };
   }
   await store.clearAttempts(parent);
 
   const ready = await store.check(parent);
   if (ready === "missing") return { ok: false, error: "not_found" };
+  if (ready === "plan_start") return { ok: false, error: "plan_start", plansStopped: 0 };
   if (ready !== "ready") return { ok: false, error: ready };
 
   const everyPlan = async () => (await Promise.all((await plans.customers(parent)).map((c) => plans.running(c)))).flat();
@@ -137,6 +152,7 @@ export async function requestFamilyDelete(parent: string, input: unknown, prove:
     await letGo();
     return { ok: false, error: "not_finished", plansStopped: known };
   }
+  if (hold === "plan_start") return { ok: false, error: "plan_start", plansStopped: known };
   if (hold !== "held") return running.length === 0 && hold === "busy" ? { ok: false, error: "busy" } : { ok: false, error: "not_finished", plansStopped: known };
 
   let left: string[];
@@ -152,9 +168,11 @@ export async function requestFamilyDelete(parent: string, input: unknown, prove:
     return { ok: false, error: "not_finished", plansStopped };
   }
 
+  let requested: Awaited<ReturnType<FamilyDeleteStore["request"]>> | null = null;
   try {
-    if (await store.request(parent, token) === "requested") return { ok: true, plansStopped };
+    requested = await store.request(parent, token);
+    if (requested === "requested") return { ok: true, plansStopped };
   } catch { /* A lost answer may have written it. A retry answers the same, and a hold already gone changes nothing. */ }
   await letGo();
-  return { ok: false, error: "not_finished", plansStopped };
+  return { ok: false, error: requested === "plan_start" ? "plan_start" : "not_finished", plansStopped };
 }
