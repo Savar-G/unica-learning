@@ -1,6 +1,6 @@
 # Workbook welcome and delivery emails
 
-A welcome email follows a confirmed saved card for the program. It says that the first workbook is being prepared and that another email will follow when it is on its way. It covers mail with tracking and local hand delivery. Creating an account or choosing a plan without saving a card sends no welcome.
+A welcome email follows a confirmed saved card for the program. It asks the parent to allow 5 to 7 days to prepare the first workbook. It says that another email will follow when the workbook is on its way. It covers mail with tracking and local hand delivery. Creating an account or choosing a plan without saving a card sends no welcome.
 
 In **Admin > Cards and waitlist**, open **Workbook emails** on the child's saved card. The same controls appear on the family and child records.
 
