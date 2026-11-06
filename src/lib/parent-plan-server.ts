@@ -40,7 +40,7 @@ export async function customerPlan(s: Stripe, customer: string): Promise<KnownPl
       state.pauseResume = pause?.resume?.status.type === "scheduled" ? pause.resume.resume_at : null;
       if (subscription.status === "active" && pause?.pause.pause_at === state.periodEnd
         && pause.pause.status.type === "scheduled" && pause.resume?.status.type === "scheduled"
-        && pause.resume.settings.billing_cycle_anchor === "resume_at") state.periodEnd = pause.resume.resume_at;
+        && pause.resume.settings.billing_cycle_anchor === "resume_at") state.nextCharge = pause.resume.resume_at;
     }
     return state;
   }));

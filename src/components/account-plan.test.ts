@@ -40,3 +40,13 @@ it('checks a pending pause after a reload without sending a new confirmation',as
  await act(async()=>root.render(createElement(PlanControl,{cardId:'card',name:'Leah',mode:'pause',pending:true})));
  await click('Check pause');expect(f.fetch).toHaveBeenCalledTimes(1);expect(JSON.parse(f.fetch.mock.calls[0][1].body).action).toBe('preview');expect(f.refresh).toHaveBeenCalledTimes(1);
 });
+it('shows Update card after a confirmed payment refusal and asks for a new price review',async()=>{
+ f.fetch.mockResolvedValueOnce(Response.json({ok:true,state:'preview',price:49,token:'b'.repeat(64)}))
+  .mockResolvedValueOnce(Response.json({ok:false,error:'payment_refused'},{status:409}));
+ await act(async()=>root.render(createElement(PlanControl,{cardId:'card',name:'Leah',mode:'restart'})));
+ await click('Restart plan');await click('Review price');await click('Confirm restart');
+ expect(container.querySelector('[role="alert"]')?.textContent).toContain('Your payment did not go through');
+ expect([...container.querySelectorAll('button')].map(b=>b.textContent)).toContain('Update card');
+ expect([...container.querySelectorAll('button')].map(b=>b.textContent)).toContain('Review price');
+ expect(f.refresh).not.toHaveBeenCalled();
+});

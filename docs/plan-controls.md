@@ -25,6 +25,8 @@ A request through shipping day plus nine delays the next workbook. A later reque
 
 The shared child lock serializes controls and workbook writes. A pending control blocks prepare and shipment until its result is known. A successful cancellation blocks new preparation and shipment for that child. Sibling billing and mailing records stay unchanged.
 
+An outstanding mailing pause also applies to later workbook numbers. A printed target cannot be skipped. Parent mailing reads, preparation and shipment use `plan_mailing_obligations`. A shipment at or above a target satisfies that obligation. Applied cancellation and a successful paid Restart retire prior-plan mailing effects through `mailing_retired_at`. The pause rows remain in the yearly allowance count.
+
 ## Starts, cancellation and recovery
 
 Every start uses `plan_starts`. Its mode, monthly cents, payment method and idempotency key are fixed by admission. The old initial-start entry point refuses repeat successful starts. The server also refuses an initial start when any earlier provider subscription exists. A refused initial create can retry. An older open record without frozen price terms is recovered only by a matching subscription or a team check. New code does not replay it with guessed terms. An open initial start cannot become a paid Restart under its old key, or the reverse.
@@ -36,6 +38,10 @@ A matched paid creation closes through the existing matching-key recovery. In th
 Pause has one durable operation and one family card hold with no expiry. Only the first admission sends a command. After a lost response, a retry reads matching operation metadata and the exact provider dates. It does not send another command. The next press after a reload also checks the pending operation. A request that never reached the provider stays pending for a team check. Time never releases its hold.
 
 Cancel shares the same admission lock. It refuses while a start or another control is open. A scheduled pause is released before the subscription is cancelled at the end of its period. A paused plan ends immediately. Family and child deletion cancel the native schedule and its subscription together. A lost cancellation answer retains its operation and family hold.
+
+Cancel admission changes the confirmation revision but preserves the last confirmed cancellation state. Only an applied resolution sets the permanent cancellation flag. A refused resolution removes the operation hold and preserves that prior state. The cancellation confirmation uses the current period end, separately from the delayed next charge date.
+
+A definitive paid Restart refusal returns `payment_refused` only after the same durable generation reads as refused. The route then releases its card-operation hold. The parent can update the card and review the price again. A failed result save or an unknown provider result retains the holds and the recovery action.
 
 A pending cancellation currently needs a team check. There is no automatic close or public override. The team must prove that every intended provider command has ended before it calls `finish_plan_control`. A current provider read alone does not prove that an earlier command stopped. Do not close an uncertain operation because it is old. Keep this limit in the release decision.
 
@@ -52,4 +58,14 @@ Primary contracts read on 2026-11-05:
 - [Collection pause](https://docs.stripe.com/billing/subscriptions/pause-payment)
 - [Subscription schedules](https://docs.stripe.com/billing/subscriptions/subscription-schedules)
 
-Local PostgreSQL probe: start a disposable socket server at `/tmp/pd559-postgres` on port 55559. Run `PD559_SOCKET=/tmp/pd559-postgres node supabase/tests/plan_controls.cjs --bootstrap`. Later runs omit `--bootstrap`. `--refresh` replaces the changed function bodies in that disposable fixture. The test refuses any other socket. It uses synthetic rows only.
+Local PostgreSQL probe: start a disposable socket server at `/tmp/pd559-postgres` on port 55559. Run `PD559_SOCKET=/tmp/pd559-postgres node supabase/tests/plan_controls.cjs --bootstrap`. Later runs omit `--bootstrap`. `--refresh` replaces the changed function bodies in that disposable fixture. It uses synthetic rows only.
+
+The repair regressions use only socket `/tmp/pd-controls-bf76-pg`, port 55629, with TCP disabled. On a fresh disposable database, run these stages from the repository root:
+
+```sh
+PD559_SOCKET=/tmp/pd-controls-bf76-pg node supabase/tests/plan_controls.cjs --bootstrap
+PD559_SOCKET=/tmp/pd-controls-bf76-pg node supabase/tests/plan_controls_repairs.cjs
+PD559_SOCKET=/tmp/pd-controls-bf76-pg node supabase/tests/plan_controls_public.mjs
+```
+
+Set `PD559_DATABASE=pd559_<name>` for a separate database on that socket. Use the same value for each stage. The second stage installs the production admission, deletion fences, matching-key recovery, workbook start, shipment and printed-book guard functions. Supporting tables remain synthetic. The last stage uses a fake SDK transport and the unchanged pre-controls public `startPlan` from commit `89ecf73965eccbf0f59e49401b69cf09a4e12579`. It makes no provider call. The `.fixture` file runs only through that command because it requires this disposable SQL server.

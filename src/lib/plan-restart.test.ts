@@ -58,8 +58,8 @@ it("a lost paid create remains open and cannot be retried as a free month",async
  f.land();expect(await f.start()).toMatchObject({ok:true,subscription:"new-1"});expect(f.b.planStarts.get("card")?.[0]).toMatchObject({state:"started",email:"none"});expect(f.writes).toHaveLength(1);
 });
 it("a refused paid start can retry without receiving a trial",async()=>{
- const f=paidFixture({refuse:true});await expect(f.start()).rejects.toThrow();expect(f.b.planStarts.get("card")?.[0].state).toBe("refused");
- await expect(f.start()).rejects.toThrow();expect(f.b.planStarts.get("card")).toHaveLength(2);expect(f.writes.every(w=>!w.body.has("trial_period_days"))).toBe(true);
+ const f=paidFixture({refuse:true});expect(await f.start()).toEqual({ok:false,error:"payment_refused"});expect(f.b.planStarts.get("card")?.[0].state).toBe("refused");
+ expect(await f.start()).toEqual({ok:false,error:"payment_refused"});expect(f.b.planStarts.get("card")).toHaveLength(2);expect(f.writes.every(w=>!w.body.has("trial_period_days"))).toBe(true);
 });
 it("a card update during paid creation converges on the newest saved card",async()=>{
  const f=paidFixture();f.during(()=>f.b.store.recordCard("card",{parentId:"p",session:"new-session",created:200,paymentMethod:"pm_new"}).then(()=>{}));

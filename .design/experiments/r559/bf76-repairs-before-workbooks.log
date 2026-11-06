@@ -1,0 +1,28 @@
+[
+  {
+    "case": "prepared target 2 bypassed by public prepare and shipment of 3",
+    "target2": "plan_paused",
+    "newRunNumber": 3,
+    "book3": "marked",
+    "daysSinceCurrentShip": 2,
+    "promisedMinimumDays": 28
+  },
+  {
+    "case": "expired pause after paid Restart, valid past dates",
+    "pauseRequestedDaysAgo": 90,
+    "oldMovedChargeEndedDaysAgo": 13,
+    "newFirstBook": "shipped",
+    "nextPrepare": "plan_paused",
+    "newMinimumGapDays": 70
+  },
+  {
+    "case": "simultaneous Pause and public shipment",
+    "first": "pause",
+    "result": "PASS: serialized, no deadlock"
+  },
+  {
+    "case": "simultaneous Pause and public shipment",
+    "first": "ship",
+    "result": "PASS: serialized, no deadlock"
+  }
+]

@@ -57,7 +57,7 @@ export function supabasePauses(db: SupabaseClient<Database>, client: NonNullable
         return { location: { timeZone: nullable(family.timeZone), postal: nullable(family.postal), province: nullable(ctx.province) }, ...(pending ? { pending: { token: str(pending.token), weeks: num(pending.weeks) } } : {}), zone, book: b ? { id: str(b.id), number: num(b.number), shippedAt: str(b.shippedAt), deliveredAt: nullable(b.deliveredAt) } : null,
           firstDelivered: ctx.firstDelivered === true,
           used: pauses.filter(p => p.year === year).reduce((n, p) => n + num(p.weeks), 0),
-          mailingWeeks: pauses.filter(p => p.targetNumber === (b ? num(b.number) + 1 : 0) && p.state === "applied").reduce((n, p) => n + num(p.weeks), 0),
+          mailingWeeks: await childPauseMailing(db, parent, str(ctx.child), b ? num(b.number) + 1 : 0),
           blocked: ctx.blocked === true || ctx.cancelled === true };
       },
       async operation(parent, card, token) {
@@ -115,15 +115,18 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
   if (context.blocked && !recovering) return { ok: false as const, error: "pending" };
   if (await holdPlanStart(db, parent, card) === "fenced") return { ok: false as const, error: "pending" };
   const result = await startPlan(client, { cardSetup: card, customer: data.stripe_customer_id, price, deliveryConfirmed: false, purpose: "restart", restartRevision: revision }, undefined, rows);
-  await endCardOperation(db, card);
+  // Unknown provider outcomes retain both the start record and its route hold.
+  // A confirmed refusal can release the hold only after the durable record is closed.
+  if ((result.ok || (result.error !== "unconfirmed" && result.error !== "needs_team"))
+    && (await rows.cardRow(card))?.planStart?.state !== "open") await endCardOperation(db, card);
   return result.ok ? { ok: true as const, state: "started" as const, price } : result;
 }
 
 /** Safe parent-visible facts from the private pause ledger. Never return a provider id or child profile. */
 export async function childPauseMailing(db: SupabaseClient<Database>, parent: string, child: string, number: number): Promise<number> {
-  const { data, error } = await db.from("plan_control_operations").select("weeks").eq("parent_id", parent).eq("child_id", child).eq("kind", "pause").eq("state", "applied").eq("target_number", number);
+  const { data, error } = await db.rpc("plan_mailing_weeks", { p_parent: parent, p_child: child, p_number: number });
   if (error) throw new Error(`pause mailing: ${error.message}`);
-  return data.reduce((total, row) => total + row.weeks, 0);
+  return num(data);
 }
 
 /** Confirmed pause dates remain visible while the provider's renewal boundary has not moved yet. */
@@ -133,7 +136,7 @@ export async function adjustedPlan(db: SupabaseClient<Database>, parent: string,
   if (!context || context.blocked || context.cancelled) return { kind: "unknown" };
   for (const raw of array(context.pauses)) {
     const pause = record(raw);
-    if (pause.state !== "applied") continue;
+    if (pause.state !== "applied" || pause.retired === true) continue;
     const quote = readQuote(pause.quote);
     if (plan.kind === "paying" && plan.nextCharge === quote.previousCharge) plan = { ...plan, nextCharge: quote.chargeAt };
     if (plan.kind === "free_month" && plan.firstCharge === quote.previousCharge) plan = { ...plan, firstCharge: quote.chargeAt };

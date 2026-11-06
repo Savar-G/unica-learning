@@ -21,6 +21,8 @@ create table public.plan_control_operations (
   target_number integer,
   created_at timestamptz not null default now(),
   finished_at timestamptz,
+  -- Retire the mailing effect at a plan boundary. Keep the row for the yearly allowance.
+  mailing_retired_at timestamptz,
   unique(card_setup_id,kind,token),
   foreign key(child_id,parent_id) references public.children(id,parent_id) on delete cascade,
   check((kind='pause' and weeks>0 and allowance_year is not null and target_number>0) or (kind='cancel' and weeks=0)),
@@ -93,7 +95,7 @@ begin
     'province',(select province from public.children where parent_id=p_parent order by created_at,id limit 1),
     'firstDelivered',exists(select 1 from public.workbook_delivery_receipts where child_id=c),
     'book',case when b.id is null then null else jsonb_build_object('id',b.id,'number',b.number,'shippedAt',b.shipped_at,'deliveredAt',d) end,
-    'pauses',coalesce((select jsonb_agg(jsonb_build_object('year',allowance_year,'weeks',weeks,'targetNumber',target_number,'quote',quote,'state',state,'token',token) order by created_at,id) from public.plan_control_operations where child_id=c and kind='pause' and state<>'refused'),'[]'::jsonb),
+    'pauses',coalesce((select jsonb_agg(jsonb_build_object('year',allowance_year,'weeks',weeks,'targetNumber',target_number,'quote',quote,'state',state,'token',token,'retired',mailing_retired_at is not null) order by created_at,id) from public.plan_control_operations where child_id=c and kind='pause' and state<>'refused'),'[]'::jsonb),
     'blocked',exists(select 1 from public.plan_control_operations where child_id=c and state='open')
       or exists(select 1 from public.plan_starts where card_setup_id=p_card and state='open')
   );
@@ -145,7 +147,14 @@ begin
   perform 1 from public.children where id=c for no key update;
   if p_state not in ('applied','refused') then raise exception 'invalid_state'; end if;
   update public.plan_control_operations set state=p_state,finished_at=clock_timestamp() where id=p_id and state='open';
-  if found then delete from public.family_card_operations where id=p_id; end if;
+  if found then
+    if p_state='applied' and exists(select 1 from public.plan_control_operations where id=p_id and kind='cancel') then
+      update public.child_plan_controls set cancelled=true where child_id=c;
+      update public.plan_control_operations set mailing_retired_at=clock_timestamp()
+        where child_id=c and kind='pause' and mailing_retired_at is null;
+    end if;
+    delete from public.family_card_operations where id=p_id;
+  end if;
 end $$;
 
 -- Cancel owns the same admission lock as Pause and Restart. An unresolved command refuses cancellation.
@@ -161,8 +170,8 @@ begin
   insert into public.plan_control_operations(parent_id,child_id,card_setup_id,kind,token)
     values(p_parent,c,p_card,'cancel',gen_random_uuid()::text) returning id into o;
   insert into public.family_card_operations(id,parent_id) values(o,p_parent);
-  insert into public.child_plan_controls(child_id,parent_id,cancelled,revision) values(c,p_parent,true,o)
-    on conflict(child_id) do update set cancelled=true,revision=excluded.revision;
+  insert into public.child_plan_controls(child_id,parent_id,revision) values(c,p_parent,o)
+    on conflict(child_id) do update set revision=excluded.revision;
   return o;
 end $$;
 
@@ -187,7 +196,11 @@ begin
   select * into control from public.child_plan_controls where child_id=c;
   select * into last from public.plan_starts where card_setup_id=p_card order by generation desc limit 1;
   if p_purpose not in ('initial','restart') or p_monthly_cents<0 or p_generation<1 then raise exception 'invalid_start_terms'; end if;
-  if (last.generation is not null and last.generation>=p_generation) or last.state='open' then return public.plan_start_answer(last,false); end if;
+  if (last.generation is not null and last.generation>=p_generation) or last.state='open' then
+    -- An old initial caller sends trial fields without inspecting purpose. Never disclose a Restart key to it.
+    if last.purpose<>p_purpose then raise exception 'restart_required' using errcode='55000'; end if;
+    return public.plan_start_answer(last,false);
+  end if;
   if p_purpose='initial' and (control.cancelled or exists(select 1 from public.plan_starts where card_setup_id=p_card and state in ('started','other'))) then
     raise exception 'restart_required' using errcode='55000';
   end if;
@@ -213,6 +226,9 @@ begin
   if new.purpose='restart' and new.state='started' and old.state='open'
     and exists(select 1 from public.parents where id=new.parent_id and deletion_requested_at is null) then
     select child_id into c from public.card_setups where id=new.card_setup_id;
+    -- A paid start opens a new plan period, including when the old plan ended outside this application.
+    update public.plan_control_operations set mailing_retired_at=clock_timestamp()
+      where child_id=c and kind='pause' and mailing_retired_at is null;
     insert into public.workbook_restart_requests(card_setup_id,generation,parent_id,child_id)
       values(new.card_setup_id,new.generation,new.parent_id,c) on conflict do nothing;
     insert into public.child_plan_controls(child_id,parent_id,cancelled) values(c,new.parent_id,false)
@@ -222,21 +238,38 @@ begin
 end $$;
 create trigger record_paid_restart after update on public.plan_starts for each row execute function public.record_paid_restart();
 
--- Enforce the stored mailing delay at the write boundary. Late pauses target the book after the next book.
+-- One ordered obligation rule for parent reads, preparation and shipment. A later number cannot skip an
+-- outstanding target. A shipment at or above that target satisfies it. Plan boundaries retire its mailing effect.
+create function public.plan_mailing_obligations(p_child uuid,p_number integer)
+returns table(target integer,weeks integer)
+language sql stable security definer set search_path='' as $$
+ select o.target_number,sum(o.weeks)::integer from public.plan_control_operations o
+ where o.child_id=p_child and o.kind='pause' and o.state='applied' and o.mailing_retired_at is null
+   and o.target_number<=p_number
+   and not exists(select 1 from public.workbooks b where b.child_id=p_child and b.status='shipped' and b.number>=o.target_number)
+ group by o.target_number order by o.target_number;
+$$;
+create function public.plan_mailing_weeks(p_parent uuid,p_child uuid,p_number integer) returns integer
+language sql stable security definer set search_path='' as $$
+ select coalesce(sum(o.weeks),0)::integer from public.plan_mailing_obligations(p_child,p_number) o
+ where exists(select 1 from public.children where id=p_child and parent_id=p_parent);
+$$;
+
+-- Enforce every outstanding obligation at the write boundary. Late pauses leave the next book unchanged.
 create function public.assert_plan_workbook_allowed(p_child uuid,p_number integer,p_shipping boolean) returns void
 language plpgsql security definer set search_path='' as $$
-declare p uuid; w record; weeks int; today date; shipped date;
+declare p uuid; w record; obligation record; today date; shipped date;
 begin
   select parent_id into p from public.children where id=p_child;
   if exists(select 1 from public.child_plan_controls where child_id=p_child and cancelled) then raise exception 'plan_cancelled' using errcode='55000'; end if;
   if exists(select 1 from public.plan_control_operations where child_id=p_child and state='open') then raise exception 'plan_control_pending' using errcode='55000'; end if;
-  select coalesce(sum(o.weeks),0) into weeks from public.plan_control_operations o where o.child_id=p_child and o.kind='pause' and o.state='applied' and o.target_number=p_number;
-  if weeks=0 then return; end if;
-  select number,shipped_at into w from public.workbooks where child_id=p_child and status='shipped' and number<p_number order by number desc limit 1;
-  if w.shipped_at is null or w.number<>p_number-1 then raise exception 'pause_previous_book_required' using errcode='55000'; end if;
   select period into today from public._maya_family_window(p,'day',clock_timestamp());
-  select period into shipped from public._maya_family_window(p,'day',w.shipped_at);
-  if today<shipped+14+weeks*7 then raise exception 'plan_paused' using errcode='55000'; end if;
+  for obligation in select * from public.plan_mailing_obligations(p_child,p_number) loop
+    select number,shipped_at into w from public.workbooks where child_id=p_child and status='shipped' and number=obligation.target-1;
+    if w.shipped_at is null then raise exception 'pause_previous_book_required' using errcode='55000'; end if;
+    select period into shipped from public._maya_family_window(p,'day',w.shipped_at);
+    if today<shipped+14+obligation.weeks*7 then raise exception 'plan_paused' using errcode='55000'; end if;
+  end loop;
 end $$;
 create function public.fence_plan_workbook() returns trigger
 language plpgsql security definer set search_path='' as $$
@@ -268,9 +301,9 @@ create trigger fulfil_paid_restart_request after insert on public.workbook_runs 
 -- All entry points are service only. Private helpers have no external execute grant.
 do $$ declare f record; begin
   for f in select p.oid::regprocedure signature,p.proname name from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public'
-    and p.proname=any(array['plan_control_owner','plan_control_context','plan_control_operation','admit_plan_pause','finish_plan_control','admit_plan_cancel','plan_start_terms','admit_plan_start_terms','record_paid_restart','assert_plan_workbook_allowed','fence_plan_workbook','fulfil_paid_restart_request']) loop
+    and p.proname=any(array['plan_control_owner','plan_control_context','plan_control_operation','admit_plan_pause','finish_plan_control','admit_plan_cancel','plan_start_terms','admit_plan_start_terms','record_paid_restart','plan_mailing_obligations','plan_mailing_weeks','assert_plan_workbook_allowed','fence_plan_workbook','fulfil_paid_restart_request']) loop
     execute format('revoke all on function %s from public,anon,authenticated,service_role',f.signature);
-    if f.name=any(array['plan_control_context','plan_control_operation','admit_plan_pause','finish_plan_control','admit_plan_cancel','plan_start_terms','admit_plan_start_terms']) then
+    if f.name=any(array['plan_control_context','plan_control_operation','admit_plan_pause','finish_plan_control','admit_plan_cancel','plan_start_terms','admit_plan_start_terms','plan_mailing_weeks']) then
       execute format('grant execute on function %s to service_role',f.signature);
     end if;
   end loop;

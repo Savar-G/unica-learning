@@ -1,0 +1,13 @@
+PASS service-only grants and private helpers
+PASS simultaneous duplicate quota admission sends once and holds deletion without expiry
+PASS different concurrent requests cannot overspend eight weeks
+PASS foreign card, stale book, stale year and cutoff cannot admit
+PASS early pause blocks prepare and shipment, sibling remains writable
+PASS late pause leaves next shipment unchanged and binds the following book
+PASS cancel serializes with new starts and rejects a stale Restart revision
+PASS initial successful history cannot receive another initial free month, refused initial retries keep their terms
+PASS pending controls refuse the real family deletion check, and child/family fences refuse new controls
+PASS Pause and Cancel run concurrently under the same child lock
+PASS family deletion wins its lock before a concurrent Pause admission
+PASS a changed family location invalidates the quote before a provider call
+PLAN_CONTROLS_PROBE_OK 12

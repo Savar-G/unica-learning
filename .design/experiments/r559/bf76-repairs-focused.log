@@ -1,0 +1,101 @@
+
+ RUN  v4.1.11 /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-b8ba503b
+
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > stops a free month at its end, so the first charge never happens 8ms
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > stops a paid plan at the end of the paid month, not at the old trial end 1ms
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > ends a plan in past_due now, so Stripe does not try the card again 1ms
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > ends a plan in unpaid now, so Stripe does not try the card again 0ms
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > ends a plan in paused now, so Stripe does not try the card again 1ms
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > ends a plan in incomplete now, so Stripe does not try the card again 1ms
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > changes nothing on a second press 0ms
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > answers no_plan when no plan can charge the card 0ms
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > answers no_plan when no plan can charge the card 1ms
+ ✓ src/lib/plan-cancel.test.ts > the parent's cancel button > answers no_plan when no plan can charge the card 0ms
+ ✓ src/lib/plan-cancel.test.ts > the cancel button reads every subscription of the customer > finds a plan behind a full page of cancelled plans, and stops it 1ms
+ ✓ src/lib/plan-cancel.test.ts > the cancel button reads every subscription of the customer > throws, never no_plan, when a later page fails 1ms
+ ✓ src/lib/plan-cancel.test.ts > the cancel button reads every subscription of the customer > throws, never no_plan, when the answer does not say whether more pages follow 0ms
+ ✓ src/lib/plan-cancel.test.ts > the cancel button reads every subscription of the customer > throws, never no_plan, when the list does not advance 0ms
+ ✓ src/lib/plan-cancel.test.ts > the cancel button reads every subscription of the customer > throws, never no_plan, when the list has more pages than it can read 3ms
+ ✓ src/lib/plan-cancel.test.ts > removes the native pause schedule before a cancel can leave a later resume 1ms
+ ✓ src/lib/plan-cancel.test.ts > does not confirm cancellation after an unrelated schedule release response 0ms
+ ✓ src/lib/plan-cancel.test.ts > deletion cancels the schedule and its subscription with no last invoice or proration 0ms
+ ✓ src/lib/plan-controls-server.test.ts > reads the saved price and owner, starts without a trial and releases only the route hold 13ms
+ ✓ src/lib/plan-controls-server.test.ts > refuses foreign ownership, changed price, changed cancellation revision and pending controls before creating 2ms
+ ✓ src/lib/plan-controls-server.test.ts > shows confirmed pause dates beside a stored plan, without moving a later renewal or a cancelled plan 1ms
+ ✓ src/lib/plan-pause-stripe.test.ts > uses native renewal pause and resume through the real SDK transport, with no trial or credit 9ms
+ ✓ src/lib/plan-pause-stripe.test.ts > extends only the existing first trial, with no prorations 1ms
+ ✓ src/lib/plan-pause-stripe.test.ts > refuses unsupported plan state {"billing_mode":{"type":"classic"}} 2ms
+ ✓ src/lib/plan-pause-stripe.test.ts > refuses unsupported plan state {"schedule":"existing"} 1ms
+ ✓ src/lib/plan-pause-stripe.test.ts > refuses unsupported plan state {"status":"past_due"} 0ms
+ ✓ src/lib/plan-pause-stripe.test.ts > refuses unsupported plan state {"cancel_at_period_end":true} 0ms
+ ✓ src/lib/plan-pause-stripe.test.ts > refuses unsupported plan state {"status":"trialing","trial_end":1798826400,"metadata":{}} 0ms
+ ✓ src/lib/plan-pause-stripe.test.ts > requires current ownership and exact matching schedule proof 1ms
+ ✓ src/lib/plan-pause-stripe.test.ts > refuses an elapsed renewal before any provider command 2ms
+ ✓ src/lib/plan-pause-stripe.test.ts > recovers a matching pause after its schedule completed and detached 1ms
+stderr | src/lib/plan-restart.test.ts > a lost paid create remains open and cannot be retried as a free month
+[stripe] plan start not confirmed An error occurred with our connection to Stripe.
+
+stderr | src/lib/plan-restart.test.ts > does not replay an older open record without frozen price terms
+[stripe] plan start not confirmed An error occurred with our connection to Stripe.
+
+ ✓ src/lib/plan-restart.test.ts > refuses a second free month through the existing admin start 7ms
+ ✓ src/lib/plan-restart.test.ts > charges immediately without trial fields, reminder fields or a future anchor 3ms
+ ✓ src/lib/plan-restart.test.ts > concurrent paid confirmations use one key and create one subscription 3ms
+ ✓ src/lib/plan-restart.test.ts > a lost paid create remains open and cannot be retried as a free month 2ms
+ ✓ src/lib/plan-restart.test.ts > a refused paid start can retry without receiving a trial 2ms
+ ✓ src/lib/plan-restart.test.ts > a card update during paid creation converges on the newest saved card 2ms
+ ✓ src/lib/plan-restart.test.ts > does not replay an older open record without frozen price terms 1ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > moves the next book through shipping day nine 10ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > keeps the next book on day ten, and delays the book after it 1ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > refuses invalid weeks 0 0ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > refuses invalid weeks -1 0ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > refuses invalid weeks 1.5 0ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > refuses invalid weeks 9 0ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > refuses invalid weeks NaN 0ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > refuses quota above eight and requires delivery 0ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > uses the local year and the dated Vancouver override 1ms
+ ✓ src/lib/plan-pause.test.ts > binding pause dates > moves calendar weeks across seasonal clock changes 1ms
+ ✓ src/lib/plan-pause.test.ts > pause admission and recovery > sends once for concurrent duplicate confirmations and preserves the allowance on reload 4ms
+ ✓ src/lib/plan-pause.test.ts > pause admission and recovery > serializes different concurrent requests at the allowance boundary 1ms
+ ✓ src/lib/plan-pause.test.ts > pause admission and recovery > keeps the hold after a lost response and rejects unrelated proof, then recovers the matching command 1ms
+ ✓ src/lib/plan-pause.test.ts > pause admission and recovery > refuses ownership, changed weeks, changed books and a deletion fence before a send 1ms
+ ✓ src/components/account-plan.test.ts > shows server dates before confirmation and retains the exact token after an uncertain answer 17ms
+ ✓ src/components/account-plan.test.ts > states the late cutoff without assigning dates to the later workbook 2ms
+ ✓ src/components/account-plan.test.ts > reviews immediate paid Restart and never adds a free month or delay 2ms
+ ✓ src/components/account-plan.test.ts > keeps cancellation visibly unresolved for a pending command 1ms
+ ✓ src/components/account-plan.test.ts > checks a pending pause after a reload without sending a new confirmation 1ms
+ ✓ src/components/account-plan.test.ts > shows Update card after a confirmed payment refusal and asks for a new price review 2ms
+ ✓ src/app/api/account/plan/controls.test.ts > checks origin, JSON, session and dashboard access before an operation 9ms
+ ✓ src/app/api/account/plan/controls.test.ts > checks origin, JSON, session and dashboard access before an operation 1ms
+ ✓ src/app/api/account/plan/controls.test.ts > refuses malformed pause input null 1ms
+ ✓ src/app/api/account/plan/controls.test.ts > refuses malformed pause input {} 0ms
+ ✓ src/app/api/account/plan/controls.test.ts > refuses malformed pause input {"card":"11111111-1111-4111-8111-111111111111","action":"confirm","token":"bad","weeks":2} 0ms
+ ✓ src/app/api/account/plan/controls.test.ts > refuses malformed pause input {"card":"11111111-1111-4111-8111-111111111111","action":"preview","weeks":2.5} 0ms
+ ✓ src/app/api/account/plan/controls.test.ts > refuses malformed pause input {"card":"11111111-1111-4111-8111-111111111111","action":"preview","weeks":0} 0ms
+ ✓ src/app/api/account/plan/controls.test.ts > returns date labels and an opaque token without private provider or delivery data 9ms
+ ✓ src/app/api/account/plan/controls.test.ts > confirms only the signed-in parent's card and opaque token 1ms
+ ✓ src/app/api/account/plan/controls.test.ts > restarts with server terms and leaves a pending operation visible 1ms
+ ✓ src/app/api/account/plan/controls.test.ts > maps another family's row to not found 1ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > shows no plan until the free month starts 1ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > shows the first charge during the free month 1ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > shows the next charge on a paid plan 0ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > shows a free month cancelled as ending, with no charge 0ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > shows a paid plan cancelled as ending, at the end of the paid month and not at the old trial end 0ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > lets a parent cancel a plan in past_due 0ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > lets a parent cancel a plan in unpaid 0ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > lets a parent cancel a plan in incomplete 0ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > treats a plan past_due with the cancel flag as still chargeable, so the button stays 0ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > uses the newest running plan, and an old cancelled plan does not hide it 0ms
+ ✓ src/lib/parent-plan.test.ts > the parent's plan state > offers the button only when a plan can still charge the card 0ms
+ ✓ src/lib/parent-plan.test.ts > shows a native paused plan without reporting a failed payment 0ms
+ ✓ src/app/(product)/account/(dashboard)/plan/page.test.ts > keeps today's words for a family the dashboard's switch does not open to 6ms
+ ✓ src/app/(product)/account/(dashboard)/plan/page.test.ts > points a dashboard family to the card update on the Account tab, and keeps the cancel button here 1ms
+ ✓ src/app/(product)/account/(dashboard)/plan/page.test.ts > keeps the recovery action visible after a lost pause response, including when the provider is already paused 10ms
+ ✓ src/lib/parent-plan-server.test.ts > the plan page's read of a family's plans > shows the older running plan of a customer with a full page of newer cancelled plans 2ms
+ ✓ src/lib/parent-plan-server.test.ts > the plan page's read of a family's plans > shows unknown when a later page fails, not the plan of the first page 0ms
+ ✓ src/app/(product)/account/(dashboard)/plan/cancel-date.test.ts > confirms the period end while the plan text shows the later charge 23ms
+
+ Test Files  11 passed (11)
+      Tests  87 passed (87)
+   Start at  16:48:03
+   Duration  1.17s (transform 491ms, setup 0ms, import 1.10s, tests 191ms, environment 294ms)

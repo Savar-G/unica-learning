@@ -193,7 +193,7 @@ export type StartPlanOutcome =
    * "unconfirmed": Stripe may still make the plan. The record stays open, and the webhook, the sweep or the next press decides it.
    * "needs_team": Stripe's key has expired with no plan found, so no press can be safe. Only an admin's check closes the record.
    */
-  | { ok: false; error: "no_card" | "already" | "not_delivered" | "unconfirmed" | "needs_team" | "restart_required" | "not_ended" | "wrong_mode" };
+  | { ok: false; error: "no_card" | "already" | "not_delivered" | "unconfirmed" | "needs_team" | "restart_required" | "not_ended" | "wrong_mode" | "payment_refused" };
 
 /** True when Stripe has no object with this id (a 404), so the caller creates it. */
 const missing = (e: unknown) => e instanceof Stripe.errors.StripeError && e.statusCode === 404;
@@ -297,6 +297,11 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
     if (refusedByStripe(e)) {
       // Nothing started, and Stripe answers this key the same way for 24 hours, so the next press opens a new generation.
       await closeRecord(rows, p.cardSetup, held.generation, { state: "refused" });
+      if (purpose === "restart") {
+        // closeRecord can fail after the provider refused. Require the durable result before releasing any hold.
+        const confirmed = (await rows.cardRow(p.cardSetup))?.planStart;
+        return { ok: false, error: confirmed?.generation === held.generation && confirmed.state === "refused" ? "payment_refused" : "unconfirmed" };
+      }
       throw e;
     }
     console.error("[stripe] plan start not confirmed", e instanceof Error ? e.message : "failed");

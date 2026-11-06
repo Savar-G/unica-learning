@@ -55,6 +55,9 @@ export default async function PlanPage() {
 function consequence(plan: ParentPlan, zone: FamilyZone): string {
   if (plan.kind === "free_month") return `The plan ends on ${day(plan.firstCharge, zone)}, and you pay nothing.`;
   if (plan.kind === "paused") return "The plan ends now. It will not resume, and we will not charge your card again.";
-  if (plan.kind === "paying") return `The plan ends${plan.nextCharge ? ` on ${day(plan.nextCharge, zone)}` : " at the end of this month"}. We will not charge your card again.`;
+  if (plan.kind === "paying") {
+    const endsAt = plan.cancelAt ?? plan.nextCharge;
+    return `The plan ends${endsAt ? ` on ${day(endsAt, zone)}` : " at the end of this month"}. We will not charge your card again.`;
+  }
   return "The plan ends now. We will not try your card again.";
 }

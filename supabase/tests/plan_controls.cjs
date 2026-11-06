@@ -3,10 +3,10 @@ const {Client}=require('pg');
 const {readFileSync}=require('node:fs');
 const {randomUUID}=require('node:crypto');
 const assert=require('node:assert/strict');
-if(process.env.PD559_SOCKET!=='/tmp/pd559-postgres') throw Error('Disposable socket required');
+if(!['/tmp/pd559-postgres','/tmp/pd-controls-bf76-pg'].includes(process.env.PD559_SOCKET)) throw Error('Disposable socket required');
 const database=process.env.PD559_DATABASE??'postgres';
 if(database!=='postgres'&&!/^pd559_[a-z_]+$/.test(database))throw Error('Disposable database required');
-const connect=async()=>{const db=new Client({host:process.env.PD559_SOCKET,port:55559,database,user:process.env.USER});await db.connect();await db.query("set statement_timeout='5s'");return db;};
+const connect=async()=>{const db=new Client({host:process.env.PD559_SOCKET,port:process.env.PD559_SOCKET==='/tmp/pd-controls-bf76-pg'?55629:55559,database,user:process.env.USER});await db.connect();await db.query("set statement_timeout='5s'");return db;};
 const sql=name=>readFileSync('supabase/migrations/'+name,'utf8');
 const functionSql=(source,name)=>{const m=source.match(new RegExp('create(?: or replace)? function public\\.'+name+'\\([\\s\\S]*?\\$\\$;'));if(!m)throw Error(name);return m[0];};
 (async()=>{
@@ -44,7 +44,9 @@ if(process.argv.includes('--bootstrap')) {
 }
 if(process.argv.includes('--refresh')) {
  const source=sql('20261105234500_plan_controls.sql');
- for(const name of ['plan_control_context','admit_plan_pause','record_paid_restart','fence_plan_workbook','admit_plan_start']) await db.query(functionSql(source,name).replace(/^create function/,'create or replace function'));
+ await db.query('alter table plan_control_operations add column if not exists mailing_retired_at timestamptz');
+ for(const name of ['plan_control_context','admit_plan_pause','finish_plan_control','admit_plan_cancel','admit_plan_start_terms','record_paid_restart','plan_mailing_obligations','plan_mailing_weeks','assert_plan_workbook_allowed','fence_plan_workbook','admit_plan_start']) await db.query(functionSql(source,name).replace(/^create function/,'create or replace function'));
+ await db.query(source.slice(source.indexOf('do $$ declare f record;'),source.indexOf('alter table public.child_plan_states')));
 }
 async function family(){const p=randomUUID(),c=randomUUID(),s=randomUUID(),k=randomUUID(),b=randomUUID();
  await db.query("insert into parents(id,time_zone) values($1,'America/Vancouver')",[p]);
@@ -104,7 +106,8 @@ await test('cancel serializes with new starts and rejects a stale Restart revisi
 });
 await test('initial successful history cannot receive another initial free month, refused initial retries keep their terms',async()=>{
  const f=await family(),a=await rpc('admit_plan_start_terms',[f.k,1,f.k+'-a','pm','initial',7999,'']);
- const b=await rpc('admit_plan_start_terms',[f.k,1,f.k+'-b','pm_other','restart',5999,'']);assert.equal(a.key,b.key);assert.equal(b.purpose,'initial');assert.equal(b.monthly_cents,7999);
+ await assert.rejects(()=>rpc('admit_plan_start_terms',[f.k,1,f.k+'-b','pm_other','restart',5999,'']),e=>e.message==='restart_required');
+ const b=await rpc('admit_plan_start_terms',[f.k,1,f.k+'-b','pm_other','initial',5999,'']);assert.equal(a.key,b.key);assert.equal(b.purpose,'initial');assert.equal(b.monthly_cents,7999);
  await rpc('finish_plan_start',[f.k,1,'refused',null,null,false]);const retry=await rpc('admit_plan_start_terms',[f.k,2,f.k+'-b','pm','initial',7999,'']);assert.equal(retry.generation,2);
  await rpc('finish_plan_start',[f.k,2,'started','sub',null,false]);await assert.rejects(()=>rpc('admit_plan_start',[f.k,3,f.k+'-c','pm']),e=>e.code==='55000');
 });

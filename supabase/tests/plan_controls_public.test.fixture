@@ -1,0 +1,149 @@
+// Offline integration: public TypeScript functions with actual disposable production SQL.
+import {afterAll, expect, it, vi} from 'vitest';
+import Stripe from 'stripe';
+import pg from 'pg';
+vi.mock('server-only',()=>({}));
+const f=vi.hoisted(()=>({db:null as any,client:null as any}));
+vi.mock('@/lib/supabase-auth',()=>({adminClient:()=>f.db}));
+vi.mock('@/lib/stripe',async original=>({...await original<typeof import('@/lib/stripe')>(),stripe:()=>f.client}));
+import {startPlan as oldStartPlan} from '/tmp/pd-controls-bf76-old-stripe';
+import {childPauseMailing,adjustedPlan,supabasePauses,restartFamilyPlan} from '@/lib/plan-controls-server';
+const db=new pg.Client({host:'/tmp/pd-controls-bf76-pg',port:55629,database:process.env.PD559_DATABASE??'postgres',user:process.env.USER});
+await db.connect();
+afterAll(()=>db.end());
+const rpc=async(name:string,args:unknown[])=>(await db.query(`select public.${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) value`,args)).rows[0].value;
+const fromAnswer=(a:any)=>({generation:a.generation,key:a.key,card:a.card,at:Date.parse(a.at),state:a.state,subscription:a.subscription,firstCharge:a.first_charge,finished:a.finished_at?Date.parse(a.finished_at):null,email:a.email,alert:a.alert});
+it.each(['restart','initial'])('old deployed public startPlan enforces %s admission terms',async(purpose)=>{
+ const {randomUUID}=await import('node:crypto');const p=randomUUID(),c=randomUUID(),k=randomUUID();
+ await db.query("insert into parents(id,time_zone) values($1,'America/Vancouver')",[p]);await db.query('insert into children(id,parent_id) values($1,$2)',[c,p]);await db.query('insert into card_setups values($1,$2,$3)',[k,p,c]);
+ const answer=await rpc('admit_plan_start_terms',[k,1,'paid-key-'+k,'pm',purpose,7999,'']);const writes:URLSearchParams[]=[];
+ const rows={
+  cardRow:async()=>({cardId:k,customer:'cus',session:null,paymentMethod:null,needsRepair:false,planStart:fromAnswer((await db.query('select plan_start_answer(s,false) a from plan_starts s where card_setup_id=$1',[k])).rows[0].a)}),
+  admitPlanStart:async(card:string,generation:number,key:string,paymentMethod:string)=>fromAnswer(await rpc('admit_plan_start',[card,generation,key,paymentMethod])),
+  finishPlanStart:async(card:string,generation:number,o:any)=>{await rpc('finish_plan_start',[card,generation,o.state,o.subscription??null,o.firstCharge??null,o.email??false]);},
+ };
+ const client=new Stripe('sk_test_offline_old',{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
+  const u=new URL(String(input)),method=init?.method??'GET';
+  if(method==='GET'&&u.pathname==='/v1/subscriptions')return Response.json({data:purpose==='initial'?[]:[{id:'old',status:'canceled',metadata:{},trial_end:1}],has_more:false});
+  if(method==='GET'&&u.pathname.startsWith('/v1/products/'))return Response.json({id:'unica_math'});
+  if(method==='POST'&&u.pathname==='/v1/subscriptions'){
+   const body=new URLSearchParams(String(init?.body??''));writes.push(body);return Response.json({id:'wrong-free-restart',status:'trialing',trial_end:1900000000,metadata:{start_key:body.get('metadata[start_key]')}});
+  }
+  throw Error('Unexpected offline request '+method+' '+u.pathname);
+ })});
+ const run=()=>oldStartPlan(client,{cardSetup:k,customer:'cus',price:79.99,deliveryConfirmed:true},undefined,rows as any);
+ if(purpose==='restart'){
+  await expect(run()).rejects.toThrow('restart_required');expect(writes).toHaveLength(0);
+ }else{
+  expect(await run()).toMatchObject({ok:true});expect(writes).toHaveLength(1);
+  expect(writes[0].get('trial_period_days')).toBe('30');expect(writes[0].get('metadata[start_key]')).toBe(answer.key);
+ }
+ const stored=(await db.query('select purpose,state from plan_starts where card_setup_id=$1',[k])).rows[0];
+ expect(stored).toEqual({purpose,state:purpose==='restart'?'open':'started'});
+
+});
+
+it.each(['declined','unknown','finish_lost'])('paid Restart %s keeps only the required durable hold',async(mode)=>{
+ const {randomUUID}=await import('node:crypto');const p=randomUUID(),c=randomUUID(),k=randomUUID();
+ await db.query("insert into parents(id,time_zone) values($1,'America/Vancouver')",[p]);await db.query('insert into children(id,parent_id) values($1,$2)',[c,p]);await db.query('insert into card_setups values($1,$2,$3)',[k,p,c]);
+ let start:any=null;const calls:string[]=[];
+ f.db={from:()=>({select:()=>({eq:()=>({eq:()=>({maybeSingle:async()=>({data:{id:k,child_id:c,stripe_customer_id:'cus',card_saved_at:'2026-10-01',price:79.99,plan:'one'},error:null})})})})}),rpc:async(name:string,args:any)=>{
+  calls.push(name);
+  if(name==='plan_control_context')return {data:await rpc(name,[p,k]),error:null};
+  if(name==='plan_start_terms')return {data:await rpc(name,[k,args.p_generation]),error:null};
+  if(name==='card_recovery_rows'){start=(await db.query('select plan_start_answer(s,false) a from plan_starts s where card_setup_id=$1 order by generation desc limit 1',[k])).rows[0]?.a;return {data:start?[{card_id:k,customer:'cus',session_id:null,payment_method_id:null,needs_repair:false,start_generation:1,start_key:start.key,start_card:'pm',start_at:start.at,start_state:start.state,start_subscription:start.subscription,start_first_charge:null,start_finished_at:null,start_email:'none',start_alert:null}]:[],error:null};}
+  if(name==='begin_family_card_operation'){try{await rpc(name,[p,k]);return {data:null,error:null};}catch(error){return {data:null,error};}}
+  if(name==='end_family_card_operation'){await rpc(name,[k]);return {data:null,error:null};}
+  if(name==='admit_plan_start_terms'){start=await rpc(name,[k,args.p_generation,args.p_key,args.p_payment_method,args.p_purpose,args.p_monthly_cents,args.p_revision]);return {data:start,error:null};}
+  if(name==='finish_plan_start'){if(mode==='finish_lost')return {data:null,error:{message:'Synthetic lost save'}};await rpc(name,[k,args.p_generation,args.p_state,args.p_subscription??null,args.p_first_charge??null,args.p_email]);return {data:true,error:null};}
+  throw Error('Unexpected database RPC '+name);
+ }};
+ let landed=false;
+ f.client=new Stripe('sk_test_offline_refusal',{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
+  const u=new URL(String(input)),method=init?.method??'GET';
+  if(method==='GET'&&u.pathname==='/v1/subscriptions')return Response.json({data:[{id:'old',status:'canceled',metadata:{}},...(landed?[{id:'late-paid',status:'active',default_payment_method:'pm',metadata:{start_key:start.key}}]:[])],has_more:false});
+  if(method==='GET'&&u.pathname.startsWith('/v1/products/'))return Response.json({id:'unica_math'});
+  if(method==='GET'&&u.pathname==='/v1/customers/cus')return Response.json({id:'cus',invoice_settings:{default_payment_method:{id:'pm',type:'card'}}});
+  if(method==='POST'&&u.pathname==='/v1/subscriptions'&&mode==='unknown')return Response.json({error:{type:'api_error',message:'Synthetic unknown'}},{status:503});
+  if(method==='POST'&&u.pathname==='/v1/subscriptions')return Response.json({error:{type:'card_error',message:'Synthetic decline',code:'card_declined'}},{status:402});
+  throw Error('Unexpected offline request '+method+' '+u.pathname);
+ })});
+ const preview=await restartFamilyPlan(p,k);expect(preview.ok).toBe(true);
+ const result=await restartFamilyPlan(p,k,(preview as any).token);
+ const state=(await db.query('select state from plan_starts where card_setup_id=$1',[k])).rows[0].state;
+ const holds=(await db.query('select count(*)::int n from family_card_operations where parent_id=$1',[p])).rows[0].n;
+ if(mode==='declined'){
+  expect(result).toMatchObject({ok:false,error:'payment_refused'});expect(state).toBe('refused');expect(holds).toBe(0);
+  expect(await rpc('check_parent_family_deletion',[p])).toBe('ready');
+ }else{
+  expect(result).toMatchObject({ok:false,error:'unconfirmed'});expect(state).toBe('open');expect(holds).toBe(1);
+  expect(await rpc('check_parent_family_deletion',[p])).toBe('busy');
+  if(mode==='unknown'){
+   landed=true;expect(await restartFamilyPlan(p,k)).toMatchObject({ok:true,state:'started'});
+   expect((await db.query('select state from plan_starts where card_setup_id=$1',[k])).rows[0].state).toBe('started');
+   expect((await db.query('select count(*)::int n from family_card_operations where parent_id=$1',[p])).rows[0].n).toBe(0);
+  }
+ }
+
+});
+
+import {customerPlan} from '@/lib/parent-plan-server';
+import {cancelPlan} from '@/lib/stripe';
+it('the cancellation boundary matches cancelPlan while the next charge remains delayed',async()=>{
+ const original=Date.parse('2027-01-01T18:00:00Z')/1000,shifted=Date.parse('2027-01-15T18:00:00Z')/1000;
+ const subscription={id:'sub',status:'active',customer:'cus',schedule:'schedule',cancel_at_period_end:false,trial_end:null,created:1,items:{data:[{current_period_end:original,price:{unit_amount:7999}}]}};
+ const client=new Stripe('sk_test_offline_cancel_dates',{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
+  const u=new URL(String(input)),method=init?.method??'GET';
+  if(method==='GET'&&u.pathname==='/v1/subscriptions')return Response.json({data:[subscription],has_more:false});
+  if(method==='GET'&&u.pathname==='/v1/subscription_schedules/schedule')return Response.json({id:'schedule',pause_schedules:[{pause:{pause_at:original,status:{type:'scheduled'}},resume:{resume_at:shifted,status:{type:'scheduled'},settings:{billing_cycle_anchor:'resume_at'}}}]});
+  if(method==='POST'&&u.pathname.endsWith('/release'))return Response.json({id:'schedule',status:'released',released_subscription:'sub'});
+  if(method==='POST'&&u.pathname==='/v1/subscriptions/sub')return Response.json({...subscription,cancel_at_period_end:true,schedule:null});
+  throw Error('Unexpected offline request '+method+' '+u.pathname);
+ })});
+ const shown=await customerPlan(client,'cus');const cancelled=await cancelPlan(client,'cus');
+ expect(shown).toMatchObject({kind:'paying',nextCharge:'2027-01-15T18:00:00.000Z',cancelAt:'2027-01-01T18:00:00.000Z'});
+ expect(cancelled).toMatchObject({ok:true,endsAt:'2027-01-01T18:00:00.000Z'});
+ console.log('PASS_CANCEL_DATE',JSON.stringify({shown,cancelled}));
+});
+
+import {familyZone,localDay,partsInZone,addDays} from '@/lib/family-time';
+import {shiftCharge} from '@/lib/plan-pause';
+it('SQL and public family-time use the same year and day through dated overrides and fallbacks',async()=>{
+ const {randomUUID}=await import('node:crypto');const p=randomUUID(),c=randomUUID();await db.query("insert into parents(id,time_zone) values($1,'America/Vancouver')",[p]);await db.query('insert into children(id,parent_id) values($1,$2)',[c,p]);
+ const locations=[{timeZone:'America/Vancouver',postal:null,province:'BC'},{timeZone:'America/Edmonton',postal:null,province:'AB'},{timeZone:'America/Winnipeg',postal:null,province:'MB'},{timeZone:'America/Toronto',postal:null,province:'ON'},{timeZone:null,postal:'V0A1H0',province:'BC'},{timeZone:null,postal:null,province:'NT'}];
+ const times=['2026-11-01T06:59:59Z','2026-11-01T08:00:01Z','2027-01-01T06:30:00Z','2027-01-01T07:30:00Z'];let checked=0;
+ for(const location of locations){await db.query('update parents set time_zone=$2,postal=$3 where id=$1',[p,location.timeZone,location.postal]);await db.query('update children set province=$2 where id=$1',[c,location.province]);const zone=familyZone(location);
+ for(const at of times){const day=(await db.query("select period::text from _maya_family_window($1,'day',$2::timestamptz)",[p,at])).rows[0].period;expect(day).toBe(localDay(at,zone));checked++;}
+ const at='2026-10-28T18:00:00Z',shifted=shiftCharge(at,2,zone);expect(localDay(shifted,zone)).toBe(addDays(localDay(at,zone),14));expect(partsInZone(shifted,zone,{hour:'numeric'}).hour).toBe(partsInZone(at,zone,{hour:'numeric'}).hour);
+ }
+ console.log('FAMILY_TIME_MATRIX',checked,'SQL/TypeScript day comparisons; 6 calendar-week shifts');
+});
+it('SQL admission rejects a changed delivery correction and reserves the remaining allowance atomically',async()=>{
+ const {randomUUID}=await import('node:crypto');const p=randomUUID(),c=randomUUID(),k=randomUUID(),b=randomUUID();
+ await db.query("insert into parents(id,time_zone) values($1,'America/Vancouver')",[p]);await db.query('insert into children(id,parent_id) values($1,$2)',[c,p]);await db.query('insert into card_setups values($1,$2,$3)',[k,p,c]);
+ await db.query("insert into workbooks(id,parent_id,child_id,number,status,shipped_at) values($1,$2,$3,1,'shipped',now()-interval '2 days')",[b,p,c]);await db.query("insert into workbook_delivery_receipts values($1,$3,$2,now()-interval '1 day')",[b,p,c]);
+ const ctx=await rpc('plan_control_context',[p,k]);const today=localDay(Date.now(),'America/Vancouver');const q={location:{...ctx.family,province:ctx.province},weeks:6,year:Number(today.slice(0,4)),today,used:0,bookId:b,shippedAt:ctx.book.shippedAt,deliveredAt:ctx.book.deliveredAt,targetNumber:2,kind:'trial',subscription:'sub',previousCharge:'2027-01-01T12:00:00Z',chargeAt:'2027-02-12T12:00:00Z',earliest:null,latest:null,late:false};
+ await db.query("insert into workbook_delivery_corrections values($1,1,now()-interval '12 hours')",[b]);
+ expect(await rpc('admit_plan_pause',[p,k,'stale-receipt',q])).toBeNull();const changed=await rpc('plan_control_context',[p,k]);q.deliveredAt=changed.book.deliveredAt;
+ const o=await rpc('admit_plan_pause',[p,k,'six-weeks',q]);await rpc('finish_plan_control',[o.id,'applied']);
+ expect(await rpc('admit_plan_pause',[p,k,'over-quota',{...q,used:6,weeks:3}])).toBeNull();
+ expect(await rpc('admit_plan_pause',[p,k,'wrong-year',{...q,used:6,weeks:2,year:q.year+1}])).toBeNull();
+ const last=await rpc('admit_plan_pause',[p,k,'last-two-weeks',{...q,used:6,weeks:2}]);expect(last.send).toBe(true);
+ const used=(await db.query("select sum(weeks)::int n from plan_control_operations where child_id=$1 and state<>'refused'",[c])).rows[0].n;expect(used).toBe(8);
+ console.log('STALE_RECEIPT_AND_ALLOWANCE',JSON.stringify({staleReceipt:'refused',wrongYear:'refused',overQuota:'refused',used}));
+});
+
+it('parent mailing and charge reads retire the old plan pause but preserve yearly usage',async()=>{
+ const {randomUUID}=await import('node:crypto');const p=randomUUID(),c=randomUUID(),k=randomUUID(),b=randomUUID();
+ await db.query("insert into parents(id,time_zone) values($1,'America/Vancouver')",[p]);await db.query('insert into children(id,parent_id) values($1,$2)',[c,p]);await db.query('insert into card_setups values($1,$2,$3)',[k,p,c]);
+ await db.query("insert into workbooks(id,parent_id,child_id,number,status,shipped_at) values($1,$2,$3,1,'shipped',now()-interval '2 days')",[b,p,c]);await db.query("insert into workbook_delivery_receipts values($1,$3,$2,now()-interval '1 day')",[b,p,c]);
+ const ctx=await rpc('plan_control_context',[p,k]),today=localDay(Date.now(),'America/Vancouver');
+ const quote={location:{...ctx.family,province:ctx.province},weeks:2,year:+today.slice(0,4),today,used:0,bookId:b,shippedAt:ctx.book.shippedAt,deliveredAt:ctx.book.deliveredAt,targetNumber:2,kind:'paid',subscription:'old',previousCharge:'2027-01-01T12:00:00Z',chargeAt:'2027-01-15T12:00:00Z',earliest:null,latest:null,late:false};
+ const op=await rpc('admit_plan_pause',[p,k,'mailing',quote]);await rpc('finish_plan_control',[op.id,'applied']);
+ const adapter={rpc:async(name:string,args:any)=>({data:await rpc(name,name==='plan_mailing_weeks'?[p,c,args.p_number]:[p,k]),error:null})} as any;
+ expect(await childPauseMailing(adapter,p,c,2)).toBe(2);
+ await rpc('admit_plan_start_terms',[k,1,'paid-'+k,'pm','restart',7999,op.id]);await rpc('finish_plan_start',[k,1,'started','new',null,false]);
+ expect(await childPauseMailing(adapter,p,c,2)).toBe(0);
+ expect(await supabasePauses(adapter,f.client).store.context(p,k,Date.now())).toMatchObject({used:2,mailingWeeks:0});
+ const plan={kind:'paying' as const,nextCharge:quote.previousCharge,monthly:79.99};expect(await adjustedPlan(adapter,p,k,plan)).toEqual(plan);
+});

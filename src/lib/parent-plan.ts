@@ -12,13 +12,15 @@ export interface PlanSubscription {
   /** When Stripe ended the subscription. */
   endedAt?: number | null;
   pauseResume?: number | null;
+  /** A scheduled paid pause can move the next charge without changing the cancellation boundary. */
+  nextCharge?: number | null;
 }
 
 export type ParentPlan =
   /** A saved card, and the free month has not started. */
   | { kind: "not_started" }
   | { kind: "free_month"; firstCharge: string; monthly: number | null }
-  | { kind: "paying"; nextCharge: string | null; monthly: number | null }
+  | { kind: "paying"; nextCharge: string | null; monthly: number | null; cancelAt?: string | null }
   /** A payment failed, and Stripe is trying the card again. */
   | { kind: "payment_failed" }
   | { kind: "paused"; resumesOn: string | null; monthly: number | null }
@@ -50,7 +52,8 @@ export function parentPlan(subscriptions: readonly PlanSubscription[]): KnownPla
   const end = free ? running.trialEnd : running.periodEnd;
   if ((free || running.status === "active") && running.cancelAtPeriodEnd) return { kind: "ending", endsOn: iso(end), free };
   if (free && end) return { kind: "free_month", firstCharge: iso(end)!, monthly: dollars(running.cents) };
-  if (running.status === "active") return { kind: "paying", nextCharge: iso(end), monthly: dollars(running.cents) };
+  if (running.status === "active") return { kind: "paying", nextCharge: iso(running.nextCharge ?? end), monthly: dollars(running.cents),
+    ...(running.nextCharge ? { cancelAt: iso(end) } : {}) };
   return { kind: "payment_failed" };
 }
 

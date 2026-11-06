@@ -68,6 +68,7 @@ const controlErrors: Record<string, string> = {
   unconfirmed: "We cannot confirm this change yet. Check again before you make another change or delete the account.",
   needs_team: "We cannot confirm this change yet. Please email us before you make another change.",
   no_card: "Please update your card. Then return here to restart the plan.",
+  payment_refused: "Your payment did not go through. Please update your card. Then return here to restart the plan.",
   not_ended: "This plan has not ended. Reload the page to see its current state.",
 };
 
@@ -86,7 +87,7 @@ export function PlanControl({ cardId, name, mode, pending = false }: { cardId: s
       if (!response.ok || body.ok !== true) {
         const key = typeof body.error === "string" ? body.error : "failed";
         setError(controlErrors[key] ?? "We could not complete this change. Try again, or email us.");
-        if (key === "stale") { setPreview(null); setRestart(null); }
+        if (key === "stale" || key === "payment_refused") { setPreview(null); setRestart(null); }
         return;
       }
       if (body.state === "applied" || body.state === "started") { setDone(true); setPreview(null); setRestart(null); router.refresh(); return; }
@@ -120,6 +121,6 @@ export function PlanControl({ cardId, name, mode, pending = false }: { cardId: s
           </div>
         </>}
     {error && <p role="alert" className="acct-alert">{error} <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>}
-    {error === controlErrors.no_card && <UpdateCard cardId={cardId} name={name} />}
+    {(error === controlErrors.no_card || error === controlErrors.payment_refused) && <UpdateCard cardId={cardId} name={name} />}
   </div>;
 }
