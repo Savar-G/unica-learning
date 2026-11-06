@@ -89,6 +89,27 @@ function request(image: Uint8Array, local: Alias[]): AiJsonRequest {
     } } } } },
   };
 }
+/** The comparison uses the production prompt and aliases, with no truth or answer keys. */
+export function markingRequest(frame: MarkingFrame, image: Uint8Array): AiJsonRequest {
+  return request(image, aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code"));
+}
+/** Strict comparison acceptance. Production recovery can still preserve partial uncertain readings. */
+export function validMarkingOutput(frame: MarkingFrame, output: unknown): boolean {
+  if (!object(output) || Object.keys(output).join() !== "readings" || !Array.isArray(output.readings)) return false;
+  const local = aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code");
+  if (output.readings.length !== local.length) return false;
+  const seen = new Set<string>();
+  return output.readings.every(r => {
+    if (!object(r) || Object.keys(r).sort().join() !== "issue,item,region,state,text") return false;
+    const key = `${r.item}:${r.region}`;
+    if (seen.has(key) || !local.some(a => a.item === r.item && a.region === r.region)) return false;
+    seen.add(key);
+    return ["written", "blank", "uncertain"].includes(String(r.state)) &&
+      (r.text === null || (typeof r.text === "string" && r.text.length <= MAX_READ_TEXT)) &&
+      (r.issue === null || READING_ISSUES.includes(r.issue as ReadingIssue)) &&
+      (r.state !== "uncertain" || r.issue !== null);
+  });
+}
 const object = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const normalizedWords = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
 export function currentSheetCheck(result: unknown): boolean {
