@@ -16,11 +16,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
   try { value = await request.json(); } catch { return Response.json({ error: "invalid" }, { status: 400 }); }
   if (!value || typeof value !== "object") return Response.json({ error: "invalid" }, { status: 400 });
   const body = value as Record<string, unknown>;
-  if (body.kind !== "welcome" && body.kind !== "dispatch") return Response.json({ error: "invalid" }, { status: 400 });
+  if (body.kind !== "welcome" && body.kind !== "ready" && body.kind !== "dispatch") return Response.json({ error: "invalid" }, { status: 400 });
   const number = body.kind === "welcome" ? 0 : body.workbookNumber;
   const delivery = body.kind === "dispatch" ? workbookDelivery(body.delivery) : null;
   if (typeof number !== "number" || !Number.isInteger(number) || number < 0 || number > 10000
-    || (body.kind === "dispatch" && (!delivery || number < 1))) return Response.json({ error: "invalid" }, { status: 400 });
+    || (body.kind !== "welcome" && number < 1) || (body.kind === "dispatch" && !delivery)) return Response.json({ error: "invalid" }, { status: 400 });
   const db = adminClient();
   if (!db || emailConfigProblem()) return Response.json({ error: "unavailable" }, { status: 503 });
   try {
@@ -30,6 +30,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     const message = e instanceof Error ? e.message : "failed";
     if (message === "card_not_saved") return Response.json({ error: "card_not_saved" }, { status: 409 });
     if (message.includes("welcome_sending")) return Response.json({ error: "welcome_sending" }, { status: 409 });
+    if (message.includes("ready_sending")) return Response.json({ error: "ready_sending" }, { status: 409 });
     console.error("[workbook email] send failed before provider call", message);
     return Response.json({ error: "failed" }, { status: 502 });
   }

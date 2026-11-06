@@ -25,13 +25,17 @@ describe("admin workbook email route", () => {
     expect((await POST(request(body, "https://other.test"), ctx)).status).toBe(403);
     expect(state.send).not.toHaveBeenCalled();
   });
-  it.each([{ ...body, delivery: { method: "mail" } }, { ...body, workbookNumber: 0 }, { ...body, workbookNumber: 1.5 }, { kind: "other" }])("rejects invalid delivery input before any send", async (input) => {
+  it.each([{ ...body, delivery: { method: "mail" } }, { ...body, workbookNumber: 0 }, { ...body, workbookNumber: 1.5 }, { kind: "ready", workbookNumber: 0 }, { kind: "other" }])("rejects invalid delivery input before any send", async (input) => {
     expect((await POST(request(input), ctx)).status).toBe(400);
     expect(state.send).not.toHaveBeenCalled();
   });
   it("ignores a forged recipient and passes only validated fields", async () => {
     expect((await POST(request({ ...body, to: "attacker@example.com", parentId: "other" }), ctx)).status).toBe(200);
     expect(state.send).toHaveBeenCalledWith(state.db, { cardId: id, kind: "dispatch", workbookNumber: 1, delivery: { method: "mail", carrier: "Carrier", trackingNumber: "A123", trackingUrl: "" } });
+  });
+  it("sends ready without accepting forged tracking or recipients", async () => {
+    expect((await POST(request({ kind: "ready", workbookNumber: 2, delivery: body.delivery, to: "other@example.invalid" }), ctx)).status).toBe(200);
+    expect(state.send).toHaveBeenCalledWith(state.db, { cardId: id, kind: "ready", workbookNumber: 2, delivery: null });
   });
   it("stops before a claim when email is unavailable", async () => {
     state.problem = "No sender";

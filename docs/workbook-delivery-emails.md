@@ -2,23 +2,31 @@
 
 A welcome email follows a confirmed saved card for the program. It says that the first workbook is being prepared and that another email will follow when it is on its way. It covers mail with tracking and local hand delivery. Creating an account or choosing a plan without saving a card sends no welcome.
 
-In **Admin > Cards and waitlist**, open **Workbook emails** on the child's saved card. The same controls appear on the family and child records.
+On the admin workbook screen, the email controls appear below **Print and ship** after the workbook is marked printed. The family, child, saved card and workbook number come from that stored workbook. **Workbook ready** is unavailable after it is marked shipped. A child without a confirmed saved card has no email controls.
+
+In **Admin > Cards and waitlist**, open **Workbook emails** on the child's saved card. The same controls appear on the family and child records, with a workbook number field for these manual sends.
 
 1. For an earlier signup, select **Preview welcome email**. Review the recipient and text. Select **Send welcome email**.
-2. After a workbook leaves you, enter its workbook number. Keep the same number for the same workbook.
-3. Select **Mail with tracking** or **Hand delivery**. Mail requires a carrier and tracking number. An HTTPS tracking link is optional. Hand delivery has no tracking fields.
-4. Select **Preview delivery email**. Review the recipient and details. Select **Send delivery email**.
+2. When the printed workbook is ready, select **Workbook ready**. Review the recipient and text. Select **Send workbook ready email**.
+3. After a workbook leaves you, select **Hand delivery** or **Courier**. Courier requires a carrier and tracking number. An HTTPS tracking link is optional. Select **Preview courier email** after entering the details. Hand delivery opens its preview with no tracking fields.
+4. Review the recipient, workbook number and text. Select **Send delivery email**. Hand delivery and Courier share one dispatch key, so choosing the other method cannot send a second copy.
 5. Only after the first workbook arrives at the family's home, use **Workbook delivered: start free month** and confirm delivery. The full 30-day free month begins at that confirmation. Sending an email does not start a subscription or change workbook status.
 
-The delivery email says that the workbook is on its way. It does not claim that it has arrived. A separate workbook-ready email is unnecessary. The existing promised reminder before the first charge remains separate.
+The ready email says that the workbook is ready and will be shipped soon. The delivery email says that it is on its way. Neither email claims arrival. Neither changes the workbook status, starts a plan or changes billing. The existing reminder before the first charge remains separate.
+
+## Release block
+
+The ready, hand delivery and courier words were approved by Savar on 2026-11-06 in [#681](https://github.com/Savar-G/unica-learning/issues/681#issuecomment-6692148719), with the updated feedback contact line in [the later comment](https://github.com/Savar-G/unica-learning/issues/681#issuecomment-6692204855). The optional tracking link remains supported. With no link, the courier email matches the approved sample exactly, apart from family and shipment values.
+
+**Do not release these email changes until the Parent Dashboard thread supplies merged LIVE Feedback route evidence.** It must cover a signed-in parent with no workbook, sign-in and return to Feedback, family access and the desk lock. Use `https://unicalearning.com/account/feedback` with no query. Family switches remain unchanged. The free-month instructions in #681 also need verified Schedule behavior, multi-child scope and agreement with stored printed page 2.
 
 ## Send status
 
-Each welcome has one key per saved card. Each delivery email has one key per saved card and workbook number. The database locks the card while claiming that key. It records the recipient, message and tracking details before the provider call. A second click cannot change a claimed email or send another copy.
+Each welcome has one key per saved card. Each ready email has one key per saved card and workbook number. Each delivery email has a separate key per saved card and workbook number. The database locks the card while claiming that key. It records the recipient, message and tracking details before the provider call. A second click cannot change a claimed email or send another copy.
 
 A definite provider refusal permits a retry. A timeout, lost response or uncertain provider result does not permit a retry. A send left running for 10 minutes shows as uncertain and remains held. Check the provider before sending any correction by hand. Do not change the workbook number to retry the same workbook. A sent email's tracking details cannot be changed through this form.
 
-A pending welcome is skipped when dispatch is recorded. An active welcome send temporarily blocks dispatch. After 10 minutes, an abandoned welcome claim becomes uncertain and permits dispatch, but never a welcome retry.
+A pending welcome is skipped when ready or dispatch is recorded. An active welcome send temporarily blocks later stages. Dispatch also waits for an active ready send for that workbook. After 10 minutes, an abandoned earlier send becomes uncertain and permits the later stage, but never a retry of the earlier send. A queued or refused ready is skipped when dispatch starts. Ready cannot be sent after a dispatch claim for that workbook.
 
 ## Automatic welcome delivery
 
@@ -37,3 +45,5 @@ Migration `20261101_add_workbook_emails.sql` creates the send ledger, queue trig
 The migration was applied to `cdjobwsyzndtltzfpyqa` as `add_workbook_emails`, version `20261101232236`. Database types were regenerated from the hosted schema.
 
 Run `supabase/tests/workbook_emails.sql` against the project to check database behavior. The probe uses synthetic rows and rolls them back. It makes no provider calls. Unit and adapter tests are `src/lib/workbook-email*.test.ts`.
+
+Migration `20261106181619_workbook_ready_emails.sql` adds the ready kind and ordered claims. It was applied as `workbook_ready_emails`, hosted version `20261106182253`. Both the original probe and `supabase/tests/workbook_ready_emails.sql` passed on the hosted project. Database types were regenerated. The generated `scan_marking_saved_command` entry also reflects a previously applied marking migration; this change does not call it.

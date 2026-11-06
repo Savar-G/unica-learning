@@ -48,6 +48,21 @@ function fixture() {
 }
 
 describe("workbook email delivery through its public server interface", () => {
+  it("concurrent ready clicks send once, separately from the shared hand/courier dispatch key", async () => {
+    const f = fixture();
+    const ready: WorkbookNotice = { ...notice, kind: "ready", delivery: null };
+    const outcomes = await Promise.all([sendWorkbookNotice(f.db, ready, f.transport), sendWorkbookNotice(f.db, ready, f.transport)]);
+    expect(outcomes.map((r) => r.status).sort()).toEqual(["busy", "sent"]);
+    const dispatches = await Promise.all([
+      sendWorkbookNotice(f.db, { ...notice, delivery: { method: "hand" } }, f.transport),
+      sendWorkbookNotice(f.db, notice, f.transport),
+    ]);
+    expect(dispatches.map((r) => r.status).sort()).toEqual(["busy", "sent"]);
+    expect(f.messages).toHaveLength(2);
+    expect(f.messages[0].text).toContain("ready and will be shipped soon");
+    expect([...f.rows.values()].every((r) => r.status === "sent")).toBe(true);
+    expect(f.requests.filter((r) => !r.pathname.endsWith("/rpc/claim_workbook_email") && !r.pathname.endsWith("/workbook_emails")).every((r) => ["/rest/v1/card_setups", "/rest/v1/parents", "/rest/v1/children"].includes(r.pathname))).toBe(true);
+  });
   it("sends once under concurrent clicks and takes the recipient from the saved card's family", async () => {
     const f = fixture();
     const outcomes = await Promise.all([sendWorkbookNotice(f.db, notice, f.transport), sendWorkbookNotice(f.db, notice, f.transport)]);

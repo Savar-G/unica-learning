@@ -27,6 +27,28 @@ describe("workbook delivery details", () => {
 });
 
 describe("workbook emails", () => {
+  const contact = "If anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.";
+  it.each(["ready", "hand", "courier"] as const)("matches Savar's approved %s text before the existing signature", (kind) => {
+    const input = { parentName: "Sam", childName: "Alex", workbookNumber: 1 };
+    const email = workbookEmail({ ...input, kind: kind === "ready" ? "ready" : "dispatch", delivery: kind === "courier" ? { method: "mail", carrier: "Canada Post", trackingNumber: "1234 5678 9012", trackingUrl: "" } : kind === "hand" ? { method: "hand" } : null });
+    const content = kind === "ready" ? ["Hi Sam,", "Your workbook is ready and will be shipped soon. You have nothing to do right now. We will email you again when it is on its way.", contact]
+      : ["Hi Sam,", `Alex's workbook 1 is on its way${kind === "hand" ? " by hand delivery" : ""}.`, ...(kind === "courier" ? ["Carrier: Canada Post\nTracking number: 1234 5678 9012"] : []), "What to do next: keep the workbook together when it arrives. We will email you the instructions when your free month starts.", contact];
+    expect(email.subject).toBe(`Alex's workbook is ${kind === "ready" ? "ready" : "on its way"}`);
+    expect(email.text.split("\n\nThank you,")[0]).toBe(content.join("\n\n"));
+    const plainHtml = email.html.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "").replace(/&#39;/g, "'");
+    for (const paragraph of content) expect(plainHtml).toContain(paragraph);
+    expect(email.html).toContain('href="https://unicalearning.com/account/feedback"');
+    if (kind === "courier") expect(email.html).not.toContain("Track your workbook");
+  });
+  it("previews a numbered ready notice without tracking or a dispatch claim", () => {
+    const email = workbookEmail({ ...parent, workbookNumber: 2, kind: "ready", delivery: null });
+    for (const format of [email.text, email.html]) {
+      expect(format).toContain("Your workbook is ready and will be shipped soon.");
+      expect(format).toContain("We will email you again when it is on its way.");
+      expect(format).not.toContain("Tracking number:");
+    }
+    expect(() => workbookEmail({ ...parent, workbookNumber: 0, kind: "ready", delivery: null })).toThrow();
+  });
   it("sets expectations after card confirmation without claiming dispatch", () => {
     const message = workbookEmail({ ...parent, kind: "welcome", delivery: null });
     expect(message.text).toContain("We are preparing your first workbook.");
@@ -49,6 +71,7 @@ describe("workbook emails", () => {
     expect(message.text).toContain("Asha's workbook 1 is on its way.");
     expect(message.text).toContain("Carrier: Canada Post");
     expect(message.text).toContain("Tracking number: ABC123");
+    expect(message.html).toContain("Tracking number: ABC123");
     expect(message.html).toContain('href="https://example.com/track?code=ABC123&amp;lang=en"');
   });
   it("describes hand delivery without inventing tracking or an arrival time", () => {
