@@ -45,6 +45,7 @@ export interface ScanCrop {
   number: number;
   itemId: string;
   regionId: string;
+  regionIds?: string[];
   box: Box;
   width: number;
   height: number;
@@ -303,7 +304,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
     sheetCheck: SHEET_CHECK_VERSION, calibration, parts: uploads.map((u) => u.part), straight: { width: straight.width, height: straight.height }, notSupported: plan.notSupported,
     crops: plan.crops.map((c) => {
       const part = cropPart(c.number), r = rasters.get(part)!;
-      return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, box: c.box, width: r.width, height: r.height };
+      return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, width: r.width, height: r.height };
     }),
   }, bytes);
 }

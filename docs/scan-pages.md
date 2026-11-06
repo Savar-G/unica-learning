@@ -61,6 +61,59 @@ The comparison also takes approved books that have not shipped, as approval give
 - **Desktop** (D-273): the QR code, "Email me the link" and "Take the pictures on this device" beside the pages from the phone, which refresh every 5 seconds, with Send. Retakes stay on the phone.
 - **A page's QR code.** Read by the phone's own camera, it still opens the desk for the child whose desk is open on that device. Otherwise, a parent who was on Scan pages in the last 30 minutes (the cookie `unica_scanning`, a note and not a credential) goes to Scan pages for that page (`/account/scan?w=<workbook>&p=<page>`); everyone else gets the desk question with "Scan this page". Both need the scan release.
 
+
+## Choice and number marking (#459, S6)
+
+The marker reads one whole normalized page. It sends local item and region aliases, frozen measured boxes, region kinds and all printed choice labels. It sends no separate family identity, answer key, question text or worked example. Code reads a tick-and-number item only when its stored package passes the existing package checks and both scored regions have measured boxes. The work box remains evidence in the private page photo. It is not a separate attempt.
+
+Every scored region right makes one right item. Every region empty makes one blank item. A definite wrong region makes one wrong item, even when another region cannot be read. A partial answer that could still be right stays pending. Missing, duplicate, unknown and ambiguous readings cannot produce a right or blank item. Code keeps a fixed uncertainty reason for parent review. Model verdicts and free-text reasons do not enter the result. Numeric reading rejects a decimal that floating-point conversion would round to another written number.
+
+The review crop spans the item's choice and answer regions. It keeps one crop and one result per printed item. Multi-region crop metadata adds regionIds; the older regionId remains the first region for older readers. These are scan derivatives, not changes to the stored print contract. Existing photo leases, terminal deletion, expiry, ownership checks and Storage fences still apply to the same paths. A ready calibration made before this extension can lack its new-format crop; a retake makes it through the new crop planner. No stored workbook is rendered again to create geometry.
+
+The canonical result, version checks, parent changes, outbox and cost admission use the existing S4/S5 path. Finalized originals survive retakes. Concurrent devices cannot add a second original event for the item's regions. No schema, family switch or model override changes in this format extension. Sonnet remains the configured marking model.
+
+Local public-interface tests prove synthetic region aggregation, bounded request data, separate adjacent crop geometry, canonical event counts and retake/version behavior. They do not prove recognition accuracy, hosted permissions or phone-camera behavior. The D-267 paid comparison and physical booklet check remain separate launch evidence. Provider privacy work remains deferred by Savar under D-293 and stays visible on the #542 list.
+
+
+## Circle answers (#538, S7k)
+
+A checked circle item uses the same whole-page request, with the frozen choice labels and circle mark type. Code compares a single clearly read choice with the stored checked rule. An unmarked choice is blank. Multiple marks, an unknown label or an unreadable region stay pending with a reason. A right, wrong or blank circle item finishes as one item and may publish one event. The item's own measured region supplies its review crop. No numeric operation is required when the package checks a printed true-or-false statement or comparison.
+
+This format adds no separate attempt, image path, family switch or cost path. Its local fake-AI cases cover the six reading states and page completion. Recognition and physical-phone acceptance remain in the shared launch checks.
+
+
+## Show-work final answers (#540, S7l)
+
+The model reads the stored scored answer boxes, not the work region. Code checks the final answer. The whole private page photo keeps the working as evidence. A number in the work region cannot fill an empty final-answer box or create another result. Empty final-answer boxes are blank; uncertain readings remain pending. The existing parent correction flow can finish the item. This does not claim that code checks the child's method.
+
+
+## Spot-the-error answers (#539, S7m)
+
+Code checks the stored right-or-wrong choice and the corrected answer together. Both right means one right item. Both empty means one blank item. A definite wrong choice or correction makes the item wrong. A partial answer that could still be right remains pending. The printed wrong solution is not a requested answer region. The model does not judge the solution or choose the score. The stored package must pass its existing error and answer checks before recognition starts.
+
+The item keeps one review crop, canonical result and original event. Its local cases include right choice with wrong correction, wrong choice with right correction, ambiguous marks, missing parts and an extra unrequested printed-example reading. They prove the response contract, not image recognition.
+
+## First-book two-ways review (#461)
+
+Savar chose parent review for the first book on 6 November. The printed item has two work areas and one final-answer box. A parent checks both methods and the answer, then selects Right, Wrong or Blank. The page stays incomplete until that explicit choice. The crop includes both measured work areas and the answer box. The model receives no reading request for this item. The item keeps one canonical result and the existing parent-change history.
+
+The frozen automatic-answer eligibility does not authorize mastery from this new parent review. The result stays out of mastery unless the frozen context already permits parent-checked mastery. The stored package and print contract stay unchanged. This does not implement automatic checking of alternative equation combinations. Missing or invalid measured regions cannot produce a review crop. Local tests prove the parent-review state, crop boundaries and completion, not a physical booklet or parent screen approval.
+
+The additive scan_two_ways_review_policy migration applies this rule to existing canonical records and to writes from older code. It changes only the current expected review policy. It preserves observations, raw events, printed packages and append-only history. An affected child's marking revision advances, so an old profile save cannot accept the prior eligibility. The normal recovery path rebuilds that profile from the corrected effective set. S5 parent changes then use the same corrected eligibility.
+
+## Write-words answers (#541, S7n)
+
+Savar chose AI reading with a code check on 6 November. The model transcribes the measured answer box as written. It must not correct spelling, translate, finish a word or solve the question. Code first validates the frozen package and its answer rule. It then compares the bounded text reading with that checked answer. Case and spacing do not change the words. No synonym, spelling correction or numeric conversion is used to make a right result. The original reading remains stored beside the value used by code.
+
+A text reading that matches the checked answer, after case and spacing normalization, is right. A different text form stays pending for a parent. For example, 07:56 can be a valid form of 7:56, and 8 x 4 can be a valid form of 8 by 4. Literal mismatch alone cannot establish a wrong word answer. The parent can select Right, Wrong or Blank without losing the original reading. A genuinely empty box is blank. Missing, duplicate, crossed-out or uncertain readings stay pending for the existing parent check. A free-text key with no rule that code can check stays pending. The whole-page request contains the text-region kind and measured box, without its answer or template source. The item uses one review crop, one canonical result, one event key and the existing shared budget. Local fake-AI tests prove these decisions and page completion. They do not prove handwriting accuracy or the D-267 pass.
+
+## Fraction and decimal answers (#462, #463)
+
+The 6 November subscription approval sample has one fraction on page 21 and one decimal on page 62. Savar authorized automatic checks for both. The sample is not a stored customer printed revision. Count coverage again after the approved customer Prepare run.
+
+Each newly supported scalar region requires the existing public package check to pass. The model transcribes the written form. It does not simplify, round, insert a fraction bar or infer a decimal point. Missing or ambiguous signs, bars, points and digits stay pending. A clear zero denominator is wrong. Code reads proper fractions, improper fractions and mixed numbers with exact integer arithmetic. It uses the package's operation and accepted forms when the region has an operation rule. It enforces required simplification. Template answers use exact rational equivalence. A different written decimal cannot become right through floating-point rounding. Leading and trailing zeros are allowed when they preserve the exact value. The original written text remains stored beside the typed value.
+
+These items use the same whole-page request, review crop, canonical key, parent changes, shared budget and lifecycle rules. Post-expiry parent changes preserve fraction, mixed-number and decimal readings. Local tests prove these code and workflow contracts. The fixed whole-page recognition set and physical phone test must include both response families before family use. No cheaper-model switch or new family activation is part of this change.
 ## Saved page history (#470, S8)
 
 Page history uses the current child, shipped workbook and stored printed day. It lists printed pages once, with separate states for no photo, pending work, parent review, failed checks, blank answers, unscored answers and ready results. A complete canonical result stays complete when a later photo fails. Parents return to the existing S4/S5 result and correction screen. Original readings and correction history stay available after photo deletion or expiry. The list does not request images or start marking. A later scan does not change a frozen workbook plan.
