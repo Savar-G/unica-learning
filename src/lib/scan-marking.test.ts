@@ -8,6 +8,7 @@ import { rebuildChildProfile } from "@/lib/child-profile";
 import type { LearningEvent, NewLearningEvent } from "@/lib/learning-events";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { skillStates } from "@/lib/assessment/skill-state";
+import { cropPlan } from "@/lib/scan-calibration";
 
 const P = "11111111-1111-4111-8111-111111111111", C = "22222222-2222-4222-8222-222222222222", W = "33333333-3333-4333-8333-333333333333";
 const STEP = { unit: "U1", skill: "add-within-20", step: 2 };
@@ -48,6 +49,21 @@ const tickOutput = (choice: string | null, number: string | null) => ({ readings
   { item: "i1", region: "r1", text: choice, state: choice === "" ? "blank" : choice === null ? "uncertain" : "written" },
   { item: "i1", region: "r1-2", text: number, state: number === "" ? "blank" : number === null ? "uncertain" : "written" },
 ] });
+function circleFrame(): MarkingFrame {
+  const f = tickFrame("circle-photo"), q = f.questions[0];
+  q.package = { ...q.package!, operation: null, answer: null, steps: [], wrongAnswers: [], easierExample: null,
+    text: "Is 27 + 39 = 66 true or false?", item: { format: "circle", scorable: true, parentChecked: false, error: null,
+      regions: [{ id: "pick", kind: "choice", mark: "circle", label: null, choices: ["true", "false"], answer: "true" }],
+      checks: [{ kind: "yes-no", region: "pick", yes: "true", no: "false", statement: { kind: "equation", equation: {
+        left: { type: "number", value: 27 }, op: "+", right: { type: "number", value: 39 }, result: { type: "number", value: 66 },
+      } } }],
+    },
+  };
+  q.regions = [{ id: "pick", kind: "choice", box: { x: 10, y: 30, width: 200, height: 30 } }];
+  q.teaching!.eligibility.format = "circle";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
 it("shows page results in printed question order without changing the canonical input order", () => {
   const expected = expectedItems(frame());
@@ -239,6 +255,27 @@ describe("S6 choice and number on one canonical item", () => {
     expect(await first).toBe("finished");
     expect(m.observation).toMatchObject({ result: "wrong", actor: "parent", resultVersion: 2 });
     expect(s.events).toHaveLength(0);
+  });
+});
+
+describe("S7k circle answers", () => {
+  it.each([["true", "right"], ["false", "wrong"], ["", "blank"], [null, null], ["true and false", null], ["unknown", null]])("reads %j as %j from the frozen circle rule", (text, result) => {
+    const o = readMarkingOutput(circleFrame(), output([text]))[0];
+    expect(o.result).toBe(result);
+    expect(o.state).toBe(result === null ? "pending" : "scored");
+    expect(o.regions.map(r => r.regionId)).toEqual(["pick"]);
+    expect(observationProblem(o)).toBeNull();
+  });
+
+  it("finishes a circle page and provides its own review crop without a numeric answer key", async () => {
+    const f = circleFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(output(["true"]), requests))).toBe("finished");
+    expect(markingPageView(await s.effective(P, C)).completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(s.events).toHaveLength(1);
+    expect(cropPlan(f.questions)).toMatchObject({ crops: [{ number: 1, regionId: "pick" }], notSupported: [] });
+    const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
+    expect(items[0]).toMatchObject({ kind: "choice", mark: "circle", choices: ["true", "false"] });
+    expect(items[0]).not.toHaveProperty("answer");
   });
 });
 

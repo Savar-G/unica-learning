@@ -9,7 +9,7 @@ export interface RegionQuestion {
 }
 export type MarkingRegion = { id: string; box: Box } & (
   | { kind: "number"; answer: number; wholeOnly: boolean }
-  | { kind: "choice"; answer: string; choices: string[] }
+  | { kind: "choice"; answer: string; choices: string[]; mark: "tick" | "circle" }
 );
 const usableBox = (box: Box | null): box is Box => box !== null &&
   [box.x, box.y, box.width, box.height].every(Number.isFinite) && box.x >= 0 && box.y >= 0 && box.width > 0 && box.height > 0;
@@ -20,12 +20,12 @@ export function markingRegions(q: RegionQuestion): MarkingRegion[] {
   const item = packageItem(q.package);
   if (!item.scorable || item.parentChecked) return [];
   const legacy = item.format === "write-number" && item.regions.length === 1;
-  if (!legacy && (item.format !== "tick-and-number" || !checkQuestionPackage(q.package).ok)) return [];
+  if (!legacy && (!["tick-and-number", "circle"].includes(item.format) || !checkQuestionPackage(q.package).ok)) return [];
   const scored = item.regions.filter(r => r.kind === "box" || r.kind === "choice");
   const out: MarkingRegion[] = [];
   for (const r of scored) {
-    const printed = q.regions.filter(p => p.id === r.id && p.kind === r.kind);
-    if (printed.length !== 1 || !usableBox(printed[0].box)) return [];
+    const printed = q.regions.filter(p => p.id === r.id);
+    if (printed.length !== 1 || printed[0].kind !== r.kind || !usableBox(printed[0].box)) return [];
     const base = { id: r.id, box: printed[0].box };
     if (r.kind === "box") {
       if (r.answer?.type !== "number" || !Number.isFinite(r.answer.value) || Math.abs(r.answer.value) > Number.MAX_SAFE_INTEGER ||
@@ -33,7 +33,7 @@ export function markingRegions(q: RegionQuestion): MarkingRegion[] {
       out.push({ ...base, kind: "number", answer: r.answer.value, wholeOnly: legacy });
     } else {
       if (r.answer === null || !r.choices.includes(r.answer)) return [];
-      out.push({ ...base, kind: "choice", answer: r.answer, choices: [...r.choices] });
+      out.push({ ...base, kind: "choice", answer: r.answer, choices: [...r.choices], mark: r.mark });
     }
   }
   return out;

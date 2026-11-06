@@ -73,3 +73,10 @@ The review crop spans the item's choice and answer regions. It keeps one crop an
 The canonical result, version checks, parent changes, outbox and cost admission use the existing S4/S5 path. Finalized originals survive retakes. Concurrent devices cannot add a second original event for the item's regions. No schema, family switch or model override changes in this format extension. Sonnet remains the configured marking model.
 
 Local public-interface tests prove synthetic region aggregation, bounded request data, separate adjacent crop geometry, canonical event counts and retake/version behavior. They do not prove recognition accuracy, hosted permissions or phone-camera behavior. The D-267 paid comparison and physical booklet check remain separate launch evidence. Provider privacy work remains deferred by Savar under D-293 and stays visible on the #542 list.
+
+
+## Circle answers (#538, S7k)
+
+A checked circle item uses the same whole-page request, with the frozen choice labels and circle mark type. Code compares a single clearly read choice with the stored checked rule. An unmarked choice is blank. Multiple marks, an unknown label or an unreadable region stay pending with a reason. A right, wrong or blank circle item finishes as one item and may publish one event. The item's own measured region supplies its review crop. No numeric operation is required when the package checks a printed true-or-false statement or comparison.
+
+This format adds no separate attempt, image path, family switch or cost path. Its local fake-AI cases cover the six reading states and page completion. Recognition and physical-phone acceptance remain in the shared launch checks.

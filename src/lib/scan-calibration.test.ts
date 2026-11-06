@@ -262,8 +262,8 @@ describe("cropPlan", () => {
     expect(cropPlan(questions).notSupported).toEqual([1]);
   });
 
-  it("crops a single-box whole-number item, and no other format, in printed order", () => {
-    // Disproved if a fraction, a two-box item, a circle item or an item with no measured box gets a crop.
+  it("crops supported, measured items in printed order and refuses untrusted shapes", () => {
+    // Disproved if a fraction, a two-box item, an invalid choice package or an item with no measured box gets a crop.
     const write = (answer: unknown) => ({ format: "write-number", scorable: true, parentChecked: false, regions: [{ id: "a", kind: "box", label: null, answer }], checks: [], error: null });
     const plan = cropPlan([
       { number: 4, package: pkg("frac", write({ type: "fraction", numerator: 1, denominator: 2 })), regions: [box("a")] },
