@@ -15,7 +15,7 @@
 //    key pages, failures first) and index.md with every count and the AI cost.
 //
 // Usage: npm run workbooks:samples -- [--levels U1,U2,...|all] [--second U5,U12] [--test U12] [--out <folder>]
-//          [--concurrency 6] [--fake] [--api] [--anthropic] [--no-store] [--family-only]
+//          [--concurrency 6] [--fake] [--api] [--anthropic] [--codex --no-store] [--family-only]
 //          [--days 1,5,10] [--check-only] [--replay <previous folder>] [--diff <previous folder>]
 // Fast loop and review rules: docs/workbook-fast-loop.md; npm run workbook:fast -- --levels U16.
 // --family-only makes (or finds) the test family and its children, prints them, and stops: no AI, no books.
@@ -44,7 +44,8 @@ import sharp from "sharp";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
-import type { AiCallRecord } from "@/lib/ai-fallback";
+import { fallbackAiClient, newGate, type AiCallRecord } from "@/lib/ai-fallback";
+import { codexCliClient } from "@/lib/ai-codex-cli";
 import { workbookAi, workbookAiPrimary, type AiCallKind } from "@/lib/workbook-ai";
 import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@/lib/ai-anthropic";
 import { openRouterClient } from "@/lib/ai-openrouter";
@@ -81,7 +82,7 @@ const { values } = parseArgs({
     steps: { type: "string" }, days: { type: "string" }, out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
     replay: { type: "string" }, diff: { type: "string" }, "check-only": { type: "boolean", default: false },
     fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false }, "subscription-only": { type: "boolean", default: false },
-    persona: { type: "string" },
+    persona: { type: "string" }, codex: { type: "boolean", default: false },
   },
 });
 // G1: --persona plans one first book from a made-up profile with production placement (P0 to P9), not the level sample.
@@ -108,6 +109,11 @@ if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) throw
 if (values["check-only"] && values.diff) throw new Error("Use --diff with a full fake sample, after --check-only.");
 const store = !values["no-store"] && !values.fake && !values["check-only"];
 if (values["subscription-only"] && (values.api || values.anthropic)) throw new Error("--subscription-only cannot use an API provider");
+if (values.codex && (!values["no-store"] || values.fake || values.api || values.anthropic || values["family-only"])) {
+  throw new Error("--codex requires --no-store and cannot use another provider or --family-only");
+}
+if (values.codex && !process.env.WORKBOOK_CODEX_HOME?.trim()) throw new Error("--codex requires WORKBOOK_CODEX_HOME for the selected ChatGPT account");
+const subscriptionName = values.codex ? "Codex" : "Claude";
 
 // ---------- Keys ----------
 
@@ -190,7 +196,7 @@ function countCall(kind: AiCallKind, r: AiCallRecord) {
 const providerLine = (label: string) => {
   const p = providerCounts.get(label);
   if (!p) return "no subscription-first calls";
-  return `${p.subscription} calls on the Claude subscription, ${p.api} on the API${p.unavailable ? `, ${p.unavailable} the subscription or the API could not take (last: ${p.lastUnavailable})` : ""}`;
+  return `${p.subscription} calls on the ${subscriptionName} subscription, ${p.api} on the API${p.unavailable ? `, ${p.unavailable} the subscription or the API could not take (last: ${p.lastUnavailable})` : ""}`;
 };
 
 function costingFetch(into = costs): typeof fetch {
@@ -522,6 +528,16 @@ let solver: Solver;
 if (values.fake) {
   ai = fakeAi();
   solver = keySolver();
+} else if (values.codex) {
+  const cli = codexCliClient({ configDir: process.env.WORKBOOK_CODEX_HOME!.trim() });
+  const gate = newGate();
+  const client = (kind: AiCallKind) => fallbackAiClient({
+    primary: "subscription", subscription: cli, api: null, model: cli.model, gate,
+    onCall: record => countCall(kind, record),
+  });
+  ai = client("write");
+  solver = aiSolver(client("solve"));
+  console.log(`AI: Codex ChatGPT subscription, ${cli.model}, high effort for writing and separate solve requests; no API fallback.`);
 } else if (values.anthropic) {
   const key = await anthropicKey();
   if (!key) throw new Error("no Anthropic key: set ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE, or add the Keychain item anthropic-unica-tools");
@@ -651,9 +667,9 @@ async function writeIndex() {
     ...ok.flatMap(r => (r.draft.quality?.issues ?? []).map(i => `- ${r.label} p${i.page}: ${i.kind}: ${i.reason}`)),
     "",
 
-    ...(providerCounts.size ? ["## AI calls by provider (D-200)", "The Claude subscription costs nothing per call; the API's cost is in the table above.", ...ok.map((r) => `- ${r.label}: ${providerLine(r.label)}`), ""] : []),
+    ...(providerCounts.size ? ["## AI calls by provider (D-200)", `The ${subscriptionName} subscription uses the selected account's allowance. API costs are in the table above.`, ...(values.codex ? ["Codex uses gpt-6.1-sol at high effort for both writing and separate solve requests. It has no API fallback. It does not provide a second-model check."] : []), ...ok.map((r) => `- ${r.label}: ${providerLine(r.label)}`), ""] : []),
     "## Solve checks (round 7)",
-    "Each printed question the AI wrote is read and answered by a separate model; one it answers otherwise fails closed (written again once, then marked failed).",
+    `Each printed question the AI wrote is read and answered by ${values.codex ? "a separate request to the same model" : "a separate model"}; one it answers otherwise fails closed (written again once, then marked failed).`,
     ...ok.map((r) => `- ${r.label}: ${r.solve.checks} checks, ${r.solve.disagreed} read another way, ${r.solve.failed} failed or late, USD ${r.solve.usd.toFixed(4)} ([log](${r.label}-solve.jsonl))`),
     "",
     "## Profiles (made up)",
