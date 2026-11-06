@@ -1,0 +1,11 @@
+{
+  "round": "r680",
+  "task": "parent Feedback #680",
+  "route": "direct",
+  "job_kind": "new",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "contract": ".design/experiments/r680/contract.md",
+  "preview": "/admin/dashboard?view=feedback&scenario=form&size=desktop",
+  "status": "implementation; screenshots and review pending with root"
+}
