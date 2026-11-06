@@ -22,7 +22,7 @@ vi.mock("@/lib/maya-minutes-server", () => ({
   },
 }));
 vi.mock("@/lib/maya-chat-server", () => ({ parentChatUsage: async () => new Map() }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => "/account/notes",
   notFound: () => { throw new Error("NOT_FOUND"); },
   redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); },
 }));
