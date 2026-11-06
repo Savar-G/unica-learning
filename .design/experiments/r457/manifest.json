@@ -18,13 +18,22 @@
     820,
     1280
   ],
-  "browser_qa": "Parent must run browser checks. This task prohibits browser use.",
+  "browser_qa": "21 synthetic result-state checks passed in the shared T3 browser. See browser-checks.json. This is component/frame evidence, not authenticated end-to-end proof.",
   "approval": "pending",
   "release": "off",
   "parent_result_path": "/account/scan/results/<photo id>",
   "admin_result_path": "/admin/scans/<photo id>",
   "image_delivery": "Authenticated no-store bytes with local object URLs",
   "existing_reference": "r455/ready-phone-390.png inspected; current r565 views and tokens read",
-  "screenshots": [],
-  "render_check": "Synthetic React static rendering only. Browser rendering remains with parent."
+  "screenshots": [
+    "results-empty-1280.png",
+    "results-many-1280.png",
+    "results-one-820.png",
+    "results-expired-820.png",
+    "results-many-390.png",
+    "results-uncertain-390.png",
+    "results-budget-390.png",
+    "results-unscored-390.png"
+  ],
+  "render_check": "Browser states, long-name and 200-character reading wrapping, 44px refresh, visible keyboard focus and Enter refresh passed. Temporary development fixture removed."
 }

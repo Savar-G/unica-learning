@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { expectedItems, firstObservation, itemKey, markingEvent, type Observation } from "@/lib/scan-observation";
-import { effectiveMarkingEvents, effectiveSkillMarks, markingPageView, MARKING_CAP_MICROS, MARKING_MODEL, readMarkingOutput, runScanMarking, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, MARKING_CAP_MICROS, MARKING_MODEL, readMarkingOutput, runScanMarking, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import type { QuestionPackage } from "@/lib/question-package";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
 import { rebuildChildProfile } from "@/lib/child-profile";
 import type { LearningEvent, NewLearningEvent } from "@/lib/learning-events";
 import { BC_SKILL_MAP } from "@/lib/assessment";
+import { skillStates } from "@/lib/assessment/skill-state";
 
 const P = "11111111-1111-4111-8111-111111111111", C = "22222222-2222-4222-8222-222222222222", W = "33333333-3333-4333-8333-333333333333";
 const STEP = { unit: "U1", skill: "add-within-20", step: 2 };
@@ -61,7 +62,7 @@ class Store implements MarkingStore {
       const key = itemKey(o.identity), m = this.items.get(key)!, version = this.jobs.get(ref.photo)!.items.find((i) => itemKey(i.expected.identity) === key)?.observation.resultVersion;
       if (m.observation.state !== "pending" || m.observation.resultVersion !== version) continue;
       m.observation = { ...structuredClone(o), resultVersion: version + 1 }; m.at = at;
-      m.originalEvent ??= events.find((e) => e.key === `marking:${key}`) ?? null;
+      m.originalEvent ??= events.find((e) => e.key === markingOriginalKey(m.expected)) ?? null;
     } return true;
   }
   async pause(ref: MarkingRef, token: string) { if (this.live(ref, token)) this.jobs.get(ref.photo)!.until = 0; }
@@ -73,6 +74,19 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
   return (before) => ({ client: { model, async json(r) { await before(); requests.push(r); return typeof answer === "function" ? answer() : answer; } }, costMicros: () => cost });
 }
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
+
+it.each(["friday-5", "mixed-set", "show-what-you-know", "practice", "review"])("uses frozen %s teaching for page mastery", async (part) => {
+  const f = frame("review-photo", [1, 1, 1, 1, 1, 1]);
+  f.questions[5].teaching!.part = part;
+  const store = new Store(f);
+  expect(await run(store, f.photo, client(output(["1", "1", "1", "1", "1", "1"])))).toBe("finished");
+  const originals = (await store.effective(P, C)).map((mark, n) => ({ ...mark, at: `2026-11-0${n + 1}T12:00:00Z` }));
+  const marks = effectiveSkillMarks(originals);
+  const approved = ["friday-5", "mixed-set", "show-what-you-know"].includes(part);
+  expect(marks.map((m) => m.review)).toEqual([false, false, false, false, false, approved]);
+  const state = skillStates({ schoolGrade: 2, tests: [], workbookStandards: [STANDARD.code], marks }).find((s) => s.standard === STANDARD.code);
+  expect(state?.state).toBe(approved ? "mastered" : "working_on");
+});
 
 describe("S4 whole-page readings", () => {
   it("zero, wrong, blank and uncertainty remain distinct and code owns the score", () => {

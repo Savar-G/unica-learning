@@ -1,5 +1,6 @@
 // S4. The store owns atomic leases, item versions, deletion fences, admission and budget reservations.
 // The AI owns readings only. No model identity, score, key or eligibility claim enters a result.
+import { createHash } from "node:crypto";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { expectedItems, firstObservation, itemKey, markingEvent, MAX_READ_TEXT, pageCompletion, type ExpectedItem, type Observation, type PageForObservation } from "@/lib/scan-observation";
 import { packageItem } from "@/lib/question-package";
@@ -12,6 +13,8 @@ export const MARKING_MODEL = "anthropic/claude-sonnet-5.5";
 export const MARKING_MAX_TOKENS = 4096;
 export const MARKING_MAX_DISPATCHES = 2;
 export const MARKING_CAP_MICROS = 50_000_000;
+/** Bounded canonical key. Item IDs can be 200 characters; photos never change this key. */
+export const markingOriginalKey = (item: ExpectedItem) => `marking:${createHash("sha256").update(itemKey(item.identity), "utf8").digest("hex")}`;
 export interface MarkingRef { parent: string; photo: string }
 export interface MarkingFrame extends PageForObservation {
   parentId: string;
@@ -120,7 +123,7 @@ function originalEvents(frame: MarkingFrame, observations: Observation[], at: st
     if (!o) return [];
     const d = markingEvent(e, o), pkg = frame.questions.find((q) => q.package?.id === e.identity.itemId)?.package;
     if (!d.publish || !pkg) return [];
-    return [{ key: d.key, parentId: frame.parentId, childId: frame.childId, source: "marking", question: { source: "workbook", workbookId: frame.workbookId, page: frame.pageNumber, question: e.number }, skill: pkg.skill,
+    return [{ key: markingOriginalKey(e), parentId: frame.parentId, childId: frame.childId, source: "marking", question: { source: "workbook", workbookId: frame.workbookId, page: frame.pageNumber, question: e.number }, skill: pkg.skill,
       result: d.result, stuckStep: null, mistake: null, hints: 0, timeMs: null, occurredAt: at, evidence: { kind: "scan", id: frame.photo } }];
   });
 }
@@ -186,7 +189,7 @@ export function effectiveMarkingEvents(raw: readonly LearningEvent[], marks: rea
 export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[] {
   return marks.flatMap((m) => {
     const d = markingEvent(m.expected, m.observation);
-    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: m.expected.teaching?.part === "review", at: m.at }] : [];
+    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.at }] : [];
   });
 }
 export function markingPageView(marks: readonly EffectiveMark[]) {

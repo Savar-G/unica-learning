@@ -99,6 +99,20 @@ do $$ declare t text; begin
   end loop;
 end $$;
 
+-- Every processing stage takes the same scan-family lock before it counts these leases.
+create function public.scan_active_jobs(p_parent uuid) returns bigint
+language sql stable set search_path = '' as $$
+  select (select count(*) from public.scan_photos p where p.parent_id=p_parent and p.state='processing'
+      and p.lease_until>clock_timestamp() and p.expires_at>clock_timestamp())
+    + (select count(*) from public.scan_calibrations c join public.scan_photos p on p.id=c.photo_id
+      where c.parent_id=p_parent and c.state='running' and c.lease_until>clock_timestamp()
+      and p.expires_at>clock_timestamp() and public.scan_photo_is_active(p.state,p.created_at,p.expires_at))
+    + (select count(*) from public.scan_marking_jobs j join public.scan_photos p on p.id=j.photo_id
+      where j.parent_id=p_parent and j.state in ('running','extracted') and j.lease_until>clock_timestamp()
+      and p.expires_at>clock_timestamp() and public.scan_photo_is_active(p.state,p.created_at,p.expires_at));
+$$;
+revoke all on function public.scan_active_jobs(uuid) from public,anon,authenticated,service_role;
+
 -- One command boundary keeps all mutations service-only and lock order explicit:
 -- parent share lock, scan family lock, photo row, job row, canonical item rows, global budget lock.
 create function public.scan_marking_command(p_action text, p_parent uuid, p_photo uuid, p_token uuid, p_data jsonb default '{}') returns jsonb
@@ -165,11 +179,10 @@ begin
   select * into j from public.scan_marking_jobs where photo_id=p_photo for update;
   if p_action='claim' then
     select * into lim from public.scan_limits where singleton;
-    select count(*) filter(where x.state in ('running','extracted') and x.lease_until>now()),
-      count(*) filter(where x.state='queued' or (x.state in ('running','extracted') and x.lease_until<=now())) into active_count,queued_count
+    select count(*) filter(where x.state='queued' or (x.state in ('running','extracted') and x.lease_until<=clock_timestamp())) into queued_count
       from public.scan_marking_jobs x join public.scan_photos p on p.id=x.photo_id
       where x.parent_id=p_parent and x.photo_id<>p_photo and public.scan_photo_is_active(p.state,p.created_at,p.expires_at);
-    active_count := active_count + (select count(*) from public.scan_photos where parent_id=p_parent and state='processing' and lease_until>clock_timestamp() and expires_at>clock_timestamp());
+    active_count := public.scan_active_jobs(p_parent);
     if j.photo_id is null then
       if active_count+queued_count >= lim.active_jobs+lim.queued_jobs then return '"busy"'; end if;
       insert into public.scan_marking_jobs(photo_id,parent_id,child_id,workbook_id,page_id,printed_revision,frame_hash)
@@ -205,6 +218,11 @@ begin
     -- A cheaper model cannot enter the production path without a separate approved comparison.
     if price.model <> 'anthropic/claude-sonnet-5.5' and p_data->>'evaluation' is distinct from 'approved-fixed-set' then return '"price-unverified"'; end if;
     perform pg_advisory_xact_lock(hashtextextended('scan-marking-global-budget',0));
+    -- Time can cross either deadline while the global ledger lock is held elsewhere.
+    -- The photo and job row locks preserve their values, but they cannot preserve time.
+    if s.expires_at<=clock_timestamp() or not public.scan_photo_is_active(s.state,s.created_at,s.expires_at)
+      or s.state<>'saved' or s.sent_at is null or j.lease_token is distinct from p_token
+      or j.lease_until<=clock_timestamp() or j.state not in ('running','extracted') then return '"terminal"'; end if;
     budget_period := date_trunc('month',clock_timestamp() at time zone 'UTC')::date;
     select coalesce(sum(coalesce(charged_micros,reserved_micros)),0) into held from public.scan_marking_spend where scan_marking_spend.period=budget_period;
     if held+price.maximum_micros>50000000 then return '"budget"'; end if;
@@ -226,7 +244,7 @@ begin
       if o->'identity' is distinct from m.expected->'identity' then raise exception 'marking_identity'; end if;
       ev := null;
       if m.expected->'mastery'->>'eligible'='true' and o->>'state'='scored' then
-        select value into ev from jsonb_array_elements(p_data->'events') where value->>'key'='marking:'||s.workbook_id::text||':'||s.printed_revision||':'||s.page_id::text||':'||m.item_id;
+        select value into ev from jsonb_array_elements(p_data->'events') where value->>'key'='marking:'||encode(sha256(convert_to(s.workbook_id::text||':'||s.printed_revision||':'||s.page_id::text||':'||m.item_id,'UTF8')),'hex');
         if ev is null then raise exception 'marking_event_missing'; end if;
       end if;
       update public.scan_marking_items set observation=jsonb_set(o,'{resultVersion}',to_jsonb(m.result_version+1)),result_version=m.result_version+1,
@@ -319,7 +337,10 @@ begin
       left join public.scan_marking_revisions r on r.child_id=p.child_id
     where p.sent_at is not null and p.id>coalesce(cursor_id,'00000000-0000-0000-0000-000000000000')
       and not exists(select 1 from public.child_deletions d where d.child_id=p.child_id)
-      and ((public.scan_photo_is_active(p.state,p.created_at,p.expires_at) and p.state='saved' and coalesce(j.state,'queued')<>'finished') or r.profile_revision<r.revision)
+      and ((public.scan_photo_is_active(p.state,p.created_at,p.expires_at) and p.state='saved' and coalesce(j.state,'queued')<>'finished')
+        or r.profile_revision<r.revision
+        or exists(select 1 from public.scan_marking_items m where m.parent_id=p.parent_id and m.child_id=p.child_id
+          and m.original_event is not null and m.event_id is null))
       order by p.id limit p_limit
   ) batch;
   select (v->>'photo')::uuid into last_id from jsonb_array_elements(answer) with ordinality a(v,n) order by n desc limit 1;
@@ -342,7 +363,7 @@ grant execute on function public.scan_child_images_live(uuid) to authenticated,s
 create policy scan_child_image_fence on public.scan_photos as restrictive for select to authenticated
   using (public.scan_child_images_live(child_id));
 
--- Upload processing and marking share the same family processing slot.
+-- Normalization, calibration and marking share the same family processing slot.
 create or replace function public.start_scan_photo(p_parent uuid,p_id uuid) returns text
 language plpgsql security definer set search_path = '' as $$
 declare r public.scan_photos; l public.scan_limits; n int;
@@ -352,11 +373,43 @@ begin
   select * into r from public.scan_photos where id=p_id and parent_id=p_parent for update;
   if not found then return 'refused'; end if;
   if r.state<>'reserved' then return r.state; end if;
-  if r.lease_until<=now() then return 'expired'; end if;
+  if r.lease_until<=clock_timestamp() or r.expires_at<=clock_timestamp() then return 'expired'; end if;
   select * into l from public.scan_limits where singleton;
-  select count(*) into n from public.scan_photos where parent_id=p_parent and state='processing' and lease_until>now();
-  n := n + (select count(*) from public.scan_marking_jobs j join public.scan_photos p on p.id=j.photo_id where j.parent_id=p_parent and j.state in ('running','extracted') and j.lease_until>clock_timestamp() and public.scan_photo_is_active(p.state,p.created_at,p.expires_at));
+  n := public.scan_active_jobs(p_parent);
   if n>=l.active_jobs then return 'busy'; end if;
   update public.scan_photos set state='processing' where id=p_id;
   return 'started';
+end $$;
+
+create or replace function public.begin_scan_calibration(p_parent uuid, p_id uuid, p_token uuid, p_lease_seconds int default 90) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare r public.scan_photos; c public.scan_calibrations; b record; l public.scan_limits;
+begin
+  perform public.assert_family_writable(p_parent);
+  perform pg_advisory_xact_lock(hashtextextended('scan:'||p_parent::text,0));
+  select * into r from public.scan_photos where id=p_id and parent_id=p_parent for update;
+  if not found then return jsonb_build_object('status','unknown'); end if;
+  if r.expires_at<=clock_timestamp() or not public.scan_photo_is_active(r.state,r.created_at,r.expires_at) then return jsonb_build_object('status','terminal'); end if;
+  select w.printed_revision,p.print_contract is not null as has_contract into b
+    from public.workbook_pages p join public.workbooks w on w.id=p.workbook_id where p.id=r.page_id and p.parent_id=p_parent;
+  if not found or b.printed_revision is null or not b.has_contract then return jsonb_build_object('status','unavailable','reason','no-contract'); end if;
+  if r.printed_revision is distinct from b.printed_revision then return jsonb_build_object('status','unavailable','reason','other-revision'); end if;
+  select * into c from public.scan_calibrations where photo_id=p_id for update;
+  if found then
+    if c.state<>'running' then return jsonb_build_object('status',c.state); end if;
+    if c.lease_until>clock_timestamp() then return jsonb_build_object('status','busy'); end if;
+    if c.attempts>=5 then
+      update public.scan_calibrations set state='refused',result=jsonb_build_object('reason','failed'),finished_at=clock_timestamp() where photo_id=p_id;
+      return jsonb_build_object('status','refused');
+    end if;
+  end if;
+  select * into l from public.scan_limits where singleton;
+  if public.scan_active_jobs(p_parent)>=l.active_jobs then return jsonb_build_object('status','busy'); end if;
+  if c.photo_id is null then
+    insert into public.scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until)
+      values(p_id,p_parent,r.printed_revision,'running',p_token,clock_timestamp()+make_interval(secs=>p_lease_seconds));
+  else
+    update public.scan_calibrations set lease_token=p_token,lease_until=clock_timestamp()+make_interval(secs=>p_lease_seconds),attempts=attempts+1 where photo_id=p_id;
+  end if;
+  return jsonb_build_object('status','started');
 end $$;

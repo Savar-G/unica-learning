@@ -1,7 +1,7 @@
 // Synthetic, disposable Unix-socket PostgreSQL tests. Never accepts a URL, password or hosted connection.
 const { Client } = require('pg');
 const { readFileSync } = require('node:fs');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, createHash } = require('node:crypto');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const socket = process.env.SCAN_MARKING_SOCKET;
@@ -29,6 +29,7 @@ const copy = v => JSON.parse(JSON.stringify(v));
   await db.query(sql('20261105_child_delete_plan_recovery.sql'));
   await db.query(sql('20261105_child_profile_skill_changes_from_tests.sql'));
   await db.query(sql('20261105_scan_marking.sql'));
+  await db.query(sql('20261106_scan_calibration_previous.sql'));
  }
  let passed=0,failures=0;
  async function test(name,run){try{await run();passed++;console.log('PASS',name);}catch(e){failures++;console.log('FAIL',name,e.stack);}}
@@ -51,7 +52,7 @@ const copy = v => JSON.parse(JSON.stringify(v));
   assert.equal(await call(c,'extract',f,f.token,{observations:[o],model:'anthropic/claude-sonnet-5.5',prompt:'whole-page-numbers-v1'}),true);
   return o;
  }
- function event(f,result='right') {return {key:`marking:${f.w}:immutable:${f.page}:item1`,parentId:f.p,childId:f.c,source:'marking',question:{source:'workbook',workbookId:f.w,page:3,question:1},skill:{standard:'2.4',skills:[]},result,stuckStep:null,mistake:null,hints:0,timeMs:null,occurredAt:new Date().toISOString(),evidence:{kind:'scan',id:f.photo}};}
+ function event(f,result='right') {return {key:`marking:${createHash('sha256').update(`${f.w}:immutable:${f.page}:${f.expected.identity.itemId}`,'utf8').digest('hex')}`,parentId:f.p,childId:f.c,source:'marking',question:{source:'workbook',workbookId:f.w,page:3,question:1},skill:{standard:'2.4',skills:[]},result,stuckStep:null,mistake:null,hints:0,timeMs:null,occurredAt:new Date().toISOString(),evidence:{kind:'scan',id:f.photo}};}
  const apply = (f,result='right',c=db) => call(c,'apply',f,f.token,{events:[event(f,result)],at:new Date().toISOString()});
  async function price(max=10000) {await db.query("update scan_marking_prices set enabled=true,maximum_micros=$1,verified_at=now(),evidence='synthetic verified bound, not production pricing'",[max]);}
  const budget = () => db.query('delete from scan_marking_dispatches').then(()=>db.query('delete from scan_marking_spend'));
@@ -197,6 +198,75 @@ const copy = v => JSON.parse(JSON.stringify(v));
   }
   await db.query("update scan_photos set state='deleted',terminal_at=now() where id=$1",[f.photo]);assert.equal((await db.query('select * from storage.objects where name=$1',[name])).rowCount,1);
   await db.query("select set_config('test.viewer',$1,false)",[f.p]);await db.query('set role authenticated');try{assert.equal((await db.query('select * from storage.objects where name=$1',[name])).rowCount,0);}finally{await db.query('reset role');}
+ });
+ await test('calibration takeover returns only the replaced lease for cleanup',async()=>{
+  const f=await fixture(),old=randomUUID(),next=randomUUID();
+  await db.query("update scan_calibrations set state='running',result=null,lease_token=$2,lease_until=clock_timestamp()-interval '1 second' where photo_id=$1",[f.photo,old]);
+  const started=(await db.query('select begin_scan_calibration($1,$2,$3) v',[f.p,f.photo,next])).rows[0].v;
+  assert.deepEqual(started,{status:'started',previous:old});
+  const held=(await db.query('select begin_scan_calibration($1,$2,$3) v',[f.p,f.photo,randomUUID()])).rows[0].v;
+  assert.equal(held.status,'busy');assert.equal((await db.query('select lease_token from scan_calibrations where photo_id=$1',[f.photo])).rows[0].lease_token,next);
+ });
+ for(const terminal of ['deleted','expired']) await test(`unpublished intent recovers after concurrent profile save and ${terminal} image`,async()=>{
+  const f=await fixture(),a=await open(),b=await open();await claim(f);await extraction(f);await apply(f);
+  try {
+   await a.query('begin');
+   const first=(await a.query("select save_marked_child_profile($1,$2,1,null,null,2::smallint,'{\"events\":{\"counted\":0}}','[]','{}') v",[f.c,f.p])).rows[0].v;
+   assert(first.build_token);
+   if(terminal==='deleted')await b.query("select change_scan_photo($1,$2,'delete')",[f.p,f.photo]);
+   else await b.query("update scan_photos set expires_at=clock_timestamp()-interval '1 second' where id=$1",[f.photo]);
+   await a.query('commit');
+   assert.equal((await db.query('select revision=profile_revision same from scan_marking_revisions where child_id=$1',[f.c])).rows[0].same,true);
+   await db.query('update scan_marking_cursor set after_id=null');let seen=false;
+   for(let n=0;n<100;n++){const batch=(await db.query('select recover_scan_marking(10) v')).rows[0].v;if(batch.some(r=>r.photo===f.photo)){seen=true;break;}if(!batch.length)break;}
+   assert(seen);
+   const [m]=await call(db,'outbox',{p:f.p},null,{child:f.c});assert(m);
+   const published=(await db.query(`insert into learning_events(idempotency_key,parent_id,child_id,source,question_source,workbook_id,workbook_page,workbook_question,skill_standard,skills,result,hints,occurred_at,evidence_kind,evidence_id)
+    values($1,$2,$3,'marking','workbook',$4,3,1,'2.4','{}','right',0,$5,'scan',$6) returning id`,[m.original_event.key,f.p,f.c,f.w,m.original_event.occurredAt,f.photo])).rows[0].id;
+   assert.equal(await call(db,'ack',{p:f.p},null,{child:f.c,item:m.id,event:published}),true);
+   assert.equal((await call(db,'outbox',{p:f.p},null,{child:f.c})).length,0);
+   const revision=(await db.query('select revision from scan_marking_revisions where child_id=$1',[f.c])).rows[0].revision;
+   assert.equal(Number(revision),2);
+   const rebuilt=(await db.query("select save_marked_child_profile($1,$2,$3,null,$4,2::smallint,'{\"events\":{\"counted\":1}}','[]','{}') v",[f.c,f.p,revision,first.build_token])).rows[0].v;
+   assert(rebuilt.build_token);assert.equal((await rows(f))[0].event_id,published);
+   assert.equal((await db.query('select revision=profile_revision same from scan_marking_revisions where child_id=$1',[f.c])).rows[0].same,true);
+  }finally{await a.query('rollback');await a.end();await b.end();}
+ });
+ for(const deadline of ['photo','lease']) await test(`budget lock wait across ${deadline} deadline creates no dispatch or reservation`,async()=>{
+  await budget();await price();const f=await fixture(),a=await open(),b=await open();await claim(f);
+  try {
+   await a.query('begin');await a.query("select pg_advisory_xact_lock(hashtextextended('scan-marking-global-budget',0))");
+   await db.query(deadline==='photo'?"update scan_photos set expires_at=clock_timestamp()+interval '400 milliseconds' where id=$1":"update scan_marking_jobs set lease_until=clock_timestamp()+interval '400 milliseconds' where photo_id=$1",[f.photo]);
+   const pending=reserve(f,b);pending.catch(()=>{});await waitLock(b);
+   let expired=false;for(let end=Date.now()+3000;Date.now()<end&&!expired;)expired=(await db.query(deadline==='photo'?'select clock_timestamp()>expires_at expired from scan_photos where id=$1':'select clock_timestamp()>lease_until expired from scan_marking_jobs where photo_id=$1',[f.photo])).rows[0].expired;
+   assert(expired);await a.query('commit');assert.equal(await pending,'terminal');
+   assert.equal((await db.query('select count(*)::int n from scan_marking_spend')).rows[0].n,0);
+   assert.equal((await db.query('select count(*)::int n from scan_marking_dispatches where photo_id=$1',[f.photo])).rows[0].n,0);
+   assert.equal((await db.query('select dispatches from scan_marking_jobs where photo_id=$1',[f.photo])).rows[0].dispatches,0);
+  }finally{await a.query('rollback');await a.end();await b.end();}
+ });
+ for(const stage of ['marking','upload']) for(const order of ['calibration-first','other-first','concurrent']) await test(`shared processing slot: calibration and ${stage}, ${order}`,async()=>{
+  const f=await fixture(),g=await fixture(f.p),a=await open(),b=await open(),upload=randomUUID();
+  await db.query('delete from scan_calibrations where photo_id=$1',[g.photo]);
+  if(stage==='upload')assert.equal((await db.query('select admit_scan_photo($1,$2,$3,100) v',[f.p,f.c,upload])).rows[0].v,'reserved');
+  const calibration=async()=>(await a.query('select begin_scan_calibration($1,$2,$3) v',[g.p,g.photo,randomUUID()])).rows[0].v.status;
+  const other=async()=>{if(stage==='upload')return (await b.query('select start_scan_photo($1,$2) v',[f.p,upload])).rows[0].v;const value=await claim(f,b);return typeof value==='object'?'started':value;};
+  try {
+   if(order==='concurrent')assert.deepEqual((await Promise.all([calibration(),other()])).sort(),['busy','started']);
+   else {const first=order==='calibration-first'?calibration:other,second=order==='calibration-first'?other:calibration;assert.equal(await first(),'started');assert.equal(await second(),'busy');}
+   const count=(await db.query(`select (select count(*) from scan_calibrations where parent_id=$1 and state='running' and lease_until>clock_timestamp())
+    +(select count(*) from scan_marking_jobs where parent_id=$1 and state in ('running','extracted') and lease_until>clock_timestamp())
+    +(select count(*) from scan_photos where parent_id=$1 and state='processing' and lease_until>clock_timestamp()) n`,[f.p])).rows[0].n;
+   assert.equal(Number(count),1);
+  }finally{await a.end();await b.end();await db.query('delete from auth.users where id=$1',[f.p]);}
+ });
+ await test('maximum-length ASCII and UTF-8 item IDs use the same bounded key in JavaScript and SQL',async()=>{
+  for(const id of ['q'.repeat(200),'é'.repeat(200)]){
+   const f=await fixture();f.expected.identity.itemId=id;
+   await db.query('update workbook_questions set package=jsonb_build_object(\'id\',$1::text) where page_id=$2',[id,f.page]);
+   await claim(f);await extraction(f);assert.equal(await apply(f),true);
+   const [m]=await rows(f);assert.equal(m.original_event.key,event(f).key);assert.equal(m.original_event.key.length,72);
+  }
  });
  console.log(JSON.stringify({passed,failures,limits:{perTenMinutes:40,perDay:60,concurrentUploads:2,activeJobs:1,queuedJobs:8,inputBytes:20971520,decodedPixels:48000000,familyBytes:2147483648},proof:'local synthetic SQL, not hosted Storage API'}));await db.end();process.exitCode=failures?1:0;
 })().catch(e=>{console.error(e);process.exitCode=1});
