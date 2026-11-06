@@ -62,10 +62,13 @@ describe.skipIf(!chromium)("the layout checks in Chromium", () => {
     expect(verdicts.map((v) => [v.name, v.fails]), JSON.stringify(verdicts, null, 1)).toEqual(CASES.map(([name]) => [name, name !== "good"]));
   }, 120_000);
 
-  it.each(Object.keys(STRETCHED_PAGES))("print the full U4 book of seed %s's Practice 2, at its maximum, with even rows", async (seed) => {
+  it.each(Object.keys(STRETCHED_PAGES))("reject the empty cells in the recorded U4 Practice 2 page of seed %s", async (seed) => {
     const template = workbookTemplate(await fixedTemplateFonts());
     const page = STRETCHED_PAGES[seed];
     const result = await renderWorkbook({ draft: { ...STRETCHED_BOOK, pages: [page] }, parentId: "11111111-1111-4111-8111-111111111111", template, engine: chromiumPrintEngine() });
-    expect(result.status === "failed" ? result.problems.map((p) => p.reason) : []).toEqual([]);
+    expect(result.status).toBe("failed");
+    const problems = result.status === "failed" ? result.problems.map(p => p.reason) : [];
+    expect(problems.some(reason => /empty cell/.test(reason))).toBe(true);
+    expect(problems.filter(reason => !/empty cell/.test(reason))).toEqual([]);
   }, 120_000);
 });

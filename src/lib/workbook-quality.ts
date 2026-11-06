@@ -1,4 +1,8 @@
-import { pageFullness, pageSpace, fullnessProblem } from "./workbook-template";
+import { stepTemplateOf } from "./workbook-step-items";
+import { bcStepProgressions } from "./workbook-curriculum";
+import { reviewMasteryStep } from "./workbook-review-level";
+import { questionWorkSpace, WORK_INSTRUCTION } from "./workbook-work-space";
+import { pageFullness, pageSpace, fullnessProblem, pagePlan } from "./workbook-template";
 import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { STORY_EXPLAIN } from "./workbook-item-plan";
@@ -56,15 +60,15 @@ export function typeKey(p: Pick<GeneratedPage, "type">, q: Pick<GeneratedPage["q
  * plans fewer items than this only by reporting the omission, and the book check fails a page below it. (U4 to U9: a
  * new idea's floor is 2, D-226, workbook-early-levels.ts.)
  */
-export function pageMinimum(type: string, level: number, extra: boolean): number {
+export function pageMinimum(type: string, level: number, extra: boolean, working = false, support = 0): number {
   // The adopted counts (Cedric's section 8, #482 review at db3b1a0): 8 to 10 practice questions on a practice or review
   // page, a new idea's 3 to 5 beside its Spot the error. Spot the error and Solve it two ways do not count toward them.
   // (A review page that also carries a Mixed set and a Challenge, 6 pages a day, has no adopted count: its Mixed set's 4.)
-  // Every day page kind has its count (Codex at 47c5fd78); a warm-up page's is its one In your head question.
+  // Every day page kind has its count (Codex at 47c5fd78); a warm-up page keeps at least eight fluency facts.
   const FLOORS: Record<string, number> = { practice: 8, "practice-2": 8, "remember-these": 8, "remember-these-mixed-set": 4, "friday-5": 9,
     "word-problems": 3, challenge: 3, "math-in-the-world": 2, "show-what-you-know": 4, "unit-b": 4, "level-test": 4, "mini-test": 4,
-    "already-know-it": 4, "warm-up": 1 };
-  const n = extra ? 8 : type === "new-idea" ? newIdeaFloor(level) : FLOORS[type] ?? 1;
+    "already-know-it": 4, "warm-up": 8 };
+  const n = extra ? 8 : working && level >= 10 && type === "practice-2" && support >= 2 ? 4 : working && level >= 10 && ["practice", "practice-2", "remember-these"].includes(type) ? 6 : type === "new-idea" ? working && level >= 10 ? 2 : newIdeaFloor(level) : FLOORS[type] ?? 1;
   // From U19 three quarters: Cedric's upper band (a new idea's 3 becomes 2 there, as his table has it; Savar, 2026-11-03).
   return level >= 19 ? Math.max(1, Math.round(n * .75)) : n;
 }
@@ -97,6 +101,26 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       // (From U10; U4 to U9 keep two kinds, their stories being the few young steps' joins, take-aways and compares.)
       else if ((p.content?.kind === "day" ? p.content.level : 0) >= 10 && new Set(stories).size < Math.min(3, stories.length)) issues.push({ page: p.number, kind: "variety", reason: `the stories page tells ${stories.length} stories of ${new Set(stories).size} kinds; it needs ${Math.min(3, stories.length)} (join, take-away, compare)` });
     }
+    if (p.content?.kind === "day" && p.content.consistentLayout) {
+      const c = p.content;
+      const holes = pagePlan({ ...p, questions: p.questions.flatMap(q => q.package ? [{ number: q.number, package: q.package }] : []) })?.incomplete ?? [];
+      if (holes.length) issues.push({ page: p.number, kind: "coverage", reason: `the question grid has an empty cell beside question ${holes[0]}` });
+      if (p.type === "warm-up" && (c.blocks.some(b => b.slot === "in-your-head" || /mental math|in your head/i.test(b.label ?? "")) || p.questions.some(q => q.place === "in-your-head"))) issues.push({ page: p.number, kind: "coverage", reason: "a warm-up prints a redundant mental-math block" });
+      const work = p.questions.some(q => q.package && (questionWorkSpace(q.package, q.place) > 0 || q.package.item?.regions.some(r => r.kind === "work")));
+      if (work && !c.subtitle.includes(WORK_INSTRUCTION)) issues.push({ page: p.number, kind: "coverage", reason: "the page with work space lacks its work instruction" });
+      for (const q of p.questions) {
+        if (!q.package || q.place === "warm-up" || q.place === "in-your-head") continue;
+        const printed = stepTemplateOf(q.package);
+        const skill = printed?.skill ?? q.package.skill.skills[0];
+        const own = p.expected?.find(e => e.slot === q.slot)?.steps?.[0];
+        const ownPlace = ["now-you", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "spot-the-error", "solve-it-two-ways"].includes(q.place ?? "");
+        const floor = ownPlace && printed && own === `${printed.skill}#${printed.step}` ? null : reviewMasteryStep(bcStepProgressions(), c.level, skill);
+        if (floor !== null && (!printed || printed.step < floor || !q.itemPlan?.template || q.itemPlan.template.step !== printed.step || q.itemPlan.template.skill !== printed.skill || q.itemPlan.template.index !== printed.index)) issues.push({ page: p.number, kind: "step", reason: `question ${q.number} reviews ${skill} below mastery step ${floor}` });
+        const t = q.itemPlan?.template;
+        const current = t && floor !== null ? bcStepProgressions().skillSteps(skill)?.find(s => s.number === t.step)?.templates?.[t.index] : null;
+        if (current && t && (!t.source || t.source.answer !== current.answer || t.source.check !== (current.check ?? null) || Object.entries(current.derived ?? {}).some(([name, expression]) => !t.source.derived.some(([storedName, storedExpression]) => name === storedName && expression === storedExpression)))) issues.push({ page: p.number, kind: "step", reason: `question ${q.number} does not use the current mastery template for ${skill}` });
+      }
+    }
     // A circled choice on a page whose instruction never says to circle fails (Savar, 2026-11-04).
     // (Every page type: src/lib/workbook-layout-check.ts.)
     const circle = circleProblem(p.content?.kind === "day" ? p.content : null, p.questions);
@@ -125,23 +149,28 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     }
     // A practice page practises its own step: at least half its practice questions (Codex at 47c5fd78: U16's Day 4
     // Practice 2 printed 13 review questions and 1 on "Place value to millions").
-    if (p.content?.kind === "day" && p.content.level >= 4 && ["practice", "practice-2"].includes(p.type) && !p.content.extraPractice && p.expected?.length) {
+    if (p.content?.kind === "day" && p.content.level >= 4 && ["practice", "practice-2", "new-idea"].includes(p.type) && !p.content.extraPractice && p.expected?.length) {
       const practice = p.questions.filter(q => q.package && q.check.status !== "failed" && !NOT_COUNTED.has(q.place ?? "") && q.place !== "remember-these");
-      const ownStep = (q: GeneratedPage["questions"][number]) => { const first = p.expected?.find(e => e.slot === q.slot)?.steps?.[0]; const t = q.itemPlan?.template; return !first || !t || first === `${t.skill}#${t.step}`; };
+      const ownStep = (q: GeneratedPage["questions"][number]) => {
+        const first = p.expected?.find(e => e.slot === q.slot)?.steps?.[0], t = q.itemPlan?.template;
+        if (!first) return true;
+        return t ? first === `${t.skill}#${t.step}` : q.itemPlan ? q.itemPlan.item.skill === first.split("#")[0] : !!q.package?.skill.skills.includes(first.split("#")[0]);
+      };
       const own = practice.filter(ownStep).length;
       // (Half, or 3 for a step with few printable templates.)
-      const need = Math.min(3, Math.ceil(practice.length / 2));
+      const need = p.type === "new-idea" ? pageMinimum(p.type, p.content.level, false, practice.some(q => q.package && questionWorkSpace(q.package, q.place) > 0)) : Math.min(3, Math.ceil(practice.length / 2));
       // (From U10: at U4 to U9 a small step can run out of new tasks late in the book, D-226, and its page prints its
       // review under "Remember these".)
-      if (p.content.level >= 10 && practice.length >= 4 && own < need) issues.push({ page: p.number, kind: "step", reason: `the page practises its own step in ${own} of ${practice.length} questions; it needs ${need}` });
+      if ((p.type === "new-idea" || p.content.level >= 10 && practice.length >= 4) && own < need) issues.push({ page: p.number, kind: "step", reason: `the page practises its own step in ${own} of ${practice.length} questions; it needs ${need}` });
     }
     // A step template page prints its type's adopted count of practice questions (Cedric's section 8); at U4 to U9 a
     // new idea's is 2, and two ways counts as a story on the Number stories page (D-226, workbook-early-levels.ts).
     // (Every page kind from U4, whatever wrote its questions: Codex at 47c5fd78 found a hand-built page skipped.)
     if (p.content?.kind === "day" && p.content.consistentLayout && p.content.level >= 4) {
       const level = p.content.level;
-      const counted = p.questions.filter(q => q.package && q.check.status !== "failed" && (!NOT_COUNTED.has(q.place ?? "") || q.place === "solve-it-two-ways" && twoWaysCountsAsStory(level, p.type))).length;
-      const floor = pageMinimum(p.type, level, !!p.content.extraPractice);
+      const counted = p.questions.filter(q => q.package && q.check.status !== "failed" && (!NOT_COUNTED.has(q.place ?? "") || p.type === "warm-up" && q.place === "warm-up" || q.place === "solve-it-two-ways" && twoWaysCountsAsStory(level, p.type))).length;
+      const working = p.questions.some(q => q.package && !NOT_COUNTED.has(q.place ?? "") && questionWorkSpace(q.package, q.place) > 0);
+      const floor = pageMinimum(p.questions.every(q => q.place === "mini-test") ? "mini-test" : p.type, level, !!p.content.extraPractice, working, p.questions.filter(q => q.package && q.check.status !== "failed" && ["spot-the-error", "solve-it-two-ways"].includes(q.place ?? "")).length);
       if (counted < floor) issues.push({ page: p.number, kind: "coverage", reason: `the page prints ${counted} practice question${counted === 1 ? "" : "s"}; a ${p.type} page needs ${floor}` });
     }
     if (p.content?.kind === "day") {

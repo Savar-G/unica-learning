@@ -62,7 +62,7 @@ uses the type's chip colours.
 
 | Page type | Day label | Chip fill | Chip text | Panels |
 |---|---|---|---|---|
-| Warm-up | `#064E32` | `#E3F5EC` | `#064E32` | Fix it box, In your head box |
+| Warm-up | `#064E32` | `#E3F5EC` | `#064E32` | Fix it box |
 | Practice (incl. Practice 2) | `#0B7A4F` | `#E3F5EC` | `#064E32` | Watch one `#E3F5EC` |
 | New idea (and Unit B new step) | `#2453D4` | `#EAF0FF` | `#1B3FA6` | Worked example `#EAF0FF`; Try this first and Now you cards |
 | Word problems, Math in the world | `#C2410C` | `#FFEDE5` | `#7C2D12` | Info cards `#FFEDE5` |
@@ -87,7 +87,6 @@ Other colours:
 | Brand green (counters) | `#16A06A` |
 | Brand yellow (highlight, Mixed set) | `#FFD23F` |
 | Taken-away or unused counters | `#D4D4DA` |
-| Mental maths box | `#F1F1F4` |
 
 ## 4. Components
 
@@ -146,13 +145,9 @@ move is wrong. Find it, then write the fix." Holds the wrong work ("SAM'S WORK")
 **Fix it box**: `#FDECEC`, radius 12, after a "FIX IT" chip; the questions sit in white inner cards (radius 12) or in
 answer boxes with "WORK IT HERE" boxes below.
 
-**In your head box** (mental maths): `#F1F1F4`, radius 10; label "IN YOUR HEAD" or "MENTAL MATH"; one item, its answer
-box, then "How did you work it out?" with writing lines (from U19: "First I ..." and "Then I ..." lines and one worked
-example sentence).
+**Warm-up**: use ordinary fluency facts only, with even spacing. Do not add a separate mental-math box.
 
-**Mixed set item**: the story (Geist 14), then ① "Tick the operation:" with a choice strip of +, − (or +, −, ×, ÷) and
-"Tick one"; then ② "Write the answer:" with an answer box (64 by 40) and an inline work box (44 tall). Items are numbered
-and separated by 1 px `#D4D4DA` rules.
+**Mixed set item**: use the standard's mastered step and its number range. Print the question and its answer region in the same grid as the review. Keep story text in code.
 
 **Challenge card**: `#F4F2F0`, 1.5 px `#2B2622`, radius 12, padding 16; the question at the top left, an answer box
 (88 by 40) at the top right, then a white work box filling the rest. On the 8-page day: 1 or 2 full-width cards (688 wide, gap 16); on the
@@ -210,7 +205,7 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 
 | Page | Title, subtitle | Blocks (slots) |
 |---|---|---|
-| 1 Warm-up | "Warm-up"; "Facts to 20. Take your time: there is no timer." (from U16 "Beat your own count") | WARM-UP chip + "Do as many as you can."; fact grid, 3 columns of 213 (gap 24), up to 30 facts (10 rows) or 15 facts plus Fix it; Fix it box (workbook 2 on, Days 1 to 5, up to 3 items); spare room: In your head box |
+| 1 Warm-up | "Warm-up"; "Facts to 20. Take your time: there is no timer." (from U16 "Beat your own count") | WARM-UP chip + "Do as many as you can."; fact grid, 3 columns of 213 (gap 24), up to 30 facts (10 rows) or 15 facts plus Fix it; Fix it box (workbook 2 on, Days 1 to 5, up to 3 items); ordinary facts fill the available room |
 | 2 New idea | the skill's short title, or the unit title when skills mix (D-201); "Before you ..." or "Try it first. Then see how it works." (U19 on) | NEW IDEA chip (+ "Unit A · new step"); Try this first card (U19 on); worked example panel, two ways or figure + "What's going on"; Spot the error card or Now you card (2 to 4 items) |
 | 3 Practice | the skill's short title, or the unit title when skills mix (D-201); "Read the example, then answer the questions." | PRACTICE chip + one-line rule; Watch one panel (1 worked item, answer in blue); "FINISH THESE" (2 items, partly filled in blue); "ON YOUR OWN" (3 to 8 items) |
 | 4 Practice 2 | the skill's short title, or the unit title when skills mix (D-201); "Each row is a little harder than the one before." | PRACTICE chip; rows of items getting harder (up to 12 column problems in a 4-column grid, labelled rows such as "TWO DIGITS", "HARDER: THREE DIGITS", "LOOK FIRST: SOME DON'T NEED A TRADE"); one Solve it two ways item (heading "Solve it two ways"; METHOD 1 and METHOD 2 work boxes + Answer box); one Spot the error card |
@@ -221,7 +216,7 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 
 ### 7.2 Other page counts
 
-- **6-page day (U19 to U30, Ethan):** 1 Warm-up (fact grid up to 27 items, In your head box, Fix it box); 2 New idea (Try
+- **6-page day (U19 to U30, Ethan):** 1 Warm-up (fact grid, Fix it box); 2 New idea (Try
   this first first); 3 Practice (Watch one, Finish these, On your own, Solve it two ways, Spot the error), replaced by **Math in the
   world** on Days 4 and 9 (skeleton: it replaces one practice page; Ethan's Day 3 sample puts it on page 3); 4 Word
   problems; 5 Unit B (reminder + practice); 6 Remember these? (6 items) + Mixed set (2
@@ -240,7 +235,7 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 
 ### 7.3 Early levels (U4 to U9, from Ava)
 
-- Bigger maths (Geist Mono 30 to 34 in facts) and fewer items: warm-up 8 facts in 2 columns plus one In your head item.
+- Bigger maths (Geist Mono 30 to 34 in facts) and fewer items: warm-up facts in 2 columns, with no separate mental-math item.
 - A "For the grown-up:" line under the New idea title ("Read the blue box aloud. Show both ways with a finger ...").
 - Pictures carry the stories: dot groups beside every word problem; ten-frames and number lines in practice.
 - The skeleton starts the Warm-up at U8 and the Mixed set at U10 (the samples are for format only). Default until Savar
@@ -320,8 +315,8 @@ same counts and colours as the text. The real fit check refuses any card with mo
 
 Issue #479 updates the workbook print contract. Name and Date print only on each day's first page. Keep at least 18 px of extra separation before the day label. Use the same question and answer grid across rows. Story-card answer areas align at the bottom of each row.
 
-Answer boxes are at least 56 px high at U1 to U9 and 48 px from U10. Work areas are at least 64 px high. Larger areas grow into the space available. Keep page use at 80 percent or more and the estimated daily work at 30 minutes or less. The generator must add questions only within that time limit. Strict overflow checks stay in force.
+Answer boxes are at least 56 px high at U1 to U9 and 48 px from U10. Calculation space is white and sits under the question. Use 32 px for a short calculation with round numbers, 64 px for other multi-digit calculations, and 96 px for multi-step calculations. A digit recall needs no calculation space. Two-method regions include space for their method labels. Larger story and Challenge areas grow into the available room. Calculation pages can use six questions when their work areas require the room. A calculation Practice 2 page with both an error question and a two-method question can use four ordinary questions, for six tasks in total. Other practice pages keep at least eight. A calculation New idea page can keep two practice questions beside its worked example. A calculation practice page can use a short reminder to make room for work. Complete every two-column row. Friday 5 keeps five questions and uses a full-width final row. Add questions while they fit, up to about 33 minutes a day. Every day must stay below 35 minutes. Challenge keeps three cards. Strict overflow checks stay in force.
 
-Every day page has a plain instruction on one line. Adult guidance is only for Kindergarten. Use "Read how it works, then try it." for a new idea and "Test yourself." under "Challenge". The error card shows "SPOT THE ERROR", the worked answer, "Is it right?", Yes and No, then "If it's not right, fix it:" and an answer box. Do not print a person's work label.
+Every day page has a short, plain instruction. A page with calculation space says "Show your work in the white space under a question." Keep its circle instruction. Adult guidance is only for Kindergarten. Use "Read how it works, then try it." for a new idea and "Test yourself." under "Challenge". The error card shows "SPOT THE ERROR", the worked answer, "Is it right?", Yes and No, then "If it's not right, fix it:" and an answer box. Do not print a person's work label.
 
 The cover has a plain title and three learning skills. It has no parent task or next-page notice. The help page names Maya and browser scanning. Do not print a My levels page. See `docs/workbook-feedback-479.md` for the shared schedule and permanent checks. Savar must approve the new U4 sample before merge.

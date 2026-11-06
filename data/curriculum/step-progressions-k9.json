@@ -127057,11 +127057,17 @@
     {
      "format": "missing",
      "difficulty": "medium",
-     "text": "Missing number: {b10} $10 bills and {lo} loonies make $__.",
-     "answer": "b10 * 10 + lo",
+     "text": "There are {b20} $20 bills, {lo} loonies, {qu} quarters and some $10 bills. The total is ${v}. How many $10 bills are there?",
+     "answer": "b10",
      "slots": {
+      "b20": "b20",
       "b10": "b10",
-      "lo": "lo"
+      "lo": "lo",
+      "qu": "qu"
+     },
+     "derived": {
+      "vc": "b20 * 2000 + b10 * 1000 + lo * 100 + qu * 25",
+      "v": "str(vc // 100) + '.' + ('0' if vc % 100 < 10 else '') + str(vc % 100)"
      }
     },
     {
@@ -128986,7 +128992,7 @@
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: counting by {k}, {m} marks above {v} is {shown}.",
+     "text": "A scale's marks are {lower}, {v}, {upper}. True or false: {m} intervals above {v} is {shown}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "u1": "u1",
@@ -128997,7 +129003,9 @@
      "derived": {
       "k": "2 + 8 * (u1 % 2)",
       "v": "10 * (2 + u2 % 9)",
-      "shown": "(v + m * k) if flip == 0 else (v + m * k) + (k)"
+      "shown": "(v + m * k) if flip == 0 else (v + m * k) + (k)",
+      "lower": "v - k",
+      "upper": "v + k"
      }
     },
     {
@@ -130086,13 +130094,14 @@
     {
      "format": "story",
      "difficulty": "easy",
-     "text": "A bag has {a} red marbles and {b} blue marbles. Which colour is {name} more likely to draw?",
-     "answer": "'red' if a > b else 'blue'",
+     "text": "A bag has {a} red, {b} blue and {c} green marbles. Is red or a different colour more likely?",
+     "answer": "'red' if a > b + c else 'a different colour'",
      "slots": {
       "a": "count",
-      "b": "count"
+      "b": "count",
+      "c": "count"
      },
-     "check": "a != b"
+     "check": "a != b + c and 8 <= a + b + c <= 12"
     },
     {
      "format": "story",
@@ -130111,13 +130120,14 @@
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: a bag with {a} red and {b} blue marbles is more likely to give red.",
-     "answer": "'true' if a > b else 'false'",
+     "text": "True or false: with {a} red, {b} blue and {c} green marbles, red is more likely than the other colours together.",
+     "answer": "'true' if a > b + c else 'false'",
      "slots": {
       "a": "count",
-      "b": "count"
+      "b": "count",
+      "c": "count"
      },
-     "check": "a != b"
+     "check": "a != b + c and 8 <= a + b + c <= 12"
     },
     {
      "format": "compare",

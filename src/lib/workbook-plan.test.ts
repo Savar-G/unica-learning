@@ -131,7 +131,7 @@ describe("the two-week curriculum plan: the day", () => {
   it("follows the 8-page day: warm-up, new idea, practice, practice 2, word problems, Unit B, Remember these + Mixed set, challenge", () => {
     const p = plan(input());
     expect(types(p.days[0].pages)).toEqual(["warm-up", "new-idea", "practice", "practice-2", "word-problems", "unit-b", "remember-these-mixed-set", "challenge"]);
-    expect(kinds(p.days[0].pages[0])).toEqual(["warm-up", "in-your-head"]);
+    expect(kinds(p.days[0].pages[0])).toEqual(["warm-up"]);
     expect(kinds(p.days[0].pages[1])).toEqual(["new-idea", "spot-the-error"]);
     expect(kinds(p.days[0].pages[3])).toEqual(["practice", "solve-it-two-ways", "spot-the-error"]);
     expect(kinds(p.days[0].pages[6])).toEqual(["remember-these", "mixed-set"]);

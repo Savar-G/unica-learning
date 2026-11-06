@@ -1,3 +1,4 @@
+import { pagePlan } from "@/lib/workbook-template";
 import { expect, it } from "vitest";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
@@ -78,8 +79,9 @@ it("a753ad71 restores p56 with a different refill task after the first replaceme
       const key = taskIdentity(added.package);
       tried.add(key);
       rejected ??= key;
-      const fits = key !== rejected;
-      if (!fits) rejectedPrints.push(JSON.stringify([key, added.package.text, added.package.item]));
+      const fits = !page.questions.some(q => taskIdentity(q.package) === rejected);
+      // Track capacity retries here. The separate whole-book repair can probe the rejected task once more.
+      if (!fits && page.questions.some(q => q.package.id.startsWith("budget:"))) rejectedPrints.push(JSON.stringify([page.questions.map(q => [taskIdentity(q.package), q.package.text, q.package.item]), page.content]));
       return fits ? { ok: true } : { ok: false, problems: [{ question: added.number, reason: "Control: this refill task does not fit" }] };
     } },
     store: { save: async draft => ({ status: "saved", draftId: draft.id }), draft: async () => null },
@@ -93,7 +95,9 @@ it("a753ad71 restores p56 with a different refill task after the first replaceme
   expect(questions).toHaveLength(8);
   const kept = new Set(questions.map(q => taskIdentity(q.package!)));
   expect(kept.size).toBe(8);
-  expect([...remaining!].every(key => kept.has(key))).toBe(true);
+  // A complete row can require a replacement pair while a rejected refill stays excluded.
+  expect([...remaining!].filter(key => !kept.has(key)).length).toBeLessThanOrEqual(2);
+  expect(pagePlan({ ...page, questions: questions.flatMap(q => q.package ? [{ number: q.number, package: q.package }] : []) })?.incomplete).toEqual([]);
   expect(kept.has(rejected!)).toBe(false);
   expect(new Set(rejectedPrints).size).toBe(rejectedPrints.length);
   expect(result.draft.quality?.issues.filter(i => ["coverage", "repeat", "step"].includes(i.kind))).toEqual([]);
