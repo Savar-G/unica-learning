@@ -593,6 +593,49 @@ export type Database = {
           },
         ]
       }
+      child_plan_controls: {
+        Row: {
+          cancelled: boolean
+          child_id: string
+          parent_id: string
+          revision: string | null
+        }
+        Insert: {
+          cancelled?: boolean
+          child_id: string
+          parent_id: string
+          revision?: string | null
+        }
+        Update: {
+          cancelled?: boolean
+          child_id?: string
+          parent_id?: string
+          revision?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_plan_controls_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: true
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "child_plan_controls_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "child_plan_controls_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       child_plan_states: {
         Row: {
           child_id: string
@@ -2316,6 +2359,86 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_control_operations: {
+        Row: {
+          allowance_year: number | null
+          card_setup_id: string
+          child_id: string
+          created_at: string
+          finished_at: string | null
+          id: string
+          kind: string
+          mailing_retired_at: string | null
+          parent_id: string
+          quote: Json
+          state: string
+          target_number: number | null
+          token: string
+          weeks: number
+        }
+        Insert: {
+          allowance_year?: number | null
+          card_setup_id: string
+          child_id: string
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          kind: string
+          mailing_retired_at?: string | null
+          parent_id: string
+          quote?: Json
+          state?: string
+          target_number?: number | null
+          token: string
+          weeks?: number
+        }
+        Update: {
+          allowance_year?: number | null
+          card_setup_id?: string
+          child_id?: string
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          mailing_retired_at?: string | null
+          parent_id?: string
+          quote?: Json
+          state?: string
+          target_number?: number | null
+          token?: string
+          weeks?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_control_operations_card_setup_id_fkey"
+            columns: ["card_setup_id"]
+            isOneToOne: false
+            referencedRelation: "card_setups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_control_operations_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_control_operations_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "plan_control_operations_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plan_starts: {
         Row: {
           card_setup_id: string
@@ -2336,8 +2459,10 @@ export type Database = {
           finished_at: string | null
           first_charge_at: string | null
           generation: number
+          monthly_cents: number | null
           parent_id: string
           payment_method_id: string
+          purpose: string
           start_key: string
           started_at: string
           state: string
@@ -2366,8 +2491,10 @@ export type Database = {
           finished_at?: string | null
           first_charge_at?: string | null
           generation: number
+          monthly_cents?: number | null
           parent_id: string
           payment_method_id: string
+          purpose?: string
           start_key: string
           started_at?: string
           state?: string
@@ -2396,8 +2523,10 @@ export type Database = {
           finished_at?: string | null
           first_charge_at?: string | null
           generation?: number
+          monthly_cents?: number | null
           parent_id?: string
           payment_method_id?: string
+          purpose?: string
           start_key?: string
           started_at?: string
           state?: string
@@ -4268,6 +4397,76 @@ export type Database = {
           },
         ]
       }
+      workbook_restart_requests: {
+        Row: {
+          card_setup_id: string
+          child_id: string
+          generation: number
+          parent_id: string
+          requested_at: string
+          run_id: string | null
+        }
+        Insert: {
+          card_setup_id: string
+          child_id: string
+          generation: number
+          parent_id: string
+          requested_at?: string
+          run_id?: string | null
+        }
+        Update: {
+          card_setup_id?: string
+          child_id?: string
+          generation?: number
+          parent_id?: string
+          requested_at?: string
+          run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_restart_requests_card_setup_id_fkey"
+            columns: ["card_setup_id"]
+            isOneToOne: false
+            referencedRelation: "card_setups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_restart_requests_card_setup_id_generation_fkey"
+            columns: ["card_setup_id", "generation"]
+            isOneToOne: true
+            referencedRelation: "plan_starts"
+            referencedColumns: ["card_setup_id", "generation"]
+          },
+          {
+            foreignKeyName: "workbook_restart_requests_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_restart_requests_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_restart_requests_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_restart_requests_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_run_ai_calls: {
         Row: {
           call_id: string | null
@@ -5127,12 +5326,37 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admit_plan_cancel: {
+        Args: { p_card: string; p_parent: string }
+        Returns: string
+      }
+      admit_plan_pause: {
+        Args: {
+          p_card: string
+          p_parent: string
+          p_quote: Json
+          p_token: string
+        }
+        Returns: Json
+      }
       admit_plan_start: {
         Args: {
           p_card: string
           p_generation: number
           p_key: string
           p_payment_method: string
+        }
+        Returns: Json
+      }
+      admit_plan_start_terms: {
+        Args: {
+          p_card: string
+          p_generation: number
+          p_key: string
+          p_monthly_cents: number
+          p_payment_method: string
+          p_purpose: string
+          p_revision?: string
         }
         Returns: Json
       }
@@ -5186,6 +5410,10 @@ export type Database = {
       }
       assert_child_email_scopes: { Args: { p: string }; Returns: undefined }
       assert_family_writable: { Args: { p: string }; Returns: undefined }
+      assert_plan_workbook_allowed: {
+        Args: { p_child: string; p_number: number; p_shipping: boolean }
+        Returns: undefined
+      }
       beat_workbook_worker: {
         Args: {
           p_build: string
@@ -5712,6 +5940,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      finish_plan_control: {
+        Args: { p_id: string; p_state: string }
+        Returns: undefined
+      }
       finish_plan_start: {
         Args: {
           p_card: string
@@ -5922,11 +6154,38 @@ export type Database = {
         }[]
       }
       ping: { Args: never; Returns: number }
+      plan_control_context: {
+        Args: { p_card: string; p_parent: string }
+        Returns: Json
+      }
+      plan_control_operation: {
+        Args: { p_card: string; p_parent: string; p_token: string }
+        Returns: Json
+      }
+      plan_control_owner: {
+        Args: { p_card: string; p_parent: string }
+        Returns: string
+      }
+      plan_mailing_obligations: {
+        Args: { p_child: string; p_number: number }
+        Returns: {
+          target: number
+          weeks: number
+        }[]
+      }
+      plan_mailing_weeks: {
+        Args: { p_child: string; p_number: number; p_parent: string }
+        Returns: number
+      }
       plan_start_answer: {
         Args: {
           p_admitted: boolean
           p_row: Database["public"]["Tables"]["plan_starts"]["Row"]
         }
+        Returns: Json
+      }
+      plan_start_terms: {
+        Args: { p_card: string; p_generation: number }
         Returns: Json
       }
       queue_workbook_edit: {

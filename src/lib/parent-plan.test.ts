@@ -24,7 +24,7 @@ describe("the parent's plan state", () => {
     const period = 1_800_000_000 + 30 * day;
     expect(parentPlan([sub({ status: "active", cancelAtPeriodEnd: true, periodEnd: period })])).toEqual({ kind: "ending", endsOn: when(period), free: false });
   });
-  it.each(["past_due", "unpaid", "paused", "incomplete"])("lets a parent cancel a plan in %s", (status) => {
+  it.each(["past_due", "unpaid", "incomplete"])("lets a parent cancel a plan in %s", (status) => {
     const plan = parentPlan([sub({ status })]);
     expect(plan).toEqual({ kind: "payment_failed" });
     expect(canCancel(plan)).toBe(true);
@@ -47,3 +47,5 @@ describe("the parent's plan state", () => {
     expect(canCancel(parentPlan([sub({})]))).toBe(true);
   });
 });
+
+it("shows a native paused plan without reporting a failed payment", () => { const plan=parentPlan([sub({status:"paused",pauseResume:1800000000})]); expect(plan).toEqual({kind:"paused",resumesOn:when(1800000000),monthly:79.99}); expect(canCancel(plan)).toBe(true); });

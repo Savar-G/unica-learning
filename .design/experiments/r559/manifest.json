@@ -1,0 +1,20 @@
+{
+  "round": "r559",
+  "tickets": [559, 546],
+  "route": "design direct, product, existing-system",
+  "references": ["../r554/two-children-desktop.png", "../r557/desktop-open.png"],
+  "implementation": ["src/components/account-plan.tsx", "src/components/account-billing.tsx", "src/app/(product)/account/(dashboard)/plan/page.tsx"],
+  "release": "OFF. Existing parentDashboardAccess only.",
+  "browser_status": "Root passed 29 synthetic browser cases at 390, 820 and 1440 pixels. Nine viewport screenshots are included. T3 snapshots timed out twice; root used Aside u0 as the permitted fallback. The temporary fixture was removed.",
+  "parent_checks": [
+    "Desktop 1440 and phone 390: two child cards, long names, no horizontal overflow.",
+    "Pause: closed, weeks, server date preview, early and late cutoff, confirmation, success, stale quote, allowance refusal, pending response, reload and recovery.",
+    "Restart: ended plan, saved price preview, immediate charge wording, no second free month, missing card and return from hosted setup, pending response.",
+    "Cancel: pending Pause or Restart never appears cancelled. A paused plan explains immediate cancellation.",
+    "Keyboard focus, labels, disabled buttons, error announcements and reduced motion.",
+    "Dashboard access off: normal families receive no controls and both new routes return 404."
+  ],
+  "evidence_limits": ["Synthetic browser responses, not a real billing session", "Hosted rollback probe passed; no hosted multi-connection timing proof", "No live or test Stripe call", "Independent Standards and corrected Spec checks passed; no merge or release approval"],
+  "current_root_evidence": "root-verification.md",
+  "historical_builder_evidence": "validation.json"
+}

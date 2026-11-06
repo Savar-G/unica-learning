@@ -122,7 +122,7 @@ function family({ stripe = stripeFake(), children = [child] }: { stripe?: Return
     return delivered;
   };
   const sweep = () => sweepCards(seams, { now: () => Date.now(), startBy: Date.now() + 25_000 });
-  const start = () => startPlan(stripe.client, { cardSetup: "card-1", customer: "cus_1", price: 79.99, deliveryConfirmed: true }, undefined, b.store);
+  const start = (purpose: "initial" | "restart" = "initial") => startPlan(stripe.client, { purpose, cardSetup: "card-1", customer: "cus_1", price: 79.99, deliveryConfirmed: true }, undefined, b.store);
   return { b, stripe, seams, updates, announced, alerts, deliver, sweep, start };
 }
 const dropEvents = (f: ReturnType<typeof family>) => f.stripe.events.splice(0);
@@ -461,7 +461,8 @@ describe("two presses, and a record that stays", () => {
     }
     expect(f.stripe.creates()).toHaveLength(1);
     f.stripe.state.plans.sub_made_1.status = "canceled";
-    expect(await f.start()).toMatchObject({ ok: true, subscription: "sub_made_2" });
+    expect(await f.start()).toEqual({ ok: false, error: "restart_required" });
+    expect(await f.start("restart")).toMatchObject({ ok: true, subscription: "sub_made_2" });
     expect(record(f)).toMatchObject({ generation: 2, state: "started", subscription: "sub_made_2" });
     expect(record(f)?.key).not.toBe(first?.key);
     expect(f.b.planStarts.get("card-1")?.[0]).toEqual(first);

@@ -1,0 +1,51 @@
+"use client";
+// Temporary local browser fixture. Remove before the production gate and commit.
+import { Suspense, useEffect, useState } from "react";
+import { AccountBilling } from "@/components/account-billing";
+import { CancelPlan } from "@/components/account-plan";
+import { ParentShell } from "@/components/parent-shell";
+import { SupportPage } from "@/components/support-page";
+import { familyZone } from "@/lib/family-time";
+import type { ChildView } from "@/lib/parent-view";
+
+const names = ["Alexandria-Catherine Longfamilyname", "Omar"];
+const kids: ChildView[] = names.map((firstName, i) => ({ id: `child-${i}`, firstName, schoolGrade: 3,
+  stage: "active", opensOn: "overview", tabs: ["overview", "workbooks", "progress", "assessment", "account"],
+  readOnly: false, currentWorkbook: { number: 2 }, reportIds: [], finishedTests: [] }));
+export default function Fixture() { return <Suspense><Content /></Suspense>; }
+function Content() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const original = window.fetch;
+    const state = { scenario: "early", requests: [] as unknown[], complete: null as null | (() => void) };
+    Object.assign(window, { __qa: state });
+    window.fetch = async (input, init) => {
+      const path = String(input);
+      if (!path.startsWith("/api/account/")) return original(input, init);
+      const body = JSON.parse(String(init?.body ?? "{}")); state.requests.push({ path, body });
+      const reply = (data: unknown, status = 200) => Response.json(data, { status });
+      if (state.scenario === "delay") await new Promise<void>(resolve => { state.complete = resolve; });
+      if (["stale", "allowance", "unsupported", "pending", "no_card", "payment_refused", "needs_team"].includes(state.scenario)) return reply({ ok: false, error: state.scenario }, 409);
+      if (path.endsWith("cancel")) return reply({ ok: true });
+      if (body.action === "confirm") return reply({ ok: true, state: path.endsWith("restart") ? "started" : "applied" });
+      if (path.endsWith("restart")) return reply({ ok: true, token: "restart-quote", price: 79.99 });
+      return reply({ ok: true, token: "pause-quote", weeks: body.weeks, remaining: 8 - body.weeks, year: 2026,
+        late: state.scenario === "late", targetNumber: state.scenario === "late" ? 4 : 3,
+        charge: "January 15, 2027", earliest: state.scenario === "late" ? null : "January 15, 2027",
+        latest: state.scenario === "late" ? null : "February 5, 2027" });
+    };
+    setReady(true); return () => { window.fetch = original; };
+  }, []);
+  if (!ready) return <p>Loading fixture</p>;
+  const pending = new URLSearchParams(window.location.search).get("pending");
+  return <ParentShell kids={kids} remembered="child-0" pinSet timeZoneSaved>
+    <SupportPage label="Your account" title="Your plan">
+      <AccountBilling zone={familyZone({ timeZone: "America/Vancouver", postal: null, province: "BC" })}
+        billing={{ state: "loaded", plans: [
+          { childId: "child-0", firstName: names[0], cardId: "card-0", plan: { kind: "paying", nextCharge: "2027-01-15T20:00:00Z", cancelAt: "2027-01-01T20:00:00Z", monthly: 79.99 }, ...(pending ? { pending: "pause" as const } : {}) },
+          { childId: "child-1", firstName: names[1], cardId: "card-1", plan: { kind: "ended", endedOn: "2026-11-01T20:00:00Z" } },
+        ], invoices: { state: "loaded", invoices: [] } }} />
+      <div className="acct-plan"><CancelPlan cardId="card-0" name={names[0]} consequence="The plan ends on January 1, 2027. We will not charge your card again." /></div>
+    </SupportPage>
+  </ParentShell>;
+}

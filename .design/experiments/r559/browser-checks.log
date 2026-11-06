@@ -1,0 +1,735 @@
+✔︎ Opened a new tab and set it active: tabs[0], page → Unica Learning: Personalized math learning program (http://localhost:3559/qa-plan-controls-local)
+[system] `tabs[0]` navigated to: [](http://localhost:3559/qa-plan-controls-local) 
+[system] `tabs[0]` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+- title: "Unica Learning: Personalized math learning program" [url=http://localhost:3559/qa-plan-controls-local]
+- complementary:
+  - link "Unica Learning home" [ref=e1]: "Unica Learning"
+  - generic "Alexandria-Catherine Longfamilyname Grade 3 · Workbook 2" [ref=e3]
+  - form:
+    - button "Open the desk" [ref=e4]
+  - navigation "Your account" [ref=e5]:
+    - link "Overview" [ref=e6]
+    - link "Workbooks" [ref=e7]
+    - link "Progress" [ref=e8]
+    - link "Assessment" [ref=e9]
+    - link "Account" [ref=e10]
+- main:
+  - text: "Your account"
+  - heading "Your plan" [level=1]
+  - heading "Plans" [level=2]
+  - list:
+    - listitem:
+      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e11]: "Pause plan"
+      - button "Update card for Alexandria-Catherine Longfamilyname" [ref=e12]: "Update card"
+    - listitem:
+      - text: "Omar This plan has ended. We will not charge your card."
+      - button "Restart plan for Omar" [ref=e13]: "Restart plan"
+      - button "Update card for Omar" [ref=e14]: "Update card"
+  - heading "Invoices" [level=2]
+  - text: "No invoices yet."
+  - button "Cancel plan" [ref=e15]
+- contentinfo "Site information":
+  - link "Resources" [ref=e16]
+  - link "Privacy" [ref=e17]
+  - link "Terms" [ref=e18]
+  - link "Contact us" [ref=e19]
+  - button "Cookie settings" [ref=e20]
+  - text: "© 2026  Unica Learning"
+No changes detected
+
+@@ -18,2 +18,14 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+-      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e11]: "Pause plan"
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
++      - label:
++        - text: "Weeks to pause"
++        - combobox "Weeks to pause" [ref=e21]:
++          - option "1" (selected)
++          - option "2"
++          - option "3"
++          - option "4"
++          - option "5"
++          - option "6"
++          - option "7"
++          - option "8"
++      - button "Review new dates" [ref=e22]
++      - button "Keep current plan" [ref=e23]
+
+@@ -22 +22 @@
+-          - option "1" (selected)
++          - option "1"
+@@ -29 +29 @@
+-          - option "8"
++          - option "8" (selected)
+
+@@ -18,13 +18,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
+-      - label:
+-        - text: "Weeks to pause"
+-        - combobox "Weeks to pause" [ref=e21]:
+-          - option "1"
+-          - option "2"
+-          - option "3"
+-          - option "4"
+-          - option "5"
+-          - option "6"
+-          - option "7"
+-          - option "8" (selected)
+-      - button "Review new dates" [ref=e22]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 8  weeks. Next charge: Ja…[+109 chars]"
++      - button "Confirm pause" [ref=e24]
+@@ -32,0 +21 @@
++      - button "Change weeks" [ref=e25]
+
+@@ -18,4 +18,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 8  weeks. Next charge: Ja…[+109 chars]"
+-      - button "Confirm pause" [ref=e24]
+-      - button "Keep current plan" [ref=e23]
+-      - button "Change weeks" [ref=e25]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
++      - status: "The pause is saved. Your mailing and charge dates have changed."
+
+@@ -19 +19 @@
+-      - status: "The pause is saved. Your mailing and charge dates have changed."
++      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e11]: "Pause plan"
+
+@@ -18,2 +18,14 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+-      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e11]: "Pause plan"
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
++      - label:
++        - text: "Weeks to pause"
++        - combobox "Weeks to pause" [ref=e21]:
++          - option "1" (selected)
++          - option "2"
++          - option "3"
++          - option "4"
++          - option "5"
++          - option "6"
++          - option "7"
++          - option "8"
++      - button "Review new dates" [ref=e22]
++      - button "Keep current plan" [ref=e23]
+
+@@ -18,13 +18,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
+-      - label:
+-        - text: "Weeks to pause"
+-        - combobox "Weeks to pause" [ref=e21]:
+-          - option "1" (selected)
+-          - option "2"
+-          - option "3"
+-          - option "4"
+-          - option "5"
+-          - option "6"
+-          - option "7"
+-          - option "8"
+-      - button "Review new dates" [ref=e22]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 1  week. Next charge: Jan…[+243 chars]"
++      - button "Confirm pause" [ref=e24]
+@@ -32,0 +21 @@
++      - button "Change weeks" [ref=e25]
+
+@@ -18,4 +18,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 1  week. Next charge: Jan…[+243 chars]"
+-      - button "Confirm pause" [ref=e24]
+-      - button "Keep current plan" [ref=e23]
+-      - button "Change weeks" [ref=e25]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
++      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e26]: "Pause plan"
+
+@@ -22,2 +22,3 @@
+-      - text: "Omar This plan has ended. We will not charge your card."
+-      - button "Restart plan for Omar" [ref=e13]: "Restart plan"
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
++      - button "Review price" [ref=e27]
++      - button "Keep current plan" [ref=e28]
+
+@@ -22,2 +22,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
+-      - button "Review price" [ref=e27]
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan We charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month."
++      - button "Confirm restart" [ref=e29]
+
+@@ -22,2 +22,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan We charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month."
+-      - button "Confirm restart" [ref=e29]
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
++      - button "Review price" [ref=e30]
+@@ -25,0 +25,5 @@
++      - alert:
++        - text: "Your payment did not go through. Please update your card. Then return here to restart the plan."
++        - link "contact@unicalearning.com" [ref=e31]
++        - text: "."
++      - button "Update card for Omar" [ref=e32]: "Update card"
+
+@@ -32,2 +32,3 @@
+-  - text: "No invoices yet."
+-  - button "Cancel plan" [ref=e15]
++  - text: "No invoices yet.Cancel  Alexandria-Catherine Longfamilyname's plan? The plan ends on January 1, 2027. We will not charge your card again."
++  - button "Yes, cancel plan" [ref=e33]
++  - button "Keep plan" [ref=e34]
+
+- title: "Unica Learning: Personalized math learning program" [url=http://localhost:3559/qa-plan-controls-local]
+- banner:
+  - link "Unica Learning home" [ref=e1]: "Unica Learning"
+- generic "Alexandria-Catherine Longfamilyname Grade 3 · Workbook 2" [ref=e3]
+- form:
+  - button "Open the desk" [ref=e4]
+- main:
+  - text: "Your account"
+  - heading "Your plan" [level=1]
+  - heading "Plans" [level=2]
+  - list:
+    - listitem:
+      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
+      - button "Update card for Alexandria-Catherine Longfamilyname" [ref=e6]: "Update card"
+    - listitem:
+      - text: "Omar This plan has ended. We will not charge your card."
+      - button "Restart plan for Omar" [ref=e7]: "Restart plan"
+      - button "Update card for Omar" [ref=e8]: "Update card"
+  - heading "Invoices" [level=2]
+  - text: "No invoices yet."
+  - button "Cancel plan" [ref=e9]
+- contentinfo "Site information":
+  - link "Resources" [ref=e10]
+  - link "Privacy" [ref=e11]
+  - link "Terms" [ref=e12]
+  - link "Contact us" [ref=e13]
+  - button "Cookie settings" [ref=e14]
+  - text: "© 2026  Unica Learning"
+- navigation "Your account" [ref=e15]:
+  - link "Overview" [ref=e16]
+  - link "Workbooks" [ref=e17]
+  - link "Progress" [ref=e18]
+  - link "Assessment" [ref=e19]
+  - link "Account" [ref=e20]
+No changes detected
+
+@@ -12,2 +12,14 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+-      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
++      - label:
++        - text: "Weeks to pause"
++        - combobox "Weeks to pause" [ref=e21]:
++          - option "1" (selected)
++          - option "2"
++          - option "3"
++          - option "4"
++          - option "5"
++          - option "6"
++          - option "7"
++          - option "8"
++      - button "Review new dates" [ref=e22]
++      - button "Keep current plan" [ref=e23]
+
+@@ -16 +16 @@
+-          - option "1" (selected)
++          - option "1"
+@@ -23 +23 @@
+-          - option "8"
++          - option "8" (selected)
+
+@@ -12,13 +12,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
+-      - label:
+-        - text: "Weeks to pause"
+-        - combobox "Weeks to pause" [ref=e21]:
+-          - option "1"
+-          - option "2"
+-          - option "3"
+-          - option "4"
+-          - option "5"
+-          - option "6"
+-          - option "7"
+-          - option "8" (selected)
+-      - button "Review new dates" [ref=e22]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 8  weeks. Next charge: Ja…[+109 chars]"
++      - button "Confirm pause" [ref=e24]
+@@ -26,0 +15 @@
++      - button "Change weeks" [ref=e25]
+
+@@ -12,4 +12,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 8  weeks. Next charge: Ja…[+109 chars]"
+-      - button "Confirm pause" [ref=e24]
+-      - button "Keep current plan" [ref=e23]
+-      - button "Change weeks" [ref=e25]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
++      - status: "The pause is saved. Your mailing and charge dates have changed."
+
+@@ -13 +13 @@
+-      - status: "The pause is saved. Your mailing and charge dates have changed."
++      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
+
+@@ -12,2 +12,14 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+-      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
++      - label:
++        - text: "Weeks to pause"
++        - combobox "Weeks to pause" [ref=e21]:
++          - option "1" (selected)
++          - option "2"
++          - option "3"
++          - option "4"
++          - option "5"
++          - option "6"
++          - option "7"
++          - option "8"
++      - button "Review new dates" [ref=e22]
++      - button "Keep current plan" [ref=e23]
+
+@@ -12,13 +12,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
+-      - label:
+-        - text: "Weeks to pause"
+-        - combobox "Weeks to pause" [ref=e21]:
+-          - option "1" (selected)
+-          - option "2"
+-          - option "3"
+-          - option "4"
+-          - option "5"
+-          - option "6"
+-          - option "7"
+-          - option "8"
+-      - button "Review new dates" [ref=e22]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 1  week. Next charge: Jan…[+243 chars]"
++      - button "Confirm pause" [ref=e24]
+@@ -26,0 +15 @@
++      - button "Change weeks" [ref=e25]
+
+@@ -12,4 +12,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 1  week. Next charge: Jan…[+243 chars]"
+-      - button "Confirm pause" [ref=e24]
+-      - button "Keep current plan" [ref=e23]
+-      - button "Change weeks" [ref=e25]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
++      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e26]: "Pause plan"
+
+@@ -16,2 +16,3 @@
+-      - text: "Omar This plan has ended. We will not charge your card."
+-      - button "Restart plan for Omar" [ref=e7]: "Restart plan"
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
++      - button "Review price" [ref=e27]
++      - button "Keep current plan" [ref=e28]
+
+@@ -16,2 +16,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
+-      - button "Review price" [ref=e27]
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan We charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month."
++      - button "Confirm restart" [ref=e29]
+
+@@ -16,2 +16,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan We charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month."
+-      - button "Confirm restart" [ref=e29]
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
++      - button "Review price" [ref=e30]
+@@ -19,0 +19,5 @@
++      - alert:
++        - text: "Your payment did not go through. Please update your card. Then return here to restart the plan."
++        - link "contact@unicalearning.com" [ref=e31]
++        - text: "."
++      - button "Update card for Omar" [ref=e32]: "Update card"
+
+@@ -26,2 +26,3 @@
+-  - text: "No invoices yet."
+-  - button "Cancel plan" [ref=e9]
++  - text: "No invoices yet.Cancel  Alexandria-Catherine Longfamilyname's plan? The plan ends on January 1, 2027. We will not charge your card again."
++  - button "Yes, cancel plan" [ref=e33]
++  - button "Keep plan" [ref=e34]
+
+@@ -13 +13 @@
+-      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e26]: "Pause plan"
++      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
+@@ -16,8 +16,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
+-      - button "Review price" [ref=e30]
+-      - button "Keep current plan" [ref=e28]
+-      - alert:
+-        - text: "Your payment did not go through. Please update your card. Then return here to restart the plan."
+-        - link "contact@unicalearning.com" [ref=e31]
+-        - text: "."
+-      - button "Update card for Omar" [ref=e32]: "Update card"
++      - text: "Omar This plan has ended. We will not charge your card."
++      - button "Restart plan for Omar" [ref=e7]: "Restart plan"
+@@ -26,3 +20,2 @@
+-  - text: "No invoices yet.Cancel  Alexandria-Catherine Longfamilyname's plan? The plan ends on January 1, 2027. We will not charge your card again."
+-  - button "Yes, cancel plan" [ref=e33]
+-  - button "Keep plan" [ref=e34]
++  - text: "No invoices yet."
++  - button "Cancel plan" [ref=e9]
+
+No changes detected
+
+@@ -12,2 +12,14 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+-      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
++      - label:
++        - text: "Weeks to pause"
++        - combobox "Weeks to pause" [ref=e21]:
++          - option "1" (selected)
++          - option "2"
++          - option "3"
++          - option "4"
++          - option "5"
++          - option "6"
++          - option "7"
++          - option "8"
++      - button "Review new dates" [ref=e22]
++      - button "Keep current plan" [ref=e23]
+
+@@ -16 +16 @@
+-          - option "1" (selected)
++          - option "1"
+@@ -23 +23 @@
+-          - option "8"
++          - option "8" (selected)
+
+@@ -12,13 +12,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
+-      - label:
+-        - text: "Weeks to pause"
+-        - combobox "Weeks to pause" [ref=e21]:
+-          - option "1"
+-          - option "2"
+-          - option "3"
+-          - option "4"
+-          - option "5"
+-          - option "6"
+-          - option "7"
+-          - option "8" (selected)
+-      - button "Review new dates" [ref=e22]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 8  weeks. Next charge: Ja…[+109 chars]"
++      - button "Confirm pause" [ref=e24]
+@@ -26,0 +15 @@
++      - button "Change weeks" [ref=e25]
+
+@@ -12,4 +12,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 8  weeks. Next charge: Ja…[+109 chars]"
+-      - button "Confirm pause" [ref=e24]
+-      - button "Keep current plan" [ref=e23]
+-      - button "Change weeks" [ref=e25]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
++      - status: "The pause is saved. Your mailing and charge dates have changed."
+
+@@ -13 +13 @@
+-      - status: "The pause is saved. Your mailing and charge dates have changed."
++      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
+
+@@ -12,2 +12,14 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+-      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
++      - label:
++        - text: "Weeks to pause"
++        - combobox "Weeks to pause" [ref=e21]:
++          - option "1" (selected)
++          - option "2"
++          - option "3"
++          - option "4"
++          - option "5"
++          - option "6"
++          - option "7"
++          - option "8"
++      - button "Review new dates" [ref=e22]
++      - button "Keep current plan" [ref=e23]
+
+@@ -12,13 +12,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
+-      - label:
+-        - text: "Weeks to pause"
+-        - combobox "Weeks to pause" [ref=e21]:
+-          - option "1" (selected)
+-          - option "2"
+-          - option "3"
+-          - option "4"
+-          - option "5"
+-          - option "6"
+-          - option "7"
+-          - option "8"
+-      - button "Review new dates" [ref=e22]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 1  week. Next charge: Jan…[+243 chars]"
++      - button "Confirm pause" [ref=e24]
+@@ -26,0 +15 @@
++      - button "Change weeks" [ref=e25]
+
+@@ -12,4 +12,2 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 1  week. Next charge: Jan…[+243 chars]"
+-      - button "Confirm pause" [ref=e24]
+-      - button "Keep current plan" [ref=e23]
+-      - button "Change weeks" [ref=e25]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
++      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e26]: "Pause plan"
+
+@@ -16,2 +16,3 @@
+-      - text: "Omar This plan has ended. We will not charge your card."
+-      - button "Restart plan for Omar" [ref=e7]: "Restart plan"
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
++      - button "Review price" [ref=e27]
++      - button "Keep current plan" [ref=e28]
+
+@@ -16,2 +16,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
+-      - button "Review price" [ref=e27]
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan We charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month."
++      - button "Confirm restart" [ref=e29]
+
+@@ -16,2 +16,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan We charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month."
+-      - button "Confirm restart" [ref=e29]
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
++      - button "Review price" [ref=e30]
+@@ -19,0 +19,5 @@
++      - alert:
++        - text: "Your payment did not go through. Please update your card. Then return here to restart the plan."
++        - link "contact@unicalearning.com" [ref=e31]
++        - text: "."
++      - button "Update card for Omar" [ref=e32]: "Update card"
+
+@@ -26,2 +26,3 @@
+-  - text: "No invoices yet."
+-  - button "Cancel plan" [ref=e9]
++  - text: "No invoices yet.Cancel  Alexandria-Catherine Longfamilyname's plan? The plan ends on January 1, 2027. We will not charge your card again."
++  - button "Yes, cancel plan" [ref=e33]
++  - button "Keep plan" [ref=e34]
+
+@@ -13 +13 @@
+-      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e26]: "Pause plan"
++      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
+@@ -16,8 +16,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
+-      - button "Review price" [ref=e30]
+-      - button "Keep current plan" [ref=e28]
+-      - alert:
+-        - text: "Your payment did not go through. Please update your card. Then return here to restart the plan."
+-        - link "contact@unicalearning.com" [ref=e31]
+-        - text: "."
+-      - button "Update card for Omar" [ref=e32]: "Update card"
++      - text: "Omar This plan has ended. We will not charge your card."
++      - button "Restart plan for Omar" [ref=e7]: "Restart plan"
+@@ -26,3 +20,2 @@
+-  - text: "No invoices yet.Cancel  Alexandria-Catherine Longfamilyname's plan? The plan ends on January 1, 2027. We will not charge your card again."
+-  - button "Yes, cancel plan" [ref=e33]
+-  - button "Keep plan" [ref=e34]
++  - text: "No invoices yet."
++  - button "Cancel plan" [ref=e9]
+
+@@ -12,2 +12,14 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+-      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
++      - label:
++        - text: "Weeks to pause"
++        - combobox "Weeks to pause" [ref=e21]:
++          - option "1" (selected)
++          - option "2"
++          - option "3"
++          - option "4"
++          - option "5"
++          - option "6"
++          - option "7"
++          - option "8"
++      - button "Review new dates" [ref=e22]
++      - button "Keep current plan" [ref=e23]
+
+@@ -15 +15 @@
+-        - combobox "Weeks to pause" [ref=e21]:
++        - combobox "Weeks to pause" [ref=e21] [disabled]:
+@@ -24,2 +24,2 @@
+-      - button "Review new dates" [ref=e22]
+-      - button "Keep current plan" [ref=e23]
++      - button "Please wait..." [ref=e24] [disabled]
++      - button "Keep current plan" [ref=e23] [disabled]
+
+@@ -12,14 +12,4 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
+-      - label:
+-        - text: "Weeks to pause"
+-        - combobox "Weeks to pause" [ref=e21] [disabled]:
+-          - option "1" (selected)
+-          - option "2"
+-          - option "3"
+-          - option "4"
+-          - option "5"
+-          - option "6"
+-          - option "7"
+-          - option "8"
+-      - button "Please wait..." [ref=e24] [disabled]
+-      - button "Keep current plan" [ref=e23] [disabled]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 1  week. Next charge: Jan…[+108 chars]"
++      - button "Confirm pause" [ref=e25]
++      - button "Keep current plan" [ref=e23]
++      - button "Change weeks" [ref=e26]
+
+@@ -12,2 +12,13 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan 1  week. Next charge: Jan…[+108 chars]"
+-      - button "Confirm pause" [ref=e25]
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan You can pause for up to e…[+60 chars]"
++      - label:
++        - text: "Weeks to pause"
++        - combobox "Weeks to pause" [ref=e27]:
++          - option "1" (selected)
++          - option "2"
++          - option "3"
++          - option "4"
++          - option "5"
++          - option "6"
++          - option "7"
++          - option "8"
++      - button "Review new dates" [ref=e28]
+@@ -15 +26,4 @@
+-      - button "Change weeks" [ref=e26]
++      - alert:
++        - text: "The plan or its dates changed. Review the new dates before you confirm."
++        - link "contact@unicalearning.com" [ref=e29]
++        - text: "."
+
+@@ -27,2 +27,2 @@
+-        - text: "The plan or its dates changed. Review the new dates before you confirm."
+-        - link "contact@unicalearning.com" [ref=e29]
++        - text: "This pause exceeds the eight weeks available this calendar year. Choose fewer weeks."
++        - link "contact@unicalearning.com" [ref=e30]
+
+@@ -27,2 +27,2 @@
+-        - text: "This pause exceeds the eight weeks available this calendar year. Choose fewer weeks."
+-        - link "contact@unicalearning.com" [ref=e30]
++        - text: "We cannot change this plan here yet. Please email us to arrange a pause."
++        - link "contact@unicalearning.com" [ref=e31]
+
+@@ -27,2 +27,2 @@
+-        - text: "We cannot change this plan here yet. Please email us to arrange a pause."
+-        - link "contact@unicalearning.com" [ref=e31]
++        - text: "We cannot confirm this change yet. Please email us before you make another change."
++        - link "contact@unicalearning.com" [ref=e32]
+
+- title: "Unica Learning: Personalized math learning program" [url=http://localhost:3559/qa-plan-controls-local?pending=1]
+- banner:
+  - link "Unica Learning home" [ref=e1]: "Unica Learning"
+- generic "Alexandria-Catherine Longfamilyname Grade 3 · Workbook 2" [ref=e3]
+- form:
+  - button "Open the desk" [ref=e4]
+- main:
+  - text: "Your account"
+  - heading "Your plan" [level=1]
+  - heading "Plans" [level=2]
+  - list:
+    - listitem:
+      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+      - button "Check pause for Alexandria-Catherine Longfamilyname" [ref=e5]: "Check pause"
+      - button "Update card for Alexandria-Catherine Longfamilyname" [ref=e6]: "Update card"
+    - listitem:
+      - text: "Omar This plan has ended. We will not charge your card."
+      - button "Restart plan for Omar" [ref=e7]: "Restart plan"
+      - button "Update card for Omar" [ref=e8]: "Update card"
+  - heading "Invoices" [level=2]
+  - text: "No invoices yet."
+  - button "Cancel plan" [ref=e9]
+- contentinfo "Site information":
+  - link "Resources" [ref=e10]
+  - link "Privacy" [ref=e11]
+  - link "Terms" [ref=e12]
+  - link "Contact us" [ref=e13]
+  - button "Cookie settings" [ref=e14]
+  - text: "© 2026  Unica Learning"
+- navigation "Your account" [ref=e15]:
+  - link "Overview" [ref=e16]
+  - link "Workbooks" [ref=e17]
+  - link "Progress" [ref=e18]
+  - link "Assessment" [ref=e19]
+  - link "Account" [ref=e20]
+@@ -12,2 +12,7 @@
+-      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+-      - button "Check pause for Alexandria-Catherine Longfamilyname" [ref=e5]: "Check pause"
++      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027.Pause Alexandria-Catherine Longfamilyname's plan"
++      - button "Check pause" [ref=e21]
++      - button "Close" [ref=e22]
++      - alert:
++        - text: "We cannot confirm this change yet. Check again before you make another change or delete the account."
++        - link "contact@unicalearning.com" [ref=e23]
++        - text: "."
+
+- title: "Unica Learning: Personalized math learning program" [url=http://localhost:3559/qa-plan-controls-local]
+- banner:
+  - link "Unica Learning home" [ref=e1]: "Unica Learning"
+- generic "Alexandria-Catherine Longfamilyname Grade 3 · Workbook 2" [ref=e3]
+- form:
+  - button "Open the desk" [ref=e4]
+- main:
+  - text: "Your account"
+  - heading "Your plan" [level=1]
+  - heading "Plans" [level=2]
+  - list:
+    - listitem:
+      - text: "Alexandria-Catherine Longfamilyname CAD 79.99  a month. Next charge: January 15, 2027."
+      - button "Pause plan for Alexandria-Catherine Longfamilyname" [ref=e5]: "Pause plan"
+      - button "Update card for Alexandria-Catherine Longfamilyname" [ref=e6]: "Update card"
+    - listitem:
+      - text: "Omar This plan has ended. We will not charge your card."
+      - button "Restart plan for Omar" [ref=e7]: "Restart plan"
+      - button "Update card for Omar" [ref=e8]: "Update card"
+  - heading "Invoices" [level=2]
+  - text: "No invoices yet."
+  - button "Cancel plan" [ref=e9]
+- contentinfo "Site information":
+  - link "Resources" [ref=e10]
+  - link "Privacy" [ref=e11]
+  - link "Terms" [ref=e12]
+  - link "Contact us" [ref=e13]
+  - button "Cookie settings" [ref=e14]
+  - text: "© 2026  Unica Learning"
+- navigation "Your account" [ref=e15]:
+  - link "Overview" [ref=e16]
+  - link "Workbooks" [ref=e17]
+  - link "Progress" [ref=e18]
+  - link "Assessment" [ref=e19]
+  - link "Account" [ref=e20]
+@@ -16,2 +16,3 @@
+-      - text: "Omar This plan has ended. We will not charge your card."
+-      - button "Restart plan for Omar" [ref=e7]: "Restart plan"
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
++      - button "Review price" [ref=e21]
++      - button "Keep current plan" [ref=e22]
+
+@@ -16,2 +16,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan Restart begins a paid plan immediately. Review the price before you confirm. There is no second free month."
+-      - button "Review price" [ref=e21]
++      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan We charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month."
++      - button "Confirm restart" [ref=e23]
+
+@@ -16,3 +16,2 @@
+-      - text: "Omar This plan has ended. We will not charge your card.Restart Omar's plan We charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month."
+-      - button "Confirm restart" [ref=e23]
+-      - button "Keep current plan" [ref=e22]
++      - text: "Omar This plan has ended. We will not charge your card."
++      - status: "The paid plan has restarted. We will prepare the next workbook from the current learning profile."
+
+BROWSER_QA_OK 29 { outline: '2px', style: 'solid' }
+[system] last tab closed. `page` is now null. call openTab(url) to open a new one.
+[system] no current open tabs in this session.
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local?pending=1) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local?pending=1) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[system] `page` navigated to: [Unica Learning: Personalized math learning program](http://localhost:3559/qa-plan-controls-local) 
+[2m[ok | 16235ms][0m

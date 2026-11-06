@@ -12,7 +12,7 @@ import {
 import { readBookingCustomers, readCustomerPayments } from "@/lib/retention-stripe";
 import { stripe } from "@/lib/stripe";
 import { planNotOver } from "@/lib/card-reconcile";
-import { customerSubscriptions } from "@/lib/stripe-subscriptions";
+import { cancelSubscriptionNow, customerSubscriptions } from "@/lib/stripe-subscriptions";
 
 /** Missing migration permits the existing card path, but no other failure does. Deletion itself never falls back. */
 export async function beginCardOperation(db: SupabaseClient<Database>, parent: string, token: string): Promise<boolean> {
@@ -330,7 +330,7 @@ export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: st
       for (const { customer } of recovered) {
         if (!customer) throw new Error("Recovered customer unreadable");
         for (const plan of await running(customer)) {
-          await provider.subscriptions.cancel(plan.id, { invoice_now: false, prorate: false }, paymentOptions(deadline, execution));
+          await cancelSubscriptionNow(provider, plan, paymentOptions(deadline, execution));
         }
         if ((await running(customer)).length) throw new Error("Recovered subscription can still charge");
       }

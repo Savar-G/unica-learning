@@ -5,6 +5,7 @@ import { parentPlan, type KnownPlan, type ParentPlan, type PlanSubscription } fr
 import { cancelPlan, stripe, type CancelPlanOutcome } from "@/lib/stripe";
 import { customerSubscriptions } from "@/lib/stripe-subscriptions";
 import { adminClient } from "@/lib/supabase-auth";
+import { finishControl } from "@/lib/plan-controls-server";
 
 // A parent's plans. Every read starts from the signed-in parent's id, so a parent reaches only their own Stripe
 // customers. The customer id stays on the server: the browser sends only the card setup's id.
@@ -30,7 +31,20 @@ function planSubscription(s: Stripe.Subscription): PlanSubscription {
  * answer or when it cannot read the whole list: an answer from part of the list could hide a running plan.
  */
 export async function customerPlan(s: Stripe, customer: string): Promise<KnownPlan> {
-  return parentPlan((await customerSubscriptions(s, customer, READ)).map(planSubscription));
+  const subscriptions = await customerSubscriptions(s, customer, READ);
+  const states = await Promise.all(subscriptions.map(async (subscription) => {
+    const state = planSubscription(subscription);
+    if ((subscription.status === "paused" || subscription.status === "active") && subscription.schedule) {
+      const schedule = await s.subscriptionSchedules.retrieve(typeof subscription.schedule === "string" ? subscription.schedule : subscription.schedule.id, {}, READ);
+      const pause = schedule.pause_schedules?.[0];
+      state.pauseResume = pause?.resume?.status.type === "scheduled" ? pause.resume.resume_at : null;
+      if (subscription.status === "active" && pause?.pause.pause_at === state.periodEnd
+        && pause.pause.status.type === "scheduled" && pause.resume?.status.type === "scheduled"
+        && pause.resume.settings.billing_cycle_anchor === "resume_at") state.nextCharge = pause.resume.resume_at;
+    }
+    return state;
+  }));
+  return parentPlan(states);
 }
 
 /** One entry per child with a saved card. Null when the store cannot answer. */
@@ -57,7 +71,7 @@ export async function familyPlans(parent: string): Promise<ChildPlan[] | null> {
 export type CancelFamilyPlan =
   | (Extract<CancelPlanOutcome, { ok: true }> & { child: string })
   | Extract<CancelPlanOutcome, { ok: false }>
-  | { ok: false; error: "not_found" | "unavailable" };
+  | { ok: false; error: "not_found" | "unavailable" | "pending" };
 
 /** Cancels the plan of this parent's card setup. A card setup of another family answers not_found. */
 export async function cancelFamilyPlan(parent: string, cardId: string): Promise<CancelFamilyPlan> {
@@ -68,7 +82,12 @@ export async function cancelFamilyPlan(parent: string, cardId: string): Promise<
     .eq("id", cardId).eq("parent_id", parent).maybeSingle();
   if (error) return { ok: false, error: "unavailable" };
   if (!data?.stripe_customer_id) return { ok: false, error: "not_found" };
+  const admission = await db.rpc("admit_plan_cancel", { p_parent: parent, p_card: cardId });
+  if (admission.error) throw new Error(`plan cancel admission: ${admission.error.message}`);
+  if (typeof admission.data !== "string" || !admission.data) return { ok: false, error: "pending" };
   const result = await cancelPlan(s, data.stripe_customer_id);
+  // A definite no-plan refusal preserves the prior state. A thrown or uncertain result keeps its hold.
+  await finishControl(db, admission.data, result.ok ? "applied" : "refused");
   return result.ok ? { ...result, child: data.child.first_name } : result;
 }
 

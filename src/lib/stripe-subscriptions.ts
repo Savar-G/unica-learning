@@ -30,6 +30,17 @@ export const CARD_READ: Stripe.RequestOptions = { timeout: 4000, maxNetworkRetri
 /** A Stripe write of a card or a plan. One attempt, so its longest time is known. */
 export const CARD_WRITE: Stripe.RequestOptions = { timeout: 15_000, maxNetworkRetries: 0 };
 
+/** Deletion ends both the subscription and its schedule, so no scheduled resume survives it. */
+export async function cancelSubscriptionNow(s: Stripe, plan: Stripe.Subscription, options: Stripe.RequestOptions): Promise<void> {
+  const schedule = typeof plan.schedule === "string" ? plan.schedule : plan.schedule?.id;
+  if (schedule) {
+    const cancelled = await s.subscriptionSchedules.cancel(schedule, { invoice_now: false, prorate: false }, options);
+    if (cancelled.status !== "canceled") throw new Error("Subscription schedule cancellation unconfirmed");
+  } else {
+    await s.subscriptions.cancel(plan.id, { invoice_now: false, prorate: false }, options);
+  }
+}
+
 /**
  * True only when Stripe said no, so nothing happened. A timeout, a lost connection, a 5xx, a 429 and a 409 leave the outcome
  * unknown, and so does a key reused with other fields, as the key's first request may have worked.

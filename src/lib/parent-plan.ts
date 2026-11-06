@@ -11,15 +11,19 @@ export interface PlanSubscription {
   created: number;
   /** When Stripe ended the subscription. */
   endedAt?: number | null;
+  pauseResume?: number | null;
+  /** A scheduled paid pause can move the next charge without changing the cancellation boundary. */
+  nextCharge?: number | null;
 }
 
 export type ParentPlan =
   /** A saved card, and the free month has not started. */
   | { kind: "not_started" }
   | { kind: "free_month"; firstCharge: string; monthly: number | null }
-  | { kind: "paying"; nextCharge: string | null; monthly: number | null }
+  | { kind: "paying"; nextCharge: string | null; monthly: number | null; cancelAt?: string | null }
   /** A payment failed, and Stripe is trying the card again. */
   | { kind: "payment_failed" }
+  | { kind: "paused"; resumesOn: string | null; monthly: number | null }
   /** Cancelled, and running to the end of the month. `free` means that no charge was ever made. */
   | { kind: "ending"; endsOn: string | null; free: boolean }
   /** `endedOn`: when the last subscription ended, where Stripe says so. */
@@ -43,13 +47,15 @@ export function parentPlan(subscriptions: readonly PlanSubscription[]): KnownPla
     const ended = Math.max(0, ...subscriptions.map((s) => s.endedAt ?? 0));
     return ended ? { kind: "ended", endedOn: iso(ended)! } : { kind: "ended" };
   }
+  if (running.status === "paused") return { kind: "paused", resumesOn: iso(running.pauseResume ?? null), monthly: dollars(running.cents) };
   const free = running.status === "trialing";
   const end = free ? running.trialEnd : running.periodEnd;
   if ((free || running.status === "active") && running.cancelAtPeriodEnd) return { kind: "ending", endsOn: iso(end), free };
   if (free && end) return { kind: "free_month", firstCharge: iso(end)!, monthly: dollars(running.cents) };
-  if (running.status === "active") return { kind: "paying", nextCharge: iso(end), monthly: dollars(running.cents) };
+  if (running.status === "active") return { kind: "paying", nextCharge: iso(running.nextCharge ?? end), monthly: dollars(running.cents),
+    ...(running.nextCharge ? { cancelAt: iso(end) } : {}) };
   return { kind: "payment_failed" };
 }
 
 /** Only these states have a plan the cancel button can stop. */
-export const canCancel = (plan: ParentPlan) => plan.kind === "free_month" || plan.kind === "paying" || plan.kind === "payment_failed";
+export const canCancel = (plan: ParentPlan) => plan.kind === "free_month" || plan.kind === "paying" || plan.kind === "payment_failed" || plan.kind === "paused";

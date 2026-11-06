@@ -1,0 +1,40 @@
+
+ RUN  v4.1.11 /private/tmp
+
+stderr | pd-controls-bf76-public.test.ts > paid Restart unknown keeps only the required durable hold
+[stripe] plan start not confirmed Synthetic unknown
+
+stderr | pd-controls-bf76-public.test.ts > paid Restart finish_lost keeps only the required durable hold
+[stripe] plan start record not closed plan start finish: Synthetic lost save
+
+stdout | pd-controls-bf76-public.test.ts > the cancellation boundary matches cancelPlan while the next charge remains delayed
+PASS_CANCEL_DATE {"shown":{"kind":"paying","nextCharge":"2027-01-15T18:00:00.000Z","monthly":79.99,"cancelAt":"2027-01-01T18:00:00.000Z"},"cancelled":{"ok":true,"changed":true,"endsAt":"2027-01-01T18:00:00.000Z"}}
+
+stdout | pd-controls-bf76-public.test.ts > SQL and public family-time use the same year and day through dated overrides and fallbacks
+FAMILY_TIME_MATRIX 24 SQL/TypeScript day comparisons; 6 calendar-week shifts
+
+stdout | pd-controls-bf76-public.test.ts > SQL admission rejects a changed delivery correction and reserves the remaining allowance atomically
+STALE_RECEIPT_AND_ALLOWANCE {"staleReceipt":"refused","wrongYear":"refused","overQuota":"refused","used":8}
+
+ ✓ pd-controls-bf76-public.test.ts > old deployed public startPlan enforces restart admission terms 16ms
+ ✓ pd-controls-bf76-public.test.ts > old deployed public startPlan enforces initial admission terms 6ms
+ ✓ pd-controls-bf76-public.test.ts > paid Restart declined keeps only the required durable hold 9ms
+ ✓ pd-controls-bf76-public.test.ts > paid Restart unknown keeps only the required durable hold 6ms
+ ✓ pd-controls-bf76-public.test.ts > paid Restart finish_lost keeps only the required durable hold 3ms
+ ✓ pd-controls-bf76-public.test.ts > no_plan preserves prior cancelled=false for a complete 'empty' list 7ms
+ ✓ pd-controls-bf76-public.test.ts > no_plan preserves prior cancelled=true for a complete 'empty' list 4ms
+ ✓ pd-controls-bf76-public.test.ts > no_plan preserves prior cancelled=false for a complete 'canceled' list 3ms
+ ✓ pd-controls-bf76-public.test.ts > no_plan preserves prior cancelled=true for a complete 'canceled' list 4ms
+ ✓ pd-controls-bf76-public.test.ts > no_plan preserves prior cancelled=false for a complete 'incomplete_expired' list 3ms
+ ✓ pd-controls-bf76-public.test.ts > no_plan preserves prior cancelled=true for a complete 'incomplete_expired' list 3ms
+ ✓ pd-controls-bf76-public.test.ts > an incomplete provider list leaves cancellation open and blocks deletion 2ms
+ ✓ pd-controls-bf76-public.test.ts > the cancellation boundary matches cancelPlan while the next charge remains delayed 1ms
+ ✓ pd-controls-bf76-public.test.ts > SQL and public family-time use the same year and day through dated overrides and fallbacks 22ms
+ ✓ pd-controls-bf76-public.test.ts > SQL admission rejects a changed delivery correction and reserves the remaining allowance atomically 4ms
+ ✓ pd-controls-bf76-public.test.ts > parent mailing and charge reads retire the old plan pause but preserve yearly usage 5ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  17:33:49
+   Duration  647ms (transform 358ms, setup 0ms, import 483ms, tests 101ms, environment 0ms)
+

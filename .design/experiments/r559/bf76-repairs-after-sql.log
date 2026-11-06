@@ -1,0 +1,15 @@
+PASS S1 legacy initial admission refuses an open paid Restart
+PASS P2 refused Cancel preserves active state and invalidates the old revision
+PASS P1 printed target cannot be skipped by public prepare or later shipment
+PASS the promised mailing day satisfies an obligation once without returning allowance
+PASS P3 dated eight-week late pause retires on paid Restart and retains allowance
+PASS matching paid recovery after family fence closes without a workbook request
+PASS concurrent Pause/public shipment: pause first
+PASS concurrent Pause/public shipment: ship first
+PASS concurrent Pause/public prepare with printed target: pause first
+PASS concurrent Pause/public prepare with printed target: prepare first
+PASS a refused repeat Cancel preserves the prior confirmed cancelled state
+PASS mailing helper is private, the ownership-filtered read is service only
+PASS PR656 parent-first admin/Pause locks: admin first
+PASS PR656 parent-first admin/Pause locks: pause first
+PLAN_CONTROLS_REPAIRS {"passed":14,"failed":0}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CancelPlan } from "@/components/account-plan";
+import { CancelPlan, PlanControl } from "@/components/account-plan";
 import { PlanText, planDay as day } from "@/components/plan-text";
 import { SupportPage } from "@/components/support-page";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
@@ -8,6 +8,7 @@ import { familyProvince, familyZone, type FamilyZone } from "@/lib/family-time";
 import { pageMetadata } from "@/lib/metadata";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
 import { canCancel, type ParentPlan } from "@/lib/parent-plan";
+import { familyPendingControls } from "@/lib/plan-controls-server";
 import { familyPlans } from "@/lib/parent-plan-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 
@@ -27,6 +28,7 @@ export default async function PlanPage() {
     parentDashboard(),
   ]);
   const zone = familyZone({ timeZone: family?.time_zone ?? null, postal: family?.postal ?? null, province: familyProvince(kids ?? []) });
+  const pending = dashboard && plans ? await familyPendingControls(parent, plans.map(plan => plan.cardId)) : new Map();
   return (
     <SupportPage label="Your account" title="Your plan">
       {plans === null && <p role="alert" className="acct-alert">We cannot show your plan right now. To cancel, email <Email />.</p>}
@@ -38,6 +40,9 @@ export default async function PlanPage() {
               <b>{childName}</b>
               <PlanText plan={plan} zone={zone} cardUpdate={dashboard ? "link" : undefined} />
             </div>
+            {(pending.get(cardId) === "pause" || pending.get(cardId) === "restart") && <PlanControl cardId={cardId} name={childName} mode={pending.get(cardId) === "restart" ? "restart" : "pause"} pending />}
+            {pending.get(cardId) === "cancel" && <p role="status">Cancellation is not confirmed. Please email <Email />.</p>}
+            {dashboard && !pending.get(cardId) && (plan.kind === "paying" || plan.kind === "free_month" || plan.kind === "ended") && <PlanControl cardId={cardId} name={childName} mode={plan.kind === "ended" ? "restart" : "pause"} />}
             {canCancel(plan) && <CancelPlan cardId={cardId} name={childName} consequence={consequence(plan, zone)} />}
           </li>
         ))}
@@ -49,6 +54,10 @@ export default async function PlanPage() {
 
 function consequence(plan: ParentPlan, zone: FamilyZone): string {
   if (plan.kind === "free_month") return `The plan ends on ${day(plan.firstCharge, zone)}, and you pay nothing.`;
-  if (plan.kind === "paying") return `The plan ends${plan.nextCharge ? ` on ${day(plan.nextCharge, zone)}` : " at the end of this month"}. We will not charge your card again.`;
+  if (plan.kind === "paused") return "The plan ends now. It will not resume, and we will not charge your card again.";
+  if (plan.kind === "paying") {
+    const endsAt = plan.cancelAt ?? plan.nextCharge;
+    return `The plan ends${endsAt ? ` on ${day(endsAt, zone)}` : " at the end of this month"}. We will not charge your card again.`;
+  }
   return "The plan ends now. We will not try your card again.";
 }

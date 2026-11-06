@@ -1,0 +1,9 @@
+
+ RUN  v4.1.11 /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/site-pd-plan-controls
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  17:40:04
+   Duration  47.73s (transform 427ms, setup 0ms, import 520ms, tests 47.14s, environment 0ms)
+

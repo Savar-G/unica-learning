@@ -34,6 +34,9 @@ export interface BillingCard {
 }
 
 export interface BillingStore extends CardRows {
+  /** Apply confirmed private pause dates to a stored plan without another provider call. */
+  pendingControl?(parentId: string, cardId: string): Promise<"pause" | "restart" | "cancel" | null>;
+  adjustedPlan?(parentId: string, cardId: string, plan: ParentPlan): Promise<ParentPlan>;
   /** The parent's children, oldest first. Throws when the read fails. */
   family(parentId: string): Promise<BillingChild[]>;
   /** The parent's card row, or null: another family's row reads as none. Throws when the read fails. */
@@ -113,12 +116,13 @@ export interface ChildBilling {
   /** Null when the child has no saved card; such a child has no plan to show or card to update. */
   cardId: string | null;
   plan: ParentPlan | null;
+  pending?: "pause" | "restart" | "cancel";
 }
 
 export type FamilyBilling = { state: "loaded"; plans: ChildBilling[]; invoices: InvoiceList } | { state: "unavailable" };
 
-/** Only a plan that can still charge the card, or one that has not started, has a card worth updating. */
-export const canUpdateCard = (plan: ParentPlan) => plan.kind === "not_started" || plan.kind === "free_month" || plan.kind === "paying" || plan.kind === "payment_failed";
+/** A current plan, an initial start, or a paid Restart can need a corrected card. */
+export const canUpdateCard = (plan: ParentPlan) => plan.kind === "not_started" || plan.kind === "free_month" || plan.kind === "paying" || plan.kind === "payment_failed" || plan.kind === "paused" || plan.kind === "ended";
 
 const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
 
@@ -159,11 +163,16 @@ export async function loadFamilyBilling(parentId: string, { store, provider, pla
     return { state: "unavailable" };
   }
   const [rows, invoices] = await Promise.all([
-    Promise.all(children.map(async ({ childId, firstName, cardId, cardSaved }): Promise<ChildBilling> => (
-      cardSaved && cardId
-        ? { childId, firstName, cardId, plan: await fillChildPlan({ parentId, childId }, plans) }
-        : { childId, firstName, cardId: null, plan: null }
-    ))),
+    Promise.all(children.map(async ({ childId, firstName, cardId, cardSaved }): Promise<ChildBilling> => {
+      if (!cardSaved || !cardId) return { childId, firstName, cardId: null, plan: null };
+      let plan = await fillChildPlan({ parentId, childId }, plans);
+      if (store.adjustedPlan) {
+        try { plan = await store.adjustedPlan(parentId, cardId, plan); }
+        catch { plan = { kind: "unknown" }; }
+      }
+      const pending = store.pendingControl ? await store.pendingControl(parentId, cardId).catch(() => null) : null;
+      return { childId, firstName, cardId, plan, ...(pending ? { pending } : {}) };
+    })),
     familyInvoices(children, provider),
   ]);
   return { state: "loaded", plans: rows, invoices };
