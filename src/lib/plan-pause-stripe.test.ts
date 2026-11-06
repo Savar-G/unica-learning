@@ -3,11 +3,13 @@ import { afterEach, expect, it, vi } from "vitest";
 import { customerPlan } from "@/lib/parent-plan-server";
 import { stripePauses } from "@/lib/plan-pause-stripe";
 import type { PauseOperation } from "@/lib/plan-pause";
+import { confirmPause } from "@/lib/plan-pause";
 vi.mock("server-only", () => ({}));
 afterEach(()=>vi.useRealTimers());
 const charge="2027-01-01T18:00:00.000Z", next="2027-01-15T18:00:00.000Z";
 const subscription=(extra:Record<string,unknown>={})=>({id:"sub",status:"active",customer:"cus",billing_mode:{type:"flexible"},collection_method:"charge_automatically",cancel_at_period_end:false,cancel_at:null,schedule:null as string|null,metadata:{},items:{data:[{quantity:1,current_period_end:Date.parse(charge)/1000,price:{currency:"cad",recurring:{interval:"month",interval_count:1,usage_type:"licensed"}}}]},...extra});
 const operation=(kind:"paid"|"trial"="paid"):PauseOperation=>({id:"operation",state:"open",send:true,quote:{weeks:2,used:0,year:2026,subscription:"sub",kind,previousCharge:charge,chargeAt:next,bookId:"book",targetNumber:2,late:false,earliest:"2026-11-20",latest:"2026-12-10",shippedAt:"2026-11-01T18:00:00Z",deliveredAt:"2026-11-03T18:00:00Z",today:"2026-11-05"}});
+const pauseSettings={type:"subscription",invoicing_behavior:"pending_invoice_item",bill_for:{outstanding_usage_through:{type:"none"},unused_time_from:{type:"none"}}};
 function fixture(extra:Record<string,unknown>={},answer?:unknown,loseResponse=false){
  const requests:{method:string;path:string;body:URLSearchParams;key:string|null}[]=[];
  const current=subscription(extra); let schedule:unknown=answer;
@@ -20,7 +22,7 @@ function fixture(extra:Record<string,unknown>={},answer?:unknown,loseResponse=fa
   if(method==="POST"&&url.pathname==="/v1/subscription_schedules"){
    if(body.has("from_subscription")&&[...body.keys()].some(k=>k.startsWith("metadata[")))return Response.json({error:{type:"invalid_request_error",message:"You cannot set `metadata` if `from_subscription` is set."}},{status:400});
    if((body.get("pause_schedules[0][key]")?.length??0)>40)return Response.json({error:{type:"invalid_request_error",param:"pause_schedules[0][key]",message:"Must be at most 40 characters"}},{status:400});
-   schedule=answer??{id:"schedule",status:"active",subscription:"sub",metadata:{},pause_schedules:[{key:body.get("pause_schedules[0][key]"),pause:{pause_at:Date.parse(charge)/1000,status:{type:"scheduled"}},resume:{status:{type:"scheduled"},resume_at:Date.parse(next)/1000,settings:{billing_cycle_anchor:"resume_at",payment_behavior:"resume_on_payment_success",proration_behavior:"none"}}}]};
+   schedule=answer??{id:"schedule",status:"active",subscription:"sub",metadata:{},pause_schedules:[{key:body.get("pause_schedules[0][key]"),pause:{pause_at:Date.parse(charge)/1000,settings:pauseSettings,status:{type:"scheduled"}},resume:{status:{type:"scheduled"},resume_at:Date.parse(next)/1000,settings:{billing_cycle_anchor:"resume_at",payment_behavior:"resume_on_payment_success",proration_behavior:"none"}}}]};
    current.schedule="schedule";if(loseResponse)throw Error("Synthetic lost response");return Response.json(schedule);
   }
   if(method==="POST"&&url.pathname==="/v1/subscriptions/sub")return Response.json({id:"sub",metadata:{plan_pause_key:body.get("metadata[plan_pause_key]")},trial_end:Number(body.get("trial_end"))});
@@ -86,4 +88,21 @@ it("fits a durable operation UUID within Stripe's 40-character pause-entry limit
  expect(await f.provider.apply("p","c",o)).toBe("applied");
  expect(f.requests.find(r=>r.method==="POST")!.body.get("pause_schedules[0][key]")).toBe(o.id);
  expect(await f.provider.recover("p","c",o)).toBe(true);
+});
+
+it.each([
+ { ...pauseSettings, type:"other" },
+ { ...pauseSettings, invoicing_behavior:"invoice" },
+ { ...pauseSettings, bill_for:{...pauseSettings.bill_for,outstanding_usage_through:{type:"pause_at"}} },
+ { ...pauseSettings, bill_for:{...pauseSettings.bill_for,unused_time_from:{type:"item_current_period_start"}} },
+ { ...pauseSettings, bill_for:undefined },
+ { ...pauseSettings, bill_for:{outstanding_usage_through:{type:"none"}} },
+ null,
+])("keeps the hold when returned pause billing settings differ: %j",async(settings)=>{
+ const response={id:"schedule",subscription:"sub",pause_schedules:[{key:"operation",pause:{pause_at:Date.parse(charge)/1000,settings},resume:{resume_at:Date.parse(next)/1000,settings:{billing_cycle_anchor:"resume_at",payment_behavior:"resume_on_payment_success",proration_behavior:"none"}}}]};
+ const f=fixture({},response),o={...operation(),send:false},finish=vi.fn();
+ const result=await confirmPause("p","c",2,"token",Date.now(),{provider:f.provider,store:{operation:async()=>o,context:async()=>null,admit:async()=>null,finish},token:()=>"token"});
+ expect(result).toEqual({ok:false,error:"pending"});
+ expect(finish).not.toHaveBeenCalled();
+ expect(f.requests.filter(r=>r.method==="POST")).toHaveLength(0);
 });
