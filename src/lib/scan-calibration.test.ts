@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
+import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import {
   applyTransform,
   calibratePhoto,
@@ -10,6 +11,7 @@ import {
   straightenedPage,
   warpBox,
   type Calibration,
+  type CropQuestion,
   type Raster,
   type Transform,
 } from "@/lib/scan-calibration";
@@ -237,8 +239,31 @@ describe("cropPlan", () => {
   const pkg = (id: string, item: unknown): QuestionPackage => ({ id, item } as unknown as QuestionPackage);
   const box = (id: string) => ({ id, kind: "box", box: { x: 10, y: 10, width: 50, height: 40 } });
 
-  it("crops a single-box whole-number item, and no other format, in printed order", () => {
-    // Disproved if a fraction, a two-box item, a circle item or an item with no measured box gets a crop.
+  it("keeps adjacent tick-and-number items in separate crops with both scored regions", () => {
+    const questions: CropQuestion[] = [0, 1].map(n => {
+      const p = structuredClone(FIXTURES.A);
+      p.id = `tick-${n}`;
+      p.item = { format: "tick-and-number", scorable: true, parentChecked: false, error: null,
+        regions: [
+          { id: "operation", kind: "choice", mark: "tick", label: null, choices: ["+", "−", "×", "÷"], answer: "+" },
+          { id: "answer", kind: "box", label: null, answer: { type: "number", value: 66 } },
+        ], checks: [{ kind: "operation-sign", region: "operation" }, { kind: "operation", region: "answer" }],
+      };
+      return { number: n + 1, package: p, regions: [
+        { id: "operation", kind: "choice", box: { x: 10 + n * 200, y: 10, width: 100, height: 30 } },
+        { id: "answer", kind: "box", box: { x: 120 + n * 200, y: 10, width: 40, height: 30 } },
+      ] };
+    });
+    const plan = cropPlan(questions);
+    expect(plan.notSupported).toEqual([]);
+    expect(plan.crops.map(c => c.box)).toEqual([{ x: 10, y: 10, width: 150, height: 30 }, { x: 210, y: 10, width: 150, height: 30 }]);
+    expect(plan.crops.map(c => c.regionIds)).toEqual([["operation", "answer"], ["operation", "answer"]]);
+    questions[0].regions![1].box = null;
+    expect(cropPlan(questions).notSupported).toEqual([1]);
+  });
+
+  it("crops supported, measured items in printed order and refuses untrusted shapes", () => {
+    // Disproved if a fraction, a two-box item, an invalid choice package or an item with no measured box gets a crop.
     const write = (answer: unknown) => ({ format: "write-number", scorable: true, parentChecked: false, regions: [{ id: "a", kind: "box", label: null, answer }], checks: [], error: null });
     const plan = cropPlan([
       { number: 4, package: pkg("frac", write({ type: "fraction", numerator: 1, denominator: 2 })), regions: [box("a")] },

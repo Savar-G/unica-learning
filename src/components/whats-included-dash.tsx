@@ -1,7 +1,7 @@
 "use client";
 
 // The parent dashboard on the What's included page (D-177, r162 option D-A): the web dashboard (Figma 99:53) with the
-// phone app beside it (Figma 95:55, 98:90, 98:187, 95:308). The chips move both screens; the web menu scrolls the web
+// phone browser beside it (Figma 95:55, 98:90, 98:187, 95:308). The chips move both screens; the web menu scrolls the web
 // dashboard and also moves the phone. Sample data.
 /* eslint-disable @next/next/no-img-element -- fixed-size product mockup; next/image wrappers would break the absolute layout */
 import { useEffect, useRef, useState } from "react";
@@ -79,12 +79,12 @@ export function DashboardDemo() {
           </div>
           <div className="wi-dv-ph">
             {CHIPS.map((c, i) => (
-              <img key={c.phone} className={i === chip ? "on" : ""} src={`${ASSETS}/${c.phone}`} alt={i === chip ? `${c.label} in the Unica app, with sample data` : ""} aria-hidden={i !== chip} />
+              <img key={c.phone} className={i === chip ? "on" : ""} src={`${ASSETS}/${c.phone}`} alt={i === chip ? `${c.label} on the Unica website in a phone browser, with sample data` : ""} aria-hidden={i !== chip} />
             ))}
           </div>
         </div>
       </Fit>
-      <div className="wi-dv-cap"><span><b>On the web</b> · the full dashboard</span><span><b>In the app</b> · the same account</span></div>
+      <div className="wi-dv-cap"><span><b>On the web</b> · the full dashboard</span><span><b>On your phone</b> · the same account</span></div>
     </div>
   );
 }

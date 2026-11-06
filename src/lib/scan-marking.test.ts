@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { expectedItems, firstObservation, itemKey, markingEvent, type Observation } from "@/lib/scan-observation";
+import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, type Observation } from "@/lib/scan-observation";
 import { effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, MARKING_CAP_MICROS, MARKING_MODEL, readMarkingOutput, runScanMarking, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
-import type { QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
+import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
 import { rebuildChildProfile } from "@/lib/child-profile";
 import type { LearningEvent, NewLearningEvent } from "@/lib/learning-events";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { skillStates } from "@/lib/assessment/skill-state";
+import { cropPlan } from "@/lib/scan-calibration";
 
 const P = "11111111-1111-4111-8111-111111111111", C = "22222222-2222-4222-8222-222222222222", W = "33333333-3333-4333-8333-333333333333";
 const STEP = { unit: "U1", skill: "add-within-20", step: 2 };
@@ -20,6 +22,115 @@ function frame(photo = "photo-a", answers = [0, 12, 9]): MarkingFrame {
     })) };
 }
 const output = (texts: (string | null)[]) => ({ readings: texts.map((text, n) => ({ item: `i${n + 1}`, region: `r${n + 1}`, text, state: text === "" ? "blank" : text === null ? "uncertain" : "written" })) });
+function tickFrame(photo = "tick-photo"): MarkingFrame {
+  const f = frame(photo, [66]), q = f.questions[0];
+  const operation: Operation = { kind: "add", operands: [27, 39] };
+  const easier: Operation = { kind: "add", operands: [18, 5] };
+  q.package = {
+    ...q.package!, text: "27 + 39 = ?", templateId: null, operation, answer: { value: { type: "number", value: 66 }, accepted: [], unit: null },
+    steps: workedSteps(operation), level: 10, difficulty: 2,
+    wrongAnswers: [{ value: { type: "number", value: 56 }, cause: "O3", description: "Forgets the carry", step: "tens" }],
+    easierExample: { text: "18 + 5 = ?", operation: easier, steps: workedSteps(easier), answer: { type: "number", value: 23 } },
+    item: { format: "tick-and-number", scorable: true, parentChecked: false, error: null,
+      regions: [
+        { id: "operation", kind: "choice", mark: "tick", label: "Tick the operation", choices: ["+", "−", "×", "÷"], answer: "+" },
+        { id: "answer", kind: "box", label: "Write the answer", answer: { type: "number", value: 66 } },
+        { id: "work", kind: "work", label: "Show your work" },
+      ], checks: [{ kind: "operation-sign", region: "operation" }, { kind: "operation", region: "answer" }],
+    },
+  };
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  q.regions = [{ id: "operation", kind: "choice", box: { x: 10, y: 30, width: 200, height: 30 } },
+    { id: "answer", kind: "box", box: { x: 220, y: 30, width: 80, height: 30 } },
+    { id: "work", kind: "work", box: { x: 10, y: 65, width: 290, height: 50 } }];
+  q.teaching!.eligibility.format = "tick-and-number";
+  return f;
+}
+const tickOutput = (choice: string | null, number: string | null) => ({ readings: [
+  { item: "i1", region: "r1", text: choice, state: choice === "" ? "blank" : choice === null ? "uncertain" : "written" },
+  { item: "i1", region: "r1-2", text: number, state: number === "" ? "blank" : number === null ? "uncertain" : "written" },
+] });
+function circleFrame(): MarkingFrame {
+  const f = tickFrame("circle-photo"), q = f.questions[0];
+  q.package = { ...q.package!, operation: null, answer: null, steps: [], wrongAnswers: [], easierExample: null,
+    text: "Is 27 + 39 = 66 true or false?", item: { format: "circle", scorable: true, parentChecked: false, error: null,
+      regions: [{ id: "pick", kind: "choice", mark: "circle", label: null, choices: ["true", "false"], answer: "true" }],
+      checks: [{ kind: "yes-no", region: "pick", yes: "true", no: "false", statement: { kind: "equation", equation: {
+        left: { type: "number", value: 27 }, op: "+", right: { type: "number", value: 39 }, result: { type: "number", value: 66 },
+      } } }],
+    },
+  };
+  q.regions = [{ id: "pick", kind: "choice", box: { x: 10, y: 30, width: 200, height: 30 } }];
+  q.teaching!.eligibility.format = "circle";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
+function showWorkFrame(): MarkingFrame {
+  const f = tickFrame("show-work-photo"), q = f.questions[0];
+  q.package!.item = { format: "show-work", scorable: true, parentChecked: false, error: null,
+    regions: [{ id: "answer", kind: "box", label: null, answer: { type: "number", value: 66 } }, { id: "work", kind: "work", label: "Show your work" }],
+    checks: [{ kind: "operation", region: "answer" }],
+  };
+  q.regions = q.regions!.filter(r => r.id !== "operation");
+  q.teaching!.eligibility.format = "show-work";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
+function twoWaysFrame(): MarkingFrame {
+  const f = showWorkFrame(), q = f.questions[0];
+  q.package!.item!.format = "two-ways";
+  q.package!.item!.regions = [
+    { id: "method-1", kind: "work", label: "First method" },
+    { id: "method-2", kind: "work", label: "Second method" },
+    q.package!.item!.regions[0],
+  ];
+  q.regions = [
+    { id: "method-1", kind: "work", box: { x: 10, y: 20, width: 140, height: 80 } },
+    { id: "method-2", kind: "work", box: { x: 160, y: 20, width: 140, height: 80 } },
+    { id: "answer", kind: "box", box: { x: 220, y: 110, width: 80, height: 30 } },
+  ];
+  q.teaching!.eligibility.format = "two-ways";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
+function wordsFrame(): MarkingFrame {
+  const f = circleFrame(), q = f.questions[0];
+  q.package!.text = "Write addition when 27 is less than 39. Otherwise write subtraction.";
+  q.package!.item = { format: "write-words", scorable: true, parentChecked: false, error: null,
+    regions: [{ id: "words", kind: "box", label: null, answer: { type: "text", value: "addition" } }],
+    checks: [{ kind: "template", region: "words", source: { answer: "'addition' if a < b else 'subtraction'", check: null, derived: [], values: null,
+      slots: [{ name: "a", value: { int: "27" }, domain: { min: 1, max: 100 } }, { name: "b", value: { int: "39" }, domain: { min: 1, max: 100 } }] } }],
+  };
+  q.regions = [{ id: "words", kind: "box", box: { x: 10, y: 30, width: 200, height: 30 } }];
+  q.teaching!.eligibility.format = "write-words";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
+function numericFrame(value: NumberValue, expression: string): MarkingFrame {
+  const f = wordsFrame(), q = f.questions[0];
+  q.package!.text = "Write the answer.";
+  q.package!.item!.format = "write-number";
+  q.package!.item!.regions = [{ id: "answer", kind: "box", label: null, answer: value }];
+  q.package!.item!.checks = [{ kind: "template", region: "answer", source: { answer: expression, check: null, derived: [], slots: [], values: null } }];
+  q.regions = [{ id: "answer", kind: "box", box: { x: 10, y: 30, width: 200, height: 40 } }];
+  q.teaching!.eligibility.format = "write-number";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
+function spotFrame(): MarkingFrame {
+  const f = tickFrame("spot-photo"), q = f.questions[0];
+  q.package!.text = "Someone wrote 27 + 39 = 56. Is it right? Fix it.";
+  q.package!.item = { format: "spot-the-error", scorable: true, parentChecked: false, error: { answer: { type: "number", value: 56 }, step: "tens" },
+    regions: [
+      { id: "right", kind: "choice", mark: "tick", label: "Is it right?", choices: ["Yes", "No"], answer: "No" },
+      { id: "fix", kind: "box", label: "Fix it", answer: { type: "number", value: 66 } },
+    ], checks: [{ kind: "yes-no", region: "right", yes: "Yes", no: "No", statement: { kind: "shown-answer" } }, { kind: "operation", region: "fix" }],
+  };
+  q.regions = q.regions!.filter(r => r.kind !== "work").map(r => ({ ...r, id: r.kind === "choice" ? "right" : "fix" }));
+  q.teaching!.eligibility.format = "spot-the-error";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
 it("shows page results in printed question order without changing the canonical input order", () => {
   const expected = expectedItems(frame());
@@ -83,6 +194,210 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
 }
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
 
+describe("first-book two-ways parent review", () => {
+  it("requires both methods to be checked without dispatching or scoring a read final answer", async () => {
+    const f = twoWaysFrame(), s = new Store(f);
+    const e = expectedItems(f)[0];
+    expect(e.method).toBe("parent");
+    expect(e.mastery).toEqual({ eligible: false, reason: "parent-checked" });
+    const o = readMarkingOutput(f, output(["66"]))[0];
+    expect(o).toMatchObject({ state: "parent-pending", method: "parent", result: null, regions: [] });
+    expect(observationProblem(o)).toBeNull();
+    expect(await run(s, f.photo, () => { throw Error("parent review must not dispatch"); })).toBe("finished");
+    const view = markingPageView(await s.effective(P, C));
+    expect(view.completion).toMatchObject({ status: "incomplete", finished: 0 });
+    expect(view.items[0].label).toBe("Please check both methods and the answer.");
+    expect(s.spend.size).toBe(0); expect(s.imageReads).toBe(0); expect(s.events).toHaveLength(0);
+  });
+  it.each(["right", "wrong", "blank"] as const)("a parent's explicit %s finishes one item without changing frozen mastery eligibility", result => {
+    const f = twoWaysFrame(), e = expectedItems(f)[0];
+    const observation: Observation = { ...firstObservation(e, null), state: "parent-checked", method: "parent", result, actor: "parent", resultVersion: 2 };
+    const view = markingPageView([{ expected: e, observation, originalEvent: null, eventId: null, at: "2026-11-06T12:00:00Z", model: null, prompt: null }]);
+    expect(view.completion).toMatchObject({ status: "complete", finished: 1, total: 1 });
+    expect(markingEvent(e, observation)).toEqual({ publish: false, reason: "parent-checked" });
+    expect(f.questions[0].teaching!.eligibility).toMatchObject({ scorable: true, parentChecked: false, mastery: true });
+  });
+  it("crops both measured work areas and the answer, and refuses missing or duplicate method geometry", () => {
+    const f = twoWaysFrame();
+    expect(cropPlan(f.questions)).toEqual({ notSupported: [], crops: [{ number: 1, itemId: f.questions[0].package!.id,
+      regionId: "method-1", regionIds: ["method-1", "method-2", "answer"], box: { x: 10, y: 20, width: 290, height: 120 } }] });
+    const q = f.questions[0]; q.regions![1].box = null;
+    expect(cropPlan(f.questions).notSupported).toEqual([1]);
+    q.regions = twoWaysFrame().questions[0].regions;
+    q.regions = [...q.regions!, structuredClone(q.regions![0])];
+    expect(cropPlan(f.questions).notSupported).toEqual([1]);
+  });
+});
+
+describe("write-words whole-page reading", () => {
+  it.each([["7:56", "07:56"], ["8 by 4", "8 x 4"], ["a different colour", "not red"]])("keeps a clear alternate form of %s for a parent instead of marking it wrong", (key, text) => {
+    const f = wordsFrame(), item = f.questions[0].package!.item!;
+    const box = item.regions[0]; if (box.kind === "box") box.answer = { type: "text", value: key };
+    const check = item.checks[0]; if (check.kind === "template") check.source.answer = `'${key}'`;
+    expect(checkQuestionPackage(f.questions[0].package)).toMatchObject({ ok: true });
+    const o = readMarkingOutput(f, output([text]))[0];
+    expect(o).toMatchObject({ state: "pending", result: null, certainty: "certain", readAnswerText: text, issue: "answer-form" });
+    expect(observationProblem(o)).toBeNull();
+    expect(markingEvent(expectedItems(f)[0], o).publish).toBe(false);
+    const judged: Observation = { ...o, state: "parent-checked", method: "parent", actor: "parent", result: "wrong", resultVersion: 2 };
+    expect(markingPageView([{ expected: expectedItems(f)[0], observation: judged, originalEvent: null, eventId: null, at: "2026-11-06T12:00:00Z", model: null, prompt: null }]).completion.status).toBe("complete");
+    expect(judged.readAnswerText).toBe(text);
+  });
+  it.each([
+    ["addition", "right"], ["  ADDITION  ", "right"], ["subtraction", null], ["66", null], ["", "blank"], [null, null],
+  ] as const)("code checks %j against the stored template rule", (text, result) => {
+    const f = wordsFrame(), o = readMarkingOutput(f, output([text]))[0];
+    expect(o.result).toBe(result);
+    expect(o.readAnswerText).toBe(text);
+    expect(o.regions).toHaveLength(1);
+    expect(o.regions[0].regionId).toBe("words");
+    expect(observationProblem(o)).toBeNull();
+    const view = markingPageView([{ expected: expectedItems(f)[0], observation: o, originalEvent: null, eventId: null, at: "2026-11-06T12:00:00Z", model: null, prompt: null }]);
+    expect(view.completion.status).toBe(result === null ? "incomplete" : "complete");
+  });
+  it.each([
+    { readings: [] },
+    { readings: [...output(["addition"]).readings, ...output(["subtraction"]).readings] },
+    { readings: [{ item: "i1", region: "r1", state: "blank", text: null }] },
+    { readings: [{ item: "i1", region: "r1", state: "written", text: "addition", issue: "crossed-out" }] },
+    { readings: [{ item: "i1", region: "r1", state: "uncertain", text: "addition" }] },
+  ])("missing, duplicate or ambiguous words stay pending", bad => {
+    const o = readMarkingOutput(wordsFrame(), bad)[0];
+    expect(o).toMatchObject({ state: "pending", result: null });
+    expect(observationProblem(o)).toBeNull();
+  });
+  it("does not trust an unchecked stored word, a changed template key or model verdict", () => {
+    const unchecked = wordsFrame(); unchecked.questions[0].package!.item!.checks = [];
+    expect(readMarkingOutput(unchecked, output(["addition"]))[0].result).toBeNull();
+    const changed = wordsFrame();
+    const r = changed.questions[0].package!.item!.regions[0];
+    if (r.kind === "box") r.answer = { type: "text", value: "subtraction" };
+    expect(readMarkingOutput(changed, output(["subtraction"]))[0].result).toBeNull();
+    const bad = output(["subtraction"]); Object.assign(bad.readings[0], { result: "right", answer: "subtraction" });
+    expect(readMarkingOutput(wordsFrame(), bad)[0]).toMatchObject({ result: null, state: "pending", issue: "answer-form", readAnswerText: "subtraction" });
+  });
+  it("dispatches one text region without its answer key, and retains one result on a retake", async () => {
+    const f = wordsFrame(), retake = structuredClone(f); retake.photo = "words-retake";
+    const s = new Store(f, retake), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(output(["addition"]), requests))).toBe("finished");
+    expect(s.events).toHaveLength(1);
+    expect(markingPageView(await s.effective(P, C)).completion.status).toBe("complete");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].system).toContain("For a text region");
+    const data = (requests[0].content[0] as { text: string }).text;
+    expect(JSON.parse(data).items).toEqual([{ item: "i1", region: "r1", kind: "text", box: { x: 10, y: 30, width: 200, height: 30 } }]);
+    for (const secret of ["addition", "subtraction", P, C, W, "words", "template"]) expect(data).not.toContain(secret);
+    expect(cropPlan(f.questions)).toMatchObject({ notSupported: [], crops: [{ regionId: "words" }] });
+    expect(await run(s, retake.photo, client(output(["subtraction"]), requests))).toBe("finished");
+    expect(requests).toHaveLength(1); expect(s.events).toHaveLength(1);
+    expect((await s.effective(P, C))[0].observation.readAnswerText).toBe("addition");
+  });
+});
+
+describe("fraction and mixed-number scan responses", () => {
+  it.each(["-1 1/-4", "1 1/-4", "1 1/+4", "-1 1/+4"])("R3-01 keeps mixed-number signed denominator %s pending with no right event", async text => {
+    const f = numericFrame({ type: "mixed", whole: 1, numerator: 1, denominator: 4 }, "'1 1/4'");
+    const read = readMarkingOutput(f, output([text]))[0];
+    expect(read).toMatchObject({ state: "pending", result: null, readAnswerText: text });
+    const s = new Store(f);
+    expect(await run(s, f.photo, client(output([text])))).toBe("finished");
+    const view = markingPageView(await s.effective(P, C));
+    expect(view.completion.status).toBe("incomplete");
+    expect(view.items[0].result).toBeNull(); expect(s.events).toHaveLength(0);
+    expect((await s.effective(P, C))[0].observation.readAnswerText).toBe(text);
+  });
+  it("keeps ordinary mixed signs, single-fraction signs and a clear zero denominator distinct", () => {
+    const mixed = numericFrame({ type: "mixed", whole: 1, numerator: 1, denominator: 4 }, "'1 1/4'");
+    expect(readMarkingOutput(mixed, output(["1 1/4"]))[0].result).toBe("right");
+    expect(readMarkingOutput(mixed, output(["-1 1/4"]))[0].result).toBe("wrong");
+    expect(readMarkingOutput(mixed, output(["1 1/0"]))[0].result).toBe("wrong");
+    const fraction = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'");
+    expect(readMarkingOutput(fraction, output(["-1/-9"]))[0].result).toBe("right");
+    expect(readMarkingOutput(fraction, output(["1/-9"]))[0].result).toBe("wrong");
+  });
+  it.each([
+    ["1/9", "right"], ["2/18", "right"], [" 1 / 9 ", "right"], ["-1/9", "wrong"], ["1/0", "wrong"],
+    ["0/0", "wrong"], ["2/9", "wrong"], ["19", "wrong"], ["1/?", null], ["1//9", null], ["1/9 or 2/9", null], ["", "blank"], [null, null],
+  ] as const)("checks the exact rational form %j", (text, result) => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'");
+    const o = readMarkingOutput(f, output([text]))[0];
+    expect(o.result).toBe(result); expect(o.readAnswerText).toBe(text); expect(observationProblem(o)).toBeNull();
+  });
+  it.each(["5/4", "1 1/4", "10/8"])("accepts %s for a template's exact mixed amount", text => {
+    const f = numericFrame({ type: "mixed", whole: 1, numerator: 1, denominator: 4 }, "'1 1/4'");
+    expect(readMarkingOutput(f, output([text]))[0].result).toBe("right");
+  });
+  it("uses the operation's accepted forms and required simplification", () => {
+    const f = numericFrame({ type: "fraction", numerator: 7, denominator: 8 }, "'7/8'"), q = f.questions[0];
+    q.package = structuredClone(FIXTURES.D_SIMPLEST);
+    q.package.item = { format: "write-number", scorable: true, parentChecked: false, error: null,
+      regions: [{ id: "answer", kind: "box", label: null, answer: q.package.answer!.value }], checks: [{ kind: "operation", region: "answer" }] };
+    expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+    expect(readMarkingOutput(f, output(["7/8"]))[0].result).toBe("right");
+    expect(readMarkingOutput(f, output(["14/16"]))[0].result).toBe("wrong");
+    q.package.text = "Add the fractions.";
+    q.package.answer!.accepted = [{ type: "fraction", numerator: 14, denominator: 16 }, { type: "number", value: 0.875 }];
+    expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+    expect(readMarkingOutput(f, output(["14/16"]))[0].result).toBe("right");
+    expect(readMarkingOutput(f, output([".875"]))[0].result).toBe("right");
+    expect(readMarkingOutput(f, output([".87500000000000001"]))[0].result).toBeNull();
+  });
+  it("keeps an ambiguous fraction bar or sign pending and refuses a rounded integer part", () => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'");
+    for (const text of ["19", "1/9", "-1/9"]) expect(readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text, issue: "unreadable" }] })[0].result).toBeNull();
+    expect(readMarkingOutput(f, output(["9007199254740993/81064793292668937"]))[0].result).toBeNull();
+  });
+  it("does not compare a linked equation's example fraction as its only accepted answer", () => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'");
+    f.questions[0].package!.item!.checks = [{ kind: "equations", different: false, numbers: "any", equations: [{
+      left: { region: "answer" }, op: "×", right: { type: "number", value: 0 }, result: { type: "number", value: 0 },
+    }] }];
+    expect(checkQuestionPackage(f.questions[0].package)).toMatchObject({ ok: true });
+    expect(readMarkingOutput(f, output(["2/9"]))[0]).toMatchObject({ state: "pending", result: null });
+  });
+  it("finishes a fraction page with one event, one crop and no extra attempt on retake", async () => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'"), retake = structuredClone(f); retake.photo = "fraction-retake";
+    const s = new Store(f, retake), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(output(["2/18"]), requests))).toBe("finished");
+    expect(markingPageView(await s.effective(P, C)).completion.status).toBe("complete"); expect(s.events).toHaveLength(1);
+    const data = (requests[0].content[0] as { text: string }).text;
+    expect(JSON.parse(data).items[0].kind).toBe("fraction"); expect(data).not.toContain("1/9");
+    expect(cropPlan(f.questions)).toMatchObject({ notSupported: [], crops: [{ regionId: "answer" }] });
+    expect(await run(s, retake.photo, client(output(["1/9"]), requests))).toBe("finished"); expect(requests).toHaveLength(1); expect(s.events).toHaveLength(1);
+    expect((await s.effective(P, C))[0].observation.readAnswerText).toBe("2/18");
+  });
+  it("serializes fraction photos across devices and lets a retake resolve unreadable writing once", async () => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'"), b = structuredClone(f); b.photo = "fraction-device-b";
+    const s = new Store(f, b), held = deferred<unknown>(), started = deferred<void>(), requests: AiJsonRequest[] = [];
+    const first = run(s, f.photo, client(async () => { started.resolve(); return held.promise; }, requests)); await started.promise;
+    expect(await run(s, b.photo, client(output(["1/9"]), requests))).toBe("busy");
+    held.resolve(output([null])); expect(await first).toBe("finished"); expect(s.events).toHaveLength(0);
+    expect(await run(s, b.photo, client(output(["2/18"]), requests))).toBe("finished");
+    expect(s.events).toHaveLength(1); expect(requests).toHaveLength(2);
+    expect(markingPageView(await s.effective(P, C)).completion.status).toBe("complete");
+  });
+});
+
+describe("decimal scan responses", () => {
+  it.each([
+    ["6.1", "right"], ["06.100", "right"], ["+6.1", "right"], ["-6.1", "wrong"], ["61", "wrong"], ["6.01", "wrong"],
+    ["6.1000000000000001", null], ["6,1", null], ["6.?", null], ["", "blank"], [null, null],
+  ] as const)("keeps every decimal digit in %j", (text, result) => {
+    const f = numericFrame({ type: "number", value: 6.1 }, "6.1"), o = readMarkingOutput(f, output([text]))[0];
+    expect(o.result).toBe(result); expect(o.readAnswerText).toBe(text); expect(observationProblem(o)).toBeNull();
+  });
+  it("supports negative keys, zero and an omitted leading zero without losing precision", () => {
+    for (const [key, text] of [[-0.5, "-.50"], [0, "00.00"], [0.5, ".500"]] as const) {
+      const f = numericFrame({ type: "number", value: key }, String(key));
+      expect(readMarkingOutput(f, output([text]))[0].result).toBe("right");
+    }
+  });
+  it("does not turn an ambiguous decimal point into a digit or a blank", () => {
+    const f = numericFrame({ type: "number", value: 6.1 }, "6.1");
+    expect(readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text: "61", issue: "unreadable" }] })[0]).toMatchObject({ state: "pending", result: null, readAnswerText: "61" });
+  });
+});
+
 it.each(["friday-5", "mixed-set", "show-what-you-know", "practice", "review"])("uses frozen %s teaching for page mastery", async (part) => {
   const f = frame("review-photo", [1, 1, 1, 1, 1, 1]);
   f.questions[5].teaching!.part = part;
@@ -114,7 +429,7 @@ describe("S4 whole-page readings", () => {
     expect(requests[0].content.filter((p) => p.type === "image")).toEqual([{ type: "image", mediaType: "image/jpeg", data: new Uint8Array([1, 2, 3]) }]);
     const text = requests[0].content.filter((p) => p.type === "text").map((p) => p.text).join("");
     for (const privateText of [P, C, W, "private-item", "private-region", "EXAMPLE", "12", "photo-a"]) expect(text).not.toContain(privateText);
-    expect(JSON.parse(text).items[0]).toEqual({ item: "i1", region: "r1", box: { x: 10, y: 30, width: 20, height: 30 } });
+    expect(JSON.parse(text).items[0]).toEqual({ item: "i1", region: "r1", box: { x: 10, y: 30, width: 20, height: 30 }, kind: "number" });
     expect(s.events.every((e) => e.timeMs === null)).toBe(true);
   });
   it("missing key and unverified prices dispatch nothing and preserve pending photos", async () => {
@@ -134,6 +449,168 @@ describe("S4 whole-page readings", () => {
     }
   });
   it("an unready or legacy photo never reaches client admission", async () => { const f = frame(); f.ready = false; const s = new Store(f); expect(await run(s, f.photo, client(output(["0"])))).toBe("unavailable"); expect(s.jobs.size).toBe(0); });
+});
+
+describe("S6 choice and number on one canonical item", () => {
+  it.each([
+    ["+", "66", "right"], ["+", "65", "wrong"], ["−", "66", "wrong"], ["", "", "blank"],
+    ["+", "", null], ["", "66", null], [null, "66", null], ["+ and −", "66", null],
+    ["unknown choice", "66", null], ["+", "maybe 66", null], ["+", "65 + 1", null],
+    ["+", "66.0000000000000001", null], ["+", "65.9999999999999999", null],
+    [null, "65", "wrong"], ["−", null, "wrong"],
+  ])("choice %j and number %j yield only the item result %j", (choice, number, result) => {
+    const f = tickFrame();
+    const observations = readMarkingOutput(f, tickOutput(choice, number));
+    expect(observations).toHaveLength(1);
+    const o = observations[0];
+    expect(o.result).toBe(result);
+    expect(o.state).toBe(result === null ? "pending" : "scored");
+    expect(o.regions.map(r => r.regionId)).toEqual(["operation", "answer"]);
+    expect(observationProblem(o)).toBeNull();
+    const view = markingPageView([{ expected: expectedItems(f)[0], observation: o, originalEvent: null, eventId: null, at: "2026-11-06T00:00:00Z", model: null, prompt: null }]);
+    expect(view.completion).toMatchObject({ total: 1, finished: result === null ? 0 : 1 });
+    if (result === null) expect(view.items[0].label).not.toBe("Please check this answer");
+  });
+
+  it("keeps malformed or repeated region readings pending instead of inventing a right item", () => {
+    for (const bad of [
+      { readings: [tickOutput("+", "66").readings[0]] },
+      { readings: [...tickOutput("+", "66").readings, tickOutput("+", "66").readings[0]] },
+      { readings: [{ ...tickOutput("+", "66").readings[0], region: "another-region" }, tickOutput("+", "66").readings[1]] },
+    ]) {
+      const o = readMarkingOutput(tickFrame(), bad)[0];
+      expect(o.result).toBeNull();
+      expect(o.state).toBe("pending");
+      expect(observationProblem(o)).toBeNull();
+    }
+  });
+
+  it("reads the whole page once, publishes one event and preserves a finalized original on retake", async () => {
+    const f = tickFrame(), retake = tickFrame("tick-retake"), s = new Store(f, retake), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(tickOutput("+", "66"), requests))).toBe("finished");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].content.filter(p => p.type === "image")).toHaveLength(1);
+    const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
+    expect(items.map((r: { item: string; region: string }) => [r.item, r.region])).toEqual([["i1", "r1"], ["i1", "r1-2"]]);
+    expect(JSON.stringify(items)).not.toContain('"answer"');
+    expect(s.events).toHaveLength(1);
+    expect(markingPageView(await s.effective(P, C)).completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(await run(s, retake.photo, client(tickOutput("−", "65"), requests))).toBe("finished");
+    expect(requests).toHaveLength(1);
+    expect(s.events).toHaveLength(1);
+    expect((await s.effective(P, C))[0].observation.result).toBe("right");
+  });
+
+  it("serializes two devices and fills a pending choice-and-number item only once", async () => {
+    const a = tickFrame(), b = tickFrame("tick-device-b"), s = new Store(a, b);
+    const held = deferred<unknown>(), started = deferred<void>(), requests: AiJsonRequest[] = [];
+    const first = run(s, a.photo, client(async () => { started.resolve(); return held.promise; }, requests));
+    await started.promise;
+    expect(await run(s, b.photo, client(tickOutput("+", "66"), requests))).toBe("busy");
+    held.resolve(tickOutput("+", null));
+    expect(await first).toBe("finished");
+    expect(s.events).toHaveLength(0);
+    expect(await run(s, b.photo, client(tickOutput("+", "66"), requests))).toBe("finished");
+    expect(s.events).toHaveLength(1);
+    expect(requests).toHaveLength(2);
+    expect((await s.effective(P, C))[0].observation.regions).toHaveLength(2);
+  });
+
+  it("keeps a parent change when the first two-region response arrives late", async () => {
+    const f = tickFrame(), s = new Store(f), held = deferred<unknown>(), started = deferred<void>();
+    const first = run(s, f.photo, client(async () => { started.resolve(); return held.promise; }));
+    await started.promise;
+    const m = [...s.items.values()][0];
+    m.observation = { ...m.observation, state: "parent-checked", method: "parent", result: "wrong", actor: "parent", resultVersion: 2 };
+    held.resolve(tickOutput("+", "66"));
+    expect(await first).toBe("finished");
+    expect(m.observation).toMatchObject({ result: "wrong", actor: "parent", resultVersion: 2 });
+    expect(s.events).toHaveLength(0);
+  });
+});
+
+describe("S7k circle answers", () => {
+  it.each([["true", "right"], ["false", "wrong"], ["", "blank"], [null, null], ["true and false", null], ["unknown", null]])("reads %j as %j from the frozen circle rule", (text, result) => {
+    const o = readMarkingOutput(circleFrame(), output([text]))[0];
+    expect(o.result).toBe(result);
+    expect(o.state).toBe(result === null ? "pending" : "scored");
+    expect(o.regions.map(r => r.regionId)).toEqual(["pick"]);
+    expect(observationProblem(o)).toBeNull();
+  });
+
+  it("finishes a circle page and provides its own review crop without a numeric answer key", async () => {
+    const f = circleFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(output(["true"]), requests))).toBe("finished");
+    expect(markingPageView(await s.effective(P, C)).completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(s.events).toHaveLength(1);
+    expect(cropPlan(f.questions)).toMatchObject({ crops: [{ number: 1, regionId: "pick" }], notSupported: [] });
+    const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
+    expect(items[0]).toMatchObject({ kind: "choice", mark: "circle", choices: ["true", "false"] });
+    expect(items[0]).not.toHaveProperty("answer");
+  });
+});
+
+describe("S7l show-work final answers", () => {
+  it("does not compare a valid alternative equation with one stored example as if each box had a unique answer", () => {
+    const f = showWorkFrame(), q = f.questions[0];
+    q.package = { ...q.package!, operation: null, answer: null, steps: [], wrongAnswers: [], easierExample: null,
+      item: { format: "show-work", scorable: true, parentChecked: false, error: null,
+        regions: [{ id: "a", kind: "box", label: null, answer: { type: "number", value: 5 } },
+          { id: "b", kind: "box", label: null, answer: { type: "number", value: 7 } }, { id: "work", kind: "work", label: "Work" }],
+        checks: [{ kind: "equations", numbers: "whole", different: false, equations: [{ left: { region: "a" }, op: "+", right: { region: "b" }, result: { type: "number", value: 12 } }] }],
+      },
+    };
+    q.regions = [{ id: "a", kind: "box", box: { x: 10, y: 30, width: 40, height: 30 } }, { id: "b", kind: "box", box: { x: 60, y: 30, width: 40, height: 30 } }];
+    expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+    expect(readMarkingOutput(f, tickOutput("4", "8"))[0]).toMatchObject({ state: "pending", result: null });
+  });
+
+  it.each([["66", "right"], ["65", "wrong"], ["", "blank"], [null, null], ["maybe 66", null]])("reads only the final answer %j as %j", (text, result) => {
+    const o = readMarkingOutput(showWorkFrame(), output([text]))[0];
+    expect(o.result).toBe(result);
+    expect(o.regions.map(r => r.regionId)).toEqual(["answer"]);
+    expect(o.evidence).toEqual({ photoRevision: "show-work-photo" });
+    expect(observationProblem(o)).toBeNull();
+  });
+
+  it("keeps working as photo evidence without scoring it or using it to fill an empty final answer", async () => {
+    const f = showWorkFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
+    const response = { readings: [...output([""]).readings, { item: "i1", region: "work", text: "66", state: "written" }] };
+    expect(await run(s, f.photo, client(response, requests))).toBe("finished");
+    const marks = await s.effective(P, C);
+    expect(marks[0].observation.result).toBe("blank");
+    expect(marks[0].observation.evidence?.photoRevision).toBe(f.photo);
+    expect(markingPageView(marks).completion.status).toBe("complete");
+    expect(s.events).toHaveLength(1);
+    const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
+    expect(items).toEqual([{ item: "i1", region: "r1", kind: "number", box: f.questions[0].regions![0].box }]);
+    expect(cropPlan(f.questions).notSupported).toEqual([]);
+  });
+});
+
+describe("S7m spot-the-error answers", () => {
+  it.each([["No", "66", "right"], ["Yes", "66", "wrong"], ["No", "65", "wrong"], ["", "", "blank"],
+    ["No", "", null], ["", "66", null], [null, "66", null], ["Yes and No", "66", null], ["Yes", null, "wrong"]])("checks the decision %j and correction %j as one %j item", (decision, fix, result) => {
+    const o = readMarkingOutput(spotFrame(), tickOutput(decision, fix))[0];
+    expect(o.result).toBe(result);
+    expect(o.regions.map(r => r.regionId)).toEqual(["right", "fix"]);
+    expect(observationProblem(o)).toBeNull();
+  });
+
+  it("finishes one item without sending the printed wrong solution as a requested answer", async () => {
+    const f = spotFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
+    const response = tickOutput("No", "66");
+    response.readings.push({ item: "i1", region: "printed-example", text: "56", state: "written" });
+    expect(await run(s, f.photo, client(response, requests))).toBe("finished");
+    const view = markingPageView(await s.effective(P, C));
+    expect(view.completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(view.items[0].result).toBe("right");
+    expect(s.events).toHaveLength(1);
+    const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
+    expect(items.map((r: { region: string }) => r.region)).toEqual(["r1", "r1-2"]);
+    expect(JSON.stringify(items)).not.toContain("56");
+    expect(cropPlan(f.questions).crops).toHaveLength(1);
+  });
 });
 
 describe("S4 canonical originals and lifecycle", () => {

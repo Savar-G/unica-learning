@@ -68,7 +68,7 @@ import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict 
 import { canonical, digestOf } from "@/lib/workbook-digest";
 import { BOYS, fillFrame, frameDoes, framePair, framesFor, GIRLS, PEOPLE, THINGS, quantityStoryProblem, storyProblem, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
-  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, rangeProblem, samAnswer, skillSigns, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
+  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, rangeProblem, samAnswer, skillSigns, levelSigns, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
@@ -86,7 +86,7 @@ import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNum
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
 import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
-import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
+import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, mixedTemplateSign, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
 /** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
@@ -160,15 +160,15 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
   // From the slot's turn on, the first step that has a template this level can print.
   for (let k = 0; k < list.length; k++) {
     const x = list[(ordinal + Math.floor(attempt / 6) + k) % list.length];
-    const step = stepOf(input.curriculum, x.skill, x.step);
-    if (step?.templates?.some((t) => !templateProblem(t, level))) return { skill: x.skill, step: step.number };
+    const step = stepOf(input.curriculum, x.skill, slot.place === "mixed-set" ? reviewMasteryStep(input.curriculum, level, x.skill) ?? x.step : x.step);
+    if (step?.templates?.some((t) => !templateProblem(t, level) && (slot.place !== "mixed-set" || mixedTemplateSign(t)))) return { skill: x.skill, step: step.number };
   }
   return null;
 }
 
 /**
  * A slot's step template item (#489), or undefined when the slot is not one templates fill (no step, a warm-up fact,
- * a Mixed set, or a book before #489), or null when its step has no template that prints there. A question on a
+ * or a book before #489), or null when its step has no template that prints there. A question on a
  * ten-frame step keeps #482's "colour in N" builder on every third slot, with the step's own count range.
  */
 function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt: number): ItemPlan | null | undefined {
@@ -220,6 +220,7 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
   if (!fill) return null;
   // (A copy: the filler keeps its results, and a personal shown answer must not reach another request.)
   const filled = { ...fill };
+  if (filled.ref.kind === "mixed") filled.ref = { ...filled.ref, choices: levelSigns(input.curriculum, level) };
   // G1 (item 3): the day's first Spot the error shows the child's own mistake when the step's pair is verified and the
   // sum allows it; else the template's plausible wrong answer, as today.
   if (slot.place === "spot-the-error" && filled.ref.kind === "spot" && slot.personalSpot) {
@@ -493,6 +494,8 @@ function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0,
     // A step with no template that prints in this place falls back to #482's builders (or the existing writer).
     const template = templateContractFor(input, w, slot, attempt);
     if (template) return template;
+    // A curriculum Mixed set keeps its selected step story. A generic arithmetic builder cannot replace it.
+    if (slot.place === "mixed-set" && input.itemPolicy === "approved-v1" && input.curriculum.contexts) return null;
     if (template === null && input.plan.level >= 10 && ["show-what-you-know", "level-test"].includes(slot.place ?? "")) return null;
     // A step whose templates print here takes another attempt, never a builder of other numbers.
     if (template === null && attempt > 0 && templateContractFor(input, w, slot, 0)) return null;
@@ -2339,9 +2342,6 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
   if (content.kind === "day" && questions.some(q => q.package && (questionWorkSpace(q.package, q.place) > 0 || q.package.item?.regions.some(r => r.kind === "work")))) {
     content.subtitle = [choiceInstruction(questions), WORK_INSTRUCTION].filter(Boolean).join(" ");
   }
-  if (content.kind === "day") for (const block of content.blocks) {
-    if (block.slot === "mixed-set" && block.items.length > 0 && block.items.every(n => /#\d+\.\d+:/.test(questions.find(q => q.number === n)?.package?.templateId ?? ""))) block.note = "Answer each question.";
-  }
   return content;
 }
 
@@ -3045,6 +3045,48 @@ async function swapCompleteRows(input: GenerateInput, w: PageWork, work: PageWor
   return false;
 }
 
+/** Replace a review pair together: the intermediate odd sections can overflow even when the complete rows fit. */
+async function restoreOwnPractice(input: GenerateInput, w: PageWork, work: PageWork[], fitCheck: FitCheck): Promise<boolean> {
+  const targets = w.slots.filter(s => s.part.step && s.contract?.template
+    && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s));
+  const before = w.slots.map(s => ({ ...s }));
+  const minutes = plannedDayMinutes(input, work, w.day);
+  for (let i = 0; i < targets.length; i++) for (const second of targets.slice(i + 1).filter(s => s.layoutSlot === targets[i].layoutSlot)) {
+    const pair = [targets[i], second];
+    const taken = new Set([...work.flatMap(p => p.slots.flatMap(s => {
+      const pkg = !pair.includes(s) && s.contract ? contractPackage(input, p, s.contract) : null;
+      return pkg && s.place !== "warm-up" ? [taskIdentity(pkg)] : [];
+    })), ...work.flatMap(p => panelTasks(input, p))]);
+    const choices = pair.map(slot => {
+      const found: { contract: ItemPlan; key: string }[] = [];
+      for (let attempt = 1; attempt < 128 && found.length < 16; attempt++) {
+        const c = contractFor(input, w, { ...slot, contract: undefined, refillOwnStep: true }, attempt);
+        if (!c?.template || c.template.skill !== slot.part.step!.skill || c.template.step !== slot.part.step!.step) continue;
+        const built = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] });
+        if (!built.package || built.check.status === "failed" || dayProblem(input, built.package, w.day, slot.place ?? "")) continue;
+        const key = taskIdentity(built.package);
+        if (taken.has(key) || found.some(c => c.key === key) || reachesChallenge(work, w.day, c) || tooEasyStory(input, slot, c, built.package)) continue;
+        found.push({ contract: c, key });
+      }
+      return found;
+    });
+    for (const a of choices[0]) for (const b of choices[1]) {
+      if (a.key === b.key) continue;
+      pair[0].contract = a.contract; pair[1].contract = b.contract;
+      const templatesOk = !templateTwice(w, pair[0], a.contract) && !templateTwice(w, pair[1], b.contract);
+      ownStepFirst(w);
+      const page = budgetPage(input, w);
+      if (templatesOk && !pagePlan(page)?.incomplete?.length && exchangeQuality(input, w, page)
+        && plannedDayMinutes(input, work, w.day) <= Math.max(minutes, DAY_MINUTES_MOST - .001)) {
+        const fit = roomFit(await fitCheck.fits(page, { id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild }));
+        if (fit.ok || fit.problems.every(p => p.kind === "fullness")) return true;
+      }
+      w.slots.forEach((s, k) => { s.contract = before[k].contract; });
+    }
+  }
+  return false;
+}
+
 /** A measured capacity is saved before any writer call or run fingerprint. */
 async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: PageWork[], filling = true, reserved = false): Promise<string | null> {
   if (input.itemPolicy === "approved-v1" && input.book && input.plan.level >= 4 && filling && !reserved && work.some(w => !w.page.capacityChecked)) {
@@ -3137,6 +3179,12 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // (Room only: a layout problem is the template's, reported when the page is written.)
         const budgetPage = fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples));
         const holes = pagePlan(budgetPage)?.incomplete ?? [];
+        // U16 page 22 can close its rows by dropping from three own questions to two. Keep the minimum binding.
+        if (input.plan.level === 16 && !holes.length && w.slots.some(s => s.contract?.template && s.part.step
+          && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s))) {
+          if (await restoreOwnPractice(input, w, work, fitCheck)) continue;
+          return `Page ${w.number}: cannot restore its own-step minimum in complete rows within the page and day limits`;
+        }
         const holeSlot = holes.length ? w.slots[holes[0] - 1] : undefined;
         const holeOwn = !!holeSlot?.part.step && !!holeSlot.contract && (holeSlot.contract.template ? holeSlot.contract.template.skill === holeSlot.part.step.skill && holeSlot.contract.template.step === holeSlot.part.step.step : holeSlot.contract.item.skill === holeSlot.part.step.skill);
         const reviewPartner = holes.length >= 2 && holeOwn

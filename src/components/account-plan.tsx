@@ -43,19 +43,26 @@ export function CancelPlan({ cardId, name, consequence }: { cardId: string; name
     } catch { setFailed(true); }
     finally { setBusy(false); }
   }
+  return <CancelPlanView name={name} consequence={consequence} asking={asking} busy={busy} failed={failed} cancel={cancel} keep={() => setAsking(false)} ask={() => setAsking(true)} />;
+}
+
+export function CancelPlanView({ name, consequence, asking, busy, failed, cancel, keep, ask }: {
+  name: string; consequence: string; asking: boolean; busy: boolean; failed: boolean;
+  cancel: () => void; keep: () => void; ask: () => void;
+}) {
   return <div className="acct-plan-actions">
     {asking ? <>
       <p>Cancel {name}&apos;s plan? {consequence}</p>
       <div className="acct-plan-buttons">
         <button type="button" className="btn" onClick={cancel} disabled={busy}>{busy ? "Cancelling..." : "Yes, cancel plan"}</button>
-        <button type="button" className="btn ghost" onClick={() => setAsking(false)} disabled={busy}>Keep plan</button>
+        <button type="button" className="btn ghost" onClick={keep} disabled={busy}>Keep plan</button>
       </div>
-    </> : <button type="button" className="btn ghost" onClick={() => setAsking(true)}>Cancel plan</button>}
+    </> : <button type="button" className="btn ghost" onClick={ask}>Cancel plan</button>}
     {failed && <p role="alert" className="acct-alert">We could not confirm cancellation. A plan change may still be in progress. Try again, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>}
   </div>;
 }
 
-interface PausePreview {
+export interface PausePreview {
   token: string; weeks: number; remaining: number; year: number; late: boolean; targetNumber: number;
   charge: string; earliest: string | null; latest: string | null;
 }
@@ -97,10 +104,23 @@ export function PlanControl({ cardId, name, mode, pending = false }: { cardId: s
     finally { setBusy(false); }
   }
   const close = () => { setOpen(false); setPreview(null); setRestart(null); setError(null); };
+  return <PlanControlView name={name} mode={mode} pending={pending} open={open} busy={busy} weeks={weeks} preview={preview} restart={restart} error={error} done={done}
+    onOpen={() => { setOpen(true); if (pending) void send(false); }} setWeeks={setWeeks} setPreview={setPreview} send={send} close={close} cardId={cardId} />;
+}
+
+export interface PlanControlViewProps {
+  name: string; mode: "pause" | "restart"; pending: boolean; open: boolean; busy: boolean; weeks: number;
+  preview: PausePreview | null; restart: { price: number; token: string } | null; error: string | null; done: boolean;
+  onOpen: () => void; setWeeks: (weeks: number) => void; setPreview: (preview: PausePreview | null) => void;
+  send: (confirm: boolean) => void; close: () => void; cardId: string;
+}
+
+/** The same confirmation view is also used by the static Admin sample renderer. */
+export function PlanControlView({ name, mode, pending, open, busy, weeks, preview, restart, error, done, onOpen, setWeeks, setPreview, send, close, cardId }: PlanControlViewProps) {
   const label = pending ? `Check ${mode}` : mode === "pause" ? "Pause plan" : "Restart plan";
   return <div className="acct-plan-actions">
     {done ? <p role="status">{mode === "pause" ? "The pause is saved. Your mailing and charge dates have changed." : "The paid plan has restarted. We will prepare the next workbook from the current learning profile."}</p>
-      : !open ? <button type="button" className="btn ghost" onClick={() => { setOpen(true); if (pending) void send(false); }} aria-label={`${label} for ${name}`}>{label}</button>
+      : !open ? <button type="button" className="btn ghost" onClick={onOpen} aria-label={`${label} for ${name}`}>{label}</button>
         : <>
           <p><b>{mode === "pause" ? `Pause ${name}'s plan` : `Restart ${name}'s plan`}</b></p>
           {mode === "pause" && !preview && !pending && <>

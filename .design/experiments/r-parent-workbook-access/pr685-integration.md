@@ -1,0 +1,11 @@
+# First-book marking integration
+
+PR685 merged as cfab81916a5e81d075f355c3f6c54cca646b6000 from reviewed head 96e845e5. Root verified that merge against GitHub and origin/main. The active customer Prepare run had already reached its terminal state. Its hold on non-print merges was released. PR685 then released the next coordinated main position to this answer-key PR686. The print-changing freeze remains until actual customer printing.
+
+The local merge candidate is 9b30dda230e2d1414049009f476edf437173f93a, with parents 89b5c074 and cfab8191. The merge had no conflict. The decision table merged automatically. Independent source comparisons confirmed all 38 approved answer-key runtime/test paths unchanged and all 14 incoming non-decision paths equal to actual main. D246, D247 and incoming D293 remain intact. Generator, template, renderer, print-engine and print-contract code did not change.
+
+The independent integration review approved this candidate. Ten files and 290 focused tests passed. The separate public-interface probe passed 41 controls. The separate disposable PostgreSQL probe passed 17 cases using the actual restrictive answer policy and the incoming two-ways review trigger. These are separate evidence sets, not a combined coverage total. The review covers whole keys without marking, parent-reviewed two-ways items, fractions and decimals, receipt changes, family scope, PDF denial and the pre-delivery desk fence. See pr685-independent-review.md for exact cases and limits.
+
+The complete combined gate passed on 9b30dda2. The single-worker full suite passed all 463 files: 17,020 tests passed, one optional skip, zero failed, exit 0 in 1,008.37 seconds. Source lint and the normal production build exited 0. The commands and assertions were unchanged. See pr685-checks/full-tests.log, lint.log and build.log. The later evidence commit changes no runtime file. The earlier passing remote checks belong to 89b5c074. The updated published head needs its own required checks before merge.
+
+No hosted migration, paid call, customer-book mutation, print approval, Ready email, delivery email or family switch changed in this integration. Earlier hosted and browser results remain supplied evidence. The reviewer repeated neither a hosted request nor a browser check.

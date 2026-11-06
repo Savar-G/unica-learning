@@ -28,12 +28,15 @@ import "./admin.css";
 
 const NAV = [
   { key: "dashboard", href: ADMIN_PATH, label: "Dashboard" },
+  { key: "parent-dashboard", href: `${ADMIN_PATH}/dashboard`, label: "Parent dashboard" },
   { key: "activity", href: `${ADMIN_PATH}/activity`, label: "Activity" },
   { key: "flyers", href: `${ADMIN_PATH}/flyers`, label: "Flyers" },
   { key: "tests", href: ADMIN_TESTS_PATH, label: "Tests" },
   { key: "reviews", href: `${ADMIN_PATH}/reviews`, label: "AI reviews" },
+  { key: "feedback", href: `${ADMIN_PATH}/feedback`, label: "Feedback" },
   { key: "parents", href: `${ADMIN_PATH}/parents`, label: "Parents" },
   { key: "children", href: `${ADMIN_PATH}/children`, label: "Children" },
+  { key: "scans", href: `${ADMIN_PATH}/scans`, label: "Scan pages" },
   { key: "workbooks", href: `${ADMIN_PATH}/workbooks`, label: "Workbooks" },
   { key: "next-steps", href: `${ADMIN_PATH}/next-steps`, label: "Cards and waitlist" },
   { key: "emails", href: `${ADMIN_PATH}/emails`, label: "Emails" },

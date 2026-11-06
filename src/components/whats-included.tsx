@@ -1,6 +1,6 @@
 // /whats-included (D-170, D-179): everything a family gets, in the order it happens. Built from design round r162
 // (.design/experiments/r162): the free assessment, the workbook (a 3D book that turns its pages), the AI Teaching
-// Assistant, Scan pages on the website scanning the open workbook (S-A), the parent dashboard on the web and in the app (D-A),
+// Assistant, Scan pages on the website scanning the open workbook (S-A), the parent dashboard in laptop and phone browsers (D-A),
 // and the next workbook with where each change comes from. Product screens are sample data.
 /* eslint-disable @next/next/no-img-element -- fixed-size product mockups; next/image wrappers would break the absolute layout */
 import Link from "next/link";
@@ -210,7 +210,7 @@ export function WhatsIncluded() {
           </Section>
 
           <Section className="wi-full center" aria-labelledby="wiDb">
-            <StepHead id="wiDb" eyebrow="Parent dashboard" title="Every scan updates your dashboard." lead="Level, skills, past work and every session with Maya, on the website or in the app. One account for both." />
+            <StepHead id="wiDb" eyebrow="Parent dashboard" title="Every scan updates your dashboard." lead="Level, skills, past work and every session with Maya, on our website. Use the same account on your phone or laptop." />
             <DashboardDemo />
           </Section>
 

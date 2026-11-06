@@ -1,0 +1,104 @@
+{
+  "base": "6acaa2637ad88f88462800a056cdeddcc90678e2",
+  "branch": "site/scan-page-history",
+  "computer": "Savars-MacBook-Pro-5.local",
+  "paidCalls": 0,
+  "reportedRootSpendUsd": 0,
+  "checks": [
+    {
+      "command": "npm test -- --maxWorkers 4",
+      "exit": 0,
+      "filesPassed": 450,
+      "testsPassed": 16701,
+      "testsSkipped": 1,
+      "testsTotal": 16702,
+      "log": "logs/full-tests.log"
+    },
+    {
+      "command": "npx eslint src",
+      "exit": 0,
+      "errors": 0,
+      "warnings": 0,
+      "log": "logs/eslint.log"
+    },
+    {
+      "command": "npm run build",
+      "exit": 0,
+      "log": "logs/build.log"
+    },
+    {
+      "command": "npx vitest run src/lib/scan-history.test.ts src/app/api/account/scans/history/route.test.ts",
+      "exit": 0,
+      "filesPassed": 2,
+      "testsPassed": 9,
+      "log": "logs/reader-tests.log"
+    },
+    {
+      "command": "npx vitest run src/lib/scan-history.test.ts src/app/api/account/scans/history/route.test.ts src/lib/scan-analytics.test.ts src/lib/scan-track.test.ts src/lib/scan-sdk-boundary.test.ts src/components/scan-history.test.ts src/components/scan-pages.test.ts src/components/scan-mark-change.test.ts",
+      "exit": 0,
+      "filesPassed": 8,
+      "testsPassed": 52,
+      "log": "logs/affected-tests.log"
+    },
+    {
+      "command": "node supabase/tests/scan_marking.cjs --bootstrap",
+      "environment": {
+        "SCAN_MARKING_SOCKET": "/tmp/pd457-pg-s5-pd470-beJPfG",
+        "SCAN_MARKING_DATABASE": "postgres"
+      },
+      "exit": 0,
+      "casesPassed": 48,
+      "log": "logs/s4-before.log"
+    },
+    {
+      "command": "node supabase/tests/scan_mark_changes.cjs",
+      "environment": {
+        "SCAN_MARKING_SOCKET": "/tmp/pd457-pg-s5-pd470-beJPfG",
+        "SCAN_MARKING_DATABASE": "postgres"
+      },
+      "exit": 0,
+      "casesPassed": 36,
+      "log": "logs/s5-before.log"
+    },
+    {
+      "command": "node supabase/tests/scan_history.cjs",
+      "environment": {
+        "SCAN_MARKING_SOCKET": "/tmp/pd457-pg-s5-pd470-beJPfG",
+        "SCAN_MARKING_DATABASE": "postgres"
+      },
+      "exit": 0,
+      "casesPassed": 9,
+      "log": "logs/s8-sql.log"
+    },
+    {
+      "command": "node supabase/tests/scan_marking.cjs",
+      "environment": {
+        "SCAN_MARKING_SOCKET": "/tmp/pd457-pg-s5-pd470-beJPfG",
+        "SCAN_MARKING_DATABASE": "pd457_s8_regression"
+      },
+      "exit": 0,
+      "casesPassed": 48,
+      "log": "logs/s4-after-wrapper.log"
+    },
+    {
+      "command": "node supabase/tests/scan_mark_changes.cjs --installed",
+      "environment": {
+        "SCAN_MARKING_SOCKET": "/tmp/pd457-pg-s5-pd470-beJPfG",
+        "SCAN_MARKING_DATABASE": "pd457_s8_regression"
+      },
+      "exit": 0,
+      "casesPassed": 36,
+      "log": "logs/s5-after-wrapper.log"
+    }
+  ],
+  "ownedDatabaseStopped": true,
+  "stopExit": 0,
+  "stoppedStatusExit": 3,
+  "sourceHashes": {
+    "supabase/migrations/20261106_scan_page_history.sql": "a8dcc5bcef9e5e1494b21f3584cef4c82adeecc8caf736b12f11c6c22fc62fec",
+    "src/lib/scan-history.ts": "a5ccb465ef54567c700cef4e0acef667a7910c72d57a4c7df9a84f4d0365639a",
+    "src/lib/scan-history-reader.ts": "85be2d5c1ecfcc4490fa65f75b2012908d77bef71769fe652640b5a417e99e16",
+    "src/lib/analytics.ts": "e70a5bb16adff37aab9774f9a14b7d3ebe84bcd80211f2aa49746e172a49b17f"
+  },
+  "issueSha256": "b9eed5bf9810aed6ccea941f01d299d30636d67047e4ec28c0dbab65e87f2bf3"
+}

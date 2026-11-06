@@ -38,7 +38,7 @@ function LearnLink({ path, answered, name, forWorkbook }: { path: string; answer
   return <p className="small"><Link href={path}>{answered ? `How ${name} learns: change answers` : `Tell us how ${name} learns`}</Link>{forWorkbook && " (optional, for Workbook 1)"}</p>;
 }
 
-export function ParentReport({ view, child, next, newTest, learning, alerts, tracked, src }: {
+export function ParentReport({ view, child, next, newTest, learning, alerts, tracked, src, nextActions }: {
   view: ReportView;
   child: ChildView;
   next: ReportNextContext;
@@ -48,6 +48,7 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
   /** False when the parent came back from the payment page: not a new report open. */
   tracked: boolean;
   src: ReportSrc;
+  nextActions?: ReactNode;
 }) {
   const name = view.childName;
   const zone = view.timeZone ?? zoneForProvince(view.province);
@@ -69,7 +70,7 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
         <aside className="pd-split-rail" aria-label="Next step">
           {action && (
             <div className="rpt" id={NEXT_STEP_ANCHOR}>
-              <ReportNextActions reportId={view.id} step={nextStep(view)} childName={name} province={view.province} src={next.src} asked={next.asked} start={next.start} words={card ? freeMonthWords(name) : undefined} pinned />
+              {nextActions ?? <ReportNextActions reportId={view.id} step={nextStep(view)} childName={name} province={view.province} src={next.src} asked={next.asked} start={next.start} words={card ? freeMonthWords(name) : undefined} pinned />}
             </div>
           )}
           <div className="pd-rail-more">

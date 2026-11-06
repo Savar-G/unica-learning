@@ -46,6 +46,20 @@ The pages in `(dashboard)` keep their addresses, because a route group is not in
 - Both card routes answer only to a family the switch opens to, and every other family keeps today's pages.
 - Stored plans change only through `docs/stripe-webhook.md`. Set up that endpoint before families see this page, or a filled row goes stale.
 
+## Workbooks and answer keys (D-246, revised 2026-11-06)
+
+The Workbooks tab keeps its current book, tracking and next-book estimate. Parents never download a full workbook PDF. The old Print a page again section is removed. `/api/account/workbooks/<id>/pdf` returns 410 without reading a family or signing a file. The parent PDF signer modules are removed. Admin printing and the child desk's shipped PNG access remain.
+
+Each shipped book has an answer-key entry. Its link opens only after a matching confirmed delivery receipt, with the latest correction applied. A shipped status, tracking estimate or elapsed predicted date releases no answer key. A missing or retracted receipt closes the link. The same rule, `confirmedWorkbookDelivery`, checks each old book independently and guards the answer read. No page needs to be scanned or marked first.
+
+`/account/workbooks/<child>/answers/<workbook>` independently checks sign-in and dashboard access. `readParentWorkbookAnswers` then checks the exact parent, child, shipped workbook and effective receipt before it reads content. It checks the receipt again after the read. The source uses the parent's session. It returns only page/day/question labels and answer values from the frozen stored question packages and their answer regions. It sends no worksheet text, page image, file path, raw package, worked steps or validation detail to the page. It never regenerates the book or calls a model.
+
+Questions stay in printed page and question order. Every answer region keeps its reading order. Typed fractions, remainders, quantities, times and choices keep their stored forms. The view includes accepted equivalent forms when the stored operation answer supplies them. Equation items are labelled Example answers. Open work says when there is no single fixed answer. An unreadable legacy question says that its answer is unavailable; a legacy book with readable stored packages does not need a new print revision.
+
+The restrictive Storage policy `workbook_parent_files_no_pdf` denies parent full-PDF and disguised-PDF reads and signing, while keeping true PNG page access and Admin/service printing. Root applied and probed it separately. The additive restrictive policy in `20261106_workbook_answers_after_delivery.sql` also requires a matching confirmed delivery before a parent can read stored question packages. It selects the latest correction by audit order before checking identity and its effective time against database statement time. Admin and service reads, shipped book/page metadata and PNG access remain. The desk checks the same effective receipt before its package read and shows "Your workbook pages will open here after we confirm delivery." while delivery is unconfirmed. Leave and eligible Maya chat or the parent-notice line remain. Root must apply this repair migration and verify the real hosted roles before release.
+
+The Admin Parent dashboard explorer uses the same Workbooks and answer-key components with synthetic samples. It has no PDF control. The feature release switches remain off. Stored-answer explanations, page history and mark correction are separate work.
+
 ## The Maya tab (#553)
 
 The Maya tab is `/account/notes/<child>`, the notes page that already existed, so every note and transcript address keeps working. For a child with the tab, the page shows the child's minutes left this week (the minutes ledger, `parentMinutes`) and the chat messages (`parentChatUsage`) above the notes, and each note links to its transcript (`/account/notes/<child>/<call>`). The home page then leaves out the minutes and the latest note. For a family without the dashboard, or a child without the tab, both notes pages stay as they were: `notes.test.ts` compares them with `notes-list.golden.html` and `notes-session.golden.html`.
@@ -62,7 +76,7 @@ The rename refuses while the child has an active workbook run. A kept page print
 
 Each rename keeps the name before it in `children.former_names` (oldest first, each once, at most 20; only `rename_child` writes it, and it goes with the child row). After 20, the route answers `too_many_names` and the parent emails support. The call note writer (`src/lib/maya-call-note.ts`) hides the former names in every form it hides the name now, so a note written after a rename keeps none of them and sends none to the AI. `supabase/tests/child_rename.sql` checks the function in a rolled-back transaction, and `supabase/tests/child_rename_locks.sh` checks the shared lock with two connections.
 
-What a name change updates, because these read `children.first_name` when they show or send: the dashboard, the report and report email (the stored report holds a token), Maya's notes and transcripts (stored with `{child}`), the desk and Maya's next request, reminders and workbook emails, the next workbook, and the file name of a workbook PDF.
+What a name change updates, because these read `children.first_name` when they show or send: the dashboard, the report and report email (the stored report holds a token), Maya's notes and transcripts (stored with `{child}`), the desk and Maya's next request, reminders and workbook emails, and the next workbook.
 
 What it does not update: a workbook draft or shipped workbook already made (its pages, page ids, images and PDF print the old name, so an unshipped draft ships with the old name unless an admin makes a new one), and an email already sent, with its copy in `email_copies`. A call's stored trace (admins only) hides only the exact name the child had during the call, as before; the note hides every name.
 

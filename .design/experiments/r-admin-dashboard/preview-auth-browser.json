@@ -1,0 +1,33 @@
+{
+  "previewOrigin": "https://unica-learning-landing-page-git-site-admi-8e8b1a-unica-learning.vercel.app",
+  "before": {
+    "directAdminRoute": "404 when no preview Admin session",
+    "signInPage": "loaded; not sufficient for success"
+  },
+  "after": {
+    "googleSignIn": "completed using existing signed-in Google account; returned to exact preview /admin/parent-dashboard",
+    "adminAuthorized": true,
+    "adminControls": [
+      "View",
+      "Scenario",
+      "Screen size",
+      "Family"
+    ],
+    "initialView": "assessment",
+    "changedView": "overview",
+    "changedScenario": "empty",
+    "iframeHeading": "Leah",
+    "iframeMainPresent": true,
+    "urlSelectionUpdated": true
+  },
+  "negativeControl": {
+    "incognito": "Vercel login before application; not an application-level non-admin test"
+  },
+  "limits": [
+    "No passwords or code were requested, copied or logged",
+    "No Admin role or public access rule changed",
+    "Google return verified in the controlling browser; not every external browser",
+    "Existing app signed-out/non-admin tests remain separate"
+  ],
+  "openedTabsClosed": true
+}

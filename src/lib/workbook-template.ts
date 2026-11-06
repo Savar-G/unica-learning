@@ -1151,7 +1151,6 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px"><div class="lab">${escape(b.label ?? "Remember")}</div>${fig}<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div><div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div></div>`;
     }
     case "mixed-set":
-      if (c.consistentLayout && qs.length > 0 && qs.every(q => /#\d+\.\d+:/.test(q.package.templateId ?? ""))) return `<div data-measure="chip-${i}">${chipHtml(CHIPS["mixed-set"]!, "Answer each question.")}</div>` + items("two");
       return chip() + `<div class="mxs" style="--rows:${Math.ceil(qs.length / 2)}">` + qs.map((q) => {
         const names = regionNames(q);
         const pick = (kind: AnswerRegion["kind"]) => names.find((x) => x.region.kind === kind);
@@ -1333,7 +1332,8 @@ export function pagePlan(page: DraftPage): PagePlan | null {
         if (parent) cards(); else if (items.length >= 2) lines(); else items.forEach(line);
         break;
       case "mixed-set":
-        if (items.every(n => /#\d+\.\d+:/.test(byNumber.get(n)!.package.templateId ?? ""))) lines(); else grid(2);
+        // The operation and answer print in numbered steps under the story, not beside its first line.
+        grid(2);
         break;
       case "picture-stories": cards(); break;
       case "show-what-you-know": case "level-test": {

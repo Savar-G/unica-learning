@@ -14,6 +14,38 @@ function page(number: number, day: number, count = 2): GeneratedPage {
   }) };
 }
 
+it("rejects an ordinary step template in a Mixed set even when its answer is checked", () => {
+  const p = page(3, 1, 1);
+  const curriculum = curriculumFor("bc")!;
+  const filled = stepTemplateItem({ curriculum, skill: "1.1-count-on-back", step: 3, place: "word-problems", level: 16, day: 1, seed: 2, attempt: 0, ordinal: 0 })!;
+  const built = buildStepItem(filled.ref, filled.text, { id: "mixed", workbookId: "00000000-0000-4000-8000-0000000000a1", page: 3, question: 1, level: 16, skills: [filled.ref.skill] }, "code");
+  expect(built.check.status).toBe("checked");
+  p.questions = [{ ...p.questions[0], ...built, place: "mixed-set", codeText: filled.text }];
+  const quality = workbookQuality([p]);
+  expect(quality.ready).toBe(false);
+  expect(quality.issues).toContainEqual(expect.objectContaining({ kind: "coverage", reason: expect.stringMatching(/Mixed set/) }));
+});
+
+it.each([
+  ["8.5-divide-fractions", 26, 2], ["9.1-word-problems", 28, 0],
+] as const)("rejects a legacy %s operation key based on part of a printed quantity", (skill, level, unsafeIndex) => {
+  const curriculum = curriculumFor("bc")!;
+  const filled = Array.from({ length: 64 }, (_, seed) => stepTemplateItem({ curriculum, skill, step: 1,
+    place: "word-problems", level, day: 1, seed: Math.floor(seed / 8) + 1, attempt: seed % 8, ordinal: 0 }))
+    .find(candidate => candidate?.ref.index === unsafeIndex)!;
+  expect(filled).toBeTruthy();
+  // Rebuild a legacy package from the unchanged story factory, before the Mixed set selection guard.
+  const built = buildStepItem({ ...filled.ref, kind: "mixed" }, filled.text, {
+    id: "legacy-mixed", workbookId: "00000000-0000-4000-8000-0000000000a1", page: 3, question: 1, level, skills: [skill],
+  }, "code");
+  expect(built.check.status).toBe("checked");
+  const p = page(3, 1, 1);
+  p.questions = [{ ...p.questions[0], ...built, place: "mixed-set", codeText: filled.text }];
+  const quality = workbookQuality([p]);
+  expect(quality.ready).toBe(false);
+  expect(quality.issues).toContainEqual(expect.objectContaining({ kind: "coverage", reason: expect.stringMatching(/Mixed set/) }));
+});
+
 it.each(["Circle true or false.", "Circle yes or no.", "Circle your answer."])("rejects a mixed-choice page whose instruction is only '%s'", (subtitle) => {
   const p = page(3, 1);
   p.content = { kind: "day", id: "mixed-choices", level: 16, day: 1, page: 1, pages: 8,

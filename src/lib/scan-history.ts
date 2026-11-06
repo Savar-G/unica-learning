@@ -1,0 +1,74 @@
+import { markingPageView, type EffectiveMark } from "@/lib/scan-marking";
+
+export type HistoryStatus = "never-scanned" | "pending" | "review" | "failed" | "blank" | "unscored" | "ready";
+export const HISTORY_LABELS: Record<HistoryStatus, string> = { "never-scanned": "No photo yet", pending: "Waiting for a check", review: "Please check", failed: "Could not check", blank: "All answers blank", unscored: "Not scored", ready: "Results ready" };
+export interface HistoryPhoto { id: string; state: string; expiresAt: string; sentAt: string | null; at: string }
+export interface HistoryJob { photo: string; state: string; blocked: string | null; dispatches: number }
+export interface HistorySpend { id: string; model: string; at: string; reserved: number; charged: number | null; outcome: string }
+export interface HistoryRecord {
+  id: string; childId: string; childName: string; workbookId: string; book: number; revision: string; day: string; pageNumber: number;
+  marks: EffectiveMark[]; photos: HistoryPhoto[]; jobs: HistoryJob[]; spend: HistorySpend[];
+}
+export interface HistoryFilter { child?: string; workbook?: string; status?: "all" | "review" | "failed"; after?: string }
+export interface HistoryBudget { period: string; cap: number; reported: number; held: number; unknown: number; reserved: number }
+export interface HistoryPage extends Omit<HistoryRecord, "marks" | "photos" | "jobs" | "spend"> {
+  status: HistoryStatus; label: string; photo: string | null; photoAvailable: boolean; failedJob: boolean;
+  counts: ReturnType<typeof markingPageView>["counts"]; right: number; blank: number; wrong: number;
+}
+export const completedPage = (p: HistoryPage) => ["ready", "blank", "unscored"].includes(p.status);
+/** One canonical page, irrespective of the number or lifecycle of its evidence photos. No score is inferred. */
+export function historyPage(r: HistoryRecord, now: number): HistoryPage {
+  const view = markingPageView(r.marks);
+  const failedJob = r.jobs.some((j) => j.blocked === "attempts" || j.blocked === "pending") || r.photos.some((p) => p.state === "rejected");
+  const complete = view.completion.status === "complete";
+  const blank = r.marks.filter((m) => m.observation.result === "blank").length;
+  const status: HistoryStatus = complete ? view.counts.scored === 0 ? "unscored" : blank === view.counts.scored ? "blank" : "ready"
+    : view.counts.parentChecks > 0 || (r.jobs.some((j) => j.state === "finished") && view.counts.pending > 0) ? "review"
+    : failedJob ? "failed" : view.counts.pending > 0 && !r.photos.some((p) => p.state === "saved" && Date.parse(p.expiresAt) > now) ? "review" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
+  const photo = r.photos.find((p) => p.sentAt !== null) ?? r.photos.at(-1);
+  return { id: r.id, childId: r.childId, childName: r.childName, workbookId: r.workbookId, book: r.book, revision: r.revision, day: r.day, pageNumber: r.pageNumber,
+    status, label: HISTORY_LABELS[status], photo: photo?.id ?? null, photoAvailable: Boolean(photo && photo.state === "saved" && Date.parse(photo.expiresAt) > now), failedJob,
+    counts: view.counts, right: r.marks.filter((m) => m.observation.result === "right").length, blank, wrong: r.marks.filter((m) => m.observation.result === "wrong").length };
+}
+/** Aggregates only the displayed, filtered canonical records. Unknown costs remain reservations. */
+export function historyCosts(records: readonly HistoryRecord[], pages: readonly HistoryPage[]) {
+  const accepted = pages.filter(completedPage).length;
+  const spend = [...new Map(records.flatMap((r) => r.spend).map((s) => [s.id, s])).values()];
+  const reported = spend.reduce((n, s) => n + (s.charged ?? 0), 0), unknown = spend.filter((s) => s.charged === null);
+  const split = new Map<string, { date: string; model: string; outcome: string; reported: number; reserved: number; attempts: number }>();
+  records.forEach((r) => r.spend.forEach((s) => {
+    const date = s.at.slice(0, 10), outcome = s.outcome + (s.charged === null ? " / unknown cost" : "");
+    const key = `${date}:${s.model}:${outcome}`, row = split.get(key) ?? { date, model: s.model, outcome, reported: 0, reserved: 0, attempts: 0 };
+    row.reported += s.charged ?? 0; row.reserved += s.charged === null ? s.reserved : 0; row.attempts++; split.set(key, row);
+  }));
+  return { reported, reserved: unknown.reduce((n, s) => n + s.reserved, 0), unknown: unknown.length,
+    logicalCalls: records.reduce((n, r) => n + r.jobs.filter((j) => j.dispatches > 0).length, 0), attempts: spend.length,
+    accepted, perAccepted: accepted > 0 && !unknown.length ? reported / accepted : null, split: [...split.values()].sort((a, b) => `${a.date}:${a.model}:${a.outcome}`.localeCompare(`${b.date}:${b.model}:${b.outcome}`)) };
+}
+export interface HistoryStore { read(filter: HistoryFilter): Promise<{ pages: HistoryRecord[]; budget: HistoryBudget | null } | null> }
+/** Parent and Admin use this exact reader. Keyset cursors advance even through nonmatching status pages. */
+export async function readScanHistory(store: HistoryStore, filter: HistoryFilter, now: number, limit = 25) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("history_limit");
+  const records: HistoryRecord[] = [], pages: HistoryPage[] = [];
+  let after = filter.after, budget: HistoryBudget | null = null, more = false;
+  for (;;) {
+    const batch = await store.read({ ...filter, after });
+    if (!batch) return null;
+    budget = batch.budget;
+    if (!batch.pages.length) break;
+    for (const r of batch.pages) {
+      if (after && r.id <= after) throw new Error("history_cursor");
+      after = r.id;
+      if ((filter.child && r.childId !== filter.child) || (filter.workbook && r.workbookId !== filter.workbook)) continue;
+      const p = historyPage(r, now);
+      if (filter.status === "review" && p.status !== "review") continue;
+      if (filter.status === "failed" && !p.failedJob) continue;
+      if (pages.length === limit) { more = true; break; }
+      records.push(r); pages.push(p);
+    }
+    if (more) break;
+  }
+  // Do not consume the first matching row of the next page.
+  return { pages, counts: Object.fromEntries(Object.keys(HISTORY_LABELS).map((s) => [s, pages.filter((p) => p.status === s).length])),
+    costs: historyCosts(records, pages), budget, after: more ? pages.at(-1)!.id : null };
+}
