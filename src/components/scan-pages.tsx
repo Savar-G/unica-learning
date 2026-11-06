@@ -7,6 +7,8 @@ import { browserClient } from "@/lib/supabase-browser";
 import { prepareScanPhoto } from "@/lib/scan-photo-browser";
 import { buildStack, refusalCopy, sendLabel, stackSummary, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
 import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
+import { scanEventTicket } from "@/lib/scan-track";
+import { ScanHistory } from "@/components/scan-history";
 import { ScanPreview } from "@/components/scan-preview";
 import "./scan-pages.css";
 
@@ -107,6 +109,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);
   const epoch = useRef(0);
+  const sessionCurrent = useRef(true);
   const uploadsRef = useRef<Local[]>([]);
   const pumping = useRef(false);
   const checking = useRef(false);
@@ -130,13 +133,15 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     for (const url of urls.current.values()) URL.revokeObjectURL(url);
     urls.current.clear(); fetching.current.clear(); asked.current.clear(); savedAsked.current.clear();
     pumping.current = false; checking.current = false; replacing.current = null;
-    setThumbs({}); setUnavailable(new Set()); putUploads([]); setListing(null); setSheet(null);
+    setThumbs({}); setUnavailable(new Set()); putUploads([]); setListing(null); setSheet(null); setSending(false); setMessage(null); setLoadFailed(false);
   }, [putUploads]);
 
   const load = useCallback(async () => {
     const version = epoch.current;
-    const data: Listing = await api(`/api/account/scans?child=${child}`);
-    if (version !== epoch.current) return null;
+    if (!sessionCurrent.current) return null;
+    let data: Listing;
+    try { data = await api(`/api/account/scans?child=${child}`); } catch (error) { if (version !== epoch.current || !sessionCurrent.current) return null; throw error; }
+    if (version !== epoch.current || !sessionCurrent.current) return null;
     setListing(data); setLoadFailed(false);
     return data;
   }, [child]);
@@ -144,7 +149,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   // Account changes and leaving the page clear every image.
   useEffect(() => {
     const { data } = browserClient().auth.onAuthStateChange((_event, session) => {
-      if (session?.user.id !== parent) { clearAll(); setMessage({ text: "Your account changed. Sign in again to view photos.", failed: true }); }
+      if (session?.user.id !== parent) { sessionCurrent.current = false; clearAll(); setMessage({ text: "Your account changed. Sign in again to view photos.", failed: true }); }
     });
     const hide = () => clearAll();
     window.addEventListener("pagehide", hide);
@@ -157,6 +162,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   }, [child, load]);
 
   useEffect(() => { if (mode === "phone") noteScanning(); }, [mode]);
+  useEffect(() => { const current = epoch.current; scanEventTicket(() => sessionCurrent.current && epoch.current === current)("scan_entry", "opened"); }, []);
 
   // A photo saves when it arrives (D-269). One left pending by a closed tab or an older screen saves on the next visit.
   useEffect(() => {
@@ -168,8 +174,9 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     void (async () => {
       let saved = false;
       for (const p of pending) {
+        if (version !== epoch.current || !sessionCurrent.current) return;
         // A failed save is asked again on the next refresh (live while a photo is pending), not at once.
-        try { await api(`/api/account/scans/${p.id}`, { method: "POST" }); saved = true; } catch { savedAsked.current.delete(p.id); }
+        try { await api(`/api/account/scans/${p.id}`, { method: "POST" }); saved = true; } catch { if (version === epoch.current) savedAsked.current.delete(p.id); }
       }
       if (saved && version === epoch.current) await load().catch(() => {});
     })();
@@ -225,7 +232,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         if (status === "ready" || status === "refused") { await load().catch(() => {}); return; }
         if (status !== "unavailable") return;
       }
-    } finally { checking.current = false; }
+    } finally { if (version === epoch.current) checking.current = false; }
   }, [listing, unavailable, load]);
   useEffect(() => { void runChecks(); }, [runChecks]);
 
@@ -238,9 +245,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   }, [live, child, load, mode]);
 
   async function uploadOne(u: Local, version: number): Promise<{ id: string; thumb: Blob } | UploadRefusal> {
+    if (version !== epoch.current || !sessionCurrent.current) return "unavailable";
     if (u.replaces) await api(`/api/account/scans/${u.replaces}`, { method: "DELETE" }).catch(() => {});
+    if (version !== epoch.current || !sessionCurrent.current) return "unavailable";
     let body: Blob;
     try { body = await prepareScanPhoto(u.file); } catch (error) { return codeOf(error) === "size" ? "size" : "image"; }
+    if (version !== epoch.current || !sessionCurrent.current) return "unavailable";
     // The same id again after a lost answer: the server answers with that photo's state and takes no second slot.
     let id = u.reservation ?? crypto.randomUUID();
     for (let fresh = false; ; fresh = true) {
@@ -251,9 +261,10 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       if (fresh) return "unavailable";
       id = crypto.randomUUID();
     }
+    if (version !== epoch.current || !sessionCurrent.current) return "unavailable";
     savedAsked.current.add(id);
     // A failed save is asked again when the list next shows this photo as pending.
-    await api(`/api/account/scans/${id}`, { method: "POST" }).catch(() => { savedAsked.current.delete(id); });
+    await api(`/api/account/scans/${id}`, { method: "POST" }).catch(() => { if (version === epoch.current) savedAsked.current.delete(id); });
     return { id, thumb: body };
   }
 
@@ -294,7 +305,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   }
 
   const pump = useCallback(async () => {
-    if (pumping.current) return;
+    if (pumping.current || !sessionCurrent.current) return;
     pumping.current = true;
     const version = epoch.current;
     try {
@@ -302,8 +313,10 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         const next = uploadsRef.current.find((u) => u.status === "waiting");
         if (!next || version !== epoch.current) return;
         patchUpload(next.key, { status: "uploading" });
+        const emit = scanEventTicket(() => sessionCurrent.current && version === epoch.current);
         const result = await uploadOne(next, version);
-        if (version !== epoch.current) return;
+        if (version !== epoch.current || !sessionCurrent.current) return;
+        emit("scan_upload_outcome", typeof result === "string" ? result === "unavailable" ? "failed" : "refused" : "saved");
         if (typeof result === "string") patchUpload(next.key, { status: "refused", reason: result });
         else {
           keepUrl(result.id, URL.createObjectURL(result.thumb));
@@ -320,7 +333,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   }, [child, load, keepUrl, patchUpload, putUploads]);
 
   function add(files: FileList | null) {
-    if (!files?.length) return;
+    if (!files?.length || !sessionCurrent.current) return;
     const replaces = replacing.current;
     replacing.current = null;
     let list = uploadsRef.current;
@@ -342,6 +355,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   /** Opens the phone's camera or its photos, inside the tap (Safari needs the user's tap). The notice comes first, once. */
   function open(which: "camera" | "library", replaces: string | null = null) {
     if (!acknowledged) { setSheet({ kind: "notice", then: which }); replacing.current = replaces; return; }
+    if (!sessionCurrent.current) return;
+    if (replaces) {
+      const reason = tiles.find((t) => t.key === replaces)?.refusal;
+      const current = epoch.current;
+      scanEventTicket(() => sessionCurrent.current && epoch.current === current)("scan_retake_reason", reason === "marks-missing" ? "cut_off" : reason === "page-mismatch" || reason === "page" ? "wrong_page" : reason === "qr-mismatch" ? "unreadable_code" : "other");
+    }
     replacing.current = replaces;
     setSheet(null);
     (which === "camera" ? camera : library).current?.click();
@@ -364,7 +383,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
   async function send() {
     const ids = stack.readyIds;
-    if (!ids.length || sending) return;
+    if (!ids.length || sending || !sessionCurrent.current) return;
     const version = epoch.current;
     setSending(true); setMessage(null);
     try {
@@ -378,6 +397,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   }
 
   async function remove(t: StackTile) {
+    const version = epoch.current;
+    if (!sessionCurrent.current) return;
     setSheet(null);
     if (t.uploadKey) {
       const url = urls.current.get(t.uploadKey);
@@ -391,11 +412,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (!t.photoId) return;
     try {
       await api(`/api/account/scans/${t.photoId}`, { method: "DELETE" });
+      if (version !== epoch.current || !sessionCurrent.current) return;
       const url = urls.current.get(t.photoId);
       if (url) { URL.revokeObjectURL(url); urls.current.delete(t.photoId); }
       setMessage({ text: "Photo deleted.", failed: false });
       await load();
-    } catch { setMessage({ text: "We could not delete this photo. Try again.", failed: true }); }
+    } catch { if (version === epoch.current && sessionCurrent.current) setMessage({ text: "We could not delete this photo. Try again.", failed: true }); }
   }
 
   const phone = mode === "phone";
@@ -533,6 +555,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       </div>
       {phone && one && <button type="button" className="scan-link" onClick={() => void remove(one)}>Delete this photo</button>}
     </div>}
+    {listing?.marking && <ScanHistory key={`${parent}:${child}`} parent={parent} child={child} />}
     {tileSheet}
     {notice}
     {addSheet}

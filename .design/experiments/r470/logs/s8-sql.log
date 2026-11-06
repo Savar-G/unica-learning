@@ -1,0 +1,12 @@
+CONTROL old command has no page-history projection
+CONTROL S4/S5 command and Send bodies unchanged
+PASS full cursor history contains every printed page, one corrected canonical original and expired reading
+PASS same filtered machine pages determine counts, dispatch attempts and cost totals
+PASS unresolved and failed job filters use the same parent/Admin reader
+PASS global cap includes other and deleted-link reservations, independent of list filters
+PASS unknown cost stays reserved until actual settlement and failed/uncertain spend stays counted
+PASS concurrent devices read one canonical item while a parent correction commits
+PASS clock expiry changes image availability without removing canonical marks or dispatch history
+PASS foreign families, fake admins and direct browser roles cannot use the service reader
+PASS family/child freezes hide history, deletion cascades records and keeps anonymous global holds
+{"passed":9,"failures":0,"proof":"synthetic local SQL and real lean public reader; no hosted auth, Storage HTTP, provider or recognition proof"}
