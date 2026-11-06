@@ -33,7 +33,7 @@ The deployed `send_scan_photos` body hash was `1438117e149da92e49eaa4584d43da78`
 
 ## Release and review limits
 
-Dashboard release and family marking stay off. Independent review of this fixed controls candidate is pending. Stripe test-mode acceptance, invoice timing, failed resume, release before cancellation, restricted-key permissions and unknown cancellation team procedures remain family-release requirements in [the operating notes](../../../docs/plan-controls.md).
+Dashboard release and family marking stay off. The broader Standards review passed at `581afa22`. Spec review at that head found one further no-plan cancellation defect. The corrected code at `27559f29` passed a new independent Spec recheck with 32 local tests and six expected old-source failures. The corrected full four-worker gate passed 16,403 tests across 427 files, with one optional skip; lint and build passed. See [the final correction and verification](no-plan-repair.md). Main merge and screen approval remain with Savar. Stripe test-mode acceptance, invoice timing, failed resume, release before cancellation, restricted-key permissions and unknown cancellation team procedures remain family-release requirements in [the operating notes](../../../docs/plan-controls.md).
 
 The user's reminder choice remains unchanged: the existing seven-day reminder before the first free month ends. A paid Restart charges immediately. It has no second free month and no additional reminder or delay. Classic paid Pause is refused with the support action. No irreversible billing-mode migration ran.
 
