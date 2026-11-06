@@ -1560,6 +1560,7 @@ function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValu
 const CLAIM_WORDS = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand";
 const CLAIM_NUMBER = new RegExp(`^\\s+(?:(?:down|the|a|an|number|digit|it|as)\\s+)*([+-]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?|(?:${CLAIM_WORDS})(?:[ -](?:${CLAIM_WORDS}))*)\\b`, "i");
 const CLAIM_VERB = /\b(?:write|writes|wrote|written|writing|put|puts|putting|carry|carried|carrying)\b/gi;
+const CLAIM_PAUSE = /^(\s*(?:(?:down|the|a|an|number|digit|it|as)\s+)*)(?:\.{2,}|…)+\s*/i;
 const COLUMN_WORDS = "ten thousands|hundred thousands|millions|ones|tens|hundreds|thousands|tenths|hundredths|thousandths";
 const CLAIM_PLACE = new RegExp(`\\b(in|into|under|at|on|for|to|from)\\s+(?:the\\s+)?(${COLUMN_WORDS})\\b`, "gi");
 const CLAIM_COLUMN = new RegExp(`\\b(${COLUMN_WORDS})\\b`, "gi");
@@ -1578,10 +1579,10 @@ function columnClaims(text: string): ColumnClaim[] {
   const verbs = [...text.matchAll(CLAIM_VERB)];
   return verbs.flatMap((verb, i) => {
     const incoming = /^carried$/i.test(verb[0]) && /\bthe\s+$/i.test(text.slice(0, verb.index));
-    let rest = text.slice(verb.index! + verb[0].length, verbs[i + 1]?.index);
+    let rest = text.slice(verb.index! + verb[0].length, verbs[i + 1]?.index).replace(CLAIM_PAUSE, "$1 ");
     let continuation = false;
     const claims: ColumnClaim[] = [];
-    while (rest.trim()) {
+    while (rest.trim() || claims.length === 0) {
       // Read the number before cutting the clause, so punctuation inside it cannot hide its column.
       const match = CLAIM_NUMBER.exec(rest);
       const after = match ? rest.slice(match[0].length) : rest;
@@ -1591,7 +1592,6 @@ function columnClaims(text: string): ColumnClaim[] {
       const expression = /^\s*(?:[+×−=]|\b(?:plus|minus|times|is|equals?|makes?)\b)/i.test(tail);
       if (continuation && expression) break; // The next arithmetic clause is not another written digit.
       const numbers = readNumbers(match ? match[1] : tail);
-      if (!match && !numbers.unreadable && numbers.values.length === 0 && claimPlaces(tail).length === 0) break;
       const number = numbers.values[0];
       const value = match && (!expression || incoming) && (!continuation || claimPlaces(tail).length > 0)
         && !numbers.unreadable && numbers.values.length === 1 && number?.type === "number" ? number.value : null;

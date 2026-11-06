@@ -21,3 +21,11 @@ Main PR686 at 8491309d merged without a source conflict. The repaired session an
 The combined integration check passed 295 tests across 6 files. The initial standalone type check used stale route declarations for PR686's new answer page. `next typegen` regenerated those declarations. No product type or runtime assertion was relaxed. The fresh TypeScript check and changed-file lint are recorded separately by root.
 
 The full check run that began before root read the integration failure was stopped. It is not counted as passed. Root starts a new complete run only after the combined focused gate succeeds.
+
+## R2 writing-claim repair
+
+The second independent review resolved fraction and withdrawn-book recovery findings. It found one remaining P1 in writing claims: pause punctuation or a question mark could discard the recognized claim before its digit was checked.
+
+Root added six unsafe public cases and two correct pause controls. Before the repair: 6 failed and 8 passed. The parser now recognizes a leading ellipsis as a pause after a writing verb or its existing filler words. A recognized verb always yields a claim, including an empty or unreadable value. A missing numeric value remains unclear. The existing digit-role and carry checks then apply without change.
+
+After the repair, 303 tests passed across six files, including the earlier fraction, recovery, desk and delivery cases. The earlier complete check on e9407f90 was stopped after CHANGES and is not counted as a pass. Root will run the final complete gate after scoped approval of this repair. No paid practice ran.

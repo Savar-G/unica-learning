@@ -40,3 +40,27 @@ describe("R1-1: written digit claims",()=>{
    });
  }
 });
+
+describe("R2-1: pauses and unreadable writing claims", () => {
+  it.each([
+    "I have written... 5 in the ones",
+    "it is written as ... 5 in the ones",
+    "it is written as ? in the ones",
+    "I have written ? in the ones",
+    "I have written",
+    "it is written as",
+  ])("requires clarification for %s", claim => {
+    const c = call();
+    c.child("7 plus 9 is 16, " + claim);
+    const result = rightOnes(c);
+    expect(result.refusal).not.toBeNull();
+    expect(result.session.done).not.toContain("ones");
+  });
+  it.each(["I have written... 6 in the ones", "it is written as ... 6 in the ones"])("keeps the correct digit after a pause: %s", claim => {
+    const c = call();
+    c.child("7 plus 9 is 16, " + claim);
+    const result = rightOnes(c);
+    expect(result.refusal).toBeNull();
+    expect(result.session.done).toContain("ones");
+  });
+});
