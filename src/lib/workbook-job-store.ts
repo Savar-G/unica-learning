@@ -16,16 +16,16 @@ import type { SolveVerdict } from "@/lib/workbook-solve-check";
 // hold the rules (one active run per child, stale runs stopped, every write held by the lease, the audit entries);
 // tests use src/lib/workbook-job-memory.ts, which keeps the same rules. No Next.js or React.
 
-export const RUN_COLUMNS = "id, created_at, parent_id, child_id, number, status, step, attempts, max_attempts, done_pages, total_pages, heartbeat_at, started_at, finished_at, error, errors, draft_id, draft_key, resumes, started_by, started_by_email, runner";
+export const RUN_COLUMNS = "id, created_at, parent_id, child_id, number, status, step, attempts, max_attempts, done_pages, total_pages, heartbeat_at, started_at, finished_at, error, errors, draft_id, draft_key, resumes, started_by, started_by_email, runner, stopped_by_email";
 
 type RunRow = Pick<Tables<"workbook_runs">, "id" | "created_at" | "parent_id" | "child_id" | "number" | "status" | "step" | "attempts" | "max_attempts"
-  | "done_pages" | "total_pages" | "heartbeat_at" | "started_at" | "finished_at" | "error" | "errors" | "draft_id" | "draft_key" | "resumes" | "started_by" | "started_by_email" | "runner">;
+  | "done_pages" | "total_pages" | "heartbeat_at" | "started_at" | "finished_at" | "error" | "errors" | "draft_id" | "draft_key" | "resumes" | "started_by" | "started_by_email" | "runner" | "stopped_by_email">;
 
 export const runFromRow = (r: RunRow): WorkbookRun => ({
   id: r.id, createdAt: r.created_at, parentId: r.parent_id, childId: r.child_id, number: r.number, status: r.status, step: r.step,
   attempts: r.attempts, maxAttempts: r.max_attempts, donePages: r.done_pages, totalPages: r.total_pages, heartbeatAt: r.heartbeat_at,
   startedAt: r.started_at, finishedAt: r.finished_at, error: r.error, errors: r.errors, draftId: r.draft_id, draftKey: r.draft_key, resumes: r.resumes,
-  startedBy: { id: r.started_by, email: r.started_by_email }, runner: r.runner,
+  startedBy: { id: r.started_by, email: r.started_by_email }, runner: r.runner, stoppedBy: r.stopped_by_email,
 });
 
 /** A stored verdict as the generator reads it, or null when it is of another shape. */
@@ -149,6 +149,11 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       }), "finish") === true;
     },
     run,
+    async stop(id, by) {
+      const answer = must(await admin.rpc("stop_workbook_run", { p_run: id, p_by: by.id, p_by_email: by.email }), "stop");
+      if (answer === "stopped" || answer === "already" || answer === "done" || answer === "failed" || answer === "stale" || answer === "not_found") return answer;
+      throw new Error(`workbook run stop: unknown answer ${String(answer)}`);
+    },
   };
 }
 

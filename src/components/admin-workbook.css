@@ -21,6 +21,11 @@
 .adm-wb-progress progress::-webkit-progress-bar { background: var(--soft); border-radius: 999px; }
 .adm-wb-progress progress::-webkit-progress-value { background: var(--leaf); border-radius: 999px; }
 .adm-wb-progress progress::-moz-progress-bar { background: var(--leaf); border-radius: 999px; }
+.adm-wb-progress .adm-wb-left { font-weight: 600; color: var(--ink); }
+.adm-wb-progress .adm-wb-signal-warn { padding: 6px 8px; border-radius: 6px; background: var(--adm-warn); color: var(--ink); }
+.adm-wb-stop { display: grid; gap: 6px; margin-top: 6px; justify-items: start; max-width: 34em; font-size: 13px; }
+.adm-wb-stop-ask { padding: 8px 10px; border-radius: 6px; background: var(--adm-warn); }
+.adm-wb-stop-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .adm-facts + .adm-note, .adm-facts + .adm-wb-alert { margin-top: 14px; }
 .adm-wb-state { display: grid; gap: 4px; justify-items: start; }
 .adm-wb-checks { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; min-width: 16em; }

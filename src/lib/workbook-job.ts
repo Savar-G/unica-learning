@@ -73,6 +73,8 @@ export const STALE_SECONDS = 360;
 export const PAGE_CONCURRENCY = 4;
 /** How long one job call works before it hands the run on (the function stops at 300 s). */
 export const CALL_BUDGET_MS = 240_000;
+/** How often a job asks whether an admin stopped the run. A failed read changes nothing: the lease renewal decides. */
+export const STOP_CHECK_MS = 10_000;
 /** No new day page starts this close to the budget: a page in flight takes up to about this long. */
 const PAGE_MARGIN_MS = 150_000;
 /** The render starts only with at least this much of the budget left; else it runs in the next call. */
@@ -114,6 +116,8 @@ export interface WorkbookRun {
   startedBy: { id: string | null; email: string | null };
   /** Where the run is made (D-200): on the server (Vercel, the API) or by the workbook worker on Savar's Mac. */
   runner: RunRunner;
+  /** The admin who stopped the run with the Stop button; its time is `finishedAt`. */
+  stoppedBy?: string | null;
 }
 
 /** Where a run is made: "server" (the site, on Vercel) or "mac" (the workbook worker, src/lib/workbook-worker.ts). */
@@ -137,6 +141,12 @@ export type StartResult =
   /** The child's run stopped mid-way: take it up again (resume) instead of starting over. */
   | { status: "stalled"; runId: string }
   | { status: "refused"; reason: string };
+
+/**
+ * What a stop answers: "stopped" (this stop ended the run), "already" (an admin stopped it before), or how it ended
+ * otherwise, so a stop that lost the race to a finish says the run is done.
+ */
+export type StopResult = "stopped" | "already" | "done" | "failed" | "stale" | "not_found";
 
 /** Who starts a run: the admin. */
 export interface RunActor {
@@ -202,6 +212,11 @@ export interface WorkbookRunStore {
   /** Done: the run names the draft, the draft's revision 1 holds the rendering, and the audit entry, in one step. */
   finish(runId: string, lease: string, o: { draftId: string; rendering: DraftRendering | null; problems: RenderProblem[] }): Promise<boolean>;
   run(runId: string): Promise<WorkbookRun | null>;
+  /**
+   * An admin ends a queued or running run, in one step with the audit entry and with no lease needed: every later write
+   * under the old lease changes nothing, and the next start finds no active run.
+   */
+  stop(runId: string, by: RunActor): Promise<StopResult>;
 }
 
 /** What the job reads about the child. */
@@ -298,8 +313,8 @@ export interface WorkbookJobDeps {
   solveCost?(log: SolveLog): number | null;
   /** The page templates: the real ones (#310) in live use. */
   template: WorkbookTemplate;
-  /** The fit check of each written page: the templates' strict check through the renderer in live use. */
-  fit: (parentId: string) => FitCheck;
+  /** The fit check of each written page: the templates' strict check through the renderer in live use. `signal`: ends a print in progress. */
+  fit: (parentId: string, signal?: AbortSignal) => FitCheck;
   engine: PrintEngine;
   /** A new UUID: leases. */
   newId(): string;
@@ -309,6 +324,8 @@ export interface WorkbookJobDeps {
   fileKey(): string;
   /** The clock, in milliseconds. */
   now(): number;
+  /** How often the job asks whether an admin stopped the run; STOP_CHECK_MS when not given. */
+  stopCheckMs?: number;
   /** Day pages written at the same time; PAGE_CONCURRENCY when not given. */
   concurrency?: number;
   /** How long this call works before it hands the run on; CALL_BUDGET_MS when not given. */
@@ -491,6 +508,22 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
     }
   })().finally(() => { renewing = null; });
   const timer = setInterval(() => { void renew(); }, 30_000);
+  // The Stop button: seen sooner than the renewal sees it, with no more renewals to fail on a network error.
+  const stopTimer = setInterval(() => {
+    void runs.run(runId).then((r) => { if (r && r.status !== "running") loseLease(); }).catch(() => undefined);
+  }, deps.stopCheckMs ?? STOP_CHECK_MS);
+  // A stop ends a print in progress, and no fit check or print starts after it.
+  const stoppable: WorkbookJobDeps = {
+    ...deps,
+    engine: { print: (job) => deps.engine.print({ ...job, signal: stop.signal }) },
+    fit: (parentId) => {
+      const fit = deps.fit(parentId, stop.signal);
+      return { fits: async (page, book) => {
+        if (lost) throw new Stopped("the run was taken up by another call");
+        return fit.fits(page, book);
+      } };
+    },
+  };
   let pending: Promise<void> = Promise.resolve();
   const progress = (p: Parameters<WorkbookRunStore["progress"]>[2]) => {
     pending = pending.then(async () => {
@@ -530,7 +563,7 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
           const frame = await runs.frame(runId);
           if (frame && frame.versions.build !== (deps.build ?? null)) throw changed("the site's code", frame.versions.build, deps.build ?? null);
         } else {
-          const written = await write(claimed, deps, lease, progress, check, () => lost, (v) => { if (v) loseLease(); }, () => left() < PAGE_MARGIN_MS, stop.signal, renew);
+          const written = await write(claimed, stoppable, lease, progress, check, () => lost, (v) => { if (v) loseLease(); }, () => left() < PAGE_MARGIN_MS, stop.signal, renew);
           if (written === "paused") return await handOn();
           // The stored draft is the truth: an earlier attempt of this holder may have stored it ("used").
           draft = (await deps.drafts.draft(claimed.draftKey)) ?? written;
@@ -538,7 +571,7 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
         if (left() < RENDER_MS) return await handOn();
         await progress({ step: "render" });
         await check();
-        const rendered = await renderDraft(draft, claimed.parentId, deps);
+        const rendered = await renderDraft(draft, claimed.parentId, stoppable);
         await progress({ step: "save" });
         const finished = await runs.finish(runId, lease, { draftId: draft.id, rendering: rendered.rendering, problems: rendered.problems });
         if (!finished) {
@@ -562,6 +595,7 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
     }
   } finally {
     clearInterval(timer);
+    clearInterval(stopTimer);
     await renewing;
   }
 }

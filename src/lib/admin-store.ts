@@ -23,6 +23,7 @@ import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
+import type { RunActivity } from "@/lib/workbook-run-progress";
 import { workbookStore } from "@/lib/workbook-store";
 import type { WorkbookEmailRecord, WorkbookEmailStatus } from "@/lib/workbook-email";
 import { READABLE_DRAFT_VERSIONS, type GeneratedWorkbook } from "@/lib/workbook-generator";
@@ -651,6 +652,26 @@ export interface RunListRow {
   notRendered: number | null;
   /** The draft was stored in an older shape (before the page layouts): the list shows "old draft format". */
   oldFormat: boolean;
+  /** The saved work of a run being made. */
+  activity?: RunActivity;
+}
+
+/** The saved work of a running run: only the times, never a page's content. A run has at most a few hundred pages. */
+async function runActivity(a: AdminSession, runId: string): Promise<RunActivity> {
+  const newest = (table: "workbook_run_calls" | "workbook_run_solves") => a.db.from(table).select("created_at").eq("run_id", runId).order("created_at", { ascending: false }).limit(1)
+    .then((r) => must<{ created_at: string }[]>(r, table));
+  const [pages, calls, solves, frame, resumed] = await Promise.all([
+    a.db.from("workbook_run_pages").select("created_at").eq("run_id", runId).order("created_at").range(0, 999).then((r) => must<{ created_at: string }[]>(r, "workbook run pages")),
+    newest("workbook_run_calls"),
+    newest("workbook_run_solves"),
+    a.db.from("workbook_run_frames").select("created_at").eq("run_id", runId).limit(1)
+      .then((r) => must<{ created_at: string }[]>(r, "workbook run plan time")),
+    a.db.from("workbook_audit").select("at").eq("run_id", runId).eq("action", "run-resumed").order("at", { ascending: false }).limit(1)
+      .then((r) => must<{ at: string }[]>(r, "workbook run resume time")),
+  ]);
+  const pageTimes = pages.map((p) => p.created_at);
+  const lastWorkAt = [pageTimes.at(-1), calls[0]?.created_at, solves[0]?.created_at].filter((t): t is string => !!t).sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1) ?? null;
+  return { pageTimes, lastWorkAt, writingStartedAt: frame[0]?.created_at ?? null, resumedAt: resumed[0]?.at ?? null };
 }
 
 const DRAFT_COUNT_COLUMNS = "id, schema_version, pages, questions, failed, not_checked, failed_pages, cover:draft->pages->0->content";
@@ -676,12 +697,13 @@ async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow
   ]);
   const byDraft = index(counts);
   const problems = index(revisions);
+  const activities = new Map(await Promise.all(runs.filter((r) => r.status === "running").map(async (r) => [r.id, await runActivity(a, r.id)] as const)));
   return runs.map((run) => {
     const d = run.draftId ? byDraft.get(run.draftId) : undefined;
     const p = run.draftId ? problems.get(run.draftId) : undefined;
     return {
       run, counts: p?.counts ?? (d ? countsOf(d) : null), notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null,
-      oldFormat: !!d && oldDraft(d.schema_version, d.cover),
+      oldFormat: !!d && oldDraft(d.schema_version, d.cover), activity: activities.get(run.id),
     };
   });
 }
@@ -747,6 +769,8 @@ export interface RunDetail {
   aiCalls: AiCallSummary;
   /** The workbook approved from this run's draft (#314: it keeps the draft's id), or null. */
   approved: { id: string; status: WorkbookSummary["status"] } | null;
+  /** The saved work of a run being made. */
+  activity?: RunActivity;
 }
 
 /** One run with its draft, page images and audit log, or null. */
@@ -755,6 +779,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   const [row] = must<Parameters<typeof runFromRow>[0][]>(await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("id", id).limit(1), "workbook run");
   if (!row) return null;
   const run = runFromRow(row);
+  const activity = run.status === "running" ? await runActivity(a, run.id) : undefined;
   const [children, draftRow, revision, audit, solveRows, callRows, approved, comments, edits, editSolves] = await Promise.all([
     childrenById(a, [run.childId]),
     run.draftId
@@ -788,7 +813,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   const images: Record<string, string> = {};
   for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
   return {
-    run, child: children[0] ?? null, images, audit, oldFormat, approved,
+    run, child: children[0] ?? null, images, audit, oldFormat, approved, activity,
     comments: comments.map(commentFromRow),
     editBatch: edits ? editFromRow(edits) : null,
     aiCalls: summarizeAiCalls(callRows.map((r) => ({ ...r, usd: r.usd === null ? null : Number(r.usd) }))),

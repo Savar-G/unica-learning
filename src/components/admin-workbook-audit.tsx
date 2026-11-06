@@ -6,7 +6,7 @@ import { Table } from "@/components/admin";
 import { familyZoneName, formatInZone, type FamilyZone } from "@/lib/family-time";
 
 const ACTION: Record<string, string> = {
-  "run-started": "Started preparing", "run-retried": "Tried again after an error", "run-failed": "Failed", "run-stopped": "Stopped a run with no progress",
+  "run-started": "Started preparing", "run-retried": "Tried again after an error", "run-failed": "Failed", "run-stopped": "Stopped a run with no progress", "run-stopped-by-admin": "Stopped this run",
   "draft-stored": "Saved the draft", "run-resumed": "Picked up again after a stop", "run-routed": "Set where the run is made",
   "workbook-comments-sent": "Applied review comments",
   "workbook-approved": "Approved for print", "workbook-printed": "Marked printed", "workbook-shipped": "Marked shipped",

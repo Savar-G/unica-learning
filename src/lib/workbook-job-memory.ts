@@ -243,6 +243,15 @@ export function memoryRunStore(o: {
       const r = runs.get(id);
       return r ? view(r) : null;
     },
+    async stop(id, by) {
+      const r = runs.get(id);
+      if (!r) return "not_found";
+      if (r.stoppedBy) return "already";
+      if (r.status !== "queued" && r.status !== "running") return r.status;
+      Object.assign(r, { status: "stale", finishedAt: iso(), heartbeatAt: iso(), lease: null, stoppedBy: by.email });
+      log(id, "run-stopped-by-admin", { pages: r.donePages ?? 0 }, by.email);
+      return "stopped";
+    },
   };
   return { ...store, runs, audit, revisions, pageStore: pages, attemptStore: attempts, solveStore: solves, callStore: calls, frameStore: frames };
 }

@@ -6,8 +6,8 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { renderMonthlySummary } from "@/lib/monthly-summary";
 import type { MonthlySummaryView } from "@/lib/parent-view";
-import { browserStartPlan, chromiumPrintEngine, findChromium, startBrowser } from "@/lib/print-engine-chromium";
-import { renderWorkbook, type WorkbookDraft } from "@/lib/workbook-render";
+import { browserStartPlan, chromiumPrintEngine, findChromium, startBrowser, stoppableStart } from "@/lib/print-engine-chromium";
+import { renderWorkbook, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
@@ -102,6 +102,22 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
       for (const f of result.files) await writeFile(`${process.env.RENDER_OUT}/${f.path.split("/").pop()}`, f.bytes);
       await writeFile(`${process.env.RENDER_OUT}/boxes.json`, JSON.stringify(result.workbook.pages.map((p) => ({ page: p.number, boxes: p.questions.map((q) => q.box) })), null, 2));
     }
+  }, 60_000);
+
+  it("ends a print in progress when its signal aborts, and refuses a print after it", async () => {
+    const engine = chromiumPrintEngine();
+    const whole = Date.now();
+    await render(draft());
+    const wholeMs = Date.now() - whole;
+    const stop = new AbortController();
+    const started = Date.now();
+    const stopping: PrintEngine = { print: (job) => engine.print({ ...job, signal: stop.signal }) };
+    const printing = renderWorkbook({ draft: draft(), parentId: PARENT, template: fixedTemplate(await fixedTemplateFonts()), engine: stopping });
+    setTimeout(() => stop.abort(), 300);
+    await expect(printing).rejects.toThrow();
+    const stoppedMs = Date.now() - started;
+    expect(stoppedMs).toBeLessThan(Math.max(wholeMs, 1000));
+    await expect(engine.print({ html: "", sheets: 0, page: { width: 1, height: 1 }, scale: 1, signal: stop.signal })).rejects.toThrow();
   }, 60_000);
 
   it("fails a page with more questions than fit, naming what was pushed off it, and a question whose numbers do not fit its box", async () => {
@@ -283,4 +299,31 @@ describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
     const long = { ...view, mailed: Array.from({ length: 40 }, (_, i) => ({ number: i + 1, shippedOn: "2026-10-14" })) };
     expect(await renderMonthlySummary({ view: long, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() })).toEqual({ status: "failed", reason: "the summary does not fit on one page" });
   }, 60_000);
+});
+
+describe("a stop while Chromium starts", () => {
+  it("does not wait for a slow start, and closes the browser that starts after it", async () => {
+    let started: (b: { close(): Promise<void> }) => void = () => undefined;
+    let closed = 0;
+    const stop = new AbortController();
+    const starting = stoppableStart(() => new Promise<{ close(): Promise<void> }>((resolve) => { started = resolve; }), stop.signal);
+    stop.abort(new Error("stopped"));
+    await expect(starting).rejects.toThrow("stopped");
+    started({ close: async () => { closed++; } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(closed).toBe(1);
+  });
+
+  it("does not try to start again after a stop", async () => {
+    const stop = new AbortController();
+    let tries = 0;
+    const noWait = async () => undefined;
+    await expect(startBrowser(async () => { tries++; stop.abort(new Error("stopped")); throw new Error("no start"); }, [0, 5, 15], noWait, stop.signal)).rejects.toThrow("no start");
+    expect(tries).toBe(1);
+  });
+
+  it("starts as before with no signal", async () => {
+    const browser = { close: async () => undefined };
+    await expect(stoppableStart(async () => browser)).resolves.toBe(browser);
+  });
 });

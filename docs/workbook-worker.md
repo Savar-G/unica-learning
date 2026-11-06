@@ -88,6 +88,12 @@ On Vercel, `WORKBOOK_RUNNER` sets where runs are made. With `mac` (the default),
 - **After you edit the plist** (or after you run the installer again): `bootout`, then `bootstrap`. `kickstart -k` keeps the old configuration.
 - **One turn by hand,** from any checkout: `npm run workbooks:worker -- --once`. It makes the oldest waiting run, if there is one, and stops.
 
+## Stop a run
+
+Press **Stop this run** on the run page, the child page or the Workbooks list, then **Yes, stop it**. The button shows while a run is queued or running. The stop is written at once (`stop_workbook_run`): the run has status `stale`, no lease and `stopped_by_email`, and the audit log has `run-stopped-by-admin`. The finished pages are not used. "Prepare next workbook" starts a new run at once.
+
+The job asks every 10 seconds whether its run ended (`STOP_CHECK_MS`, `src/lib/workbook-job.ts`), and the 30-second lease renewal is the second check. It then aborts its AI calls and prints. `claude -p` gets SIGTERM, then SIGKILL after 5 seconds. A print closes its browser, and a browser that is still starting is closed when it starts. So the longest delay in normal work is about 15 seconds. If the database does not answer, the renewal's 10-second limit ends the work at about 40 seconds. The worker then goes on to the next run. Every write with the old lease changes nothing. Only the AI cost log (`workbook_run_ai_calls`) can still get a row, so that a paid call stays recorded.
+
 ## When the Mac is off
 
 When the Mac is asleep, off or offline, a run waits ("Waiting for the Mac"). The run page and the child page show "Mac worker offline" and the time the worker was last seen. When the Mac comes back, the worker makes the run.

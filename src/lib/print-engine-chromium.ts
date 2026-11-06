@@ -268,13 +268,16 @@ export function browserStartPlan(env: Record<string, string | undefined> = proce
  * attempts. After the last try the error goes to the caller. Only the start is tried again: a job that fails in the page
  * fails.
  */
-export async function startBrowser<T>(start: () => Promise<T>, waitsMs: number[], wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<T> {
+export async function startBrowser<T>(start: () => Promise<T>, waitsMs: number[], wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)), signal?: AbortSignal): Promise<T> {
   let failure: unknown = new Error("print engine: Chromium did not start");
   for (const [i, ms] of waitsMs.entries()) {
     if (ms > 0) await wait(ms);
+    signal?.throwIfAborted();
     try {
       return await start();
     } catch (e) {
+      // A stopped run does not try again.
+      if (signal?.aborted) throw e;
       failure = e;
       console.warn(`print engine: Chromium did not start (try ${i + 1} of ${waitsMs.length}): ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`);
     }
@@ -282,14 +285,42 @@ export async function startBrowser<T>(start: () => Promise<T>, waitsMs: number[]
   throw failure;
 }
 
+/**
+ * A browser start that a stop does not wait for: it rejects at the abort, even while a busy machine takes its full time
+ * to start the browser, and a browser that starts after that is closed.
+ */
+export function stoppableStart<T extends { close(): Promise<void> }>(start: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return start();
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(signal.reason);
+    if (signal.aborted) { stop(); return; }
+    signal.addEventListener("abort", stop, { once: true });
+    start().then(
+      (browser) => {
+        signal.removeEventListener("abort", stop);
+        if (signal.aborted) void browser.close().catch(() => undefined);
+        resolve(browser);
+      },
+      (e) => { signal.removeEventListener("abort", stop); reject(e); },
+    );
+  });
+}
+
 export function chromiumPrintEngine(): PrintEngine {
   return {
     async print(job) {
+      job.signal?.throwIfAborted();
       const chromium = await findChromium();
       if (!chromium) throw new Error("print engine: no Chromium here; set CHROMIUM_PATH");
       const { timeoutMs, waitsMs } = browserStartPlan();
-      const browser = await startBrowser(() => puppeteer.launch({ ...chromium, headless: true, timeout: timeoutMs }), waitsMs);
+      const wait = (ms: number) => new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, ms);
+        job.signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+      });
+      // The signal closes the browser, so whatever this print is waiting on rejects.
+      const browser = await startBrowser(() => stoppableStart(() => puppeteer.launch({ ...chromium, headless: true, timeout: timeoutMs, signal: job.signal }), job.signal), waitsMs, wait, job.signal);
       try {
+        job.signal?.throwIfAborted();
         const page = await browser.newPage();
         await page.setViewport({ width: job.page.width, height: job.page.height, deviceScaleFactor: job.scale });
         await page.emulateMediaType("print");
@@ -344,7 +375,7 @@ export function chromiumPrintEngine(): PrintEngine {
         const measured = found.map(({ runs, ...m }) => ({ ...m, textPrinted: textPrinted(runs, inkedLines) }));
         return { pdf, pdfPages: pdfPageCount(pdf), images, measured };
       } finally {
-        await browser.close();
+        await browser.close().catch((e: unknown) => { if (!job.signal?.aborted) throw e; });
       }
     },
   };
