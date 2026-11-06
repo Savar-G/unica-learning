@@ -8,8 +8,19 @@
   "entry": "/admin/dashboard",
   "legacy_entry": "/admin/parent-dashboard",
   "status": "implementation complete; root browser checks and independent review pending",
-  "sources": ["DESIGN.md", "src/lib/child-stage.ts", "src/lib/parent-plan.ts", "src/components/admin.tsx", "src/components/parent-shell.tsx"],
-  "artifacts": {"catalog": "scenarios.json", "verification": "verification.json", "evidence_notes": "evidence.md"},
+  "sources": [
+    "DESIGN.md",
+    "src/lib/child-stage.ts",
+    "src/lib/parent-plan.ts",
+    "src/components/admin.tsx",
+    "src/components/parent-shell.tsx"
+  ],
+  "artifacts": {
+    "catalog": "scenarios.json",
+    "verification": "verification.json",
+    "evidence_notes": "evidence.md",
+    "workbook_access_update": "../r-parent-workbook-access/manifest.json"
+  },
   "browser_evidence": [],
   "release_switches_changed": false
 }

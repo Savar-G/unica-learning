@@ -215,13 +215,13 @@ describe("the Workbooks tab (#558)", () => {
   });
   it("a confirmed delivery ends the range 28 days after it, and the newest correction wins", async () => {
     const deliveries = [{ ...own, workbookId: "wb-1", deliveredAt: "2026-11-05T20:00:00Z" }];
-    expect((await read({ workbooks: [book(1)], deliveries }))?.next).toEqual({ kind: "range", earliest: "2026-11-16", latest: "2026-12-03" });
+    expect((await read({ workbooks: [book(1)], deliveries }, Date.parse("2026-11-07T20:00:00Z")))?.next).toEqual({ kind: "range", earliest: "2026-11-16", latest: "2026-12-03" });
     const corrections = [
       { ...own, workbookId: "wb-1", deliveredAt: "2026-11-04T20:00:00Z", auditId: 7 },
       { ...own, workbookId: "wb-1", deliveredAt: "2026-11-06T20:00:00Z", auditId: 9 },
       { ...own, workbookId: "wb-1", deliveredAt: "2026-11-03T20:00:00Z", auditId: 8 },
     ];
-    const view = await read({ workbooks: [book(1)], deliveries, corrections });
+    const view = await read({ workbooks: [book(1)], deliveries, corrections }, Date.parse("2026-11-07T20:00:00Z"));
     expect(view?.current?.deliveredOn).toBe("2026-11-06");
     expect(view?.next).toEqual({ kind: "range", earliest: "2026-11-16", latest: "2026-12-04" });
   });
@@ -234,11 +234,11 @@ describe("the Workbooks tab (#558)", () => {
     expect(view?.current).toMatchObject({ id: "wb-2", number: 2, deliveredOn: null, delivery: { method: "mail" } });
     expect(view?.books.map((b) => b.number)).toEqual([2, 1]);
   });
-  it("lists every shipped book, newest first, with whether it has a PDF", async () => {
+  it("lists every shipped book, newest first, without PDF access", async () => {
     const view = await read({ workbooks: [book(1, { pdfPath: null, shippedAt: "2026-10-10T18:00:00Z" }), book(2)] });
     expect(view?.books).toEqual([
-      { id: "wb-2", number: 2, shippedOn: "2026-11-02", hasPdf: true },
-      { id: "wb-1", number: 1, shippedOn: "2026-10-10", hasPdf: false },
+      { id: "wb-2", number: 2, shippedOn: "2026-11-02", deliveredOn: null },
+      { id: "wb-1", number: 1, shippedOn: "2026-10-10", deliveredOn: null },
     ]);
   });
   it("hand delivery has no tracking; a mail dispatch with no tracking link keeps the number", async () => {

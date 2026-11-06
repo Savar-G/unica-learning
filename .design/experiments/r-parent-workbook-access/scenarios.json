@@ -1,0 +1,178 @@
+{
+  "source": "src/lib/admin-parent-dashboard.ts",
+  "base": "7584b930ce3ed4f48930010f9c94f03f11e13a08",
+  "cases": [
+    {
+      "view": "workbooks",
+      "scenario": "delivered",
+      "label": "Current and past books",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbooks&scenario=delivered&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "mail",
+      "label": "In the mail",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbooks&scenario=mail&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "hand",
+      "label": "Delivery by hand",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbooks&scenario=hand&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "first_book_coming",
+      "label": "First workbook not sent",
+      "stage": "first_book_coming",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbooks&scenario=first_book_coming&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "late",
+      "label": "Later than estimate",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbooks&scenario=late&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "paused",
+      "label": "Pause moves next mailing",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbooks&scenario=paused&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "ended",
+      "label": "Past books only",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbooks&scenario=ended&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbook_answers",
+      "scenario": "complete",
+      "label": "Whole delivered workbook",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbook_answers&scenario=complete&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbook_answers",
+      "scenario": "mixed",
+      "label": "Multiple answers, examples and open work",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbook_answers&scenario=mixed&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbook_answers",
+      "scenario": "empty",
+      "label": "No stored answers",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbook_answers&scenario=empty&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbook_answers",
+      "scenario": "ended",
+      "label": "Delivered book after plan ended",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbook_answers&scenario=ended&size=desktop&family=one&child=first"
+    }
+  ]
+}
