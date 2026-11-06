@@ -180,11 +180,12 @@ describe("billing on the Account tab", () => {
     for (const claim of ["No invoices yet", "Next charge", "Update card", "nothing has been charged", "We will not charge"]) expect(out).not.toContain(claim);
   });
 
-  it("offers no card button once the plan cannot charge", async () => {
+  it("offers paid Restart and card correction after the plan ends", async () => {
     live({ subscriptions: { cus_1: [{ ...paying, status: "canceled", endedAt: 1_700_000_000 }] } });
     const out = await section();
     expect(out).toContain("This plan has ended.");
-    expect(out).not.toContain("Update card");
+    expect(out).toContain("Restart plan");
+    expect(out).toContain("Update card for Leah");
   });
 
   it("has no plan and no card button for a child with no saved card", async () => {

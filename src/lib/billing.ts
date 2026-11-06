@@ -121,7 +121,7 @@ export interface ChildBilling {
 
 export type FamilyBilling = { state: "loaded"; plans: ChildBilling[]; invoices: InvoiceList } | { state: "unavailable" };
 
-/** Only a plan that can still charge the card, or one that has not started, has a card worth updating. */
+/** A current plan, an initial start, or a paid Restart can need a corrected card. */
 export const canUpdateCard = (plan: ParentPlan) => plan.kind === "not_started" || plan.kind === "free_month" || plan.kind === "paying" || plan.kind === "payment_failed" || plan.kind === "paused" || plan.kind === "ended";
 
 const iso = (seconds: number) => new Date(seconds * 1000).toISOString();

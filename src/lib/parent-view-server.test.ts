@@ -29,6 +29,7 @@ const GRANTED: Record<string, Set<string>> = {
 };
 
 const ROWS: Record<string, unknown> = {
+  "rpc/plan_mailing_weeks": 0,
   child_plan_states: [],
   children: [{ id: CHILD, first_name: "Leah", grade: 3 }],
   reports: [{ id: "report-1", child_id: CHILD, assessment_id: TEST, assessment: { province: "BC" } }],
@@ -138,14 +139,14 @@ describe("the Supabase reader of the Workbooks tab (#558)", () => {
     const r = reader();
     await readWorkbooks(r.reader, CHILD, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbooks"]);
-    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "plan_control_operations", "test_accounts", "workbook_emails"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "rpc/plan_mailing_weeks", "test_accounts", "workbook_emails"]);
     const emails = r.admin.find((u) => u.pathname.endsWith("/workbook_emails"))!.searchParams;
     expect(emails.get("select")).toBe("child_id,workbook_number,delivery");
     expect(emails.get("parent_id")).toBe(`eq.${PARENT}`);
     expect(emails.get("kind")).toBe("eq.dispatch");
     expect(r.session.find((u) => u.pathname.endsWith("/workbooks"))!.searchParams.get("status")).toBe("eq.shipped");
   });
-  it.each(["workbook_delivery_corrections", "workbook_emails", "parents"])("throws when %s fails", async (table) => {
+  it.each(["workbook_delivery_corrections", "workbook_emails", "parents", "rpc/plan_mailing_weeks"])("throws when %s fails", async (table) => {
     await expect(readWorkbooks(reader(table).reader, CHILD, NOW)).rejects.toThrow();
   });
 });
