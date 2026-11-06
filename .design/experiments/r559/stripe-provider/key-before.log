@@ -1,0 +1,30 @@
+
+ RUN  v4.1.11 /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/site-pd-plan-controls
+
+ ❯ src/lib/plan-pause-stripe.test.ts (13 tests | 1 failed) 22ms
+   × fits a durable operation UUID within Stripe's 40-character pause-entry limit 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/plan-pause-stripe.test.ts > fits a durable operation UUID within Stripe's 40-character pause-entry limit
+AssertionError: expected 'refused' to be 'applied' // Object.is equality
+
+Expected: "applied"
+Received: "refused"
+
+ ❯ src/lib/plan-pause-stripe.test.ts:86:44
+     84| it("fits a durable operation UUID within Stripe's 40-character pause-e…
+     85|  const f=fixture(),o={...operation(),id:"11111111-2222-4333-8444-55555…
+     86|  expect(await f.provider.apply("p","c",o)).toBe("applied");
+       |                                            ^
+     87|  expect(f.requests.find(r=>r.method==="POST")!.body.get("pause_schedul…
+     88|  expect(await f.provider.recover("p","c",o)).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 passed (13)
+   Start at  18:40:03
+   Duration  642ms (transform 358ms, setup 0ms, import 543ms, tests 22ms, environment 0ms)
+
