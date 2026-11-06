@@ -117,5 +117,7 @@ Remaining work belongs to the controller:
 
 This SQL-only change does not change book content. The controller retains the final subscription sample pair for the content lane.
 
+After PR #668 merged, the controller rebased onto `0d9285c7d1635cff8bbf569ad17eb0608fd3a300`. Git range-diff confirmed identical implementation and proof-report patches. The real PostgreSQL check passed again with `WORKBOOK_START_RESUME_OK 12`; its cluster stopped and was removed. The new practice harness has no overlapping migration or fixture change. No hosted migration was repeated.
+
 This child made no hosted writes, provider calls, live worker setting changes, service restarts, customer job claims, or customer books.
 It did not change generator, quality, worker, or shared generated type files.
