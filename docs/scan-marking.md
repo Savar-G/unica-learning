@@ -92,3 +92,21 @@ SCAN_MARKING_SOCKET=/tmp/pd457-pg-s5-EXAMPLE SCAN_MARKING_DATABASE=pd457_s5 node
 The S5 runner uses the public PATCH handler, production service action, canonical store, effective projection and public profile rebuild. It replaces authentication and persistence transports with local synthetic seams. Production SQL owns versions, history, publication acknowledgment, profile compare-and-set and deletion fences. It sends no network request. `--installed` repeats the S5 cases without applying its migration again. `--old-code` loads the base route from `f3133376535b3c96f4c81f62f1f8d1cc80322a23` and must fail because that route has no parent correction action.
 
 Local evidence does not prove hosted RLS, Storage APIs, actual worker credentials, provider retention, recognition accuracy, camera behavior, rendered layout or human approval. Keep marking and dashboard family release off. Root owns the exact full done gate and these release checks.
+
+## S8 history migration and local proof
+
+Apply `20261106_scan_page_history.sql` after the merged S5 `20261106_scan_mark_changes.sql`. The earlier S4, sheet-check and recheck-admission migrations must already exist in that order. The new migration adds two lookup indexes. It renames the complete S4/S5 command to `scan_marking_saved_command`, revokes its direct execution, and adds service-only history/monitor branches at the existing RPC name. All other actions delegate to the saved function. It does not replace Send, automatic marking, publication, profile recovery, the correction action or their write guards. There is no new retained table or bucket.
+
+Root applies and verifies the migration on the hosted project, then runs `npm run db:types` and checks the final build. The implementation child does not access hosted services or edit generated types. The existing RPC signature lets the local build retain generated-type checks without a type override.
+
+Local reproduction uses one disposable PostgreSQL cluster with only a Unix socket under `/tmp/pd457-pg-s5-pd470-*`. Run S4 bootstrap and S5 first. Then run the new probe:
+
+```bash
+SCAN_MARKING_SOCKET=/tmp/pd457-pg-s5-pd470-EXAMPLE SCAN_MARKING_DATABASE=pd457_s8 node supabase/tests/scan_marking.cjs --bootstrap
+SCAN_MARKING_SOCKET=/tmp/pd457-pg-s5-pd470-EXAMPLE SCAN_MARKING_DATABASE=pd457_s8 node supabase/tests/scan_mark_changes.cjs
+SCAN_MARKING_SOCKET=/tmp/pd457-pg-s5-pd470-EXAMPLE SCAN_MARKING_DATABASE=pd457_s8 node supabase/tests/scan_history.cjs
+```
+
+The S8 probe adds only the reduced fixture's missing metadata columns. It applies the real migration and runs the real lean history adapter and public projection against synthetic canonical marks, retakes, jobs and cost records. It compares the complete prior command and Send function bodies. It exercises more than 100 pages, correction races, image expiry, scoped parent/Admin reads, browser-role refusal, family/child freezes and deletion. No image or model dependency enters the history reader. No paid dispatch or hosted request runs.
+
+The monitor's spend outcome is the saved job outcome for each linked dispatch. It is not a provider attempt log. Reported cost, unknown reservations, logical jobs and adapter attempts stay separate. After family deletion, the anonymous global ledger continues to hold unknown charges. Local SQL proves these calculations and refusals on reduced dependency tables. It does not prove the hosted catalog, Storage policy enforcement or real worker permissions.
