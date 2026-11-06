@@ -84,3 +84,24 @@ it("deeply encoded Admin routes cannot use the explicit scan transport", () => {
   const f = fixture(); let path = "/admin/scans/PRIVATE"; for (let n = 0; n < 12; n++) path = encodeURIComponent(path);
   f.path(path); f.analytics.track("scan_entry", { status: "opened" }); expect(f.sent).toEqual([]); expect(f.loads()).toBe(0);
 });
+
+it.each([
+  "https://unicalearning.com/account%2Fscan%2Fresults%2FPRIVATE_PHOTO%ZZ?child=PRIVATE_CHILD",
+  "https://unicalearning.com/error%2Fapi%2Faccount%2Fscans%2FPRIVATE_PHOTO%FF%2Fimage?token=PRIVATE_TOKEN",
+  "/error?next=%2Faccount%2Fscan%2FPRIVATE_PHOTO%E0%A4%A",
+  "/account%2Fscan%2FPRIVATE_PHOTO%",
+  "/error%252Fapi%252Faccount%252Fscans%252FPRIVATE_PHOTO%25FF",
+])("rejects malformed encoded private addresses at every telemetry callback: %s", async (url) => {
+  const f = fixture(); f.path("/"); f.analytics.track("cta_click"); await flush();
+  const callbacks = [
+    (value: string) => f.before({ event: "$pageview", properties: { $current_url: value } }),
+    (value: string) => scrubAnalyticsEvent({ type: "pageview", url: value }),
+    (value: string) => scrubSpeedEvent({ type: "vital", url: value }),
+  ];
+  for (const callback of callbacks) {
+    expect(callback(url)).toBeNull();
+    expect(callback("https://unicalearning.com/resources/math%20games?src=home")).not.toBeNull();
+  }
+  expect(redactPathTokens(url)).not.toContain("PRIVATE");
+  expect(redactUrlTokens(url)).not.toContain("PRIVATE");
+});

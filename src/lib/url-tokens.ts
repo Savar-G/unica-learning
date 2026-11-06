@@ -1,10 +1,10 @@
 // Paths that hold a private token (#301, review R349-3): a page's QR code is `/tutor/p/<token>`. Analytics and ad
 // addresses keep the page but never the token. Pure TypeScript, no browser.
 
-/** Decode nested redirects without leaving an encoded private route for another tracker. */
+/** Decode nested redirects. Unreadable encoding uses the private-route classification, as excess nesting does. */
 export function decodedRoute(value: string): string {
   let out = value.replace(/\\\//g, "/").replace(/\\/g, "/");
-  for (let i = 0; i < 8; i++) { try { const next = decodeURIComponent(out); if (next === out) return out; out = next; } catch { return out; } }
+  for (let i = 0; i < 8; i++) { try { const next = decodeURIComponent(out); if (next === out) return out; out = next; } catch { return "/admin"; } }
   return /%[0-9a-f]{2}/i.test(out) ? "/admin" : out;
 }
 export function scanRoute(value: string): boolean { return /\/(?:account\/+scan|api\/+account\/+scans)(?=\/|[?#\s"']|$)/i.test(decodedRoute(value)); }
