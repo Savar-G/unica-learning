@@ -21,7 +21,8 @@ import { storedPrintContract, type ScanManifest } from "@/lib/workbook-print-con
 // The workbook store (#299) in Supabase (migration add_workbooks). Writes go through the service-only function
 // write_workbook, so pass a client with the secret key to write; it stores a whole workbook in one transaction or
 // nothing. Reads work with any client: with a parent's session, row-level security gives only that family's workbooks
-// (another family's workbook reads as not found); with an admin's session or the secret key, any workbook. Every read
+// (another family's workbook reads as not found), with stored question packages after confirmed delivery; with an
+// admin's session or the secret key, any workbook. Every read
 // names a workbook or a child. Tests use src/lib/workbook-store-memory.ts and pass the same tests. No Next.js or React.
 
 type BookRow = Tables<"workbooks">;

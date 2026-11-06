@@ -67,3 +67,14 @@ it("applies the latest correction and a retraction through the real delivery rea
   f.rows.workbook_delivery_receipts = [];
   expect(await readParentWorkbookAnswers(f.source, request, NOW)).toBeNull();
 });
+it("refuses the latest malformed correction identity instead of releasing an older receipt", async () => {
+  for (const change of [{ parent_id: FOREIGN }, { child_id: FOREIGN }, { number: 2 }]) {
+    const f = family(), original = f.rows.workbook_delivery_receipts[0];
+    f.rows.workbook_delivery_corrections = [
+      { ...original, id: "valid-older", audit_id: 2, previous_delivered_at: original.delivered_at },
+      { ...original, ...change, id: "invalid-latest", audit_id: 3, previous_delivered_at: original.delivered_at },
+    ];
+    expect(await readParentWorkbookAnswers(f.source, { parentId: PARENT, childId: CHILD, workbookId: BOOK }, NOW)).toBeNull();
+    expect(f.reads).not.toContain("workbook_questions");
+  }
+});

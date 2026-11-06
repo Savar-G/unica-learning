@@ -29,3 +29,5 @@ Root owns browser checks, live authorization, independent review, PR and coordin
 The existing policy in `supabase/migrations/20261030_workbooks_parent_shipped_only.sql` still permits parents to read raw question packages for their shipped books before delivery. The new web route enforces delivery, but it cannot revoke that existing database access. A database-wide answer-release guarantee needs a separate desk-safe read design and migration. This is a concrete release limit for root, not a hosted claim from this worker.
 
 No #675 explanations, reduced #565 history/marking UI, voice change, #542 controller change, paid call, email, Stripe action, push, PR or merge is included. No browser process or development server was started by the worker.
+
+The raw-question release limit above records the first implementation. The source repair and its new local evidence are in `delivery-repair.md`; hosted application and verification remain with root.
