@@ -285,6 +285,32 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
       return t;
     }],
     ["answer_too_early", "C02", (t) => { mayaAt(t, 1).output!.say = [ANSWER_LINE]; return t; }],
+    // #605: a confirmation may say back only the number the child said in the turn it answers.
+    ["answer_too_early", "P1", (t) => {
+      const c = t.turns.find((x) => x.kind === "child")!;
+      if (c.kind === "child") c.text = "Is it 56?";
+      for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === c.at) o.text = "Is it 56?";
+      return t;
+    }],
+    // #605: a yes gives only the number Maya asked about, and only a plain yes gives it.
+    ["accepted_wrong_answer", "P1", (t) => {
+      const p = mayaAt(t, 1).attempts.at(-1)!.proposal as { parts: { slots: { heard: string } }[] };
+      p.parts.at(-1)!.slots.heard = "56";
+      return t;
+    }],
+    ["accepted_wrong_answer", "P1", (t) => {
+      const c = t.turns.filter((x) => x.kind === "child")[1];
+      if (c.kind === "child") c.text = "Yes, maybe.";
+      for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === c.at) o.text = "Yes, maybe.";
+      return t;
+    }],
+    // #605: one equation twice in a turn, and a third regroup line for a carry.
+    ["flow_mismatch", "P6", (t) => { const m = mayaAt(t, 1); m.output!.say = ["That's it: 7 + 9 = 16. 7 + 9 = 16."]; return t; }],
+    ["flow_mismatch", "P6", (t) => {
+      const line = { line: "step.regroup", slots: { step: "tens" } };
+      for (const i of [2, 3, 4]) (mayaAt(t, i).attempts.at(-1)!.proposal as { parts: unknown[] }).parts = [line];
+      return t;
+    }],
     ["safety_not_taken", "C30", (t) => ({ ...t, outcome: { ...t.outcome!, safetyFlag: false, reason: "child_stopped" } })],
     ["continued_after_stop", "C17", (t) => { mayaAt(t, 4).output!.act = "guide"; return t; }],
     ["over_time", "C35", (t) => ({ ...t, outcome: { ...t.outcome!, seconds: 700 } })],

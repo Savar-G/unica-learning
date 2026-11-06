@@ -97,7 +97,12 @@ describe("the phrase bank", () => {
   it("gives every math line 5 to 8 wordings", () => {
     for (const [key, wordings] of Object.entries(TEMPLATES)) {
       if (key === "open.hello" || key.startsWith("question.") || key === "assess.ask" || key === "redirect.back") continue;
-      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken", "redirect.workbook"].includes(key)) {
+      // The no-secret reply: four kind wordings (#605, Savar 2026-11-06).
+      if (key === "about.no_secret") {
+        expect(wordings).toHaveLength(4);
+        continue;
+      }
+      if (["about.ai", "shorter.prompt", "answer.area", "input.spoken", "redirect.workbook", "held.hello", "held.next"].includes(key)) {
         expect(wordings).toHaveLength(1);
         continue;
       }
@@ -422,13 +427,13 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
 
   it.each([
     "Biscuit is a great name!", "Wow, a trip to the lake!", "What's your favourite colour?", "Hi there!", "Hello!",
-    "Thanks for telling me.", "Nice!", "Cool!", "Yay!", "Ha, I love it!", "Aw, poor kitty.", "Oh no, I hope you feel better soon.",
+    "Thanks for telling me.", "Nice!", "Cool!", "Yay!", "Ha, how fun!", "Aw, poor kitty.", "Oh no, I hope you feel better soon.",
     "How exciting!", "Who is your best friend?", "Where do you like to play?", "I'm so glad you're here.",
     "You're so funny!", "It sounds like a great day.", "We're having a good chat.", "Sounds fun!", "What a lovely name!",
     "A dog! What's your dog's name?", "Have a great day!", "Happy birthday!", "Good morning!",
     // D-197: three short sentences, "that" when it does not point back, and "don't" about Maya herself.
     "Oh, I'm so sorry your grandma is sick. That sounds really hard.", "Oh, I'm sorry to hear that.",
-    "Oh, I'm an AI helper, so I'm not a real person. I don't have a dog. I love hearing about yours, though!",
+    "Oh, I'm an AI helper, so I'm not a real person. I don't have a dog. It's nice to hear about yours, though!",
     "Wonderful, I'm glad you're here!", "Yummy, what a lunch!",
   ])("passes the code guards with %s, said as it is when the review passes", (talk) => {
     expect(freeTalkProblem(talk, null, child)).toBeNull();
@@ -440,14 +445,14 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
   });
 
   // D-197: the shape guards cannot judge meaning. These pass them, and each breaks NEVER_SAY: only the review stops them.
-  it.each(["I love dogs too.", "When is your birthday?", "I'm a real person, just like you!", "Your secret is safe with me.", "What school do you go to?", "Your mom will be so proud of you!"])(
+  it.each(["My favourite animal is a dog too.", "When is your birthday?", "I'm a real person, just like you!", "Your secret is safe with me.", "What school do you go to?", "Your mom will be so proud of you!"])(
     "passes the code guards with %s, so only the review can stop it", (talk) => {
       expect(freeTalkProblem(talk, null, child)).toBeNull();
     });
 
   // Practice run 5: 11 of 28 code-guard refusals were everyday phrases about the conversation, not the work.
   it.each([
-    "Aw, thanks for asking me. I can't make promises or keep secrets, because I'm an AI helper. I'm happy to listen to you, though.",
+    "Aw, thanks for asking me. I can't make promises or keep secrets, because I'm an AI helper. I'm here to listen to you, though.",
     "Aw, I'm sorry your grandma is sick. That sounds hard, and it's okay to feel sad. I'm glad you told me.",
     "I can't promise to keep secrets, sorry. I'm an AI helper, and I don't want to say something untrue.",
     "Oh, I hear you. I'm right here with you.", "I can't keep it secret, because I'm an AI helper.",

@@ -5,6 +5,7 @@ import { pageMetadata } from "@/lib/metadata";
 import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, type DeskView } from "@/lib/desk";
 import { formatInZone, familyZone, type FamilyZone } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
+import { heldSentences } from "@/lib/maya";
 import { deskChat } from "@/lib/maya-chat-server";
 import { MAYA_NOTICE_DESK_LINE } from "@/lib/maya-notice";
 import { mayaNoticeDue } from "@/lib/maya-notice-server";
@@ -98,6 +99,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
         text: x.text,
         crop: image ? questionCrop(page, x.number) : null,
         board: questionBoard(x.columns),
+        held: x.held ? heldSentences(true) : null,
       }))}
       picked={view.picked}
       openPicker={pick === "1" || from === "qr"}

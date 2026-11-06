@@ -403,7 +403,22 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 
-export function ChatControls({ state, picked }: { state: DeskChatState; picked: boolean }) {
+/**
+ * Whether the desk shows Maya's held words for the picked question (#527): it is held, and no chat is open on it, or an
+ * old ended chat on it never said them (a chat from before, which closed with other words).
+ */
+export function showHeldNote(held: readonly string[] | null, chat: ChatView | null): boolean {
+  if (!held) return false;
+  if (!chat) return true;
+  if (!chat.ended) return false;
+  // The invitation can arrive during a call, after the AI disclosure was already said.
+  const explained = held.at(-1);
+  if (!explained) return true;
+  return !chat.transcript.some((line) => line.speaker === "maya" && line.text.includes(explained));
+}
+
+/** `held`: the picked question is one Maya cannot teach yet (#527), so no chat starts on it. */
+export function ChatControls({ state, picked, held = false }: { state: DeskChatState; picked: boolean; held?: boolean }) {
   const [text, setText] = useState("");
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -417,7 +432,7 @@ export function ChatControls({ state, picked }: { state: DeskChatState; picked: 
   return <>
     {state.chat?.pending && <p className="desk-event" role="status">Maya is working on your message…</p>}
     {state.error && <><p className="desk-error" role="alert">{state.error}</p><button type="button" className="desk-chat-end" onClick={() => void state.retry()}>Try again</button></>}
-    {!state.chat || state.chat.ended ? <button className="desk-pick" type="button" disabled={!picked || state.busy || !state.usage?.left}
+    {held && (!state.chat || state.chat.ended) ? null : !state.chat || state.chat.ended ? <button className="desk-pick" type="button" disabled={!picked || state.busy || !state.usage?.left}
       onClick={() => void state.act("start")}>{state.busy ? "Opening chat…" : state.chat?.ended ? "Chat again" : "Chat with Maya"}</button>
       : <button className="desk-chat-end" type="button" disabled={state.busy || state.uncertain || state.chat?.pending} onClick={() => void state.act("end")}>End chat</button>}
     <form className="desk-compose" onSubmit={submit}>

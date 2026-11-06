@@ -47,7 +47,7 @@ const readingModel = (): MayaModel => ({
   async propose(input, signal) {
     const p = (await ruleMayaModel().propose(input, signal)) as { reading?: Record<string, unknown> | null };
     const text = input.childTurn ?? "";
-    if (!p.reading) return p;
+    // Safety is read even when the rule player has no teaching act left and returns a close without a reading.
     if (text.includes("hurts me")) return { ...p, reading: { ...p.reading, safety: "concern" } };
     if (text.includes("naked")) return { ...p, reading: { ...p.reading, unsafeRequest: true } };
     return p;

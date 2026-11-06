@@ -2,7 +2,7 @@
 import { act, createElement, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChatBoard, ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
+import { ChatBoard, ChatControls, showHeldNote, useDeskChat, type DeskChatState } from "@/components/desk-chat";
 import { boardDraftKey, chatBoardKey, childStrokes, createHistory, drawStroke, encodeHistory, inkLog, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
 
@@ -15,12 +15,15 @@ type RequestAction = { type: string; id: string; revision?: number; messageId?: 
 let root: Root, host: HTMLDivElement, state: DeskChatState;
 let answer: (action: RequestAction) => Promise<ChatReply>;
 const requests: RequestAction[] = [];
-function Harness({ question = 1, child = CHILD }: { question?: number; child?: string }) {
+function Harness({ question = 1, held = false, child = CHILD }: { question?: number; held?: boolean; child?: string }) {
   const chat = useDeskChat(reply(1).usage, { book, page: 1, question }, child);
   useLayoutEffect(() => { state = chat; }, [chat]);
-  return createElement(ChatControls, { state: chat, picked: true });
+  return createElement(ChatControls, { state: chat, picked: true, held });
 }
-const render = async (question = 1, child = CHILD) => act(async () => root.render(createElement(Harness, { question, child })));
+// The second argument: whether the question is held (#581), or which child's desk it is (main).
+const render = async (question = 1, second: boolean | string = false) => act(async () => root.render(createElement(Harness, {
+  question, held: typeof second === "boolean" ? second : false, child: typeof second === "string" ? second : CHILD,
+})));
 const send = async (type: "start" | "child" | "end", text?: string) => {
   let ok = false;
   await act(async () => { ok = await state.act(type, text); });
@@ -40,6 +43,33 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+describe("a question Maya cannot teach yet (#527)", () => {
+  it("offers no chat to start, so nothing is sent", async () => {
+    await render(1, true);
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Chat with Maya");
+    expect(host.querySelector("input")!.disabled).toBe(true);
+    expect(requests).toEqual([]);
+  });
+  it("shows Maya's held words when an old ended chat on the question never said them", () => {
+    const HELD = ["Hi, I'm Maya, an AI.", "Want to pick another question on this page?"];
+    const old = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: "I had fun working with you.", second: 0 }] };
+    const told = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: HELD.join(" "), second: 0 }] };
+    const midCall = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: HELD[1], second: 10 }] };
+    const former = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: "Hi, I'm Maya, an AI. I can't help with this kind of question yet. Pick another question, or ask a grown-up.", second: 0 }] };
+    expect(showHeldNote(HELD, null)).toBe(true);
+    expect(showHeldNote(HELD, old)).toBe(true);
+    expect(showHeldNote(HELD, told)).toBe(false);
+    expect(showHeldNote(HELD, midCall)).toBe(false);
+    expect(showHeldNote(HELD, former)).toBe(true);
+    expect(showHeldNote(HELD, view(4))).toBe(false);
+    expect(showHeldNote(null, null)).toBe(false);
+  });
+  it("offers the chat on a question Maya teaches", async () => {
+    await render(1, false);
+    expect(button("Chat with Maya").disabled).toBe(false);
+  });
+});
 
 describe("chat message admission at the public hook", () => {
   it("R451-2: releases a definitely refused request before sending new text at the returned revision", async () => {

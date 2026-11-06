@@ -40,9 +40,9 @@ export type PhraseGroup = (typeof PHRASE_GROUPS)[number];
 export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   encourage: [
     "You're working hard on this, {name}.", "I like how you keep trying.", "Great effort!", "You're doing a good job. You keep trying.",
-    "You've got this.", "I can see you're thinking carefully.", "Nice focus!", "I love how you're not giving up, {name}.",
-    "You're being really patient.", "Good for you for trying!", "I'm proud of how hard you're trying.", "You're a brave learner.",
-    "Nice and steady, {name}.", "Your effort is awesome.", "Thanks for trying so hard.", "I love your patience.", "You don't give up.",
+    "You've got this.", "I can see you're thinking carefully.", "Nice focus!", "You're not giving up, and it shows, {name}.",
+    "You're being really patient.", "Good for you for trying!", "Your hard work really shows.", "You're a brave learner.",
+    "Nice and steady, {name}.", "Your effort is awesome.", "Thanks for trying so hard.", "You're so patient.", "You don't give up.",
     "You keep trying, {name}.",
   ],
   empathy: [
@@ -60,7 +60,7 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   pacing: [
     "Take your time.", "No hurry.", "Let's go slowly.", "Let's take a deep breath.", "I'll wait for you.", "Let's take it bit by bit.",
     "Whenever you're ready.", "Let's pause for a moment.", "There's no rush at all, {name}.", "Slow and steady is great.",
-    "We can take this nice and slow.", "I'm happy to wait.", "Let's not rush this.", "Ready when you are, {name}.",
+    "We can take this nice and slow.", "I can wait.", "Let's not rush this.", "Ready when you are, {name}.",
   ],
   hearing: [
     "Sorry, I didn't catch it.", "Can you say it again, a bit slower?", "Could you say it again?", "I want to make sure I heard you.",
@@ -69,48 +69,49 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   ],
   smalltalk: [
     "Hi! It's nice to meet you.", "Thanks for telling me.", "Maybe we can talk about it another time.",
-    "I'm only able to help with your workbook today.", "Oh, thanks for telling me!", "I'd love to hear about it later.", "I love hearing about it, {name}!",
+    "I'm only able to help with your workbook today.", "Oh, thanks for telling me!", "Oh, how nice!", "Nice to hear, {name}!",
     "What a nice thing to tell me.", "Let's save the stories for later.", "Ha, I like it!", "Good to know, {name}.", "Oh, cool!",
     "How interesting!", "I hear you.", "Thank you for telling me.", "Okay, I hear you.", "I'm glad you told me.",
     "Aw, it sounds hard. I'm glad you told me.", "I'm sorry you're feeling this way. I'm here with you.", "Thanks for telling me how you feel. I'm here with you.",
   ],
   opening: [
-    "Our team may review this call to make me better.", "Ready to get started?", "I'm happy to help you today.", "Let's do this together.",
+    "Our team may review this call to make me better.", "Ready to get started?", "I'm here to help you today.", "Let's do this together.",
     "It's nice to see you, {name}.", "Let's have some fun with this.", "I'm glad you're here.", "Shall we get going?",
-    "We can go at your speed.", "I'm excited to work with you today, {name}.", "Let's begin whenever you're ready.", "Thanks for coming to work with me.",
+    "We can go at your speed.", "It's good to work with you today, {name}.", "Let's begin whenever you're ready.", "Thanks for coming to work with me.",
   ],
   closing: [
     "Thanks for working with me today.", "You worked really hard.", "See you next time!", "Bye for now!", "Have a great day!",
-    "I hope you enjoyed this.", "Thanks for your effort today, {name}.", "I had fun working with you.", "Take care, {name}!",
+    "I hope you enjoyed this.", "Thanks for your effort today, {name}.", "Thanks for working on this with me.", "Take care, {name}!",
     "You should feel proud of your effort.", "Talk soon!", "Enjoy the rest of your day!", "Thanks for thinking hard with me.",
+    "You stuck with it. Nice work today.",
   ],
   pets: [
-    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Aw!", "Thanks for telling me about your pet.", "I love hearing about animals.", "Animals are so interesting.", "How nice of you to tell me.", "Thanks for telling me!", "Ooh, an animal friend!", "I like hearing about the animals in your life.", "Thanks for telling me a bit about your day.",
+    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "Oh, {echo}! How nice.",
+    "Aw!", "Thanks for telling me about your pet.", "Animals are fun to hear about.", "Animals are so interesting.", "How nice of you to tell me.", "Thanks for telling me!", "Ooh, an animal friend!", "I like hearing about the animals in your life.", "Thanks for telling me a bit about your day.",
   ],
   family: [
-    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your family.", "How nice of you to tell me.", "I love hearing about the people in your life.", "Thanks for telling me!", "Every family is special.", "I like hearing about your world.", "Aw, thanks for telling me.", "I like it when you tell me things.", "Ooh, tell me later if you like.",
+    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "Oh, {echo}! How nice.",
+    "Thanks for telling me about your family.", "How nice of you to tell me.", "It's nice to hear about the people in your life.", "Thanks for telling me!", "Every family is special.", "I like hearing about your world.", "Aw, thanks for telling me.", "I like it when you tell me things.", "Ooh, tell me later if you like.",
   ],
   school: [
-    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about school.", "School has so many parts to it.", "Thanks for telling me!", "I like hearing about your day.", "How nice of you to tell me.", "Ooh, school news!", "Every school day is different.", "I love hearing about your world.", "Thanks for telling me all about it.",
+    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "Oh, {echo}! How nice.",
+    "Thanks for telling me about school.", "School has so many parts to it.", "Thanks for telling me!", "I like hearing about your day.", "How nice of you to tell me.", "Ooh, school news!", "Every school day is different.", "It's nice to hear about your world.", "Thanks for telling me all about it.",
   ],
   games: [
-    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your game.", "Ooh, a game!", "Games come in so many kinds.", "Thanks for telling me!", "I love hearing what you like to play.", "How nice of you to tell me.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
+    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "Oh, {echo}! How nice.",
+    "Thanks for telling me about your game.", "Ooh, a game!", "Games come in so many kinds.", "Thanks for telling me!", "It's nice to hear what you like to play.", "How nice of you to tell me.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   food: [
-    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your food.", "Ooh, food talk!", "Thanks for telling me!", "I love hearing what you eat.", "How nice of you to tell me.", "Food is so interesting.", "I like hearing about your day.", "Ooh, how interesting.", "Thanks for telling me all about it.",
+    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "Oh, {echo}! How nice.",
+    "Thanks for telling me about your food.", "Ooh, food talk!", "Thanks for telling me!", "It's nice to hear what you eat.", "How nice of you to tell me.", "Food is so interesting.", "I like hearing about your day.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   sports: [
-    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your sport.", "Ooh, sports!", "Thanks for telling me!", "I love hearing what you play.", "How nice of you to tell me.", "Sports come in so many kinds.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
+    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "Oh, {echo}! How nice.",
+    "Thanks for telling me about your sport.", "Ooh, sports!", "Thanks for telling me!", "It's nice to hear what you play.", "How nice of you to tell me.", "Sports come in so many kinds.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   trips: [
-    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your trip.", "Ooh, a trip!", "Thanks for telling me!", "I love hearing about new spots.", "How nice of you to tell me.", "Every trip is different.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
+    "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "Oh, {echo}! How nice.",
+    "Thanks for telling me about your trip.", "Ooh, a trip!", "Thanks for telling me!", "New trips are fun to hear about.", "How nice of you to tell me.", "Every trip is different.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   tired: [
     "Feeling {echo} is okay.", "Sorry you're feeling {echo}.", "Thanks for telling me you're {echo}.",
@@ -119,8 +120,8 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   ],
   happy: [
     "Yay, {echo}!", "I'm so glad you're {echo}!", "Feeling {echo} is great!",
-    "Yay!", "I love your happy mood.", "How wonderful!", "I love hearing it!", "How great!", "Happy days are the best.",
-    "I'm happy too!", "What a great mood to learn in.", "Woohoo!",
+    "Yay!", "What a happy mood!", "How wonderful!", "Lovely to hear!", "How great!", "Happy days are the best.",
+    "Hooray!", "What a great mood to learn in.", "Woohoo!",
   ],
   bored: [
     "Feeling {echo} happens.", "Thanks for telling me you're {echo}.",
@@ -133,12 +134,12 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "You're not alone in this.", "I'm here to help.", "It's fine to feel stuck.", "Let's slow down a little.", "You're working really hard.",
   ],
   aboutmaya: [
-    "Great question! I'm an AI helper, not a person.", "I'm an AI, so I don't have a life like yours. I love hearing about yours!",
+    "Great question! I'm an AI helper, not a person.", "I'm an AI, so I don't have a life like yours. It's nice to hear about yours!",
     "I'm an AI, so I'm not a person.", "Good question! I'm an AI, here just to help you.", "I'm an AI, so I don't do things the way people do.",
-    "I'm not a person or a robot with arms. I'm an AI helper.", "I'm an AI, but I really enjoy talking with you.",
-    "I'm an AI, so I love hearing about you!", "Ha, I'm an AI, so I can't. Thanks for asking!",
+    "I'm not a person or a robot with arms. I'm an AI helper.", "I'm an AI, and I'm here to talk with you.",
+    "I'm an AI, and it's nice to hear about you!", "Ha, I'm an AI, so I can't. Thanks for asking!",
     "I'm an AI helper, so I'm a bit different from you.", "I'm an AI, and my favourite thing is helping you learn.",
-    "Fun question! I'm an AI, but I love hearing about you.",
+    "Fun question! I'm an AI, here to help you.",
   ],
   back: [
     "Whenever you're ready, we'll get back to our question.", "When you're ready, we can go back to our question.",
@@ -168,11 +169,11 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   // Thanks for a compliment, and no ranking of children: effort praise instead of "smartest" (only for effort the child
   // really made; before any work, being ready to learn). Pending Savar's approval.
   praise: [
-    "Aw, thank you! I'm glad we're working together.", "Thank you! You're kind to say so.", "Aw, thanks! I'm happy to help you.",
+    "Aw, thank you! I'm glad we're working together.", "Thank you! You're kind to say so.", "Aw, thanks! I'm here to help you.",
     "Thank you! I'm glad you're here.", "I can't say who is smartest. I like how hard you're working.",
-    "I can't say who is smartest. I love how you keep trying.", "I don't rank kids. I like how hard you're working.",
+    "I can't say who is smartest. You keep trying so hard.", "I don't rank kids. I like how hard you're working.",
     "I can't say who is smartest. I'm glad you're ready to learn.", "I can't pick the smartest kid. I like your hard work.",
-    "Aw, thank you! You're working so hard today.", "I can't say who is smartest. I'm proud of how you're trying.",
+    "Aw, thank you! You're working so hard today.", "I can't say who is smartest. You're trying so hard.",
     "I don't rank kids. I'm glad you're ready to learn.",
   ],
 };
@@ -379,6 +380,8 @@ export function freeTalkProblem(text: string, childName: string | null = null, c
   if (/\b(?:grammar|grammatical|ungrammatical|correct English|proper English|should (?:say|speak))\b/i.test(t)) return "grammar correction";
   const plain = plainLanguageProblem(t);
   if (plain !== null) return plain;
+  const feeling = feelingClaim(t);
+  if (feeling !== null) return `a feeling claim: ${feeling}`;
   if (!/[.?!]["')\]]*$/.test(t)) return "not whole sentences";
   const sentences = t.split(/(?<=[.?!])\s+/).filter(Boolean);
   if (sentences.length > FREE_TALK_LIMITS.sentences) return "too many sentences";
@@ -406,6 +409,17 @@ export function freeTalkProblem(text: string, childName: string | null = null, c
  * the rules (short sentences, everyday words, things only do what they really can) are in the prompts.
  */
 export const PLAIN_LANGUAGE_BANNED = ["in all", "altogether", "all together", "total", "left over"] as const;
+
+/**
+ * Maya claims no feelings of her own (#605, practice C24-r2: "I had fun working with you" passed the guards and the
+ * review): "I had fun", "I'm happy", "I love", "I feel", "I enjoyed", "I'm excited", "I'm proud". She is an AI. A plain
+ * acknowledgement stays ("I'm glad you told me", "That sounds fun", "I'm sorry you feel sad"). Returns the claim, or null.
+ */
+const FEELING_CLAIM = /\b(?:i|we)(?:'m| am| was| were|'re| are)? (?:so |really |very |super |just )?(?:happy|excited|proud|thrilled|delighted)\b|\b(?:i|we) (?:really |just |do |so )?(?:love|loved|enjoy|enjoyed|feel|felt|adore)\b|\b(?:i|we) (?:had|have|'ve had) (?:so much |a lot of |such |lots of )?fun\b|\bi'd love\b/i;
+export function feelingClaim(text: string): string | null {
+  const m = FEELING_CLAIM.exec(text.replace(/[’]/g, "'"));
+  return m ? m[0] : null;
+}
 
 /** The first banned plain-language phrase in a text, as a whole word or words, or null. */
 export function plainLanguageProblem(text: string): string | null {

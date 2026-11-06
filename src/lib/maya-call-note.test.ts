@@ -136,6 +136,22 @@ describe("chat parent notes", () => {
   });
 });
 
+describe("a held call's note (#527)", () => {
+  it("says Maya asked the child to pick another question only when the delivered transcript holds those words", async () => {
+    // A call that ended while the close after a content problem was still pending: the outcome is content_issue, but
+    // the child never heard the held lines.
+    const { ended } = await endedTestCall(["I don't know how to start."]);
+    const trace = { ...ended.call.trace!, outcome: { ...ended.call.trace!.outcome!, reason: "content_issue" as const } };
+    const call = { ...asFamily(ended), trace };
+    expect(JSON.stringify(trace.turns)).not.toContain("Pick another question");
+    const s = setup(null, [call]);
+    const note = written(await s.notes.write({ call, package: ended.package, event: null }));
+    const shown = noteSentences(note, "Leah");
+    expect(shown).toContain("Maya cannot help with this kind of question yet, so the call ended.");
+    expect(shown.join(" ")).not.toMatch(/pick another question|grown-up/i);
+  });
+});
+
 describe("test calls never get a note", () => {
   it("an admin test call ends with no note, no AI request and no row", async () => {
     const ai = fakeNoteAi();

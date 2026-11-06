@@ -113,7 +113,7 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
 
   it("keeps the old reading outside a fraction call: a spoken fraction is confirmed there", () => {
     expect(readAnswer("three quarters").final).toBeNull();
-    expect(readOptionsFor(C38)).toEqual({ fractions: true });
+    expect(readOptionsFor(C38)).toMatchObject({ fractions: true });
   });
 
   it.each([
@@ -212,9 +212,18 @@ describe("fraction expression and explanation boundaries", () => {
         ["3 - 1 is 2", "I used two of four"].flatMap((body) =>
           [" ", ". "].map((separator) => `${prefix}${form}${separator}${word} ${body}`))))))("keeps the answer before arithmetic in its explanation: %s", (said) => {
     const value = said.includes("two fourths") ? frac(2, 4) : frac(1, 2);
-    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: true });
     const pkg = pkgOf("3/4 - 1/4 = ?", sub(frac(3, 4), frac(1, 4)), sub(frac(3, 5), frac(1, 5)));
     const proposal = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } };
+    // PR #624 review round 3: an explanation in a sentence of its own with a number makes two sentences that hold numbers.
+    // The answer still stands as the final one, and Maya confirms it before she accepts it.
+    if (/\. \S/.test(said) && /\d|two|four/.test(said.slice(said.lastIndexOf(". ")))) {
+      expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: false });
+      const asked = call(pkg, said);
+      expect(asked.propose(proposal).refusal?.code).toBe("answer_not_committed");
+      expect(asked.s.solved).toBeNull();
+      return;
+    }
+    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: true });
     const direct = call(pkg, said);
     expect(direct.propose(proposal).refusal).toBeNull();
     expect(direct.s.solved).toBe("child");

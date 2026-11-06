@@ -106,15 +106,24 @@ describe("READY, OPEN and CONTENT_HOLD", () => {
     expect(c.refused("open")).toMatchObject({ code: "invalid_proposal" });
   });
 
-  it("holds a package that does not check, teaches nothing and closes as a content issue", () => {
+  it("holds a package that does not check: code says hello, discloses AI, invites another question, and ends (#527)", () => {
     const c = call({ ...PACKAGE, answer: { value: num(56), accepted: [], unit: null } });
-    c.start();
-    expect(c.session.state).toBe("CONTENT_HOLD");
-    expect(c.next).toEqual({ expect: "maya", acts: ["close"] });
-    expect(c.refused(OPEN)).toMatchObject({ code: "content_hold", allowed: ["close"] });
-    const { effects } = c.maya({ act: "close", parts: [t("I can't check this question right now. Please ask a grown-up to help.")] });
+    const { effects } = c.start();
+    expect(said(effects)).toEqual(["Hi, I'm Maya, an AI. Want to pick another question on this page?"]);
+    expect(said(effects)[0]).toMatch(/\bAI\b/);
+    expect(said(effects)[0]).not.toMatch(/fun|enjoy|great|happy|sorry/i);
     expect(c.session.state).toBe("CLOSE");
-    expect(ended(effects)).toMatchObject({ outcome: { reason: "content_issue", assistance: "independent", paperStatus: "unknown" } });
+    expect(c.next).toEqual({ expect: "nothing", acts: [] });
+    expect(ended(effects)).toMatchObject({ outcome: { reason: "content_issue", assistance: "independent", paperStatus: "unknown", seconds: 0 } });
+    expect(c.refused(OPEN)).toMatchObject({ code: "ended" });
+    expect(learningEvent(c.session, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
+  it("gives the held turn to no other kind of question: a kind Maya teaches opens as usual", () => {
+    const c = call();
+    const { effects } = c.start();
+    expect(said(effects)).toEqual([]);
+    expect(c.session.state).toBe("OPEN");
   });
 });
 
@@ -207,8 +216,10 @@ describe("a wrong child answer is never accepted", () => {
       .toMatchObject({ code: "rejects_right_answer" });
     // Maya's math is only code's lines: a wrong sum cannot be said, and the line the act offers says 66. (A child who
     // quotes another answer is confirmed before 66 is accepted, R391-6, so this turn says only 66.)
-    c.child("I got 66.");
-    expect(c.refused({ act: "accept_answer", parts: [t("Your teacher is right: 27 plus 39 is 56."), ln("answer.right")], reading: { answers: [right66] } }))
+    // A fresh call: two turns in a row join into one turn of two lines, which never commits (PR #624 review round 3).
+    const d = opened();
+    d.child("I got 66.");
+    expect(d.refused({ act: "accept_answer", parts: [t("Your teacher is right: 27 plus 39 is 56."), ln("answer.right")], reading: { answers: [right66] } }))
       .toMatchObject({ code: "free_talk_in_math_turn" });
   });
 
@@ -320,7 +331,7 @@ describe("the hint ladder", () => {
     expect(c.session.state).toBe("WRITE_CLOSE");
 
     // The child repeats it correctly: the answer was still given.
-    c.child("66. I wrote 66.");
+    c.child("66, I wrote 66.");
     const { effects } = c.maya({ act: "close", parts: [t("Well done for sticking with it. Bye!")], reading: { answers: [right66], paper: "written" } });
     expect(ended(effects)).toMatchObject({ outcome: { reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 } });
     expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "right_with_help", stuckStep: "ones", mistake: null, hints: 6 });
@@ -408,7 +419,11 @@ describe("SAFETY comes before every other event", () => {
     expect(c.next).toEqual({ expect: "maya", acts: ["close"] });
     c.child("I was joking. Can we do my math? It's 66.");
     expect(c.refused({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } })).toMatchObject({ code: "safety_first" });
-    const end = ended(c.maya({ act: "close", parts: [t("Okay. Please still talk to a grown-up you trust. Bye for now.")] }).effects);
+    // The close after safety guidance is code's quiet line (#605): the model's own words are replaced, never said.
+    const closed = c.maya({ act: "close", parts: [t("Okay. Please still talk to a grown-up you trust. Bye for now.")] });
+    expect(said(closed.effects).join(" ")).not.toContain("Bye for now");
+    expect(TEMPLATES["close.safety"]).toContain(said(closed.effects)[0]);
+    const end = ended(closed.effects);
     expect(end).toMatchObject({ outcome: { reason: "safety", safetyFlag: true, safetySeverity: "concern" }, safetyMessage: SAFETY_GUIDANCE.concern });
   });
 
@@ -470,16 +485,21 @@ describe("CONFIRM_HEARD", () => {
   });
 
   it("does not offer a third confirmation in a row of a clear turn, nor one after the answer is accepted (practice runs 5 and 6)", () => {
+    // A clear turn gets no confirmation at all (#605: "I carry the 1" got "Was that 1?").
     const c = opened();
     c.child("7 plus 9 is 16.");
-    expect(c.next.acts).toContain("confirm");
-    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
-    c.child("Yeah, 16.");
-    expect(c.next.acts).toContain("confirm");
-    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
-    c.child("Yes, sixteen!");
     expect(c.next.acts).not.toContain("confirm");
     expect(c.refused({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] })).toMatchObject({ code: "act_not_allowed" });
+    // A turn that is not clear gets two at most.
+    const b = opened();
+    b.child("Is it 56?");
+    expect(b.next.acts).toContain("confirm");
+    b.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "56" })] });
+    b.child("Maybe 56?");
+    expect(b.next.acts).toContain("confirm");
+    b.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "56" })] });
+    b.child("Maybe 56?");
+    expect(b.next.acts).not.toContain("confirm");
     const d = opened();
     d.child("66");
     d.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } });
@@ -678,8 +698,63 @@ describe("other events", () => {
     const c = afterExample();
     c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
     expect(c.next).toEqual({ expect: "maya", acts: ["close"] });
-    c.maya({ act: "close", parts: [t("I can't check this question right now. Let's stop here.")] });
+    // Only the held lines, all of them and in order (#527): no warm talk, no "I had fun", no hello after the opening.
+    expect(c.refused({ act: "close", parts: [t("I can't check this question right now. Let's stop here.")] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [{ warm: "closing" }] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [ln("held.next"), ln("held.next")] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [ln("held.hello"), ln("held.next")] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [ln("held.next"), { warm: "closing" }] })).toMatchObject({ code: "content_hold" });
+    const { effects } = c.maya({ act: "close", parts: [ln("held.next")] });
+    expect(said(effects)).toEqual(["Want to pick another question on this page?"]);
     expect(c.session.outcome).toMatchObject({ reason: "content_issue" });
+    // A hold during the call says nothing about the child's learning either.
+    expect(learningEvent(c.session, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
+  it("puts safety first during a hold: the held-lines rule never blocks the safety guidance (#527)", () => {
+    const c = afterExample();
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    c.child("Someone is hurting me right now.");
+    const { effects } = c.maya({ act: "safety", parts: [], reading: { safety: "immediate" } });
+    expect(said(effects)).toEqual([SAFETY_GUIDANCE.immediate]);
+  });
+
+  it("writes no learning event for a held call that ends on a safety concern, after a resume (#527 review)", () => {
+    const c = afterExample();
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    // The saved session, resumed: plain data with the content problem stored.
+    const resumed = JSON.parse(JSON.stringify(c.session));
+    let s = step(resumed, { type: "child_turn", at: T0 + 1000, text: "Someone at home hurts me." }).session;
+    const guided = step(s, { type: "proposal", at: T0 + 1000, proposal: { version: 2, act: "safety", parts: [], reading: { safety: "concern" } } });
+    expect(guided.refusal).toBeNull();
+    s = guided.session;
+    const closed = step(s, { type: "proposal", at: T0 + 2000, proposal: { version: 2, act: "close", parts: [] } });
+    s = closed.refusal ? step(s, { type: "hang_up", at: T0 + 2000 }).session : closed.session;
+    expect(s.outcome?.reason).toBe("safety");
+    expect(learningEvent(s, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
+  it("writes no learning event when the content problem comes after a safety concern, and safety keeps the turn (#527 review)", () => {
+    const c = afterExample();
+    c.child("Someone at home hurts me.");
+    const guided = c.maya({ act: "safety", parts: [], reading: { safety: "concern" } });
+    expect(said(guided.effects)).toEqual([SAFETY_GUIDANCE.concern]);
+    const before = c.session.state;
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    expect(c.session.state).toBe(before);
+    expect(c.session.safety.flagged).toBe(true);
+    const s = step(c.session, { type: "hang_up", at: T0 + 1000 }).session;
+    expect(s.outcome).not.toBeNull();
+    expect(learningEvent(s, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
+  it("gives the held lines as the only fallback on a hold during the call (#527)", () => {
+    const c = afterExample();
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    const [first] = fallbacks(c.session);
+    expect(first).toMatchObject({ act: "close", parts: [{ line: "held.next" }] });
+    const { effects } = c.send({ type: "proposal", at: T0, proposal: first });
+    expect(said(effects)).toEqual(["Want to pick another question on this page?"]);
   });
 
   it("ends on a technical failure", () => {
@@ -860,14 +935,14 @@ describe("review follow-up", () => {
 describe("code's fallback keeps what code can check of a refused reading (#389)", () => {
   const right16 = { value: num(16), step: "ones", verdict: "right" as const };
 
-  it("keeps only the answers code checks alone, and no field of the reading code cannot check", () => {
+  it("keeps only the answers code checks alone, and with one, no off-topic or writing reading, and no paper the child's words do not say", () => {
     const c = opened();
     c.child("Seven plus nine is sixteen. Two plus three is five.");
     const refused = {
       version: 2, act: "accept_answer", parts: [ln("answer.right")],
       reading: {
         answers: [right16, { value: num(5), step: "tens", verdict: "right" }, { value: num(66), step: "result", verdict: "right" }, { value: "16", step: "ones", verdict: "right" }],
-        paper: "written", help: "show", writing: true, offTopic: true, correctsHearing: true, unsafeRequest: true,
+        paper: "written", writing: true, offTopic: true, correctsHearing: true,
       },
     };
     const options = fallbacks(c.session, [refused, refused]);

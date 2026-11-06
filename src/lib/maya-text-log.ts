@@ -254,7 +254,7 @@ function flushDeferred(s: TextFold) {
 }
 function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[]) {
   const before = s.session.state;
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews };
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(attempt.source === "fallback" ? { fallback: true } : {}) };
   let r = step(s.session, event);
   let controlEvent = event;
   let scene = s.scene;
