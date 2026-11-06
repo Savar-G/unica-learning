@@ -2,6 +2,10 @@
 
 A welcome email follows a confirmed saved card for the program. It asks the parent to allow 5 to 7 days to prepare the first workbook. It says that another email will follow when the workbook is on its way. It covers mail with tracking and local hand delivery. Creating an account or choosing a plan without saving a card sends no welcome.
 
+The welcome now adds the approved "You have nothing to do right now." paragraph and the feedback contact line after the existing text. This addition is based on main after PR #678 merged at `6410132`. The founders' signature remains unchanged.
+
+All current email texts, including the free-month variants for children below Grade 3 and Grade 3 or above, are in [workbook-email-copy.md](workbook-email-copy.md). These examples are generated from the templates with sample names and shipment values.
+
 On the admin workbook screen, the email controls appear below **Print and ship** after the workbook is marked printed. The family, child, saved card and workbook number come from that stored workbook. **Workbook ready** is unavailable after it is marked shipped. A child without a confirmed saved card has no email controls.
 
 In **Admin > Cards and waitlist**, open **Workbook emails** on the child's saved card. The same controls appear on the family and child records, with a workbook number field for these manual sends.
@@ -18,7 +22,15 @@ The ready email says that the workbook is ready and will be shipped soon. The de
 
 The ready, hand delivery and courier words were approved by Savar on 2026-11-06 in [#681](https://github.com/Savar-G/unica-learning/issues/681#issuecomment-6692148719), with the updated feedback contact line in [the later comment](https://github.com/Savar-G/unica-learning/issues/681#issuecomment-6692204855). The optional tracking link remains supported. With no link, the courier email matches the approved sample exactly, apart from family and shipment values.
 
-**Do not release these email changes until the Parent Dashboard thread supplies merged LIVE Feedback route evidence.** It must cover a signed-in parent with no workbook, sign-in and return to Feedback, family access and the desk lock. Use `https://unicalearning.com/account/feedback` with no query. Family switches remain unchanged. The free-month instructions in #681 also need verified Schedule behavior, multi-child scope and agreement with stored printed page 2.
+**Do not merge or release this PR until the Parent Dashboard thread supplies the required evidence.** Every workbook email, including the welcome immediately after a saved card, links to `https://unicalearning.com/account/feedback` with no query. Feedback must work for every signed-in parent at every stage, including a parent with no workbook. It must not depend on workbook or dashboard readiness. The evidence must cover the merged LIVE route, no-workbook access, sign-in and return to Feedback, family access and the desk lock.
+
+The free-month email also links to `https://unicalearning.com/account/schedule` with no child query. Release needs merged route and browser evidence, correct multi-child scope and agreement with the stored book and day numbers on printed page 2. The approved "Explain this problem" wording is a content dependency on #675. Its function is not present at this base commit. Family switches remain unchanged.
+
+## Free-month instructions
+
+The free-month email keeps the price, first charge date, monthly billing, reminder and cancellation terms. It adds the exact approved parent instructions for the schedule, finished-page scanning, marks, explanations and contact. Grade 3 to Grade 9 children also get the Maya chat setup step. The grade is loaded from the saved card's own child, with the family filter. A younger or invalid grade gets no Maya step. No email offers voice calls. PIN and notice instructions point to Parent home so the parent selects the correct child before opening a desk.
+
+The plain account routes in these emails always use the approved production addresses. Preview hosts and request origins cannot change those links. The first charge date still uses the family time module.
 
 ## Send status
 

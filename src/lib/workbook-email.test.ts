@@ -57,6 +57,9 @@ describe("workbook emails", () => {
     expect(message.text).toContain("Nothing was charged");
     expect(message.text).toContain("free first month starts when your first workbook arrives at your home");
     expect(message.text).not.toContain("Tracking number:");
+    expect(message.text).toContain("Please allow 5 to 7 days for us to prepare your first workbook.");
+    expect(message.text).toContain("You have nothing to do right now.\n\n" + contact);
+    expect(message.html).toContain('href="https://unicalearning.com/account/feedback"');
   });
   it("the founders sign the welcome; the team signs dispatch notices (D-225)", () => {
     const welcome = workbookEmail({ ...parent, kind: "welcome", delivery: null });
@@ -98,16 +101,54 @@ describe("workbook emails", () => {
 });
 
 describe("the free month confirmation", () => {
-  const email = planStartEmail({ parentName: "Priya", childName: "Asha & Co", price: 79.99, firstCharge: "December 5, 2026", planUrl: "https://unica.test/account/plan" });
+  const email = planStartEmail({ parentName: "Priya", childName: "Asha & Co", grade: 3, price: 79.99, firstCharge: "December 5, 2026" });
   it("gives the terms the card networks require: the price, how often, the first charge and how to cancel", () => {
     expect(email.text).toContain("On December 5, 2026, we charge CAD 79.99 to your saved card. We then charge CAD 79.99 each month until you cancel.");
     expect(email.text).toContain("We will email you a reminder 7 days before the first charge.");
-    expect(email.text).toContain('open https://unica.test/account/plan, then press "Cancel plan". If you cancel before December 5, 2026, you pay nothing.');
+    expect(email.text).toContain('open https://unicalearning.com/account/plan, then press "Cancel plan". If you cancel before December 5, 2026, you pay nothing.');
     expect(email.text).toContain("contact@unicalearning.com");
   });
   it("links the plan page and escapes names in the html", () => {
-    expect(email.html).toContain('<a href="https://unica.test/account/plan"');
+    expect(email.html).toContain('<a href="https://unicalearning.com/account/plan"');
     expect(email.html).toContain("Asha &amp; Co");
     expect(email.html).not.toContain("Asha & Co");
+  });
+  it.each([0, 1, 2, 3, 9, -1, 10, NaN])("includes Maya chat only for a valid school grade of at least 3 (%s)", (grade) => {
+    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade, price: 79.99, firstCharge: "December 15, 2026" });
+    for (const format of [message.text, message.html]) {
+      if (grade === 3 || grade === 9) expect(format).toContain("can chat with Maya, our AI Teaching Assistant");
+      else expect(format).not.toContain("Maya");
+      expect(format).not.toMatch(/\bcalls?\b|\bvoice\b/i);
+      expect(format).toContain("https://unicalearning.com/account/schedule");
+      expect(format).toContain("https://unicalearning.com/account/scan");
+      expect(format).toContain("https://unicalearning.com/account/feedback");
+      expect(format).toContain("CAD 79.99");
+    }
+    for (const path of ["schedule", "scan", "feedback", "plan"]) expect(message.html).toContain(`href="https://unicalearning.com/account/${path}"`);
+  });
+  it("matches Savar's approved free-month words, with unchanged signature and footer", () => {
+    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026" });
+    const expected = `Hi Sam,
+
+Thanks for joining Unica Learning. Alex's first workbook has arrived, so your free first month has started. Nothing has been charged.
+
+As a parent, here are your responsibilities:
+
+1. Follow the schedule. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
+2. Scan the finished pages. After Alex finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.
+3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with Alex.
+4. Set up Maya. If Alex gets stuck, Alex can chat with Maya, our AI Teaching Assistant. Sign in at https://unicalearning.com/account, set a PIN, agree to the Maya notice, then open Alex's desk.
+
+If anything is broken, if anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.
+
+Your plan: On December 15, 2026, we charge CAD 79.99 to your saved card. We then charge CAD 79.99 each month until you cancel. Delivery is included. We will email you a reminder 7 days before the first charge.
+
+To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan". If you cancel before December 15, 2026, you pay nothing.`;
+    expect(message.subject).toBe("Welcome to Unica Learning: how Alex's free month works");
+    expect(message.text.split("\n\nThank you,")[0]).toBe(expected);
+    const htmlText = message.html.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+    for (const paragraph of expected.split("\n\n")) expect(htmlText).toContain(paragraph);
+    expect(message.text).toContain("Thank you,\nThe Unica Learning team");
+    expect(message.text).toContain("16557 87A Ave");
   });
 });

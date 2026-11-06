@@ -64,6 +64,8 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
     "Please allow 5 to 7 days for us to prepare your first workbook.",
     "We will email you again when it is on its way. If we send it by mail, that email will include tracking details. For local hand delivery, we will contact you to arrange it.",
     "Nothing was charged when you added your card. Your free first month starts when your first workbook arrives at your home.",
+    "You have nothing to do right now.",
+    `If anything does not work, or if you have feedback, email ${SUPPORT_EMAIL} or use https://unicalearning.com/account/feedback.`,
   ] : ready ? [
     `Hi ${p.parentName},`,
     "Your workbook is ready and will be shipped soon. You have nothing to do right now. We will email you again when it is on its way.",
@@ -89,17 +91,27 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
  * The confirmation when a family's free month starts (card network rules: price, billing terms and how to cancel, sent
  * at enrolment). `firstCharge` is already formatted in the family's time zone.
  */
-export function planStartEmail(p: { parentName: string; childName: string; price: number; firstCharge: string; planUrl: string }) {
-  const subject = `${p.childName}'s free month has started`;
+export function planStartEmail(p: { parentName: string; childName: string; grade: number; price: number; firstCharge: string }) {
+  const subject = `Welcome to Unica Learning: how ${p.childName}'s free month works`;
+  const steps = [
+    `1. Follow the schedule. See which pages ${p.childName} does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.`,
+    `2. Scan the finished pages. After ${p.childName} finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.`,
+    `3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with ${p.childName}.`,
+    ...(Number.isInteger(p.grade) && p.grade >= 3 && p.grade <= 9 ? [
+      `4. Set up Maya. If ${p.childName} gets stuck, ${p.childName} can chat with Maya, our AI Teaching Assistant. Sign in at https://unicalearning.com/account, set a PIN, agree to the Maya notice, then open ${p.childName}'s desk.`,
+    ] : []),
+  ];
   const paragraphs = [
     `Hi ${p.parentName},`,
-    `${p.childName}'s first workbook has arrived, so your free first month of the Unica Learning math program has started. Nothing has been charged.`,
-    `On ${p.firstCharge}, we charge CAD ${cad(p.price)} to your saved card. We then charge CAD ${cad(p.price)} each month until you cancel. Delivery is included.`,
-    `We will email you a reminder 7 days before the first charge.`,
-    `To cancel, sign in and open ${p.planUrl}, then press "Cancel plan". If you cancel before ${p.firstCharge}, you pay nothing. You can also email ${SUPPORT_EMAIL}.`,
+    `Thanks for joining Unica Learning. ${p.childName}'s first workbook has arrived, so your free first month has started. Nothing has been charged.`,
+    "As a parent, here are your responsibilities:",
+    steps.join("\n"),
+    `If anything is broken, if anything does not work, or if you have feedback, email ${SUPPORT_EMAIL} or use https://unicalearning.com/account/feedback.`,
+    `Your plan: On ${p.firstCharge}, we charge CAD ${cad(p.price)} to your saved card. We then charge CAD ${cad(p.price)} each month until you cancel. Delivery is included. We will email you a reminder 7 days before the first charge.`,
+    `To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan". If you cancel before ${p.firstCharge}, you pay nothing.`,
   ];
   const footer = { why: "You received this email about your Unica Learning program." };
   const text = [...paragraphs, emailSignatureText(), emailFooterText(footer)].join("\n\n");
-  const body = `<tr><td style="padding:0 24px">${paragraphs.map((s) => `<p style="margin:0 0 16px">${esc(s).replace(esc(p.planUrl), `<a href="${esc(p.planUrl)}" style="color:#0c0c0e">${esc(p.planUrl)}</a>`)}</p>`).join("")}</td></tr>`;
+  const body = `<tr><td style="padding:0 24px">${paragraphs.map((s) => `<p style="margin:0 0 16px">${paragraphHtml(s)}</p>`).join("")}</td></tr>`;
   return { subject, text, html: emailDocument({ title: subject, preview: `Your first charge is on ${p.firstCharge}. Cancel before then and you pay nothing.`, body, footer }) };
 }

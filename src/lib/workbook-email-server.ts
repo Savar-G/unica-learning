@@ -113,14 +113,14 @@ export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { card
   if (error || !card) throw Error("store_failed");
   const [parent, child] = await Promise.all([
     db.from("parents").select("name, email, postal, time_zone").eq("id", card.parent_id).maybeSingle(),
-    db.from("children").select("first_name, province").eq("id", card.child_id).eq("parent_id", card.parent_id).maybeSingle(),
+    db.from("children").select("first_name, province, grade").eq("id", card.child_id).eq("parent_id", card.parent_id).maybeSingle(),
   ]);
   if (parent.error || child.error || !parent.data || !child.data) throw Error("store_failed");
   const zone = familyZone({ timeZone: parent.data.time_zone, postal: parent.data.postal, province: familyProvince([{ id: card.child_id, province: child.data.province }]) });
   const firstCharge = formatInZone(p.firstChargeAt, zone, { year: "numeric", month: "long", day: "numeric" });
   const message: EmailMessage = {
     sender: { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
-    ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, price: p.price, firstCharge, planUrl: `${p.origin}/account/plan` }),
+    ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, grade: child.data.grade, price: p.price, firstCharge }),
   };
   return sendEmailOnceInTime(planStartEmailLedger(db, message), { cardId: p.cardId, generation: p.generation }, message, { transport, inTime });
 }
