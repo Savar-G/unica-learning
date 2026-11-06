@@ -1,0 +1,16 @@
+{
+  "round": "r-parent-workbook-access",
+  "route": "design direct",
+  "job_kind": "fix",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "base": "7584b930ce3ed4f48930010f9c94f03f11e13a08",
+  "entry": "/account/workbooks/<child>",
+  "answer_key": "/account/workbooks/<child>/answers/<workbook>",
+  "admin_preview": "/admin/dashboard?view=workbook_answers&scenario=complete",
+  "status": "implementation complete; root browser and independent review pending",
+  "artifacts": { "scenarios": "scenarios.json", "verification": "verification.json", "evidence_notes": "evidence.md" },
+  "browser_evidence": [],
+  "release_switches_changed": false,
+  "schema_changed_by_worker": false
+}

@@ -58,6 +58,10 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("first_book_coming", "First workbook not sent", "first_book_coming"), scenario("late", "Later than estimate"),
     scenario("paused", "Pause moves next mailing"), scenario("ended", "Past books only", "ended"),
   ] },
+  { id: "workbook_answers", label: "Workbook answer key", scenarios: [
+    scenario("complete", "Whole delivered workbook"), scenario("mixed", "Multiple answers, examples and open work"),
+    scenario("empty", "No stored answers"), scenario("ended", "Delivered book after plan ended", "ended"),
+  ] },
   { id: "progress", label: "Progress / skill panel", scenarios: [
     scenario("map", "Skill map"), scenario("panel", "Selected skill"), scenario("empty", "No test report", "first_book_coming"),
     scenario("unreliable", "Unreliable result"), scenario("ended", "Past skills", "ended"),

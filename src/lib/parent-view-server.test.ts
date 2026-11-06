@@ -133,7 +133,7 @@ describe("the Supabase reader of the Workbooks tab (#558)", () => {
     const view = await readWorkbooks(reader().reader, CHILD, NOW);
     expect(view?.current).toEqual({ id: WORKBOOK, number: 1, shippedOn: "2026-11-02", deliveredOn: null, delivery: { method: "mail", carrier: "Canada Post", trackingNumber: "7023", trackingUrl: "https://track.example/7023" } });
     expect(view?.next).toEqual({ kind: "range", earliest: "2026-11-16", latest: "2026-12-07" });
-    expect(view?.books).toEqual([{ id: WORKBOOK, number: 1, shippedOn: "2026-11-02", hasPdf: true }]);
+    expect(view?.books).toEqual([{ id: WORKBOOK, number: 1, shippedOn: "2026-11-02", deliveredOn: null }]);
   });
   it("reads books, deliveries and the family with the parent's session, and only the dispatch details with the secret key, filtered on the parent", async () => {
     const r = reader();
