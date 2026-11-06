@@ -4,8 +4,8 @@ import QRCode from "qrcode";
 import sharp from "sharp";
 import { beforeAll, describe, expect, it } from "vitest";
 import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
-import { calibratePhoto, cropBox, cropPlan, type CropItem, type Raster } from "@/lib/scan-calibration";
-import { runScanCrops, scanPartPath, type ScanFrame } from "@/lib/scan-crops";
+import { calibratePhoto, cropBox, cropPlan, sheetChecker, type CropItem, type Raster } from "@/lib/scan-calibration";
+import { readScanPreview, runScanCrops, scanPartPath, type ScanFrame } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
 import { normalizeScanPhoto } from "@/lib/scan-photo-image";
 import { cropCut, drawDigit, fillBox, greyRaster, photoJpeg, photographed, readDigit, rotatedCorners, uprightCorners } from "@/lib/scan-synthetic";
@@ -49,6 +49,13 @@ async function realPages(level: string, days: string[], count: number): Promise<
 
 const available = (p: Real) => printContractForPhoto({ printedRevision: REVISION }, { printContract: p.contract }, { printedRevision: REVISION });
 const calibrate = (photo: Raster, p: Real) => calibratePhoto({ photo, printed: p.grey, contract: available(p), pageLink: pageUrl(p.token), writing: p.writing });
+/** Calibration, then the sheet check among other pages, as the crop job asks them. */
+function calibrateAmong(photo: Raster, p: Real, among: Raster[]) {
+  const r = calibrate(photo, p);
+  if (r.status !== "calibrated") return r;
+  const sheet = sheetChecker({ photo, printed: p.grey, transform: r.calibration.transform, writing: p.writing })(among);
+  return sheet.verdict === "this-page" ? r : { status: "refused" as const, reason: sheet.verdict };
+}
 
 function written(p: Real, digit: (i: number) => number): Raster {
   const copy: Raster = { ...p.grey, data: p.grey.data.slice() };
@@ -123,7 +130,7 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
     const now = Date.parse("2026-11-05T12:00:00Z"), id = "00000000-0000-4000-8000-0000000000a1";
     const m = memoryScanCropStore({ now: () => now });
     m.printed.set("printed.png", page.png);
-    m.photos.set(id, { parent: PARENT, state: "saved", createdAt: now, expiresAt: now + 86_400_000, bytes, storedBytes: 1, frame: { printedRevision: REVISION, book: { printedRevision: REVISION }, page: { printContract: page.contract, imagePath: "printed.png", qrToken: page.token, questions: page.questions } } });
+    m.photos.set(id, { parent: PARENT, state: "saved", createdAt: now, expiresAt: now + 86_400_000, bytes, storedBytes: 1, frame: { printedRevision: REVISION, book: { printedRevision: REVISION }, page: { printContract: page.contract, imagePath: "printed.png", qrToken: page.token, questions: page.questions, others: [] } } });
     const preview = await runScanCrops(m.store, { parent: PARENT, photo: id }, "00000000-0000-4000-8000-000000000001");
     expect(preview).toEqual({ status: "refused", reason: "ambiguous-page" });
     expect(m.filesOf(id)).toEqual([]);
@@ -172,17 +179,182 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
   }, 30_000);
 });
 
+describe.skipIf(!chromium)("one sheet, this page: a near twin's print anywhere on the sheet refuses it (#456)", () => {
+  // U4 pages 5 and 8 print the same template and differ by a few digits: the page comparison passes either for the other,
+  // so the QR code alone said which page a photo holds. The photos here were accepted before #456, with the other page's
+  // answers cropped (the cases from the PR #610 and #637 reviews).
+  let pages: Real[], p5: Real, p8: Real, others: Raster[];
+  beforeAll(async () => {
+    pages = await realPages("U4", ["Day 1"], 6);
+    p5 = pages.find((p) => p.number === 5)!;
+    p8 = pages.find((p) => p.number === 8)!;
+    others = pages.map((p) => p.grey);
+  }, 120_000);
+
+  /** Where the page printed its QR code, from the page image itself. */
+  const qrBox = (p: Real) => {
+    const rgba = new Uint8ClampedArray(p.grey.width * p.grey.height * 4);
+    for (let i = 0; i < p.grey.data.length; i++) { rgba[4 * i] = rgba[4 * i + 1] = rgba[4 * i + 2] = p.grey.data[i]; rgba[4 * i + 3] = 255; }
+    const at = jsQR(rgba, p.grey.width, p.grey.height)!.location;
+    const xs = [at.topLeftCorner.x, at.bottomRightCorner.x, at.bottomLeftCorner.x, at.topRightCorner.x], ys = [at.topLeftCorner.y, at.bottomRightCorner.y, at.bottomLeftCorner.y, at.topRightCorner.y];
+    return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+  };
+  /** Page 5 as written, with page 8's QR code and its quiet zone cut out and pasted over page 5's own. */
+  function pastedQr(): Raster {
+    const sheet = written(p5, () => 3), q = qrBox(p8), pad = 0.15 * q.width;
+    for (let y = Math.floor(q.y - pad); y < Math.ceil(q.y + q.height + pad); y++) for (let x = Math.floor(q.x - pad); x < Math.ceil(q.x + q.width + pad); x++) sheet.data[y * sheet.width + x] = p8.grey.data[y * sheet.width + x];
+    return sheet;
+  }
+  /** Loose page 8, written, lying over page 5 with its footer folded behind it: page 8 down to just above the footer, then page 5. */
+  function overlapping(): Raster {
+    const sheet = written(p5, () => 3), top = written(p8, () => 7), fold = Math.floor(qrBox(p5).y - 0.25 * qrBox(p5).height);
+    sheet.data.set(top.data.subarray(0, fold * sheet.width), 0);
+    return sheet;
+  }
+  /** The print's contrast kept at this share inside a box, as glare leaves it. */
+  function glared(r: Raster, gain: number, ...boxes: { x0: number; y0: number; x1: number; y1: number }[]): Raster {
+    const out: Raster = { ...r, data: r.data.slice() };
+    for (const b of boxes) for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) out.data[y * out.width + x] = 255 - (255 - out.data[y * out.width + x]) * gain;
+    return out;
+  }
+  const uploaded = async (sheet: Raster) => {
+    const stored = await normalizeScanPhoto(await photoJpeg(photographed(sheet, SIZE, uprightCorners(SIZE, PAGE_SIZE, 70), { shade: 0.2 })));
+    return { token: stored.token, photo: await greyRaster(stored.bytes), bytes: stored.bytes };
+  };
+  /** The whole job on a photo, among all the book's pages. */
+  async function job(bytes: Uint8Array, p: Real, id: string, sheetCheckMs?: number) {
+    const now = Date.parse("2026-11-05T12:00:00Z"), m = memoryScanCropStore({ now: () => now });
+    for (const q of pages) m.printed.set(`page-${q.number}.png`, q.png);
+    const frame = { printContract: p.contract, imagePath: `page-${p.number}.png`, qrToken: p.token, questions: p.questions, others: pages.filter((q) => q !== p).map((q) => `page-${q.number}.png`) };
+    m.photos.set(id, { parent: PARENT, state: "saved", createdAt: now, expiresAt: now + 86_400_000, bytes, storedBytes: 1, frame: { printedRevision: REVISION, book: { printedRevision: REVISION }, page: frame } });
+    return { m, preview: await runScanCrops(m.store, { parent: PARENT, photo: id }, "00000000-0000-4000-8000-000000000002", { sheetCheckMs }) };
+  }
+
+  it("a control: pages 5 and 8 each calibrate among all their book's pages", async () => {
+    // Disproved if the check refuses a right page because a near twin is in the book.
+    for (const p of [p5, p8]) {
+      const { token, photo } = await uploaded(written(p, (i) => (i * 3 + 1) % 10));
+      expect(token).toBe(p.token);
+      const r = calibrateAmong(photo, p, others);
+      expect(r.status, `${p.key}: ${r.status === "refused" ? r.reason : ""}`).toBe("calibrated");
+    }
+  }, 60_000);
+
+  it("refuses page 5 with page 8's QR code pasted on it, which the upload reads as page 8", async () => {
+    // Disproved if crops of page 5's answers are saved as page 8's.
+    const { token, photo } = await uploaded(pastedQr());
+    expect(token).toBe(p8.token);
+    // (Calibration alone, as before #456, takes it as page 8: the failing case.)
+    expect(calibrate(photo, p8).status).toBe("calibrated");
+    expect(calibrateAmong(photo, p8, others)).toEqual({ status: "refused", reason: "another-page" });
+  }, 60_000);
+
+  it.each([0.5, 0.25, 0.1, 0.05])("the job refuses the pasted code under glare that keeps %f of the print's contrast", async (gain) => {
+    // The PR #637 review: glare drove the old score to zero, so five of page 5's answers were saved under page 8. Missing
+    // evidence must never pass. Disproved if the job makes any crop.
+    const { token, bytes } = await uploaded(glared(pastedQr(), gain, { x0: 80, y0: 75, x1: 1000, y1: 1460 }, { x0: 200, y0: 1490, x1: 650, y1: 1570 }));
+    expect(token).toBe(p8.token);
+    const { m, preview } = await job(bytes, p8, "00000000-0000-4000-8000-0000000000c1");
+    expect(preview.status, JSON.stringify(preview)).toBe("refused");
+    expect(m.filesOf("00000000-0000-4000-8000-0000000000c1")).toEqual([]);
+  }, 60_000);
+
+  it("the same glare over the whole right page refuses it as too faint to read, not as another page", async () => {
+    // The parent can act on this: another photo without glare.
+    const { bytes } = await uploaded(glared(written(p5, () => 3), 0.1, { x0: 80, y0: 75, x1: 1000, y1: 1460 }));
+    expect((await job(bytes, p5, "00000000-0000-4000-8000-0000000000c2")).preview).toEqual({ status: "refused", reason: "faint" });
+  }, 60_000);
+
+  it("a right page with mild glare over everything still passes: the spots that tell the pages apart can be read", async () => {
+    for (const p of [p5, p8]) {
+      const { photo } = await uploaded(glared(written(p, () => 3), 0.5, { x0: 80, y0: 75, x1: 1000, y1: 1460 }));
+      const r = calibrateAmong(photo, p, others);
+      expect(r.status, `${p.key}: ${r.status === "refused" ? r.reason : ""}`).toBe("calibrated");
+    }
+  }, 60_000);
+
+  it("heavy glare on a line both pages print the same still passes", async () => {
+    // The title lines print the same on pages 5 and 8, so nothing about which page it is hides under them.
+    const { photo } = await uploaded(glared(written(p5, () => 3), 0.1, { x0: 80, y0: 150, x1: 1000, y1: 280 }));
+    const r = calibrateAmong(photo, p5, others);
+    expect(r.status, r.status === "refused" ? r.reason : "").toBe("calibrated");
+  }, 60_000);
+
+  it("heavy glare on one spot that tells the pages apart refuses as too faint to read", async () => {
+    // The heading is the one line here where the pages differ, and the rest of the page is clear: it cannot be read there.
+    const { photo } = await uploaded(glared(written(p5, () => 3), 0.1, { x0: 80, y0: 95, x1: 500, y1: 140 }));
+    expect(calibrateAmong(photo, p5, others)).toEqual({ status: "refused", reason: "faint" });
+  }, 60_000);
+
+  it("the job refuses page 8 lying over page 5 with its footer folded behind: page 5's code, page 8's answers", async () => {
+    // Disproved if crops of page 8's answers are saved under page 5, as they were before #456.
+    const { token, photo, bytes } = await uploaded(overlapping());
+    expect(token).toBe(p5.token);
+    // Chromium can refuse this overlap during alignment on one platform and during the sheet check on another.
+    // Both paths must refuse it without saving crops from the other page.
+    const alignment = calibrate(photo, p5);
+    const reason = alignment.status === "refused" ? alignment.reason : "another-page";
+    const id = "00000000-0000-4000-8000-0000000000b1";
+    const { m, preview } = await job(bytes, p5, id);
+    expect(preview).toEqual({ status: "refused", reason });
+    expect(m.filesOf(id)).toEqual([]);
+    // The parent is asked for another photo, and the photo stays.
+    expect(await readScanPreview(m.store, { parent: PARENT, photo: id })).toEqual({ status: "refused", reason });
+  }, 120_000);
+
+  it("the job refuses page 8 over only part of page 5, down to the second question", async () => {
+    // A smaller sheet leaves more of page 5 in view. Disproved if the part of page 8 in view is taken for page 5.
+    const sheet = written(p5, () => 3), top = written(p8, () => 7), fold = 620;
+    sheet.data.set(top.data.subarray(0, fold * sheet.width), 0);
+    const { token, bytes } = await uploaded(sheet);
+    expect(token).toBe(p5.token);
+    expect((await job(bytes, p5, "00000000-0000-4000-8000-0000000000c4")).preview).toEqual({ status: "refused", reason: "another-page" });
+  }, 60_000);
+
+  it("writing that runs past the answer boxes does not refuse a right page among its near twins", async () => {
+    for (const p of [p5, p8]) for (const over of [2, 5, 10]) {
+      const r: Raster = { ...p.grey, data: p.grey.data.slice() };
+      p.plan.crops.forEach((c, i) => drawDigit(r, { x: c.box.x - over, y: c.box.y - over, width: c.box.width + 2 * over, height: c.box.height + 2 * over }, (i * 3 + 1) % 10, 20));
+      const { photo } = await uploaded(r);
+      const a = calibrateAmong(photo, p, others);
+      expect(a.status, `${p.key} over ${over}: ${a.status === "refused" ? a.reason : ""}`).toBe("calibrated");
+    }
+  }, 120_000);
+
+  it("a pencil stroke across one printed digit does not refuse a right page", async () => {
+    // Children mark their pages. One spot may stay unclear; the others still say which page it is.
+    const r = written(p5, () => 3);
+    for (let i = 0; i < 90; i++) for (let w = 0; w < 4; w++) r.data[(440 + Math.round(i * 0.3) + w) * r.width + 130 + i] = 70;
+    const { photo } = await uploaded(r);
+    const a = calibrateAmong(photo, p5, others);
+    expect(a.status, a.status === "refused" ? a.reason : "").toBe("calibrated");
+  }, 60_000);
+
+  it("the job with no time left for the other pages says so, stores nothing, and a later call can still check", async () => {
+    const { bytes } = await uploaded(written(p5, () => 3));
+    const id = "00000000-0000-4000-8000-0000000000c3";
+    const { m, preview } = await job(bytes, p5, id, 0);
+    expect(preview).toMatchObject({ status: "refused", reason: "check-timeout" });
+    expect(m.filesOf(id)).toEqual([]);
+    expect(await readScanPreview(m.store, { parent: PARENT, photo: id })).toEqual({ status: "busy" });
+  }, 60_000);
+});
+
 describe.skipIf(!chromium)("telling pages apart at every scale", () => {
   it("over scale and angle: no other page ever calibrates, and each right page the upload accepts does", async () => {
     // A false refusal hurts every family, and a false accept is a wrong mark. Both are counted: for the whole check, and for
     // the ink comparison alone, which near-twin pages can pass. The upload's own QR read is reported, since a photo that
-    // fails it never reaches calibration. Set SCAN_MATRIX_OUT for the full matrix.
+    // fails it never reaches calibration. Each page is calibrated among all the matrix's pages, as the job does among the
+    // child's pages (#456). For each pair the ink comparison passes and only the QR code stops, the sheet check is also asked
+    // on its own, as if that page's code were pasted on the sheet. Set SCAN_MATRIX_OUT for the full matrix.
     const full = FULL;
     const pages = [
       ...await realPages("U4", ["Day 1", "Day 2"], full ? 6 : 2),
       ...await realPages("U16", ["Day 1", "Day 2"], full ? 12 : 3),
       ...await realPages("U26", ["Day 1", "Day 2"], full ? 6 : 1),
     ].filter((p) => p.contract);
+    const greys = pages.map((p) => p.grey);
+    const among = (photo: Raster, p: Real) => calibrateAmong(photo, p, greys);
     const margin = (share: number) => (SIZE.height - share * SIZE.height) / 2;
     const centre = { x: SIZE.width / 2, y: SIZE.height / 2 };
     const tilted = (share: number) => { const c = uprightCorners(SIZE, PAGE_SIZE, margin(share)); return [{ x: c[0].x + 90, y: c[0].y + 30 }, { x: c[1].x - 90, y: c[1].y + 30 }, c[2], c[3]]; };
@@ -193,18 +365,23 @@ describe.skipIf(!chromium)("telling pages apart at every scale", () => {
       ...(scale <= 0.85 ? [{ scale, angle: "rotated 7 degrees", corners: turned(scale) }, { scale, angle: "tilted", corners: tilted(scale) }] : []),
     ]);
     const right: { page: string; scale: number; angle: string; uploadReads: boolean; status: string; reason: string | null }[] = [];
-    const wrong: { photo: string; against: string; scale: number; angle: string; status: string; reason: string | null }[] = [];
+    const wrong: { photo: string; against: string; scale: number; angle: string; status: string; reason: string | null; sheetStops?: boolean }[] = [];
     for (const c of conditions) for (const shown of pages) {
       const bytes = await photoJpeg(photographed(written(shown, (i) => (i * 3 + 1) % 10), SIZE, c.corners, { shade: 0.2 }));
       // What the upload stores is what calibration reads: the normalized photo, when the upload takes it.
       const normalized = await normalizeScanPhoto(bytes).catch(() => null);
       const uploadReads = normalized?.token === shown.token;
       const photo = await greyRaster(normalized ? normalized.bytes : bytes);
+      const own = among(photo, shown);
+      right.push({ page: shown.key, scale: c.scale, angle: c.angle, uploadReads, status: own.status, reason: own.status === "calibrated" ? null : own.reason });
       for (const against of pages) {
-        const r = calibrate(photo, against);
+        if (against === shown) continue;
+        const r = among(photo, against);
         const reason = r.status === "calibrated" ? null : r.reason;
-        if (against === shown) right.push({ page: shown.key, scale: c.scale, angle: c.angle, uploadReads, status: r.status, reason });
-        else wrong.push({ photo: shown.key, against: against.key, scale: c.scale, angle: c.angle, status: r.status, reason });
+        // (The sheet's marks map it the same way whichever page it is compared with.)
+        const sheetStops = reason === "qr-mismatch" && own.status === "calibrated"
+          ? sheetChecker({ photo, printed: against.grey, transform: own.calibration.transform, writing: against.writing })(greys).verdict !== "this-page" : undefined;
+        wrong.push({ photo: shown.key, against: against.key, scale: c.scale, angle: c.angle, status: r.status, reason, sheetStops });
       }
     }
     const accepted = right.filter((r) => r.uploadReads);
@@ -217,6 +394,7 @@ describe.skipIf(!chromium)("telling pages apart at every scale", () => {
         falseRefusals: read.filter((r) => r.status !== "calibrated").length,
         wrongPages: others.length, wrongAccepted: others.filter((r) => r.status === "calibrated").length,
         passedInkStoppedByQr: others.filter((r) => r.reason === "qr-mismatch").length,
+        nearTwinsAlsoStoppedBySheet: others.filter((r) => r.sheetStops).length,
       };
     });
     const summary = {
@@ -225,13 +403,19 @@ describe.skipIf(!chromium)("telling pages apart at every scale", () => {
       falseRefusals: accepted.filter((r) => r.status !== "calibrated").length,
       wrong: wrong.length, falseAccepts: wrong.filter((r) => r.status === "calibrated").length,
       passedInkStoppedByQr: wrong.filter((r) => r.reason === "qr-mismatch").length,
+      nearTwinsSheetChecked: wrong.filter((r) => r.sheetStops !== undefined).length,
+      nearTwinsAlsoStoppedBySheet: wrong.filter((r) => r.sheetStops).length,
       refusedOtherwise: wrong.filter((r) => r.status !== "calibrated" && r.reason !== "page-mismatch" && r.reason !== "qr-mismatch").length,
     };
     if (process.env.SCAN_MATRIX_OUT) writeFileSync(process.env.SCAN_MATRIX_OUT, `${JSON.stringify({ summary, byCondition, nearTwins: wrong.filter((r) => r.reason === "qr-mismatch"), falseRefusals: accepted.filter((r) => r.status !== "calibrated"), uploadCannotRead: right.filter((r) => !r.uploadReads).map((r) => ({ page: r.page, scale: r.scale, angle: r.angle, status: r.status })) }, null, 2)}\n`);
     expect(summary.falseAccepts, JSON.stringify(summary)).toBe(0);
     expect(summary.falseRefusals, JSON.stringify(accepted.filter((r) => r.status !== "calibrated"))).toBe(0);
-    // (Pages that differ by a few digits can pass the ink comparison: only the QR code tells those apart. Few may.)
+    // (Pages that differ by a few digits can pass the ink comparison. Few may, and the sheet check must stop each of them
+    // with no help from the QR code: a code pasted on a near twin is refused.)
     expect(summary.passedInkStoppedByQr / summary.wrong, JSON.stringify(summary)).toBeLessThan(0.05);
+    // (The full matrix holds U4 pages 5 and 8, a near-twin pair; the quick one may hold none.)
+    if (full) expect(summary.nearTwinsSheetChecked, JSON.stringify(summary)).toBeGreaterThan(0);
+    expect(wrong.filter((r) => r.sheetStops === false), "near twins the sheet check passes").toEqual([]);
   }, FULL ? 3_600_000 : 560_000);
 
   it("writing that runs a little past the answer boxes does not refuse the right page", async () => {

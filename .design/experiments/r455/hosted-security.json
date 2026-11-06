@@ -3,6 +3,7 @@
   "checks": [
     "real page, routes and Storage: 12 crops read back as their own drawn digits; 1 questions not supported",
     "a repeated POST reuses the stored work under the same lease",
+    "old ready result: preview and crops blocked, stack checking, Send empty; POST rechecks under a new lease and restores ready",
     "a photo with a mark covered is refused: no derived file, and its photo is still served",
     "a legacy shipped page keeps its photo, with no calibration row and no derived file",
     "owner, admin and anonymous: download, signed URL, batch signed URLs, list, insert and remove denied for crop, straightened page and photo, with each object present",

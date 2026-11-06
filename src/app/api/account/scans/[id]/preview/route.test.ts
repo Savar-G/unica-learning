@@ -3,7 +3,7 @@ vi.mock("server-only", () => ({}));
 const ID = "00000000-0000-4000-8000-000000000001";
 const LEASE = "00000000-0000-4000-8000-000000000002";
 const f = vi.hoisted(() => ({
-  marked: true, photo: true, downloads: [] as string[], calibration: null as null | { state: string; lease_token: string; result: { parts: string[] } | null },
+  marked: true, photo: true, downloads: [] as string[], calibration: null as null | { state: string; lease_token: string; result: { parts: string[]; sheetCheck?: number } | null },
   run: 0, read: 0, signedOutDuringRead: false, active: true,
 }));
 const ai = vi.hoisted(() => vi.fn(() => { throw new Error("S2b must not dispatch AI"); }));
@@ -40,7 +40,7 @@ const part = (name: string) => PART(new Request(`${url}/${name}`), { params: Pro
 const post = (origin = "https://unicalearning.com") => POST(new Request(url, { method: "POST", headers: { Origin: origin } }), { params });
 
 beforeEach(() => {
-  Object.assign(f, { marked: true, photo: true, downloads: [], run: 0, read: 0, signedOutDuringRead: false, active: true, calibration: { state: "ready", lease_token: LEASE, result: { parts: ["straight", "crop-3"] } } });
+  Object.assign(f, { marked: true, photo: true, downloads: [], run: 0, read: 0, signedOutDuringRead: false, active: true, calibration: { state: "ready", lease_token: LEASE, result: { parts: ["straight", "crop-3"], sheetCheck: 1 } } });
   ai.mockClear();
 });
 
@@ -93,6 +93,15 @@ describe("a crop's image route", () => {
     f.calibration = { state: "running", lease_token: LEASE, result: null };
     expect((await part("crop-3")).status).toBe(404);
     f.calibration = null;
+    expect((await part("straight")).status).toBe(404);
+    expect(f.downloads).toEqual([]);
+  });
+
+  it("serves no part of a ready result made before the sheet check (#456)", async () => {
+    // Disproved if crops a photo had before the sheet check, which may hold another sheet's answers, can still be read.
+    f.calibration = { state: "ready", lease_token: LEASE, result: { parts: ["straight", "crop-3"] } };
+    expect((await part("crop-3")).status).toBe(404);
+    f.calibration = { state: "ready", lease_token: LEASE, result: { parts: ["straight", "crop-3"], sheetCheck: 0 } };
     expect((await part("straight")).status).toBe(404);
     expect(f.downloads).toEqual([]);
   });

@@ -109,6 +109,9 @@ const REFUSALS: Record<StackReason, { short: string; title: string; action: stri
   "orientation-unclear": { short: "Turned", title: "We cannot tell which way up this page is.", action: "Hold the page upright. Then take another photo." },
   "ambiguous-page": { short: "Two pages", title: "This photo shows more than one page.", action: "Fold the book back, so only one page shows. Then take another photo." },
   "qr-mismatch": { short: "Code not clear", title: "We cannot read the QR code in this photo.", action: "Keep the QR code clear and in view. Then take another photo." },
+  "another-page": { short: "Another page", title: "Part of this photo looks like a different page.", action: "Take a photo of this page on its own, flat, with nothing on top of it." },
+  faint: { short: "Too faint", title: "Part of the page is too bright or faint to read.", action: "Take another photo without glare." },
+  "check-timeout": { short: "Not checked yet", title: "We couldn't check this page right now.", action: "Try again in a minute." },
   "printed-page-changed": { short: "Cannot check", title: "We cannot line up this photo with the printed page.", action: "Take another photo of the whole page." },
   failed: { short: "Cannot check", title: "We cannot line up this photo with the printed page.", action: "Take another photo of the whole page." },
   qr: { short: "Not a workbook page", title: "We cannot find a page in this photo.", action: "Take a photo of one finished page, with its QR code in view." },
@@ -139,7 +142,7 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
   const tileOf = (photo: StackPhoto): StackTile => {
     const page = pageById.get(photo.pageId);
     const base = { key: photo.id, photoId: photo.id, uploadKey: null, label: page ? `Page ${page.pageOfDay}` : fullLabel(photo), title: fullLabel(photo), reason: null, refusal: null };
-    if (photo.sentAt) return { ...base, label: fullLabel(photo), status: "sent" };
+    if (photo.sentAt && photo.state === "saved" && o.checks && photo.check === "ready") return { ...base, label: fullLabel(photo), status: "sent" };
     if (photo.state === "pending") return { ...base, status: "checking" };
     if (!o.checks || photo.check === "none") return { ...base, status: "saved" };
     if (photo.check === "refused") {
