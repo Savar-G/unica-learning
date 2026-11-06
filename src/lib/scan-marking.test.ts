@@ -305,6 +305,20 @@ describe("S7k circle answers", () => {
 });
 
 describe("S7l show-work final answers", () => {
+  it("does not compare a valid alternative equation with one stored example as if each box had a unique answer", () => {
+    const f = showWorkFrame(), q = f.questions[0];
+    q.package = { ...q.package!, operation: null, answer: null, steps: [], wrongAnswers: [], easierExample: null,
+      item: { format: "show-work", scorable: true, parentChecked: false, error: null,
+        regions: [{ id: "a", kind: "box", label: null, answer: { type: "number", value: 5 } },
+          { id: "b", kind: "box", label: null, answer: { type: "number", value: 7 } }, { id: "work", kind: "work", label: "Work" }],
+        checks: [{ kind: "equations", numbers: "whole", different: false, equations: [{ left: { region: "a" }, op: "+", right: { region: "b" }, result: { type: "number", value: 12 } }] }],
+      },
+    };
+    q.regions = [{ id: "a", kind: "box", box: { x: 10, y: 30, width: 40, height: 30 } }, { id: "b", kind: "box", box: { x: 60, y: 30, width: 40, height: 30 } }];
+    expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+    expect(readMarkingOutput(f, tickOutput("4", "8"))[0]).toMatchObject({ state: "pending", result: null });
+  });
+
   it.each([["66", "right"], ["65", "wrong"], ["", "blank"], [null, null], ["maybe 66", null]])("reads only the final answer %j as %j", (text, result) => {
     const o = readMarkingOutput(showWorkFrame(), output([text]))[0];
     expect(o.result).toBe(result);

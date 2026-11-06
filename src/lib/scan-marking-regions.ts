@@ -21,6 +21,9 @@ export function markingRegions(q: RegionQuestion): MarkingRegion[] {
   if (!item.scorable || item.parentChecked) return [];
   const legacy = item.format === "write-number" && item.regions.length === 1;
   if (!legacy && (!["tick-and-number", "circle", "show-work", "spot-the-error"].includes(item.format) || !checkQuestionPackage(q.package).ok)) return [];
+  // Equation regions can accept many linked combinations. Independent key
+  // comparison cannot judge them; they stay pending for their own checker.
+  if (!legacy && item.checks.some(c => c.kind === "equations")) return [];
   const scored = item.regions.filter(r => r.kind === "box" || r.kind === "choice");
   const out: MarkingRegion[] = [];
   for (const r of scored) {
