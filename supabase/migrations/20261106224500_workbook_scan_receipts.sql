@@ -57,6 +57,34 @@ create table public.workbook_scan_progress_events (
 );
 create index workbook_scan_progress_book on public.workbook_scan_progress_events(workbook_id,admitted_at,id);
 
+-- The database records the effective delivery identity. Only the trusted server supplies its calendar.
+-- A request survives a lost server response. Root drains requests without calendars and retries reconciliation.
+create table public.workbook_scan_clock_requests (
+  delivery_audit_id bigint primary key references public.workbook_audit(id) on delete cascade,
+  workbook_id uuid not null references public.workbook_delivery_receipts(workbook_id) on delete cascade,
+  parent_id uuid not null references public.parents(id) on delete cascade,
+  child_id uuid not null,
+  number integer not null,
+  printed_revision text not null,
+  delivery_correction_id uuid references public.workbook_delivery_corrections(id) on delete cascade,
+  delivered_at timestamptz not null,
+  time_zone text not null,
+  zone_override boolean not null,
+  requested_at timestamptz not null default clock_timestamp(),
+  foreign key(child_id,parent_id) references public.children(id,parent_id) on delete cascade,
+  foreign key(workbook_id,parent_id,child_id,number) references public.workbooks(id,parent_id,child_id,number) on delete cascade
+);
+create index workbook_scan_clock_requests_book on public.workbook_scan_clock_requests(workbook_id,delivery_audit_id);
+create table public.workbook_scan_delivery_calendars (
+  delivery_audit_id bigint primary key references public.workbook_scan_clock_requests(delivery_audit_id) on delete cascade,
+  parent_id uuid not null references public.parents(id) on delete cascade,
+  child_id uuid not null,
+  backstop_at timestamptz not null check(isfinite(backstop_at) and date_trunc('minute',backstop_at)=backstop_at),
+  clock_version text not null check(char_length(clock_version) between 1 and 200),
+  recorded_at timestamptz not null default clock_timestamp(),
+  foreign key(child_id,parent_id) references public.children(id,parent_id) on delete cascade
+);
+
 create table public.workbook_scan_trigger_claims (
   id uuid primary key default gen_random_uuid(),
   workbook_id uuid not null unique,
@@ -72,7 +100,9 @@ create table public.workbook_scan_trigger_claims (
   delivered_at timestamptz not null,
   time_zone text not null,
   zone_override boolean not null,
-  backstop_at timestamptz not null,
+  -- Day 7 does not depend on a calendar. NULL means no calendar existed when that claim won.
+  -- Readers join the immutable calendar by delivery_audit_id if it arrives later. Never rewrite a claim.
+  backstop_at timestamptz check(reason='day7_scanned' or backstop_at is not null),
   receipt_ids uuid[] not null check(cardinality(receipt_ids)>0),
   foreign key(child_id,parent_id) references public.children(id,parent_id) on delete cascade,
   foreign key(workbook_id,parent_id,child_id,number) references public.workbooks(id,parent_id,child_id,number) on delete cascade,
@@ -99,7 +129,8 @@ begin raise exception 'workbook_scan_fact_immutable' using errcode='55000'; end 
 
 do $$ declare t text; begin
   foreach t in array array['workbook_scan_receipt_epoch','workbook_scan_receipts','workbook_scan_pending_items',
-    'workbook_scan_progress_events','workbook_scan_trigger_claims','workbook_scan_backstop_holds'] loop
+    'workbook_scan_progress_events','workbook_scan_trigger_claims','workbook_scan_backstop_holds',
+    'workbook_scan_clock_requests','workbook_scan_delivery_calendars'] loop
     execute format('alter table public.%I enable row level security',t);
     execute format('revoke all on public.%I from public,anon,authenticated,service_role',t);
     execute format('grant select on public.%I to service_role',t);
@@ -113,35 +144,8 @@ do $$ declare t text; begin
   end loop;
 end $$;
 
--- Same algorithm as family-time.localDateTime: collect offsets around the target; choose the earlier exact
--- occurrence in a fold; binary-search the first valid second in a gap. Never use SQL's implicit gap/fold choice.
-create function public._workbook_scan_wall(p_at timestamptz,p_zone text,p_override boolean) returns timestamp
-language sql stable set search_path='' as $$
-  select p_at at time zone (case when p_override then public._maya_zone_at(p_zone,p_at) else p_zone end)
-$$;
-create function public._workbook_scan_local_instant(p_wall timestamp,p_zone text,p_override boolean) returns timestamptz
-language plpgsql stable set search_path='' as $$
-declare at_time timestamptz; candidate timestamptz; candidates timestamptz[]; low_at timestamptz; high_at timestamptz; middle_at timestamptz; days integer;
-begin
-  if public._maya_normalize_zone(p_zone) is null or p_override is null or not isfinite(p_wall) then raise exception 'invalid_scan_zone_time'; end if;
-  for days in -2..2 by 2 loop
-    at_time:=(p_wall+make_interval(days=>days)) at time zone 'UTC';
-    candidate:=(p_wall-(public._workbook_scan_wall(at_time,p_zone,p_override)-(at_time at time zone 'UTC'))) at time zone 'UTC';
-    candidates:=array_append(candidates,candidate);
-  end loop;
-  select min(x) into candidate from unnest(candidates) x where public._workbook_scan_wall(x,p_zone,p_override)=p_wall;
-  if candidate is not null then return candidate; end if;
-  select min(x),max(x) into low_at,high_at from unnest(candidates) x;
-  while high_at-low_at>interval '1 second' loop
-    middle_at:=to_timestamp(floor((extract(epoch from low_at)+extract(epoch from high_at))/2));
-    if public._workbook_scan_wall(middle_at,p_zone,p_override)>=p_wall then high_at:=middle_at; else low_at:=middle_at; end if;
-  end loop;
-  return high_at;
-end $$;
-create function public._workbook_scan_backstop(p_delivered timestamptz,p_zone text,p_override boolean) returns timestamptz
-language sql stable set search_path='' as $$
-  select public._workbook_scan_local_instant(date_trunc('minute',public._workbook_scan_wall(p_delivered,p_zone,p_override))+interval '21 days',p_zone,p_override)
-$$;
+-- Calendar arithmetic belongs to family-time.ts through deliveryDeadlines, never to PostgreSQL tzdata.
+-- No SQL approximation is used for a durable backstop decision.
 
 -- All callers must acquire book KEY SHARE before this per-book gate. Delivery already owns book UPDATE.
 -- No photo/calibration/item locks are taken after this gate. Snapshot reads cannot form a reverse wait edge.
@@ -202,20 +206,26 @@ begin
   p_at:=coalesce(p_at,clock_timestamp());
   if w.id is null or w.status<>'shipped' or w.printed_revision is null then return jsonb_build_object('status','unavailable'); end if;
   select * into held from public.workbook_scan_trigger_claims where workbook_id=w.id;
-  if found then return jsonb_build_object('status','claimed','claim',to_jsonb(held)); end if;
   required:=public._workbook_scan_day7(w.id);
   if required is null then return jsonb_build_object('status','unavailable'); end if;
   select * into r from public.workbook_delivery_receipts where workbook_id=w.id and parent_id=w.parent_id and child_id=w.child_id and number=w.number;
   if not found then return jsonb_build_object('status','missing-delivery'); end if;
   select * into correction from public.workbook_delivery_corrections where workbook_id=w.id order by audit_id desc limit 1;
   delivered:=coalesce(correction.delivered_at,r.delivered_at); audit:=coalesce(correction.audit_id,r.audit_id);
+  insert into public.workbook_scan_clock_requests(delivery_audit_id,workbook_id,parent_id,child_id,number,printed_revision,
+    delivery_correction_id,delivered_at,time_zone,zone_override)
+    values(audit,w.id,w.parent_id,w.child_id,w.number,w.printed_revision,correction.id,delivered,r.time_zone,r.zone_override)
+    on conflict(delivery_audit_id) do nothing;
+  if held.id is not null then return jsonb_build_object('status','claimed','claim',to_jsonb(held)); end if;
   if delivered>p_at then return jsonb_build_object('status','waiting'); end if;
-  deadline:=public._workbook_scan_backstop(delivered,r.time_zone,r.zone_override);
+  select backstop_at into deadline from public.workbook_scan_delivery_calendars where delivery_audit_id=audit;
   select array_agg(id order by accepted_at,id) into receipts from public.workbook_scan_receipts
     where workbook_id=w.id and printed_revision=w.printed_revision and accepted_at<=p_at;
   if not exists(select 1 from unnest(required) page where not exists(select 1 from public.workbook_scan_receipts s
     where s.workbook_id=w.id and s.printed_revision=w.printed_revision and s.page_id=page and s.accepted_at<=p_at)) then
     reason:='day7_scanned';
+  elsif deadline is null then
+    return jsonb_build_object('status','clock-required','deliveryAuditId',audit);
   elsif p_at>=deadline then
     if receipts is null then
       insert into public.workbook_scan_backstop_holds(workbook_id,parent_id,child_id,printed_revision,delivery_audit_id,delivered_at,backstop_at)
@@ -229,6 +239,62 @@ begin
     values(w.id,w.parent_id,w.child_id,w.number,w.printed_revision,reason,case when reason='delivery_backstop' then deadline else p_at end,
       audit,correction.id,delivered,r.time_zone,r.zone_override,deadline,receipts) returning * into held;
   return jsonb_build_object('status','claimed','claim',to_jsonb(held));
+end $$;
+
+-- Bounded recovery read. Obsolete corrections cannot fill a batch forever. The write still compares identity
+-- under the book gate because a correction can commit immediately after this snapshot.
+create function public.list_workbook_scan_clock_requests(p_limit integer) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare answer jsonb;
+begin
+  if p_limit is null or p_limit not between 1 and 100 then raise exception 'invalid_scan_clock_batch'; end if;
+  select coalesce(jsonb_agg(to_jsonb(pending) order by pending.delivery_audit_id),'[]'::jsonb) into answer
+  from (
+    select q.* from public.workbook_scan_clock_requests q
+    join public.workbook_delivery_receipts r on r.workbook_id=q.workbook_id
+    join public.workbooks w on w.id=q.workbook_id
+    join public.parents p on p.id=q.parent_id
+    where q.delivery_audit_id=coalesce((select max(c.audit_id) from public.workbook_delivery_corrections c where c.workbook_id=q.workbook_id),r.audit_id)
+      and w.status='shipped' and w.printed_revision=q.printed_revision and p.deletion_requested_at is null
+      and not exists(select 1 from public.child_deletions d where d.child_id=q.child_id)
+      and not exists(select 1 from public.workbook_scan_delivery_calendars calendar where calendar.delivery_audit_id=q.delivery_audit_id)
+    order by q.delivery_audit_id limit p_limit
+  ) pending;
+  return answer;
+end $$;
+
+-- Service-only adapter. Compute p_backstop with deliveryDeadlines on the server from the saved request.
+-- p_clock_version identifies the reviewed application/runtime clock. It is evidence, not a client option.
+-- The effective audit and its complete clock identity must still match after the per-book lock wait.
+create function public.record_workbook_scan_delivery_calendar(p_book uuid,p_delivery_audit bigint,
+  p_delivered timestamptz,p_zone text,p_override boolean,p_backstop timestamptz,p_clock_version text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare w public.workbooks; r public.workbook_delivery_receipts; c public.workbook_delivery_corrections;
+  calendar public.workbook_scan_delivery_calendars; audit bigint; delivered timestamptz;
+begin
+  w:=public._lock_workbook_scan_book(p_book);
+  if w.id is null or w.status<>'shipped' or w.printed_revision is null then return jsonb_build_object('status','unavailable'); end if;
+  select * into r from public.workbook_delivery_receipts where workbook_id=w.id and parent_id=w.parent_id and child_id=w.child_id and number=w.number;
+  if not found then return jsonb_build_object('status','missing-delivery'); end if;
+  select * into c from public.workbook_delivery_corrections where workbook_id=w.id order by audit_id desc limit 1;
+  audit:=coalesce(c.audit_id,r.audit_id); delivered:=coalesce(c.delivered_at,r.delivered_at);
+  if (p_delivery_audit,p_delivered,p_zone,p_override) is distinct from (audit,delivered,r.time_zone,r.zone_override) then
+    return jsonb_build_object('status','stale-delivery'); end if;
+  if p_backstop is null or not isfinite(p_backstop) or p_backstop<=delivered
+    or date_trunc('minute',p_backstop)<>p_backstop or p_clock_version is null or char_length(p_clock_version) not between 1 and 200 then
+    raise exception 'invalid_scan_calendar'; end if;
+  -- Also creates the durable request for deliveries that predate this migration. Day 7 remains immediate.
+  perform public._claim_workbook_scan_trigger(w.id,null);
+  select * into calendar from public.workbook_scan_delivery_calendars where delivery_audit_id=audit;
+  if found then
+    if calendar.backstop_at<>p_backstop or calendar.clock_version<>p_clock_version then
+      return jsonb_build_object('status','calendar-conflict'); end if;
+  else
+    insert into public.workbook_scan_delivery_calendars(delivery_audit_id,parent_id,child_id,backstop_at,clock_version)
+      values(audit,w.parent_id,w.child_id,p_backstop,p_clock_version);
+  end if;
+  -- Re-read the database clock after all locks. Recover the decision even if no new scan or scheduler arrives.
+  return public._claim_workbook_scan_trigger(w.id,null);
 end $$;
 
 create function public._admit_workbook_scan_receipt(p_photo uuid) returns uuid
@@ -351,7 +417,7 @@ end $$;
 
 do $$ declare f regprocedure; begin
   for f in select oid::regprocedure from pg_proc where pronamespace='public'::regnamespace and proname in
-    ('immutable_workbook_scan_fact','_workbook_scan_wall','_workbook_scan_local_instant','_workbook_scan_backstop',
+    ('immutable_workbook_scan_fact','record_workbook_scan_delivery_calendar','list_workbook_scan_clock_requests',
      '_lock_workbook_scan_book','_workbook_scan_day7','_claim_workbook_scan_trigger','_admit_workbook_scan_receipt',
      'capture_workbook_scan_receipt','capture_workbook_scan_resolution','recheck_workbook_scan_delivery',
      'reconcile_workbook_scan_progress','admin_reconcile_workbook_scan_progress') loop
@@ -360,3 +426,5 @@ do $$ declare f regprocedure; begin
 end $$;
 grant execute on function public.reconcile_workbook_scan_progress(uuid[]) to service_role;
 grant execute on function public.admin_reconcile_workbook_scan_progress(uuid[]) to authenticated;
+grant execute on function public.record_workbook_scan_delivery_calendar(uuid,bigint,timestamptz,text,boolean,timestamptz,text) to service_role;
+grant execute on function public.list_workbook_scan_clock_requests(integer) to service_role;

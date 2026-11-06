@@ -34,9 +34,19 @@ async function close(c) { await c.end(); clients.delete(c); }
 const rpc = async (c, name, args) => (await c.query(`select public.${name}(${args.map((_, i) => '$' + (i + 1)).join(',')}) value`, args)).rows[0].value;
 const outcome = p => p.then(value => ({ value }), error => ({ error }));
 const revision = '0123456789abcdef0123456789ab';
+// Bundle only the real exported clock functions. Do not copy their algorithms into this fixture.
+const { buildSync } = require('esbuild'); const { Module } = require('node:module');
+const output = buildSync({ stdin: { contents: 'export { deliveryDeadlines } from "./src/lib/workbook-delivery"; export { localDateTime } from "./src/lib/family-time";', resolveDir: root },
+  bundle: true, platform: 'node', format: 'cjs', write: false, tsconfig: path.join(root, 'tsconfig.json') }).outputFiles[0].text;
+const loaded = new Module(path.join(root, 'unica475-family-time.cjs'));
+loaded.paths = module.paths;
+loaded._compile(output, path.join(root, 'unica475-family-time.cjs'));
+const { deliveryDeadlines, localDateTime } = loaded.exports;
+const clockVersion = 'family-time/deliveryDeadlines:542e4a5b;node=' + process.version + ';tz=' + process.versions.tz;
 (async () => {
   console.log('FALSIFIER: invalid scans create receipts, retries move acceptance, or image cleanup erases history.');
   console.log('FALSIFIER: incomplete frozen sets claim Day7, missing delivery claims, HOLD consumes a claim, or local days use fixed hours.');
+  console.log('FALSIFIER: SQL changes the canonical deadline, clock arrival loses admission, or a stale delivery clock creates a decision.');
   console.log('FALSIFIER: concurrent final scans leave zero/two claims, either delivery order deadlocks, or raw grants permit forgery.');
   for (const name of ['psql', 'initdb', 'pg_ctl', 'pg_config']) console.log(command(name, ['--version']).trim());
   directory = mkdtempSync('/tmp/unica475-pg-');
@@ -94,8 +104,15 @@ const revision = '0123456789abcdef0123456789ab';
     return f;
   }
   const asLocal = s => new Date(s).toISOString().slice(0, 16);
-  const confirm = (f, at = '2026-11-01T12:00:00Z', c = admin, zone = 'UTC', override = false, local = asLocal(at)) =>
-    rpc(c, 'confirm_workbook_delivery', [f.w, f.c, f.number, at, local, zone, override]);
+  const clockRequest = f => db.query('select * from workbook_scan_clock_requests where workbook_id=$1 order by delivery_audit_id desc limit 1', [f.w]).then(x => x.rows[0]);
+  const calendarArgs = request => [request.workbook_id, request.delivery_audit_id, request.delivered_at.toISOString(), request.time_zone, request.zone_override,
+    deliveryDeadlines({ deliveredAt: request.delivered_at.toISOString(), timeZone: request.zone_override ? request.time_zone : { zone: request.time_zone, override: false } }).backstopAt, clockVersion];
+  const materialize = async (f, c = service, request = null) => rpc(c, 'record_workbook_scan_delivery_calendar', calendarArgs(request ?? await clockRequest(f)));
+  async function confirm(f, at = '2026-11-01T12:00:00Z', c = admin, zone = 'UTC', override = false, local = asLocal(at), calendar = c === admin) {
+    const result = await rpc(c, 'confirm_workbook_delivery', [f.w, f.c, f.number, at, local, zone, override]);
+    if (calendar && result.status === 'confirmed') await materialize(f);
+    return result;
+  }
   async function photo(f, n = 2, c = service, { readyFirst = false, ready = true, save = true, source = true, derived = true, result = {}, metadata = { size: 100, mimetype: 'image/jpeg' } } = {}) {
     const x = { ...f, page: f.pages[n - 1], photo: randomUUID(), cal: randomUUID(), token: randomUUID(), n };
     // Synthetic reserved/identified row. The save and calibration finish calls below are production RPCs.
@@ -237,6 +254,7 @@ const revision = '0123456789abcdef0123456789ab';
     const original = (await confirm(f)).receipt;
     assert.equal((await rpc(admin, 'correct_workbook_delivery', [f.w, f.c, 1, '2026-10-01T12:00:00Z', '2026-10-01T12:00', 'UTC', false,
       'Synthetic corrected date', randomUUID(), original.audit_id])).status, 'corrected');
+    await materialize(f);
     const [claim] = await claims(f); assert.equal(claim.reason, 'delivery_backstop'); assert.equal(claim.delivered_at.toISOString(), '2026-10-01T12:00:00.000Z');
     assert(claim.delivery_correction_id); assert.notEqual((await claims(g))[0].delivery_audit_id, claim.delivery_audit_id);
     assert.equal((await confirm(f)).receipt.delivered_at, original.delivered_at);
@@ -256,35 +274,206 @@ const revision = '0123456789abcdef0123456789ab';
     const noDelivery = await book(); await photo(noDelivery, 6);
     assert.equal((await rpc(service, 'reconcile_workbook_scan_progress', [[noDelivery.w]]))[0].result.status, 'missing-delivery');
   });
-  await test('local-calendar deadlines match actual deliveryDeadlines including gaps, folds and dated overrides', async () => {
-    const { buildSync } = require('esbuild'); const { Module } = require('node:module');
-    const output = buildSync({ stdin: { contents: 'export { deliveryDeadlines } from "./src/lib/workbook-delivery";', resolveDir: root },
-      bundle: true, platform: 'node', format: 'cjs', write: false, tsconfig: path.join(root, 'tsconfig.json') }).outputFiles[0].text;
-    const loaded = new Module(path.join(root, 'unica475-family-time.cjs'));
-    loaded.paths = module.paths;
-    loaded._compile(output, path.join(root, 'unica475-family-time.cjs'));
+  await test('canonical service deadlines bind both override modes, gaps, folds and minute boundaries', async () => {
     const cases = [
-      ['2025-02-16T08:30:00Z', 'America/Chicago', false], // Target 02:30 in spring gap: first valid 03:00.
-      ['2025-10-12T06:30:00Z', 'America/Chicago', false], // Target repeated 01:30: earlier occurrence.
-      ['2026-10-15T12:00:00Z', 'America/Vancouver', true],
-      ['2026-10-15T12:00:00Z', 'America/Edmonton', true],
-      ['2026-10-15T12:00:00Z', 'America/Winnipeg', true],
-      ['2026-10-15T12:00:00Z', 'America/Yellowknife', true],
-      ['2026-10-15T12:00:00Z', 'America/Chicago', false],
-      ['2026-03-01T12:00:00Z', 'America/Vancouver', true],
-      ['2026-10-15T12:00:00Z', 'Asia/Kolkata', true],
+      ['2025-02-16T08:30:00Z', 'America/Chicago', '2025-03-09T08:00:00.000Z'],
+      ['2025-10-12T06:30:00Z', 'America/Chicago', '2025-11-02T06:30:00.000Z'],
+      ['2026-10-15T12:00:00Z', 'America/Edmonton'],
+      ['2026-10-15T12:00:00Z', 'America/Vancouver'],
+      ['2026-10-15T12:00:00Z', 'America/Winnipeg'],
+      ['2026-10-15T12:00:00Z', 'America/Yellowknife'],
+      ['2026-10-15T12:00:00Z', 'America/Chicago'],
+      ['2026-03-01T12:00:00Z', 'America/Vancouver'],
+      ['2026-10-15T12:59:00Z', 'Asia/Kolkata'],
+      ['2026-10-15T12:00:00Z', 'UTC'],
     ];
-    for (const [deliveredAt, zone, override] of cases) {
-      const expected = loaded.exports.deliveryDeadlines({ deliveredAt, timeZone: override ? zone : { zone, override: false } }).backstopAt;
-      const actual = await rpc(db, '_workbook_scan_backstop', [deliveredAt, zone, override]);
-      assert.equal(actual.toISOString(), expected, [deliveredAt, zone, override].join(' '));
+    for (const [deliveredAt, zone, fixedExpected] of cases) for (const override of [false, true]) {
+      const f = await book();
+      // Delivery RPCs retain their own unchanged validation. Read their local wall value for admission only.
+      // This does not compute the deadline. The service computes that from the actual family-time export.
+      const local = (await db.query(`select to_char($1::timestamptz at time zone
+        (case when $3 then public._maya_zone_at($2,$1) else $2 end),'YYYY-MM-DD"T"HH24:MI') value`, [deliveredAt, zone, override])).rows[0].value;
+      assert.equal((await confirm(f, deliveredAt, admin, zone, override, local, false)).status, 'confirmed');
+      assert.equal((await rpc(service, 'reconcile_workbook_scan_progress', [[f.w]]))[0].result.status, 'clock-required');
+      const request = await clockRequest(f), args = calendarArgs(request), expected = args[5];
+      if (fixedExpected) assert.equal(expected, fixedExpected);
+      if (zone === 'America/Edmonton') assert.equal(expected, override ? '2026-11-05T12:00:00.000Z' : '2026-11-05T13:00:00.000Z');
+      await materialize(f);
+      const saved = (await db.query('select * from workbook_scan_delivery_calendars where delivery_audit_id=$1', [request.delivery_audit_id])).rows[0];
+      assert.equal(saved.backstop_at.toISOString(), expected);
+      const before = await rpc(db, '_claim_workbook_scan_trigger', [f.w, new Date(Date.parse(expected) - 1).toISOString()]);
+      assert.equal(before.status, 'waiting'); assert.equal(new Date(before.backstopAt).toISOString(), expected);
+      const at = await rpc(db, '_claim_workbook_scan_trigger', [f.w, expected]);
+      assert.equal(at.status, 'hold'); assert.equal(new Date(at.backstopAt).toISOString(), expected);
+      assert.equal((await claims(f)).length, 0);
+      assert.equal((await rpc(db, '_claim_workbook_scan_trigger', [f.w, new Date(Date.parse(expected) + 1).toISOString()])).status, 'hold');
+      console.log('CANONICAL_CLOCK_BOUNDARY', JSON.stringify({ deliveredAt, zone, override, expected }));
     }
-    const nativeAt = '2026-10-15T12:00:00Z';
-    const nativeSql = (await rpc(db, '_workbook_scan_backstop', [nativeAt, 'America/Edmonton', false])).toISOString();
-    const nativeNode = loaded.exports.deliveryDeadlines({ deliveredAt: nativeAt, timeZone: { zone: 'America/Edmonton', override: false } }).backstopAt;
-    console.log('NATIVE_TZDATA_PARITY', JSON.stringify({ zone: 'America/Edmonton', override: false, sql: nativeSql, node: nativeNode, equal: nativeSql === nativeNode }));
-    assert.equal((await rpc(db, '_workbook_scan_backstop', [cases[0][0], cases[0][1], false])).toISOString(), '2025-03-09T08:00:00.000Z');
-    assert.equal((await rpc(db, '_workbook_scan_backstop', [cases[1][0], cases[1][1], false])).toISOString(), '2025-11-02T06:30:00.000Z');
+    assert.equal(new Date(localDateTime('2025-03-09', { zone: 'America/Chicago', override: false }, 2, 30)).toISOString(), '2025-03-09T08:00:00.000Z');
+    assert.equal(new Date(localDateTime('2025-11-02', { zone: 'America/Chicago', override: false }, 1, 30)).toISOString(), '2025-11-02T06:30:00.000Z');
+  });
+  await test('Day7 never waits for a calendar in either delivery order, for ordinary and full test sets', async () => {
+    for (const testBook of [false, true]) for (const deliveryFirst of [false, true]) {
+      const f = await book({ testBook });
+      if (deliveryFirst) await confirm(f, undefined, admin, 'UTC', false, undefined, false);
+      await photo(f, 2); assert.equal((await claims(f)).length, 0);
+      await photo(f, 3);
+      if (!deliveryFirst) {
+        assert.equal((await claims(f)).length, 0);
+        await confirm(f, undefined, admin, 'UTC', false, undefined, false);
+      }
+      const [claim] = await claims(f);
+      assert.equal(claim.reason, 'day7_scanned'); assert.equal(claim.backstop_at, null);
+      assert.equal((await db.query('select count(*)::int n from workbook_scan_delivery_calendars where delivery_audit_id=$1', [claim.delivery_audit_id])).rows[0].n, 0);
+      assert.equal((await materialize(f)).status, 'claimed');
+      assert.deepEqual(await claims(f), [claim]);
+      const request = await clockRequest(f); assert.equal(request.delivery_audit_id, claim.delivery_audit_id);
+    }
+  });
+  await test('durable missing calendars recover overdue HOLD or a backstop without another receipt or scheduler', async () => {
+    for (const accepted of [false, true]) {
+      const f = await book({ number: 2 });
+      await confirm(f, '2026-01-01T12:00:00Z', admin, 'UTC', false, undefined, false);
+      if (accepted) await photo(f, 6);
+      for (let n = 0; n < 2; n++) assert.equal((await rpc(service, 'reconcile_workbook_scan_progress', [[f.w]]))[0].result.status, 'clock-required');
+      const request = await clockRequest(f); assert(request);
+      assert.equal((await claims(f)).length, 0);
+      const expected = calendarArgs(request)[5];
+      const result = await materialize(f);
+      assert.equal(result.status, accepted ? 'claimed' : 'hold');
+      const first = await claims(f); assert.equal(first.length, accepted ? 1 : 0);
+      if (accepted) { assert.equal(first[0].reason, 'delivery_backstop'); assert.equal(first[0].effective_at.toISOString(), expected); }
+      else assert.equal((await db.query('select count(*)::int n from workbook_scan_backstop_holds where workbook_id=$1', [f.w])).rows[0].n, 1);
+      for (let n = 0; n < 2; n++) await materialize(f); // Simulate a lost response and process restart.
+      assert.deepEqual(await claims(f), first); assert.deepEqual(await clockRequest(f), request);
+    }
+  });
+  await test('calendar first write is immutable; invalid identity or retry conflicts cannot move a deadline', async () => {
+    const f = await book(); await confirm(f, undefined, admin, 'UTC', false, undefined, false);
+    const request = await clockRequest(f), args = calendarArgs(request);
+    await materialize(f);
+    const first = (await db.query('select * from workbook_scan_delivery_calendars where delivery_audit_id=$1', [request.delivery_audit_id])).rows;
+    await materialize(f); assert.deepEqual((await db.query('select * from workbook_scan_delivery_calendars where delivery_audit_id=$1', [request.delivery_audit_id])).rows, first);
+    for (const [index, value] of [[1, '999999999'], [2, '2026-10-01T12:00:00Z'], [3, 'America/Edmonton'], [4, true]]) {
+      const bad = [...args]; bad[index] = value;
+      assert.equal((await rpc(service, 'record_workbook_scan_delivery_calendar', bad)).status, 'stale-delivery');
+    }
+    for (const [index, value] of [[5, '2026-11-22T13:00:00Z'], [6, 'another-clock-version']]) {
+      const bad = [...args]; bad[index] = value;
+      assert.equal((await rpc(service, 'record_workbook_scan_delivery_calendar', bad)).status, 'calendar-conflict');
+    }
+    for (const value of [null, 'infinity', '2026-11-01T12:00:00Z', '2026-11-22T12:00:00.001Z']) {
+      const bad = [...args]; bad[5] = value;
+      await assert.rejects(() => rpc(service, 'record_workbook_scan_delivery_calendar', bad), /invalid_scan_calendar/);
+    }
+    assert.deepEqual((await db.query('select * from workbook_scan_delivery_calendars where delivery_audit_id=$1', [request.delivery_audit_id])).rows, first);
+    for (const table of ['workbook_scan_clock_requests', 'workbook_scan_delivery_calendars'])
+      await assert.rejects(() => db.query(`update ${table} set parent_id=parent_id where delivery_audit_id=$1`, [request.delivery_audit_id]), /workbook_scan_fact_immutable/);
+  });
+  await test('correction versus a service clock response serializes both ways and refuses stale audit admission', async () => {
+    for (const correctionFirst of [false, true]) {
+      const f = await book(); await confirm(f, '2026-01-01T12:00:00Z', admin, 'UTC', false, undefined, false);
+      await photo(f, 6); const original = await clockRequest(f), requestId = randomUUID();
+      const a = await open(correctionFirst ? 'authenticated' : 'service_role');
+      const b = await open(correctionFirst ? 'service_role' : 'authenticated'); let pending;
+      await (correctionFirst ? a : b).query("select set_config('test.viewer',$1,false)", [adminId]);
+      const correct = c => rpc(c, 'correct_workbook_delivery', [f.w, f.c, f.number, '2026-11-01T12:00:00Z', '2026-11-01T12:00', 'UTC', false,
+        'Synthetic calendar race', requestId, original.delivery_audit_id]);
+      const record = c => materialize(f, c, original);
+      try {
+        await a.query('begin');
+        const first = correctionFirst ? await correct(a) : await record(a);
+        assert.equal(first.status, correctionFirst ? 'corrected' : 'claimed');
+        pending = outcome(correctionFirst ? record(b) : correct(b)); await blocked(b, a);
+        await a.query('commit'); const result = await pending; assert.ifError(result.error);
+        assert.equal(result.value.status, correctionFirst ? 'stale-delivery' : 'corrected');
+        const stored = (await db.query('select * from workbook_scan_delivery_calendars where delivery_audit_id=$1', [original.delivery_audit_id])).rows;
+        assert.equal(stored.length, correctionFirst ? 0 : 1);
+        const current = await clockRequest(f); assert.equal(current.delivery_correction_id, requestId);
+        const currentResult = await materialize(f);
+        assert.equal(currentResult.status, correctionFirst ? 'waiting' : 'claimed');
+        const captured = await claims(f); assert.equal(captured.length, correctionFirst ? 0 : 1);
+        if (!correctionFirst) assert.equal(captured[0].delivery_audit_id, original.delivery_audit_id);
+        assert.equal((await record(service)).status, 'stale-delivery');
+        assert.deepEqual(await claims(f), captured);
+        // Repeat the correction RPC after materialization. Its audit, clock and claim remain unchanged.
+        assert.equal((await correct(admin)).status, 'corrected'); assert.deepEqual(await clockRequest(f), current);
+      } finally { await a.query('rollback'); if (pending) await pending; await close(a); await close(b); }
+    }
+  });
+  await test('calendar arrival, final receipt and scheduler race in both orders without a lost or duplicate trigger', async () => {
+    for (const clockFirst of [false, true]) {
+      const f = await book(); await confirm(f, '2026-01-01T12:00:00Z', admin, 'UTC', false, undefined, false);
+      await photo(f, 2); const x = await photo(f, 3, service, { save: false }), request = await clockRequest(f);
+      const a = await open('service_role'), b = await open('service_role'), c = await open('service_role'); let pendingB, pendingC;
+      const save = conn => rpc(conn, 'change_scan_photo', [f.p, x.photo, 'save']);
+      try {
+        await a.query('begin');
+        if (clockFirst) assert.equal((await materialize(f, a, request)).claim.reason, 'delivery_backstop');
+        else assert.equal(await save(a), 'saved');
+        pendingB = outcome(clockFirst ? save(b) : materialize(f, b, request));
+        pendingC = outcome(rpc(c, 'reconcile_workbook_scan_progress', [[f.w]]));
+        await blocked(b, a); await blocked(c, a); await a.query('commit');
+        const [resB, resC] = await Promise.all([pendingB, pendingC]); assert.ifError(resB.error); assert.ifError(resC.error);
+        const [claim] = await claims(f); assert.equal((await claims(f)).length, 1);
+        assert.equal(claim.reason, clockFirst ? 'delivery_backstop' : 'day7_scanned');
+        assert.equal((await receipts(f)).length, 2); assert.equal(resC.value[0].result.claim.id, claim.id);
+        await materialize(f); assert.deepEqual(await claims(f), [claim]);
+      } finally { await a.query('rollback'); if (pendingB) await pendingB; if (pendingC) await pendingC; await close(a); await close(b); await close(c); }
+    }
+  });
+  await test('bounded recovery lists current missing calendars without stale, frozen or deleted-child starvation', async () => {
+    // Resolve earlier test requests first so this group's bounded set has exact identities.
+    const earlier = await rpc(service, 'list_workbook_scan_clock_requests', [100]);
+    for (const request of earlier) await rpc(service, 'record_workbook_scan_delivery_calendar', calendarArgs({ ...request, delivered_at: new Date(request.delivered_at) }));
+    assert.deepEqual(await rpc(service, 'list_workbook_scan_clock_requests', [100]), []);
+    const f = await book(); await confirm(f, undefined, admin, 'UTC', false, undefined, false);
+    const original = await clockRequest(f), correction = randomUUID();
+    assert.equal((await rpc(admin, 'correct_workbook_delivery', [f.w, f.c, f.number, '2026-10-01T12:00:00Z', '2026-10-01T12:00', 'UTC', false,
+      'Synthetic pending correction', correction, original.delivery_audit_id])).status, 'corrected');
+    const current = await clockRequest(f);
+    const frozen = await book(); await confirm(frozen, undefined, admin, 'UTC', false, undefined, false);
+    await db.query('update parents set deletion_requested_at=clock_timestamp() where id=$1', [frozen.p]);
+    const deleted = await book(); await confirm(deleted, undefined, admin, 'UTC', false, undefined, false);
+    await db.query('insert into child_deletions(child_id,parent_id) values($1,$2)', [deleted.c, deleted.p]);
+    const g = await book(); await confirm(g, undefined, admin, 'UTC', false, undefined, false);
+    const other = await clockRequest(g);
+    assert.deepEqual((await rpc(service, 'list_workbook_scan_clock_requests', [100])).map(x => String(x.delivery_audit_id)), [current.delivery_audit_id, other.delivery_audit_id]);
+    assert.deepEqual((await rpc(service, 'list_workbook_scan_clock_requests', [1])).map(x => String(x.delivery_audit_id)), [current.delivery_audit_id]);
+    await materialize(f); assert.deepEqual((await rpc(service, 'list_workbook_scan_clock_requests', [100])).map(x => x.workbook_id), [g.w]);
+    await materialize(g); assert.deepEqual(await rpc(service, 'list_workbook_scan_clock_requests', [100]), []);
+    for (const limit of [null, 0, -1, 101]) await assert.rejects(() => rpc(service, 'list_workbook_scan_clock_requests', [limit]), /invalid_scan_clock_batch/);
+  });
+  await test('calendar admission reads database time after a real book-lock wait across the canonical minute', async () => {
+    const now = (await db.query('select clock_timestamp() at_time')).rows[0].at_time.getTime();
+    const deadline = new Date(Math.ceil((now + 1500) / 60000) * 60000), delivered = new Date(deadline);
+    delivered.setUTCDate(delivered.getUTCDate() - 21);
+    const f = await book(); await confirm(f, delivered.toISOString(), admin, 'UTC', false, undefined, false);
+    const request = await clockRequest(f); assert.equal(calendarArgs(request)[5], deadline.toISOString());
+    const a = await open(), b = await open('service_role'); let pending;
+    try {
+      await a.query('begin'); await rpc(a, '_lock_workbook_scan_book', [f.w]);
+      await b.query("begin; set local statement_timeout='75s'"); pending = outcome(materialize(f, b, request)); await blocked(b, a);
+      const startedAt = (await db.query('select xact_start from pg_stat_activity where pid=$1', [b.processID])).rows[0].xact_start;
+      assert(startedAt < deadline); assert.equal((await claims(f)).length, 0);
+      console.log('BARRIER canonical minute', deadline.toISOString(), 'service waits on book gate');
+      await new Promise(resolve => setTimeout(resolve, Math.max(0, deadline.getTime() - Date.now() + 30)));
+      await a.query('commit'); const result = await pending; assert.ifError(result.error);
+      assert.equal(result.value.status, 'hold'); await b.query('commit');
+      const held = (await db.query('select * from workbook_scan_backstop_holds where workbook_id=$1', [f.w])).rows[0];
+      assert(held.held_at >= deadline); assert.equal(held.backstop_at.toISOString(), deadline.toISOString());
+      assert.equal((await claims(f)).length, 0);
+    } finally { await a.query('rollback'); if (pending) await pending; await b.query('rollback'); await close(a); await close(b); }
+  });
+  await test('family freeze and child tombstone deny calendar records and cannot revive pending work', async () => {
+    for (const family of [false, true]) {
+      const f = await book(); await confirm(f, undefined, admin, 'UTC', false, undefined, false);
+      const request = await clockRequest(f);
+      if (family) await db.query('update parents set deletion_requested_at=clock_timestamp() where id=$1', [f.p]);
+      else await db.query('insert into child_deletions(child_id,parent_id) values($1,$2)', [f.c, f.p]);
+      await assert.rejects(() => materialize(f, service, request), e => e.code === '55000');
+      assert.equal((await db.query('select count(*)::int n from workbook_scan_delivery_calendars where delivery_audit_id=$1', [request.delivery_audit_id])).rows[0].n, 0);
+    }
   });
   await test('ordinary first-photo completion has no resolution event; accepted retake resolves once at scan time', async () => {
     const f = await book(), x = await photo(f), i = await claimMark(x);
@@ -463,7 +652,7 @@ const revision = '0123456789abcdef0123456789ab';
         pending = outcome(correctionFirst ? save(b) : correct(b)); await blocked(b, a);
         await a.query('commit'); const result = await pending; assert.ifError(result.error);
         const [claim] = await claims(f); assert.equal((await claims(f)).length, 1);
-        assert.equal(claim.reason, correctionFirst ? 'delivery_backstop' : 'day7_scanned');
+        assert.equal(claim.reason, 'day7_scanned'); // Correction has no calendar yet; Day 7 must still claim immediately.
         assert.equal(claim.delivery_correction_id, correctionFirst ? request : null);
         if (!correctionFirst) assert.equal(Number(claim.delivery_audit_id), original.audit_id);
       } finally { await a.query('rollback'); if (pending) await pending; await close(a); await close(b); }
@@ -479,7 +668,7 @@ const revision = '0123456789abcdef0123456789ab';
       assert.equal((await events(f)).length, 1); assert.equal((await claims(f)).length, 1);
       assert.equal((await db.query('select count(*)::integer n from workbook_scan_backstop_holds where child_id=$1', [f.c])).rows[0].n, 1);
       if (family) await db.query('delete from auth.users where id=$1', [f.p]); else await db.query('delete from children where id=$1', [f.c]);
-      for (const table of ['workbook_scan_receipts', 'workbook_scan_pending_items', 'workbook_scan_progress_events', 'workbook_scan_trigger_claims', 'workbook_scan_backstop_holds'])
+      for (const table of ['workbook_scan_receipts', 'workbook_scan_pending_items', 'workbook_scan_progress_events', 'workbook_scan_trigger_claims', 'workbook_scan_backstop_holds', 'workbook_scan_clock_requests', 'workbook_scan_delivery_calendars'])
         assert.equal((await db.query(`select count(*)::integer n from ${table} where child_id=$1`, [f.c])).rows[0].n, 0, table);
     }
   });
@@ -508,8 +697,8 @@ const revision = '0123456789abcdef0123456789ab';
     }
   });
   await test('all new raw RLS/grants and direct RPC attempts deny anon/own/other parent and permit checked admin/service paths', async () => {
-    const f = await book(); await photo(f); const other = await book();
-    const tables = ['workbook_scan_receipts', 'workbook_scan_pending_items', 'workbook_scan_progress_events', 'workbook_scan_trigger_claims', 'workbook_scan_backstop_holds'];
+    const f = await book(); await photo(f); await confirm(f); const other = await book();
+    const tables = ['workbook_scan_receipts', 'workbook_scan_pending_items', 'workbook_scan_progress_events', 'workbook_scan_trigger_claims', 'workbook_scan_backstop_holds', 'workbook_scan_clock_requests', 'workbook_scan_delivery_calendars'];
     for (const [role, viewer, isAdmin] of [['anon', null, false], ['authenticated', f.p, false], ['authenticated', other.p, false], ['authenticated', adminId, true], ['service_role', null, false]]) {
       const c = await open(role);
       try {
@@ -524,18 +713,22 @@ const revision = '0123456789abcdef0123456789ab';
           await assert.rejects(() => c.query('insert into ' + table + ' default values'), e => e.code === '42501');
           await assert.rejects(() => c.query('delete from ' + table), e => e.code === '42501');
         }
+        if (role === 'service_role') assert(Array.isArray(await rpc(c, 'list_workbook_scan_clock_requests', [100])));
+        else await assert.rejects(() => rpc(c, 'list_workbook_scan_clock_requests', [100]), e => e.code === '42501');
+        if (role === 'service_role') assert.equal((await materialize(f, c)).status, 'waiting');
+        else await assert.rejects(() => materialize(f, c), e => e.code === '42501');
         await assert.rejects(() => rpc(c, '_admit_workbook_scan_receipt', [randomUUID()]), e => e.code === '42501');
         await assert.rejects(() => rpc(c, '_claim_workbook_scan_trigger', [f.w, '2099-01-01Z']), e => e.code === '42501');
-        if (role === 'service_role') assert.equal((await rpc(c, 'reconcile_workbook_scan_progress', [[f.w]]))[0].result.status, 'missing-delivery');
+        if (role === 'service_role') assert.equal((await rpc(c, 'reconcile_workbook_scan_progress', [[f.w]]))[0].result.status, 'waiting');
         else await assert.rejects(() => rpc(c, 'reconcile_workbook_scan_progress', [[f.w]]), e => e.code === '42501');
-        if (isAdmin) assert.equal((await rpc(c, 'admin_reconcile_workbook_scan_progress', [[f.w]]))[0].result.status, 'missing-delivery');
+        if (isAdmin) assert.equal((await rpc(c, 'admin_reconcile_workbook_scan_progress', [[f.w]]))[0].result.status, 'waiting');
         else await assert.rejects(() => rpc(c, 'admin_reconcile_workbook_scan_progress', [[f.w]]), e => e.code === '42501');
       } finally { await close(c); }
     }
     const metadata = (await db.query(`select proname,prosecdef,proconfig from pg_proc where proname in
       ('_admit_workbook_scan_receipt','_claim_workbook_scan_trigger','capture_workbook_scan_receipt','capture_workbook_scan_resolution',
-      'reconcile_workbook_scan_progress','admin_reconcile_workbook_scan_progress')`)).rows;
-    assert.equal(metadata.length, 6); for (const m of metadata) { assert(m.prosecdef); assert.deepEqual(m.proconfig, ['search_path=""']); }
+      'reconcile_workbook_scan_progress','admin_reconcile_workbook_scan_progress','record_workbook_scan_delivery_calendar','list_workbook_scan_clock_requests')`)).rows;
+    assert.equal(metadata.length, 8); for (const m of metadata) { assert(m.prosecdef); assert.deepEqual(m.proconfig, ['search_path=""']); }
     await assert.rejects(() => rpc(service, 'reconcile_workbook_scan_progress', [Array(101).fill(f.w)]), /invalid_scan_batch/);
     await assert.rejects(() => rpc(service, 'reconcile_workbook_scan_progress', [[null]]), /invalid_scan_batch/);
   });
@@ -543,7 +736,7 @@ const revision = '0123456789abcdef0123456789ab';
   console.log('PROOF receipt: production hooks/RPC admission and durable rows; synthetic image quality/Storage metadata only.');
   console.log('PROOF marking: production S4/S5 versions and publication; no model, learning-event publication or profile policy.');
   console.log('PROOF claims: actual concurrent PostgreSQL sessions and explicit barriers; reduced dependency schema, not hosted proof.');
-  console.log('PROOF calendar: actual deliveryDeadlines/family-time compared with SQL; no hosted tzdata or scheduler activated.');
+  console.log('PROOF calendar: real deliveryDeadlines/family-time deadlines persisted by service RPC, binding boundaries and PostgreSQL races; no hosted runtime or scheduler activated.');
 })().catch(e => { console.error(e); process.exitCode = 1; }).finally(async () => {
   await Promise.allSettled([...clients].map(c => c.end()));
   try { cleanup(); } catch (e) { console.error('CLEANUP FAILED', e); process.exitCode = 1; }
