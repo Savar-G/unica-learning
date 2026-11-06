@@ -25,14 +25,20 @@ async function setup() {
   f.books.setStatus(f.ids.workbook, "shipped");
   local.books = f.books; local.seams = f.seams;
   const reads: string[] = [];
-  let notice = true, pageExists = true;
+  let notice = true, pageExists = true, recovering = false;
   const db = createClient<Database>("https://test.invalid", "test", { global: { fetch: async (input, init) => {
     const url = new URL(String(input)), table = url.pathname.split("/").pop()!;
     reads.push(table);
     if (table === "maya_notice_acceptances") return Response.json(notice ? [{ parent_id: f.ids.parent, notice_version: MAYA_NOTICE_VERSION, accepted_by: f.ids.parent, accepted_at: "2026-11-06T12:00:00Z" }] : []);
     if (table === "maya_chat_messages") return new Response(null, { status: 200, headers: { "content-range": "*/0" } });
-    if (table === "workbook_pages") return Response.json(pageExists && url.searchParams.get("workbook_id") === `eq.${f.ids.workbook}` && url.searchParams.get("page_number") === "eq.4" ? { id: "page-four" } : null);
-    if (table === "recover_maya_chat_message") return Response.json({ status: "none" });
+    if (table === "workbook_pages") return Response.json(pageExists && [f.ids.workbook, OTHER].some(id => url.searchParams.get("workbook_id") === `eq.${id}`) && url.searchParams.get("page_number") === "eq.4" ? { id: "page-four" } : null);
+    if (table === "recover_maya_chat_message") {
+      if (!recovering) return Response.json({ status: "none" });
+      recovering = false;
+      const old = (await f.store.get(ID))!;
+      await f.store.update(ID, old.revision, {});
+      return Response.json({ status: "accepted", id: OTHER, callId: ID, revision: old.revision + 1, text: "66" });
+    }
     if (table === "take_maya_chat_message") {
       const input = JSON.parse(String(init?.body));
       const revision = f.store.rows()[0].revision;
@@ -42,7 +48,7 @@ async function setup() {
   } } });
   const ctx = { db, parent: f.ids.parent, child: f.ids.child, name: "Iris", grade: 4, zone: "America/Vancouver" as const };
   const start = (extra = {}) => runChat(ctx, { type: "start", id: ID, workbookId: f.ids.workbook, reference: "page 4, number 3", ...extra } as unknown as ChatAction);
-  return { ...f, ctx, start, reads, noNotice: () => { notice = false; }, noPage: () => { pageExists = false; } };
+  return { ...f, ctx, start, reads, noNotice: () => { notice = false; }, noPage: () => { pageExists = false; }, recover: () => { recovering = true; } };
 }
 
 describe("#677 family chat workbook selection through runChat", () => {
@@ -151,4 +157,26 @@ describe("#677 family chat workbook selection through runChat", () => {
     expect(f.store.rows()[0]).toEqual(kept);
     expect(f.store.rows()[0].question).toEqual(before.question);
   });
+});
+
+it.each(["no pending", "shipped pending", "withdrawn pending"])("opens a new shipped book after %s", async mode => {
+ const f=await setup();
+ const first=await f.start();
+ expect(first.error).toBeUndefined();
+ const source = f.book.pages[0].questions[0].content;
+ if (source.status !== "found") throw Error("Missing fixture question");
+ const write=await f.books.write({id:OTHER,childId:f.ids.child,number:2,levels:[9],pdfPath:null,profileBuild:null,
+   pages:[{number:4,type:"practice",dayLabel:"Tuesday",qrToken:"new-synthetic-token",image:{path:`${f.ids.parent}/${OTHER}/page-4.png`,width:600,height:780},
+     questions:[{number:3,box:{x:0,y:0,width:100,height:100},package:{...source.package,id:OTHER+":4:3",ref:{source:"workbook",workbookId:OTHER,page:4,question:3}}}]}]});
+ expect(write.status,JSON.stringify(write)).toBe("written"); f.books.setStatus(OTHER,"shipped");
+ if (mode === "withdrawn pending") f.books.setStatus(f.ids.workbook,"printed");
+ if (mode !== "no pending") f.recover();
+ const r=await runChat(f.ctx,{type:"start",id:"77777777-7777-4777-8777-777777777777",question:{source:"workbook",workbookId:OTHER,page:4,question:3}});
+ expect(r.error).toBeUndefined(); expect(r.chat?.question?.workbookId).toBe(OTHER);
+ if (mode === "withdrawn pending") {
+  const old = (await f.store.get(ID))!;
+  expect(old.status).toBe("ended");
+  expect(old.revision).toBeGreaterThan(first.chat!.revision + 1);
+  expect(old.trace?.turns.filter(t => t.kind === "child")).toEqual([]);
+ }
 });

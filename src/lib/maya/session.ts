@@ -1542,6 +1542,9 @@ function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValu
   // (its operands and worked steps): one sentence may cover two columns ("I write 6 and carry 1, then 2 plus 3 plus 1 is 6").
   for (const v of valuesIn(stepText(step, pkg.operation))) if (v.type === "number") own.add(v.value);
   const opts = readOptionsFor(pkg);
+  const operandOptions = { ...opts, operands: true };
+  const ownFractions = [...readNumbers(operationText(pkg.operation), operandOptions).values, ...readNumbers(stepText(step, pkg.operation), operandOptions).values]
+    .filter(v => v.type === "fraction" || v.type === "mixed");
   for (const n of opts.known ?? []) own.add(n);
   // A child may add a column's digits before adding its incoming carry.
   // These intermediate sums come from checked columns, never from model text.
@@ -1550,13 +1553,13 @@ function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValu
     // "1 ten", "6 ones": a place word after a number names its place, not another number.
     const r = readNumbers(sentence.replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine))\s+(?:tens?|ones?|hundreds?)\b/gi, "$1"), opts);
     if (!r.values.some((v) => saidAs(v, value))) return true;
-    return !r.unreadable && r.values.every((v, i) => r.notAnswer[i] || (v.type === "number" && own.has(v.value)) || saidAs(v, value) || saidAs(v, pkg.answer.value));
+    return !r.unreadable && r.values.every((v, i) => r.notAnswer[i] || (v.type === "number" && own.has(v.value)) || ownFractions.some(known => saidAs(v, known)) || saidAs(v, value) || saidAs(v, pkg.answer.value));
   });
 }
 
 const CLAIM_WORDS = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand";
 const CLAIM_NUMBER = new RegExp(`^\\s+(?:(?:down|the|a|an|number|digit|it|as)\\s+)*([+-]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?|(?:${CLAIM_WORDS})(?:[ -](?:${CLAIM_WORDS}))*)\\b`, "i");
-const CLAIM_VERB = /\b(?:write|writes|wrote|writing|put|puts|putting|carry|carried|carrying)\b/gi;
+const CLAIM_VERB = /\b(?:write|writes|wrote|written|writing|put|puts|putting|carry|carried|carrying)\b/gi;
 const COLUMN_WORDS = "ten thousands|hundred thousands|millions|ones|tens|hundreds|thousands|tenths|hundredths|thousandths";
 const CLAIM_PLACE = new RegExp(`\\b(in|into|under|at|on|for|to|from)\\s+(?:the\\s+)?(${COLUMN_WORDS})\\b`, "gi");
 const CLAIM_COLUMN = new RegExp(`\\b(${COLUMN_WORDS})\\b`, "gi");

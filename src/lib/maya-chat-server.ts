@@ -154,7 +154,13 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
     childPending = recovered.status !== "none";
     if (recovered.status !== "accepted" || !recovered.callId || recovered.revision === undefined || !recovered.text) return;
     const original = await store.get(recovered.callId);
-    if (!owned(original) || !await shipped(original)) throw Error("Chat recovery is no longer available");
+    if (!owned(original)) throw Error("Chat recovery is no longer available");
+    if (!await shipped(original)) {
+      const ended = await calls.input(recovered.callId, recovered.revision, { type: "end" }, name);
+      if (!ended.ok) throw Error(`Chat recovery: ${ended.error}`);
+      childPending = false;
+      return;
+    }
     const result = await calls.input(recovered.callId, recovered.revision, { type: "child", text: recovered.text }, name);
     if (!result.ok) throw Error(`Chat recovery: ${result.error}`);
     const saved = await store.get(recovered.callId);
