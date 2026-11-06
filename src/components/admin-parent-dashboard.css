@@ -1,0 +1,11 @@
+.apd { min-width: 0; }
+.apd-controls { align-items: end; }
+.apd-controls label { min-width: 0; max-width: 100%; flex: 1 1 180px; }
+.apd-controls select { width: 100%; min-width: 0; max-width: 100%; text-overflow: ellipsis; }
+.apd-frame-host { width: 100%; min-width: 0; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--paper); }
+.apd-frame-space { position: relative; max-width: 100%; margin: 0 auto; }
+.apd-frame-space iframe { display: block; max-width: none; border: 0; transform-origin: top left; background: #fff; }
+.apd-frame-space > p { padding: 24px; }
+.apd-limits { margin-top: 20px; font-size: 14px; }
+.apd-limits summary { cursor: pointer; padding: 8px 0; }
+.apd :focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }

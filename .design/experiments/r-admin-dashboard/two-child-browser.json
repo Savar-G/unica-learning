@@ -1,0 +1,70 @@
+{
+  "rows": [
+    {
+      "rows": [
+        {
+          "heading": [],
+          "name": "Leah",
+          "text": "LeahCAD 79.99 a month. Next charge: November 26, 2026.Pause Leah's plan2 weeks. Next charge: December 10, 2026.Next mailing: December 10 to December 15.6 weeks remain in 2026 after this pause.Confirm pauseKeep current planChange weeksCancel plan"
+        },
+        {
+          "heading": [],
+          "name": "Kai",
+          "text": "KaiCAD 79.99 a month. Next charge: November 26, 2026.Pause Kai's plan2 weeks. Next charge: December 10, 2026.Next mailing: December 10 to December 15.6 weeks remain in 2026 after this pause.Confirm pauseKeep current planChange weeksCancel plan"
+        }
+      ],
+      "scenario": "pause_review",
+      "selected": "second"
+    },
+    {
+      "rows": [
+        {
+          "name": "Leah",
+          "text": "LeahCAD 79.99 a month. Next charge: November 26, 2026.Pause planCancel Leah's plan? The plan ends on November 26, 2026. We will not charge your card again.Yes, cancel planKeep plan"
+        },
+        {
+          "name": "Kai",
+          "text": "KaiCAD 79.99 a month. Next charge: November 26, 2026.Pause planCancel Kai's plan? The plan ends on November 26, 2026. We will not charge your card again.Yes, cancel planKeep plan"
+        }
+      ],
+      "scenario": "cancel_review",
+      "selected": "second"
+    },
+    {
+      "scenario": "empty",
+      "selected": "second",
+      "selectedScan": "Kai",
+      "shell": "Kai",
+      "view": "scan"
+    },
+    {
+      "scenario": "ready",
+      "selected": "second",
+      "selectedScan": "Kai",
+      "view": "scan"
+    },
+    {
+      "scenario": "ready",
+      "selected": "first",
+      "selectedScan": "Leah",
+      "view": "scan"
+    },
+    {
+      "scenario": "ready",
+      "selected": "second",
+      "selectedScan": "Kai",
+      "view": "scan"
+    }
+  ],
+  "safety": {
+    "activeControls": 0,
+    "forms": 0,
+    "hrefs": 3,
+    "methods": {
+      "GET": 5
+    },
+    "mutations": [],
+    "sandbox": "allow-same-origin",
+    "scripts": 0
+  }
+}

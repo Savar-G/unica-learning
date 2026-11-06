@@ -1,0 +1,1436 @@
+{
+  "source": "src/lib/admin-parent-dashboard.ts",
+  "base": "f3133376535b3c96f4c81f62f1f8d1cc80322a23",
+  "views": 10,
+  "scenarios": 93,
+  "countsByView": {
+    "assessment": 6,
+    "report": 14,
+    "overview": 11,
+    "workbooks": 7,
+    "progress": 5,
+    "maya": 7,
+    "account": 9,
+    "plan": 22,
+    "scan": 6,
+    "scan_results": 6
+  },
+  "stages": [
+    "no_test",
+    "test_running",
+    "report_ready_bc",
+    "report_ready_waitlist",
+    "first_book_coming",
+    "active",
+    "ended"
+  ],
+  "plans": [
+    "not_started",
+    "free_month",
+    "paying",
+    "payment_failed",
+    "paused",
+    "ending",
+    "ended",
+    "unknown"
+  ],
+  "sizes": {
+    "desktop": {
+      "label": "Desktop",
+      "width": 1280,
+      "height": 900
+    },
+    "tablet": {
+      "label": "Tablet",
+      "width": 820,
+      "height": 1000
+    },
+    "phone": {
+      "label": "Phone",
+      "width": 390,
+      "height": 844
+    }
+  },
+  "families": {
+    "one": "One child",
+    "two": "Two children",
+    "long": "Long first name",
+    "none": "No children"
+  },
+  "cases": [
+    {
+      "view": "assessment",
+      "scenario": "no_test",
+      "label": "No test",
+      "stage": "no_test",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=assessment&scenario=no_test&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "assessment",
+      "scenario": "test_running",
+      "label": "Test in progress",
+      "stage": "test_running",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=assessment&scenario=test_running&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "assessment",
+      "scenario": "finish",
+      "label": "All answers saved",
+      "stage": "test_running",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=assessment&scenario=finish&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "assessment",
+      "scenario": "expired",
+      "label": "Expired test",
+      "stage": "no_test",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=assessment&scenario=expired&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "assessment",
+      "scenario": "report_pending",
+      "label": "Report being prepared",
+      "stage": "test_running",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=assessment&scenario=report_pending&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "assessment",
+      "scenario": "wait",
+      "label": "Next test not open",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=assessment&scenario=wait&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "choose",
+      "label": "BC: start free month",
+      "stage": "report_ready_bc",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=choose&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "checking",
+      "label": "BC: checking card",
+      "stage": "report_ready_bc",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=checking&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "unknown",
+      "label": "BC: card check unavailable",
+      "stage": "report_ready_bc",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=unknown&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "error",
+      "label": "BC: payment page failed",
+      "stage": "report_ready_bc",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=error&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "busy_card",
+      "label": "BC: opening card page",
+      "stage": "report_ready_bc",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=busy_card&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "cancelled",
+      "label": "BC: card not saved",
+      "stage": "report_ready_bc",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=cancelled&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "later",
+      "label": "BC: card link by email",
+      "stage": "report_ready_bc",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=later&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "saved",
+      "label": "BC: card saved before reload",
+      "stage": "report_ready_bc",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=saved&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "waitlist",
+      "label": "Other curriculum: join waitlist",
+      "stage": "report_ready_waitlist",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=waitlist&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "busy_waitlist",
+      "label": "Other curriculum: joining",
+      "stage": "report_ready_waitlist",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=busy_waitlist&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "joined",
+      "label": "Other curriculum: joined",
+      "stage": "report_ready_waitlist",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=joined&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "waitlist_error",
+      "label": "Waitlist unavailable",
+      "stage": "report_ready_waitlist",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=waitlist_error&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "unreliable",
+      "label": "Result needs a new test",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=unreliable&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "report",
+      "scenario": "ended",
+      "label": "Past report after plan ended",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=report&scenario=ended&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "active",
+      "label": "Active child",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=active&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "first_book_coming",
+      "label": "First workbook not sent",
+      "stage": "first_book_coming",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=first_book_coming&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "ended",
+      "label": "Plan ended",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=ended&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "early",
+      "label": "Early result",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=early&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "unreliable",
+      "label": "Unreliable result",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=unreliable&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "preparing",
+      "label": "New result being prepared",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=preparing&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "late",
+      "label": "New result delayed",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=late&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "empty",
+      "label": "No result or scanned days",
+      "stage": "first_book_coming",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=empty&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "payment_failed",
+      "label": "Payment failed",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=payment_failed&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "no_pin",
+      "label": "PIN needed",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=no_pin&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "overview",
+      "scenario": "learning_card_empty",
+      "label": "Learning card needed",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=overview&scenario=learning_card_empty&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "delivered",
+      "label": "Current and past books",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=workbooks&scenario=delivered&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "mail",
+      "label": "In the mail",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=workbooks&scenario=mail&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "hand",
+      "label": "Delivery by hand",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=workbooks&scenario=hand&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "first_book_coming",
+      "label": "First workbook not sent",
+      "stage": "first_book_coming",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=workbooks&scenario=first_book_coming&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "late",
+      "label": "Later than estimate",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=workbooks&scenario=late&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "paused",
+      "label": "Pause moves next mailing",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=workbooks&scenario=paused&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbooks",
+      "scenario": "ended",
+      "label": "Past books only",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=workbooks&scenario=ended&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "progress",
+      "scenario": "map",
+      "label": "Skill map",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=progress&scenario=map&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "progress",
+      "scenario": "panel",
+      "label": "Selected skill",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=progress&scenario=panel&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "progress",
+      "scenario": "empty",
+      "label": "No test report",
+      "stage": "first_book_coming",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=progress&scenario=empty&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "progress",
+      "scenario": "unreliable",
+      "label": "Unreliable result",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=progress&scenario=unreliable&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "progress",
+      "scenario": "ended",
+      "label": "Past skills",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=progress&scenario=ended&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "maya",
+      "scenario": "notes",
+      "label": "Call and chat notes",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=maya&scenario=notes&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "maya",
+      "scenario": "empty",
+      "label": "No notes",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=maya&scenario=empty&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "maya",
+      "scenario": "used",
+      "label": "Weekly minutes used",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=maya&scenario=used&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "maya",
+      "scenario": "session",
+      "label": "Call transcript",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=maya&scenario=session&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "maya",
+      "scenario": "chat",
+      "label": "Chat transcript",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=maya&scenario=chat&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "maya",
+      "scenario": "missing",
+      "label": "Transcript unavailable",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=maya&scenario=missing&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "maya",
+      "scenario": "ended",
+      "label": "Past notes",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=maya&scenario=ended&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "account",
+      "scenario": "loaded",
+      "label": "Plans, invoices and settings",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=account&scenario=loaded&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "account",
+      "scenario": "empty",
+      "label": "No plans or invoices",
+      "stage": "no_test",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=account&scenario=empty&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "account",
+      "scenario": "loading",
+      "label": "Billing loading",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=account&scenario=loading&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "account",
+      "scenario": "unavailable",
+      "label": "Billing unavailable",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=account&scenario=unavailable&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "account",
+      "scenario": "invoices_unavailable",
+      "label": "Invoices unavailable",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=account&scenario=invoices_unavailable&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "account",
+      "scenario": "updated",
+      "label": "Card updated",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=account&scenario=updated&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "account",
+      "scenario": "unchanged",
+      "label": "Card unchanged",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=account&scenario=unchanged&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "account",
+      "scenario": "unconfirmed",
+      "label": "Card not confirmed",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=account&scenario=unconfirmed&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "account",
+      "scenario": "failed",
+      "label": "Card update failed",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=account&scenario=failed&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "not_started",
+      "label": "not started",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=not_started&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "free_month",
+      "label": "free month",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=free_month&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "paying",
+      "label": "paying",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=paying&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "payment_failed",
+      "label": "payment failed",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=payment_failed&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "paused",
+      "label": "paused",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=paused&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "ending",
+      "label": "ending",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=ending&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "ended",
+      "label": "ended",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=ended&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "unknown",
+      "label": "unknown",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=unknown&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "none",
+      "label": "No saved card",
+      "stage": "no_test",
+      "tabs": [
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=none&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "unavailable",
+      "label": "Plan unavailable",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=unavailable&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "pause",
+      "label": "Pause: choose weeks",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=pause&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "pause_review",
+      "label": "Pause: review dates",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=pause_review&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "pause_late",
+      "label": "Pause: next workbook already in preparation",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=pause_late&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "pause_pending",
+      "label": "Pause: confirmation pending",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=pause_pending&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "restart",
+      "label": "Restart: review price",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=restart&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "restart_review",
+      "label": "Restart: confirm paid price",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=restart_review&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "restart_declined",
+      "label": "Restart: payment declined",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=restart_declined&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "restart_pending",
+      "label": "Restart: confirmation pending",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=restart_pending&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "pause_saved",
+      "label": "Pause: saved before reload",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=pause_saved&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "restart_started",
+      "label": "Restart: confirmed before reload",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=restart_started&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "cancel_review",
+      "label": "Cancel: confirmation",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=cancel_review&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "plan",
+      "scenario": "cancel_pending",
+      "label": "Cancel: confirmation pending",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=plan&scenario=cancel_pending&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan",
+      "scenario": "empty",
+      "label": "No photos",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan&scenario=empty&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan",
+      "scenario": "loading",
+      "label": "Loading photos",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan&scenario=loading&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan",
+      "scenario": "unavailable",
+      "label": "Photos unavailable",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan&scenario=unavailable&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan",
+      "scenario": "ready",
+      "label": "Ready to send",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan&scenario=ready&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan",
+      "scenario": "sent",
+      "label": "Sent for marking",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan&scenario=sent&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan",
+      "scenario": "refused",
+      "label": "Needs another photo",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan&scenario=refused&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan_results",
+      "scenario": "scored",
+      "label": "Scored answers",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan_results&scenario=scored&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan_results",
+      "scenario": "uncertain",
+      "label": "Please check the answer",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan_results&scenario=uncertain&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan_results",
+      "scenario": "unscored",
+      "label": "Not scored",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan_results&scenario=unscored&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan_results",
+      "scenario": "expired",
+      "label": "Photo no longer available",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan_results&scenario=expired&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan_results",
+      "scenario": "budget",
+      "label": "Checking limit reached",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan_results&scenario=budget&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "scan_results",
+      "scenario": "pending",
+      "label": "Waiting to be checked",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/parent-dashboard?view=scan_results&scenario=pending&size=desktop&family=one&child=first"
+    }
+  ]
+}

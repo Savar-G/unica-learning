@@ -1,0 +1,141 @@
+
+ RUN  v4.1.11 /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-bda8c699
+
+ ❯ src/components/admin-parent-preview.test.ts (116 tests | 12 failed) 1446ms
+   × uses each plan row's child for 'pause_review' with 'first' selected 9ms
+   × uses each plan row's child for 'pause_review' with 'second' selected 5ms
+   × uses each plan row's child for 'restart_review' with 'first' selected 8ms
+   × uses each plan row's child for 'restart_review' with 'second' selected 5ms
+   × uses each plan row's child for 'cancel_review' with 'first' selected 6ms
+   × uses each plan row's child for 'cancel_review' with 'second' selected 34ms
+   × selects the same child in the shell and Scan view for 'empty' / 'second' 18ms
+   × selects the same child in the shell and Scan view for 'loading' / 'second' 6ms
+   × selects the same child in the shell and Scan view for 'unavailable' / 'second' 10ms
+   × selects the same child in the shell and Scan view for 'ready' / 'second' 14ms
+   × selects the same child in the shell and Scan view for 'sent' / 'second' 3ms
+   × selects the same child in the shell and Scan view for 'refused' / 'second' 7ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/admin-parent-preview.test.ts > uses each plan row's child for 'pause_review' with 'first' selected
+AssertionError: expected 'KaiCAD 79.99 a month. Next charge: No…' to contain 'Pause Kai\'s plan'
+
+Expected: "Pause Kai's plan"
+Received: "KaiCAD 79.99 a month. Next charge: November 26, 2026.Pause Leah's plan2 weeks. Next charge: December 10, 2026.Next mailing: December 10 to December 15.6 weeks remain in 2026 after this pause.Confirm pauseKeep current planChange weeksCancel plan"
+
+ ❯ src/components/admin-parent-preview.test.ts:108:37
+    106|   const action = scenario === "cancel_review" ? "Cancel" : scenario ==…
+    107|   for (const [index, name] of ["Leah", "Kai"].entries()) {
+    108|     expect(rows[index].textContent).toContain(`${action} ${name}'s pla…
+       |                                     ^
+    109|     expect(rows[index].textContent).not.toContain(`${action} ${index =…
+    110|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯
+
+ FAIL  src/components/admin-parent-preview.test.ts > uses each plan row's child for 'pause_review' with 'second' selected
+AssertionError: expected 'LeahCAD 79.99 a month. Next charge: N…' to contain 'Pause Leah\'s plan'
+
+Expected: "Pause Leah's plan"
+Received: "LeahCAD 79.99 a month. Next charge: November 26, 2026.Pause Kai's plan2 weeks. Next charge: December 10, 2026.Next mailing: December 10 to December 15.6 weeks remain in 2026 after this pause.Confirm pauseKeep current planChange weeksCancel plan"
+
+ ❯ src/components/admin-parent-preview.test.ts:108:37
+    106|   const action = scenario === "cancel_review" ? "Cancel" : scenario ==…
+    107|   for (const [index, name] of ["Leah", "Kai"].entries()) {
+    108|     expect(rows[index].textContent).toContain(`${action} ${name}'s pla…
+       |                                     ^
+    109|     expect(rows[index].textContent).not.toContain(`${action} ${index =…
+    110|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/12]⎯
+
+ FAIL  src/components/admin-parent-preview.test.ts > uses each plan row's child for 'restart_review' with 'first' selected
+AssertionError: expected 'KaiThis plan has ended. We will not c…' to contain 'Restart Kai\'s plan'
+
+Expected: "Restart Kai's plan"
+Received: "KaiThis plan has ended. We will not charge your card.Restart Leah's planWe charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month.Confirm restartKeep current plan"
+
+ ❯ src/components/admin-parent-preview.test.ts:108:37
+    106|   const action = scenario === "cancel_review" ? "Cancel" : scenario ==…
+    107|   for (const [index, name] of ["Leah", "Kai"].entries()) {
+    108|     expect(rows[index].textContent).toContain(`${action} ${name}'s pla…
+       |                                     ^
+    109|     expect(rows[index].textContent).not.toContain(`${action} ${index =…
+    110|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/12]⎯
+
+ FAIL  src/components/admin-parent-preview.test.ts > uses each plan row's child for 'restart_review' with 'second' selected
+AssertionError: expected 'LeahThis plan has ended. We will not …' to contain 'Restart Leah\'s plan'
+
+Expected: "Restart Leah's plan"
+Received: "LeahThis plan has ended. We will not charge your card.Restart Kai's planWe charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month.Confirm restartKeep current plan"
+
+ ❯ src/components/admin-parent-preview.test.ts:108:37
+    106|   const action = scenario === "cancel_review" ? "Cancel" : scenario ==…
+    107|   for (const [index, name] of ["Leah", "Kai"].entries()) {
+    108|     expect(rows[index].textContent).toContain(`${action} ${name}'s pla…
+       |                                     ^
+    109|     expect(rows[index].textContent).not.toContain(`${action} ${index =…
+    110|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/12]⎯
+
+ FAIL  src/components/admin-parent-preview.test.ts > uses each plan row's child for 'cancel_review' with 'first' selected
+AssertionError: expected 'KaiCAD 79.99 a month. Next charge: No…' to contain 'Cancel Kai\'s plan'
+
+Expected: "Cancel Kai's plan"
+Received: "KaiCAD 79.99 a month. Next charge: November 26, 2026.Pause planCancel Leah's plan? The plan ends on November 26, 2026. We will not charge your card again.Yes, cancel planKeep plan"
+
+ ❯ src/components/admin-parent-preview.test.ts:108:37
+    106|   const action = scenario === "cancel_review" ? "Cancel" : scenario ==…
+    107|   for (const [index, name] of ["Leah", "Kai"].entries()) {
+    108|     expect(rows[index].textContent).toContain(`${action} ${name}'s pla…
+       |                                     ^
+    109|     expect(rows[index].textContent).not.toContain(`${action} ${index =…
+    110|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/12]⎯
+
+ FAIL  src/components/admin-parent-preview.test.ts > uses each plan row's child for 'cancel_review' with 'second' selected
+AssertionError: expected 'LeahCAD 79.99 a month. Next charge: N…' to contain 'Cancel Leah\'s plan'
+
+Expected: "Cancel Leah's plan"
+Received: "LeahCAD 79.99 a month. Next charge: November 26, 2026.Pause planCancel Kai's plan? The plan ends on November 26, 2026. We will not charge your card again.Yes, cancel planKeep plan"
+
+ ❯ src/components/admin-parent-preview.test.ts:108:37
+    106|   const action = scenario === "cancel_review" ? "Cancel" : scenario ==…
+    107|   for (const [index, name] of ["Leah", "Kai"].entries()) {
+    108|     expect(rows[index].textContent).toContain(`${action} ${name}'s pla…
+       |                                     ^
+    109|     expect(rows[index].textContent).not.toContain(`${action} ${index =…
+    110|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/12]⎯
+
+ FAIL  src/components/admin-parent-preview.test.ts > selects the same child in the shell and Scan view for 'empty' / 'second'
+ FAIL  src/components/admin-parent-preview.test.ts > selects the same child in the shell and Scan view for 'loading' / 'second'
+ FAIL  src/components/admin-parent-preview.test.ts > selects the same child in the shell and Scan view for 'unavailable' / 'second'
+ FAIL  src/components/admin-parent-preview.test.ts > selects the same child in the shell and Scan view for 'ready' / 'second'
+ FAIL  src/components/admin-parent-preview.test.ts > selects the same child in the shell and Scan view for 'sent' / 'second'
+ FAIL  src/components/admin-parent-preview.test.ts > selects the same child in the shell and Scan view for 'refused' / 'second'
+AssertionError: expected 'Leah' to be 'Kai' // Object.is equality
+
+Expected: "Kai"
+Received: "Leah"
+
+ ❯ src/components/admin-parent-preview.test.ts:117:77
+    115|   const name = child === "second" ? "Kai" : "Leah";
+    116|   expect(output.querySelector(".pd-kid b")?.textContent).toBe(name);
+    117|   expect(output.querySelector(".scan-child option[selected]")?.textCon…
+       |                                                                             ^
+    118|   expect(output.querySelectorAll(".scan-child option")).toHaveLength(2…
+    119| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/12]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  12 failed | 104 passed (116)
+   Start at  20:07:52
+   Duration  3.81s (transform 1.33s, setup 0ms, import 1.69s, tests 1.45s, environment 565ms)
