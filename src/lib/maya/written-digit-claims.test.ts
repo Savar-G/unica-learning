@@ -164,3 +164,21 @@ it.each([1, 2])("checks the incoming value in a backward carry reference: %s", c
     expect(result.session.done).not.toContain("tens");
   }
 });
+
+it.each([
+  ["1 that I", true], ["one that we", true],
+  ["2 that I", false], ["two that we", false],
+] as const)("keeps the optional relative word outside the numeric reference: %s", (reference, correct) => {
+  const c = call(); c.child("7 plus 9 is 16.");
+  expect(rightOnes(c).refusal).toBeNull();
+  c.child(`For the tens, I did 2 plus 3, that's 5, plus the ${reference} carried. So I got 6 tens.`);
+  const result = c.propose({ act: "guide", step: "result", level: 0,
+    parts: [line("check.right_step", { step: "tens" }), line("step.invite", { step: "result" })],
+    reading: { answers: [{ value: value(6), step: "tens", verdict: "right" }] },
+  });
+  if (correct) {
+    expect(result.refusal).toBeNull(); expect(result.session.done).toContain("tens");
+  } else {
+    expect(result.refusal).not.toBeNull(); expect(result.session.done).not.toContain("tens");
+  }
+});

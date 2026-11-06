@@ -1565,7 +1565,7 @@ const CLAIM_PLACE = new RegExp(`\\b(in|into|under|at|on|for|to|from)\\s+(?:the\\
 const CLAIM_COLUMN = new RegExp(`\\b(${COLUMN_WORDS})\\b`, "gi");
 const BARE_COLUMN = new RegExp(`^\\s*(?:the\\s+)?(${COLUMN_WORDS})\\b`, "i");
 const CLAIM_RELATION = new RegExp(`^(?:${CLAIM_PLACE.source}|${BARE_COLUMN.source}|(?:in|into|under|at|on|for|to|from)\\b)`, "i");
-const CARRIED_REFERENCE = /\bthe\s+([^\s.,;!?]+(?:[ -][^\s.,;!?]+)?)\s+(?:that\s+)?(?:i|we)\s+$/i;
+const CARRIED_REFERENCE = /\bthe\s+([^\s.,;!?]+(?:[ -][^\s.,;!?]+)??)\s+(?:that\s+)?(?:i|we)\s+$/i;
 const CLAIM_END = /[.,;!?\n]|\b(?:and|then)\b/i;
 function claimPlaces(text: string) {
   const places = [...text.matchAll(CLAIM_PLACE)].map((m) => ({ prep: m[1].toLowerCase(), place: m[2].toLowerCase() }));

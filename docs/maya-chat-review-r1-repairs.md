@@ -51,3 +51,11 @@ Before these repairs, 17 new public controls failed and 58 passed. After the rep
 The 51-file regression passed 4,143 tests with zero failures and zero skips. Product source stayed fixed during this run. The claim test file gained the persistence test during the run; its final 76-case check ran separately after that edit. Do not add these overlapping counts. The final TypeScript and changed-code lint checks passed. No old expectation was weakened. No current full-repository gate, live provider or practice pass is claimed.
 
 The customer comment batch remains active. No full Chromium run, paid call, browser check, hosted write, push, merge, family switch or print change ran. Paid practice remains 0 of 2. The final scoped review is round five of the existing five-round state-integrity budget. Budget end is not approval. If it still finds a blocker, stop the review loop and report it to Savar.
+
+## Repair prepared after round five
+
+R5 resolved R4-1. It kept R4-2 open because the numeric capture included the optional word `that` in correct references such as `the 1 that I carried`. The root agrees with this P2 finding. The complete numeric check must remain: removing it would restore the earlier nonnumeric-clause defect.
+
+The prepared repair changes one regex quantifier to prefer the shorter capture, leaving `that` for the existing optional relative-word group. Four public cases cover correct one and wrong two with `that I` and `that we`. Before the repair, two failed and 78 passed. After the repair, 430 focused tests passed in four files. Normal TypeScript and changed-file lint passed. These local checks do not replace independent review or API practice.
+
+The five-round review budget is complete. No sixth review has started. Root requests one additional scoped Sol review of this prepared repair. Until authorization and approval, Maya remains unmerged and paid practice remains unused at 0 of 2. The marking work continues separately. The reviewer report's active customer hold is stale: the generator released the non-print hold at 2026-11-06T23:19:50Z. Feedback687 retains the next coordinated merge position. Print approval remains held.
