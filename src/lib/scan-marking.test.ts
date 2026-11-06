@@ -75,6 +75,23 @@ function showWorkFrame(): MarkingFrame {
   expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
   return f;
 }
+function twoWaysFrame(): MarkingFrame {
+  const f = showWorkFrame(), q = f.questions[0];
+  q.package!.item!.format = "two-ways";
+  q.package!.item!.regions = [
+    { id: "method-1", kind: "work", label: "First method" },
+    { id: "method-2", kind: "work", label: "Second method" },
+    q.package!.item!.regions[0],
+  ];
+  q.regions = [
+    { id: "method-1", kind: "work", box: { x: 10, y: 20, width: 140, height: 80 } },
+    { id: "method-2", kind: "work", box: { x: 160, y: 20, width: 140, height: 80 } },
+    { id: "answer", kind: "box", box: { x: 220, y: 110, width: 80, height: 30 } },
+  ];
+  q.teaching!.eligibility.format = "two-ways";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
 function spotFrame(): MarkingFrame {
   const f = tickFrame("spot-photo"), q = f.questions[0];
   q.package!.text = "Someone wrote 27 + 39 = 56. Is it right? Fix it.";
@@ -151,6 +168,41 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
   return (before) => ({ client: { model, async json(r) { await before(); requests.push(r); return typeof answer === "function" ? answer() : answer; } }, costMicros: () => cost });
 }
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
+
+describe("first-book two-ways parent review", () => {
+  it("requires both methods to be checked without dispatching or scoring a read final answer", async () => {
+    const f = twoWaysFrame(), s = new Store(f);
+    const e = expectedItems(f)[0];
+    expect(e.method).toBe("parent");
+    expect(e.mastery).toEqual({ eligible: false, reason: "parent-checked" });
+    const o = readMarkingOutput(f, output(["66"]))[0];
+    expect(o).toMatchObject({ state: "parent-pending", method: "parent", result: null, regions: [] });
+    expect(observationProblem(o)).toBeNull();
+    expect(await run(s, f.photo, () => { throw Error("parent review must not dispatch"); })).toBe("finished");
+    const view = markingPageView(await s.effective(P, C));
+    expect(view.completion).toMatchObject({ status: "incomplete", finished: 0 });
+    expect(view.items[0].label).toBe("Please check both methods and the answer.");
+    expect(s.spend.size).toBe(0); expect(s.imageReads).toBe(0); expect(s.events).toHaveLength(0);
+  });
+  it.each(["right", "wrong", "blank"] as const)("a parent's explicit %s finishes one item without changing frozen mastery eligibility", result => {
+    const f = twoWaysFrame(), e = expectedItems(f)[0];
+    const observation: Observation = { ...firstObservation(e, null), state: "parent-checked", method: "parent", result, actor: "parent", resultVersion: 2 };
+    const view = markingPageView([{ expected: e, observation, originalEvent: null, eventId: null, at: "2026-11-06T12:00:00Z", model: null, prompt: null }]);
+    expect(view.completion).toMatchObject({ status: "complete", finished: 1, total: 1 });
+    expect(markingEvent(e, observation)).toEqual({ publish: false, reason: "parent-checked" });
+    expect(f.questions[0].teaching!.eligibility).toMatchObject({ scorable: true, parentChecked: false, mastery: true });
+  });
+  it("crops both measured work areas and the answer, and refuses missing or duplicate method geometry", () => {
+    const f = twoWaysFrame();
+    expect(cropPlan(f.questions)).toEqual({ notSupported: [], crops: [{ number: 1, itemId: f.questions[0].package!.id,
+      regionId: "method-1", regionIds: ["method-1", "method-2", "answer"], box: { x: 10, y: 20, width: 290, height: 120 } }] });
+    const q = f.questions[0]; q.regions![1].box = null;
+    expect(cropPlan(f.questions).notSupported).toEqual([1]);
+    q.regions = twoWaysFrame().questions[0].regions;
+    q.regions = [...q.regions!, structuredClone(q.regions![0])];
+    expect(cropPlan(f.questions).notSupported).toEqual([1]);
+  });
+});
 
 it.each(["friday-5", "mixed-set", "show-what-you-know", "practice", "review"])("uses frozen %s teaching for page mastery", async (part) => {
   const f = frame("review-photo", [1, 1, 1, 1, 1, 1]);

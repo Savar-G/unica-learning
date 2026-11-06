@@ -2,6 +2,7 @@
 // This module does not change the print or infer an answer from page text.
 import { checkQuestionPackage, packageItem, type QuestionPackage } from "@/lib/question-package";
 import type { Box, PrintedRegion } from "@/lib/workbook-print-contract";
+import { needsMethodReview } from "@/lib/scan-observation";
 
 export interface RegionQuestion {
   package: QuestionPackage | null;
@@ -13,6 +14,20 @@ export type MarkingRegion = { id: string; box: Box } & (
 );
 const usableBox = (box: Box | null): box is Box => box !== null &&
   [box.x, box.y, box.width, box.height].every(Number.isFinite) && box.x >= 0 && box.y >= 0 && box.width > 0 && box.height > 0;
+
+/** Review includes both methods. These regions never enter recognition. */
+export function reviewRegions(q: RegionQuestion): { id: string; box: Box }[] {
+  if (!needsMethodReview(q.package)) return markingRegions(q);
+  if (!q.regions || !checkQuestionPackage(q.package).ok) return [];
+  const regions: { id: string; box: Box }[] = [];
+  for (const r of packageItem(q.package!).regions) {
+    if (r.kind !== "work" && r.kind !== "box") continue;
+    const printed = q.regions.filter(p => p.id === r.id);
+    if (printed.length !== 1 || printed[0].kind !== r.kind || !usableBox(printed[0].box)) return [];
+    regions.push({ id: r.id, box: printed[0].box });
+  }
+  return regions;
+}
 
 /** Empty means unsupported or unmeasured. Never dispatch only part of an item. */
 export function markingRegions(q: RegionQuestion): MarkingRegion[] {

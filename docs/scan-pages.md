@@ -92,3 +92,9 @@ The model reads the stored scored answer boxes, not the work region. Code checks
 Code checks the stored right-or-wrong choice and the corrected answer together. Both right means one right item. Both empty means one blank item. A definite wrong choice or correction makes the item wrong. A partial answer that could still be right remains pending. The printed wrong solution is not a requested answer region. The model does not judge the solution or choose the score. The stored package must pass its existing error and answer checks before recognition starts.
 
 The item keeps one review crop, canonical result and original event. Its local cases include right choice with wrong correction, wrong choice with right correction, ambiguous marks, missing parts and an extra unrequested printed-example reading. They prove the response contract, not image recognition.
+
+## First-book two-ways review (#461)
+
+Savar chose parent review for the first book on 6 November. The printed item has two work areas and one final-answer box. A parent checks both methods and the answer, then selects Right, Wrong or Blank. The page stays incomplete until that explicit choice. The crop includes both measured work areas and the answer box. The model receives no reading request for this item. The item keeps one canonical result and the existing parent-change history.
+
+The frozen automatic-answer eligibility does not authorize mastery from this new parent review. The result stays out of mastery unless the frozen context already permits parent-checked mastery. The stored package and print contract stay unchanged. This does not implement automatic checking of alternative equation combinations. Missing or invalid measured regions cannot produce a review crop. Local tests prove the parent-review state, crop boundaries and completion, not a physical booklet or parent screen approval.

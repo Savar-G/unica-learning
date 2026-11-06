@@ -227,5 +227,5 @@ export function markingPageView(marks: readonly EffectiveMark[]) {
     state: m.observation.state, result: m.observation.result, readAnswerText: m.observation.readAnswerText,
     canChange: m.expected.method === "code" || m.expected.method === "parent", actor: m.observation.actor, at: m.at,
     evidencePhoto: m.observation.evidence?.photoRevision ?? null, photoAvailable: false,
-    label: m.observation.result === "right" ? "Right" : m.observation.result === "wrong" ? "Wrong" : m.observation.result === "blank" ? "Blank" : m.observation.state === "unscored" ? "Not scored" : m.observation.issue ? readingIssueText(m.observation.issue) : "Please check this answer" })) };
+    label: m.observation.result === "right" ? "Right" : m.observation.result === "wrong" ? "Wrong" : m.observation.result === "blank" ? "Blank" : m.observation.state === "unscored" ? "Not scored" : m.expected.review === "two-ways" ? "Please check both methods and the answer." : m.observation.issue ? readingIssueText(m.observation.issue) : "Please check this answer" })) };
 }

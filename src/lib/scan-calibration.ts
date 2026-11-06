@@ -15,7 +15,7 @@
 // Pure TypeScript: no Next.js, React, network, database or clock. The caller decodes and encodes images.
 import jsQR from "jsqr";
 import type { QuestionPackage } from "@/lib/question-package";
-import { markingRegions } from "@/lib/scan-marking-regions";
+import { reviewRegions } from "@/lib/scan-marking-regions";
 import {
   SCAN_MARKS,
   type Box,
@@ -1033,7 +1033,7 @@ export interface CropQuestion {
 export function cropPlan(questions: readonly CropQuestion[]): { crops: CropItem[]; notSupported: number[] } {
   const crops: CropItem[] = [], notSupported: number[] = [];
   for (const q of [...questions].sort((a, b) => a.number - b.number)) {
-    const regions = markingRegions(q);
+    const regions = reviewRegions(q);
     if (!regions.length) { notSupported.push(q.number); continue; }
     const x = Math.min(...regions.map(r => r.box.x)), y = Math.min(...regions.map(r => r.box.y));
     const right = Math.max(...regions.map(r => r.box.x + r.box.width)), bottom = Math.max(...regions.map(r => r.box.y + r.box.height));
