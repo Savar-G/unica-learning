@@ -61,6 +61,7 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
   const paragraphs = welcome ? [
     `Hi ${p.parentName},`,
     `Thank you for choosing Unica Learning for ${p.childName}. We are preparing your first workbook.`,
+    "Please allow 5 to 7 days for us to prepare your first workbook.",
     "We will email you again when it is on its way. If we send it by mail, that email will include tracking details. For local hand delivery, we will contact you to arrange it.",
     "Nothing was charged when you added your card. Your free first month starts when your first workbook arrives at your home.",
   ] : ready ? [
