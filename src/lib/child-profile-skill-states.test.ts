@@ -264,6 +264,21 @@ describe("the rebuild's skill state history", () => {
 });
 
 describe("a skill state history failure", () => {
+  it("keeps the durable skill retry on both the facts save and later AI findings save", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = family();
+    const appended = await f.record.append(event({}));
+    const id = appended.ok ? appended.event.id : never();
+    const pending: (boolean | undefined)[] = [];
+    const profiles: ChildProfileStore = { ...f.profiles,
+      skillInputs: async () => { throw new Error("history unavailable"); },
+      save: async (row, expected, signal) => { pending.push(row.skillStatesPending); return f.profiles.save(row, expected, signal); },
+    };
+    const ai = fakeAiClient({ answer: () => ({ findings: [{ standard: "3.3", hypothesis: "The child may need help at the tens step.", event_ids: [id] }] }) });
+    expect(await rebuildChildProfile(CHILD, { ...f, profiles, ai })).toMatchObject({ built: true, findings: { outcome: "stored" }, skillStates: { outcome: "failed" } });
+    expect(pending).toEqual([true, true]);
+  });
+
   it("saves the facts alone when the write fails, and the next rebuild writes what it missed", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const f = family();

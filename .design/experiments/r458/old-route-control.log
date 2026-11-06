@@ -1,0 +1,15 @@
+AssertionError [ERR_ASSERTION]: Old public route has no explicit current-version parent correction action
++ actual - expected
+
++ 'undefined'
+- 'function'
+
+    at /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-8f7f34bc/supabase/tests/scan_mark_changes.cjs:86:49
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'undefined',
+  expected: 'function',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

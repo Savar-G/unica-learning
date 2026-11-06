@@ -285,6 +285,8 @@ export interface NewChildProfile {
   skillChanges?: SkillChanges;
   /** Effective marking snapshot read for this build. A save refuses a changed revision. */
   markingRevision?: number;
+  /** Facts may save while skill history fails. Keep marking recovery pending in that same save. */
+  skillStatesPending?: boolean;
 }
 
 /** History rows to store, and the tests they were worked out from. */
@@ -436,7 +438,7 @@ export async function rebuildChildProfile(childId: string, seams: ChildProfileSe
     const facts = { built: true as const, revision: saved.revision, profile: storing, skillStates: states };
     if (!ai) return { ...facts, findings: { outcome: "off" } };
     if (read.length === 0) return { ...facts, findings: { outcome: "no_events" } };
-    return { ...(await addFindings({ ...seams, ai }, { ...row, profile }, saved, read, earlier)), skillStates: states };
+    return { ...(await addFindings({ ...seams, ai }, { ...row, profile, skillStatesPending: states.outcome === "failed" }, saved, read, earlier)), skillStates: states };
   }
   return { built: false, reason: "busy" };
 }
@@ -460,7 +462,7 @@ async function plannedChanges(profiles: ChildProfileStore, childId: string, scho
 
 /** Saves the facts with their history rows. When that write fails, saves the facts alone: a skill state failure never stops the profile. */
 async function saveFacts(profiles: ChildProfileStore, built: NewChildProfile, expected: ExpectedBuild, planned: PlannedChanges) {
-  if ("problem" in planned) return { saved: await profiles.save(built, expected), states: { outcome: "failed", problem: planned.problem } satisfies SkillStatesOutcome };
+  if ("problem" in planned) return { saved: await profiles.save({ ...built, skillStatesPending: true }, expected), states: { outcome: "failed", problem: planned.problem } satisfies SkillStatesOutcome };
   const changes = planned.changes.length;
   if (changes === 0) return { saved: await profiles.save(built, expected), states: { outcome: "recorded", changes } satisfies SkillStatesOutcome };
   try {
@@ -468,7 +470,7 @@ async function saveFacts(profiles: ChildProfileStore, built: NewChildProfile, ex
   } catch (e) {
     const problem = problemOf(e);
     console.error("[child profile] skill states not recorded", built.childId, problem);
-    return { saved: await profiles.save(built, expected), states: { outcome: "failed", problem } satisfies SkillStatesOutcome };
+    return { saved: await profiles.save({ ...built, skillStatesPending: true }, expected), states: { outcome: "failed", problem } satisfies SkillStatesOutcome };
   }
 }
 

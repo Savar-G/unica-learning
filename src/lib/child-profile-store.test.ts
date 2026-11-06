@@ -113,7 +113,7 @@ function fakePostgrest(history: Record<string, unknown>[] = []): ChildProfileSto
         Object.assign(stored, row, { revision });
       }
       const nextId = () => Math.max(0, ...tables.skill_state_history.map((r) => Number(r.id))) + 1;
-      for (const c of p_changes as Record<string, unknown>[]) tables.skill_state_history.push({ id: nextId(), child_id: p_child, ...c });
+      for (const c of (Array.isArray(p_changes) ? p_changes : p_changes.rows) as Record<string, unknown>[]) tables.skill_state_history.push({ id: nextId(), child_id: p_child, ...c });
       return Response.json({ revision, build_token: row.build_token });
     }
     const rows = tables[table];

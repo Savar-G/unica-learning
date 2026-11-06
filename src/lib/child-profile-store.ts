@@ -92,7 +92,7 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
         assessment: latest ? { assessmentId: latest.id, completedAt: new Date(latest.completed_at!).toISOString(), buildId: typeof buildId === "string" ? buildId : null, profile } : null,
       };
     },
-    async save({ childId, parentId, assessmentId, profile, skillChanges, markingRevision }, expected, signal) {
+    async save({ childId, parentId, assessmentId, profile, skillChanges, markingRevision, skillStatesPending }, expected, signal) {
       /** What a write's error means for this save; throws when it is none of them. */
       const refusal = async (error: { code: string; message: string }): Promise<"changed" | { refused: string }> => {
         // 23505: another build stored the first revision; 23503 on the test's key: the test was deleted since the
@@ -107,7 +107,7 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
         const call = admin.rpc("save_marked_child_profile", {
           p_child: childId, p_parent: parentId, p_marking_revision: markingRevision, p_assessment: assessmentId,
           p_expected: expected?.buildToken ?? null, p_schema_version: profile.schemaVersion, p_profile: toJson(profile),
-          p_changes: toJson((skillChanges?.rows ?? []).map((c) => ({ standard: c.standard, state: c.state, reason: c.reason, evidence: c.evidence, evidence_at: c.evidenceAt }))),
+          p_changes: toJson({ pending: skillStatesPending ?? false, rows: (skillChanges?.rows ?? []).map((c) => ({ standard: c.standard, state: c.state, reason: c.reason, evidence: c.evidence, evidence_at: c.evidenceAt })) }),
           p_tests: [...(skillChanges?.tests ?? [])],
         });
         const { data, error } = await (signal ? call.abortSignal(signal) : call);
