@@ -1,0 +1,12 @@
+
+> unica-learning-landing-page@0.1.0 voice:test
+> vitest run --config worker/maya-voice/vitest.config.mts src/packaging.test.ts
+
+
+ RUN  v4.1.11 /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-8f7f34bc/worker/maya-voice
+
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  21:21:48
+   Duration  421ms (transform 40ms, setup 0ms, import 68ms, tests 232ms, environment 0ms)
