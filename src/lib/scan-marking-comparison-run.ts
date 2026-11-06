@@ -1,11 +1,62 @@
 import { markingAiClient } from "@/lib/scan-marking-ai";
 import { markingRequest, runScanMarking, validMarkingOutput, type MarkingStore } from "@/lib/scan-marking";
 import { expectedItems, firstObservation, type Observation } from "@/lib/scan-observation";
-import { SYNTHETIC_IDS, comparisonProvider, hashBytes, hashValue, transportUsage, type ComparisonAttempt, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence } from "@/lib/scan-marking-comparison";
+import { COMPARISON_MODELS, SYNTHETIC_IDS, assertComparisonResultIdentity, assertComparisonResume, comparisonProvider, hashBytes, hashValue, projectMatrix, transportUsage, type AttemptRecord, type ComparisonAttempt, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointEvidence } from "@/lib/scan-marking-comparison";
 
 export interface EvaluationBudget {
+  refresh(input: { approved: EndpointEvidence; current: EndpointEvidence; maximumMicros: number }): Promise<{ verified: true } | { refused: string }>;
   reserve(input: { run: string; attempt: string; model: string; endpoint: string; evidence: string; pixels: number; maximumMicros: number; maxRunMicros: number }): Promise<{ id: string } | { refused: string }>;
   settle(id: string, costMicros: number | null): Promise<void>;
+}
+/** One fixed matrix. Availability blocks are local; unresolved charged liability stops every model. */
+export async function runComparisonMatrix(options: {
+  manifest: ComparisonManifest; preflight: readonly ComparisonPreflight[]; history: readonly EndpointEvidence[];
+  results: ComparisonResult[]; records: readonly AttemptRecord[]; maxRunMicros: number; maxAttempts: 1 | 2;
+  dispatch(model: ComparisonModel, photo: ComparisonPhoto, evidence: EndpointEvidence, maximumMicros: number): Promise<ComparisonResult>;
+  save(blocks: ReadonlyMap<string, string>, projection: unknown): Promise<void>;
+}) {
+  const { manifest, results } = options, blocks = new Map<string, string>();
+  if (!Number.isSafeInteger(options.maxRunMicros) || options.maxRunMicros < 1 || options.maxRunMicros > 15_000_000) throw new Error("invalid-matrix-cap");
+  assertComparisonResume(options.records, results);
+  assertComparisonResultIdentity(manifest, results, options.history);
+  for (const p of options.preflight) if (p.status === "blocked") blocks.set(p.model, p.reason);
+  const spent = () => {
+    assertComparisonResume([], results);
+    return results.flatMap(r => r.attempts).reduce((sum, a) => sum + a.usage.costMicros!, 0);
+  };
+  const dispatch = async (state: Extract<ComparisonPreflight, { status: "ready" }>, photo: ComparisonPhoto) => {
+    if (results.some(r => r.model === state.model && r.photo === photo.id)) return;
+    if (spent() + state.maximumMicros > options.maxRunMicros) { blocks.set(state.model, "next-reservation-over-run-cap"); return; }
+    const model = COMPARISON_MODELS.find(m => m.model === state.model)!;
+    const result = await options.dispatch(model, photo, state.evidence, state.maximumMicros);
+    results.push(result);
+    assertComparisonResultIdentity(manifest, results, options.history);
+    spent(); // Unknown usage stops here, before another model can dispatch.
+    if (!result.attempts.length) {
+      // Only a verified price rejection has no charged liability and is local to this model.
+      if (result.failure === "price-unverified") blocks.set(state.model, result.failure);
+      else throw new Error("admission-refused-stopped-run");
+    }
+  };
+  const ready = options.preflight.filter((p): p is Extract<ComparisonPreflight, { status: "ready" }> => p.status === "ready");
+  await options.save(blocks, null);
+  for (const state of ready) await dispatch(state, manifest.photos[0]);
+  for (let index = 1; index < manifest.photos.length; index++) {
+    const first = new Map(results.filter(r => r.photo === manifest.photos[0].id && r.attempts.length).map(r => [r.model, r.attempts.at(-1)!.usage]));
+    const remaining = new Map(ready.map(s => [s.model, manifest.photos.length - results.filter(r => r.model === s.model).length]));
+    // Admit complete remaining model sets in ascending projected cost. An expensive model cannot stop cheaper pairs.
+    const candidates = ready.filter(s => !blocks.has(s.model)).map(s => ({ state: s, cost: projectMatrix([s.evidence], first, 0, remaining, options.maxAttempts) }));
+    candidates.sort((a, b) => (a.cost ?? Infinity) - (b.cost ?? Infinity) || a.state.model.localeCompare(b.state.model));
+    let projected = spent();
+    for (const { state, cost } of candidates) {
+      if (cost === null || projected + cost > options.maxRunMicros) blocks.set(state.model, "model-projection-missing-or-over-cap");
+      else projected += cost;
+    }
+    await options.save(blocks, { projectedMicros: projected, maxMicros: options.maxRunMicros, measuredSpentMicros: spent(), remaining: Object.fromEntries(remaining), firstPhotoUsage: Object.fromEntries(first) });
+    for (const state of ready) if (!blocks.has(state.model)) await dispatch(state, manifest.photos[index]);
+  }
+  await options.save(blocks, null);
+  return blocks;
 }
 export interface EvaluationJournal {
   /** Exclusive durable creation. An existing attempt, including an unknown one, never grants dispatch. */

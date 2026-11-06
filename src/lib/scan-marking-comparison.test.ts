@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import publicEvidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
-import { COMPARISON_FORMATS, COMPARISON_MODELS, SYNTHETIC_IDS, assertComparisonResume, cheapestPassing, comparisonProvider, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, reserveMaximum, scoreComparison, transportUsage, validateComparisonManifest, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
-import { runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "@/lib/scan-marking-comparison-run";
+import { COMPARISON_FORMATS, COMPARISON_MODELS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, comparisonProvider, comparisonReports, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, reserveMaximum, scoreComparison, transportUsage, validateComparisonManifest, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
+import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "@/lib/scan-marking-comparison-run";
 import { markingRequest, readMarkingOutput, validMarkingOutput } from "@/lib/scan-marking";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { markingRegions } from "@/lib/scan-marking-regions";
-import { fileJournal, rpcEvaluationBudget } from "../../scripts/scan-marking-comparison-cli";
+import { fileJournal, refreshEvidence, rpcEvaluationBudget } from "../../scripts/scan-marking-comparison-cli";
 import { syntheticChoiceCenters, syntheticReading, syntheticTextSvg } from "../../scripts/scan-marking-synthetic-photos";
 import sharp from "sharp";
 
@@ -48,6 +48,7 @@ function memory() {
   let counter = 0, held = 0;
   const journal: EvaluationJournal = { begin: async key => { if (files.has(key)) return false; files.set(key, { state: "starting" }); return true; }, save: async (key, value) => { files.set(key, copy(value)); } };
   const budget: EvaluationBudget = {
+    refresh: async () => ({ verified: true }),
     reserve: async input => { calls.push("reserve"); if (held + input.maximumMicros > input.maxRunMicros) return { refused: "run-budget" }; held += input.maximumMicros; const id = String(++counter); amounts.set(id, null); return { id }; },
     settle: async (id, cost) => { calls.push("settle"); amounts.set(id, cost); },
   };
@@ -62,7 +63,9 @@ const runOptions = (p: ComparisonPhoto, mem: ReturnType<typeof memory>) => {
 describe("fixed model and endpoint policy", () => {
   it("keeps exactly the authorized 13 pairs immutable and distinguishes display names", () => {
     expect(COMPARISON_MODELS).toHaveLength(13);
-    expect(hashValue(COMPARISON_MODELS)).toBe("47c71636e08297a0f5837960ab2c6168cd988be2632d867c3284b613bc0e4583");
+    expect(hashValue(COMPARISON_MODELS)).toBe("1c61503c7d953b7c6427312dc88b9651a0a0647d2313a30425c81f4b886de5a2");
+    expect(COMPARISON_MODELS.find(m => m.model === "xiaomi/mimo-v2.6-flash")).toEqual({ model: "xiaomi/mimo-v2.6-flash", host: "Makora", providerName: "Makora", endpoint: "makora/fp8" });
+    expect(COMPARISON_MODELS.some(m => /Cohere|DeepInfra/.test(m.host))).toBe(false);
     expect(Object.isFrozen(COMPARISON_MODELS)).toBe(true); expect(COMPARISON_MODELS.every(Object.isFrozen)).toBe(true);
     expect(COMPARISON_MODELS.find(m => m.model.includes("3.7"))).toBeUndefined();
     for (const m of COMPARISON_MODELS) expect(preflightEndpoint(m, snapshot(m), publicEvidence.zdr).endpoint.provider_name).toBe(m.providerName);
@@ -86,6 +89,140 @@ describe("fixed model and endpoint policy", () => {
     const m = COMPARISON_MODELS.find(m => m.endpoint === "azure")!, e = evidence(m), route = comparisonProvider(m, e);
     expect(route.only).toEqual(["azure"]); expect(route.allow_fallbacks).toBe(false);
     expect(route.ignore).toEqual(snapshot(m).data.endpoints.filter(e => e.tag.startsWith("azure/")).map(e => e.tag).sort());
+  });
+});
+
+describe("per-model preflight and refreshed prices", () => {
+  const approved = () => COMPARISON_MODELS.map(model => assessComparisonEndpoint(model, snapshot(model), publicEvidence.zdr));
+  it("refreshes price-only drift while binding reservation and projection to the new evidence", () => {
+    const model = COMPARISON_MODELS[0], original = evidence(model), live = snapshot(model);
+    const endpoint = live.data.endpoints.find(e => e.tag === model.endpoint)!;
+    endpoint.pricing.prompt = "0.0000000812"; endpoint.pricing.completion = "0.000000424";
+    const state = assessComparisonEndpoint(model, live, publicEvidence.zdr, original);
+    expect(state.status).toBe("ready"); if (state.status !== "ready") throw Error("ready required");
+    expect(state.maximumMicros).toBe(reserveMaximum(state.evidence)); expect(state.maximumMicros).toBeGreaterThan(reserveMaximum(original));
+    const first = new Map([[model.model, result(photo()).attempts[0].usage]]), remaining = new Map([[model.model, 39]]);
+    expect(projectMatrix([state.evidence], first, 1000, remaining, 1)).toBeGreaterThan(projectMatrix([original], first, 1000, remaining, 1)!);
+    expect(hashValue(state.evidence)).not.toBe(hashValue(original));
+  });
+  it.each(["status", "image", "schema", "zdr", "retention", "host", "quantization", "suffix", "cap"])("blocks %s drift without an alternate route", kind => {
+    const model = COMPARISON_MODELS[0], original = evidence(model), live = snapshot(model), zdr = copy(publicEvidence.zdr);
+    const endpoint = live.data.endpoints.find(e => e.tag === model.endpoint)!;
+    if (kind === "status") endpoint.status = -2;
+    if (kind === "image") live.data.architecture.input_modalities = ["text"];
+    if (kind === "schema") endpoint.supported_parameters = ["response_format"];
+    if (kind === "zdr") zdr.data = zdr.data.filter(e => e.model_id !== model.model);
+    if (kind === "retention") zdr.data.find(e => e.model_id === model.model)!.safety_retention = true;
+    if (kind === "host") endpoint.provider_name = "Cohere";
+    if (kind === "quantization") endpoint.quantization = "unknown";
+    if (kind === "suffix") live.data.endpoints.push({ ...endpoint, tag: `${model.endpoint}/flex` });
+    if (kind === "cap") endpoint.pricing.prompt = "1";
+    expect(assessComparisonEndpoint(model, live, zdr, original).status).toBe("blocked");
+  });
+  it("saves live evidence and isolates one unavailable model while accepting another price refresh", async () => {
+    const folder = await mkdtemp(resolve(tmpdir(), "marking-preflight-")), models = COMPARISON_MODELS;
+    try {
+      const calls: string[] = [];
+      const states = await refreshEvidence(folder, approved(), async input => {
+        const url = String(input); calls.push(url);
+        if (url.endsWith("/endpoints/zdr")) return Response.json(publicEvidence.zdr);
+        if (url.endsWith("/models")) return Response.json({ data: models.map(m => ({ id: m.model, architecture: { input_modalities: ["image"] } })) });
+        const model = models.find(m => url.includes(`${m.model}/endpoints`))!, live = snapshot(model), endpoint = live.data.endpoints.find(e => e.tag === model.endpoint)!;
+        if (model === models[0]) endpoint.pricing.prompt = "0.0000000812";
+        if (model === models[3]) endpoint.status = -2;
+        return Response.json(live);
+      });
+      expect(calls).toHaveLength(15); expect(calls.every(url => url.startsWith("https://openrouter.ai/api/v1/"))).toBe(true);
+      expect(states.filter(s => s.status === "ready")).toHaveLength(12);
+      expect(states[3]).toMatchObject({ model: models[3].model, status: "blocked" }); expect(states[0].status).toBe("ready");
+      expect(JSON.parse(await readFile(resolve(folder, "preflight.json"), "utf8")).states).toEqual(states);
+    } finally { await rm(folder, { recursive: true, force: true }); }
+  });
+  it("sends the refreshed hash, exact serialized evidence and reservation to the configuration RPC", async () => {
+    const original = evidence(), current = copy(original); current.endpoint.pricing.prompt = "0.0000000812";
+    const calls: { url: string; body: Record<string, unknown> }[] = [];
+    const budget = rpcEvaluationBudget("https://cdjobwsyzndtltzfpyqa.supabase.co", "synthetic", async (url, init) => { calls.push({ url: String(url), body: JSON.parse(String(init?.body)) }); return Response.json({ verified: true }); });
+    const maximumMicros = reserveMaximum(current);
+    expect(await budget.refresh({ approved: original, current, maximumMicros })).toEqual({ verified: true });
+    expect(calls[0].url).toMatch(/refresh_scan_marking_evaluation_price$/);
+    expect(calls[0].body).toMatchObject({ p_previous_evidence: hashValue(original), p_evidence: hashValue(current), p_maximum: maximumMicros, p_details: JSON.stringify(current) });
+  });
+  it("retains immutable photo and request identity across a price refresh and rejects mixed resume state", () => {
+    const data = manifest(), prior = evidence(), current = copy(prior); current.endpoint.pricing.prompt = "0.0000000812";
+    const results = data.photos.map(p => result(p));
+    expect(() => assertComparisonResultIdentity(data, results, [prior, current])).not.toThrow();
+    expect(scoreComparison(data, COMPARISON_MODELS[0], results, current, [prior]).passed).toBe(true);
+    for (const field of ["photoHash", "requestHash", "evidenceHash"] as const) {
+      const bad = copy(results); bad[0][field] = hashBytes("changed");
+      expect(() => assertComparisonResultIdentity(data, bad, [prior, current])).toThrow("identity");
+    }
+  });
+  it("dispatches the full same 40-photo set for available pairs when one model is blocked", async () => {
+    const data = manifest(), states = approved(), results: ComparisonResult[] = [], calls: string[] = [];
+    states[3] = { model: COMPARISON_MODELS[3].model, status: "blocked", reason: "pinned-endpoint-unavailable" };
+    const blocks = await runComparisonMatrix({ manifest: data, preflight: states, history: COMPARISON_MODELS.map(m => evidence(m)), results, records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
+      dispatch: async (model, p, e) => { calls.push(`${model.model}:${p.id}`); return { ...result(p, model), evidenceHash: hashValue(e) }; } });
+    expect(blocks.has(COMPARISON_MODELS[3].model)).toBe(true); expect(calls).toHaveLength(480);
+    for (const model of COMPARISON_MODELS.filter((_, n) => n !== 3)) expect(results.filter(r => r.model === model.model).map(r => r.photo)).toEqual(data.photos.map(p => p.id));
+    expect(calls.slice(0, 12).every(c => c.endsWith(data.photos[0].id))).toBe(true);
+    expect(results.some(r => r.model === COMPARISON_MODELS[3].model)).toBe(false);
+  });
+  it("blocks only the over-cap model projection and completes an affordable pair", async () => {
+    const data = manifest(), cheap = evidence(COMPARISON_MODELS[0]), expensive = evidence(COMPARISON_MODELS[1]);
+    expensive.endpoint.pricing = { prompt: "0.00000001", completion: "0.00001" };
+    const states: ComparisonPreflight[] = [cheap, expensive].map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: reserveMaximum(e) }));
+    const results: ComparisonResult[] = [];
+    const blocks = await runComparisonMatrix({ manifest: data, preflight: states, history: [cheap, expensive], results, records: [], maxRunMicros: 100_000, maxAttempts: 1, save: async () => {},
+      dispatch: async (model, p, e) => ({ ...result(p, model), evidenceHash: hashValue(e) }) });
+    expect(blocks.get(expensive.model)).toBe("model-projection-missing-or-over-cap");
+    expect(results.filter(r => r.model === cheap.model)).toHaveLength(40); expect(results.filter(r => r.model === expensive.model)).toHaveLength(1);
+  });
+  it("an unknown charge stops every paid model, including when its model is now blocked", async () => {
+    const data = manifest(), states = approved(), history = COMPARISON_MODELS.map(m => evidence(m));
+    let dispatches = 0;
+    const options = { manifest: data, preflight: states, history, results: [] as ComparisonResult[], records: [], maxRunMicros: 15_000_000, maxAttempts: 1 as const, save: async () => {},
+      dispatch: async (model: ComparisonModel, p: ComparisonPhoto) => { dispatches++; const r = result(p, model); r.attempts[0].usage.costMicros = null; return r; } };
+    await expect(runComparisonMatrix(options)).rejects.toThrow("unknown-usage"); expect(dispatches).toBe(1);
+    states[0] = { model: COMPARISON_MODELS[0].model, status: "blocked", reason: "unavailable" };
+    await expect(runComparisonMatrix(options)).rejects.toThrow("unknown-usage"); expect(dispatches).toBe(1);
+    await expect(runComparisonMatrix({ ...options, results: [], records: [{ state: "reserved" }] })).rejects.toThrow("unresolved"); expect(dispatches).toBe(1);
+  });
+  it("resumes settled photos under their original evidence without repeating a dispatch", async () => {
+    const data = manifest(), model = COMPARISON_MODELS[0], prior = evidence(model), current = copy(prior);
+    current.endpoint.pricing.prompt = "0.0000000812";
+    const results = data.photos.slice(0, 3).map(p => result(p, model));
+    const records = results.map(r => ({ state: "settled", attempt: r.attempts[0] })), calls: string[] = [];
+    await runComparisonMatrix({ manifest: data, preflight: [{ model: model.model, status: "ready", evidence: current, maximumMicros: reserveMaximum(current) }], history: [prior, current], results, records, maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
+      dispatch: async (m, p, e) => { calls.push(p.id); return { ...result(p, m), evidenceHash: hashValue(e) }; } });
+    expect(calls).toEqual(data.photos.slice(3).map(p => p.id)); expect(results).toHaveLength(40);
+    expect(scoreComparison(data, model, results, current, [prior]).passed).toBe(true);
+  });
+  it("a price admission refusal blocks one model while a shared ledger refusal stops dispatch", async () => {
+    const data = manifest(), states = approved().slice(0, 2), history = states.flatMap(s => s.status === "ready" ? [s.evidence] : []);
+    for (const reason of ["price-unverified", "unresolved-evaluation-cost"]) {
+      const results: ComparisonResult[] = [], calls: string[] = [];
+      const run = runComparisonMatrix({ manifest: data, preflight: states, history, results, records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
+        dispatch: async (model, p) => {
+          calls.push(model.model); const r = result(p, model);
+          return model === COMPARISON_MODELS[0] ? { ...r, status: "failed", failure: reason, attempts: [], observations: [], schemaValid: false } : r;
+        } });
+      if (reason === "price-unverified") {
+        expect((await run).get(COMPARISON_MODELS[0].model)).toBe(reason);
+        expect(calls.filter(m => m === COMPARISON_MODELS[1].model)).toHaveLength(40);
+        expect(calls.filter(m => m === COMPARISON_MODELS[0].model)).toHaveLength(1);
+      } else { await expect(run).rejects.toThrow("admission-refused"); expect(calls).toHaveLength(1); }
+    }
+  });
+  it("lists undispatched and previously tested blocked models without a pass or invented cost per page", () => {
+    const data = manifest(), states = approved(), history = COMPARISON_MODELS.map(m => evidence(m));
+    const results = COMPARISON_MODELS.slice(0, 2).flatMap((model, n) => data.photos.map(p => result(p, model, 100 + n)));
+    const blocks = new Map([[COMPARISON_MODELS[0].model, "unavailable"], [COMPARISON_MODELS[3].model, "unavailable"]]);
+    const reports = comparisonReports(data, states, results, history, blocks);
+    expect(reports[0]).toMatchObject({ status: "blocked", passed: false, complete: false, costPerPageUsd: null, testedPhotos: 40, measuredMicros: 4000 });
+    expect(reports[3]).toMatchObject({ status: "blocked", passed: false, complete: false, costPerPageUsd: null, testedPhotos: 0, measuredMicros: null });
+    expect(reports[3]).not.toHaveProperty("wrongMarks"); expect(reports[3]).not.toHaveProperty("unsure");
+    expect(reports[2]).toMatchObject({ status: "incomplete", passed: false, complete: false, costPerPageUsd: null });
+    expect(cheapestPassing(reports)?.model).toBe(COMPARISON_MODELS[1].model);
   });
 });
 
@@ -295,10 +432,13 @@ describe("D267 denominators, projection and selection", () => {
     expect(transportUsage({ choices: [{ message: { content: '{"usage":{"cost":0}}' } }] }).costMicros).toBeNull();
     expect(es.map(reserveMaximum).every(n => Number.isSafeInteger(n) && n > 0)).toBe(true);
   });
-  it("selects only the cheapest measured passing report after every model has the complete fixed set", () => {
+  it("selects only fully tested passing available pairs and excludes incomplete models", () => {
     const m = manifest(), reports = COMPARISON_MODELS.map((model, n) => scoreComparison(m, model, m.photos.map(p => result(p, model, 100 + n)), evidence(model)));
     expect(cheapestPassing(reports)?.model).toBe(COMPARISON_MODELS[0].model);
-    expect(cheapestPassing(reports.slice(1))).toBeNull(); reports[1].complete = false;
-    expect(cheapestPassing(reports)).toBeNull();
+    expect(cheapestPassing(reports.slice(1))?.model).toBe(COMPARISON_MODELS[1].model);
+    reports[0].complete = false;
+    expect(cheapestPassing(reports)?.model).toBe(COMPARISON_MODELS[1].model);
+    reports[1].passed = false;
+    expect(cheapestPassing(reports)?.model).toBe(COMPARISON_MODELS[2].model);
   });
 });

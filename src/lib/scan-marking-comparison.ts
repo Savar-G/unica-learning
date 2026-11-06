@@ -34,6 +34,20 @@ export interface EndpointEvidence {
   policy: "strict-zdr" | "safety-retention" | "not-zdr" | "unverified-retention";
   source: string; snapshotHash: string; zdrHash: string;
 }
+export type ComparisonPreflight = { model: string; status: "ready"; evidence: EndpointEvidence; maximumMicros: number } | { model: string; status: "blocked"; reason: string };
+/** These fields define the reviewed route and policy. Price and public telemetry may change. */
+export const endpointPolicy = (e: EndpointEvidence) => ({ model: e.model, provider: e.endpoint.provider_name, tag: e.endpoint.tag, quantization: e.endpoint.quantization,
+  excludedEndpoints: e.excludedEndpoints, supported: [...e.endpoint.supported_parameters].sort(), maxPrompt: e.endpoint.max_prompt_tokens ?? null,
+  maxCompletion: e.endpoint.max_completion_tokens, context: e.endpoint.context_length, zdrListed: e.zdrListed, safetyRetention: e.safetyRetention, policy: e.policy });
+export function assessComparisonEndpoint(model: ComparisonModel, snapshot: EndpointSnapshot, zdr: { data: Endpoint[] }, approved?: EndpointEvidence): ComparisonPreflight {
+  try {
+    const evidence = preflightEndpoint(model, snapshot, zdr);
+    if (approved && hashValue(endpointPolicy(evidence)) !== hashValue(endpointPolicy(approved))) fail("pinned-endpoint-policy-or-capability-changed");
+    const maximumMicros = reserveMaximum(evidence);
+    if (!Number.isSafeInteger(maximumMicros) || maximumMicros < 1 || maximumMicros > 15_000_000) fail("reservation-over-run-cap");
+    return { model: model.model, status: "ready", evidence, maximumMicros };
+  } catch (error) { return { model: model.model, status: "blocked", reason: error instanceof Error ? error.message : "preflight-failed" }; }
+}
 /** Compare exact API identities. A display name such as Google Vertex is not the API identity. */
 export function preflightEndpoint(model: ComparisonModel, snapshot: EndpointSnapshot, zdr: { data: Endpoint[] }): EndpointEvidence {
   if (snapshot.data.id !== model.model || !snapshot.data.architecture.input_modalities.includes("image")) fail("catalog-image-or-model");
@@ -165,19 +179,32 @@ export interface AttemptRecord { state: string; attempt?: { id: string; usage: {
 export function assertComparisonResume(records: readonly AttemptRecord[], results: readonly ComparisonResult[]): void {
   const ids = results.flatMap(r => r.attempts.map(a => a.id)), saved = new Set(ids);
   if (ids.length !== saved.size) fail("duplicate-dispatch-in-results");
+  if (results.some(r => r.attempts.some(a => [a.usage.costMicros, a.usage.inputTokens, a.usage.outputTokens, a.usage.reasoningTokens].some(v => natural(v) === null)))) fail("unknown-usage-stopped-run-no-blind-retry");
   for (const record of records) {
-    if (record.state !== "settled" || !record.attempt || record.attempt.usage.costMicros === null || !saved.has(record.attempt.id)) fail("unresolved-attempt-stopped-resume");
+    if (record.state === "refused" && !record.attempt) continue; // No reservation or HTTP dispatch occurred.
+    if (record.state !== "settled" || !record.attempt || natural(record.attempt.usage.costMicros) === null || !saved.has(record.attempt.id)) fail("unresolved-attempt-stopped-resume");
+  }
+}
+export function assertComparisonResultIdentity(manifest: ComparisonManifest, results: readonly ComparisonResult[], history: readonly EndpointEvidence[]): void {
+  const seen = new Set<string>();
+  for (const result of results) {
+    const photo = manifest.photos.find(p => p.id === result.photo), model = COMPARISON_MODELS.find(m => m.model === result.model);
+    const evidence = history.find(e => e.model === result.model && hashValue(e) === result.evidenceHash);
+    const key = `${result.model}:${result.photo}`;
+    if (!photo || !model || !evidence || seen.has(key) || result.photoHash !== photo.image.sha256 || result.requestHash !== hashValue(markingRequest(photo.frame, new Uint8Array())) || evidence.endpoint.tag !== model.endpoint || evidence.endpoint.provider_name !== model.providerName) fail("resume-result-identity-mismatch");
+    seen.add(key);
   }
 }
 const percentile = (values: number[], p: number) => values.length ? [...values].sort((a, b) => a - b)[Math.max(0, Math.ceil(values.length * p) - 1)] : null;
-export function scoreComparison(manifest: ComparisonManifest, model: ComparisonModel, results: readonly ComparisonResult[], evidence: EndpointEvidence) {
+export function scoreComparison(manifest: ComparisonManifest, model: ComparisonModel, results: readonly ComparisonResult[], evidence: EndpointEvidence, history: readonly EndpointEvidence[] = []) {
   let wrongMarks = 0, wrongAsRight = 0, unsure = 0, clearUnsure = 0, denominator = 0, wrongMarkDenominator = 0, clearDenominator = 0, parentMethods = 0;
   let failures = 0, schemaFailures = 0, schemaUnvalidated = 0, missingRuns = 0, invalidRuns = 0, missingCosts = 0, measuredMicros = 0, retries = 0, completedPhotos = 0;
   const failureReasons: Record<string, number> = {};
   const latencies: number[] = [], providers = new Set<string>();
+  const acceptedHashes = [evidence, ...history].filter(e => e.model === model.model && hashValue(endpointPolicy(e)) === hashValue(endpointPolicy(evidence))).map(hashValue);
   for (const photo of manifest.photos) {
     const found = results.filter(r => r.model === model.model && r.photo === photo.id), result = found.length === 1 ? found[0] : null;
-    const usable = result?.status === "complete" && result.schemaValid && result.attempts.length > 0 && result.attempts.every(a => a.usage.provider === model.providerName && a.usage.model === model.model && a.usage.generationId !== null && a.usage.costMicros !== null && a.usage.inputTokens !== null && a.usage.outputTokens !== null && a.usage.reasoningTokens !== null) && result.photoHash === photo.image.sha256 && result.evidenceHash === hashValue(evidence) && result.requestHash === hashValue(markingRequest(photo.frame, new Uint8Array()));
+    const usable = result?.status === "complete" && result.schemaValid && result.attempts.length > 0 && result.attempts.every(a => a.usage.provider === model.providerName && a.usage.model === model.model && a.usage.generationId !== null && a.usage.costMicros !== null && a.usage.inputTokens !== null && a.usage.outputTokens !== null && a.usage.reasoningTokens !== null) && result.photoHash === photo.image.sha256 && acceptedHashes.includes(result.evidenceHash) && result.requestHash === hashValue(markingRequest(photo.frame, new Uint8Array()));
     if (result && result.attempts.length > 0) completedPhotos++;
     if (!usable) failures++;
     if (!result) missingRuns++; else if (!usable) invalidRuns++;
@@ -208,9 +235,21 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
     measuredMicros, costPerPageUsd: missingCosts || !complete ? null : measuredMicros / manifest.photos.length / 1e6,
     latencyP50Ms: percentile(latencies, 0.5), latencyP95Ms: percentile(latencies, 0.95), retries, providers: [...providers] };
 }
-export function cheapestPassing(reports: ReturnType<typeof scoreComparison>[]) {
-  if (reports.length !== COMPARISON_MODELS.length || COMPARISON_MODELS.some(m => reports.filter(r => r.model === m.model).length !== 1) || reports.some(r => !r.complete)) return null;
-  return [...reports].filter(r => r.passed && r.costPerPageUsd !== null).sort((a, b) => a.costPerPageUsd! - b.costPerPageUsd! || a.model.localeCompare(b.model))[0] ?? null;
+export function cheapestPassing<T extends { model: string; complete: boolean; passed: boolean; costPerPageUsd: number | null }>(reports: T[]) {
+  if (reports.some(r => !COMPARISON_MODELS.some(m => m.model === r.model) || reports.filter(other => other.model === r.model).length !== 1)) return null;
+  return [...reports].filter(r => r.complete && r.passed && r.costPerPageUsd !== null).sort((a, b) => a.costPerPageUsd! - b.costPerPageUsd! || a.model.localeCompare(b.model))[0] ?? null;
+}
+export function comparisonReports(manifest: ComparisonManifest, states: readonly ComparisonPreflight[], results: readonly ComparisonResult[], history: readonly EndpointEvidence[], blocks: ReadonlyMap<string, string>) {
+  return COMPARISON_MODELS.map(model => {
+    const state = states.find(s => s.model === model.model), reason = blocks.get(model.model) ?? (state?.status === "blocked" ? state.reason : null);
+    const testedPhotos = results.filter(r => r.model === model.model && r.attempts.length).length;
+    if (reason || state?.status !== "ready") {
+      const attempts = results.filter(r => r.model === model.model).flatMap(r => r.attempts), missingCosts = attempts.filter(a => a.usage.costMicros === null).length;
+      return { model: model.model, host: model.host, endpoint: model.endpoint, status: "blocked", reason: reason ?? "missing-evidence", testedPhotos, complete: false, passed: false, costPerPageUsd: null,
+        measuredMicros: attempts.length && !missingCosts ? attempts.reduce((sum, a) => sum + a.usage.costMicros!, 0) : null, missingCosts };
+    }
+    return { ...scoreComparison(manifest, model, results, state.evidence, history), status: testedPhotos === 40 ? "tested" : "incomplete", testedPhotos };
+  });
 }
 
 /** Use the highest published tier. Discounts and caching cannot reduce a reservation. */
