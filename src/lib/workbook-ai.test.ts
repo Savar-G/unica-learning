@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { createClient } from "@supabase/supabase-js";
@@ -5,8 +6,14 @@ import type { Database } from "@/lib/database";
 import { excludeRunProvider, loadRunProviderGate } from "@/lib/workbook-job-store";
 import type { Spawner } from "@/lib/ai-claude-cli";
 import type { AiCallRecord } from "@/lib/ai-fallback";
-import { runModelName, summarizeAiCalls, workbookAi, workbookAiPrimary, workbookModels, workbookRunner, type AiCallKind } from "@/lib/workbook-ai";
+import { runModelName, summarizeAiCalls, workbookAi, workbookAiPreflight, workbookAiPrimary, workbookModels, workbookRunner, type AiCallKind } from "@/lib/workbook-ai";
 import type { SolveLog, SolveRequest } from "@/lib/workbook-solve-check";
+import { runWorkbookJob, startWorkbookRun, type WorkbookJobDeps } from "@/lib/workbook-job";
+import { memoryRunStore } from "@/lib/workbook-job-memory";
+import { memoryDraftStore } from "@/lib/workbook-draft-memory";
+import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
+import { fakePrintEngine } from "@/lib/print-engine-fake";
+import { workbookTemplate } from "@/lib/workbook-template";
 
 const signal = () => new AbortController().signal;
 const solveRequest: SolveRequest = { questions: [{ id: "question", text: "2 + 3 = ?", boxes: [{ id: "answer" }] }] as unknown as SolveRequest["questions"], key: [] };
@@ -189,4 +196,125 @@ it("keeps known costs for unavailable and unfinished calls, with missing results
     { provider: "api", outcome: "unavailable", usd: 0.02, note: "overloaded", requests: 2 },
     { provider: "api", outcome: "started", usd: 0.03, note: null, requests: 1 },
   ])).toMatchObject({ api: { calls: 0, usd: 0.05 }, unavailable: { api: 1 }, incomplete: 1, retries: 1 });
+});
+
+
+describe("explicit Codex workbook subscriptions", () => {
+  const env = { WORKBOOK_SUBSCRIPTION_PROVIDER: "codex", WORKBOOK_CODEX_HOME: "/accounts/unify" };
+  const model = "codex/gpt-6.1-sol;reasoning=high;auth=chatgpt";
+
+  it.each(["", "relative/account", "~/account"])("refuses a missing or relative account home: %j", home => {
+    expect(() => workbookAi({ ...env, WORKBOOK_CODEX_HOME: home }, { subscription: true })).toThrow(/absolute/);
+  });
+
+  it("keeps the Claude default and its availability behavior", async () => {
+    const spawn = vi.fn<Spawner>();
+    await workbookAiPreflight({}, { spawn });
+    await workbookAiPreflight({ WORKBOOK_SUBSCRIPTION_PROVIDER: "claude", WORKBOOK_CODEX_HOME: "irrelevant" }, { spawn });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(workbookModels({ WORKBOOK_SUBSCRIPTION_PROVIDER: "claude" })).toEqual(workbookModels({}));
+  });
+
+  it("refuses an unknown provider and refuses Codex where subscriptions cannot run", () => {
+    expect(() => workbookAi({ WORKBOOK_SUBSCRIPTION_PROVIDER: "typo" }, { subscription: true })).toThrow(/WORKBOOK_SUBSCRIPTION_PROVIDER/);
+    expect(() => workbookAi({ ...env, OPENROUTER_API_KEY: "key" }, { subscription: false })).toThrow(/Codex/);
+  });
+
+  it("writes and solves on the selected account only, even with API-first settings and API keys", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const calls: [AiCallKind, AiCallRecord][] = [];
+    const spawn = vi.fn<Spawner>(async (command, args, options) => {
+      expect(command).toBe("codex");
+      expect(options.env).toEqual({ CODEX_HOME: "/accounts/unify", PATH: "/bin", HOME: "/home/test" });
+      expect(args[args.indexOf("--model") + 1]).toBe("gpt-6.1-sol");
+      expect(args).toContain('model_reasoning_effort="high"');
+      expect(args).toContain('forced_login_method="chatgpt"');
+      expect(args).toContain("--ignore-user-config");
+      await writeFile(args[args.indexOf("--output-last-message") + 1], JSON.stringify(options.input.includes("2 + 3") ? solveAnswer : { items: [] }));
+      return { code: 0, stdout: '{"type":"turn.completed"}\n', stderr: "" };
+    });
+    const settings = { ...env, PATH: "/bin", HOME: "/home/test", CODEX_HOME: "/wrong/account", OPENAI_API_KEY: "key", OPENROUTER_API_KEY: "key", ANTHROPIC_API_KEY: "key", WORKBOOK_AI_PRIMARY: "api" };
+    expect(workbookModels(settings)).toMatchObject({ cli: model, cliSolve: model, write: model, solve: model });
+    expect(workbookAiPrimary(settings)).toBe("subscription");
+    const live = workbookAi(settings, { subscription: true, primary: "api", spawn, fetch, onCall: (k, r) => calls.push([k, r]) });
+    expect(live.ai!.model).toBe(model);
+    expect(live.solve!.solver.model).toBe(model);
+    expect(await live.ai!.json(page, signal())).toEqual({ items: [] });
+    expect(await live.solve!.solver.solve(solveRequest, signal())).toEqual(solveAnswer);
+    expect(calls.map(([kind, r]) => [kind, r.provider, r.model, r.outcome, r.usd])).toEqual([
+      ["write", "subscription", model, "answered", 0], ["solve", "subscription", model, "answered", 0],
+    ]);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: 1, stderr: "usage limit reached" },
+    { code: 1, stderr: "401 authentication failed" },
+    { code: null, error: { code: "ENOENT", message: "missing" } },
+  ])("persists selected-provider unavailability across writer, solver and a restored factory: %j", async failure => {
+    const off: Record<string, string> = {};
+    const spawn = vi.fn<Spawner>(async () => ({ stdout: "", stderr: "", ...failure }));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const options = { subscription: true, spawn, fetch, onExclude: (p: string, reason: string) => { off[p] = reason; } };
+    const first = workbookAi({ ...env, OPENROUTER_API_KEY: "key" }, options);
+    await expect(first.ai!.json(page, signal())).rejects.toThrow();
+    await expect(first.solve!.solver.solve(solveRequest, signal())).rejects.toThrow(/No AI provider/);
+    const restored = workbookAi({ ...env, OPENROUTER_API_KEY: "key" }, { ...options, gate: { off } });
+    await expect(restored.ai!.json(page, signal())).rejects.toThrow(/No AI provider/);
+    expect(off.subscription).toBeTruthy();
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not record a cancelled Codex call as an answer or send it to the API", async () => {
+    const controller = new AbortController();
+    const calls: AiCallRecord[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const spawn: Spawner = async (_command, _args, options) => {
+      expect(options.signal).toBe(controller.signal);
+      controller.abort();
+      return { code: 0, stdout: '{"type":"turn.completed"}\n', stderr: "" };
+    };
+    const live = workbookAi({ ...env, OPENROUTER_API_KEY: "key" }, { subscription: true, spawn, fetch, onCall: (_k, r) => calls.push(r) });
+    await expect(live.ai!.json(page, controller.signal)).rejects.toThrow();
+    expect(calls.map(r => r.outcome)).toEqual(["failed"]);
+    expect(live.gate.off).toEqual({});
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["same", "writer", "solver", "effort"])("stores the actual frame identity and checks it on resume: %s", async change => {
+    const spawn = vi.fn<Spawner>();
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const live = workbookAi(env, { subscription: true, spawn, fetch });
+    const childId = crypto.randomUUID(), parentId = crypto.randomUUID();
+    const drafts = memoryDraftStore({ [childId]: parentId });
+    const now = () => new Date("2026-11-05T12:00:00Z");
+    const runs = memoryRunStore({ children: { [childId]: parentId }, now, newId: () => crypto.randomUUID(), drafts });
+    const deps: WorkbookJobDeps = {
+      itemPolicy: "legacy", runs, drafts, files: memoryWorkbookFiles(),
+      ai: live.ai, solver: live.solve!.solver,
+      template: workbookTemplate(), fit: () => ({ fits: async () => ({ ok: true }) }), engine: fakePrintEngine(),
+      source: {
+        inputs: async () => ({ parentId, name: "Synthetic", grade: 3, province: "BC", profile: null, workbooks: [] }),
+        prepareProfile: async () => ({ ok: true, profile: null }),
+      },
+      newId: () => crypto.randomUUID(), qrToken: () => "synthetic-token", fileKey: () => "synthetic",
+      now: () => now().getTime(), budgetMs: 1, build: "provider-test",
+    };
+    const start = await startWorkbookRun(runs, childId, { id: crypto.randomUUID(), email: "synthetic@example.com" });
+    if (start.status !== "started") throw new Error(start.status);
+    // A short budget stores the frame and yields before any writer, solver or print request.
+    const outcome = await runWorkbookJob(start.runId, deps);
+    expect(outcome, (await runs.run(start.runId))!.error ?? "").toBe("handed-on");
+    expect((await runs.frame(start.runId))!.versions).toMatchObject({ model, solveModel: model });
+    const claude = workbookAi({}, { subscription: true, spawn, fetch });
+    if (change === "writer") deps.ai = claude.ai;
+    if (change === "solver") deps.solver = claude.solve!.solver;
+    if (change === "effort") deps.ai = { ...live.ai!, model: model.replace("high", "medium") };
+    expect(await runWorkbookJob(start.runId, deps, { resume: true })).toBe(change === "same" ? "handed-on" : "failed");
+    if (change !== "same") expect((await runs.run(start.runId))!.error).toMatch(/model changed since it started/);
+    expect(spawn).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

@@ -14,9 +14,23 @@ PLIST=$HOME/Library/LaunchAgents/$LABEL.plist
 LOG=$HOME/Library/Logs/unica-workbook-worker.log
 
 node_bin=$(command -v node) || { echo "node is not on PATH"; exit 1; }
-claude_bin=$(command -v claude) || { echo "claude (Claude Code) is not on PATH: install it and log in first"; exit 1; }
+# Read dotenv through Node. Never source a settings file as executable shell code.
+if [ -f "$ENV_FILE" ]; then
+  subscription_provider=$("$node_bin" --env-file="$ENV_FILE" -p '(process.env.WORKBOOK_SUBSCRIPTION_PROVIDER ?? "claude").trim().toLowerCase()')
+else
+  subscription_provider=${WORKBOOK_SUBSCRIPTION_PROVIDER:-claude}
+fi
+case "$subscription_provider" in
+  claude|codex) ;;
+  *) echo "WORKBOOK_SUBSCRIPTION_PROVIDER must be claude or codex"; exit 1 ;;
+esac
+if [ "$subscription_provider" = codex ] && [ ! -f "$ENV_FILE" ]; then
+  echo "Create $ENV_FILE with WORKBOOK_SUBSCRIPTION_PROVIDER=codex and WORKBOOK_CODEX_HOME before installation."
+  exit 1
+fi
+subscription_bin=$(command -v "$subscription_provider") || { echo "$subscription_provider is not on PATH: install it and log in first"; exit 1; }
 git_bin=$(command -v git)
-PATH_FOR_AGENT="$(dirname "$node_bin"):$(dirname "$claude_bin"):$(dirname "$git_bin"):/usr/bin:/bin:/usr/sbin:/sbin"
+PATH_FOR_AGENT="$(dirname "$node_bin"):$(dirname "$subscription_bin"):$(dirname "$git_bin"):/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Stop the loaded service before changing its checkout, packages or plist. bootout can return while
 # descendants still exit, so capture the tree first and wait for every process. Fail closed on timeout.
@@ -59,7 +73,11 @@ if [ ! -f "$ENV_FILE" ]; then
 # The workbook worker's settings (docs/workbook-worker.md). Keep this file private (chmod 600).
 # The Supabase secret key: leave unset to read it through the Keychain item "supabase-pagewise".
 # SUPABASE_SECRET_KEY=
-# The API fallback (OpenRouter). Without it, a call the subscription cannot take fails.
+# claude (default) or codex. Codex always disables the API fallback.
+# WORKBOOK_SUBSCRIPTION_PROVIDER=claude
+# Codex requires an explicit absolute account home with a stored ChatGPT login.
+# WORKBOOK_CODEX_HOME=/absolute/path/to/selected-codex-home
+# The API fallback (OpenRouter), used only with the Claude selection.
 # OPENROUTER_API_KEY=
 # subscription (default) or api: which goes first.
 # WORKBOOK_AI_PRIMARY=subscription

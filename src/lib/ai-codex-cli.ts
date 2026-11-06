@@ -1,4 +1,4 @@
-// Local workbook samples only. Uses the selected ChatGPT subscription through Codex CLI.
+// Workbook requests use the selected ChatGPT subscription through Codex CLI.
 // No API keys, service tools, project instructions, hooks, or saved conversations.
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,6 +7,59 @@ import type { AiClient } from "@/lib/ai-client";
 import { nodeSpawn, SubscriptionUnavailable, type Spawner } from "@/lib/ai-claude-cli";
 
 export const CODEX_SAMPLE_MODEL = "gpt-6.1-sol";
+/** Stored identity includes the fixed configuration for call logs and resume checks. */
+export const CODEX_SUBSCRIPTION_MODEL = `codex/${CODEX_SAMPLE_MODEL};reasoning=high;auth=chatgpt`;
+
+/** No inherited account selection, API keys or provider configuration reaches the process. */
+function codexEnv(configDir: string, env: Record<string, string | undefined>) {
+  if (!isAbsolute(configDir)) throw new Error("WORKBOOK_CODEX_HOME must be an absolute Codex account directory");
+  const childEnv: Record<string, string> = { CODEX_HOME: configDir };
+  for (const k of ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"]) {
+    if (env[k]) childEnv[k] = env[k]!;
+  }
+  return childEnv;
+}
+
+/** Local checks only. Never starts a model request or changes the selected login. */
+export async function codexCliPreflight({ configDir, env = process.env, spawn = nodeSpawn, signal = new AbortController().signal }: {
+  configDir: string;
+  env?: Record<string, string | undefined>;
+  spawn?: Spawner;
+  signal?: AbortSignal;
+}): Promise<void> {
+  const childEnv = codexEnv(configDir, env);
+  signal.throwIfAborted();
+  // Require a file login in this home. A missing home must never select a shared keychain login.
+  let auth: { auth_mode?: string; tokens?: { access_token?: string } };
+  try {
+    auth = JSON.parse(await readFile(join(configDir, "auth.json"), { encoding: "utf8", signal }));
+  } catch {
+    throw new SubscriptionUnavailable("logged-out", "WORKBOOK_CODEX_HOME needs a stored ChatGPT login");
+  }
+  if (auth?.auth_mode !== "chatgpt" || !auth.tokens?.access_token) {
+    throw new SubscriptionUnavailable("logged-out", "WORKBOOK_CODEX_HOME needs a stored ChatGPT login");
+  }
+  const dir = await mkdtemp(join(tmpdir(), "unica-codex-check-"));
+  try {
+    const check = async (args: string[]) => {
+      signal.throwIfAborted();
+      const run = await spawn("codex", args, { input: "", env: childEnv, cwd: dir, timeoutMs: 10_000, signal });
+      signal.throwIfAborted();
+      if (run.error?.code === "ENOENT") throw new SubscriptionUnavailable("missing", "Codex CLI is not installed");
+      if (run.code !== 0 || run.error || run.timedOut) throw new Error("Codex local availability check failed");
+      return `${run.stdout}\n${run.stderr}`;
+    };
+    const help = await check(["exec", "--help"]);
+    for (const flag of ["--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "--sandbox", "--model", "--config", "--disable", "--json", "--output-schema", "--output-last-message"]) {
+      if (!help.includes(flag)) throw new Error(`Codex CLI does not support required option ${flag}`);
+    }
+    const login = await check(["login", "status"]);
+    if (!/logged in using ChatGPT/i.test(login)) throw new SubscriptionUnavailable("logged-out", "The selected Codex account needs a ChatGPT login");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  signal.throwIfAborted();
+}
 
 /** A text-only, schema-constrained request on an explicitly selected subscription. */
 export function codexCliClient({
@@ -17,13 +70,9 @@ export function codexCliClient({
   spawn?: Spawner;
   timeout?: number;
 }): AiClient {
-  if (!isAbsolute(configDir)) throw new Error("WORKBOOK_CODEX_HOME must be an absolute Codex account directory");
-  const childEnv: Record<string, string> = { CODEX_HOME: configDir };
-  for (const k of ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"]) {
-    if (env[k]) childEnv[k] = env[k]!;
-  }
+  const childEnv = codexEnv(configDir, env);
   return {
-    model: CODEX_SAMPLE_MODEL,
+    model: CODEX_SUBSCRIPTION_MODEL,
     async json(request, signal) {
       if (signal.aborted) throw new Error("time is up");
       if (request.content.some(p => p.type !== "text")) throw new Error("Codex workbook samples accept text only");
