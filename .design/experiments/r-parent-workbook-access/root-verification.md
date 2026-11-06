@@ -35,3 +35,17 @@ Existing voice and minutes controls were observed in the unchanged dashboard and
 The generator then reported its concurrent strict print work and later sent PRINT_IDLE after its owned Node and Chrome processes exited. Root started a complete npm test -- --maxWorkers=2 run with the existing assertions and timeouts. Its result is pending. See the durable root-full-two-workers.log. Independent source reviews and the final complete gate remain required before a PR can merge. No family flag changed and no paid AI call was needed for this feature.
 
 Durable service and browser records are under /Users/savargupta/unica-workbook-samples/parent-workbook-access-20261106. This report distinguishes those root checks from the worker's local proof.
+
+## Final candidate gate
+
+The final runtime source is f0e2129cb8624c59b9502e39dfdc03954c90a41a. It includes actual main de9404ee, including the minimal generator fix and S8 history. The final repair changes only the answer projection and its tests. Generator, template, renderer, print-engine and print-contract files match main. The later evidence commit changes only this evidence directory.
+
+The final two-worker suite failed one unchanged Chromium cancellation timing assertion: 16,915 tests passed, one failed and one optional skip. Cancellation waited 30,304 ms against a 1,000 ms comparison. The same unchanged test passed in isolation, exit 0 in 2.33 seconds. These are separate results; the isolated pass does not replace a full gate.
+
+Root then ran npm test -- --maxWorkers=1 with no browser override or timeout change. All 463 files passed: 16,916 tests passed, one optional skip, zero failed, exit 0 in 881.83 seconds. Source lint and the normal production build also exited 0 on this runtime source. See final-full-tests.log, final-lint.log and final-build.log. The machine used Node v22.23.1. CHROMIUM_PATH, CHROME_PATH, PUPPETEER_EXECUTABLE_PATH and NODE_OPTIONS were unset.
+
+The original Standards review approved bf1a18ce: 360 tests, 18 independent public-interface controls and 17 distinct SQL cases passed. It did not establish the final full gate. The final independent S1 and narrow Standards recheck approved f0e2129c: 42 focused tests and 215 distinct synthetic controls passed. The latter set contains 187 positive keys and 28 safe unavailable results. It covers both Challenge layouts and incomplete or conflicting saved positions. See independent-standards.md and independent-spec-final.md. Prior rejected reviews remain recorded in the durable task folder and answer-order-repair.md; they were not counted as passes.
+
+The safe unavailable state limits keys for ambiguous legacy mixed-row questions whose saved facts cannot establish part order. Normal legacy single-row, sequence, ordering and Mixed set cases remain readable without a new print revision. No stored book was rendered again. The final pure projection repair adds no hosted write or provider request. The earlier hosted and browser proof above remains separate supplied evidence for access and presentation, not a pixel or customer-book proof for the new synthetic layout controls.
+
+No family switch changed. The customer print-changing freeze remains. Non-print merges require normal coordination and must pause only during a generator RUN_ACTIVE interval. The current product-review page and Savar's family-release approval remain later work.
