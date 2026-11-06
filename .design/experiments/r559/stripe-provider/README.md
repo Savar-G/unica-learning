@@ -46,3 +46,9 @@ The source-only repair changes no SQL, parent screen or route contract. Existing
 The corrected source passed 51 focused tests across six files, then 16,613 tests across 441 files with one optional skip. The full run used four workers and took 249.61 seconds. Source ESLint and the production build exited zero. No assertion or timeout was relaxed. The full gate proves local integration and type compatibility. It does not prove live configuration or activation.
 
 The hosted configuration audit found the named site key has Subscriptions Write and Invoices Write. No permission changed. Vercel masks its stored key, so its exact mapping was not independently confirmed. The live webhook is active but listens to only five events. It lacks customer.subscription.paused and customer.subscription.resumed. No webhook configuration changed in this audit.
+
+## SPEC-1 correction
+
+The independent Spec review at2c3ce6bb found that the pause matcher accepted changed credit/usage/invoicing settings. The omission also existed in the base. Seven public confirmPause regressions failed before the correction and pass after it. A mismatch now stays pending and does not close the durable hold or send another command. The matcher compares the four pause settings and the existing three resume settings.
+
+A new actual Stripe test-mode native Pause verified that the response contains the exact required pause settings, so the stricter comparison does not reject the supported provider response. Its owned clock and customer were deleted. The earlier complete billing matrix remains the invoice-timing evidence. The corrected local gate passed16620 tests across441 files, with1 optional skip, in266.48seconds. Source lint and production build exited0. These logs are prefixed billing-settings. A new scoped independent review remains pending.

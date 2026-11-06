@@ -1,0 +1,72 @@
+{
+  "run": "485cc7a8-ad30-492a-9aee-b452dc62d099",
+  "source": "2c3ce6bb200f42e3b75c34b8b0f328794a01439c + SPEC-1 billing-settings check",
+  "mode": "test",
+  "checks": [
+    {
+      "label": "account_verified",
+      "account": "acct_1UOOQgGTsggtqumU",
+      "livemode": false,
+      "apiVersion": "2026-09-30.endive"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "pause_settings_echo"
+    },
+    {
+      "label": "pause_applied",
+      "kind": "paid",
+      "subscription": "sub_1UYddfGTsggtqumUIJ0EB7Hj",
+      "previous": "2026-12-06T03:17:23.000Z",
+      "resume": "2026-12-20T03:17:23.000Z"
+    },
+    {
+      "label": "native_pause_settings_verified",
+      "settings": {
+        "bill_for": {
+          "outstanding_usage_through": {
+            "type": "none"
+          },
+          "unused_time_from": {
+            "type": "none"
+          }
+        },
+        "invoicing_behavior": "pending_invoice_item",
+        "type": "subscription"
+      }
+    },
+    {
+      "label": "scenario_passed",
+      "scenario": "pause_settings_echo"
+    }
+  ],
+  "errors": [],
+  "resources": [
+    {
+      "kind": "clock",
+      "id": "clock_1UYddbGTsggtqumUNlVL9yCt",
+      "label": "pause_settings_echo"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZnE1Hpd8oTPmo",
+      "clock": "clock_1UYddbGTsggtqumUNlVL9yCt"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYddcGTsggtqumUFRG8bTWh"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYddfGTsggtqumUnQI2NpW9"
+    }
+  ],
+  "cleanup": [
+    {
+      "clock": "clock_1UYddbGTsggtqumUNlVL9yCt",
+      "customer": "cus_VZnE1Hpd8oTPmo",
+      "deleted": true
+    }
+  ],
+  "result": "PASS"
+}
