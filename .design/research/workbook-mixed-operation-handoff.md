@@ -134,7 +134,7 @@ The controller's strict fake U16 check after the correction exited 0: 28 pages, 
 
 Sol round 2 approved the correction at `2980435003dd2e44edc472f34552ed5aae0161b7`. S1 is resolved, with no new findings. The controller then rebased onto merged PR #668 at `0d9285c7d1635cff8bbf569ad17eb0608fd3a300`. Git range-diff confirmed identical behavior patches. The new practice harness suites plus the five focused suites passed: 7 files, 243 tests, exit 0. Rejected and held generated items remain separate from passes. The #531 API acceptance hold remains.
 
-The full local gate and final real replay pair remain pending. No clean release result is claimed.
+The final local gate passed: 444 test files, 16,669 tests passed and one skipped, exit 0, in 482.09 seconds. Full source ESLint and the normal production build also exited 0. Sol round 3 approved the fixture and snapshot corrections, with no new findings. S1 remains resolved.
 
 ## Full-gate fixture corrections
 
@@ -144,4 +144,19 @@ The other failure was the existing U16 Maya coverage snapshot. With controller c
 
 The independent probe uses the snapshot fixture's fake fit. Its package-array SHA-256 is `8eaec0cda433c35715d30a8a233b693e75ff03e514246a60c034e879bcc38ae7`. It does not establish physical fit, clean full-book output or API acceptance. No Maya runtime, capability, schema or acceptance predicate changed. The #531 API acceptance hold remains.
 
-Both affected full suites now pass: 42 tests, exit 0. Evidence: `.workbook-sample/root-664-coverage.json`, controller logs `664-u16-coverage-proof.log`, `664-u16-snapshot-before.log`, `664-u16-snapshot-update.log` and `664-corrected-failures.log`. The real U4/U16 pair has now started once on the Unify subscription, with replay and no API fallback. The new provider identity can cause old cache records to miss; new requests must remain separate from replayed requests.
+Both affected full suites now pass: 42 tests, exit 0. Evidence: `.workbook-sample/root-664-coverage.json`, controller logs `664-u16-coverage-proof.log`, `664-u16-snapshot-before.log`, `664-u16-snapshot-update.log` and `664-corrected-failures.log`.
+
+## Final real subscription pair
+
+The controller ran exactly one U4/U16 pair for days 1,5,10, in parallel, with `--codex --subscription-only --no-store --replay --diff` on the explicit Unify account home. All API keys were removed from the command environments. Both commands exited 0.
+
+- U4: 28 pages, 245 questions, three parent-checked activities, no changed pages, no model calls. Quality ready; zero failed questions, fit failures, strict render problems or omissions.
+- First-customer U16 fixture: 28 pages, 195 questions. Quality ready; zero failed questions, fit failures, strict render problems or omissions. Pages 9 and 19 changed. It made 13 new subscription calls: one writer and 12 separate solve requests. There were no replayed calls or API calls. The more precise provider/config identity correctly invalidated the old bare-model cache records.
+- Both writer and solve requests used `codex/gpt-6.1-sol;reasoning=high;auth=chatgpt`. All 12 solve checks agreed. This is not a second-model check.
+- Root read the page dumps and diff, inspected the two changed page images, verified the Mixed set keys as multiplication with answer 8 and subtraction with answer 530, and independently recomputed all 12 new warm-up answers.
+
+Local outputs are `/Users/savargupta/unica-workbook-samples/generator-full-send-20261105/real-mixed-u4` and `real-mixed-u16`. Logs are `664-real-u4.log`, `664-real-u16.log`, and `664-real-pair-proof.json` in the same controller evidence directory. The run manifest pins runtime source `7681b19c2f93a3a3d382f6ba54e7fba7c0988e09`. Later changes were test expectations and this report.
+
+After #670 merged, the controller rebased onto `e9615fd3299bea8348a0ec7763e4cf739b3dae51`. All four patches matched by range-diff. The tested `src`, `scripts`, `data`, `public`, package files and TypeScript/Vitest configuration were byte-identical before and after that rebase.
+
+These selected-day results do not clear the full plain U16 page 22 coverage hold, #617 mastery exclusions, #531 API acceptance, sample approval, or customer regeneration. No live family rows or worker settings changed.
