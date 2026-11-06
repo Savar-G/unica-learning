@@ -1,4 +1,5 @@
 import "server-only";
+import { scanMarkingStore, markingCommand } from "@/lib/scan-marking-store";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportCallsUnreliable, type Grade, type SkillState } from "@/lib/assessment";
 import type { ChildProfileStore } from "@/lib/child-profile";
@@ -44,6 +45,18 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
     }
   }
   return {
+    async marks(childId) {
+      const owner = await admin.from("children").select("parent_id").eq("id", childId).maybeSingle();
+      if (owner.error || !owner.data) throw new Error("marking_profile_owner");
+      const parent = owner.data.parent_id, command = markingCommand(admin), store = scanMarkingStore(admin);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const revision = await command("revision", parent, null, null, { child: childId });
+        if (typeof revision !== "number") throw new Error("marking_profile_revision");
+        const items = await store.effective(parent, childId);
+        if (await command("revision", parent, null, null, { child: childId }) === revision) return { revision, items };
+      }
+      throw new Error("marking_profile_changed");
+    },
     async current(childId) {
       const { data, error } = await admin.from("child_profiles").select("revision, build_token, built_at, schema_version, profile").eq("child_id", childId).maybeSingle();
       if (error) throw new Error(`child profile load: ${message(error)}`);
@@ -79,7 +92,7 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
         assessment: latest ? { assessmentId: latest.id, completedAt: new Date(latest.completed_at!).toISOString(), buildId: typeof buildId === "string" ? buildId : null, profile } : null,
       };
     },
-    async save({ childId, parentId, assessmentId, profile, skillChanges }, expected, signal) {
+    async save({ childId, parentId, assessmentId, profile, skillChanges, markingRevision }, expected, signal) {
       /** What a write's error means for this save; throws when it is none of them. */
       const refusal = async (error: { code: string; message: string }): Promise<"changed" | { refused: string }> => {
         // 23505: another build stored the first revision; 23503 on the test's key: the test was deleted since the
@@ -90,6 +103,20 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
         if (error.code === "23503" || error.code === "55000") return { refused: error.message };
         throw new Error(`child profile save: ${message(error)}`);
       };
+      if (markingRevision !== undefined) {
+        const call = admin.rpc("save_marked_child_profile", {
+          p_child: childId, p_parent: parentId, p_marking_revision: markingRevision, p_assessment: assessmentId,
+          p_expected: expected?.buildToken ?? null, p_schema_version: profile.schemaVersion, p_profile: toJson(profile),
+          p_changes: toJson((skillChanges?.rows ?? []).map((c) => ({ standard: c.standard, state: c.state, reason: c.reason, evidence: c.evidence, evidence_at: c.evidenceAt }))),
+          p_tests: [...(skillChanges?.tests ?? [])],
+        });
+        const { data, error } = await (signal ? call.abortSignal(signal) : call);
+        if (error) return refusal(error);
+        if (data === null) return "changed";
+        const row: unknown = data;
+        if (!row || typeof row !== "object" || !("revision" in row) || !("build_token" in row) || typeof row.revision !== "number" || typeof row.build_token !== "string") throw new Error("marking_profile_save");
+        return { revision: row.revision, buildToken: row.build_token };
+      }
       if (skillChanges?.rows.length) {
         const { data, error } = await admin.rpc("save_child_profile_and_skill_changes_from_tests", {
           p_child: childId, p_parent: parentId, p_assessment: assessmentId, p_expected: expected?.buildToken ?? null,

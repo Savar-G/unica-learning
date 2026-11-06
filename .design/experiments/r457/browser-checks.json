@@ -1,0 +1,373 @@
+{
+  "scope": "Synthetic result props in actual ParentShell/SupportPage/ScanMarkingResults components, not authenticated end-to-end or image/provider proof",
+  "machine": "Savars-MacBook-Pro-5.local",
+  "checks": [
+    {
+      "width": 1280,
+      "state": "empty",
+      "valid": true,
+      "characters": 35,
+      "documentWidth": 1280,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 0,
+      "refreshHeight": 44,
+      "status": [
+        "Your page is waiting to be checked."
+      ]
+    },
+    {
+      "width": 1280,
+      "state": "one",
+      "valid": true,
+      "characters": 55,
+      "documentWidth": 1280,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 1,
+      "refreshHeight": 44,
+      "status": [
+        "This page has been checked."
+      ]
+    },
+    {
+      "width": 1280,
+      "state": "many",
+      "valid": true,
+      "characters": 271,
+      "documentWidth": 1265,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page has been checked."
+      ]
+    },
+    {
+      "width": 1280,
+      "state": "uncertain",
+      "valid": true,
+      "characters": 1990,
+      "documentWidth": 1265,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page still needs a check."
+      ]
+    },
+    {
+      "width": 1280,
+      "state": "expired",
+      "valid": true,
+      "characters": 296,
+      "documentWidth": 1265,
+      "expired": true,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page has been checked."
+      ]
+    },
+    {
+      "width": 1280,
+      "state": "budget",
+      "valid": true,
+      "characters": 2026,
+      "documentWidth": 1265,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "We cannot check more pages right now",
+        "This page still needs a check."
+      ]
+    },
+    {
+      "width": 1280,
+      "state": "unscored",
+      "valid": true,
+      "characters": 208,
+      "documentWidth": 1280,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page has no scored answers."
+      ]
+    },
+    {
+      "width": 820,
+      "state": "empty",
+      "valid": true,
+      "characters": 35,
+      "documentWidth": 820,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 0,
+      "refreshHeight": 44,
+      "status": [
+        "Your page is waiting to be checked."
+      ]
+    },
+    {
+      "width": 820,
+      "state": "one",
+      "valid": true,
+      "characters": 55,
+      "documentWidth": 820,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 1,
+      "refreshHeight": 44,
+      "status": [
+        "This page has been checked."
+      ]
+    },
+    {
+      "width": 820,
+      "state": "many",
+      "valid": true,
+      "characters": 271,
+      "documentWidth": 805,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page has been checked."
+      ]
+    },
+    {
+      "width": 820,
+      "state": "uncertain",
+      "valid": true,
+      "characters": 1990,
+      "documentWidth": 805,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page still needs a check."
+      ]
+    },
+    {
+      "width": 820,
+      "state": "expired",
+      "valid": true,
+      "characters": 296,
+      "documentWidth": 805,
+      "expired": true,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page has been checked."
+      ]
+    },
+    {
+      "width": 820,
+      "state": "budget",
+      "valid": true,
+      "characters": 2026,
+      "documentWidth": 805,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "We cannot check more pages right now",
+        "This page still needs a check."
+      ]
+    },
+    {
+      "width": 820,
+      "state": "unscored",
+      "valid": true,
+      "characters": 208,
+      "documentWidth": 805,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page has no scored answers."
+      ]
+    },
+    {
+      "width": 390,
+      "state": "empty",
+      "valid": true,
+      "characters": 35,
+      "documentWidth": 390,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 0,
+      "refreshHeight": 44,
+      "status": [
+        "Your page is waiting to be checked."
+      ]
+    },
+    {
+      "width": 390,
+      "state": "one",
+      "valid": true,
+      "characters": 55,
+      "documentWidth": 390,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 1,
+      "refreshHeight": 44,
+      "status": [
+        "This page has been checked."
+      ]
+    },
+    {
+      "width": 390,
+      "state": "many",
+      "valid": true,
+      "characters": 271,
+      "documentWidth": 375,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page has been checked."
+      ]
+    },
+    {
+      "width": 390,
+      "state": "uncertain",
+      "valid": true,
+      "characters": 1990,
+      "documentWidth": 375,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page still needs a check."
+      ]
+    },
+    {
+      "width": 390,
+      "state": "expired",
+      "valid": true,
+      "characters": 296,
+      "documentWidth": 375,
+      "expired": true,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page has been checked."
+      ]
+    },
+    {
+      "width": 390,
+      "state": "budget",
+      "valid": true,
+      "characters": 2026,
+      "documentWidth": 375,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "We cannot check more pages right now",
+        "This page still needs a check."
+      ]
+    },
+    {
+      "width": 390,
+      "state": "unscored",
+      "valid": true,
+      "characters": 208,
+      "documentWidth": 375,
+      "expired": false,
+      "headings": 1,
+      "httpStatus": 200,
+      "items": 8,
+      "refreshHeight": 44,
+      "status": [
+        "This page has no scored answers."
+      ]
+    }
+  ],
+  "keyboard": {
+    "refreshFocused": true,
+    "outline": "2px solid",
+    "height": 44,
+    "enterPreservedUnscoredState": true
+  },
+  "fixture": "Temporary development-only route removed after QA",
+  "screenshots": [
+    {
+      "width": 1280,
+      "state": "empty",
+      "file": "results-empty-1280.png"
+    },
+    {
+      "width": 1280,
+      "state": "many",
+      "file": "results-many-1280.png"
+    },
+    {
+      "width": 820,
+      "state": "one",
+      "file": "results-one-820.png"
+    },
+    {
+      "width": 820,
+      "state": "expired",
+      "file": "results-expired-820.png"
+    },
+    {
+      "width": 390,
+      "state": "many",
+      "file": "results-many-390.png"
+    },
+    {
+      "width": 390,
+      "state": "uncertain",
+      "file": "results-uncertain-390.png"
+    },
+    {
+      "width": 390,
+      "state": "budget",
+      "file": "results-budget-390.png"
+    },
+    {
+      "width": 390,
+      "state": "unscored",
+      "file": "results-unscored-390.png"
+    }
+  ]
+}

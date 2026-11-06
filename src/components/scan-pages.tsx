@@ -19,7 +19,7 @@ import "./scan-pages.css";
 type Mode = "phone" | "desktop";
 /** `reservation`: the photo id asked for at admission. It stays with the queued photo, so a lost answer takes no second upload slot. */
 type Local = StackUpload & { file: File; replaces?: string; reservation?: string };
-type Listing = { checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
+type Listing = { marking?: boolean; checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
 
 const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "image", "size", "frequency", "quota"];
 const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes(code) ? code as UploadRefusal : "unavailable");
@@ -417,7 +417,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     </> : <>
       <h2>{openTile.status === "ready" ? "We can read this page." : openTile.status === "sent" ? "Sent for marking." : openTile.status === "unavailable" ? "We cannot check pages of this printing yet." : openTile.status === "saved" ? "Photo saved." : "We are checking this page."}</h2>
       {openTile.status === "unavailable" && <p>The photo stays here.</p>}
-      {openTile.status === "sent" && <p>Marking is not ready yet. The page waits here.</p>}
+      {openTile.status === "sent" && (listing?.marking && openTile.photoId ? <Link className="btn ghost" href={`/account/scan/results/${openTile.photoId}`}>View page results</Link> : <p>Marking is not ready yet. The page waits here.</p>)}
     </>}
     {checks && openTile.photoId && openTile.status === "ready" && <ScanPreview key={openTile.photoId} photo={openTile.photoId} child={name} />}
     <div className="scan-sheet-actions">
@@ -429,8 +429,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const notice = sheet?.kind === "notice" && <Sheet label="Before you take a photo" onClose={() => { replacing.current = null; setSheet(null); }}>
     <h2>Before you take a photo</h2>
     <p>We keep one private page photo for up to 90 days. We remove photo details such as the location. We do not keep the original camera file.</p>
-    <p>The whole page photo will be used for marking by an AI service when checking is available. It can show your child&apos;s first name and printed page code. No marking happens yet.</p>
-    <p>You and our admin team can view the photo. You can delete it sooner. We will keep marks and the AI&apos;s reading of written answers until your family account is deleted. <Link href="/privacy">Read about privacy</Link>.</p>
+    <p>When you ask us to check it, we send the whole page photo to an AI service. Your child&apos;s first name and printed page code can be in the photo.</p>
+    <p>You and our admin team can view the photo. You can delete it sooner. We keep marks and the AI&apos;s reading of written answers until your family account is deleted. <Link href="/privacy">Read about privacy</Link>.</p>
     {acknowledged
       ? <button type="button" className="btn" onClick={() => setSheet(null)}>Close</button>
       : <button type="button" className="btn" onClick={() => acknowledge(sheet.then)}>Got it</button>}
@@ -521,7 +521,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       {stack.addingTiles.length > 0 && group("new", "New photos", stack.addingTiles, undefined, stack.adding === 1 ? "Sending 1 photo" : `Sending ${stack.adding} photos`)}
       {stack.days.map((d) => group(d.key, d.label, d.tiles, d.missingText ? <p className="scan-gap">{d.missingText}</p> : undefined, d.tiles.length === 1 ? "1 photo" : `${d.tiles.length} photos`))}
     </>}
-    {stack.sent.length > 0 && group("sent", "Sent for marking", stack.sent, <p className="scan-gap">Marking is not ready yet. These pages wait here.</p>)}
+    {stack.sent.length > 0 && group("sent", "Sent for marking", stack.sent, <p className="scan-gap">{listing?.marking ? "Open a page to view its results." : "Marking is not ready yet. These pages wait here."}</p>)}
 
     {listing && (phone || (checks && tiles.length > 0)) && <div className="scan-dock">
       {checks && note && <p className="small">{note}</p>}

@@ -2669,6 +2669,353 @@ export type Database = {
           },
         ]
       }
+      scan_marking_cursor: {
+        Row: {
+          after_id: string | null
+          singleton: boolean
+        }
+        Insert: {
+          after_id?: string | null
+          singleton?: boolean
+        }
+        Update: {
+          after_id?: string | null
+          singleton?: boolean
+        }
+        Relationships: []
+      }
+      scan_marking_dispatches: {
+        Row: {
+          attempt: number
+          child_id: string
+          id: string
+          parent_id: string
+          photo_id: string
+        }
+        Insert: {
+          attempt: number
+          child_id: string
+          id: string
+          parent_id: string
+          photo_id: string
+        }
+        Update: {
+          attempt?: number
+          child_id?: string
+          id?: string
+          parent_id?: string
+          photo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_marking_dispatches_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_dispatches_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "scan_marking_spend"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_marking_dispatches_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_marking_dispatches_photo_id_fkey"
+            columns: ["photo_id"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_jobs"
+            referencedColumns: ["photo_id"]
+          },
+        ]
+      }
+      scan_marking_items: {
+        Row: {
+          child_id: string
+          event_id: string | null
+          evidence_at: string
+          expected: Json
+          id: string
+          item_id: string
+          model: string | null
+          observation: Json
+          original_event: Json | null
+          owner_photo: string | null
+          page_id: string
+          parent_id: string
+          printed_revision: string
+          prompt: string | null
+          result_version: number
+          workbook_id: string
+        }
+        Insert: {
+          child_id: string
+          event_id?: string | null
+          evidence_at?: string
+          expected: Json
+          id?: string
+          item_id: string
+          model?: string | null
+          observation: Json
+          original_event?: Json | null
+          owner_photo?: string | null
+          page_id: string
+          parent_id: string
+          printed_revision: string
+          prompt?: string | null
+          result_version?: number
+          workbook_id: string
+        }
+        Update: {
+          child_id?: string
+          event_id?: string | null
+          evidence_at?: string
+          expected?: Json
+          id?: string
+          item_id?: string
+          model?: string | null
+          observation?: Json
+          original_event?: Json | null
+          owner_photo?: string | null
+          page_id?: string
+          parent_id?: string
+          printed_revision?: string
+          prompt?: string | null
+          result_version?: number
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_marking_items_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_items_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "learning_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_marking_items_page_id_workbook_id_parent_id_fkey"
+            columns: ["page_id", "workbook_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_pages"
+            referencedColumns: ["id", "workbook_id", "parent_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_items_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scan_marking_jobs: {
+        Row: {
+          blocked_reason: string | null
+          child_id: string
+          created_at: string
+          dispatches: number
+          extraction: Json | null
+          frame_hash: string
+          item_versions: Json
+          lease_token: string | null
+          lease_until: string | null
+          model: string | null
+          page_id: string
+          parent_id: string
+          photo_id: string
+          printed_revision: string
+          prompt: string | null
+          state: string
+          workbook_id: string
+        }
+        Insert: {
+          blocked_reason?: string | null
+          child_id: string
+          created_at?: string
+          dispatches?: number
+          extraction?: Json | null
+          frame_hash: string
+          item_versions?: Json
+          lease_token?: string | null
+          lease_until?: string | null
+          model?: string | null
+          page_id: string
+          parent_id: string
+          photo_id: string
+          printed_revision: string
+          prompt?: string | null
+          state?: string
+          workbook_id: string
+        }
+        Update: {
+          blocked_reason?: string | null
+          child_id?: string
+          created_at?: string
+          dispatches?: number
+          extraction?: Json | null
+          frame_hash?: string
+          item_versions?: Json
+          lease_token?: string | null
+          lease_until?: string | null
+          model?: string | null
+          page_id?: string
+          parent_id?: string
+          photo_id?: string
+          printed_revision?: string
+          prompt?: string | null
+          state?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_marking_jobs_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_jobs_page_id_workbook_id_parent_id_fkey"
+            columns: ["page_id", "workbook_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_pages"
+            referencedColumns: ["id", "workbook_id", "parent_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_jobs_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_marking_jobs_photo_id_fkey"
+            columns: ["photo_id"]
+            isOneToOne: true
+            referencedRelation: "scan_photos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scan_marking_prices: {
+        Row: {
+          enabled: boolean
+          evidence: string | null
+          max_pixels: number
+          max_tokens: number
+          maximum_micros: number | null
+          model: string
+          verified_at: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          evidence?: string | null
+          max_pixels?: number
+          max_tokens?: number
+          maximum_micros?: number | null
+          model: string
+          verified_at?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          evidence?: string | null
+          max_pixels?: number
+          max_tokens?: number
+          maximum_micros?: number | null
+          model?: string
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
+      scan_marking_revisions: {
+        Row: {
+          child_id: string
+          parent_id: string
+          profile_revision: number
+          revision: number
+        }
+        Insert: {
+          child_id: string
+          parent_id: string
+          profile_revision?: number
+          revision?: number
+        }
+        Update: {
+          child_id?: string
+          parent_id?: string
+          profile_revision?: number
+          revision?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_marking_revisions_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_revisions_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scan_marking_spend: {
+        Row: {
+          charged_micros: number | null
+          created_at: string
+          id: string
+          model: string
+          period: string
+          reserved_micros: number
+          settled_at: string | null
+        }
+        Insert: {
+          charged_micros?: number | null
+          created_at?: string
+          id?: string
+          model: string
+          period: string
+          reserved_micros: number
+          settled_at?: string | null
+        }
+        Update: {
+          charged_micros?: number | null
+          created_at?: string
+          id?: string
+          model?: string
+          period?: string
+          reserved_micros?: number
+          settled_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_marking_spend_model_fkey"
+            columns: ["model"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_prices"
+            referencedColumns: ["model"]
+          },
+        ]
+      }
       scan_photo_notices: {
         Row: {
           acknowledged_at: string
@@ -5649,6 +5996,7 @@ export type Database = {
         Args: { p_child: string; p_parent: string }
         Returns: Json
       }
+      recover_scan_marking: { Args: { p_limit?: number }; Returns: Json }
       recover_scan_photo: {
         Args: { p_id: string; p_parent: string }
         Returns: string
@@ -5850,6 +6198,20 @@ export type Database = {
         Args: { p: string; test_copy: Json; test_id: string; token: string }
         Returns: boolean
       }
+      save_marked_child_profile: {
+        Args: {
+          p_assessment: string
+          p_changes: Json
+          p_child: string
+          p_expected: string
+          p_marking_revision: number
+          p_parent: string
+          p_profile: Json
+          p_schema_version: number
+          p_tests: string[]
+        }
+        Returns: Json
+      }
       save_maya_call_ink: {
         Args: {
           p_after_end_ms: number
@@ -5921,6 +6283,19 @@ export type Database = {
         Args: { p_lease: string; p_logs: Json; p_run: string }
         Returns: boolean
       }
+      scan_active_jobs: { Args: { p_parent: string }; Returns: number }
+      scan_child_images_live: { Args: { p_child: string }; Returns: boolean }
+      scan_marking_command: {
+        Args: {
+          p_action: string
+          p_data?: Json
+          p_parent: string
+          p_photo: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      scan_marking_sheet_current: { Args: { p_result: Json }; Returns: boolean }
       scan_photo_is_active: {
         Args: { p_created: string; p_expires: string; p_state: string }
         Returns: boolean
