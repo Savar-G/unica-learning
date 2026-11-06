@@ -1,0 +1,16 @@
+{
+  "route": "direct",
+  "job_kind": "improve",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "base": "6acaa2637ad88f88462800a056cdeddcc90678e2",
+  "contract": "DESIGN.md and r565 picked states",
+  "scenarios": "scenarios.md",
+  "evidence": "evidence.md",
+  "checks": "checks.json",
+  "screens": "Existing Scan pages stack, canonical result review and Admin scan detail",
+  "analytics": "Fixed anonymous status transport; SDK scan captures rejected",
+  "visual_review": "Root owns browser checks and Savar approval",
+  "paid_calls": 0,
+  "release": "No family release changes"
+}
