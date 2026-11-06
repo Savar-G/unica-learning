@@ -79,12 +79,32 @@ describe("frozen printed-day progress", () => {
     expect(project(b, receipts)).toMatchObject({ acceptedPageCount: 0, lastQualifyingScanAt: null, day7Ready: false });
   });
 
-  it("never requires or counts Extra practice, covers, plan pages, or padding", () => {
+  it("never requires or counts empty extra pages, covers, plan pages, or padding", () => {
     const b = book();
     const p = project(b, [99, 100, 101, 102, 103].map((n) => receipt(b, n)));
     expect(p.acceptedPageCount).toBe(0);
     expect(p.days.flatMap((d) => d.requiredPages)).toHaveLength(11);
     expect(p.pages).toHaveLength(11);
+  });
+
+  it("retains a scored Extra practice scan without requiring it for a day", () => {
+    const b = book();
+    b.pages = b.pages.map((p) => p.number === 99 ? { ...p, questions: [{}] } : p);
+    const r = receipt(b, 99, "2026-11-06T17:00:00Z");
+    const p = project(b, [r]);
+    expect(p).toMatchObject({ acceptedPageCount: 1, day7Ready: false, lastQualifyingScanAt: "2026-11-06T17:00:00.000Z" });
+    expect(p.days.every((d) => d.acceptedPages.length === 0)).toBe(true);
+    expect(p.days.flatMap((d) => d.requiredPages)).toHaveLength(11);
+    expect(p.pages.find((page) => page.pageId === r.pageId)?.scanned).toBe(true);
+    expect(inactivity([b], [r])).toMatchObject({ anchorAt: "2026-11-06T17:00:00.000Z", due: false });
+  });
+
+  it("does not call an accepted Extra practice page a zero-scan backstop", () => {
+    const b = book();
+    b.pages = b.pages.map((p) => p.number === 99 ? { ...p, questions: [{}] } : p);
+    const now = Date.parse(deliveryDeadlines(b.delivery!).backstopAt);
+    const r = receipt(b, 99, new Date(now - 60_000).toISOString());
+    expect(project(b, [r], { now })).toMatchObject({ acceptedPageCount: 1, candidate: "delivery_backstop", holdReason: null, day7Ready: false });
   });
 
   it("requires the full multi-part frozen level test and permits a genuine one-page test", () => {

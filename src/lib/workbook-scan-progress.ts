@@ -124,9 +124,11 @@ export function workbookScanProgress(input: ScanProgressInput): WorkbookScanProg
   if (!Number.isFinite(now)) return { status: "refused", reason: "invalid-clock" };
   if (!validBook(book)) return { status: "refused", reason: "invalid-workbook" };
   const byNumber = new Map(book.pages.map((p) => [p.number, p.id]));
-  const required = new Set(book.manifest.days.flatMap((d) => d.pages.map((n) => byNumber.get(n)!)));
+  // Extra practice can record work without becoming part of a required printed day.
+  const scannable = new Set(book.pages.filter((p) => p.questions.length > 0
+    && !["cover", "how-plan", "back-cover", "blank"].includes(p.type)).map((p) => p.id));
   const receipts = uniqueRecords(input.receipts).filter((r) => r.status === "accepted" && sameBook(book, r)
-    && required.has(r.pageId) && !!r.photoRevision && Number.isFinite(instant(r.acceptedAt)) && instant(r.acceptedAt) <= now)
+    && scannable.has(r.pageId) && !!r.photoRevision && Number.isFinite(instant(r.acceptedAt)) && instant(r.acceptedAt) <= now)
     .sort((a, b) => instant(a.acceptedAt) - instant(b.acceptedAt) || a.id.localeCompare(b.id));
   const first = new Map<string, AcceptedScanReceipt>();
   for (const r of receipts) if (!first.has(r.pageId)) first.set(r.pageId, r);
@@ -147,7 +149,7 @@ export function workbookScanProgress(input: ScanProgressInput): WorkbookScanProg
     // Use the scan time, not a delayed job's admission time, for the inactivity anchor.
     qualifying.push(instant(r.acceptedAt));
   }
-  const pages = [...required].map((pageId) => {
+  const pages = [...scannable].map((pageId) => {
     const reviews = (input.reviews ?? []).filter(({ parentId, page: p }) => parentId === book.parentId
       && p.childId === book.childId && p.workbookId === book.workbookId && p.book === book.number
       && p.revision === book.printedRevision && p.id === pageId);

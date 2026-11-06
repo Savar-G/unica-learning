@@ -35,7 +35,7 @@ The inputs reuse `ScanManifest`, `manifestProblem`, `isPrintedRevision`, `SNAPSH
 
 Day 7 requires every frozen Day 7 page. A test workbook requires the full frozen level-test set. Earlier gaps remain visible. Days 8 and 10 cannot complete Day 7. A Day 7 candidate requires the matching effective delivery receipt. Scans received before delivery confirmation remain present.
 
-`candidate` is only `day7_scanned`, `delivery_backstop`, or null. It claims no trigger, draft, snapshot, or arbitration result. At the 21-day confirmed-delivery boundary, zero accepted required pages return null with `holdReason: "no-accepted-scans-at-backstop"`. This implements the #628 HOLD rule. It does not advance by plan or repeat a book.
+`candidate` is only `day7_scanned`, `delivery_backstop`, or null. It claims no trigger, draft, snapshot, or arbitration result. At the 21-day confirmed-delivery boundary, zero accepted scannable pages return null with `holdReason: "no-accepted-scans-at-backstop"`. This implements the #628 HOLD rule. It does not advance by plan or repeat a book. Scored Extra practice can be accepted and reset inactivity without becoming required for a printed day.
 
 `scanInactivityCandidate(input)` selects the child's latest numbered confirmed-delivered book. It returns the delivery or last qualifying scan anchor, the four-local-day deadline, and due status. A missing delivery receipt creates no delivery timer. Another child's book or scan cannot change the result. Book 2 uses its own receipt. Repeated confirmation record times cannot reset the anchor.
 
@@ -95,3 +95,7 @@ No shared transport, email, dashboard, generator, print, package, template, plan
 The approved work order remains #475, #472, #473, #476 with printed pages unchanged. The full U16 approval sample remains pinned to `99f0e00e`. It still needs Savar's relayed approval. This local core grants no customer-run authority.
 
 HANDOFF_READY remains pending root integration. Root can change the marker after it consumes this handoff.
+
+## Root correction before independent review
+
+The initial core excluded every page outside the required day manifest from accepted receipts. Two added public tests reproduced the loss of a scored Extra practice scan and a false zero-scan backstop hold. The correction accepts question-bearing pages apart from covers, plan pages, back covers and padding. Required day sets still come only from the frozen manifest. All 31 public tests pass. This changes no printed page. The initial fixture's empty Extra practice page remains excluded.
