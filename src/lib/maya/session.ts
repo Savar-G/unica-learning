@@ -1564,7 +1564,7 @@ const COLUMN_WORDS = "ten thousands|hundred thousands|millions|ones|tens|hundred
 const CLAIM_PLACE = new RegExp(`\\b(in|into|under|at|on|for|to|from)\\s+(?:the\\s+)?(${COLUMN_WORDS})\\b`, "gi");
 const CLAIM_COLUMN = new RegExp(`\\b(${COLUMN_WORDS})\\b`, "gi");
 const BARE_COLUMN = new RegExp(`^\\s*(?:the\\s+)?(${COLUMN_WORDS})\\b`, "i");
-const CLAIM_RELATION = new RegExp(`^(?:${CLAIM_PLACE.source}|${BARE_COLUMN.source})`, "i");
+const CLAIM_RELATION = new RegExp(`^(?:${CLAIM_PLACE.source}|${BARE_COLUMN.source}|(?:in|into|under|at|on|for|to|from)\\b)`, "i");
 const CARRIED_REFERENCE = /\bthe\s+([^\s.,;!?]+(?:[ -][^\s.,;!?]+)?)\s+(?:that\s+)?(?:i|we)\s+$/i;
 const CLAIM_END = /[.,;!?\n]|\b(?:and|then)\b/i;
 function claimPlaces(text: string) {
@@ -1580,7 +1580,8 @@ function columnClaims(text: string): ColumnClaim[] {
   const verbs = [...text.matchAll(CLAIM_VERB)];
   return verbs.flatMap((verb, i) => {
     const before = text.slice(0, verb.index);
-    const reference = /^carried$/i.test(verb[0]) ? CARRIED_REFERENCE.exec(before) : null;
+    const preceding = /^carried$/i.test(verb[0]) ? CARRIED_REFERENCE.exec(before) : null;
+    const reference = preceding && CLAIM_NUMBER.exec(` ${preceding[1]}`)?.[0].trim() === preceding[1] ? preceding : null;
     const incoming = /^carried$/i.test(verb[0]) && (!!reference || /\bthe\s+$/i.test(before));
     let rest = (reference ? ` ${reference[1]}` : "") + text.slice(verb.index! + verb[0].length, verbs[i + 1]?.index);
     if (/\bwhere\s+$/i.test(before) && /^[\s?!.]*$/.test(rest)) return [];

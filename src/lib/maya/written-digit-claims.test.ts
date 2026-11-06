@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createSession, step, type LineChoice, type LineId, type Proposal, type SessionEvent, type Slots } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
+import { createTextSession } from "@/lib/maya-text";
+import { fakeMayaModel } from "@/lib/maya-model-fake";
 
 const value = (n: number) => ({ type: "number" as const, value: n });
 const line = (name: LineId, slots: Slots = {}): LineChoice => ({ line: name, slots });
@@ -107,6 +109,42 @@ describe("a carry source cannot be discarded by sentence punctuation", () => {
       expect(result.session.done).not.toContain("ones");
     });
   }
+});
+
+describe("R4: incomplete relations and separate carry clauses", () => {
+  it("does not save or restore credit from a discarded carry source", async () => {
+    let at = 1000;
+    const model = fakeMayaModel({ answer: (_input, n) => n === 0
+      ? { version: 2, act: "open", parts: [line("open.hello"), line("question.problem")] }
+      : { version: 2, act: "guide", step: "tens", level: 0,
+        parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })],
+        reading: { answers: [{ step: "ones", value: value(16), verdict: "right" }] } } });
+    const options = { callId: "r4-persistence", package: FIXTURES.A, model, clock: () => at, random: 7, freeTalk: true };
+    const text = createTextSession(options); await text.start(); at += 4000;
+    await text.child("7 plus 9 is 16, I carried 1, from, the tens.");
+    const saved = JSON.parse(JSON.stringify(await text.saved()));
+    expect(text.session.done).not.toContain("ones");
+    expect(saved.session.done).not.toContain("ones");
+    expect(createTextSession({ ...options, resume: saved }).session.done).not.toContain("ones");
+  });
+  for (const separator of [",", ".", ";", "!", "?"]) {
+    it.each([
+      `I carried 1${separator} from${separator} the tens`,
+      `I carried 1${separator} to${separator} the ones`,
+      `I wrote 6${separator} in${separator} the hundreds`,
+    ])("keeps an interrupted relation unclear: %s", claim => {
+      const c = call(); c.child("7 plus 9 is 16, " + claim);
+      const result = rightOnes(c);
+      expect(result.refusal).not.toBeNull();
+      expect(result.session.done).not.toContain("ones");
+    });
+  }
+  it.each(["I wrote 6", "it is written as 6"])("accepts a separate correct carry after %s", written => {
+    const c = call(); c.child(`7 plus 9 is 16, ${written} in the ones and I carried 1 to the tens.`);
+    const result = rightOnes(c);
+    expect(result.refusal).toBeNull();
+    expect(result.session.done).toContain("ones");
+  });
 });
 
 it.each([1, 2])("checks the incoming value in a backward carry reference: %s", carry => {

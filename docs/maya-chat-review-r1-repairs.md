@@ -41,3 +41,13 @@ The first 51-file regression found two compatibility regressions: the ESL reques
 Final direct behavior check: 618 tests passed in eight files. The complete 51-file Maya regression then passed 4,125 tests, with zero failures and zero skips. The machine-filtered count is in root's saved r3-regression51-final.log. Type and lint results are recorded separately. These are local fake-model checks, not paid practice or live-family proof.
 
 The planned review limit extends from three to five only for this evidenced progress-state blocker. The public failures award unchecked Session.done progress; maya-text.saved serializes this session in its durable call state. This is the sol-loop state-integrity exception. R4 remains scoped to the changed claim reader and open finding. Budget end is not approval. Paid practice remains 0 of 2.
+
+## R4 carry-source and reference repairs
+
+R4-1: a relation prefix after sentence punctuation now keeps the claim unclear even when another separator interrupts its column. The reader cannot discard `from, the tens` and infer the ones column. R4-2: a backward carry reference must contain the complete numeric form. The preceding words `the ones and I` cannot replace the explicit number after `carried`. Empty or unreadable claims still require clarification.
+
+Before these repairs, 17 new public controls failed and 58 passed. After the repairs, all 75 passed. A later persistence test also passed, giving 76 final claim tests. It uses the public text adapter, a fake model and a JSON save/restore round trip. The wrong carry source receives no live, saved or restored ones credit. It does not test hosted storage.
+
+The 51-file regression passed 4,143 tests with zero failures and zero skips. Product source stayed fixed during this run. The claim test file gained the persistence test during the run; its final 76-case check ran separately after that edit. Do not add these overlapping counts. The final TypeScript and changed-code lint checks passed. No old expectation was weakened. No current full-repository gate, live provider or practice pass is claimed.
+
+The customer comment batch remains active. No full Chromium run, paid call, browser check, hosted write, push, merge, family switch or print change ran. Paid practice remains 0 of 2. The final scoped review is round five of the existing five-round state-integrity budget. Budget end is not approval. If it still finds a blocker, stop the review loop and report it to Savar.
