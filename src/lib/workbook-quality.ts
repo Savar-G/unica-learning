@@ -1,4 +1,5 @@
-import { stepTemplateOf } from "./workbook-step-items";
+import { mixedTemplateSign, stepTemplateOf } from "./workbook-step-items";
+import { checkQuestionPackage } from "./question-package";
 import { bcStepProgressions } from "./workbook-curriculum";
 import { reviewMasteryStep } from "./workbook-review-level";
 import { questionWorkSpace, WORK_INSTRUCTION } from "./workbook-work-space";
@@ -92,6 +93,24 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   const types = new Map<string, number>();
   const all = pages.flatMap(p => p.questions).filter(q => q.package && q.place !== "warm-up");
   for (const p of pages) {
+    const mixedNumbers = new Set(p.content?.kind === "day" ? p.content.blocks.filter(b => b.slot === "mixed-set").flatMap(b => b.items) : []);
+    for (const q of p.questions) {
+      if (q.place !== "mixed-set" && !mixedNumbers.has(q.number)) continue;
+      const pkg = q.package, item = pkg?.item;
+      const choice = item?.regions.find(r => r.kind === "choice");
+      const answer = item?.regions.find(r => r.kind === "box");
+      const work = item?.regions.find(r => r.kind === "work");
+      const source = item?.checks.find(c => c.kind === "template" && c.region === answer?.id);
+      const ref = pkg && stepTemplateOf(pkg);
+      const template = ref && bcStepProgressions().skillSteps(ref.skill)?.find(s => s.number === ref.step)?.templates?.[ref.index];
+      const sign = source?.kind === "template" && template ? mixedTemplateSign({ ...template, answer: source.source.answer, derived: Object.fromEntries(source.source.derived) }) : null;
+      if (!pkg || item?.format !== "tick-and-number" || !answer || !work || choice?.kind !== "choice" || choice.mark !== "tick"
+        || choice.choices.length < 2 || choice.choices.some(s => !["+", "−", "×", "÷"].includes(s))
+        || typeof choice.answer !== "string" || !choice.choices.includes(choice.answer) || source && (!sign || choice.answer !== sign)
+        || !checkQuestionPackage(pkg).ok) {
+        issues.push({ page: p.number, kind: "coverage", reason: `Mixed set question ${q.number} needs checked operation choices, an answer box and a work box` });
+      }
+    }
     // A Number stories page mixes its kinds of story (the U4 review: three "gets 2 more"): two stories or more, two kinds.
     if (p.type === "word-problems") {
       const stories = p.questions.filter(q => q.package && ["word-problems", "solve-it-two-ways"].includes(q.place ?? "")).map(q => storyKind(q.package!.text)).filter(Boolean);

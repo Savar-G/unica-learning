@@ -61,6 +61,51 @@ describe("step declarations (#597)", () => {
 });
 
 describe("step template items (#489)", () => {
+  it.each([
+    ["4.4-add-within-10000", 4, "+"], ["4.4-subtract-within-10000", 5, "−"],
+    ["4.8-multiplication-facts", 3, "×"], ["4.5-word-problems", 2, "÷"],
+  ] as const)("keeps %s#%s as a checked Mixed set story with key %s", (skill, step, sign) => {
+    const filled = item(skill, step, "mixed-set", 17, 0, 16)!;
+    expect(filled).toBeTruthy();
+    expect(filled.ref).toMatchObject({ skill, step, kind: "mixed", format: "story" });
+    const built = buildStepItem(filled.ref, filled.text, place(16, skill), "code");
+    expect(built.check.status).toBe("checked");
+    expect(built.package!.text).toBe(filled.text);
+    expect(built.package!.item!.regions).toEqual([
+      expect.objectContaining({ kind: "choice", mark: "tick", choices: ["+", "−", "×", "÷"], answer: sign }),
+      expect.objectContaining({ kind: "box" }), expect.objectContaining({ kind: "work", label: "Show your work" }),
+    ]);
+    const pkg = built.package!;
+    for (const wrong of ["operation", "answer"]) {
+      const changed = structuredClone(pkg);
+      const region = changed.item!.regions.find(r => r.id === wrong)!;
+      if (region.kind === "choice") region.answer = region.choices.find(c => c !== sign)!;
+      if (region.kind === "box") region.answer = { type: "number", value: -999 };
+      expect(checkQuestionPackage(changed).status).toBe("failed");
+    }
+    expect(built.itemStep).toEqual({ unit: BC.skill(skill)!.unit, skill, step });
+  });
+
+  it("does not turn decimal naming, comparisons or rounded-up division into a one-operation Mixed set", () => {
+    for (const [skill, step] of [["4.2-tenths", 3], ["4.5-divide-1-digit", 5]] as const) {
+      expect(BC.skillSteps(skill)?.find(s => s.number === step)).toBeTruthy();
+      // The division step has a q + 1 story, with q derived by division. The operation to choose is not addition.
+      for (let seed = 1; seed <= 10; seed++) {
+        const filled = item(skill, step, "mixed-set", seed, 0, 16);
+        expect(filled).toBeNull();
+      }
+    }
+  });
+
+  it.each([
+    ["8.5-divide-fractions", 26, 2], ["9.1-word-problems", 28, 0],
+  ] as const)("excludes partial printed quantities from %s Mixed set operation keys", (skill, level, unsafeIndex) => {
+    for (let seed = 1; seed <= 32; seed++) {
+      const filled = item(skill, 1, "mixed-set", seed, 0, level);
+      expect(filled?.ref.index, `seed ${seed}: ${filled?.text}`).not.toBe(unsafeIndex);
+    }
+  });
+
   it("fills a template with numbers from its step's ranges and checks the key from the numbers", () => {
     const step = stepOf(BC, "1.1-count-on-back", 3)!;
     for (let seed = 1; seed <= 40; seed++) {
