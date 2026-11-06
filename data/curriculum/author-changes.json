@@ -104927,8 +104927,8 @@
       "check"
     ],
     "before": "a != b",
-    "after": "a != b + c",
-    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases."
+    "after": "a != b + c and 8 <= a + b + c <= 12",
+    "why": "Make final-step probability compare red with the combined other outcomes. Keep the total bag size between 8 and 12 items and exclude equal cases."
   },
   {
     "skill": "4.17-predict-outcome",
@@ -104979,8 +104979,8 @@
       "check"
     ],
     "before": "a != b",
-    "after": "a != b + c",
-    "why": "Make final-step probability compare red with the combined other outcomes. Preserve the count range and exclude equal cases."
+    "after": "a != b + c and 8 <= a + b + c <= 12",
+    "why": "Make final-step probability compare red with the combined other outcomes. Keep the total bag size between 8 and 12 items and exclude equal cases."
   },
   {
     "skill": "4.17-predict-outcome",

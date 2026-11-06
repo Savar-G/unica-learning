@@ -7856,7 +7856,9 @@ F11 now describes reversing tens and ones. Its source reason changed from "write
 
 ## 2026-11-05: final-step bag outcomes
 
-For `4.17-predict-outcome`, step 3, templates 1 and 3 now compare red with the combined blue and green outcomes. The old questions compared two stated counts. The new questions require the child to combine the non-red outcomes before comparing likelihood. The counts keep the step's range of 1 to 12. No fractions or replacement probabilities are added. Code computes the keys as `a > b + c`. Equal cases are excluded. Earlier teaching steps stay unchanged.
+For `4.17-predict-outcome`, step 3, templates 1 and 3 now compare red with the combined blue and green outcomes. The old questions compared two stated counts. The new questions require the child to combine the non-red outcomes before comparing likelihood. Each colour has at least one marble. The total bag size must be between 8 and 12 items, as the step requires. No fractions or replacement probabilities are added. Code computes the keys as `a > b + c`. Equal cases are excluded. Earlier teaching steps stay unchanged.
+
+The SPEC review at `90600c96` found that independent colour counts could exceed the total bag size. Both bag templates now require `8 <= a + b + c <= 12` in addition to the comparison check. The curriculum source and generated data use the same constraint.
 
 ## 2026-11-05: final-step scale intervals and missing bills
 
