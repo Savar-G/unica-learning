@@ -31,7 +31,7 @@ export function ScanHistory({ parent, child }: { parent: string; child: string }
       <option value="all">All pages</option><option value="review">Answers to check</option><option value="failed">Pages that could not be checked</option>
     </select></label>
     {failed ? <p role="alert">We cannot load page history now. Refresh this page to try again.</p> : !listing ? <p role="status">Loading page history...</p> : <>
-      <p role="status">Showing {pages.length} printed {pages.length === 1 ? "page" : "pages"}. {listing.counts.review ?? 0} need a parent check.</p>
+      <p role="status">Showing {pages.length} printed {pages.length === 1 ? "page" : "pages"}. {listing.counts.review ?? 0} {(listing.counts.review ?? 0) === 1 ? "needs" : "need"} a parent check.</p>
       {[...groups.values()].map((group) => <section key={`${group[0].workbookId}:${group[0].day}`} className="scan-group">
         <h3>Workbook {group[0].book} · {group[0].day}</h3>
         <ul>{group.map((p) => <li key={p.id}>
