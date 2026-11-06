@@ -8,6 +8,7 @@ import { gradeLabel } from "@/lib/assessment/grades";
 import type { ChildTab } from "@/lib/child-stage";
 import type { ChildView } from "@/lib/parent-view";
 import { activeTab, addressChild, lastChildCookie, phoneNav, pickChild, tabLinks, type TabLink } from "@/lib/parent-shell";
+import { feedbackLink } from "@/lib/feedback";
 import { BRAND } from "@/lib/site";
 import "./parent-shell.css";
 
@@ -71,10 +72,12 @@ export function ParentShell({ kids, remembered, pinSet, timeZoneSaved, children 
         {block}
         <nav className="pd-nav" aria-label="Your account">
           <TabList links={links} current={current} />
+          <Link href={feedbackLink(pathname)} aria-current={pathname === "/account/feedback" ? "page" : undefined}>Feedback</Link>
         </nav>
       </aside>
       <header className="pd-top">
         <Wordmark />
+        <Link className="pd-top-feedback" href={feedbackLink(pathname)} aria-current={pathname === "/account/feedback" ? "page" : undefined}>Feedback</Link>
         {nav.kind === "top" && (
           <nav className="pd-top-links" aria-label="Your account">
             {nav.links.map((l) => <Link key={l.tab} href={l.href} aria-current={l.tab === current ? "page" : undefined}>{l.label}</Link>)}

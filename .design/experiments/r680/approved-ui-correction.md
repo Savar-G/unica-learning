@@ -1,0 +1,9 @@
+# Approved Feedback UI correction
+
+Savar approved the screens on 2026-11-06 with two changes. The plain dropdown now starts at Choose a product. A missing choice keeps text and writes nothing. Known preselected products and Something else still work. Empty, too-long and no-product refusals use the existing .fld.bad .err design rule, token --red (#e0322b), beside the associated field. Each keeps role=alert, aria-describedby and focus.
+
+The browser measured both no-product and too-long messages as rgb(224, 50, 43), the token color. Focus moved to each alert. Missing-product text remained intact. A too-long paste retained 5,500 characters. Four new screenshots cover desktop and phone. Source context and schema are unchanged. The full Feedback feature passed Sol review at fb274c052de09f8a9cc8cbecdc68ac8e5d8d83d0. This small correction uses the required three-Terra hybrid process.
+
+The first full suite completed with 11 failed files and 117 failures. All were caused by missing usePathname in older Next navigation mocks or the expected new Feedback link in legacy footer snapshots. The 11 mock adapters now return their page path. Seven snapshot files add only that required footer link. Root verified each against its original text with only this exact insertion. No assertion, time limit or feature code was removed. All 144 tests in the 11 affected files now pass. The focused Feedback/correction/preview tests passed 191 cases across six files. A new full serial suite is running on the revised code; its result is not yet claimed. Root build and source lint passed.
+
+Production Feedback, remote CI and merge remain pending. The twelve initial screens and four correction screens were sent before merge. Family switches stay off until Savar approves the full dashboard review page. Team status editing stays outside first ship.

@@ -5,7 +5,7 @@ import { deskGate } from "@/lib/desk";
 const PARENT = "11111111-1111-4111-8111-111111111111", CHILD = "22222222-2222-4222-8222-222222222222", BOOK = "33333333-3333-4333-8333-333333333333";
 const state = vi.hoisted(() => ({ parent: "11111111-1111-4111-8111-111111111111" as string | null, open: true, read: vi.fn(), source: vi.fn() }));
 vi.mock("server-only", () => ({}));
-vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/account/workbooks/sample-child/answers/sample-workbook", redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
 vi.mock("@/lib/supabase-auth", () => ({ sessionClient: async () => ({}), parentId: async () => state.parent }));
 vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: async () => state.open }));
 vi.mock("@/lib/parent-workbook-answers-server", () => ({ parentWorkbookAnswerSource: state.source }));

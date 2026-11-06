@@ -3,6 +3,10 @@
 import { AppRouterContext, type AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server.browser";
+import { FeedbackFormView } from "@/components/feedback-form";
+import { AdminFrame } from "@/components/admin";
+import { AdminFeedbackList } from "@/components/admin-feedback";
+import { FEEDBACK_MESSAGES, type FeedbackError } from "@/lib/feedback";
 import { ParentShell } from "@/components/parent-shell";
 import { ParentTestStart, ParentReport } from "@/components/parent-assessment";
 import { ParentOverview } from "@/components/parent-overview";
@@ -138,6 +142,17 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
   if (!child && selection.view === "account") return <ParentAccountSettings card={state} hasCard={false} province="BC" billing={<AccountBilling billing={billing([], "empty")} zone={zone} />} details={null} />;
   if (!child && selection.view === "plan") return <ParentPlanView plans={[]} zone={zone} controls />;
   if (!child && selection.view === "scan") return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[]} parent="sample-parent" noticeAcknowledged initial={{ listing: scanListing("empty") }} /></SupportPage>;
+  if (selection.view === "feedback") {
+    if (state === "admin_rows") return <AdminFrame email="admin@example.invalid" section="feedback" title="Feedback"><AdminFeedbackList product={null} rows={[
+      { id: "sample-1", parent_id: "sample-parent-1", child_id: null, product: "workbook", text: "The space for the written answer was helpful.\nCould you add more room for working?", source: "/account/workbooks", created_at: "2026-11-05T19:00:00Z", status: "new" },
+      { id: "sample-2", parent_id: "sample-parent-2", child_id: null, product: "parent_dashboard", text: "I found the report quickly on my phone.", source: "/account", created_at: "2026-11-05T18:00:00Z", status: "read" },
+    ]} /></AdminFrame>;
+    const error = Object.hasOwn(FEEDBACK_MESSAGES, state) ? state as FeedbackError : null;
+    return <SupportPage label="Your account" title="Feedback"><p className="lead">Tell us what worked well or what we can improve.</p>
+      <FeedbackFormView product={state === "form" || state === "no_product" || state.startsWith("stage_") ? "" : "workbook"} text={state === "too_long" ? "Thank you for the workbook. ".repeat(193) : state === "unavailable" || state === "no_product" ? "Could you add more room for working?" : ""}
+        busy={false} result={state === "sent" ? { ok: true } : error ? { ok: false, error } : null} />
+    </SupportPage>;
+  }
   if (!child) return <SupportPage label="Your account" title="Your account"><p className="lead">Add a child on the <a href="/account/settings">Account</a> page to start.</p></SupportPage>;
   switch (selection.view) {
     case "assessment": {
@@ -188,8 +203,10 @@ export function renderParentPreview(selection: PreviewSelection, styles: Preview
   const child = kids[selection.child === "second" ? 1 : 0];
   const tab = selection.view === "report" ? "assessment" : selection.view === "scan" || selection.view === "scan_results" ? "scan_pages" : selection.view === "plan" ? "account" : selection.view === "workbook_answers" ? "workbooks" : selection.view;
   const pathname = tabLinks(child).find(l => l.tab === tab)?.href.split("?")[0] ?? "/account/settings";
+  const content = previewContent(selection, child, kids);
+  const isAdminFeedback = selection.view === "feedback" && selection.scenario === "admin_rows";
   const markup = renderToStaticMarkup(<AppRouterContext.Provider value={staticRouter}><PathnameContext.Provider value={pathname}><SearchParamsContext.Provider value={new URLSearchParams(child ? { child: child.id } : {})}>
-    <ParentShell kids={kids} remembered={child?.id ?? null} pinSet={selection.scenario !== "no_pin"} timeZoneSaved>{previewContent(selection, child, kids)}</ParentShell>
+    {isAdminFeedback ? content : <ParentShell kids={kids} remembered={child?.id ?? null} pinSet={selection.scenario !== "no_pin"} timeZoneSaved>{content}</ParentShell>}
   </SearchParamsContext.Provider></PathnameContext.Provider></AppRouterContext.Provider>);
   return parentPreviewDocument(markup, styles);
 }
