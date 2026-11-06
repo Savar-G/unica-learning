@@ -13,6 +13,8 @@ export const MARKING_MODEL = "anthropic/claude-sonnet-5.5";
 export const MARKING_MAX_TOKENS = 4096;
 export const MARKING_MAX_DISPATCHES = 2;
 export const MARKING_CAP_MICROS = 50_000_000;
+/** Match the current whole-sheet identity check. A legacy ready label is insufficient. */
+export const MARKING_SHEET_CHECK_VERSION = 1;
 /** Bounded canonical key. Item IDs can be 200 characters; photos never change this key. */
 export const markingOriginalKey = (item: ExpectedItem) => `marking:${createHash("sha256").update(itemKey(item.identity), "utf8").digest("hex")}`;
 export interface MarkingRef { parent: string; photo: string }
@@ -96,6 +98,9 @@ function request(image: Uint8Array, local: Alias[]): AiJsonRequest {
   };
 }
 const object = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+export function currentSheetCheck(result: unknown): boolean {
+  return object(result) && typeof result.sheetCheck === "number" && Number.isFinite(result.sheetCheck) && result.sheetCheck >= MARKING_SHEET_CHECK_VERSION;
+}
 /** Validate readings as untrusted input. Missing, duplicate or malformed regions stay pending. */
 export function readMarkingOutput(frame: MarkingFrame, output: unknown): Observation[] {
   const expected = expectedItems(frame), local = aliases(frame, expected);

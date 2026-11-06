@@ -30,6 +30,7 @@ const copy = v => JSON.parse(JSON.stringify(v));
   await db.query(sql('20261105_child_profile_skill_changes_from_tests.sql'));
   await db.query(sql('20261105_scan_marking.sql'));
   await db.query(sql('20261106_scan_calibration_previous.sql'));
+  await db.query(sql('20261106_scan_marking_sheet_check.sql'));
  }
  let passed=0,failures=0;
  async function test(name,run){try{await run();passed++;console.log('PASS',name);}catch(e){failures++;console.log('FAIL',name,e.stack);}}
@@ -40,7 +41,7 @@ const copy = v => JSON.parse(JSON.stringify(v));
   await db.query("insert into workbook_pages(id,workbook_id,parent_id,page_number,print_contract,image_width,image_height) values($1,$2,$3,3,'{}',1000,1400)",[page,w,p]);
   await db.query("insert into workbook_questions(parent_id,workbook_id,page_id,question_number,package) values($1,$2,$3,1,'{\"id\":\"item1\"}')",[p,w,page]);
   await db.query("insert into scan_photos(id,parent_id,child_id,page_id,workbook_id,printed_revision,state,reserved_bytes,width,height,sent_at) values($1,$2,$3,$4,$5,'immutable','saved',0,1000,1400,now())",[photo,p,c,page,w]);
-  await db.query("insert into scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until,result) values($1,$2,'immutable','ready',$3,now(),'{\"parts\":[\"straight\"]}')",[photo,p,cal]);
+  await db.query("insert into scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until,result) values($1,$2,'immutable','ready',$3,now(),'{\"parts\":[\"straight\"],\"sheetCheck\":1}')",[photo,p,cal]);
   const identity={workbookId:w,printedRevision:'immutable',pageId:page,itemId:'item1'};
   const expected={identity,number:1,method:'code',scoredRegions:['a'],mastery:{eligible:true,reason:null},teaching:{curriculum:{key:'bc',version:'v1'},part:'practice',slot:'1',practiceType:'now-you',itemStep:{unit:'U1',skill:'add',step:1}}};
   const observation={version:1,identity,evidence:{photoRevision:photo},readAnswerText:null,regions:[],certainty:'not-read',state:'pending',method:'code',result:null,teaching:expected.teaching,mastery:expected.mastery,help:'none',actor:'system',resultVersion:1};
@@ -81,7 +82,7 @@ const copy = v => JSON.parse(JSON.stringify(v));
   const before=await rows(f);await db.query("update scan_photos set state='expired',terminal_at=now() where id=$1",[f.photo]);
   assert.deepEqual(await rows(f),before);assert.equal(before[0].observation.readAnswerText,'56');assert.equal(await reserve(f),'terminal');
   const next=randomUUID();await db.query("insert into scan_photos(id,parent_id,child_id,page_id,workbook_id,printed_revision,state,reserved_bytes,width,height,sent_at) values($1,$2,$3,$4,$5,'immutable','saved',0,1000,1400,now())",[next,f.p,f.c,f.page,f.w]);
-  await db.query("insert into scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until,result) values($1,$2,'immutable','ready',$3,now(),'{\"parts\":[\"straight\"]}')",[next,f.p,randomUUID()]);
+  await db.query("insert into scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until,result) values($1,$2,'immutable','ready',$3,now(),'{\"parts\":[\"straight\"],\"sheetCheck\":1}')",[next,f.p,randomUUID()]);
   const retake={...f,photo:next,token:randomUUID()};await claim(retake);await extraction(retake,'right');await apply(retake,'right');assert.deepEqual(await rows(f),before);
  });
  await test('old lease cannot overwrite newer photo; extraction is durable and takeover sends no additional request',async()=>{
@@ -267,6 +268,28 @@ const copy = v => JSON.parse(JSON.stringify(v));
    await claim(f);await extraction(f);assert.equal(await apply(f),true);
    const [m]=await rows(f);assert.equal(m.original_event.key,event(f).key);assert.equal(m.original_event.key.length,72);
   }
+ });
+ await test('an earlier Send cannot admit an unversioned or malformed ready calibration',async()=>{
+  for(const sheetCheck of [undefined,null,'1',0,0.9,'bad',{}]){
+   const f=await fixture();await db.query('update scan_calibrations set result=$2 where photo_id=$1',[f.photo,JSON.stringify({parts:['straight'],sheetCheck})]);
+   await db.query('update scan_marking_cursor set after_id=null');let seen=false;
+   for(let n=0;n<100;n++){const batch=(await db.query('select recover_scan_marking(10) v')).rows[0].v;if(batch.some(r=>r.photo===f.photo))seen=true;if(!batch.length)break;}
+   assert.equal(seen,false);assert.equal(await call(db,'frame',f),'unavailable');assert.equal(await claim(f),'unavailable');
+   assert.equal((await db.query('select count(*)::int n from scan_marking_jobs where photo_id=$1',[f.photo])).rows[0].n,0);
+  }
+ });
+ for(const version of [1,2])await test(`current numeric sheet check ${version} discovers, admits and applies`,async()=>{
+  const f=await fixture();await db.query('update scan_calibrations set result=$2 where photo_id=$1',[f.photo,JSON.stringify({parts:['straight'],sheetCheck:version})]);
+  await db.query('update scan_marking_cursor set after_id=null');let seen=false;
+  for(let n=0;n<100;n++){const batch=(await db.query('select recover_scan_marking(10) v')).rows[0].v;if(batch.some(r=>r.photo===f.photo)){seen=true;break;}if(!batch.length)break;}
+  assert(seen);assert((await call(db,'frame',f)).photo);assert((await claim(f)).items);await budget();await price();assert((await reserve(f)).dispatch);await extraction(f);assert.equal(await apply(f),true);
+ });
+ for(const transition of ['running','refused','legacy-ready'])await test(`a prior Send and claim cannot dispatch or apply after ${transition}`,async()=>{
+  const f=await fixture();await claim(f);await extraction(f);
+  if(transition==='running')await db.query("update scan_calibrations set state='running',result=null,lease_until=clock_timestamp()+interval '1 minute' where photo_id=$1",[f.photo]);
+  else await db.query('update scan_calibrations set state=$2,result=$3 where photo_id=$1',[f.photo,transition==='refused'?'refused':'ready',JSON.stringify(transition==='refused'?{reason:'different-page'}:{parts:['straight']})]);
+  assert.equal(await reserve(f),'unavailable');assert.equal(await call(db,'extract',f,f.token,{observations:[f.observation],model:'none',prompt:'none'}),'unavailable');assert.equal(await apply(f),'unavailable');
+  assert.equal((await rows(f))[0].observation.state,'pending');assert.equal((await db.query('select count(*)::int n from scan_marking_dispatches where photo_id=$1',[f.photo])).rows[0].n,0);
  });
  console.log(JSON.stringify({passed,failures,limits:{perTenMinutes:40,perDay:60,concurrentUploads:2,activeJobs:1,queuedJobs:8,inputBytes:20971520,decodedPixels:48000000,familyBytes:2147483648},proof:'local synthetic SQL, not hosted Storage API'}));await db.end();process.exitCode=failures?1:0;
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -12,7 +12,7 @@ begin
   insert into public.workbook_pages(id,parent_id,workbook_id,page_number,print_contract,image_width,image_height) values(pg,p,w,1,'{}',1000,1400);
   insert into public.workbook_questions(parent_id,workbook_id,page_id,question_number,package) values(p,w,pg,1,'{"id":"rollback-item"}');
   insert into public.scan_photos(id,parent_id,child_id,page_id,workbook_id,printed_revision,state,reserved_bytes,width,height,sent_at) values(ph,p,c,pg,w,'rollback-print','saved',0,1000,1400,now());
-  insert into public.scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until,result) values(ph,p,'rollback-print','ready',tok,now(),'{"parts":["straight"]}');
+  insert into public.scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until,result) values(ph,p,'rollback-print','ready',tok,now(),'{"parts":["straight"],"sheetCheck":1}');
   i:=jsonb_build_object('identity',jsonb_build_object('workbookId',w,'printedRevision','rollback-print','pageId',pg,'itemId','rollback-item'),'number',1,'method','unscored','scoredRegions','[]'::jsonb,'mastery',jsonb_build_object('eligible',false,'reason','not-scorable'),'teaching',null);
   o:=jsonb_build_object('version',1,'identity',i->'identity','evidence',null,'readAnswerText',null,'regions','[]'::jsonb,'certainty','not-read','state','unscored','method','unscored','result',null,'teaching',null,'mastery',i->'mastery','help','unknown','actor','system','resultVersion',1);
   answer:=public.scan_marking_command('claim',p,ph,tok,jsonb_build_object('hash','rollback','items',jsonb_build_array(jsonb_build_object('expected',i,'observation',o))));

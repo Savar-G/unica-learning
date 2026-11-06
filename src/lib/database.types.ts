@@ -6295,6 +6295,7 @@ export type Database = {
         }
         Returns: Json
       }
+      scan_marking_sheet_current: { Args: { p_result: Json }; Returns: boolean }
       scan_photo_is_active: {
         Args: { p_created: string; p_expires: string; p_state: string }
         Returns: boolean

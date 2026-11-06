@@ -9,7 +9,7 @@ import { scanPartPath } from "@/lib/scan-crops";
 import { firstObservation, observationProblem, type Observation } from "@/lib/scan-observation";
 import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
-import { MARKING_PROMPT_VERSION, type EffectiveMark, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { currentSheetCheck, MARKING_PROMPT_VERSION, type EffectiveMark, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import { digestOf } from "@/lib/workbook-digest";
 
 const record = (v: unknown): Record<string, unknown> => {
@@ -65,6 +65,7 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
       const raw = await command("frame", ref.parent, ref.photo, null);
       if (typeof raw === "string" || raw === null) return null;
       const r = record(raw), p = record(r.photo), pg = record(r.page), c = record(r.calibration), result = record(c.result);
+      if (c.state !== "ready" || !currentSheetCheck(result)) return null;
       const workbookId = str(p.workbook_id), pageNumber = num(pg.page_number), printedRevision = str(p.printed_revision);
       const image = { width: num(pg.image_width), height: num(pg.image_height) };
       const contract = storedPrintContract(pg.print_contract, { workbookId, page: pageNumber, image });

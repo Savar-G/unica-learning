@@ -26,7 +26,7 @@ begin
     answer:=public.begin_scan_calibration(p,ph,tok);
     if answer->>'status'<>'started' or (answer->>'previous')::uuid<>old_token then raise exception 'calibration_previous_lost'; end if;
     -- Geometry is synthetic. This does not assert that a camera image passed calibration.
-    update public.scan_calibrations set state='ready',result='{"parts":["straight"]}',lease_until=now() where photo_id=ph;
+    update public.scan_calibrations set state='ready',result='{"parts":["straight"],"sheetCheck":1}',lease_until=now() where photo_id=ph;
     expected:=jsonb_build_object('identity',jsonb_build_object('workbookId',w,'printedRevision',rev,'pageId',pg,'itemId',item),
       'number',1,'method','code','scoredRegions',jsonb_build_array('a'),'mastery',jsonb_build_object('eligible',true,'reason',null),
       'teaching',jsonb_build_object('curriculum',jsonb_build_object('key','bc','version','probe'),'part','friday-5','slot','1','practiceType','now-you','itemStep',jsonb_build_object('unit','U1','skill','add','step',1)));
@@ -38,6 +38,14 @@ begin
     exception when insufficient_privilege then execute 'reset role'; end;
     begin execute 'set local role authenticated'; perform public.scan_marking_command('claim',p,ph,tok,'{}'); raise exception 'parent_write_allowed';
     exception when insufficient_privilege then execute 'reset role'; end;
+    execute 'reset role';
+    update public.scan_calibrations set result='{"parts":["straight"]}' where photo_id=ph;
+    execute 'set local role service_role';
+    if public.scan_marking_command('frame',p,ph,null,'{}')<>'"unavailable"'
+      or public.scan_marking_command('claim',p,ph,tok,'{}')<>'"unavailable"' then raise exception 'legacy_sent_row_admitted'; end if;
+    execute 'reset role';
+    if exists(select 1 from public.scan_marking_jobs where photo_id=ph) then raise exception 'legacy_sent_job_created'; end if;
+    update public.scan_calibrations set result='{"parts":["straight"],"sheetCheck":1}' where photo_id=ph;
     execute 'set local role service_role';
     answer:=public.scan_marking_command('claim',p,ph,tok,jsonb_build_object('hash','hosted-probe','items',jsonb_build_array(jsonb_build_object('expected',expected,'observation',observation))));
     if jsonb_array_length(answer->'items')<>1 then raise exception 'canonical_seed_failed'; end if;
