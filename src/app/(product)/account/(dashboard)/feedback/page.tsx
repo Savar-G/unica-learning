@@ -17,6 +17,6 @@ export default async function FeedbackPage({ searchParams }: PageProps<"/account
   // No child or workbook read. The optional contextual child's ownership is checked atomically when saving.
   return <SupportPage label="Your account" title="Feedback">
     <p className="lead">Tell us what worked well or what we can improve.</p>
-    <FeedbackForm initialProduct={feedbackProduct(query.product) ?? "other"} childId={typeof query.child === "string" ? query.child : null} source={feedbackSource(query.from)} />
+    <FeedbackForm initialProduct={feedbackProduct(query.product) ?? ""} childId={typeof query.child === "string" ? query.child : null} source={feedbackSource(query.from)} />
   </SupportPage>;
 }

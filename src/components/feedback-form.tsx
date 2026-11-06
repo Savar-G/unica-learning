@@ -5,34 +5,40 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { FEEDBACK_MESSAGES, FEEDBACK_PRODUCTS, FEEDBACK_SIGN_IN, feedbackInput, feedbackSource, type FeedbackError, type FeedbackProduct, type FeedbackResult } from "@/lib/feedback";
 
 interface ViewProps {
-  product: FeedbackProduct; text: string; result: FeedbackResult | null; busy: boolean;
-  onProduct?: (value: FeedbackProduct) => void; onText?: (value: string) => void; onSubmit?: (event: FormEvent) => void;
+  product: FeedbackProduct | ""; text: string; result: FeedbackResult | null; busy: boolean;
+  onProduct?: (value: FeedbackProduct | "") => void; onText?: (value: string) => void; onSubmit?: (event: FormEvent) => void;
 }
 /** The actual form and states, also used by the authenticated Admin sandbox. */
 export function FeedbackFormView({ product, text, result, busy, onProduct, onText, onSubmit }: ViewProps) {
   const message = useRef<HTMLParagraphElement>(null);
   const inputError = result && !result.ok && ["empty", "too_long", "invalid"].includes(result.error);
+  const productError = result && !result.ok && result.error === "no_product";
   useEffect(() => { if (result) message.current?.focus(); }, [result]);
+  const announcement = result && <p ref={message} id="feedback-result" tabIndex={-1} role={result.ok ? "status" : "alert"} className={result.ok ? "acct-alert acct-saved" : "err"}>
+    {result.ok ? "Thank you. Your feedback is saved." : FEEDBACK_MESSAGES[result.error]}
+    {!result.ok && result.error === "signed_out" && <> <Link href={FEEDBACK_SIGN_IN}>Sign in</Link>.</>}
+  </p>;
   return <form className="acct-form" onSubmit={onSubmit} noValidate aria-busy={busy}>
-    <div className="fld"><label htmlFor="feedback-product">Product</label>
-      <select id="feedback-product" value={product} onChange={e => onProduct?.(e.target.value as FeedbackProduct)} disabled={busy}>
+    <div className={`fld${productError ? " bad" : ""}`}><label htmlFor="feedback-product">Product</label>
+      <select id="feedback-product" value={product} onChange={e => onProduct?.(e.target.value as FeedbackProduct | "")} disabled={busy} required
+        aria-invalid={productError ? true : undefined} aria-describedby={productError ? "feedback-result" : undefined}>
+        <option value="">Choose a product</option>
         {FEEDBACK_PRODUCTS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
       </select>
+      {productError && announcement}
     </div>
-    <div className="fld"><label htmlFor="feedback-text">Your feedback</label>
+    <div className={`fld${inputError ? " bad" : ""}`}><label htmlFor="feedback-text">Your feedback</label>
       <textarea id="feedback-text" value={text} onChange={e => onText?.(e.target.value)} rows={7} disabled={busy} required
         aria-invalid={inputError ? true : undefined} aria-describedby={`feedback-limit${inputError ? " feedback-result" : ""}`} />
       <p id="feedback-limit" className="small">Use 5,000 characters or fewer.</p>
+      {inputError && announcement}
     </div>
-    {result && <p ref={message} id="feedback-result" tabIndex={-1} role={result.ok ? "status" : "alert"} className={result.ok ? "acct-alert acct-saved" : "err"}>
-      {result.ok ? "Thank you. Your feedback is saved." : FEEDBACK_MESSAGES[result.error]}
-      {!result.ok && result.error === "signed_out" && <> <Link href={FEEDBACK_SIGN_IN}>Sign in</Link>.</>}
-    </p>}
+    {!productError && !inputError && announcement}
     <button className="btn" type="submit" disabled={busy}>{busy ? "Sending..." : "Send"}</button>
   </form>;
 }
 
-export function FeedbackForm({ initialProduct = "other", childId = null, source = "/account/feedback" }: { initialProduct?: FeedbackProduct; childId?: string | null; source?: string }) {
+export function FeedbackForm({ initialProduct = "", childId = null, source = "/account/feedback" }: { initialProduct?: FeedbackProduct | ""; childId?: string | null; source?: string }) {
   const [product, setProduct] = useState(initialProduct);
   const [text, setText] = useState("");
   const [result, setResult] = useState<FeedbackResult | null>(null);

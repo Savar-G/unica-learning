@@ -26,7 +26,7 @@ export function feedbackSource(value: unknown): string {
 export const feedbackLink = (path: string) => `${FEEDBACK_PATH}?${new URLSearchParams({ from: feedbackSource(path) })}`;
 const uuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 export interface FeedbackInput { requestId: string; childId: string | null; product: FeedbackProduct; text: string; source: string }
-export type FeedbackError = "empty" | "too_long" | "invalid" | "conflict" | "rate_limited" | "family_unavailable" | "child_unavailable" | "unavailable" | "signed_out" | "desk_open";
+export type FeedbackError = "empty" | "too_long" | "no_product" | "invalid" | "conflict" | "rate_limited" | "family_unavailable" | "child_unavailable" | "unavailable" | "signed_out" | "desk_open";
 export type FeedbackResult = { ok: true } | { ok: false; error: FeedbackError };
 export type FeedbackAdmission = "saved" | "duplicate" | "conflict" | "rate_limited" | "family_unavailable" | "child_unavailable";
 export interface FeedbackStore { submit(parent: string, input: FeedbackInput): Promise<FeedbackAdmission> }
@@ -37,6 +37,7 @@ export function feedbackInput(body: unknown): FeedbackInput | FeedbackResult {
   if (!b.text.trim()) return { ok: false, error: "empty" };
   if ([...b.text].length > FEEDBACK_MAX) return { ok: false, error: "too_long" };
   const product = feedbackProduct(b.product);
+  if (b.product === "" || b.product == null) return { ok: false, error: "no_product" };
   if (!product || !uuid(b.requestId) || (b.childId != null && !uuid(b.childId)) || b.text.includes("\0")) return { ok: false, error: "invalid" };
   return { requestId: b.requestId.toLowerCase(), childId: typeof b.childId === "string" ? b.childId.toLowerCase() : null, product, text: b.text.trim(), source: feedbackSource(b.source) };
 }
@@ -53,6 +54,7 @@ export async function sendFeedback(store: FeedbackStore, parent: string, body: u
   } catch { return { ok: false, error: "unavailable" }; }
 }
 export const FEEDBACK_MESSAGES: Record<FeedbackError, string> = {
+  no_product: "Choose a product before you send your feedback.",
   empty: "Write your feedback before you send it.", too_long: "Use 5,000 characters or fewer. Your text is still here.",
   invalid: "Check your feedback and try again.", conflict: "This request was already used for different feedback. Send again to save this message.",
   rate_limited: "You have sent five messages in the past hour. Please try again later.",

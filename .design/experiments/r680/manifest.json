@@ -7,7 +7,7 @@
   "constraint_mode": "existing-system",
   "contract": ".design/experiments/r680/contract.md",
   "preview": "/admin/dashboard?view=feedback&scenario=form&size=desktop",
-  "status": "implementation; screenshots and review pending with root",
+  "status": "approved UI correction; final tests and hybrid review pending",
   "screenshots": [
     "admin-rows-desktop.png",
     "admin-rows-phone.png",
@@ -17,10 +17,12 @@
     "frame-link-phone.png",
     "long-refusal-desktop.png",
     "long-refusal-phone.png",
+    "no-product-refusal-desktop.png",
+    "no-product-refusal-phone.png",
     "parent-form-desktop.png",
     "parent-form-phone.png",
     "sent-desktop.png",
     "sent-phone.png"
   ],
-  "ui_approval": "pending Savar review"
+  "ui_approval": "Savar approved 2026-11-06 with required product choice and field error color; both implemented"
 }

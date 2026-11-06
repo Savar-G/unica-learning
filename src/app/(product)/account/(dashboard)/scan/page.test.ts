@@ -20,7 +20,7 @@ const state = vi.hoisted(() => ({
   qr: [] as string[],
 }));
 
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => "/account/scan",
   redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); },
   notFound: () => { throw new Error("NOT_FOUND"); },
 }));

@@ -26,6 +26,10 @@ it("requires a session, and never trusts an actor in the body", async () => {
   auth.parent = parent; expect((await post(body({ parentId: other }))).status).toBe(200);
   expect(store.rows[0].parent).toBe(parent);
 });
+it("refuses a missing product before calling the store",async()=>{
+  const response=await post(body({product:""}));expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ok:false,error:"no_product"});expect(auth.rpc).not.toHaveBeenCalled();expect(store.rows).toHaveLength(0);
+});
 it("refuses open-Desk direct POSTs without touching the store", async () => {
   auth.cookie = `${parent}.${child}`;
   const response = await post(body());expect(response.status).toBe(423);expect(await response.json()).toEqual({ ok: false, error: "desk_open" });expect(auth.rpc).not.toHaveBeenCalled();

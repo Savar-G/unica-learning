@@ -25,3 +25,6 @@ it("preselects only a known product and removes identifying source context", asy
   const element = await page({product:"marking", from:"/account/report/private?token=secret"});
   const form = element.props.children[1];expect(form.props.initialProduct).toBe("marking");expect(form.props.source).toBe("/account/report");
 });
+it.each([{}, {product:"unknown"}])("requires a product choice when a link supplies none or an unknown product",async query=>{
+  const element=await page(query);expect(element.props.children[1].props.initialProduct).toBe("");
+});

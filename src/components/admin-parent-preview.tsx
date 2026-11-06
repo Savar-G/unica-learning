@@ -149,7 +149,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
     ]} /></AdminFrame>;
     const error = Object.hasOwn(FEEDBACK_MESSAGES, state) ? state as FeedbackError : null;
     return <SupportPage label="Your account" title="Feedback"><p className="lead">Tell us what worked well or what we can improve.</p>
-      <FeedbackFormView product="other" text={state === "too_long" ? "Thank you for the workbook. ".repeat(193) : state === "unavailable" ? "Could you add more room for working?" : ""}
+      <FeedbackFormView product={state === "form" || state === "no_product" || state.startsWith("stage_") ? "" : "workbook"} text={state === "too_long" ? "Thank you for the workbook. ".repeat(193) : state === "unavailable" || state === "no_product" ? "Could you add more room for working?" : ""}
         busy={false} result={state === "sent" ? { ok: true } : error ? { ok: false, error } : null} />
     </SupportPage>;
   }

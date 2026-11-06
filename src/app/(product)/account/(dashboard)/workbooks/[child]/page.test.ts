@@ -5,7 +5,7 @@ import { memoryParentViewReaders, type MemoryParentViewTables } from "@/lib/pare
 
 vi.mock("server-only", () => ({}));
 const state = vi.hoisted(() => ({ signedIn: true, dashboard: true, reader: null as unknown }));
-vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/account/workbooks/sample-child", redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => state.dashboard ? {} : null }));
 vi.mock("@/lib/parent-view-server", () => ({ signedInParentView: async () => state.signedIn ? state.reader : null }));
 const own = { parentId: "p1", childId: "c1" };

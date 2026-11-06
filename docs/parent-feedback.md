@@ -2,7 +2,7 @@
 
 `/account/feedback` accepts feedback from every signed-in parent. No child, workbook, assessment result or dashboard release flag is required. A signed-out visitor returns to the plain page after sign-in. The existing account layout, restored-tab Desk guard and proxy still apply. The page and POST handler also check the Desk cookie. `/api/account/feedback` takes the actor only from the session.
 
-The form has a product dropdown and text. The products are Workbook, Parent dashboard, Marking, Maya (AI Teaching Assistant), and Something else. A `product` query value can preselect a known product. Optional `child` context is checked against the session parent's children in the database. The `from` context is reduced to a known account section. Query strings, fragments and path identifiers are never saved as source context. A same-origin referring page supplies section context when no `from` was supplied.
+The form has a product dropdown and text. With no known preselected product, the dropdown starts with "Choose a product". A missing product is refused without a write. Empty, too-long and missing-product refusals use the existing red error token beside their field and retain accessible alerts. The products are Workbook, Parent dashboard, Marking, Maya (AI Teaching Assistant), and Something else. A `product` query value can preselect a known product. Optional `child` context is checked against the session parent's children in the database. The `from` context is reduced to a known account section. Query strings, fragments and path identifiers are never saved as source context. A same-origin referring page supplies section context when no `from` was supplied.
 
 ## Store and limits
 

@@ -96,7 +96,7 @@ export const PARENT_PREVIEW_VIEWS = [
   ] },
   { id: "feedback", label: "Feedback", scenarios: [
     scenario("form", "Parent form", "no_test"), scenario("sent", "Saved confirmation"),
-    scenario("empty", "Empty text refusal"), scenario("too_long", "Long text refusal"),
+    scenario("empty", "Empty text refusal"), scenario("too_long", "Long text refusal"), scenario("no_product", "Product choice refusal"),
     scenario("unavailable", "Retryable failure"), scenario("admin_rows", "Admin list with sample rows"),
     ...Object.keys(SAMPLE_STAGE_FACTS).map(stage => scenario(`stage_${stage}`, stage.replaceAll("_", " "), stage as ChildStage)),
   ] },

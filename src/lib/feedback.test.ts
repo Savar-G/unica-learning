@@ -64,6 +64,9 @@ describe("parent Feedback public interface", () => {
     const { store } = fixture(); await sendFeedback(store, parent, input({ parentId: other }));
     expect(store.rows[0].parent).toBe(parent);
   });
+  it.each(["",null,undefined])("refuses a missing product through the public writer without saving",async product=>{
+    const {store}=fixture();expect(await sendFeedback(store,parent,input({product}))).toEqual({ok:false,error:"no_product"});expect(store.rows).toHaveLength(0);
+  });
 });
 
 it("preserves the plain Feedback return through the real sign-in URL sanitizer", async () => {
