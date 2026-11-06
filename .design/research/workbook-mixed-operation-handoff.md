@@ -135,3 +135,13 @@ The controller's strict fake U16 check after the correction exited 0: 28 pages, 
 Sol round 2 approved the correction at `2980435003dd2e44edc472f34552ed5aae0161b7`. S1 is resolved, with no new findings. The controller then rebased onto merged PR #668 at `0d9285c7d1635cff8bbf569ad17eb0608fd3a300`. Git range-diff confirmed identical behavior patches. The new practice harness suites plus the five focused suites passed: 7 files, 243 tests, exit 0. Rejected and held generated items remain separate from passes. The #531 API acceptance hold remains.
 
 The full local gate and final real replay pair remain pending. No clean release result is claimed.
+
+## Full-gate fixture corrections
+
+The first full suite exited 1: 16,628 passed, 2 failed, one skipped. One old fill-cells test required the removed "Answer each question" fallback. The fixture now uses real checked Mixed set template items and verifies operation choices, answer instructions, a complete row and the Mixed set quality contract.
+
+The other failure was the existing U16 Maya coverage snapshot. With controller coordination, only its U16 expected distribution was updated. The public ten-day generation fixture contains 597 questions: 273 accepted and 324 held by the unchanged public Maya session entry point. Of 297 items with an operation, 24 remain held. Per-kind rows add to the same totals. No item was filtered from the denominator. U3 and U4 snapshot blocks retain their exact SHA-256 hashes. No unmerged #667 capability was imported.
+
+The independent probe uses the snapshot fixture's fake fit. Its package-array SHA-256 is `8eaec0cda433c35715d30a8a233b693e75ff03e514246a60c034e879bcc38ae7`. It does not establish physical fit, clean full-book output or API acceptance. No Maya runtime, capability, schema or acceptance predicate changed. The #531 API acceptance hold remains.
+
+Both affected full suites now pass: 42 tests, exit 0. Evidence: `.workbook-sample/root-664-coverage.json`, controller logs `664-u16-coverage-proof.log`, `664-u16-snapshot-before.log`, `664-u16-snapshot-update.log` and `664-corrected-failures.log`. The real U4/U16 pair has now started once on the Unify subscription, with replay and no API fallback. The new provider identity can cause old cache records to miss; new requests must remain separate from replayed requests.

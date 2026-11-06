@@ -14,12 +14,12 @@ const curriculum = bcStepProgressions();
 const id = "1c45456d-0e60-4581-ba41-accde66de3cf";
 const book = sampleBook({ level: "U16", workbookId: id, childId: id, child: "Alex", number: 1 }).draft;
 
-function question(skill: string, step: number, n = 1, format?: string): GeneratedQuestion {
-  const fill = Array.from({ length: 48 }, (_, attempt) => stepTemplateItem({ curriculum, skill, step, place: "remember-these", level: 16, day: 1, seed: n * 71, attempt, ordinal: n })).find(fill => fill && (!format || fill.ref.format === format));
+function question(skill: string, step: number, n = 1, format?: string, slot: "remember-these" | "mixed-set" = "remember-these"): GeneratedQuestion {
+  const fill = Array.from({ length: 48 }, (_, attempt) => stepTemplateItem({ curriculum, skill, step, place: slot, level: 16, day: 1, seed: n * 71, attempt, ordinal: n })).find(fill => fill && (!format || fill.ref.format === format));
   if (!fill) throw new Error(`No test question for ${skill}#${step}`);
   const built = buildStepItem(fill.ref, fill.text, { id: `q${n}`, workbookId: id, page: 5, question: n, level: 16, skills: [skill] }, "code");
   if (!built.package) throw new Error("Invalid test question");
-  return { number: n, slot: `1.${n}`, part: "remember-these", place: "remember-these", attempts: 1, check: built.check, package: built.package,
+  return { number: n, slot: `1.${n}`, part: slot, place: slot, attempts: 1, check: built.check, package: built.package,
     itemPlan: { type: "template", source: "code", template: fill.ref, numbers: fill.numbers, dayRange: { min: 0, max: 1_000_000, pictures: false, help: "none" },
       item: stepAiItem(`1.${n}`, fill.ref, fill.text) } };
 }
@@ -152,14 +152,17 @@ it("completes the row after an exchanged task fails the other page's fit check",
   if (result.status === "stored") expect(pagePlan(draft(result.draft.pages.find(p => p.number === 24)!))?.incomplete).toEqual([]);
 }, 90_000);
 
-it("uses an answer instruction when Mixed set has ordinary template questions", () => {
-  const p = page([question("4.4-add-within-10000", 5), question("4.4-subtract-within-10000", 5, 2)]);
+it("prints operation choices and answer instructions for checked Mixed set templates", () => {
+  const p = page([question("4.4-add-within-10000", 5, 1, "story", "mixed-set"), question("4.4-subtract-within-10000", 5, 2, "story", "mixed-set")]);
   if (p.content?.kind !== "day") throw new Error("Expected day");
   p.content.blocks[0].slot = "mixed-set";
   p.content.blocks[0].note = "Tick the operation, then write the answer.";
   const html = workbookTemplate().page(draft(p), { qr: "", qrUrl: "" }, book)!;
-  expect(html).toContain("Answer each question.");
-  expect(html).not.toContain("Tick the operation, then write the answer.");
+  expect(html).toContain("Tick the operation, then write the answer.");
+  expect(html.match(/Tick the operation:/g)).toHaveLength(2);
+  expect(html.match(/Write the answer:/g)).toHaveLength(2);
+  expect(pagePlan(draft(p))?.incomplete).toEqual([]);
+  expect(workbookQuality([p]).issues.filter(issue => /Mixed set/.test(issue.reason))).toEqual([]);
 });
 
 it("keeps the required practice on the new step when a new-idea page exchanges tasks", () => {
