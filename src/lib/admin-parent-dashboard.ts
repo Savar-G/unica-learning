@@ -3,7 +3,7 @@ import { childStage, type ChildStage, type ChildStageFacts } from "@/lib/child-s
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { ChildView } from "@/lib/parent-view";
 
-export const PARENT_EXPLORER_PATH = "/admin/parent-dashboard";
+export const PARENT_EXPLORER_PATH = "/admin/dashboard";
 export const SAMPLE_NOW = Date.parse("2026-11-05T20:00:00Z");
 
 // Exhaustive records make a new product stage or plan a compile failure until this catalog covers it.

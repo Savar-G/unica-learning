@@ -13,7 +13,8 @@ vi.mock("@vercel/analytics/next", () => ({ Analytics: () => { state.analytics();
 vi.mock("@vercel/speed-insights/next", () => ({ SpeedInsights: () => { state.speed(); return null; } }));
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
-it("does not start analytics or visit/ad effects on the sample explorer", async () => {
+it.each(["/admin/dashboard", "/admin/parent-dashboard"])("does not start analytics or visit/ad effects on the sample explorer at %s", async path => {
+  state.path = path;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div"), root = createRoot(host);
   try {
@@ -23,8 +24,8 @@ it("does not start analytics or visit/ad effects on the sample explorer", async 
   } finally { await act(async () => root.unmount()); }
 });
 
-it("drops sample URLs from analytics already loaded on an earlier page and keeps normal parent events", () => {
-  const sample = { type: "pageview" as const, url: "https://unicalearning.com/admin/parent-dashboard?view=plan&scenario=restart_review" };
+it.each(["/admin/dashboard", "/admin/parent-dashboard"])("drops sample URLs from analytics already loaded on an earlier page and keeps normal parent events at %s", path => {
+  const sample = { type: "pageview" as const, url: `https://unicalearning.com${path}?view=plan&scenario=restart_review` };
   expect(scrubAnalyticsEvent(sample)).toBeNull();
   expect(scrubSpeedEvent({ ...sample, type: "vital" })).toBeNull();
   expect(scrubAnalyticsEvent({ ...sample, url: "https://unicalearning.com/account" })).not.toBeNull();

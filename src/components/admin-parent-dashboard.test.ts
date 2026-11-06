@@ -26,6 +26,7 @@ it("preserves view, scenario, family, child and size in navigation and safely re
   await draw({ view: "plan", scenario: "restart_review", size: "phone", family: "two", child: "second" });
   await change("Screen size", "tablet");
   const url = new URL(calls.replace.mock.calls.at(-1)![0], "https://unicalearning.com");
+  expect(url.pathname).toBe("/admin/dashboard");
   expect(Object.fromEntries(url.searchParams)).toEqual({ view: "plan", scenario: "restart_review", size: "tablet", family: "two", child: "second" });
   await change("View", "report");
   expect(new URL(calls.replace.mock.calls.at(-1)![0], url.origin).searchParams.get("scenario")).toBe("choose");

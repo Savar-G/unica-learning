@@ -2,6 +2,6 @@
 export function isParentPreviewPath(value: string): boolean {
   try {
     const path = new URL(value, "https://unicalearning.com").pathname;
-    return path === "/admin/parent-dashboard" || path.startsWith("/admin/parent-dashboard/");
+    return ["/admin/dashboard", "/admin/parent-dashboard"].some(base => path === base || path.startsWith(`${base}/`));
   } catch { return false; }
 }
