@@ -80,3 +80,8 @@ Local public-interface tests prove synthetic region aggregation, bounded request
 A checked circle item uses the same whole-page request, with the frozen choice labels and circle mark type. Code compares a single clearly read choice with the stored checked rule. An unmarked choice is blank. Multiple marks, an unknown label or an unreadable region stay pending with a reason. A right, wrong or blank circle item finishes as one item and may publish one event. The item's own measured region supplies its review crop. No numeric operation is required when the package checks a printed true-or-false statement or comparison.
 
 This format adds no separate attempt, image path, family switch or cost path. Its local fake-AI cases cover the six reading states and page completion. Recognition and physical-phone acceptance remain in the shared launch checks.
+
+
+## Show-work final answers (#540, S7l)
+
+The model reads the stored scored answer boxes, not the work region. Code checks the final answer. The whole private page photo keeps the working as evidence. A number in the work region cannot fill an empty final-answer box or create another result. Empty final-answer boxes are blank; uncertain readings remain pending. The existing parent correction flow can finish the item. This does not claim that code checks the child's method.

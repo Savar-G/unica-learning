@@ -64,6 +64,17 @@ function circleFrame(): MarkingFrame {
   expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
   return f;
 }
+function showWorkFrame(): MarkingFrame {
+  const f = tickFrame("show-work-photo"), q = f.questions[0];
+  q.package!.item = { format: "show-work", scorable: true, parentChecked: false, error: null,
+    regions: [{ id: "answer", kind: "box", label: null, answer: { type: "number", value: 66 } }, { id: "work", kind: "work", label: "Show your work" }],
+    checks: [{ kind: "operation", region: "answer" }],
+  };
+  q.regions = q.regions!.filter(r => r.id !== "operation");
+  q.teaching!.eligibility.format = "show-work";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
 it("shows page results in printed question order without changing the canonical input order", () => {
   const expected = expectedItems(frame());
@@ -276,6 +287,30 @@ describe("S7k circle answers", () => {
     const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
     expect(items[0]).toMatchObject({ kind: "choice", mark: "circle", choices: ["true", "false"] });
     expect(items[0]).not.toHaveProperty("answer");
+  });
+});
+
+describe("S7l show-work final answers", () => {
+  it.each([["66", "right"], ["65", "wrong"], ["", "blank"], [null, null], ["maybe 66", null]])("reads only the final answer %j as %j", (text, result) => {
+    const o = readMarkingOutput(showWorkFrame(), output([text]))[0];
+    expect(o.result).toBe(result);
+    expect(o.regions.map(r => r.regionId)).toEqual(["answer"]);
+    expect(o.evidence).toEqual({ photoRevision: "show-work-photo" });
+    expect(observationProblem(o)).toBeNull();
+  });
+
+  it("keeps working as photo evidence without scoring it or using it to fill an empty final answer", async () => {
+    const f = showWorkFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
+    const response = { readings: [...output([""]).readings, { item: "i1", region: "work", text: "66", state: "written" }] };
+    expect(await run(s, f.photo, client(response, requests))).toBe("finished");
+    const marks = await s.effective(P, C);
+    expect(marks[0].observation.result).toBe("blank");
+    expect(marks[0].observation.evidence?.photoRevision).toBe(f.photo);
+    expect(markingPageView(marks).completion.status).toBe("complete");
+    expect(s.events).toHaveLength(1);
+    const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
+    expect(items).toEqual([{ item: "i1", region: "r1", kind: "number", box: f.questions[0].regions![0].box }]);
+    expect(cropPlan(f.questions).notSupported).toEqual([]);
   });
 });
 
