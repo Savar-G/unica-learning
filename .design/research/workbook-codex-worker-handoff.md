@@ -1,6 +1,6 @@
 # Workbook Codex worker implementation
 
-HANDOFF_READY
+HANDOFF_DONE
 
 Issue: https://github.com/Savar-G/unica-learning/issues/665
 
@@ -79,3 +79,15 @@ The first frame probe failed because its synthetic child ID was not a UUID. The 
 - No live worker settings or source changed. No service restart, family job claim, hosted data write, paid API call, or customer book generation occurred. The installer ran only against synthetic fixtures.
 
 No unresolved implementation finding remains in this lane. The generic sample status-text limit above needs controller coordination if that environment-only sample path is used.
+
+## Controller verification
+
+- Independent Unify Codex Sol high review approved commit `f915b316506180eb17efc69f0494d4afd4044cc0`. No findings remained.
+- Root repeated the six-file focused command: 83 tests passed, exit 0.
+- Root ran the real shared factory against the explicit Unify Codex home, with two synthetic arithmetic requests and no database access. The writer returned 4 for 2 plus 2. The solver returned 5 for 2 plus 3.
+- Both call records named `codex/gpt-6.1-sol;reasoning=high;auth=chatgpt`, provider subscription, outcome answered, and USD 0 API cost. Writer time was 4,489 ms. Solver time was 6,382 ms.
+- The real check supplied an API-first caller override and a synthetic API key. A fetch guard counted zero API calls.
+- This proves real subscription requests through the factory. It does not prove a running launchd worker, queued-family work, printed books, or hosted operation. Live worker settings and services were not changed.
+- The full test gate passed: 442 files, 16,649 tests passed, one skipped, exit 0, in 563.38 seconds. Full source lint and the normal production build also exited 0. Root retains push, PR and merge.
+
+The local smoke script and log are ignored evidence files. They contain no family data or credentials.
