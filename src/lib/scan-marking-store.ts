@@ -6,11 +6,11 @@ import { storedQuestion } from "@/lib/workbook-content";
 import { printContractForPhoto, storedPrintContract } from "@/lib/workbook-print-contract";
 import { calibrationForPhoto } from "@/lib/scan-calibration";
 import { scanPartPath } from "@/lib/scan-crops";
-import { firstObservation } from "@/lib/scan-observation";
+import { firstObservation, type Observation } from "@/lib/scan-observation";
 import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
-import { currentSheetCheck, MARKING_PROMPT_VERSION, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
-import { markingCommand, scanMarkingReader, mark, observation } from "@/lib/scan-marking-reader";
+import { currentSheetCheck, MARKING_PROMPT_VERSION, type EffectiveMark, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingCommand, scanMarkingReader, mark, observation, type MarkingCommand } from "@/lib/scan-marking-reader";
 export { markingCommand, type MarkingCommand } from "@/lib/scan-marking-reader";
 import { digestOf } from "@/lib/workbook-digest";
 
