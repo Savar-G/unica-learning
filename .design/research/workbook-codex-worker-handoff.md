@@ -8,7 +8,7 @@ Computer: Savars-MacBook-Pro-5.local.
 Supplied worktree: /Users/savargupta/.t3/worktrees/pagewise-landing-page/t3-f9db35eb.
 Physical path: /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-f9db35eb.
 Branch: site/workbook-codex-worker.
-Required source base and parent of the delivery commit: f3133376535b3c96f4c81f62f1f8d1cc80322a23.
+Original implementation source base: f3133376535b3c96f4c81f62f1f8d1cc80322a23.
 The prepared worktree was clean at 550fdcf1619c0e515e8ac33e2a65869d8c937af7. It fast-forwarded to the required base before edits.
 Read the delivery HEAD with `git rev-parse site/workbook-codex-worker` after the local commit.
 
@@ -91,3 +91,5 @@ No unresolved implementation finding remains in this lane. The generic sample st
 - The full test gate passed: 442 files, 16,649 tests passed, one skipped, exit 0, in 563.38 seconds. Full source lint and the normal production build also exited 0. Root retains push, PR and merge.
 
 The local smoke script and log are ignored evidence files. They contain no family data or credentials.
+
+After PR #668 merged, the controller rebased onto `0d9285c7d1635cff8bbf569ad17eb0608fd3a300`. Git range-diff confirmed identical implementation and proof-report patches. The six focused worker/provider suites plus both new practice harness suites passed: 8 files, 200 tests, exit 0. This is local synthetic integration proof. Rejected and held generated items do not become passes. The #531 API acceptance hold remains.
