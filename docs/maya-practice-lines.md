@@ -72,3 +72,49 @@ Status: approved by Savar on 2026-11-05 (D-262), without "Mm-hm" and without "I'
 | `ack.see.here` | Let me see here. |
 
 "I'm thinking." and "Hmm, I'm thinking." were dropped in the review of PR #577: they claim a state of mind for an AI. For your reading: a child who says something hard can hear one of these before the model has read the words. When the model has read them, the phrase stops at once and the safety line follows.
+
+
+## Count-up teaching (#526)
+
+Status: pending Savar's reading and model-driven practice. NO MERGE.
+
+These 30 new wordings teach the checked `count-up` step of a `missing-addend` operation. Code fills every slot. `{from}` is the known part. `{to}` is the number to reach. `{more}` is the checked hop count. `{sequence}` is the checked list of numbers after the start. `{expr}` is the checked easier question. Existing template ids and wordings stay in place. The line-set version is 9.
+
+Target hints do not supply `{more}`. The example and H4 answer can supply it. The example uses a compact count when a spoken list exceeds the limit or contains the unreleased target answer. The example introduction says "question" so the generic word "one" cannot conflict with a missing amount of 1.
+
+| Wording id | New sentence, pending reading |
+|---|---|
+| `point.count#0` | We have {from}. We need {to}. |
+| `point.count#1` | Start with {from}. We want to reach {to}. |
+| `point.count#2` | The number we have is {from}. We need {to}. |
+| `point.count#3` | We start at {from}. We want to get to {to}. |
+| `point.count#4` | We know {from}. We want to make {to}. |
+| `intro.count#0` | Let's try an easier question first: {expr}. |
+| `intro.count#1` | Here's an easier question: {expr}. |
+| `intro.count#2` | First, an easier question: {expr}. |
+| `intro.count#3` | Let's start with an easier question: {expr}. |
+| `intro.count#4` | I'll help with an easier question first: {expr}. |
+| `operation.count#0` | Start at {from}. Count on to {to}. How many more? |
+| `operation.count#1` | Count on from {from} to {to}. How many more do you need? |
+| `operation.count#2` | Begin at {from}. Count on until you reach {to}. How many more? |
+| `operation.count#3` | Start with {from}. Count up to {to}. How many more? |
+| `operation.count#4` | How many more do you need to count from {from} to {to}? |
+| `show.count#0` | Start at {from}. Count each number after {from}. Stop at {to}. How many numbers did you say? |
+| `show.count#1` | Start at {from}. Count on until {to}. Count the numbers you say after {from}. How many did you say? |
+| `show.count#2` | Begin at {from}. Count on to {to}. Count each number after {from}. How many numbers did you say? |
+| `show.count#3` | Count on from {from}. Stop at {to}. Count each number you say after {from}. How many did you say? |
+| `show.count#4` | Begin at {from}. Stop when you reach {to}. Count the numbers you say after {from}. How many did you say? |
+| `example.count#0` | Start at {from}. Count {more} more to reach {to}. |
+| `example.count#1` | Count {more} more from {from}. You reach {to}. |
+| `example.count#2` | Begin at {from}. Count on {more}. You reach {to}. |
+| `example.count#3` | From {from}, count {more} more. You reach {to}. |
+| `example.count#4` | Start with {from}. Count on {more} to reach {to}. |
+| `example.count.sequence#0` | Start at {from}. Count on to {to}: {sequence}. That is {more} more. |
+| `example.count.sequence#1` | From {from}, count on: {sequence}. You count {more} numbers to reach {to}. |
+| `example.count.sequence#2` | Begin at {from}. Count on: {sequence}. That is {more} more to reach {to}. |
+| `example.count.sequence#3` | Count on from {from} to {to}: {sequence}. You count {more} numbers. |
+| `example.count.sequence#4` | Start with {from}. Count on: {sequence}. You reach {to} with {more} more. |
+
+The existing invitation, step acknowledgement, wrong-step reply and explanation request now use "the missing part" in their checked location slot. The existing answer acknowledgement fills the blank: `7 + 3 = 10`. It does not append the answer to the open equation. The existing example-result line uses the same completed equation. The original wording templates still supply these frames.
+
+The dedicated test writes all expanded lines for the generated synthetic missing-part packages to `/tmp/unica-526-expanded-lines.txt`. It writes the new templates to `/tmp/unica-526-new-wording.json`. These are local reading records. They do not establish wording approval or a model-driven practice pass.

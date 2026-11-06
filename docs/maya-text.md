@@ -208,6 +208,20 @@ Samples: `docs/maya-traces/`. A test checks each sample with `checkTrace`.
 
 The behaviour gate (`docs/maya-gate.md`, #324) runs the research's scripted children through this adapter in `npm test` and judges each saved trace.
 
+## Missing parts and counting up (#526)
+
+The operation kind is `missing-addend`. Its worked-step kind is `count-up`. For `7 + ? = 10`, the checked step starts at 7 and counts 8, 9, 10. Its answer is the count, 3. The endpoint, 10, is not the missing part.
+
+Code writes the explanation, hints, easier example and completed equation. H0 asks about the missing part. H1 names the known part and the number to reach. H2 asks the child to count on. H3 explains how to count the numbers said after the start. H3 does not supply the missing amount. H4 gives the checked count, then the answer and the request to write it. The outcome records `answer_given`, H4 and uncertain understanding. The learning event stays blank unless the child supplies a checked final answer.
+
+An easier example uses its own checked operation and steps. A short count can list its numbers. A compact checked count stays available when the list exceeds the spoken limit or contains the unreleased target answer. The example introduction uses "question" so the word "one" cannot be mistaken for a missing amount of 1. The example's own operands can name the target amount without answering the target. This permission applies only to the example act. Its lines and board stay bound to the example.
+
+A hearing confirmation can repeat a number supplied in the current child turn. It cannot score that number. The usual negative, choice, uncertainty, correction and final-answer checks still apply. A count step can be acknowledged without solving the question. A final answer must be supplied and kept by the child. The completed equation is `7 + 3 = 10`, never `7 + ? = 10 = 3`.
+
+Scope checks use the bond, its inverse and each checked count increment. They do not add the known part to the whole. Other unsupported operations and worked steps stay held. Clock `count-on` steps are separate and remain held. A place-value, true-or-false or drawing item without a checked operation remains held.
+
+The dedicated public tests are in `src/lib/maya/number-bonds.test.ts`. They use generated synthetic U4 packages, current U4/U16 controls, fake models and all 210 positive pairs within 0 to 20. They do not prove a real model conversation or a learning result. Model-driven practice and wording approval remain required before merge. The new sentences are listed in `docs/maya-practice-lines.md`.
+
 An explicit answer withdrawal can omit the number. Erasure, deletion, crossing out, and rejection such as "I don't think that's right" clear the accepted solution and its writing status. They also clear an earlier paper confirmation or refusal. A check or writing close returns to guided teaching, including the saved teaching state of an interrupt. The completed steps and help history stay. A statement that the child cannot explain the answer keeps the accepted solution. A later checked answer can resume the work.
 
 A carry denial that names a source or destination selects that carry before the current-step default. Its explanation is available even when its destination column is complete. The explanation does not remove the completed column. After the explanation, guidance returns to the next unfinished column. An incoming carry also has its existing regroup explanation when it is the only term in the highest column.

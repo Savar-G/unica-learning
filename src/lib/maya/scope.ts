@@ -55,7 +55,8 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
     }
   };
   for (const p of [pkg, ...(exampleChosen ? [pkg.easierExample] : [])]) {
-    const op = family(p.operation);
+    // A missing part's stored operands are the known part and the whole. They are not addends.
+    const op = p.operation.kind === "missing-addend" ? null : family(p.operation);
     collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : pkg.easierExample.answer);
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
@@ -74,6 +75,11 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
     const partials = p.steps.flatMap(st => st.kind === "partial-product" ? [st.value] : []);
     if (partials.length > 1) sums.push(partials);
     for (const st of p.steps) {
+      if (st.kind === "count-up") {
+        add("add", [num(st.from), num(st.said.length)]);
+        add("subtract", [num(st.to), num(st.from)]);
+        for (const n of st.said) add("add", [num(n - 1), num(1)]);
+      }
       if (st.kind === "add-column") {
         sums.push([...st.digits, ...(st.carryIn ? [st.carryIn] : [])]);
         if (st.carryIn || st.carryOut) values.push(num(10));

@@ -17,7 +17,7 @@ const EQUAL_FORM_KINDS: readonly OperationKind[] = ["fraction-add", "fraction-su
  */
 export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   "add-column", "subtract-column", "multiply-digit", "partial-product", "place-point", "divide-digit",
-  "common-denominator", "combine-numerators", "simplify", "to-mixed", "result",
+  "common-denominator", "combine-numerators", "simplify", "to-mixed", "count-up", "result",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */
