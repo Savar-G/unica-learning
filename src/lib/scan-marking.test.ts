@@ -75,6 +75,20 @@ function showWorkFrame(): MarkingFrame {
   expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
   return f;
 }
+function spotFrame(): MarkingFrame {
+  const f = tickFrame("spot-photo"), q = f.questions[0];
+  q.package!.text = "Someone wrote 27 + 39 = 56. Is it right? Fix it.";
+  q.package!.item = { format: "spot-the-error", scorable: true, parentChecked: false, error: { answer: { type: "number", value: 56 }, step: "tens" },
+    regions: [
+      { id: "right", kind: "choice", mark: "tick", label: "Is it right?", choices: ["Yes", "No"], answer: "No" },
+      { id: "fix", kind: "box", label: "Fix it", answer: { type: "number", value: 66 } },
+    ], checks: [{ kind: "yes-no", region: "right", yes: "Yes", no: "No", statement: { kind: "shown-answer" } }, { kind: "operation", region: "fix" }],
+  };
+  q.regions = q.regions!.filter(r => r.kind !== "work").map(r => ({ ...r, id: r.kind === "choice" ? "right" : "fix" }));
+  q.teaching!.eligibility.format = "spot-the-error";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
 it("shows page results in printed question order without changing the canonical input order", () => {
   const expected = expectedItems(frame());
@@ -311,6 +325,31 @@ describe("S7l show-work final answers", () => {
     const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
     expect(items).toEqual([{ item: "i1", region: "r1", kind: "number", box: f.questions[0].regions![0].box }]);
     expect(cropPlan(f.questions).notSupported).toEqual([]);
+  });
+});
+
+describe("S7m spot-the-error answers", () => {
+  it.each([["No", "66", "right"], ["Yes", "66", "wrong"], ["No", "65", "wrong"], ["", "", "blank"],
+    ["No", "", null], ["", "66", null], [null, "66", null], ["Yes and No", "66", null], ["Yes", null, "wrong"]])("checks the decision %j and correction %j as one %j item", (decision, fix, result) => {
+    const o = readMarkingOutput(spotFrame(), tickOutput(decision, fix))[0];
+    expect(o.result).toBe(result);
+    expect(o.regions.map(r => r.regionId)).toEqual(["right", "fix"]);
+    expect(observationProblem(o)).toBeNull();
+  });
+
+  it("finishes one item without sending the printed wrong solution as a requested answer", async () => {
+    const f = spotFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
+    const response = tickOutput("No", "66");
+    response.readings.push({ item: "i1", region: "printed-example", text: "56", state: "written" });
+    expect(await run(s, f.photo, client(response, requests))).toBe("finished");
+    const view = markingPageView(await s.effective(P, C));
+    expect(view.completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(view.items[0].result).toBe("right");
+    expect(s.events).toHaveLength(1);
+    const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
+    expect(items.map((r: { region: string }) => r.region)).toEqual(["r1", "r1-2"]);
+    expect(JSON.stringify(items)).not.toContain("56");
+    expect(cropPlan(f.questions).crops).toHaveLength(1);
   });
 });
 

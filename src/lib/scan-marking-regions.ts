@@ -20,7 +20,7 @@ export function markingRegions(q: RegionQuestion): MarkingRegion[] {
   const item = packageItem(q.package);
   if (!item.scorable || item.parentChecked) return [];
   const legacy = item.format === "write-number" && item.regions.length === 1;
-  if (!legacy && (!["tick-and-number", "circle", "show-work"].includes(item.format) || !checkQuestionPackage(q.package).ok)) return [];
+  if (!legacy && (!["tick-and-number", "circle", "show-work", "spot-the-error"].includes(item.format) || !checkQuestionPackage(q.package).ok)) return [];
   const scored = item.regions.filter(r => r.kind === "box" || r.kind === "choice");
   const out: MarkingRegion[] = [];
   for (const r of scored) {

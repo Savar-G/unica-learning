@@ -85,3 +85,10 @@ This format adds no separate attempt, image path, family switch or cost path. It
 ## Show-work final answers (#540, S7l)
 
 The model reads the stored scored answer boxes, not the work region. Code checks the final answer. The whole private page photo keeps the working as evidence. A number in the work region cannot fill an empty final-answer box or create another result. Empty final-answer boxes are blank; uncertain readings remain pending. The existing parent correction flow can finish the item. This does not claim that code checks the child's method.
+
+
+## Spot-the-error answers (#539, S7m)
+
+Code checks the stored right-or-wrong choice and the corrected answer together. Both right means one right item. Both empty means one blank item. A definite wrong choice or correction makes the item wrong. A partial answer that could still be right remains pending. The printed wrong solution is not a requested answer region. The model does not judge the solution or choose the score. The stored package must pass its existing error and answer checks before recognition starts.
+
+The item keeps one review crop, canonical result and original event. Its local cases include right choice with wrong correction, wrong choice with right correction, ambiguous marks, missing parts and an extra unrequested printed-example reading. They prove the response contract, not image recognition.
