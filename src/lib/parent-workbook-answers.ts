@@ -38,16 +38,40 @@ function written(value: AnswerValue, answer: PackageAnswer | null): string {
   return answer?.unit && ["number", "fraction", "mixed", "remainder"].includes(value.type) ? `${text} ${answer.unit}` : text;
 }
 /** Follow stored print semantics without changing the renderer or measuring a book again. */
-function answerRegions(item: Item, practiceType: string | null) {
+function answerRegions(item: Item, practiceType: string | null, measured: WorkbookQuestion["regions"]) {
   const layout = practiceType ?? (item.format === "tick-and-number" ? "mixed-set" : item.format === "spot-the-error" ? "spot-the-error" : null);
   const regions = item.regions.filter(r => r.kind === "box" || r.kind === "choice");
   if (layout === "mixed-set" || layout === "spot-the-error") {
     return [regions.find(r => r.kind === "choice"), regions.find(r => r.kind === "box")].filter(r => r !== undefined);
   }
+  // This layout prints its answer regions directly, rather than through regionsSplit.
+  if (layout === "word-problems") return regions;
+  if (layout === "solve-it-two-ways") return regions.filter(r => r.kind === "box");
+  const boxes = regions.filter(r => r.kind === "box");
+  if (layout === "math-in-the-world" && boxes.length > 1) return boxes;
   const sequence = item.checks.find(c => c.kind === "sequence");
   const order = item.checks.find(c => c.kind === "order");
-  const ids = [...(sequence?.terms.flatMap(t => "region" in t ? [t.region] : []) ?? []), ...(order?.regions ?? []), ...regions.map(r => r.id)];
-  return [...new Set(ids)].flatMap(id => regions.filter(r => r.id === id));
+  const ids = new Set([...(sequence?.terms.flatMap(t => "region" in t ? [t.region] : []) ?? []), ...(order?.regions ?? [])]);
+  const terms = [...ids].flatMap(id => regions.filter(r => r.id === id));
+  const rest = regions.filter(r => !ids.has(r.id));
+  const inRow = (r: typeof regions[number]) => !(r.kind === "box" && r.answer?.type === "text" && r.answer.value.length > 8)
+    && !(r.kind === "choice" && r.choices.join(",") === "never,sometimes,always");
+  const inline = [...terms, ...rest.filter(inRow)];
+  const full = rest.filter(r => !inRow(r));
+  if (layout === "warm-up") return inline;
+  // Challenge has two printed layouts. Their frozen positions decide which answer group comes first.
+  if ((layout === "challenge" || layout === null) && inline.length > 0 && full.length > 0) {
+    const positions = (group: typeof regions) => group.flatMap(r => {
+      const saved = measured?.find(m => m.id === r.id && m.kind === r.kind);
+      return saved?.box ? [saved.box] : [];
+    });
+    const a = positions(inline), b = positions(full);
+    if (a.length !== inline.length || b.length !== full.length) return null;
+    const before = (first: typeof a, next: typeof a) => Math.max(...first.map(r => r.y + r.height)) <= Math.min(...next.map(r => r.y));
+    if (before(b, a)) return [...full, ...inline];
+    if (!before(a, b)) return null;
+  }
+  return [...inline, ...full];
 }
 function questionAnswer(question: WorkbookQuestion, workbookId: string, page: number): ParentQuestionAnswer {
   const unavailable: ParentQuestionAnswer = { number: question.number, kind: "unavailable", answers: [], hasOpenWork: false };
@@ -55,8 +79,10 @@ function questionAnswer(question: WorkbookQuestion, workbookId: string, page: nu
   const pkg = question.content.package, ref = pkg.ref;
   if (ref.source !== "workbook" || ref.workbookId !== workbookId || ref.page !== page || ref.question !== question.number) return unavailable;
   const item = packageItem(pkg);
+  const regions = answerRegions(item, question.teaching?.practiceType ?? null, question.regions);
+  if (regions === null) return unavailable;
   let part = 0;
-  const answers = answerRegions(item, question.teaching?.practiceType ?? null).flatMap((region): ParentAnswer[] => {
+  const answers = regions.flatMap((region): ParentAnswer[] => {
     part++;
     if (region.answer === null) return [];
     const operationAnswer = item.checks.some(check => check.kind === "operation" && check.region === region.id) ? pkg.answer : null;

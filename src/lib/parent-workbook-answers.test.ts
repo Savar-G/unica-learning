@@ -2,10 +2,11 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { readParentWorkbookAnswers, type ParentWorkbookAnswerSource } from "@/lib/parent-workbook-answers";
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { storedQuestion, type Workbook, type WorkbookPage } from "@/lib/workbook-content";
-import { operationResult, workedSteps, type Item, type Operation, type QuestionPackage } from "@/lib/question-package";
+import { operationResult, valueText, workedSteps, type Item, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { regionNames } from "@/lib/workbook-render";
+import { storedRegions, storedTeaching, TEACHING_CONTEXT_VERSION } from "@/lib/workbook-print-contract";
 
 const PARENT = "11111111-1111-4111-8111-111111111111", CHILD = "22222222-2222-4222-8222-222222222222", BOOK = "33333333-3333-4333-8333-333333333333", OTHER = "44444444-4444-4444-8444-444444444444";
 const NOW = Date.parse("2026-11-06T20:00:00Z");
@@ -89,7 +90,8 @@ it("uses each stored region answer for multiple answers and choices", async () =
   expect(q?.hasOpenWork).toBe(true);
 });
 
-it.each<{ name: string; item: Item; values: string[]; slot: "mixed-set" | "on-your-own" }>([
+interface AnswerOrderCase { name: string; item: Item; values: string[]; slot: "mixed-set" | "on-your-own" | "word-problems" | "warm-up" | "math-in-the-world" | "solve-it-two-ways" | "challenge"; context?: boolean; consistentLayout?: boolean; measured?: boolean }
+const answerOrderCases: AnswerOrderCase[] = [
   { name: "Mixed set", slot: "mixed-set", values: ["+", "42"], item: {
     format: "tick-and-number", scorable: true, parentChecked: false, regions: [
       { id: "answer", kind: "box", label: null, answer: { type: "number", value: 42 } },
@@ -109,20 +111,66 @@ it.each<{ name: string; item: Item; values: string[]; slot: "mixed-set" | "on-yo
       { id: "second", kind: "box", label: null, answer: { type: "number", value: 4 } },
     ], checks: [{ kind: "order", numbers: [{ type: "number", value: 9 }, { type: "number", value: 2 }, { type: "number", value: 4 }], direction: "up", regions: ["first", "second", "third"] }], error: null,
   } },
-])("matches the printed $name parts when stored regions have another order", async ({ name, item, values, slot }) => {
+];
+const layoutOrderCases: AnswerOrderCase[] = answerOrderCases.flatMap(c => c.name === "Mixed set" ? [c] : [c, { ...c, name: `${c.name} in word problems`, slot: "word-problems", values: c.item.regions.flatMap(r => r.kind === "box" && r.answer ? [valueText(r.answer)] : []), context: true }]);
+for (const words of ["ten", "eightbox", "ninewords", "ten red counters"]) {
+  layoutOrderCases.push({ name: `${words.length}-character text and an inline number`, slot: "on-your-own", context: true,
+    values: words.length > 8 ? ["10", words] : [words, "10"], item: {
+      format: "hands-on", scorable: false, parentChecked: true, regions: [
+        { id: "words", kind: "box", label: null, answer: { type: "text", value: words } },
+        { id: "number", kind: "box", label: null, answer: { type: "number", value: 10 } },
+      ], checks: [], error: null,
+    } });
+}
+const longTextCase = layoutOrderCases.find(c => c.values.includes("ten red counters"));
+if (!longTextCase) throw new Error("Fixture needs a long text answer");
+layoutOrderCases.push({ ...longTextCase, name: "Warm-up omits full-width text", slot: "warm-up", values: ["10"] },
+  { ...longTextCase, name: "Math in the world keeps direct box order", slot: "math-in-the-world", values: ["ten red counters", "10"] },
+  { ...longTextCase, name: "legacy mixed rows use frozen positions", context: false, measured: true });
+layoutOrderCases.push({ name: "likelihood choice follows an inline number", slot: "on-your-own", context: true, values: ["10", "never"], item: {
+  format: "tick-and-number", scorable: false, parentChecked: true, regions: [
+    { id: "likelihood", kind: "choice", mark: "tick", label: null, choices: ["never", "sometimes", "always"], answer: "never" },
+    { id: "number", kind: "box", label: null, answer: { type: "number", value: 10 } },
+  ], checks: [], error: null,
+} });
+for (const slot of ["math-in-the-world", "solve-it-two-ways"] as const) {
+  for (const c of answerOrderCases.filter(c => c.name !== "Mixed set")) {
+    layoutOrderCases.push({ ...c, name: `${c.name} in ${slot}`, slot, context: true,
+      values: c.item.regions.flatMap(r => r.kind === "box" && r.answer ? [valueText(r.answer)] : []) });
+  }
+}
+for (const consistentLayout of [false, true]) {
+  layoutOrderCases.push({ ...longTextCase, name: `Challenge with consistent layout ${consistentLayout}`, slot: "challenge", consistentLayout, measured: true,
+    values: consistentLayout ? ["ten red counters", "10"] : ["10", "ten red counters"] });
+}
+it.each(layoutOrderCases)("matches the printed $name parts when stored regions have another order", async ({ name, item, values, slot, context, consistentLayout, measured }) => {
   const draft = sampleBook({ level: "U16", workbookId: BOOK, childId: CHILD, child: "Leah" }).draft;
   const day = draft.pages.find(p => p.content?.kind === "day");
   if (!day || day.content?.kind !== "day") throw new Error("Fixture needs a day page");
   const stored = question(day.number, 1, name === "Mixed set" ? { kind: "add", operands: [24, 18] } : null, item);
   if (stored.content.status !== "found") throw new Error("Fixture needs a valid stored package");
+  if (context) {
+    stored.teaching = storedTeaching({ version: TEACHING_CONTEXT_VERSION, curriculum: { key: "bc", version: "synthetic" }, practiceType: slot,
+      part: "practice", slot: "practice.1", extra: false, track: null, plannedStep: null, itemStep: null, reviewSteps: [],
+      eligibility: { format: item.format, scorable: item.scorable, parentChecked: item.parentChecked, mastery: false, reason: item.scorable ? "no-item-step" : "parent-checked" } });
+    expect(stored.teaching?.practiceType).toBe(slot);
+  }
   const q = { number: 1, package: stored.content.package };
-  const html = workbookTemplate().page({ ...day, questions: [q], content: { ...day.content, blocks: [{ slot, items: [1] }] } }, { qr: "", qrUrl: "" }, draft);
+  const html = workbookTemplate().page({ ...day, questions: [q], content: { ...day.content, ...(consistentLayout === undefined ? {} : { consistentLayout }), blocks: [{ slot, items: [1] }] } }, { qr: "", qrUrl: "" }, draft);
   if (html === null) throw new Error("Fixture needs a printable day page");
-  const printed = regionNames(q).map(x => ({ region: x.region, at: html.indexOf(`data-measure="${x.name}"`) })).sort((a, b) => a.at - b.at);
-  expect(printed.every(x => x.at >= 0)).toBe(true);
-  expect(printed.map(x => "answer" in x.region ? x.region.answer : null)).toEqual(values.map(value => value === "+" ? value : { type: "number", value: Number(value) }));
+  const printed = regionNames(q).map(x => ({ region: x.region, at: html.indexOf(`data-measure="${x.name}"`) })).filter(x => x.at >= 0).sort((a, b) => a.at - b.at);
+  expect(printed).toHaveLength(values.length);
+  expect(printed.map(x => "answer" in x.region && x.region.answer !== null ? typeof x.region.answer === "string" ? x.region.answer : valueText(x.region.answer) : null)).toEqual(values);
+  if (measured) {
+    stored.regions = storedRegions(printed.map((x, i) => ({ id: x.region.id, kind: x.region.kind, box: { x: 0, y: i * 40, width: 60, height: 20 } })), { width: 100, height: 100 });
+    expect(stored.regions).toHaveLength(printed.length);
+  }
   book.pages = [page(day.number, [stored])];
   expect((await readParentWorkbookAnswers(source, request, NOW))?.pages[0].questions[0].answers).toEqual(values.map((value, i) => ({ part: i + 1, value, alternatives: [] })));
+  if (slot === "challenge" || (measured && context === false)) {
+    stored.regions = null;
+    expect((await readParentWorkbookAnswers(source, request, NOW))?.pages[0].questions[0]).toMatchObject({ kind: "unavailable", answers: [] });
+  }
 });
 
 it.each<Operation>([
