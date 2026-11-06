@@ -4,8 +4,35 @@ import { adminClient } from "@/lib/supabase-auth";
 import type { Json } from "@/lib/database.types";
 import { isUuid } from "@/lib/workbook-content";
 import { runWorkbookJobNow } from "@/lib/workbook-job-server";
+import { workbookEditProgress } from "@/lib/workbook-edit-progress";
 
 export const maxDuration = 300;
+
+/** Lightweight, read only polling. Do not load a draft, frame, image, solve ledger or audit history here. */
+export async function GET(request: Request, ctx: RouteContext<"/api/admin/workbooks/runs/[id]/edit">) {
+  const headers = { "Cache-Control": "private, no-store", "Vary": "Cookie" };
+  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]);
+  try {
+    const actor = await adminSession(signal);
+    if (!actor) return new Response("Not found", { status: 404, headers });
+    const { id } = await ctx.params;
+    if (!isUuid(id)) return new Response("Not found", { status: 404, headers });
+    const run = await actor.db.from("workbook_runs").select("draft_id").eq("id", id).abortSignal(signal).maybeSingle();
+    if (run.error) throw new Error("edit_progress_run");
+    if (!run.data?.draft_id) return new Response("Not found", { status: 404, headers });
+    const batch = await actor.db.from("workbook_edits")
+      .select("id,base_revision,status,heartbeat_at,checkpoints,frame").eq("draft_id", run.data.draft_id)
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(1).abortSignal(signal).maybeSingle();
+    if (batch.error) throw new Error("edit_progress_batch");
+    if (!batch.data) return Response.json({ batch: null }, { headers });
+    const comments = await actor.db.from("workbook_comments").select("batch_id,page_number", { count: "exact" })
+      .eq("batch_id", batch.data.id).limit(501).abortSignal(signal);
+    if (comments.error || comments.count === null || !comments.data || comments.count > 500
+      || comments.data.length !== comments.count) throw new Error("edit_progress_comments");
+    return Response.json({ batch: workbookEditProgress(batch.data, comments.data, Date.now()) }, { headers });
+  } catch { return Response.json({ error: "Progress is unavailable. Retrying shortly." }, { status: 503, headers }); }
+}
+
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/workbooks/runs/[id]/edit">) {
   const actor = await adminSession();
   if (!actor) return new Response("Not found", { status: 404 });

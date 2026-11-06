@@ -2,6 +2,9 @@
 .wbr-bar { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 22px; background:#fff; border-bottom:1px solid var(--line); }
 .wbr-bar strong { display:block; font-size:19px; }
 .wbr-bar span { display:block; color:var(--ink-2); font-size:13px; margin-top:4px; }
+.wbr-progress { text-align:right; max-width:100%; }
+.wbr-progress span { max-width:36ch; }
+@media(max-width:700px) { .wbr-progress { text-align:left; } }
 .wbr-message { padding:12px 22px; margin:0; background:var(--adm-warn); font-size:14px; }
 .wbr-body { display:grid; grid-template-columns:100px minmax(0,1fr) 330px; min-height:680px; max-height:940px; }
 .wbr-thumbs { overflow:auto; padding:12px 8px; border-right:1px solid var(--line); }

@@ -56,8 +56,8 @@ export interface AdminSession {
  * Both checks run at the same time and both must pass, so the gate costs one round trip, not two.
  * #78: a route calls this and answers 404 when it is null.
  */
-export async function adminSession(): Promise<AdminSession | null> {
-  const db = await sessionClient();
+export async function adminSession(signal?: AbortSignal): Promise<AdminSession | null> {
+  const db = await sessionClient(signal);
   const [{ data, error: userError }, { data: admin, error }] = await Promise.all([db.auth.getUser(), db.rpc("is_admin")]);
   if (userError || !data.user) return null;
   if (error) {
