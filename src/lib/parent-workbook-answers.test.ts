@@ -117,6 +117,7 @@ it.each<{ name: string; item: Item; values: string[]; slot: "mixed-set" | "on-yo
   if (stored.content.status !== "found") throw new Error("Fixture needs a valid stored package");
   const q = { number: 1, package: stored.content.package };
   const html = workbookTemplate().page({ ...day, questions: [q], content: { ...day.content, blocks: [{ slot, items: [1] }] } }, { qr: "", qrUrl: "" }, draft);
+  if (html === null) throw new Error("Fixture needs a printable day page");
   const printed = regionNames(q).map(x => ({ region: x.region, at: html.indexOf(`data-measure="${x.name}"`) })).sort((a, b) => a.at - b.at);
   expect(printed.every(x => x.at >= 0)).toBe(true);
   expect(printed.map(x => "answer" in x.region ? x.region.answer : null)).toEqual(values.map(value => value === "+" ? value : { type: "number", value: Number(value) }));

@@ -1,0 +1,108 @@
+{
+  "computer": "Savars-MacBook-Pro-5.local",
+  "project": "cdjobwsyzndtltzfpyqa",
+  "migration": {
+    "name": "scan_page_history",
+    "version": "20261106170640"
+  },
+  "catalog": [
+    {
+      "jsonb_build_object": {
+        "rls": [
+          {
+            "table": "scan_marking_dispatches",
+            "enabled": true
+          },
+          {
+            "table": "scan_marking_items",
+            "enabled": true
+          },
+          {
+            "table": "scan_marking_jobs",
+            "enabled": true
+          },
+          {
+            "table": "scan_marking_spend",
+            "enabled": true
+          },
+          {
+            "table": "scan_photos",
+            "enabled": true
+          }
+        ],
+        "indexes": [
+          {
+            "name": "scan_history_jobs_page",
+            "definition": "CREATE INDEX scan_history_jobs_page ON public.scan_marking_jobs USING btree (page_id, printed_revision)"
+          },
+          {
+            "name": "scan_history_photos_page",
+            "definition": "CREATE INDEX scan_history_photos_page ON public.scan_photos USING btree (page_id, printed_revision, created_at, id)"
+          }
+        ],
+        "functions": [
+          {
+            "anon": false,
+            "name": "scan_marking_command",
+            "grants": [
+              "postgres=X/postgres",
+              "service_role=X/postgres"
+            ],
+            "definer": true,
+            "service": true,
+            "settings": [
+              "search_path=\"\""
+            ],
+            "authenticated": false
+          },
+          {
+            "anon": false,
+            "name": "scan_marking_saved_command",
+            "grants": [
+              "postgres=X/postgres"
+            ],
+            "definer": true,
+            "service": false,
+            "settings": [
+              "search_path=\"\""
+            ],
+            "authenticated": false
+          }
+        ],
+        "migration": [
+          {
+            "name": "scan_page_history",
+            "version": "20261106170640"
+          }
+        ],
+        "send_body_unchanged": true,
+        "saved_body_unchanged": true
+      }
+    }
+  ],
+  "s4Regression": [
+    {
+      "result": "SCAN_MARKING_HOSTED_PROBE_OK",
+      "probe_parents": 0,
+      "enabled_prices": 0
+    }
+  ],
+  "historyProbe": [
+    {
+      "result": "SCAN_HISTORY_HOSTED_PROBE_OK",
+      "probe_parents": 0,
+      "enabled_prices": 0
+    }
+  ],
+  "types": {
+    "command": "npm run db:types",
+    "exit": 0,
+    "diff": "One generated RPC entry: scan_marking_saved_command. No hand edit."
+  },
+  "probeCorrection": "The first history probe used version 1 after S4 advanced the version. It failed and rolled back. The corrected probe reads the actual saved version.",
+  "limits": [
+    "Synthetic rows on the hosted schema in a caught rollback transaction.",
+    "No Storage object, provider request, enabled price, family release or paid call.",
+    "One connection; no hosted contention or browser authorization proof."
+  ]
+}

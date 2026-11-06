@@ -3045,6 +3045,48 @@ async function swapCompleteRows(input: GenerateInput, w: PageWork, work: PageWor
   return false;
 }
 
+/** Replace a review pair together: the intermediate odd sections can overflow even when the complete rows fit. */
+async function restoreOwnPractice(input: GenerateInput, w: PageWork, work: PageWork[], fitCheck: FitCheck): Promise<boolean> {
+  const targets = w.slots.filter(s => s.part.step && s.contract?.template
+    && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s));
+  const before = w.slots.map(s => ({ ...s }));
+  const minutes = plannedDayMinutes(input, work, w.day);
+  for (let i = 0; i < targets.length; i++) for (const second of targets.slice(i + 1).filter(s => s.layoutSlot === targets[i].layoutSlot)) {
+    const pair = [targets[i], second];
+    const taken = new Set([...work.flatMap(p => p.slots.flatMap(s => {
+      const pkg = !pair.includes(s) && s.contract ? contractPackage(input, p, s.contract) : null;
+      return pkg && s.place !== "warm-up" ? [taskIdentity(pkg)] : [];
+    })), ...work.flatMap(p => panelTasks(input, p))]);
+    const choices = pair.map(slot => {
+      const found: { contract: ItemPlan; key: string }[] = [];
+      for (let attempt = 1; attempt < 128 && found.length < 16; attempt++) {
+        const c = contractFor(input, w, { ...slot, contract: undefined, refillOwnStep: true }, attempt);
+        if (!c?.template || c.template.skill !== slot.part.step!.skill || c.template.step !== slot.part.step!.step) continue;
+        const built = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] });
+        if (!built.package || built.check.status === "failed" || dayProblem(input, built.package, w.day, slot.place ?? "")) continue;
+        const key = taskIdentity(built.package);
+        if (taken.has(key) || found.some(c => c.key === key) || reachesChallenge(work, w.day, c) || tooEasyStory(input, slot, c, built.package)) continue;
+        found.push({ contract: c, key });
+      }
+      return found;
+    });
+    for (const a of choices[0]) for (const b of choices[1]) {
+      if (a.key === b.key) continue;
+      pair[0].contract = a.contract; pair[1].contract = b.contract;
+      const templatesOk = !templateTwice(w, pair[0], a.contract) && !templateTwice(w, pair[1], b.contract);
+      ownStepFirst(w);
+      const page = budgetPage(input, w);
+      if (templatesOk && !pagePlan(page)?.incomplete?.length && exchangeQuality(input, w, page)
+        && plannedDayMinutes(input, work, w.day) <= Math.max(minutes, DAY_MINUTES_MOST - .001)) {
+        const fit = roomFit(await fitCheck.fits(page, { id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild }));
+        if (fit.ok || fit.problems.every(p => p.kind === "fullness")) return true;
+      }
+      w.slots.forEach((s, k) => { s.contract = before[k].contract; });
+    }
+  }
+  return false;
+}
+
 /** A measured capacity is saved before any writer call or run fingerprint. */
 async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: PageWork[], filling = true, reserved = false): Promise<string | null> {
   if (input.itemPolicy === "approved-v1" && input.book && input.plan.level >= 4 && filling && !reserved && work.some(w => !w.page.capacityChecked)) {
@@ -3137,6 +3179,12 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // (Room only: a layout problem is the template's, reported when the page is written.)
         const budgetPage = fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples));
         const holes = pagePlan(budgetPage)?.incomplete ?? [];
+        // U16 page 22 can close its rows by dropping from three own questions to two. Keep the minimum binding.
+        if (input.plan.level === 16 && !holes.length && w.slots.some(s => s.contract?.template && s.part.step
+          && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s))) {
+          if (await restoreOwnPractice(input, w, work, fitCheck)) continue;
+          return `Page ${w.number}: cannot restore its own-step minimum in complete rows within the page and day limits`;
+        }
         const holeSlot = holes.length ? w.slots[holes[0] - 1] : undefined;
         const holeOwn = !!holeSlot?.part.step && !!holeSlot.contract && (holeSlot.contract.template ? holeSlot.contract.template.skill === holeSlot.part.step.skill && holeSlot.contract.template.step === holeSlot.part.step.step : holeSlot.contract.item.skill === holeSlot.part.step.skill);
         const reviewPartner = holes.length >= 2 && holeOwn
