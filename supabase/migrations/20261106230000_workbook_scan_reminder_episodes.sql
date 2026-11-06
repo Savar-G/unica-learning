@@ -191,13 +191,32 @@ begin
     'clock_context',public._workbook_scan_family_clock_context(w.parent_id));
 end $$;
 
--- Finite backfill: completed books disappear. Root can drain unseeded to empty without a volatile offset.
+create function public._workbook_scan_inactivity_recovery(p_book uuid,p_kind text,p_at timestamptz) returns boolean
+language plpgsql security definer set search_path='' as $$
+declare ident jsonb; e public.workbook_scan_inactivity_episodes; stale boolean;
+begin
+  ident:=public._workbook_scan_inactivity_identity(p_book,p_at);
+  if ident is null then return false; end if;
+  select * into e from public.workbook_scan_inactivity_episodes where workbook_id=p_book and activity_key=(ident->>'activity_key')::uuid;
+  if e.consumed_at is not null or e.dispatch_count>=3 then return false; end if;
+  stale:=e.id is null or (e.delivery_audit_id,e.anchor_at,e.clock_context,e.printed_revision) is distinct from
+    ((ident->>'delivery_audit_id')::bigint,(ident->>'anchor_at')::timestamptz,ident->'clock_context',ident->>'printed_revision');
+  if p_kind='inactivity' then return stale; end if;
+  return not stale and e.due_at<=p_at
+    and public._workbook_scan_reminder_program((ident->>'parent_id')::uuid,(ident->>'child_id')::uuid,p_at)
+    and not exists(select 1 from public.email_log where parent_id=e.parent_id and kind='unsubscribe')
+    and not exists(select 1 from public.workbook_scan_reminder_links l join public.workbook_scan_reminder_messages m on m.id=l.message_id
+      where l.episode_id=e.id and not l.released and (m.state<>'refused' or m.attempt_count>=3));
+end $$;
+
+-- Finite backfills: seeded requests and current episode calendars disappear from their respective reads.
+-- Root can drain these to empty without a volatile offset or a process-local cursor.
 -- A keyset is available for a bounded sweep. Start a later sweep at NULL to pick up new/corrected books.
 create function public.list_workbook_scan_recovery_books(p_kind text,p_limit integer,p_after uuid default null) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare answer jsonb;
 begin
-  if p_kind is null or p_kind not in ('unseeded','due','inactivity') or p_limit is null or p_limit not between 1 and 100 then
+  if p_kind is null or p_kind not in ('unseeded','due','inactivity','reminder-due') or p_limit is null or p_limit not between 1 and 100 then
     raise exception 'invalid_scan_recovery_batch'; end if;
   select coalesce(jsonb_agg(to_jsonb(batch) order by batch.workbook_id),'[]'::jsonb) into answer from (
     select w.id workbook_id,w.parent_id,w.child_id,w.number,e.audit delivery_audit_id
@@ -212,7 +231,8 @@ begin
         when 'due' then exists(select 1 from public.workbook_scan_delivery_calendars calendar where calendar.delivery_audit_id=e.audit and calendar.backstop_at<=clock_timestamp())
           and not exists(select 1 from public.workbook_scan_trigger_claims claim where claim.workbook_id=w.id)
           and not exists(select 1 from public.workbook_scan_backstop_holds hold where hold.workbook_id=w.id and hold.delivery_audit_id=e.audit)
-        when 'inactivity' then public._workbook_scan_inactivity_identity(w.id,clock_timestamp()) is not null
+        when 'inactivity' then public._workbook_scan_inactivity_recovery(w.id,p_kind,clock_timestamp())
+        when 'reminder-due' then public._workbook_scan_inactivity_recovery(w.id,p_kind,clock_timestamp())
       end
     order by w.id limit p_limit
   ) batch;
@@ -245,11 +265,12 @@ end $$;
 
 create function public.read_workbook_scan_inactivity_context(p_book uuid) returns jsonb
 language plpgsql security definer set search_path='' as $$
-declare p uuid;
+declare p uuid; at_time timestamptz;
 begin
   select parent_id into p from public.workbooks where id=p_book;
   if p is null or not public._lock_workbook_scan_reminder_parent(p) then return jsonb_build_object('status','unavailable'); end if;
-  return jsonb_build_object('status','read','identity',public._workbook_scan_inactivity_identity(p_book,clock_timestamp()));
+  at_time:=clock_timestamp();
+  return jsonb_build_object('status','read','observed_at',at_time,'identity',public._workbook_scan_inactivity_identity(p_book,at_time));
 end $$;
 
 create function public.propose_workbook_scan_inactivity(p_book uuid,p_delivery_audit bigint,p_activity uuid,
@@ -453,7 +474,7 @@ end $$;
 do $$ declare f regprocedure; begin
   for f in select oid::regprocedure from pg_proc where pronamespace='public'::regnamespace and proname=any(array[
     'guard_workbook_scan_reminder_email','delete_child_workbook_scan_reminders','_workbook_scan_family_clock_context',
-    '_workbook_scan_inactivity_identity','list_workbook_scan_recovery_books','_lock_workbook_scan_reminder_parent',
+    '_workbook_scan_inactivity_identity','_workbook_scan_inactivity_recovery','list_workbook_scan_recovery_books','_lock_workbook_scan_reminder_parent',
     'read_workbook_scan_inactivity_context','propose_workbook_scan_inactivity','_workbook_scan_reminder_program',
     '_workbook_scan_reminder_due_set','read_workbook_scan_reminder_due','claim_workbook_scan_reminder',
     'release_workbook_scan_reminder','admit_workbook_scan_reminder','finish_workbook_scan_reminder']) loop

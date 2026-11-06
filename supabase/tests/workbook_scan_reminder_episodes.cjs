@@ -103,6 +103,7 @@ const { scanInactivityCandidate, familyZone, deliveryDeadlines, deliveryLocalTim
   const now = async () => +(await db.query('select clock_timestamp() at')).rows[0].at;
   const iso = at => new Date(at).toISOString();
   const dateBefore = async days => iso(await now() - days * 86400000).slice(0, 16) + ':00.000Z';
+  const fixtures = new Map();
   async function test(group, name, run) {
     console.log('FALSIFIER', group, name); await run(); passed++;
     distribution.set(group, (distribution.get(group) ?? 0) + 1); console.log('PASS', group, name);
@@ -128,7 +129,7 @@ const { scanInactivityCandidate, familyZone, deliveryDeadlines, deliveryLocalTim
     }
     await db.query("insert into child_plan_states(child_id,parent_id,kind,read_at) values($1,$2,'paying',clock_timestamp()) on conflict do nothing", [child, parent]);
     if (delivered) await confirm(f, delivered, zone, override);
-    return f;
+    fixtures.set(f.w,f);return f;
   }
   async function confirm(f, at, zone = 'UTC', override = false, c = admin) {
     return rpc(c, 'confirm_workbook_delivery', [f.w, f.c, f.number, at, deliveryLocalTime(at, override ? zone : { zone, override: false }), zone, override]);
@@ -140,7 +141,7 @@ const { scanInactivityCandidate, familyZone, deliveryDeadlines, deliveryLocalTim
       r.time_zone, r.zone_override, 'Synthetic correction', randomUUID(), audit]);
   }
   const context = (f, c = service) => rpc(c, 'read_workbook_scan_inactivity_context', [f.w]);
-  async function projection(f) {
+  async function projection(f, observedAt = null) {
     const r = (await db.query('select * from workbook_delivery_receipts where workbook_id=$1', [f.w])).rows[0];
     const correction = (await db.query('select * from workbook_delivery_corrections where workbook_id=$1 order by audit_id desc limit 1', [f.w])).rows[0];
     const delivery = r ? { workbookId: f.w, childId: f.c, parentId: f.p, number: f.number, deliveredAt: iso(correction?.delivered_at ?? r.delivered_at),
@@ -155,13 +156,14 @@ const { scanInactivityCandidate, familyZone, deliveryDeadlines, deliveryLocalTim
     const oldest = (await db.query('select * from children where parent_id=$1 order by created_at,id limit 1', [f.p])).rows[0];
     const input = { parentId: f.p, childId: f.c, books: [{ workbookId: f.w, parentId: f.p, childId: f.c, number: f.number,
       printedRevision: revision, manifest: f.manifest, pages: f.pages, delivery }], receipts, progressEvents,
-      timeZone: familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: oldest?.province }), now: await now() };
+      timeZone: familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: oldest?.province }), now: observedAt === null ? await now() : Date.parse(observedAt) };
     return { input, candidate: scanInactivityCandidate(input) };
   }
   async function propose(f, c = service, supplied = null) {
     const read = supplied ?? await context(f); assert.equal(read.status, 'read');
     const ident = read.identity; assert(ident, 'candidate identity required');
-    const { candidate } = await projection(f); assert.equal(candidate.status, 'candidate');
+    assert(Number.isFinite(Date.parse(read.observed_at)), 'the shared helper receives the database observation time');
+    const { candidate } = await projection(f,read.observed_at); assert.equal(candidate.status, 'candidate');
     assert.equal(candidate.anchorAt, iso(ident.anchor_at));
     return rpc(c, 'propose_workbook_scan_inactivity', [f.w, ident.delivery_audit_id, ident.activity_receipt_id,
       candidate.anchorAt, candidate.dueAt, ident.clock_context, clockVersion]);
@@ -699,10 +701,32 @@ const { scanInactivityCandidate, familyZone, deliveryDeadlines, deliveryLocalTim
     assert.deepEqual((await due(s)).episode_ids,[]);
     assert.equal((await db.query('select dispatch_count from workbook_scan_inactivity_episodes where child_id=$1',[s.c])).rows[0].dispatch_count,3);
   });
+  await test('recovery','inactivity backfill drains completed calendars across restarts; due selector removes reserved/consumed work',async()=>{
+    let total=0,batches=0;const seen=new Set();
+    for(;;){
+      const rows=await rpc(service,'list_workbook_scan_recovery_books',['inactivity',100,null]);if(!rows.length)break;
+      batches++;assert(batches<10);assert(rows.length<=100);
+      for(const row of rows){assert(!seen.has(row.workbook_id));seen.add(row.workbook_id);assert.equal((await propose(fixtures.get(row.workbook_id))).status,'recorded');total++;}
+    }
+    assert(total>100);assert(batches>=2);console.log('EPISODE_BACKFILL_ROWS',total,'BATCHES',batches);
+    async function reminderRows(){
+      const all=[];let after=null;
+      for(let i=0;i<10;i++){
+        const page=await rpc(service,'list_workbook_scan_recovery_books',['reminder-due',100,after]);assert(page.length<=100);
+        if(!page.length)return all;all.push(...page);after=page.at(-1).workbook_id;
+      }
+      throw Error('Unexpected unbounded reminder fixture');
+    }
+    const f=await dueBook();assert((await reminderRows()).some(x=>x.workbook_id===f.w));
+    const m=await take(f);assert(!(await reminderRows()).some(x=>x.workbook_id===f.w));
+    await admit(m);await finish(m,'sent');assert(!(await rpc(service,'list_workbook_scan_recovery_books',['inactivity',100,null])).some(x=>x.workbook_id===f.w));
+    await db.query("update parents set time_zone='America/Toronto' where id=$1",[f.p]);
+    assert(!(await rpc(service,'list_workbook_scan_recovery_books',['inactivity',100,null])).some(x=>x.workbook_id===f.w));
+  });
   await test('access','raw tables deny all external writes; anon/own/foreign/admin roles cannot invoke service RPCs',async()=>{
     const f=await dueBook(),m=await take(f),tables=['workbook_scan_inactivity_episodes','workbook_scan_reminder_messages','workbook_scan_reminder_links','workbook_scan_reminder_attempts'];
     const external=['list_workbook_scan_recovery_books','read_workbook_scan_inactivity_context','propose_workbook_scan_inactivity','read_workbook_scan_reminder_due','claim_workbook_scan_reminder','release_workbook_scan_reminder','admit_workbook_scan_reminder','finish_workbook_scan_reminder'];
-    const privateNames=['guard_workbook_scan_reminder_email','delete_child_workbook_scan_reminders','_workbook_scan_family_clock_context','_workbook_scan_inactivity_identity','_lock_workbook_scan_reminder_parent','_workbook_scan_reminder_program','_workbook_scan_reminder_due_set'];
+    const privateNames=['guard_workbook_scan_reminder_email','delete_child_workbook_scan_reminders','_workbook_scan_family_clock_context','_workbook_scan_inactivity_identity','_workbook_scan_inactivity_recovery','_lock_workbook_scan_reminder_parent','_workbook_scan_reminder_program','_workbook_scan_reminder_due_set'];
     for(const[role,viewer,isAdmin]of [['anon',null,false],['authenticated',f.p,false],['authenticated',randomUUID(),false],['authenticated',adminId,true],['service_role',null,false]]){
       const c=await open(role);try{
         if(viewer)await c.query("select set_config('test.viewer',$1,false)",[viewer]);
@@ -713,7 +737,7 @@ const { scanInactivityCandidate, familyZone, deliveryDeadlines, deliveryLocalTim
           await assert.rejects(()=>c.query('insert into '+table+' default values'),e=>e.code==='42501');
         }
         const funcs=(await db.query('select oid::regprocedure::text name,proname from pg_proc where pronamespace=\'public\'::regnamespace and proname=any($1)',[[...external,...privateNames]])).rows;
-        assert.equal(funcs.length,15);
+        assert.equal(funcs.length,16);
         for(const fn of funcs)assert.equal((await db.query('select has_function_privilege($1,$2,\'EXECUTE\') allowed',[role,fn.name])).rows[0].allowed,role==='service_role'&&external.includes(fn.proname));
         if(role!=='service_role')await assert.rejects(()=>rpc(c,'read_workbook_scan_reminder_due',[f.p]),e=>e.code==='42501');
         await assert.rejects(()=>rpc(c,'_workbook_scan_reminder_due_set',[f.p,'2099-01-01Z',null]),e=>e.code==='42501');
