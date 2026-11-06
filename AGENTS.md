@@ -35,6 +35,8 @@ Personalized, mailed math and reading workbooks for ages 5 to 14 (Kindergarten t
 - Blog (`/blog`, D-152): one post per file in `src/content/blog/<slug>.tsx`, registered in `src/lib/blog.ts`; writing rules in `docs/blog-style.md` (checked by `src/lib/blog.test.ts`); topic queue in `docs/blog-topics.md`. The cloud routine "Unica weekly blog" runs `docs/blog-automation.md` every Sunday and pushes one post on a `claude/blog-<slug>` branch. The GitHub Actions workflow `Blog publish` (`.github/workflows/blog-publish.yml`) checks with `scripts/blog-publish-guard.mjs` that the branch only adds or fixes a post, merges it into `main`, runs the done gate and pushes `main`. Never name a branch `claude/blog-*` for any other work; a name ending in `-dryrun` runs the checks without the push.
 - Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
 
+Parent feedback (#680, D-296): `public.feedback` stores parent, optional owned child, product, text, source section, time and team status. RLS permits Admin reads only. The service-only `submit_feedback` RPC serializes admission under the parent lock: 5,000 characters, five new messages per rolling hour and exact retry deduplication. Family and child write fences apply. Cascade deletion removes owned rows. `/account/feedback` works at every parent stage; `/admin/feedback` lists and filters messages.
+
 ## Tools and services
 
 | Tool | What we use it for | Notes |

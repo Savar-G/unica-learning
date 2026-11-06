@@ -7,5 +7,20 @@
   "constraint_mode": "existing-system",
   "contract": ".design/experiments/r680/contract.md",
   "preview": "/admin/dashboard?view=feedback&scenario=form&size=desktop",
-  "status": "implementation; screenshots and review pending with root"
+  "status": "implementation; screenshots and review pending with root",
+  "screenshots": [
+    "admin-rows-desktop.png",
+    "admin-rows-phone.png",
+    "empty-refusal-desktop.png",
+    "empty-refusal-phone.png",
+    "frame-link-desktop.png",
+    "frame-link-phone.png",
+    "long-refusal-desktop.png",
+    "long-refusal-phone.png",
+    "parent-form-desktop.png",
+    "parent-form-phone.png",
+    "sent-desktop.png",
+    "sent-phone.png"
+  ],
+  "ui_approval": "pending Savar review"
 }

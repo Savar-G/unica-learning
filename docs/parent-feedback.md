@@ -26,4 +26,4 @@ Run `node supabase/tests/parent_feedback.cjs` for local SQL proof. It creates it
 
 The authenticated Admin dashboard sandbox has a Feedback view with form, saved, empty, too-long, retryable failure and admin-list states. It uses the real components. See `.design/experiments/r680/contract.md`.
 
-Root must apply the additive migration before shipping, generate official database types and retain the marking evaluation schema, then run the final gate, hosted probes and browser review. `database.ts` adds only the nullable `p_child` argument correction. Generated types are intentionally untouched in the implementation commit.
+The additive migration was applied as `20261106222843_parent_feedback`. Official database type generation includes Feedback and preserves the applied marking evaluation schema. `database.ts` adds the nullable `p_child` argument correction. Final tests, hosted probes, browser evidence and independent review are recorded with the release evidence.
