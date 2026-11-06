@@ -103,6 +103,9 @@
 .scan-preview { display: grid; gap: 12px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
 .scan-preview h3 { margin: 0; font-size: 18px; }
 .scan-preview p { margin: 0; }
+.scan-marking-results { min-width: 0; }
+.scan-marking-results p { overflow-wrap: anywhere; }
+.scan-result-refresh { min-height: 44px; }
 .scan-preview .btn { justify-self: start; min-height: 44px; }
 .scan-preview-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 20px; align-items: start; }
 .scan-straight { margin: 0; display: grid; gap: 8px; font-size: 14px; color: var(--ink-2); }

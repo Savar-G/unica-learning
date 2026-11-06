@@ -87,9 +87,15 @@ function fakePostgrest(history: Record<string, unknown>[] = []): ChildProfileSto
     if (init?.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     const url = new URL(String(input));
     const table = url.pathname.replace("/rest/v1/", "");
+    if (table === "rpc/scan_marking_command") {
+      const args = JSON.parse(String(init?.body));
+      if (args.p_action === "revision") return Response.json(0);
+      if (args.p_action === "effective") return Response.json([]);
+      throw new Error("unexpected marking command");
+    }
     // public.save_child_profile_and_skill_changes_from_tests: the profile as a save stores it, then its rows, or neither;
     // nothing when a test the rows came from no longer exists.
-    if (table === "rpc/save_child_profile_and_skill_changes_from_tests") {
+    if (table === "rpc/save_child_profile_and_skill_changes_from_tests" || table === "rpc/save_marked_child_profile") {
       const { p_child, p_parent, p_assessment, p_expected, p_schema_version, p_profile, p_changes, p_tests } = JSON.parse(String(init?.body));
       if (fenced.includes(p_parent)) return Response.json({ code: "55000", message: "family_unavailable" }, { status: 400 });
       if (!(p_tests as string[]).every((id) => tables.assessments.some((t) => t.id === id && t.child_id === p_child && t.parent_id === p_parent))) return Response.json(null);

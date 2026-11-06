@@ -1,0 +1,27 @@
+import { expect, it } from "vitest";
+import { sampleWorkbook } from '@/lib/workbook-sample';
+import { checkQuestionPackage, packageItem } from '@/lib/question-package';
+import { expectedItems, firstObservation } from '@/lib/scan-observation';
+import { runScanMarking, MARKING_MODEL, type MarkingStore, type MarkingFrame } from '@/lib/scan-marking';
+import { learningEvents, type NewLearningEvent } from '@/lib/learning-events';
+import { memoryLearningEventStore } from '@/lib/learning-events-memory';
+const parent='11111111-1111-4111-8111-111111111111', child='22222222-2222-4222-8222-222222222222', workbook='33333333-3333-4333-8333-333333333333', page='44444444-4444-4444-8444-444444444444';
+it.each([50,89,90,100,200])('publishes a valid supported package with an item ID of %s characters',async length=>{
+ const sample=sampleWorkbook({workbookId:workbook,childId:child,parentId:parent,qrTokens:['aaaaaaaaaaaaaaaa','bbbbbbbbbbbbbbbb','cccccccccccccccc']});
+ const pkg=structuredClone(sample.pages[1].questions[0].package);pkg.id='q'.repeat(length);
+ expect(checkQuestionPackage(pkg).ok).toBe(true);expect(pkg.id.length).toBeLessThanOrEqual(200);
+ const item=packageItem(pkg), region=item.regions[0];
+ if(region.kind!=="box")throw Error("Expected sample answer box");
+ const answer=region.answer;if(answer?.type!=="number")throw Error("Expected numeric sample region");
+ const teaching={version:1,curriculum:{key:'bc',version:'frozen'},part:'practice',slot:'1',practiceType:'now-you',extra:false,track:'A',plannedStep:{unit:'U1',skill:'add',step:1},itemStep:{unit:'U1',skill:'add',step:1},reviewSteps:[],eligibility:{format:item.format,scorable:item.scorable,parentChecked:item.parentChecked,mastery:true,reason:null}};
+ const frame:MarkingFrame={parentId:parent,childId:child,photo:'photo',workbookId:workbook,printedRevision:'a'.repeat(28),pageId:page,pageNumber:2,ready:true,questions:[{number:1,package:pkg,regions:[{id:region.id,kind:'box',box:{x:1,y:1,width:20,height:20}}],teaching}]};
+ const expected=expectedItems(frame);expect(expected[0].mastery.eligible).toBe(true);
+ const events=learningEvents(memoryLearningEventStore({children:[{id:child,parentId:parent}]}));
+ let intent:NewLearningEvent|null=null;let applied=false;
+ const store:MarkingStore={frame:async()=>frame,claim:async()=>({token:'t',items:[{expected:expected[0],observation:firstObservation(expected[0],'photo'),originalEvent:null,eventId:null,at:'2026-11-05T00:00:00Z',model:null,prompt:null}],extraction:null}),image:async()=>new Uint8Array([1]),admit:async()=>({dispatch:'d'}),settle:async()=>{},extract:async()=>true,apply:async(_r,_t,_o,pending)=>{intent=pending[0];applied=true;return true;},publish:async()=>{if(intent){const result=await events.append(intent);console.log(JSON.stringify({idLength:length,keyLength:intent.key.length,applied,result}));if(!result.ok)throw Error('marking_publication:'+result.error);}},finish:async()=>true,pause:async()=>{},effective:async()=>[]};
+ const result=await runScanMarking(store,{parent,photo:'photo'},'t',before=>({client:{model:MARKING_MODEL,json:async()=>{await before();return {readings:[{item:'i1',region:'r1',state:'written',text:String(answer.value)}]};}},costMicros:()=>0}),()=> '2026-11-05T00:00:00Z');
+ expect(result).toBe('finished');
+ const published=await events.read(child,{from:'2000-01-01T00:00:00Z',to:'9999-01-01T00:00:00Z'});
+ expect(published).toHaveLength(1);
+ expect(published[0].key).toMatch(/^marking:[a-f0-9]{64}$/);
+});

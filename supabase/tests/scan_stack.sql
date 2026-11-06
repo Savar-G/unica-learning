@@ -63,13 +63,13 @@ begin
     (expired, p, c, pg[6], b, 'r1', 'saved',   0, 1, 100, 100, now() - interval '91 days', now() - interval '1 day'),
     (other,   q, cq, pgq, bq, 'r1', 'saved',   0, 1, 100, 100, now(), now() + interval '90 days');
   insert into public.scan_calibrations(photo_id, parent_id, printed_revision, state, lease_token, lease_until, result) values
-    (ready,   p, 'r1', 'ready',   gen_random_uuid(), now(), '{}'),
+    (ready,   p, 'r1', 'ready',   gen_random_uuid(), now(), '{"sheetCheck":1}'),
     (running, p, 'r1', 'running', gen_random_uuid(), now() + interval '90 seconds', null),
     (refused, p, 'r1', 'refused', gen_random_uuid(), now(), '{"reason":"marks-missing"}'),
-    (pending, p, 'r1', 'ready',   gen_random_uuid(), now(), '{}'),
-    (older,   p, 'r1', 'ready',   gen_random_uuid(), now(), '{}'),
-    (expired, p, 'r1', 'ready',   gen_random_uuid(), now(), '{}'),
-    (other,   q, 'r1', 'ready',   gen_random_uuid(), now(), '{}');
+    (pending, p, 'r1', 'ready',   gen_random_uuid(), now(), '{"sheetCheck":1}'),
+    (older,   p, 'r1', 'ready',   gen_random_uuid(), now(), '{"sheetCheck":1}'),
+    (expired, p, 'r1', 'ready',   gen_random_uuid(), now(), '{"sheetCheck":1}'),
+    (other,   q, 'r1', 'ready',   gen_random_uuid(), now(), '{"sheetCheck":1}');
 
   sent := public.send_scan_photos(p, c, array[ready, running, refused, pending, older, expired, other]);
   if sent <> array[ready] then raise exception 'sent %; want only the ready page', sent; end if;

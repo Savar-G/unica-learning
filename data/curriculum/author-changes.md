@@ -7853,3 +7853,13 @@ F11 now describes reversing tens and ones. Its source reason changed from "write
 | Case | Final wrong / fix | Verifier |
 |---|---|---|
 | 1.1-subitize-to-10#2:0 | Saying 6 or 8 for a full row of 5 and 2 more by counting one too few or one too many. / Know the full row is 5, then count on 2: 6, 7. The total is 7. | claude-opus-5-5 |
+
+## 2026-11-05: final-step bag outcomes
+
+For `4.17-predict-outcome`, step 3, templates 1 and 3 now compare red with the combined blue and green outcomes. The old questions compared two stated counts. The new questions require the child to combine the non-red outcomes before comparing likelihood. Each colour has at least one marble. The total bag size must be between 8 and 12 items, as the step requires. No fractions or replacement probabilities are added. Code computes the keys as `a > b + c`. Equal cases are excluded. Earlier teaching steps stay unchanged.
+
+The SPEC review at `90600c96` found that independent colour counts could exceed the total bag size. Both bag templates now require `8 <= a + b + c <= 12` in addition to the comparison check. The curriculum source and generated data use the same constraint.
+
+## 2026-11-05: final-step scale intervals and missing bills
+
+For `4.16-many-to-one`, step 3, template 4 now gives three adjacent scale marks. The child must infer the interval before checking a reading several intervals above a labelled mark. This replaces the count-on wording while keeping the existing ranges and key. For `4.18-money-notation`, step 3, template 4 now asks for a missing count of $10 bills from a total with $20 bills, loonies and quarters. The old whole-dollar addition did not exercise decimal money notation. The new inverse calculation stays below $100 and uses the same denomination ranges. These changes also apply to the standards' own practice.

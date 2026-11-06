@@ -69,7 +69,7 @@ export const STEP_STORY_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["word
 /** Places on the day's own step, which leave its hardest templates to the Challenge. */
 export const TEACH_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["now-you", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "word-problems", "spot-the-error", "solve-it-two-ways", "try-first", "worked-example", "watch-one", "reminder"]);
 /** Places a template does not fill: their formats need an operation or code's fact grid (#482's builders keep them). */
-export const NO_TEMPLATE_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["warm-up", "in-your-head", "mixed-set", "how-do-you-know"]);
+export const NO_TEMPLATE_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["warm-up", "in-your-head", "how-do-you-know"]);
 
 const BANNED_FROM_U4 = /\b(?:draw|drawing|trace|tracing)\b/i;
 /** Copy the brief rejects on any page. */

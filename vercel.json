@@ -11,6 +11,10 @@
     {
       "path": "/api/child-deletions",
       "schedule": "15 15 * * *"
+    },
+    {
+      "path": "/api/scan-marking",
+      "schedule": "*/5 * * * *"
     }
   ],
   "ignoreCommand": "bash scripts/vercel-ignore-build.sh"

@@ -1,0 +1,87 @@
+PASS defaults fail closed before dispatch and RPC/table grants exclude all browser roles
+PASS two simultaneous connections serialize one active family/page job and one canonical original
+PASS version compare-and-set protects a parent change from an already extracted response
+PASS retake resolves pending only, finalized original and its reading survive image expiry
+PASS old lease cannot overwrite newer photo; extraction is durable and takeover sends no additional request
+PASS delete and clock expiry independently refuse held results, retries and late derivative writes
+PASS global 49.99 budget across families and models admits one concurrently; unknown holds survive restart and rollover
+PASS two transport attempts are the total job limit; cost reconciliation cannot release unknown or exceed maximum
+PASS family freeze and one-child request fence every job/result write, while anonymous provider outcomes remain reconcilable
+PASS durable event intent publishes once and published child/family deletion has no cross-cascade restoration
+PASS child cascade removes all sensitive tables, keeps sibling and anonymous charge holds, forbids late restoration
+PASS existing sent photos recover without another Send
+PASS real profile compare-and-set refuses stale effective snapshots, including first build
+PASS concurrent upload and queued-job boundaries admit only available slots, without objects or paid work
+PASS simultaneous frequency, stored-byte and concurrent-upload boundaries refuse before objects
+PASS upload processing and marking share one active family slot in both directions
+PASS budget/off pause records its reason and releases the lease without resetting dispatch attempts
+PASS all-unscored rollback probe restores its fixture and produces no event
+PASS child image policy admits owner/admin and refuses copied family identity or a pending child deletion
+PASS RLS denies existing private photo/crop objects despite broad policies for owner, admin and anonymous
+PASS calibration takeover returns only the replaced lease for cleanup
+PASS unpublished intent recovers after concurrent profile save and deleted image
+PASS unpublished intent recovers after concurrent profile save and expired image
+PASS budget lock wait across photo deadline creates no dispatch or reservation
+PASS budget lock wait across lease deadline creates no dispatch or reservation
+PASS shared processing slot: calibration and marking, calibration-first
+PASS shared processing slot: calibration and marking, other-first
+PASS shared processing slot: calibration and marking, concurrent
+PASS shared processing slot: calibration and upload, calibration-first
+PASS shared processing slot: calibration and upload, other-first
+PASS shared processing slot: calibration and upload, concurrent
+PASS maximum-length ASCII and UTF-8 item IDs use the same bounded key in JavaScript and SQL
+PASS an earlier Send cannot admit an unversioned or malformed ready calibration
+PASS current numeric sheet check 1 discovers, admits and applies
+PASS current numeric sheet check 2 discovers, admits and applies
+PASS a prior Send and claim cannot dispatch or apply after running
+PASS a prior Send and claim cannot dispatch or apply after refused
+PASS a prior Send and claim cannot dispatch or apply after legacy-ready
+PASS integrated legacy recheck shares marking slot, recheck-first
+FAIL integrated legacy recheck shares marking slot, other-first AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+'started' !== 'busy'
+
+    at /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:306:150
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async test (/Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:39:36)
+    at async /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:297:120
+PASS integrated legacy recheck shares marking slot, concurrent
+PASS integrated legacy recheck shares upload slot, recheck-first
+FAIL integrated legacy recheck shares upload slot, other-first AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+'started' !== 'busy'
+
+    at /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:306:150
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async test (/Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:39:36)
+    at async /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:297:120
+FAIL integrated legacy recheck shares upload slot, concurrent AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+-   'busy',
+    'started',
++   'started'
+  ]
+
+    at /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:305:35
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async test (/Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:39:36)
+    at async /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:297:120
+PASS integrated legacy recheck shares calibration slot, recheck-first
+FAIL integrated legacy recheck shares calibration slot, other-first AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+'started' !== 'busy'
+
+    at /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:306:150
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async test (/Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:39:36)
+    at async /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:297:120
+PASS integrated legacy recheck shares calibration slot, concurrent
+FAIL integrated recheck waits on the family lock before it locks the photo Error: no database lock wait observed
+    at waitLock (/Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:65:203)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:314:123
+    at async test (/Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:39:36)
+    at async /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:310:2
+{"passed":43,"failures":5,"limits":{"perTenMinutes":40,"perDay":60,"concurrentUploads":2,"activeJobs":1,"queuedJobs":8,"inputBytes":20971520,"decodedPixels":48000000,"familyBytes":2147483648},"proof":"local synthetic SQL, not hosted Storage API"}

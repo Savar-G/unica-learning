@@ -1,9 +1,7 @@
 // The in-memory store of the crop job, for tests: it keeps the same rules as the database's fence (fence_scan_object,
-// begin_scan_calibration and finish_scan_calibration), with a clock the test passes in. The real policies are proved on the
+// begin_scan_calibration, reopen_scan_calibration and finish_scan_calibration), with a clock the test passes in. The real policies are proved on the
 // hosted database by scripts/scan-crops-hosted.ts; this store cannot prove them.
-import { scanPartPath, type BeginAnswer, type FinishAnswer, type PhotoRef, type ScanCalibrationResult, type ScanCropStore, type ScanFrame, type StoredScanCalibration } from "@/lib/scan-crops";
-
-const LEASE_MS = 90_000;
+import { SCAN_LEASE_MS, scanPartPath, type BeginAnswer, type FinishAnswer, type PhotoRef, type ScanCalibrationResult, type ScanCropStore, type ScanFrame, type StoredScanCalibration } from "@/lib/scan-crops";
 
 export interface MemoryScanPhoto {
   parent: string;
@@ -39,14 +37,28 @@ export function memoryScanCropStore(o: { now: () => number }) {
       if (p.frame.printedRevision !== p.frame.book.printedRevision) return { status: "unavailable", reason: "other-revision" };
       const c = calibrations.get(ref.photo);
       if (!c) {
-        calibrations.set(ref.photo, { state: "running", token: ref.token, revision: p.frame.printedRevision!, result: null, leaseUntil: o.now() + LEASE_MS, attempts: 1 });
+        calibrations.set(ref.photo, { state: "running", token: ref.token, revision: p.frame.printedRevision!, result: null, leaseUntil: o.now() + SCAN_LEASE_MS, attempts: 1 });
         return { status: "started", previous: null };
       }
       if (c.state !== "running") return { status: c.state };
       if (c.leaseUntil > o.now()) return { status: "busy" };
       if (c.attempts >= 5) { c.state = "refused"; c.result = { reason: "failed" }; return { status: "refused" }; }
       const previous = c.token;
-      c.token = ref.token; c.leaseUntil = o.now() + LEASE_MS; c.attempts++;
+      c.token = ref.token; c.leaseUntil = o.now() + SCAN_LEASE_MS; c.attempts++;
+      return { status: "started", previous };
+    },
+    async reopen(ref): Promise<BeginAnswer> {
+      if (frozen.has(ref.parent)) return { status: "terminal" };
+      const p = own(ref);
+      if (!p) return { status: "unknown" };
+      if (!active(p)) return { status: "terminal" };
+      const c = calibrations.get(ref.photo);
+      if (!c) return store.begin(ref);
+      // Only a ready result of an older sheet check, as reopen_scan_calibration: anything else answers as begin does.
+      const version = (c.result as { sheetCheck?: unknown } | null)?.sheetCheck;
+      if (c.state !== "ready" || (typeof version === "number" && version >= ref.sheetCheck)) return store.begin(ref);
+      const previous = c.token;
+      Object.assign(c, { state: "running", result: null, token: ref.token, leaseUntil: o.now() + SCAN_LEASE_MS, attempts: 1 });
       return { status: "started", previous };
     },
     async frame(ref) {

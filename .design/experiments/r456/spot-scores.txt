@@ -1,0 +1,44 @@
+Spot scores of the sheet check, over 24 real pages (U4, U16, U26) and 16 scale and angle conditions, on the normalized upload bytes.
+Score: where the photo sits between this page's print and a near twin's in one spot. About -1: this page's print. About +1: the twin's.
+
+Right pages, every spot against every near twin (1360 spots): highest [0.02, 0.02, 0.14, 0.15, 0.17, 0.23]; at or below -0.12: 1349
+The same photos read as the near twin (1337 spots): lowest [-0.22, -0.16, -0.15, -0.14, -0.02, -0.02]; at or above 0.40: 1204 (90%)
+How much of the contrast around a spot a right page keeps on its own print, on the closest pairs (fit 0.9 or more), measured before near twins were widened to 0.75: lowest 0.73. A spot under heavy glare: 0.10. A page that prints white paper at a spot keeps nothing there, and the check leaves those out.
+
+Print against print, the share of one page's print the other holds. 192 pairs; those at 0.5 or more:
+  0.970 U4 p8 against U4 p5
+  0.961 U4 p5 against U4 p8
+  0.927 U16 p12 against U16 p4
+  0.914 U16 p4 against U16 p12
+  0.850 U16 p8 against U16 p5
+  0.832 U16 p5 against U16 p8
+  0.812 U16 p11 against U16 p3
+  0.804 U16 p13 against U16 p5
+  0.794 U16 p3 against U16 p11
+  0.786 U16 p5 against U16 p13
+  0.758 U16 p13 against U16 p8
+  0.755 U16 p8 against U16 p13
+  0.547 U26 p7 against U26 p5
+  0.527 U16 p6 against U16 p14
+  0.523 U16 p14 against U16 p6
+
+Whole photos:
+RIGHT n=184 withTwins=64 refused=0 weakest spot top: 0.23,0.17,0.15,0.14,0.02,0.02,-0.06,-0.09
+WRONG n=85 passed=0 weakest spot low: -0.22,-0.16,-0.15,-0.14,-0.02,-0.02,0.06,0.09
+pasted glare 1: as U4 p8 {"verdict":"another-page","twins":1,"spots":14,"closest":0.8979461799313186,"faint":0,"unclear":0}
+right U4 p5 glare 1: as U4 p5 {"verdict":"this-page","twins":1,"spots":14,"closest":-0.42440388917017274,"faint":0,"unclear":0}
+right U4 p8 glare 1: as U4 p8 {"verdict":"this-page","twins":1,"spots":14,"closest":-0.3999393548397129,"faint":0,"unclear":0}
+pasted glare 0.5: as U4 p8 {"verdict":"another-page","twins":1,"spots":14,"closest":0.9022957833473757,"faint":1,"unclear":1}
+right U4 p5 glare 0.5: as U4 p5 {"verdict":"this-page","twins":1,"spots":14,"closest":-0.30810518940143145,"faint":0,"unclear":0}
+right U4 p8 glare 0.5: as U4 p8 {"verdict":"this-page","twins":1,"spots":14,"closest":-0.33638963869660626,"faint":0,"unclear":0}
+pasted glare 0.25: as U4 p8 {"verdict":"another-page","twins":1,"spots":14,"closest":0.817326619699195,"faint":6,"unclear":0}
+right U4 p5 glare 0.25: as U4 p5 {"verdict":"faint","twins":1,"spots":14,"closest":-0.20953493214258326,"faint":5,"unclear":0}
+right U4 p8 glare 0.25: as U4 p8 {"verdict":"faint","twins":1,"spots":14,"closest":-0.17724055717608383,"faint":5,"unclear":0}
+pasted glare 0.1: as U4 p8 {"verdict":"faint","twins":1,"spots":14,"closest":0.14078823399921978,"faint":14,"unclear":0}
+right U4 p5 glare 0.1: as U4 p5 {"verdict":"faint","twins":1,"spots":14,"closest":-0.12244542506149986,"faint":14,"unclear":0}
+right U4 p8 glare 0.1: as U4 p8 {"verdict":"faint","twins":1,"spots":14,"closest":-0.06591012243751063,"faint":14,"unclear":0}
+pasted glare 0.05: as U4 p8 {"verdict":"faint","twins":1,"spots":14,"closest":0.0996720496570446,"faint":14,"unclear":0}
+right U4 p5 glare 0.05: as U4 p5 {"verdict":"faint","twins":1,"spots":14,"closest":-0.08018770536054975,"faint":14,"unclear":0}
+right U4 p8 glare 0.05: as U4 p8 {"verdict":"faint","twins":1,"spots":14,"closest":-0.016104964092407876,"faint":14,"unclear":0}
+right p5 glare 0.1 on title only: as U4 p5 {"verdict":"this-page","twins":1,"spots":14,"closest":-0.42440388917017274,"faint":0,"unclear":0}
+right p5 glare 0.1 on one separating spot (heading): as U4 p5 {"verdict":"faint","twins":1,"spots":14,"closest":-0.1521586291179173,"faint":1,"unclear":0}
