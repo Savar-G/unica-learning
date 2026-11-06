@@ -1,6 +1,6 @@
 # Issue 664: Mixed set operation selection
 
-HANDOFF_READY
+HANDOFF_DONE
 
 Status: the issue 664 correction is implemented and verified locally. The full plain U16 book retains one preexisting step-coverage failure. This is not a clean release result.
 
@@ -112,7 +112,7 @@ Evidence: `.workbook-sample/mixed-baseline.log`, `mixed-baseline/`, `mixed-full.
 
 ## Remaining proof and limits
 
-The controller owns the combined full gate, independent review, final real Unify subscription U4/U16 replay pair, push, PR and merge. This child makes a local commit only.
+The controller owns the final full gate, real Unify subscription U4/U16 replay pair, push, PR and merge. Independent review is recorded below. This child makes a local commit only.
 
 Fake generation and the key solver do not prove independent real-model answer correctness or real wording. Chromium proves the selected local rendering path. It does not prove hosted operation, printer output, scan marking, sample approval or a live customer book.
 
@@ -132,4 +132,6 @@ Sol found no requirement to balance operation counts in the plain U16 book. Its 
 
 The controller's strict fake U16 check after the correction exited 0: 28 pages, 197 questions, ready=true, zero failed questions, fit failures, render problems or omissions. It used the fixed sample seed and days 1,5,10. All 54 fake solve checks passed. Evidence: `.workbook-sample/root-s1-fast/` and the controller's `664-s1-fast.log`. This is a selected-day fake check, not the full-book or real-provider acceptance result.
 
-S1 needs re-review before publication. No clean release result is claimed.
+Sol round 2 approved the correction at `2980435003dd2e44edc472f34552ed5aae0161b7`. S1 is resolved, with no new findings. The controller then rebased onto merged PR #668 at `0d9285c7d1635cff8bbf569ad17eb0608fd3a300`. Git range-diff confirmed identical behavior patches. The new practice harness suites plus the five focused suites passed: 7 files, 243 tests, exit 0. Rejected and held generated items remain separate from passes. The #531 API acceptance hold remains.
+
+The full local gate and final real replay pair remain pending. No clean release result is claimed.
