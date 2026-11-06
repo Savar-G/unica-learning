@@ -295,6 +295,26 @@ describe("write-words whole-page reading", () => {
 });
 
 describe("fraction and mixed-number scan responses", () => {
+  it.each(["-1 1/-4", "1 1/-4", "1 1/+4", "-1 1/+4"])("R3-01 keeps mixed-number signed denominator %s pending with no right event", async text => {
+    const f = numericFrame({ type: "mixed", whole: 1, numerator: 1, denominator: 4 }, "'1 1/4'");
+    const read = readMarkingOutput(f, output([text]))[0];
+    expect(read).toMatchObject({ state: "pending", result: null, readAnswerText: text });
+    const s = new Store(f);
+    expect(await run(s, f.photo, client(output([text])))).toBe("finished");
+    const view = markingPageView(await s.effective(P, C));
+    expect(view.completion.status).toBe("incomplete");
+    expect(view.items[0].result).toBeNull(); expect(s.events).toHaveLength(0);
+    expect((await s.effective(P, C))[0].observation.readAnswerText).toBe(text);
+  });
+  it("keeps ordinary mixed signs, single-fraction signs and a clear zero denominator distinct", () => {
+    const mixed = numericFrame({ type: "mixed", whole: 1, numerator: 1, denominator: 4 }, "'1 1/4'");
+    expect(readMarkingOutput(mixed, output(["1 1/4"]))[0].result).toBe("right");
+    expect(readMarkingOutput(mixed, output(["-1 1/4"]))[0].result).toBe("wrong");
+    expect(readMarkingOutput(mixed, output(["1 1/0"]))[0].result).toBe("wrong");
+    const fraction = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'");
+    expect(readMarkingOutput(fraction, output(["-1/-9"]))[0].result).toBe("right");
+    expect(readMarkingOutput(fraction, output(["1/-9"]))[0].result).toBe("wrong");
+  });
   it.each([
     ["1/9", "right"], ["2/18", "right"], [" 1 / 9 ", "right"], ["-1/9", "wrong"], ["1/0", "wrong"],
     ["0/0", "wrong"], ["2/9", "wrong"], ["19", "wrong"], ["1/?", null], ["1//9", null], ["1/9 or 2/9", null], ["", "blank"], [null, null],

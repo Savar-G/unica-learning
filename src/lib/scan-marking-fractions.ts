@@ -13,6 +13,8 @@ function fractionValue(text: string): NumberValue | null {
   if (number !== null) return { type: "number", value: number };
   const m = text.match(/^([+-]?)(?:(\d+)\s+)?(\d+)\s*\/\s*([+-]?\d+)$/);
   if (!m) return null;
+  // A denominator sign in a mixed number has no unambiguous whole-number scope.
+  if (m[2] !== undefined && /^[+-]/.test(m[4])) return null;
   const whole = Number(m[2] ?? 0), numerator = Number(m[3]), denominator = Number(m[4]);
   if (![whole, numerator, denominator].every(Number.isSafeInteger)) return null;
   if (m[2] !== undefined && m[1] !== "-" && denominator >= 0) return { type: "mixed", whole, numerator, denominator };
