@@ -13,7 +13,7 @@ import { learningEventStore } from "@/lib/learning-events-store";
 /** No family mode is implemented. Evidence completion alone cannot change SQL admission or release flags. */
 export function scanMarkingServerReadiness(env: Readonly<Record<string, string | undefined>> = process.env, now: string = new Date().toISOString()) {
   const saved = SCAN_MARKING_LAUNCH_EVIDENCE;
-  const current = saved.candidate ? { ...saved.candidate, model: MARKING_MODEL, prompt: MARKING_PROMPT_VERSION } : null;
+  const current = saved.candidate ? { ...saved.candidate, model: env.SCAN_MARKING_MODEL?.trim() || MARKING_MODEL, prompt: MARKING_PROMPT_VERSION } : null;
   const evidence = scanMarkingLaunchReadiness(current, saved, now);
   return {
     mode: env.SCAN_MARKING_ENABLED === "test-only" ? "test-only" as const : "off" as const,

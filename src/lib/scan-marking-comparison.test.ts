@@ -93,6 +93,21 @@ describe("fixed model and endpoint policy", () => {
 });
 
 describe("per-model preflight and refreshed prices", () => {
+  it.each(["base", "tier"])("includes %s cache-read liability in refreshed admission", scope => {
+    const model = COMPARISON_MODELS[0], live = snapshot(model);
+    const endpoint = live.data.endpoints.find(e => e.tag === model.endpoint)!;
+    if (scope === "base") endpoint.pricing.input_cache_read = "0.000012";
+    else endpoint.pricing.overrides = [{ input_cache_read: "0.000012" }];
+    const state = assessComparisonEndpoint(model, live, publicEvidence.zdr, evidence(model));
+    expect(state.status).toBe("ready");
+    if (state.status !== "ready") throw Error("expected verified price refresh");
+    expect(state.maximumMicros).toBeGreaterThanOrEqual(Math.ceil((1048576 * 0.000012 + 4096 * 0.000000212) * 1e6));
+  });
+  it("blocks an explicitly unknown cache-read tariff", () => {
+    const model = COMPARISON_MODELS[0], live = snapshot(model);
+    live.data.endpoints.find(e => e.tag === model.endpoint)!.pricing.input_cache_read = null;
+    expect(assessComparisonEndpoint(model, live, publicEvidence.zdr, evidence(model)).status).toBe("blocked");
+  });
   const approved = () => COMPARISON_MODELS.map(model => assessComparisonEndpoint(model, snapshot(model), publicEvidence.zdr));
   it("refreshes price-only drift while binding reservation and projection to the new evidence", () => {
     const model = COMPARISON_MODELS[0], original = evidence(model), live = snapshot(model);
@@ -363,6 +378,52 @@ describe("production request, durable dispatch and transport accounting", () => 
     await expect(budget.settle("synthetic", 0)).rejects.toThrow("settlement");
     expect(urls.every(url => url.includes("/rest/v1/rpc/"))).toBe(true);
   });
+});
+
+it("probes the Sonnet reference first without changing the fixed model data", async () => {
+  const data = manifest(), history = [evidence(), evidence(COMPARISON_MODELS.at(-1)!)], order: string[] = [];
+  await runComparisonMatrix({ manifest: data, preflight: history.map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: reserveMaximum(e) })),
+    history, results: [], records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
+    dispatch: async (m, p) => { order.push(m.model); return result(p, m); },
+  });
+  expect(order[0]).toBe("anthropic/claude-sonnet-5.5");
+});
+
+it.each(["begin", "reserved", "settled"])("retains a fatal %s journal failure for global resume", async stage => {
+  const p = photo(), mem = memory(); let fetched = 0;
+  const r = await runComparisonPhoto({ ...runOptions(p, mem), maxAttempts: 2,
+    journal: { begin: async key => { if (stage === "begin") throw Error("disk failure"); return mem.journal.begin(key); },
+      save: async (key, value) => { if ((value as { state: string }).state === stage) throw Error("disk failure"); await mem.journal.save(key, value); } },
+    fetch: async () => { fetched++; return response(p); },
+  });
+  expect(r.failure).toBe("journal-failure");
+  expect(fetched).toBe(stage === "settled" ? 1 : 0);
+  expect(mem.calls.filter(c => c === "reserve")).toHaveLength(stage === "begin" ? 0 : 1);
+  expect(() => assertComparisonResume([], [r])).toThrow("journal");
+});
+
+it.each([1, 2] as const)("stops retries, the matrix and resume after a response journal failure with %s attempts", async maxAttempts => {
+  const data = manifest(), mem = memory(), results: ComparisonResult[] = [];
+  const model = COMPARISON_MODELS[0], proof = evidence(model);
+  const options = runOptions(data.photos[0], mem);
+  let writesFailed = false, dispatched = 0, fetched = 0;
+  const journal: EvaluationJournal = { ...mem.journal, save: async (key, value) => {
+    if (!writesFailed && (value as { state: string }).state === "response") { writesFailed = true; throw Error("synthetic disk failure"); }
+    await mem.journal.save(key, value);
+  } };
+  await expect(runComparisonMatrix({ manifest: data, preflight: [{ model: model.model, status: "ready", evidence: proof, maximumMicros: options.maximumMicros }],
+    history: [proof], results, records: [], maxRunMicros: 15_000_000, maxAttempts, save: async () => {},
+    dispatch: async (_model, p) => {
+      dispatched++;
+      if (dispatched > 1) return result(p);
+      return runComparisonPhoto({ ...options, maxAttempts, journal, fetch: async () => { fetched++; return response(p); } });
+    },
+  })).rejects.toThrow("journal");
+  expect(dispatched).toBe(1); expect(fetched).toBe(1);
+  expect(mem.calls.filter(c => c === "reserve")).toHaveLength(1);
+  expect(results[0].failure).toBe("journal-failure");
+  expect(results[0].attempts[0].usage.costMicros).toBe(1000);
+  expect(() => assertComparisonResume([], results)).toThrow("journal");
 });
 
 describe("D267 denominators, projection and selection", () => {

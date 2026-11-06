@@ -15,7 +15,7 @@ const original = () => ({ model, endpoint: fixture.snapshots[model].data.endpoin
 const maximum = e => {
   const tiers = [e.endpoint.pricing, ...(e.endpoint.pricing.overrides ?? [])];
   const rate = fields => Math.max(...tiers.flatMap(t => fields.map(f => Number(t[f] ?? 0))));
-  return Math.ceil(((e.endpoint.max_prompt_tokens ?? e.endpoint.context_length) * rate(['prompt', 'image', 'input_cache_write', 'input_cache_write_1h']) + 4096 * rate(['completion', 'internal_reasoning'])) * 1e6);
+  return Math.ceil(((e.endpoint.max_prompt_tokens ?? e.endpoint.context_length) * rate(['prompt', 'image', 'input_cache_read', 'input_cache_write', 'input_cache_write_1h']) + 4096 * rate(['completion', 'internal_reasoning'])) * 1e6);
 };
 const open = async () => { const c = new Client({ host: socket, database, user: process.env.USER }); await c.connect(); await c.query("set statement_timeout='8s'"); return c; };
 (async () => {
@@ -50,6 +50,28 @@ const open = async () => { const c = new Client({ host: socket, database, user: 
         assert.equal(row.maximum, String(maximum(e))); assert.equal(row.reserved, row.maximum); assert.equal(row.evidence_hash, hash(JSON.stringify(e)));
       } finally { await a.query('reset role'); }
     });
+    for (const scope of ['base', 'tier']) {
+      await test(`${scope} cache-read liability binds refresh and near-cap admission`, async () => {
+        const e = structuredClone(approved);
+        if (scope === 'base') e.endpoint.pricing.input_cache_read = '0.000012';
+        else e.endpoint.pricing.overrides = [{ input_cache_read: '0.000012' }];
+        const bound = Math.ceil((1048576 * 0.000012 + 4096 * 0.000000212) * 1e6);
+        assert.equal(maximum(e), bound);
+        assert.equal((await refresh(a, e, { maximum: maximum(approved) })).refused, 'price-bound-mismatch');
+        assert.deepEqual(await refresh(a, e), { verified: true });
+        const first = await admit(a, approved, 'prior-charge'); assert(first.id);
+        await db.query('update scan_marking_spend set reserved_micros=14956000 where id=$1', [first.id]);
+        assert.equal((await db.query('select settle_scan_marking_evaluation($1,14956000) v', [first.id])).rows[0].v, true);
+        assert.equal((await admit(a, e, 'blocked-cache-request')).refused, 'run-budget');
+        assert.equal((await db.query('select count(*) n from scan_marking_evaluation_attempts')).rows[0].n, '1');
+      });
+      await test(`${scope} unknown cache-read tariff cannot enable evidence`, async () => {
+        const e = structuredClone(approved);
+        if (scope === 'base') e.endpoint.pricing.input_cache_read = null;
+        else e.endpoint.pricing.overrides = [{ input_cache_read: null }];
+        assert.equal((await refresh(a, e)).refused, 'invalid-token-price');
+      });
+    }
     await test('disabled or absent reviewed anchor never enables itself', async () => {
       await db.query('update scan_marking_evaluation_prices set enabled=false');
       assert.equal((await refresh(a, changed())).refused, 'reviewed-price-missing');

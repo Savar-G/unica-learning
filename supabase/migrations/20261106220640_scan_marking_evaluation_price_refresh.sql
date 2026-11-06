@@ -49,7 +49,8 @@ begin
   if tokens is null or tokens<1 then return jsonb_build_object('refused','price-context-missing'); end if;
   price := current_evidence->'endpoint'->'pricing';
   for tier in select value from jsonb_array_elements(jsonb_build_array(price)||coalesce(price->'overrides','[]'::jsonb)) loop
-    foreach field in array array['prompt','image','input_cache_write','input_cache_write_1h','completion','internal_reasoning'] loop
+    foreach field in array array['prompt','image','input_cache_read','input_cache_write','input_cache_write_1h','completion','internal_reasoning'] loop
+      if tier ? field and (tier->>field is null or tier->>field='') then return jsonb_build_object('refused','invalid-token-price'); end if;
       rate := coalesce((tier->>field)::numeric,0);
       if rate<0 or rate::text in ('NaN','Infinity','-Infinity') then return jsonb_build_object('refused','invalid-token-price'); end if;
       if field in ('completion','internal_reasoning') then output_rate := greatest(output_rate,rate);

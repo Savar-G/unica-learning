@@ -177,6 +177,7 @@ export interface ComparisonResult {
 export interface AttemptRecord { state: string; attempt?: { id: string; usage: { costMicros: number | null } } }
 /** An orphaned durable attempt blocks every model, not only a retry of its own photo. */
 export function assertComparisonResume(records: readonly AttemptRecord[], results: readonly ComparisonResult[]): void {
+  if (results.some(r => r.failure === "journal-failure" || r.failure === "reservation-or-settlement-failed" || r.attempts.some(a => a.error === "journal-failure" || a.error === "transport-or-journal-failure"))) fail("journal-or-budget-failure-stopped-run");
   const ids = results.flatMap(r => r.attempts.map(a => a.id)), saved = new Set(ids);
   if (ids.length !== saved.size) fail("duplicate-dispatch-in-results");
   if (results.some(r => r.attempts.some(a => [a.usage.costMicros, a.usage.inputTokens, a.usage.outputTokens, a.usage.reasoningTokens].some(v => natural(v) === null)))) fail("unknown-usage-stopped-run-no-blind-retry");
@@ -256,11 +257,12 @@ export function comparisonReports(manifest: ComparisonManifest, states: readonly
 export function tokenPrices(evidence: EndpointEvidence) {
   const prices = [evidence.endpoint.pricing, ...(Array.isArray(evidence.endpoint.pricing.overrides) ? evidence.endpoint.pricing.overrides.map(record) : [])];
   const maximum = (field: string) => {
+    if (prices.some(p => field in p && (p[field] === null || p[field] === ""))) fail("unverified-price");
     const values = prices.map(p => Number(p[field] ?? 0));
     if (values.some(v => !Number.isFinite(v) || v < 0)) fail("unverified-price");
     return Math.max(...values);
   };
-  const input = Math.max(maximum("prompt"), maximum("image"), maximum("input_cache_write"), maximum("input_cache_write_1h"));
+  const input = Math.max(maximum("prompt"), maximum("image"), maximum("input_cache_read"), maximum("input_cache_write"), maximum("input_cache_write_1h"));
   const output = Math.max(maximum("completion"), maximum("internal_reasoning"));
   if (!input || !output) fail("missing-token-price");
   return { input, output };

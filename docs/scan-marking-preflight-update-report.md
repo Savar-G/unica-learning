@@ -92,3 +92,17 @@ Logs in the ignored proof folder: `focused-tests.log`, `typecheck.log`, `lint.lo
 The initial SQL probe exposed a test setup conflict: a run-budget refusal had already stored that test run's cap. The corrected probe uses separate run identities for the monthly and lifetime cases. The final probe ran on a new disposable database.
 
 Baseline logs were read, not repeated. Root's `local-test.log` records 17,000 passed and 1 skipped. Root's `686-integration-focused.log` records 189 passed in 6 files; this file does not contain the 193 count from the brief. No full suite, full application build, browser or Chromium ran in this task. Root owns those checks and independent review.
+
+## Root repairs after Sol R3 and launch R1
+
+R3-01: TypeScript and the unapplied SQL refresh now include cache-read rates from the base price and all tiers. An explicitly unknown tariff is refused. New SQL controls verify the exact 12,583,781-microdollar bound and refuse admission after a prior 14,956,000-microdollar charge. No new provider request can rely on the old 43,441-microdollar bound.
+
+R3-02: Any journal begin or save failure sets a fatal state. Retry admission checks this state before another reservation. The result retains its charged attempt, known usage and failure. Matrix dispatch and later resume reject this fatal result. The same stop applies to unresolved reservation or settlement failures. Fake HTTP controls cover response failures with one and two attempts, plus begin, reserved and settled journal failures.
+
+Launch R1: server readiness uses the same trimmed runtime model override and default as the actual client. Synthetic complete evidence for Sonnet becomes stale when GLM is selected. The permanent family hold is unchanged.
+
+D-267 reference order: the first available Sonnet probe runs before the other first-photo probes. The fixed thirteen-pair data and every request remain unchanged. A public order test failed before this repair.
+
+Root comparison regressions first produced five failures. After repairs, 290 focused tests passed in eight files. The standalone TypeScript check and changed-file lint passed. The disposable PostgreSQL probe passed eight inherited and 21 refresh cases. Its server stopped. These checks prove local fake transport, tariff bounds, admission, retry and source-evidence behavior. They do not prove hosted permissions, live model accuracy or physical photos.
+
+The customer comment batch remains active. No full Chromium gate, paid call, key read, hosted write, push, merge, family switch or print change ran. The price-refresh migration remains unapplied. Root extends the comparison review budget from three to five under the state/concurrency exception for the reproduced budget and journal failures. Budget end is not approval. A new scoped Sol review must cover the repaired behavior and launch mismatch.

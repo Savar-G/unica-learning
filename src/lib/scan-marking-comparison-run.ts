@@ -1,5 +1,5 @@
 import { markingAiClient } from "@/lib/scan-marking-ai";
-import { markingRequest, runScanMarking, validMarkingOutput, type MarkingStore } from "@/lib/scan-marking";
+import { MARKING_MODEL, markingRequest, runScanMarking, validMarkingOutput, type MarkingStore } from "@/lib/scan-marking";
 import { expectedItems, firstObservation, type Observation } from "@/lib/scan-observation";
 import { COMPARISON_MODELS, SYNTHETIC_IDS, assertComparisonResultIdentity, assertComparisonResume, comparisonProvider, hashBytes, hashValue, projectMatrix, transportUsage, type AttemptRecord, type ComparisonAttempt, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointEvidence } from "@/lib/scan-marking-comparison";
 
@@ -40,7 +40,8 @@ export async function runComparisonMatrix(options: {
   };
   const ready = options.preflight.filter((p): p is Extract<ComparisonPreflight, { status: "ready" }> => p.status === "ready");
   await options.save(blocks, null);
-  for (const state of ready) await dispatch(state, manifest.photos[0]);
+  const probes = [...ready].sort((a, b) => Number(b.model === MARKING_MODEL) - Number(a.model === MARKING_MODEL));
+  for (const state of probes) await dispatch(state, manifest.photos[0]);
   for (let index = 1; index < manifest.photos.length; index++) {
     const first = new Map(results.filter(r => r.photo === manifest.photos[0].id && r.attempts.length).map(r => [r.model, r.attempts.at(-1)!.usage]));
     const remaining = new Map(ready.map(s => [s.model, manifest.photos.length - results.filter(r => r.model === s.model).length]));
@@ -69,13 +70,24 @@ export async function runComparisonPhoto(options: {
   maximumMicros: number; maxRunMicros: number; budget: EvaluationBudget; journal: EvaluationJournal;
   env: Readonly<Record<string, string | undefined>>; fetch?: typeof fetch; maxAttempts?: 1 | 2; now?: () => number;
 }): Promise<ComparisonResult> {
-  const { photo, model, evidence, journal, budget } = options;
+  const { photo, model, evidence, budget } = options;
   if (!Number.isSafeInteger(options.maxRunMicros) || options.maxRunMicros < 1 || options.maxRunMicros > 15_000_000 || !Number.isSafeInteger(options.maximumMicros) || options.maximumMicros < 1 || options.maximumMicros > 15_000_000 || (options.maxAttempts !== undefined && ![1, 2].includes(options.maxAttempts))) throw new Error("invalid-comparison-spend-limit");
   if (photo.frame.parentId !== SYNTHETIC_IDS.parent || photo.frame.childId !== SYNTHETIC_IDS.child || photo.frame.workbookId !== SYNTHETIC_IDS.workbook || photo.frame.photo !== photo.id || !photo.id.startsWith("synthetic-") || hashBytes(options.image) !== photo.image.sha256) throw new Error("synthetic-photo-or-image-hash-required");
   const now = options.now ?? Date.now;
   let observations: Observation[] = [], schemaValid = false, failure: string | null = null;
   const attempts: ComparisonAttempt[] = [];
   let currentKey: string | null = null, current: ComparisonAttempt | null = null;
+  let journalFailed = false;
+  const journalFailure = () => {
+    journalFailed = true;
+    failure = "journal-failure";
+    if (current) current.error = failure;
+    return new Error(failure);
+  };
+  const journal: EvaluationJournal = {
+    begin: async key => { try { return await options.journal.begin(key); } catch { throw journalFailure(); } },
+    save: async (key, value) => { try { await options.journal.save(key, value); } catch { throw journalFailure(); } },
+  };
   const base = options.fetch ?? globalThis.fetch;
   const captured: typeof fetch = async (input, init) => {
     const start = now();
@@ -90,8 +102,8 @@ export async function runComparisonPhoto(options: {
       await journal.save(currentKey!, { state: "response", attempt: current, envelope });
       return response;
     } catch {
-      current!.latencyMs = Math.max(0, now() - start); current!.error = "transport-or-journal-failure";
-      throw new Error("transport-or-journal-failure");
+      current!.latencyMs = Math.max(0, now() - start); current!.error = journalFailed ? "journal-failure" : "transport-failure";
+      throw new Error(current!.error);
     }
   };
   const factory = markingAiClient(options.env, captured, { model: model.model, provider: comparisonProvider(model, evidence), maxRetries: (options.maxAttempts ?? 1) - 1 });
@@ -100,6 +112,7 @@ export async function runComparisonPhoto(options: {
     claim: async () => ({ token: "synthetic", extraction: null, items: expectedItems(photo.frame).map(expected => ({ expected, observation: firstObservation(expected, photo.id), originalEvent: null, eventId: null, at: "2000-01-01T00:00:00.000Z", model: null, prompt: null })) }),
     image: async () => options.image,
     admit: async () => {
+      if (journalFailed) return "attempts";
       if (attempts.length >= (options.maxAttempts ?? 1)) return "attempts";
       if (current && (current.usage.costMicros === null || current.usage.inputTokens === null || current.usage.outputTokens === null || current.usage.reasoningTokens === null || current.usage.provider !== model.providerName)) { failure = "unknown-usage-no-retry"; return "attempts"; }
       const key = hashValue({ run: options.run, model, photo: photo.id, attempt: attempts.length + 1 });
