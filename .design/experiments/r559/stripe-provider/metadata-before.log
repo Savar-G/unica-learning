@@ -1,0 +1,64 @@
+
+ RUN  v4.1.11 /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/site-pd-plan-controls
+
+ ❯ src/lib/plan-pause-stripe.test.ts (10 tests | 3 failed) 19ms
+   × uses native renewal pause and resume through the real SDK transport, with no trial or credit 10ms
+   × requires current ownership and exact matching schedule proof 1ms
+   × recovers a matching pause after its schedule completed and detached 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/plan-pause-stripe.test.ts > uses native renewal pause and resume through the real SDK transport, with no trial or credit
+AssertionError: expected 'refused' to be 'applied' // Object.is equality
+
+Expected: "applied"
+Received: "refused"
+
+ ❯ src/lib/plan-pause-stripe.test.ts:31:76
+     29| }
+     30| it("uses native renewal pause and resume through the real SDK transpor…
+     31|  const f=fixture(),o=operation();expect(await f.provider.apply("p","c"…
+       |                                                                            ^
+     32|  const write=f.requests.find(r=>r.method==="POST")!;expect(write.path)…
+     33|  expect(write.body.get("from_subscription")).toBe("sub");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/lib/plan-pause-stripe.test.ts > requires current ownership and exact matching schedule proof
+AssertionError: expected 'refused' to be 'pending' // Object.is equality
+
+Expected: "pending"
+Received: "refused"
+
+ ❯ src/lib/plan-pause-stripe.test.ts:56:54
+     54|  const f=fixture({}, {id:"other",subscription:"sub",metadata:{plan_pau…
+     55|  expect(await f.provider.plan("other","c")).toBeNull();expect(f.reques…
+     56|  expect(await f.provider.apply("p","c",operation())).toBe("pending");e…
+       |                                                      ^
+     57| });
+     58| it("refuses an elapsed renewal before any provider command",async()=>{
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/lib/plan-pause-stripe.test.ts > recovers a matching pause after its schedule completed and detached
+AssertionError: expected 'refused' to be 'applied' // Object.is equality
+
+Expected: "applied"
+Received: "refused"
+
+ ❯ src/lib/plan-pause-stripe.test.ts:63:72
+     61|
+     62| it("recovers a matching pause after its schedule completed and detache…
+     63|  const f=fixture();expect(await f.provider.apply("p","c",operation()))…
+       |                                                                        ^
+     64|  expect(await f.provider.recover("p","c",operation())).toBe(true);
+     65|  expect(f.requests.at(-1)?.path).toBe("/v1/subscription_schedules");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 7 passed (10)
+   Start at  18:37:43
+   Duration  653ms (transform 317ms, setup 0ms, import 551ms, tests 19ms, environment 0ms)
+
