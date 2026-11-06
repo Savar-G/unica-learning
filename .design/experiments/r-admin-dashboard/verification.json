@@ -1,0 +1,118 @@
+{
+  "machine": "Savars-MacBook-Pro-5.local",
+  "base": "f3133376535b3c96f4c81f62f1f8d1cc80322a23",
+  "checks": {
+    "focused": {
+      "exit": 0,
+      "files": 15,
+      "tests": 208,
+      "passed": 208,
+      "failed": 0,
+      "filesAndCounts": [
+        {
+          "path": "src/components/account-child-details.test.ts",
+          "tests": 7,
+          "status": "passed"
+        },
+        {
+          "path": "src/components/account-plan.test.ts",
+          "tests": 6,
+          "status": "passed"
+        },
+        {
+          "path": "src/components/admin-parent-dashboard.test.ts",
+          "tests": 2,
+          "status": "passed"
+        },
+        {
+          "path": "src/components/admin-parent-preview.test.ts",
+          "tests": 98,
+          "status": "passed"
+        },
+        {
+          "path": "src/components/parent-preview-analytics.test.ts",
+          "tests": 2,
+          "status": "passed"
+        },
+        {
+          "path": "src/components/parent-shell.test.ts",
+          "tests": 2,
+          "status": "passed"
+        },
+        {
+          "path": "src/components/scan-marking-results.test.ts",
+          "tests": 2,
+          "status": "passed"
+        },
+        {
+          "path": "src/components/scan-pages.test.ts",
+          "tests": 16,
+          "status": "passed"
+        },
+        {
+          "path": "src/app/(product)/account/(dashboard)/layout.test.ts",
+          "tests": 21,
+          "status": "passed"
+        },
+        {
+          "path": "src/app/(product)/admin/parent-dashboard/page.test.ts",
+          "tests": 6,
+          "status": "passed"
+        },
+        {
+          "path": "src/app/(product)/account/(dashboard)/plan/cancel-date.test.ts",
+          "tests": 1,
+          "status": "passed"
+        },
+        {
+          "path": "src/app/(product)/account/(dashboard)/plan/page.test.ts",
+          "tests": 3,
+          "status": "passed"
+        },
+        {
+          "path": "src/app/(product)/account/(dashboard)/progress/[child]/page.test.ts",
+          "tests": 16,
+          "status": "passed"
+        },
+        {
+          "path": "src/app/(product)/account/(dashboard)/report/[id]/page.test.ts",
+          "tests": 24,
+          "status": "passed"
+        },
+        {
+          "path": "src/app/(product)/account/(dashboard)/workbooks/[child]/page.test.ts",
+          "tests": 2,
+          "status": "passed"
+        }
+      ],
+      "command": "npx vitest run 'src/components/admin-parent-preview.test.ts' 'src/components/admin-parent-dashboard.test.ts' 'src/app/(product)/admin/parent-dashboard/page.test.ts' 'src/components/parent-preview-analytics.test.ts' 'src/components/account-plan.test.ts' 'src/components/account-child-details.test.ts' 'src/components/scan-pages.test.ts' 'src/components/scan-marking-results.test.ts' 'src/components/parent-shell.test.ts' 'src/app/(product)/account/(dashboard)/progress/[child]/page.test.ts' 'src/app/(product)/account/(dashboard)/plan/page.test.ts' 'src/app/(product)/account/(dashboard)/plan/cancel-date.test.ts' 'src/app/(product)/account/(dashboard)/report/[id]/page.test.ts' 'src/app/(product)/account/(dashboard)/layout.test.ts' 'src/app/(product)/account/(dashboard)/workbooks/[child]/page.test.ts' --reporter=default --reporter=json --outputFile=/tmp/pd-admin-dashboard-tests.json"
+    },
+    "finalRenderer": {
+      "command": "npx vitest run src/components/admin-parent-preview.test.ts",
+      "exit": 0,
+      "files": 1,
+      "tests": 98,
+      "passed": 98
+    },
+    "lint": {
+      "command": "npx eslint src",
+      "exit": 0
+    },
+    "build": {
+      "command": "npm run build",
+      "exit": 0,
+      "typescript": "passed",
+      "route": "/admin/parent-dashboard"
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exit": 0
+    }
+  },
+  "proofLimits": [
+    "No browser or pixel checks",
+    "No live authorization or hosted provider checks",
+    "No real family reads or writes",
+    "Full test gate and independent review remain with root"
+  ]
+}

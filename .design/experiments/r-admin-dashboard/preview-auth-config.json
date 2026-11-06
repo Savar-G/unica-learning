@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "siteUrlUnchanged": true,
+  "priorRulesRetained": true,
+  "ruleCountBefore": 3,
+  "ruleCountAfter": 4,
+  "addedRules": [
+    "https://unica-learning-landing-page-git-site-admi-8e8b1a-unica-learning.vercel.app/**"
+  ]
+}

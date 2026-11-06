@@ -22,8 +22,8 @@ export interface NextStepStart {
   cancelled: boolean;
 }
 
-type CardState = "choose" | "later" | "saved" | "error" | "checking" | "unknown";
-type WaitState = "join" | "joined" | "error";
+export type CardState = "choose" | "later" | "saved" | "error" | "checking" | "unknown";
+export type WaitState = "join" | "joined" | "error";
 
 const post = async <T,>(url: string, body: CardRequest | WaitlistRequest): Promise<{ status: number; result: T | null }> => {
   try {
@@ -34,7 +34,7 @@ const post = async <T,>(url: string, body: CardRequest | WaitlistRequest): Promi
   }
 };
 
-export function ReportNextActions({ reportId, step, childName, province, src, asked, start, words, pinned = false }: {
+export interface ReportNextActionsProps {
   reportId: string;
   step: NextStep;
   childName: string;
@@ -47,7 +47,9 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
   words?: FreeMonthWords;
   /** The dashboard (#552): the button and what it needs sit in one part, which its CSS fixes at the bottom of a phone. */
   pinned?: boolean;
-}) {
+}
+
+export function ReportNextActions({ reportId, step, childName, province, src, asked, start, words, pinned = false }: ReportNextActionsProps) {
   const [card, setCard] = useState<CardState>(start.saved ? "saved" : "checking");
   const [checkAttempt, setCheckAttempt] = useState(0);
   const [savedPlan, setSavedPlan] = useState<PlanId | null>(start.saved);
@@ -150,6 +152,14 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
     sending.current = false;
   };
 
+  return <ReportNextView reportId={reportId} step={step} childName={childName} province={province} src={src} asked={asked} start={start} words={words} pinned={pinned}
+    card={card} wait={wait} busy={busy} announce={announce} savedPlan={savedPlan} choose={choose} join={join} checkAgain={checkAgain} />;
+}
+
+export function ReportNextView({ step, childName, province, asked, start, words, pinned = false, card, wait, busy, announce, savedPlan, choose, join, checkAgain }: ReportNextActionsProps & {
+  card: CardState; wait: WaitState; busy: PlanId | "waitlist" | null; announce: string; savedPlan: PlanId | null;
+  choose: (option: PlanOption) => void; join: () => void; checkAgain: () => void;
+}) {
   const help = <>If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
   const spinner = (label: string) => <span className="spin" role="img" aria-label={label} />;
   const go = (action: ReactNode) => (pinned ? <div className="pd-go">{action}</div> : action);
