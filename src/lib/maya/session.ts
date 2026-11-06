@@ -1503,8 +1503,7 @@ function yesAnswer(s: Session): ChildAnswer | null {
  * numbers of its worked steps), its answer, or a digit the child points at ("carry the ten"). Any other
  * number beside it ("I wrote 5") leaves the step not right: Maya asks (PR #624 review round 3).
  */
-function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValue, text: string, steps: WorkedStep[], active: WorkedStep): boolean {
-  if (!columnClaimsRight(pkg, step, steps, active, text)) return false;
+function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValue, text: string): boolean {
   const own = new Set<number>();
   const walk = (x: unknown) => {
     if (typeof x === "number") own.add(x);
@@ -1525,25 +1524,73 @@ function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValu
   });
 }
 
+const CLAIM_WORDS = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand";
+const CLAIM_NUMBER = new RegExp(`^\\s+(?:(?:down|the|a|an|number|digit|it|as)\\s+)*([+-]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?|(?:${CLAIM_WORDS})(?:[ -](?:${CLAIM_WORDS}))*)\\b`, "i");
+const CLAIM_VERB = /\b(?:write|writes|wrote|writing|put|puts|putting|carry|carried|carrying)\b/gi;
+const COLUMN_WORDS = "ten thousands|hundred thousands|millions|ones|tens|hundreds|thousands|tenths|hundredths|thousandths";
+const CLAIM_PLACE = new RegExp(`\\b(in|into|under|at|on|for|to|from)\\s+(?:the\\s+)?(${COLUMN_WORDS})\\b`, "gi");
+const CLAIM_COLUMN = new RegExp(`\\b(${COLUMN_WORDS})\\b`, "gi");
+const BARE_COLUMN = new RegExp(`^\\s*(?:the\\s+)?(${COLUMN_WORDS})\\b`, "i");
+const CLAIM_END = /[.,;!?\n]|\b(?:and|then)\b/i;
+function claimPlaces(text: string) {
+  const places = [...text.matchAll(CLAIM_PLACE)].map((m) => ({ prep: m[1].toLowerCase(), place: m[2].toLowerCase() }));
+  const bare = BARE_COLUMN.exec(text);
+  if (bare) places.unshift({ prep: "", place: bare[1].toLowerCase() });
+  return places;
+}
+interface ColumnClaim { index: number; carry: boolean; numberText: string; value: number | null; tail: string }
+
+/** One shared reader for written digits, totals and carries. A numeric claim it cannot read stays uncertain. */
+function columnClaims(text: string): ColumnClaim[] {
+  const verbs = [...text.matchAll(CLAIM_VERB)];
+  return verbs.flatMap((verb, i) => {
+    let rest = text.slice(verb.index! + verb[0].length, verbs[i + 1]?.index);
+    let continuation = false;
+    const claims: ColumnClaim[] = [];
+    while (rest.trim()) {
+      // Read the number before cutting the clause, so punctuation inside it cannot hide its column.
+      const match = CLAIM_NUMBER.exec(rest);
+      const after = match ? rest.slice(match[0].length) : rest;
+      const end = CLAIM_END.exec(after);
+      const tail = end ? after.slice(0, end.index) : after;
+      if (continuation && /^\s*(?:i|we|add|added|subtract|subtracted|multiply|multiplied)\b/i.test(rest)) break;
+      const expression = /^\s*(?:[+×−=]|\b(?:plus|minus|times|is|equals?|makes?)\b)/i.test(tail);
+      if (continuation && expression) break; // The next arithmetic clause is not another written digit.
+      const numbers = readNumbers(match ? match[1] : tail);
+      if (!match && !numbers.unreadable && numbers.values.length === 0 && claimPlaces(tail).length === 0) break;
+      const number = numbers.values[0];
+      const value = match && !expression && (!continuation || claimPlaces(tail).length > 0)
+        && !numbers.unreadable && numbers.values.length === 1 && number?.type === "number" ? number.value : null;
+      claims.push({ index: verb.index!, carry: /^(?:carry|carried|carrying)$/i.test(verb[0]), numberText: match?.[1] ?? "", value, tail });
+      if (!end || end[0].toLowerCase() !== "and") break;
+      rest = after.slice(end.index + end[0].length);
+      continuation = true;
+    }
+    return claims;
+  });
+}
+
 /** A written digit or carry has a role, even when its number occurs elsewhere in the question. */
-function columnClaimsRight(pkg: OperationPackage, step: WorkedStep, steps: WorkedStep[], active: WorkedStep, text: string): boolean {
-  if (!("place" in step) || !("write" in step)) return true;
-  const words = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand";
-  const claim = new RegExp(`\\b(wrote|write|writes|writing|put|puts|putting|carry|carried|carrying)\\b\\s+(?:(?:down|the|a|an)\\s+)*([+-]?\\d+(?:\\.\\d+)?|(?:${words})(?:[ -](?:${words}))*)\\b`, "gi");
+function checkColumnClaims(pkg: OperationPackage, step: WorkedStep, steps: WorkedStep[], active: WorkedStep, text: string): "right" | "wrong" | "unclear" {
+  if (!("place" in step) || !("write" in step)) return "right";
   const kept = retainedText(text, readOptionsFor(pkg));
-  for (const match of kept.matchAll(claim)) {
-    const numbers = readNumbers(match[2]);
-    if (numbers.unreadable || numbers.values.length !== 1 || numbers.values[0].type !== "number") return false;
-    const n = numbers.values[0].value;
-    const carry = /^(?:carry|carried|carrying)$/i.test(match[1]);
-    // Read a named column only in this claim, before the next clause or role.
-    const tail = kept.slice(match.index! + match[0].length).split(/[.,;!?\n]|\b(?:and|then|wrote|write|put|carry|carried)\b/i)[0];
-    const place = /\b(?:in|for|to|from)\s+(?:the\s+)?(ones|tens|hundreds|thousands|tenths|hundredths|thousandths)\b/i.exec(tail)?.[1].toLowerCase();
+  const claims = columnClaims(kept);
+  if (claims.some((claim) => claim.value === null)) return "unclear";
+  const namedColumn = (place: string) => {
+    if (place === step.place) return step;
     const columns = steps.filter((s) => "place" in s && "write" in s && s.place === place);
+    return columns.length === 1 ? columns[0] : null;
+  };
+  for (const claim of claims) {
+    const n = claim.value!;
+    const { tail, carry } = claim;
+    const places = claimPlaces(tail);
+    if ([...tail.matchAll(CLAIM_COLUMN)].length !== places.length) return "unclear";
+    if (!carry && (places.length > 1 || places.some((p) => p.prep === "from"))) return "unclear";
     // An unnamed claim follows the latest column total in this turn, or the checked column when no total was stated.
     // This keeps "7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6" tied to the ones carry during a tens check.
     let implicit = active;
-    const before = kept.slice(0, match.index);
+    const before = kept.slice(0, claim.index);
     const equations = [...before.matchAll(/\b(?:is|are|equals?|make|makes|got)\s+(?:equal\s+to\s+)?([^.,;!?\n]+)/gi)];
     const result = equations.at(-1);
     if (result) {
@@ -1551,25 +1598,29 @@ function columnClaimsRight(pkg: OperationPackage, step: WorkedStep, steps: Worke
       const matching = steps.filter((s) => "total" in s && "write" in s && total?.type === "number" && s.total === total.value);
       if (matching.length === 1) implicit = matching[0];
     }
-    const column = !place ? implicit : place === step.place ? step : columns.length === 1 ? columns[0] : null;
-    if (!column || !("write" in column)) return false;
+    const column = places.length ? namedColumn(places[0].place) : implicit;
+    if (!column || !("write" in column)) return "unclear";
     if (!carry) {
       // Recording an intermediate total on paper does not say it was written in a column's answer position.
-      const recorded = !place && /\bon\s+(?:my|the)\s+paper\b/i.test(tail)
+      const recorded = places.length === 0 && /\bon\s+(?:my|the)\s+paper\b/i.test(tail)
         && steps.some((s) => "total" in s && s.total === n);
       // The existing regroup path explains this mistake and removes this column from done before any progress.
       const regroup = column.kind === "add-column" && n === column.total && writesTotal(kept, column);
-      if (n !== column.write && !regroup && !recorded) return false;
+      if (n !== column.write && !regroup && !recorded) return "wrong";
     } else {
-      if (!("carryOut" in column)) return false;
-      // "Carry the ten" names one ten. A destination names the incoming carry.
-      const amount = /^(?:ten|a ten)$/i.test(match[2]) ? 1 : n;
-      const destination = place && /\bto\b/i.test(tail);
-      const expected = destination ? [column.carryIn] : [column.carryOut];
-      if (!expected.includes(amount)) return false;
+      // "Carry the ten" names one ten. Check every named source and destination against its own field.
+      const amount = /^ten$/i.test(claim.numberText) ? 1 : n;
+      if (places.length) {
+        for (const end of places) {
+          if (!end.prep) return "unclear";
+          const target = namedColumn(end.place);
+          if (!target || !("carryOut" in target)) return "unclear";
+          if (amount !== (end.prep === "from" ? target.carryOut : target.carryIn)) return "wrong";
+        }
+      } else if (!("carryOut" in column) || amount !== column.carryOut) return "wrong";
     }
   }
-  return true;
+  return "right";
 }
 
 /**
@@ -1645,7 +1696,9 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     // that step's own numbers ("7 plus 9 is 16, I wrote 5" is not a right ones step).
     const falseResult = falseResults.some((v) => saidAs(v, a.value));
     const active = problem === "target" ? steps.find((st) => !s.done.includes(st.id)) ?? at : at;
-    const stepRight = a.step !== "result" && falseResults.length === 0 && ownSentences(pkg, at, a.value, s.turn.text, steps, active) && answersStep(at, a.value);
+    const claims = a.step === "result" ? "right" : checkColumnClaims(pkg, at, steps, active, s.turn.text);
+    if (claims === "unclear") return { code: "answer_not_committed", reason: "The written digit or carry is unclear: ask what the child wrote before judging this step." };
+    const stepRight = a.step !== "result" && falseResults.length === 0 && claims === "right" && ownSentences(pkg, at, a.value, s.turn.text) && answersStep(at, a.value);
     const right = !falseResult && (a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : stepRight);
     // A doubtful final answer cannot establish correct work, including an equal
     // fraction that still needs simplest form and therefore carries a "wrong" verdict.
@@ -1743,25 +1796,17 @@ function noCarryAnswer(pkg: OperationPackage): number | null {
  */
 const CARRY_DENIAL = /\b(?:didn'?t|did not|don'?t|do not|never|not)\b[^.!?\n]{0,30}\bcarr(?:y|ied|ying)\b|\bwhat(?:'s| is)?\s+(?:a |the |that )?(?:1|one|carr\w*)\b|\b(?:didn'?t|did not|never)\b[^.!?\n]{0,20}\bwr(?:ite|ote)\b[^.!?\n]{0,12}\b(?:1|one)\b/i;
 
-/** Words of writing a number down, before the number a child plans to write ("I write 16", "I wrote down 16"). */
-const WRITE_VERB = /\b(?:write|writes|wrote|writing|put|puts|putting)\b((?:\s+(?:down|the|a|number|it|as))*)\s+([^\s.,!?;]+(?:[\s-]+[^\s.,!?;]+)?)/gi;
-
 /** The child plans to write (or wrote) a column's two-digit sum as one number ("I write 16 under the ones"). */
 function writesTotal(text: string, column: Extract<WorkedStep, { kind: "add-column" }>): boolean {
   const { total, place } = column;
   if (total < 10) return false;
   const committed = committedText(text).replace(/’/g, "'");
-  for (const m of committed.matchAll(WRITE_VERB)) {
-    const first = valuesIn(m[2])[0];
-    if (first?.type !== "number" || first.value !== total) continue;
-    const before = committed.slice(0, m.index).split(/[.!?;\n]|\bbut\b/i).at(-1) ?? "";
+  for (const claim of columnClaims(committed)) {
+    if (claim.carry || claim.value !== total) continue;
+    const before = committed.slice(0, claim.index).split(/[.!?;\n]|\bbut\b/i).at(-1) ?? "";
     if (/\b(?:not|never|no|don't|dont|didn't|didnt|won't|wont|wouldn't|shouldn't|can't|cannot)\b/i.test(before)) continue;
-    if (/\b(?:should|shall|can|could|would|may|might)\s+(?:i|we)\s*$/i.test(before) || /^[^.!;\n]*\?/.test(committed.slice(m.index))) continue;
-    const word = m[2].split(/\s+/)[0];
-    const one = valuesIn(word)[0];
-    const length = one?.type === "number" && one.value === total ? word.length : m[2].length;
-    const after = committed.slice(m.index + m[0].length - m[2].length + length);
-    if (new RegExp(`^\\s+(?:right\\s+)?(?:in|into|under|at)\\s+(?:the\\s+)?${place}\\b`, "i").test(after)) return true;
+    if (/\b(?:should|shall|can|could|would|may|might)\s+(?:i|we)\s*$/i.test(before) || /^[^.!;\n]*\?/.test(committed.slice(claim.index))) continue;
+    if (claimPlaces(claim.tail).some((p) => p.place === place && p.prep !== "from")) return true;
   }
   return false;
 }
