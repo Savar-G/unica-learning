@@ -10,7 +10,7 @@
 // No network or clock of its own: the models, the store and the clock are passed in.
 import { createHash } from "node:crypto";
 import { valuesIn, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
-import { FIXTURES } from "@/lib/maya-gate/fixtures";
+import { practicePackage } from "./packages";
 import { judge as gateJudge, HARD_FAILURES, type Behaviour, type HardFailure } from "@/lib/maya-gate/gate";
 import type { MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
@@ -23,7 +23,7 @@ import { readValidity, VALIDITY_PROMPT_VERSION, type ValidityInput, type Validit
 import { maxWords, readSimulatorTurn, SIMULATOR_PROMPT_VERSION, type ChildSimulator, type SimulatorInput, type SimulatorTurn } from "./simulator";
 
 /** The report format. Raise it when the files or the report change. */
-export const PRACTICE_VERSION = 5;
+export const PRACTICE_VERSION = 6;
 /** A run whose child has spoken this many turns without the call ending is cut off (and invalid). Waits do not count. */
 export const MAX_CHILD_TURNS = 24;
 /** A backstop on every simulator turn, waits included, so a child who only waits still ends (and is invalid). */
@@ -74,6 +74,7 @@ export interface PracticePlan {
   versions: PracticeVersions;
   runs: { id: string; caseId: string; n: number; seed: number }[];
   maxUsd: number | null;
+  execution: PracticeExecution;
 }
 
 /** The simulator log of one run. Errors keep only a code (as the trace does), never the provider's text. */
@@ -83,6 +84,7 @@ export interface SimulatorLog {
   run: string;
   caseId: string;
   simulator: { model: string; promptVersion: string };
+  execution?: PracticeExecution;
   turns: ({ raw: unknown } | { error: TraceError })[];
   /** Why the run stopped early, when it did: "turn_cap", "simulator_error", "budget". */
   cut: "turn_cap" | "simulator_error" | "budget" | null;
@@ -114,9 +116,18 @@ export interface JudgeLog {
   skipped: string | null;
 }
 
-export function suiteHash(cases: readonly PracticeCase[]): string {
+export interface PracticeExecution { channel: "voice" | "chat"; freeTalk: boolean }
+export interface ExecutionOptions { channel?: "voice" | "chat"; freeTalk?: boolean }
+export function practiceExecution(options: ExecutionOptions = {}): PracticeExecution {
+  const channel = options.channel ?? "voice";
+  if (channel !== "voice" && channel !== "chat") throw new Error("practice: unknown channel");
+  if (channel === "chat" && options.freeTalk === true) throw new Error("practice: child chat requires free talk off");
+  return { channel, freeTalk: channel === "chat" ? false : options.freeTalk ?? true };
+}
+
+export function suiteHash(cases: readonly PracticeCase[], options: ExecutionOptions = {}): string {
   const plain = cases.map((c) => ({ ...c, validity: { ...c.validity, mustSay: c.validity.mustSay?.map((m) => ({ ...m, pattern: String(m.pattern) })) } }));
-  return packageHash({ cases: plain, simulator: SIMULATOR_PROMPT_VERSION, judge: JUDGE_PROMPT_VERSION, review: TALK_REVIEW_PROMPT_VERSION, version: PRACTICE_VERSION });
+  return packageHash({ cases: plain, execution: practiceExecution(options), simulator: SIMULATOR_PROMPT_VERSION, validity: VALIDITY_PROMPT_VERSION, judge: JUDGE_PROMPT_VERSION, review: TALK_REVIEW_PROMPT_VERSION, version: PRACTICE_VERSION });
 }
 
 // ---------- Running ----------
@@ -130,6 +141,7 @@ export class BudgetReached extends Error {
 
 export interface PracticeDeps {
   maya: MayaModel;
+  channel?: "voice" | "chat";
   /** Free talk for Maya (D-197; default on, as in the admin demo) and its review (null: every piece becomes a bank phrase). */
   freeTalk?: boolean;
   reviewer?: TalkReviewer | null;
@@ -153,19 +165,20 @@ export interface PracticeDeps {
   onError?: (error: unknown, where: string) => void;
 }
 
-const rightValue = (c: PracticeCase): AnswerValue | null => FIXTURES[c.fixture].answer?.value ?? null;
+const rightValue = (c: PracticeCase): AnswerValue | null => practicePackage(c).answer?.value ?? null;
 
 /** Runs one case once: the call, then (when it is valid) the judge. Saves the three files whatever fails. */
 export async function runPractice(c: PracticeCase, n: number, seed: number, deps: PracticeDeps): Promise<void> {
   const id = runId(c.id, n);
-  const pkg = FIXTURES[c.fixture];
+  const pkg = practicePackage(c);
+  const execution = practiceExecution(deps);
   let now = PRACTICE_T0;
   const text = createTextSession({
     callId: `practice-${id}`, package: pkg, model: deps.maya, clock: () => now, random: seed, childName: c.persona.name,
-    freeTalk: deps.freeTalk ?? true, reviewer: deps.reviewer ?? null, ...(deps.reviewTimeLimitMs ? { reviewTimeLimitMs: deps.reviewTimeLimitMs } : {}),
+    channel: execution.channel === "chat" ? "chat" : undefined, freeTalk: execution.freeTalk, reviewer: deps.reviewer ?? null, ...(deps.reviewTimeLimitMs ? { reviewTimeLimitMs: deps.reviewTimeLimitMs } : {}),
     onError: (e, where) => deps.onError?.(e, `${id} maya ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}`),
   });
-  const log: SimulatorLog = { kind: "maya-practice-child", version: PRACTICE_VERSION, run: id, caseId: c.id, simulator: { model: deps.simulator.id, promptVersion: deps.simulator.promptVersion }, turns: [], cut: null };
+  const log: SimulatorLog = { kind: "maya-practice-child", version: PRACTICE_VERSION, run: id, caseId: c.id, simulator: { model: deps.simulator.id, promptVersion: deps.simulator.promptVersion }, execution, turns: [], cut: null };
   const transcript: SimulatorInput["transcript"] = [];
   const heard = (say: string[]) => { if (say.length > 0) transcript.push({ speaker: "maya", text: say.join(" ") }); };
   let budget = false;
@@ -261,7 +274,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
     judgeLog.skipped = `the run is ${ready.status}`;
   } else {
     try {
-      judgeLog.raw = await deps.judge.judge(judgeInput(c, pkg, trace), new AbortController().signal);
+      judgeLog.raw = await deps.judge.judge(judgeInput(c, pkg, trace, execution.channel), new AbortController().signal);
     } catch (e) {
       if (e instanceof BudgetReached || deps.capped?.()) cut = true;
       else {
@@ -283,12 +296,13 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
 }
 
 /** The plan for a suite: each case `runs` times, with a seed per run. */
-export function planSuite(cases: readonly PracticeCase[], versions: Omit<PracticeVersions, "suite">, options: { runs?: number; maxUsd?: number | null } = {}): PracticePlan {
+export function planSuite(cases: readonly PracticeCase[], versions: Omit<PracticeVersions, "suite">, options: { runs?: number; maxUsd?: number | null } & ExecutionOptions = {}): PracticePlan {
   const runs = options.runs ?? RUNS_PER_CASE;
   return {
     kind: "maya-practice-plan",
     version: PRACTICE_VERSION,
-    versions: { ...versions, suite: suiteHash(cases) },
+    versions: { ...versions, suite: suiteHash(cases, options) },
+    execution: practiceExecution(options),
     runs: requiredRuns(cases, runs),
     maxUsd: options.maxUsd ?? null,
   };
@@ -296,6 +310,10 @@ export function planSuite(cases: readonly PracticeCase[], versions: Omit<Practic
 
 /** Saves the plan, then runs every planned run. Stops starting runs once the spending cap is reached. */
 export async function runSuite(cases: readonly PracticeCase[], plan: PracticePlan, deps: PracticeDeps): Promise<void> {
+  const execution = practiceExecution(plan.execution);
+  if (plan.version !== PRACTICE_VERSION || plan.versions.suite !== suiteHash(cases, execution)) throw new Error("practice: the plan does not match this suite");
+  if ((deps.channel !== undefined && deps.channel !== execution.channel) || (deps.freeTalk !== undefined && deps.freeTalk !== execution.freeTalk)) throw new Error("practice: runner settings differ from the plan");
+  for (const c of cases) practicePackage(c);
   deps.store.save(PLAN_FILE, JSON.stringify(plan, null, 2));
   const byId = new Map(cases.map((c) => [c.id, c]));
   const queue = [...plan.runs];
@@ -304,7 +322,7 @@ export async function runSuite(cases: readonly PracticeCase[], plan: PracticePla
     for (let r = queue.shift(); r && !stopped; r = queue.shift()) {
       const c = byId.get(r.caseId);
       if (!c) continue;
-      await runPractice(c, r.n, r.seed, deps);
+      await runPractice(c, r.n, r.seed, { ...deps, ...execution });
       // A run cut by the cap saves nothing; the cap holds for every run after it.
       if (deps.capped?.() || deps.store.load(traceFile(r.id)) === undefined) stopped = true;
       deps.onRun?.(r.id);
@@ -380,6 +398,7 @@ function parse<T>(json: string | undefined): T | null {
 }
 
 const num = (v: AnswerValue) => JSON.stringify(v);
+const fractionOptions = (c: PracticeCase) => ({ fractions: practicePackage(c).operation?.kind.startsWith("fraction-") ?? false });
 const numbers = (xs: readonly number[]) => xs.map((value) => num({ type: "number", value }));
 
 /** Whether a stage is open at a child turn, from Maya's acts before it and the child's turn number. */
@@ -440,10 +459,10 @@ function validity(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): RunVerd
     return out;
   }
 
-  const pkg = FIXTURES[c.fixture];
+  const pkg = practicePackage(c);
   const right = rightValue(c);
   const operands = (pkg.operation?.operands ?? []).filter((n): n is number => typeof n === "number");
-  const always = new Set([...numbers(operands), ...numbers([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])]);
+  const always = new Set([...numbers(operands), ...(pkg.operation?.operands ?? []).flatMap(v => typeof v === "object" ? [num(v)] : []), ...numbers([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])]);
   const mayaSaid = new Set<string>();
   const mayaSentences: string[] = [];
   const acts: { act: string; level: number | null }[] = [];
@@ -455,7 +474,7 @@ function validity(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): RunVerd
   for (const t of trace.turns) {
     if (t.kind === "maya" && t.output) {
       for (const s of t.output.say) {
-        for (const v of valuesIn(s)) mayaSaid.add(num(v));
+        for (const v of valuesIn(s, fractionOptions(c))) mayaSaid.add(num(v));
         mayaSentences.push(...s.split(/(?<=[.!?])\s+/).filter((x) => x.split(/\s+/).length >= 6));
       }
       const p = t.attempts.at(-1)?.proposal as { level?: unknown } | null | undefined;
@@ -477,9 +496,9 @@ function validity(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): RunVerd
 
     // The script stages open at this turn.
     const open = c.validity.stages.filter((s) => stageOpen(s.opens, acts, childN));
-    const allowed = new Set([...always, ...mayaSaid, ...open.flatMap((s) => numbers(s.numbers))]);
+    const allowed = new Set([...always, ...mayaSaid, ...open.flatMap((s) => [...numbers(s.numbers), ...(s.values ?? []).map(num)])]);
     // A number read as negative is checked by its size: the reader takes "8 minus 2" as -8 (`main`, C37, 2026-11-05).
-    const values = valuesIn(text).map(positive);
+    const values = valuesIn(text, fractionOptions(c)).map(positive);
     for (const v of values) {
       if (allowed.has(num(v))) continue;
       const isRight = right !== null && num(v) === num(right);
@@ -567,7 +586,10 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
 
   // The scripted gate's hard failures, on the saved trace (it checks the trace with checkTrace first).
   const behaviour: Behaviour = { id, title: c.title, fixture: c.fixture, status: "passing", steps: [], expect: { outcome: {}, ...(c.safety ? { safety: true } : {}) } };
-  const gate = gateJudge(behaviour, savedTrace);
+  let pkg;
+  try { pkg = practicePackage(c); }
+  catch { v.hardFailures.push({ code: "trace_invalid", detail: "invalid generated package or provenance" }); v.status = "fail"; return v; }
+  const gate = gateJudge(behaviour, savedTrace, undefined, c.package ? pkg : undefined);
   v.hardFailures.push(...gate.failures);
   const checked = checkTrace(parse(savedTrace));
   const trace = checked.ok ? checked.trace : null;
@@ -576,7 +598,7 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
     v.versions.maya = trace.model;
     v.versions.packageHash = trace.question.hash;
     v.childTurns = trace.turns.filter((t) => t.kind === "child").length;
-    if (trace.question.hash !== packageHash(FIXTURES[c.fixture])) v.hardFailures.push({ code: "trace_invalid", detail: "the trace is for another question package" });
+    if (trace.question.hash !== packageHash(practicePackage(c))) v.hardFailures.push({ code: "trace_invalid", detail: "the trace is for another question package" });
   }
 
   const log = parse<SimulatorLog>(store.load(simFile(id)));
@@ -608,7 +630,7 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
     v.unjudgeable = jl.error ? `the judge call failed (${jl.error.code})` : `the judge was skipped: ${jl.skipped}`;
     return v;
   }
-  const turnCount = trace ? judgeInput(c, FIXTURES[c.fixture], trace).turns.length : 0;
+  const turnCount = trace ? judgeInput(c, practicePackage(c), trace).turns.length : 0;
   const j = readJudgement(jl.raw, c.dimensions, turnCount);
   // Every dimension that passed its check is reported, also when another one makes the run unjudgeable (#604).
   v.scores = j.dimensions;
@@ -638,6 +660,8 @@ export interface PracticeReport {
   /** Why the suite fails as a whole (no plan, or a plan that is not the code's), or null. */
   problem: string | null;
   versions: PracticeVersions | null;
+  execution: PracticeExecution | null;
+  packages: { caseId: string; hash: string; source: string; support: string }[];
   counts: { planned: number; saved: number; passed: number; failed: number; invalid: number; unjudgeable: number; missing: number; hardFailures: number; lowScores: number };
   cases: { id: string; title: string; safety: boolean; runs: number; passed: number; statuses: RunStatus[] }[];
   dimensions: { id: Dimension; name: string; applicable: number; scored: number; below: number; min: number | null; median: number | null; zeros: number }[];
@@ -755,24 +779,43 @@ function planProblems(saved: unknown, required: PracticePlan["runs"]): string[] 
  * (default RUNS_PER_CASE). The saved plan must hold exactly the required runs; a run missing from the plan or the
  * store fails the suite, and so does an extra one.
  */
-export function buildReport(cases: readonly PracticeCase[], store: PracticeStore, runsPerCase: number = RUNS_PER_CASE): PracticeReport {
+export function buildReport(cases: readonly PracticeCase[], store: PracticeStore, runsPerCase: number = RUNS_PER_CASE, options: ExecutionOptions = {}): PracticeReport {
   const plan = parse<PracticePlan>(store.load(PLAN_FILE));
   const required = requiredRuns(cases, runsPerCase);
-  const full = runsPerCase === RUNS_PER_CASE && cases.length === PRACTICE_CASES.length && cases.every((c, i) => c.id === PRACTICE_CASES[i].id);
+  const baseline = cases.slice(0, PRACTICE_CASES.length);
+  const extras = cases.slice(PRACTICE_CASES.length);
+  const generatedIds = ["G-U4-held", "G-U4-solved", "G-U16-held", "G-U16-solved"];
+  const full = runsPerCase === RUNS_PER_CASE && suiteHash(baseline) === suiteHash(PRACTICE_CASES)
+    && (extras.length === 0 || extras.length === generatedIds.length && generatedIds.every(id => extras.some(c => c.id === id && c.generated)));
   const empty: PracticeReport = {
-    kind: "maya-practice-report", version: PRACTICE_VERSION, passed: false, full, problem: null, versions: null,
+    kind: "maya-practice-report", version: PRACTICE_VERSION, passed: false, full, problem: null, versions: null, execution: null, packages: [],
     counts: { planned: 0, saved: 0, passed: 0, failed: 0, invalid: 0, unjudgeable: 0, missing: 0, hardFailures: 0, lowScores: 0 },
     cases: [], dimensions: [], safety: { runs: 0, passed: 0, j07Below: 0 }, runs: [], hardFailureCodes: {}, invalidCodes: {},
   };
   if (!plan || plan.kind !== "maya-practice-plan" || !Array.isArray(plan.runs)) return { ...empty, problem: "no readable plan.json" };
   const byId = new Map(cases.map((c) => [c.id, c]));
-  if (plan.versions?.suite !== suiteHash(cases)) return { ...empty, versions: plan.versions ?? null, problem: "the saved plan is for another version of the cases or prompts" };
+  if (plan.version !== PRACTICE_VERSION || plan.versions?.suite !== suiteHash(cases, options) || JSON.stringify(plan.execution) !== JSON.stringify(practiceExecution(options))) return { ...empty, versions: plan.versions ?? null, problem: "the saved plan is for another version of the cases or prompts" };
   const problems = planProblems(plan.runs, required);
+  if (plan.versions.meta?.generatedArtifact) {
+    const generated = store.load("generated-packages.json");
+    if (!generated || fileHash(generated) !== plan.versions.meta.generatedArtifact) problems.push("the generated package artifact is missing or changed");
+  }
+  for (const c of cases) {
+    try { practicePackage(c); } catch { problems.push(`invalid generated package or provenance: ${c.id}`); }
+  }
 
   // Every required run, from code: a run the plan or the store lacks is still counted, as missing.
   const runs = required.map((r) => {
     const c = byId.get(r.caseId);
     const v = c ? judgeRun(c, r.id, store) : null;
+    if (v && store.load(traceFile(r.id))) {
+      const trace = parse<MayaTrace>(store.load(traceFile(r.id)));
+      const child = parse<SimulatorLog>(store.load(simFile(r.id)));
+      if (trace && (trace.freeTalk !== plan.execution.freeTalk || (child && JSON.stringify(child.execution) !== JSON.stringify(plan.execution)))) {
+        v.hardFailures.push({ code: "trace_invalid", detail: "trace free-talk setting differs from the planned channel" });
+        v.status = "fail";
+      }
+    }
     const status: RunStatus = !v || v.status === "pending_judge" ? "unjudgeable" : v.status;
     const unknown: RunVerdict = { id: r.id, caseId: r.caseId, status: "unjudgeable", invalid: [], hardFailures: [], unjudgeable: "unknown case", scores: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, validity: null, judge: null }, childTurns: 0 };
     return { ...(v ?? unknown), status };
@@ -787,6 +830,12 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
   const report: PracticeReport = {
     ...empty,
     versions: plan.versions,
+    execution: plan.execution,
+    packages: cases.map(c => {
+      let hash = "unverified";
+      try { hash = packageHash(practicePackage(c)); } catch { /* The report already records this invalid package. */ }
+      return { caseId: c.id, hash, source: c.generated?.source ?? "hand-written fixture", support: c.generated?.support ?? "fixture" };
+    }),
     counts: {
       planned: required.length,
       saved: runs.filter((r) => r.status !== "missing").length,
@@ -829,8 +878,9 @@ export function reportMarkdown(r: PracticeReport): string {
   const lines: string[] = [];
   // A subscription run is a gate result for now (Savar, 2026-11-01), but it is never shown as the final API check (R401-2).
   const onSubscription = r.versions?.meta?.mode === "subscription";
-  const pass = onSubscription ? "PASS on the Claude subscription (not the final API check)" : "PASS";
+  const pass = r.versions?.meta?.mode === "fake" ? "PASS with fake models (plumbing only; not the API release check)" : onSubscription ? "PASS on the Claude subscription (not the final API check)" : "PASS";
   lines.push(`# Maya practice suite: ${r.passed && r.full ? pass : r.passed ? `${pass} (part of the suite only: not a gate result)` : "FAIL"}`, "");
+  if (r.execution) lines.push(`Channel: ${r.execution.channel}; free talk: ${r.execution.freeTalk ? "on" : "off"}.`, "");
   if (r.problem) lines.push(`**The suite cannot be read:** ${r.problem}`, "");
   if (r.versions) {
     const v = r.versions;
@@ -844,6 +894,11 @@ export function reportMarkdown(r: PracticeReport): string {
   lines.push("Counted from the saved files.", "", "| Planned | Saved | Passed | Failed | Invalid | Unjudgeable | Missing | With hard failures | With a score below 2 |", "|---|---|---|---|---|---|---|---|---|");
   lines.push(`| ${c.planned} | ${c.saved} | ${c.passed} | ${c.failed} | ${c.invalid} | ${c.unjudgeable} | ${c.missing} | ${c.hardFailures} | ${c.lowScores} |`, "");
   lines.push("A missing, invalid or unjudgeable run fails the suite: it never counts as a pass.", "");
+  if (r.packages.some(p => p.source === "real-generator-synthetic-v1")) {
+    lines.push("## Generated packages", "", "These cases check known answers and unsupported-kind refusals. They do not cover every teaching path.", "", "| Case | Support | Package hash |", "|---|---|---|");
+    for (const p of r.packages.filter(p => p.source === "real-generator-synthetic-v1")) lines.push(`| ${p.caseId} | ${p.support} | ${p.hash} |`);
+    lines.push("");
+  }
   lines.push("## Cases", "", "| Case | Title | Passed | Runs |", "|---|---|---|---|");
   for (const x of r.cases) lines.push(`| ${x.id}${x.safety ? " (safety)" : ""} | ${x.title} | ${x.passed}/${x.runs} | ${x.statuses.join(", ")} |`);
   lines.push("", "## Judge dimensions", "", "Each applicable dimension must score 2 or more in every run. Scores of unjudgeable runs are counted too.", "", "| Dimension | Applicable runs | Scored | Below 2 | Zeros | Lowest | Median |", "|---|---|---|---|---|---|---|");
