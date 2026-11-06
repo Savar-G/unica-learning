@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { expectedItems, firstObservation, itemKey, markingEvent, type Observation } from "@/lib/scan-observation";
+import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, type Observation } from "@/lib/scan-observation";
 import { effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, MARKING_CAP_MICROS, MARKING_MODEL, readMarkingOutput, runScanMarking, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
-import type { QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, workedSteps, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
 import { rebuildChildProfile } from "@/lib/child-profile";
 import type { LearningEvent, NewLearningEvent } from "@/lib/learning-events";
@@ -20,6 +20,34 @@ function frame(photo = "photo-a", answers = [0, 12, 9]): MarkingFrame {
     })) };
 }
 const output = (texts: (string | null)[]) => ({ readings: texts.map((text, n) => ({ item: `i${n + 1}`, region: `r${n + 1}`, text, state: text === "" ? "blank" : text === null ? "uncertain" : "written" })) });
+function tickFrame(photo = "tick-photo"): MarkingFrame {
+  const f = frame(photo, [66]), q = f.questions[0];
+  const operation: Operation = { kind: "add", operands: [27, 39] };
+  const easier: Operation = { kind: "add", operands: [18, 5] };
+  q.package = {
+    ...q.package!, text: "27 + 39 = ?", templateId: null, operation, answer: { value: { type: "number", value: 66 }, accepted: [], unit: null },
+    steps: workedSteps(operation), level: 10, difficulty: 2,
+    wrongAnswers: [{ value: { type: "number", value: 56 }, cause: "O3", description: "Forgets the carry", step: "tens" }],
+    easierExample: { text: "18 + 5 = ?", operation: easier, steps: workedSteps(easier), answer: { type: "number", value: 23 } },
+    item: { format: "tick-and-number", scorable: true, parentChecked: false, error: null,
+      regions: [
+        { id: "operation", kind: "choice", mark: "tick", label: "Tick the operation", choices: ["+", "−", "×", "÷"], answer: "+" },
+        { id: "answer", kind: "box", label: "Write the answer", answer: { type: "number", value: 66 } },
+        { id: "work", kind: "work", label: "Show your work" },
+      ], checks: [{ kind: "operation-sign", region: "operation" }, { kind: "operation", region: "answer" }],
+    },
+  };
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  q.regions = [{ id: "operation", kind: "choice", box: { x: 10, y: 30, width: 200, height: 30 } },
+    { id: "answer", kind: "box", box: { x: 220, y: 30, width: 80, height: 30 } },
+    { id: "work", kind: "work", box: { x: 10, y: 65, width: 290, height: 50 } }];
+  q.teaching!.eligibility.format = "tick-and-number";
+  return f;
+}
+const tickOutput = (choice: string | null, number: string | null) => ({ readings: [
+  { item: "i1", region: "r1", text: choice, state: choice === "" ? "blank" : choice === null ? "uncertain" : "written" },
+  { item: "i1", region: "r1-2", text: number, state: number === "" ? "blank" : number === null ? "uncertain" : "written" },
+] });
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
 it("shows page results in printed question order without changing the canonical input order", () => {
   const expected = expectedItems(frame());
@@ -114,7 +142,7 @@ describe("S4 whole-page readings", () => {
     expect(requests[0].content.filter((p) => p.type === "image")).toEqual([{ type: "image", mediaType: "image/jpeg", data: new Uint8Array([1, 2, 3]) }]);
     const text = requests[0].content.filter((p) => p.type === "text").map((p) => p.text).join("");
     for (const privateText of [P, C, W, "private-item", "private-region", "EXAMPLE", "12", "photo-a"]) expect(text).not.toContain(privateText);
-    expect(JSON.parse(text).items[0]).toEqual({ item: "i1", region: "r1", box: { x: 10, y: 30, width: 20, height: 30 } });
+    expect(JSON.parse(text).items[0]).toEqual({ item: "i1", region: "r1", box: { x: 10, y: 30, width: 20, height: 30 }, kind: "number" });
     expect(s.events.every((e) => e.timeMs === null)).toBe(true);
   });
   it("missing key and unverified prices dispatch nothing and preserve pending photos", async () => {
@@ -134,6 +162,84 @@ describe("S4 whole-page readings", () => {
     }
   });
   it("an unready or legacy photo never reaches client admission", async () => { const f = frame(); f.ready = false; const s = new Store(f); expect(await run(s, f.photo, client(output(["0"])))).toBe("unavailable"); expect(s.jobs.size).toBe(0); });
+});
+
+describe("S6 choice and number on one canonical item", () => {
+  it.each([
+    ["+", "66", "right"], ["+", "65", "wrong"], ["−", "66", "wrong"], ["", "", "blank"],
+    ["+", "", null], ["", "66", null], [null, "66", null], ["+ and −", "66", null],
+    ["unknown choice", "66", null], ["+", "maybe 66", null], ["+", "65 + 1", null],
+    ["+", "66.0000000000000001", null], ["+", "65.9999999999999999", null],
+    [null, "65", "wrong"], ["−", null, "wrong"],
+  ])("choice %j and number %j yield only the item result %j", (choice, number, result) => {
+    const f = tickFrame();
+    const observations = readMarkingOutput(f, tickOutput(choice, number));
+    expect(observations).toHaveLength(1);
+    const o = observations[0];
+    expect(o.result).toBe(result);
+    expect(o.state).toBe(result === null ? "pending" : "scored");
+    expect(o.regions.map(r => r.regionId)).toEqual(["operation", "answer"]);
+    expect(observationProblem(o)).toBeNull();
+    const view = markingPageView([{ expected: expectedItems(f)[0], observation: o, originalEvent: null, eventId: null, at: "2026-11-06T00:00:00Z", model: null, prompt: null }]);
+    expect(view.completion).toMatchObject({ total: 1, finished: result === null ? 0 : 1 });
+    if (result === null) expect(view.items[0].label).not.toBe("Please check this answer");
+  });
+
+  it("keeps malformed or repeated region readings pending instead of inventing a right item", () => {
+    for (const bad of [
+      { readings: [tickOutput("+", "66").readings[0]] },
+      { readings: [...tickOutput("+", "66").readings, tickOutput("+", "66").readings[0]] },
+      { readings: [{ ...tickOutput("+", "66").readings[0], region: "another-region" }, tickOutput("+", "66").readings[1]] },
+    ]) {
+      const o = readMarkingOutput(tickFrame(), bad)[0];
+      expect(o.result).toBeNull();
+      expect(o.state).toBe("pending");
+      expect(observationProblem(o)).toBeNull();
+    }
+  });
+
+  it("reads the whole page once, publishes one event and preserves a finalized original on retake", async () => {
+    const f = tickFrame(), retake = tickFrame("tick-retake"), s = new Store(f, retake), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(tickOutput("+", "66"), requests))).toBe("finished");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].content.filter(p => p.type === "image")).toHaveLength(1);
+    const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
+    expect(items.map((r: { item: string; region: string }) => [r.item, r.region])).toEqual([["i1", "r1"], ["i1", "r1-2"]]);
+    expect(JSON.stringify(items)).not.toContain('"answer"');
+    expect(s.events).toHaveLength(1);
+    expect(markingPageView(await s.effective(P, C)).completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(await run(s, retake.photo, client(tickOutput("−", "65"), requests))).toBe("finished");
+    expect(requests).toHaveLength(1);
+    expect(s.events).toHaveLength(1);
+    expect((await s.effective(P, C))[0].observation.result).toBe("right");
+  });
+
+  it("serializes two devices and fills a pending choice-and-number item only once", async () => {
+    const a = tickFrame(), b = tickFrame("tick-device-b"), s = new Store(a, b);
+    const held = deferred<unknown>(), started = deferred<void>(), requests: AiJsonRequest[] = [];
+    const first = run(s, a.photo, client(async () => { started.resolve(); return held.promise; }, requests));
+    await started.promise;
+    expect(await run(s, b.photo, client(tickOutput("+", "66"), requests))).toBe("busy");
+    held.resolve(tickOutput("+", null));
+    expect(await first).toBe("finished");
+    expect(s.events).toHaveLength(0);
+    expect(await run(s, b.photo, client(tickOutput("+", "66"), requests))).toBe("finished");
+    expect(s.events).toHaveLength(1);
+    expect(requests).toHaveLength(2);
+    expect((await s.effective(P, C))[0].observation.regions).toHaveLength(2);
+  });
+
+  it("keeps a parent change when the first two-region response arrives late", async () => {
+    const f = tickFrame(), s = new Store(f), held = deferred<unknown>(), started = deferred<void>();
+    const first = run(s, f.photo, client(async () => { started.resolve(); return held.promise; }));
+    await started.promise;
+    const m = [...s.items.values()][0];
+    m.observation = { ...m.observation, state: "parent-checked", method: "parent", result: "wrong", actor: "parent", resultVersion: 2 };
+    held.resolve(tickOutput("+", "66"));
+    expect(await first).toBe("finished");
+    expect(m.observation).toMatchObject({ result: "wrong", actor: "parent", resultVersion: 2 });
+    expect(s.events).toHaveLength(0);
+  });
 });
 
 describe("S4 canonical originals and lifecycle", () => {

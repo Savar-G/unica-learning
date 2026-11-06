@@ -14,7 +14,8 @@
 //
 // Pure TypeScript: no Next.js, React, network, database or clock. The caller decodes and encodes images.
 import jsQR from "jsqr";
-import { packageItem, type QuestionPackage } from "@/lib/question-package";
+import type { QuestionPackage } from "@/lib/question-package";
+import { markingRegions } from "@/lib/scan-marking-regions";
 import {
   SCAN_MARKS,
   type Box,
@@ -1017,6 +1018,8 @@ export interface CropItem {
   /** The item and the region of it: a region names a part of an item, not an attempt. */
   itemId: string;
   regionId: string;
+  /** Present for a crop that covers several scored regions of the same item. */
+  regionIds?: string[];
   box: Box;
 }
 
@@ -1026,24 +1029,16 @@ export interface CropQuestion {
   regions: readonly PrintedRegion[] | null;
 }
 
-/** The one answer box of a single-box whole-number item, or null. Other formats wait for their own slice. */
-function singleWholeNumberBox(q: CropQuestion): (PrintedRegion & { box: Box }) | null {
-  if (!q.package || !q.regions || (!q.package.item && !q.package.answer)) return null;
-  const item = packageItem(q.package);
-  if (item.format !== "write-number" || !item.scorable || item.regions.length !== 1) return null;
-  const [only] = item.regions;
-  if (only.kind !== "box" || only.answer?.type !== "number" || !Number.isInteger(only.answer.value)) return null;
-  const printed = q.regions.find((r) => r.id === only.id);
-  return printed?.box ? { ...printed, box: printed.box } : null;
-}
-
 /** The page's numbered crops, in printed order, and the questions this slice cannot crop. */
 export function cropPlan(questions: readonly CropQuestion[]): { crops: CropItem[]; notSupported: number[] } {
   const crops: CropItem[] = [], notSupported: number[] = [];
   for (const q of [...questions].sort((a, b) => a.number - b.number)) {
-    const region = singleWholeNumberBox(q);
-    if (region) crops.push({ number: q.number, itemId: q.package!.id, regionId: region.id, box: region.box });
-    else notSupported.push(q.number);
+    const regions = markingRegions(q);
+    if (!regions.length) { notSupported.push(q.number); continue; }
+    const x = Math.min(...regions.map(r => r.box.x)), y = Math.min(...regions.map(r => r.box.y));
+    const right = Math.max(...regions.map(r => r.box.x + r.box.width)), bottom = Math.max(...regions.map(r => r.box.y + r.box.height));
+    crops.push({ number: q.number, itemId: q.package!.id, regionId: regions[0].id,
+      ...(regions.length > 1 ? { regionIds: regions.map(r => r.id) } : {}), box: { x, y, width: right - x, height: bottom - y } });
   }
   return { crops, notSupported };
 }
