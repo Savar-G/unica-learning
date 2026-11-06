@@ -18,11 +18,13 @@ export function workbookDeliveryStore(db: SupabaseClient<Database>): DeliverySto
       if (!isUuid(id)) return null;
       const { data, error } = await db.from("workbook_delivery_receipts").select("*").eq("workbook_id", id).maybeSingle();
       if (error) throw new Error(`delivery read: ${error.message}`);
-      if (!data) return null;
+      if (!data || data.workbook_id !== id) return null;
       const original = deliveryFromRow(data);
       const correction = await db.from("workbook_delivery_corrections").select("*").eq("workbook_id", id).order("audit_id", { ascending: false }).limit(1).maybeSingle();
       if (correction.error) throw new Error(`delivery correction read: ${correction.error.message}`);
       const c = correction.data;
+      // Validate the latest row after selecting it. Never ignore a mismatched correction and use an older receipt.
+      if (c && (c.workbook_id !== id || c.parent_id !== original.parentId || c.child_id !== original.childId || c.number !== original.number)) return null;
       return c ? { ...original, originalDeliveredAt: original.deliveredAt, deliveredAt: new Date(c.delivered_at).toISOString(), localTime: c.local_time,
         correction: { id: c.id, reason: c.reason, deliveredAt: new Date(c.delivered_at).toISOString(), recordedAt: new Date(c.recorded_at).toISOString(), actorId: c.actor_id, auditId: c.audit_id, previousDeliveredAt: new Date(c.previous_delivered_at).toISOString() } } : original;
     },

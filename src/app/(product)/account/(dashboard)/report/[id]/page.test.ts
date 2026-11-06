@@ -7,7 +7,7 @@ import type { ChildView } from "@/lib/parent-view";
 import { sampleReportView } from "@/lib/sample-children";
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => "/account/report/sample-report",
   useRouter: () => ({}),
   notFound: () => { throw new Error("NOT FOUND"); },
   redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); },

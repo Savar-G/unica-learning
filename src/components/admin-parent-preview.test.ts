@@ -36,7 +36,7 @@ it.each(PARENT_PREVIEW_VIEWS.flatMap(view => view.scenarios.map(s => ({ view: vi
   // The old live parent controls would fail this test when mounted. Only static HTML enters the frame.
   const output = dom(rendered(view, scenario));
   expect(output.querySelector("h1")?.textContent?.length).toBeGreaterThan(0);
-  expect(output.querySelector('.pd-shell[data-look="warm"]')).not.toBeNull();
+  expect(output.querySelector(view === "feedback" && scenario === "admin_rows" ? '.adm-root[data-look="warm"]' : '.pd-shell[data-look="warm"]')).not.toBeNull();
   expect(output.querySelector("script, form, iframe, object, embed, base, [href], [src]:not([src=\"/desk/maya.webp\"]), [action], [formaction], [onclick], [download], [contenteditable]")).toBeNull();
   for (const control of output.querySelectorAll("button, input, select, textarea")) {
     expect(control.hasAttribute("disabled")).toBe(true);
@@ -137,4 +137,32 @@ it("removes active HTML even if a future component adds it and restricts style s
   expect((documentHtml.match(/<link /g) ?? [])).toHaveLength(1);
   expect(doc.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content")).toContain("connect-src 'none'");
   expect(doc.documentElement.className).toBe("fonts");
+});
+
+
+it("keeps parent PDFs out of Workbooks previews and shows the real answer-only component for each key scenario", () => {
+  const listing = dom(rendered("workbooks", "delivered"));
+  expect(listing.body.textContent).toContain("Answer keys");
+  expect(listing.body.textContent).not.toMatch(/Download PDF|Print a page again/);
+  const full = dom(rendered("workbook_answers", "complete"));
+  expect(full.querySelectorAll(".pw-answers > li")).toHaveLength(8);
+  expect(full.body.textContent).toContain("425");
+  expect(full.body.textContent).not.toContain("268");
+  const mixed = dom(rendered("workbook_answers", "mixed"));
+  expect(mixed.body.textContent).toContain("Example answers");
+  expect(mixed.body.textContent).toContain("There is no single fixed answer");
+  expect(mixed.body.textContent).toContain("The answer is not available");
+});
+
+
+it("renders Feedback and its frame entry for every parent stage and a family with no children", () => {
+  for (const stage of Object.keys(SAMPLE_STAGE_FACTS)) {
+    const output = dom(rendered("feedback", `stage_${stage}`));
+    expect(output.querySelector("h1")?.textContent).toBe("Feedback");
+    expect(output.querySelectorAll("select,textarea")).toHaveLength(2);
+    expect(output.querySelector(".pd-top-feedback")?.textContent).toBe("Feedback");
+  }
+  const empty = dom(rendered("feedback", "form", "none"));
+  expect(empty.querySelector("h1")?.textContent).toBe("Feedback");
+  expect(empty.querySelector("textarea")).not.toBeNull();
 });
