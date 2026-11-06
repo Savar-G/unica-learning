@@ -1,4 +1,4 @@
-HANDOFF_READY
+HANDOFF_DONE
 
 Issue [#612](https://github.com/Savar-G/unica-learning/issues/612) is ready for independent review.
 The implementation changes the child lock in `start_workbook_run` from `FOR UPDATE` to `FOR NO KEY UPDATE`.
@@ -97,14 +97,25 @@ Proof by subsystem:
 - Migration: the database function definition differs only at the child lock mode. The attached start/child trigger definitions are identical before and after migration. The full production migration history was not replayed.
 - Cleanup: each test run stopped its own cluster, confirmed `pg_ctl status` returned 3, and removed its own temporary directory. No fixture PostgreSQL process remained after the checks.
 
+Controller verification on 2026-11-05:
+
+- Independent Sol review: APPROVE, no findings, on commit `876f767796251431c970a2ce20312841a7dbdc76`.
+- Root reran the local fixture: exit 0, `WORKBOOK_START_RESUME_OK 12`, and confirmed cleanup.
+- Before application, the hosted function matched the reviewed old body after removal of SQL comments and spacing.
+- Applied through Supabase MCP to project `cdjobwsyzndtltzfpyqa`. The registry records `20261106033145`, name `workbook_start_resume_lock`.
+- The hosted function body has MD5 `42e7795ed3a2b1b7fca45f166b8fbd83`, exactly matching the reviewed replacement. The corrected lock is present.
+- Hosted execute permission remains false for anon and authenticated, and true for service_role. Security definer and the empty search path remain.
+- Security advisors have the same categories and counts before and after application. They report no finding for this function.
+- `npm run db:types` exited 0 and produced no file change. The function signature did not change.
+- The full test gate passed: 441 files, 16,610 tests passed, one skipped, exit 0, in 953.93 seconds. The normal production build and full source lint also exited 0.
+
+Hosted checks prove the stored definition and permissions. They do not prove a concurrent live-family run. No family rows were written.
+
 Remaining work belongs to the controller:
 
-- Run the independent review.
-- Apply the additive migration to the hosted project after review. Verify its registry entry and the function/permission probe before shipping.
-- Own any required generated database types refresh. This child did not edit `src/lib/database.types.ts`.
-- Run the combined full gate once before the push.
-- Coordinate the one final subscription U4/U16 replay pair.
 - Own the push, pull request, and merge.
+
+This SQL-only change does not change book content. The controller retains the final subscription sample pair for the content lane.
 
 This child made no hosted writes, provider calls, live worker setting changes, service restarts, customer job claims, or customer books.
 It did not change generator, quality, worker, or shared generated type files.
