@@ -97,6 +97,15 @@ describe("step template items (#489)", () => {
     }
   });
 
+  it.each([
+    ["8.5-divide-fractions", 26, 2], ["9.1-word-problems", 28, 0],
+  ] as const)("excludes partial printed quantities from %s Mixed set operation keys", (skill, level, unsafeIndex) => {
+    for (let seed = 1; seed <= 32; seed++) {
+      const filled = item(skill, 1, "mixed-set", seed, 0, level);
+      expect(filled?.ref.index, `seed ${seed}: ${filled?.text}`).not.toBe(unsafeIndex);
+    }
+  });
+
   it("fills a template with numbers from its step's ranges and checks the key from the numbers", () => {
     const step = stepOf(BC, "1.1-count-on-back", 3)!;
     for (let seed = 1; seed <= 40; seed++) {

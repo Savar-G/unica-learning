@@ -224,7 +224,16 @@ export function mixedTemplateSign(t: Pick<StepTemplate, "format" | "answer" | "d
     if (binary) {
       // A rounded-up division answer such as q + 1 does not make the story an addition. Both operands must be
       // printed givens. Derived digit-built amounts are valid when their values print as the story's quantities.
-      if (t.text && [binary[1], binary[3]].some(name => /^\d+$/.test(name) ? !new RegExp(`\\b${name}\\b`).test(t.text!) : !t.text!.includes(`{${name}}`))) return null;
+      if (t.text && [binary[1], binary[3]].some(name => {
+        const token = /^\d+$/.test(name) ? `\\b${name}\\b` : `\\{${name}\\}`;
+        const matches = [...t.text!.matchAll(new RegExp(token, "g"))];
+        // A denominator, negative magnitude or digit fragment is not the story's complete quantity.
+        return !matches.length || matches.some(match => {
+          const before = t.text!.slice(0, match.index);
+          const after = t.text!.slice(match.index! + match[0].length);
+          return /(?:[-−/]\s*|[\d}][.,]?)$/.test(before) || /^(?:\s*\/|[\d{]|[.,][\d{])/.test(after);
+        });
+      })) return null;
       return ({ "+": "+", "-": "−", "*": "×", "/": "÷", "//": "÷" } as Record<string, string>)[binary[2]];
     }
     const derived = t.derived && Object.entries(t.derived).find(([name]) => name === expression);

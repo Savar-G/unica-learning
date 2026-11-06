@@ -101,7 +101,9 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const answer = item?.regions.find(r => r.kind === "box");
       const work = item?.regions.find(r => r.kind === "work");
       const source = item?.checks.find(c => c.kind === "template" && c.region === answer?.id);
-      const sign = source?.kind === "template" ? mixedTemplateSign({ format: stepTemplateOf(pkg!)?.format === "story" ? "story" : "bare", answer: source.source.answer, derived: Object.fromEntries(source.source.derived) }) : null;
+      const ref = pkg && stepTemplateOf(pkg);
+      const template = ref && bcStepProgressions().skillSteps(ref.skill)?.find(s => s.number === ref.step)?.templates?.[ref.index];
+      const sign = source?.kind === "template" && template ? mixedTemplateSign({ ...template, answer: source.source.answer, derived: Object.fromEntries(source.source.derived) }) : null;
       if (!pkg || item?.format !== "tick-and-number" || !answer || !work || choice?.kind !== "choice" || choice.mark !== "tick"
         || choice.choices.length < 2 || choice.choices.some(s => !["+", "−", "×", "÷"].includes(s))
         || typeof choice.answer !== "string" || !choice.choices.includes(choice.answer) || source && (!sign || choice.answer !== sign)

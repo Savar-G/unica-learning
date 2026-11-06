@@ -117,3 +117,19 @@ The controller owns the combined full gate, independent review, final real Unify
 Fake generation and the key solver do not prove independent real-model answer correctness or real wording. Chromium proves the selected local rendering path. It does not prove hosted operation, printer output, scan marking, sample approval or a live customer book.
 
 No paid API, real model sample, live worker setting change, service restart, claimed family job, customer-book generation or hosted write occurred. The shared checkout and reports outside this worktree were read-only. Issues 479, 480 and 611 remain outside this correction.
+
+## Controller correction after Sol round 1
+
+Sol reported S1, P1: an operation inferred from the answer expression can differ from the operation on the story's complete printed quantities. A fraction denominator produced multiplication instead of division. A negative temperature magnitude produced subtraction instead of addition.
+
+The controller confirmed the finding and excluded those templates from Mixed sets. A printed operand must be a complete quantity, rather than a signed magnitude, fraction component or joined digit fragment. Whole-book quality also checks the canonical story template, so a legacy package with the unsafe key is rejected.
+
+Four public-interface regressions fail against the exact reviewed commit `b4d6c2e76cfed12ded169850c6e02523610032ba`: two template-selection controls and two legacy-package quality controls. Both affected suites pass with the correction, 51 tests. The original addition, subtraction, multiplication and division controls pass. The five-file regression passed, 126 tests, including the strict Chromium case. Scoped lint and whitespace checks passed. The strict fake sample is being checked before re-review.
+
+The first negative-temperature test fixture did not select its intended template. The controller corrected the fixture's attempt selection before the exact-old comparison. An initial guard also rejected valid spaced unit placeholders; preserving whitespace at token boundaries corrected it. Neither intermediate state is the delivery candidate.
+
+Sol found no requirement to balance operation counts in the plain U16 book. Its 16 multiplication items retain permitted review skills. The mastery-step compatibility check adds no review scope. The unchanged page 22 coverage failure remains a separate full-book limit.
+
+The controller's strict fake U16 check after the correction exited 0: 28 pages, 197 questions, ready=true, zero failed questions, fit failures, render problems or omissions. It used the fixed sample seed and days 1,5,10. All 54 fake solve checks passed. Evidence: `.workbook-sample/root-s1-fast/` and the controller's `664-s1-fast.log`. This is a selected-day fake check, not the full-book or real-provider acceptance result.
+
+S1 needs re-review before publication. No clean release result is claimed.
