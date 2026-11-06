@@ -707,7 +707,7 @@ function isWorking(clause: string): boolean {
 const WORK_ADD = /\b(?:plus|and|add|added|adding|adds)\b|\+/i;
 const WORK_SUBTRACT = /\b(?:minus|take away|takeaway|subtract|subtracted|subtracting)\b|[−-]\s*\d/i;
 const WORK_MULTIPLY = /\b(?:times|multiplied|multiply)\b|[×*]/i;
-const ANSWER_WORD = /\b(?:answer|got|get|gets|total|equals? to)\b/i;
+const ANSWER_WORD = /\b(?:answer|final|got|get|gets|total|equals? to)\b/i;
 
 /**
  * The text with the child's working after an answer left out (#605): "I got 66. 7 plus 9 is 16, so I carry the ten." keeps
@@ -745,6 +745,8 @@ function workingResult(clause: string): number | null {
  */
 function workingHidesAnswer(dropped: string[], final: AnswerValue | null, known: number[]): boolean {
   return dropped.some((clause) => {
+    // A writing claim inside working can name a new answer. Its role must be confirmed, even for a known number.
+    if (/\b(?:wrote|write|put)\b/i.test(clause)) return true;
     const r = readNumbers(clause);
     const plain = !r.unreadable && r.values.every((v) => v.type === "number" && ((Number.isInteger(v.value) && v.value >= 0 && v.value <= 9) || known.includes(v.value)));
     if (plain) return false;
@@ -792,7 +794,10 @@ const RESULT_WORDS = new Set(["is", "are", "equals", "equal", "make", "makes", "
 
 /** The words of a text as numbers ("twenty six" is 26), operation words, result words and other words. */
 function numberTokens(text: string): NumberToken[] {
-  const words = text.toLowerCase().replace(/[’]/g, "'").replace(/(\d)\s*([+=×−])\s*/g, "$1 $2 ").replace(/([+=×−])\s*(\d)/g, "$1 $2")
+  const words = text.toLowerCase().replace(/[’]/g, "'")
+    .replace(/\b(?:is|are)\s+equal\s+to\b|\bequals?\s+to\b/g, " equals ")
+    .replace(/\badded\s+to\b/g, " plus ")
+    .replace(/(\d)\s*([+=×−])\s*/g, "$1 $2 ").replace(/([+=×−])\s*(\d)/g, "$1 $2")
     .replace(/(?<=[a-z])-(?=[a-z])/g, " ").split(/[^a-z0-9+=×−'.-]+/).filter(Boolean).map((w) => w.replace(/[.']+$/, ""));
   const out: NumberToken[] = [];
   for (let i = 0; i < words.length; i++) {

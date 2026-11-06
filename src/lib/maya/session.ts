@@ -44,7 +44,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { committedText, falseEquationResults, numberSentences, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
+import { committedText, falseEquationResults, numberSentences, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -1503,7 +1503,8 @@ function yesAnswer(s: Session): ChildAnswer | null {
  * numbers of its worked steps), its answer, or a digit the child points at ("carry the ten"). Any other
  * number beside it ("I wrote 5") leaves the step not right: Maya asks (PR #624 review round 3).
  */
-function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValue, text: string): boolean {
+function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValue, text: string, steps: WorkedStep[], active: WorkedStep): boolean {
+  if (!columnClaimsRight(pkg, step, steps, active, text)) return false;
   const own = new Set<number>();
   const walk = (x: unknown) => {
     if (typeof x === "number") own.add(x);
@@ -1522,6 +1523,53 @@ function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValu
     if (!r.values.some((v) => saidAs(v, value))) return true;
     return !r.unreadable && r.values.every((v, i) => r.notAnswer[i] || (v.type === "number" && own.has(v.value)) || saidAs(v, value) || saidAs(v, pkg.answer.value));
   });
+}
+
+/** A written digit or carry has a role, even when its number occurs elsewhere in the question. */
+function columnClaimsRight(pkg: OperationPackage, step: WorkedStep, steps: WorkedStep[], active: WorkedStep, text: string): boolean {
+  if (!("place" in step) || !("write" in step)) return true;
+  const words = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand";
+  const claim = new RegExp(`\\b(wrote|write|writes|writing|put|puts|putting|carry|carried|carrying)\\b\\s+(?:(?:down|the|a|an)\\s+)*([+-]?\\d+(?:\\.\\d+)?|(?:${words})(?:[ -](?:${words}))*)\\b`, "gi");
+  const kept = retainedText(text, readOptionsFor(pkg));
+  for (const match of kept.matchAll(claim)) {
+    const numbers = readNumbers(match[2]);
+    if (numbers.unreadable || numbers.values.length !== 1 || numbers.values[0].type !== "number") return false;
+    const n = numbers.values[0].value;
+    const carry = /^(?:carry|carried|carrying)$/i.test(match[1]);
+    // Read a named column only in this claim, before the next clause or role.
+    const tail = kept.slice(match.index! + match[0].length).split(/[.,;!?\n]|\b(?:and|then|wrote|write|put|carry|carried)\b/i)[0];
+    const place = /\b(?:in|for|to|from)\s+(?:the\s+)?(ones|tens|hundreds|thousands|tenths|hundredths|thousandths)\b/i.exec(tail)?.[1].toLowerCase();
+    const columns = steps.filter((s) => "place" in s && "write" in s && s.place === place);
+    // An unnamed claim follows the latest column total in this turn, or the checked column when no total was stated.
+    // This keeps "7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6" tied to the ones carry during a tens check.
+    let implicit = active;
+    const before = kept.slice(0, match.index);
+    const equations = [...before.matchAll(/\b(?:is|are|equals?|make|makes|got)\s+(?:equal\s+to\s+)?([^.,;!?\n]+)/gi)];
+    const result = equations.at(-1);
+    if (result) {
+      const total = valuesIn(result[1])[0];
+      const matching = steps.filter((s) => "total" in s && "write" in s && total?.type === "number" && s.total === total.value);
+      if (matching.length === 1) implicit = matching[0];
+    }
+    const column = !place ? implicit : place === step.place ? step : columns.length === 1 ? columns[0] : null;
+    if (!column || !("write" in column)) return false;
+    if (!carry) {
+      // Recording an intermediate total on paper does not say it was written in a column's answer position.
+      const recorded = !place && /\bon\s+(?:my|the)\s+paper\b/i.test(tail)
+        && steps.some((s) => "total" in s && s.total === n);
+      // The existing regroup path explains this mistake and removes this column from done before any progress.
+      const regroup = column.kind === "add-column" && n === column.total && writesTotal(kept, column);
+      if (n !== column.write && !regroup && !recorded) return false;
+    } else {
+      if (!("carryOut" in column)) return false;
+      // "Carry the ten" names one ten. A destination names the incoming carry.
+      const amount = /^(?:ten|a ten)$/i.test(match[2]) ? 1 : n;
+      const destination = place && /\bto\b/i.test(tail);
+      const expected = destination ? [column.carryIn] : [column.carryOut];
+      if (!expected.includes(amount)) return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -1596,7 +1644,8 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     // step is right only in a turn with no false equation kept, where each sentence holding its value names nothing but
     // that step's own numbers ("7 plus 9 is 16, I wrote 5" is not a right ones step).
     const falseResult = falseResults.some((v) => saidAs(v, a.value));
-    const stepRight = a.step !== "result" && falseResults.length === 0 && ownSentences(pkg, at, a.value, s.turn.text) && answersStep(at, a.value);
+    const active = problem === "target" ? steps.find((st) => !s.done.includes(st.id)) ?? at : at;
+    const stepRight = a.step !== "result" && falseResults.length === 0 && ownSentences(pkg, at, a.value, s.turn.text, steps, active) && answersStep(at, a.value);
     const right = !falseResult && (a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : stepRight);
     // A doubtful final answer cannot establish correct work, including an equal
     // fraction that still needs simplest form and therefore carries a "wrong" verdict.
