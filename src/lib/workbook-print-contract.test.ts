@@ -421,7 +421,7 @@ describe("a changed revision changes its contract as one unit", () => {
       m.printed.set(page.image!.path, files.get(page.image!.path)!);
       m.photos.set(PHOTO, {
         parent: PARENT, state: "saved", createdAt: Date.parse(NOW), expiresAt: Date.parse(NOW) + 90 * 86_400_000, bytes, storedBytes: 1,
-        frame: { printedRevision: photoRevision, book: { printedRevision: w.printedRevision }, page: { printContract: page.printContract, imagePath: page.image!.path, qrToken: page.qrToken, questions: questionsOf(page) } },
+        frame: { printedRevision: photoRevision, book: { printedRevision: w.printedRevision }, page: { printContract: page.printContract, imagePath: page.image!.path, qrToken: page.qrToken, questions: questionsOf(page), others: [] } },
       });
       return { m, preview: await runScanCrops(m.store, { parent: PARENT, photo: PHOTO }, "00000000-0000-4000-8000-0000000000e1") };
     };

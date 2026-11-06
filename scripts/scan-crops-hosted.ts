@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { Database, Json } from "@/lib/database";
 import { runFamilyDeletion } from "@/lib/family-deletion-store";
-import { isFenceRefusal } from "@/lib/scan-crops";
+import { isFenceRefusal, SHEET_CHECK_VERSION } from "@/lib/scan-crops";
 import { scanCropStore } from "@/lib/scan-crops-store";
 import { cleanupScanPhoto } from "@/lib/scan-photo-server";
 import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
@@ -182,6 +182,26 @@ async function check() {
   assert.equal(again.body.preview?.status, "ready");
   assert.equal(ok(await admin.from("scan_calibrations").select("lease_token").eq("photo_id", ready).single()).lease_token, row.lease_token);
   pass("a repeated POST reuses the stored work under the same lease");
+
+  // A ready result made before the sheet check must pass it before preview, stack or Send can use it (#456).
+  const oldResult = { ...row.result };
+  delete oldResult.sheetCheck;
+  ok(await admin.from("scan_calibrations").update({ result: oldResult }).eq("photo_id", ready));
+  assert.deepEqual((await previewOf(owner, ready, "GET")).body.preview, { status: "not-started" });
+  assert.equal((await call(owner, `/api/account/scans/${ready}/preview/straight`)).status, 404);
+  const stackResponse = await call(owner, `/api/account/scans?child=${ownerF.child}`);
+  assert.equal(stackResponse.status, 200);
+  const stack = await stackResponse.json() as { photos: { id: string; check: string }[] };
+  assert.equal(stack.photos.find((p) => p.id === ready)?.check, "checking");
+  assert.deepEqual(ok(await admin.rpc("send_scan_photos", { p_parent: ownerF.id, p_child: ownerF.child, p_ids: [ready] })), []);
+  assert.equal((await previewOf(owner, ready)).body.preview?.status, "ready");
+  const rechecked = ok(await admin.from("scan_calibrations").select("lease_token,result").eq("photo_id", ready).single());
+  assert.notEqual(rechecked.lease_token, row.lease_token);
+  assert.equal(rechecked.result?.sheetCheck, SHEET_CHECK_VERSION);
+  const checkedStack = await (await call(owner, `/api/account/scans?child=${ownerF.child}`)).json() as { photos: { id: string; check: string }[] };
+  assert.equal(checkedStack.photos.find((p) => p.id === ready)?.check, "ready");
+  assert.equal((await call(owner, `/api/account/scans/${ready}/preview/straight`)).status, 200);
+  pass("old ready result: preview and crops blocked, stack checking, Send empty; POST rechecks under a new lease and restores ready");
 
   // 2. Refusal and legacy.
   const refused = await previewOf(owner, f.photos.refused);

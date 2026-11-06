@@ -69,6 +69,34 @@ describe("buildStack", () => {
     expect(stack.counts.photos).toBe(2);
   });
 
+  it.each(["checking", "refused", "unavailable", "none"] as const)("an earlier Send does not hide a current %s check", (check) => {
+    const stack = buildStack({ photos: [photo("old", 10, { sentAt: "2026-11-05T11:00:00Z", check, reason: check === "refused" ? "faint" : null })], uploads: [], pages, checks: true });
+    expect(stack.sent).toEqual([]);
+    expect(stack.readyIds).toEqual([]);
+    if (check === "refused") {
+      expect(stack.refused).toMatchObject([{ photoId: "old", refusal: "faint" }]);
+      expect(stack.counts.refused).toBe(1);
+    } else {
+      expect(stack.days[0].tiles[0].status).toBe(check === "none" ? "saved" : check);
+    }
+  });
+
+  it("keeps the Send history through rechecking, refusal and a new valid result", () => {
+    const saved = photo("old", 10, { sentAt: "2026-11-05T11:00:00Z" });
+    const show = (check: StackPhoto["check"]) => buildStack({ photos: [{ ...saved, check }], uploads: [], pages, checks: true });
+    expect(show("checking").counts.checking).toBe(1);
+    expect(show("refused").counts.refused).toBe(1);
+    expect(show("ready").sent).toMatchObject([{ photoId: "old", status: "sent" }]);
+    expect(show("ready").readyIds).toEqual([]);
+    expect(saved.sentAt).toBe("2026-11-05T11:00:00Z");
+  });
+
+  it("a pending photo with a Send history still needs checking", () => {
+    const stack = buildStack({ photos: [photo("old", 10, { sentAt: "2026-11-05T11:00:00Z", state: "pending" })], uploads: [], pages, checks: true });
+    expect(stack.sent).toEqual([]);
+    expect(stack.counts.checking).toBe(1);
+  });
+
   it("without checks, a saved page is only saved: nothing is ready and nothing is checking", () => {
     const stack = buildStack({ photos: [photo("a", 10, { check: "none" }), photo("b", 11, { check: "none", state: "pending" })], uploads: [], pages, checks: false });
     expect(stack.days[0].tiles.map((t) => t.status)).toEqual(["saved", "checking"]);
@@ -111,4 +139,12 @@ describe("words", () => {
     expect(refusalCopy("marks-missing").short).toBe("Cut off");
     expect(refusalCopy("page-mismatch").short).toBe("Wrong page");
   });
+});
+
+it("names the sheet check's refusals in their own words (#456)", () => {
+  // Disproved if a page refused for another page or for glare shows the "cannot line up" words of a failed check.
+  expect(refusalCopy("another-page").title).toBe("Part of this photo looks like a different page.");
+  expect(refusalCopy("faint").title).toBe("Part of the page is too bright or faint to read.");
+  expect(refusalCopy("faint").action).toBe("Take another photo without glare.");
+  expect(refusalCopy("check-timeout").action).toBe("Try again in a minute.");
 });

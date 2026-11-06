@@ -1,0 +1,1663 @@
+{
+  "summary": {
+    "pages": 24,
+    "conditions": 16,
+    "right": 384,
+    "uploadReads": 184,
+    "calibratedOfRead": 184,
+    "falseRefusals": 0,
+    "wrong": 8832,
+    "falseAccepts": 0,
+    "passedInkStoppedByQr": 29,
+    "nearTwinsSheetChecked": 16,
+    "nearTwinsAlsoStoppedBySheet": 16,
+    "refusedOtherwise": 0
+  },
+  "byCondition": [
+    {
+      "pageFill": 50,
+      "angle": "upright",
+      "rightPages": 24,
+      "uploadReads": 0,
+      "rightAccepted": 0,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 0
+    },
+    {
+      "pageFill": 50,
+      "angle": "rotated 7 degrees",
+      "rightPages": 24,
+      "uploadReads": 0,
+      "rightAccepted": 0,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 0
+    },
+    {
+      "pageFill": 50,
+      "angle": "tilted",
+      "rightPages": 24,
+      "uploadReads": 0,
+      "rightAccepted": 0,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 0
+    },
+    {
+      "pageFill": 60,
+      "angle": "upright",
+      "rightPages": 24,
+      "uploadReads": 0,
+      "rightAccepted": 0,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 0
+    },
+    {
+      "pageFill": 60,
+      "angle": "rotated 7 degrees",
+      "rightPages": 24,
+      "uploadReads": 0,
+      "rightAccepted": 0,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 0
+    },
+    {
+      "pageFill": 60,
+      "angle": "tilted",
+      "rightPages": 24,
+      "uploadReads": 0,
+      "rightAccepted": 0,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 0
+    },
+    {
+      "pageFill": 70,
+      "angle": "upright",
+      "rightPages": 24,
+      "uploadReads": 21,
+      "rightAccepted": 21,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 2
+    },
+    {
+      "pageFill": 70,
+      "angle": "rotated 7 degrees",
+      "rightPages": 24,
+      "uploadReads": 0,
+      "rightAccepted": 0,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 1
+    },
+    {
+      "pageFill": 70,
+      "angle": "tilted",
+      "rightPages": 24,
+      "uploadReads": 24,
+      "rightAccepted": 24,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 1,
+      "nearTwinsAlsoStoppedBySheet": 1
+    },
+    {
+      "pageFill": 77,
+      "angle": "upright",
+      "rightPages": 24,
+      "uploadReads": 22,
+      "rightAccepted": 22,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 2
+    },
+    {
+      "pageFill": 77,
+      "angle": "rotated 7 degrees",
+      "rightPages": 24,
+      "uploadReads": 8,
+      "rightAccepted": 8,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 2
+    },
+    {
+      "pageFill": 77,
+      "angle": "tilted",
+      "rightPages": 24,
+      "uploadReads": 24,
+      "rightAccepted": 24,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 2
+    },
+    {
+      "pageFill": 85,
+      "angle": "upright",
+      "rightPages": 24,
+      "uploadReads": 16,
+      "rightAccepted": 16,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 2
+    },
+    {
+      "pageFill": 85,
+      "angle": "rotated 7 degrees",
+      "rightPages": 24,
+      "uploadReads": 24,
+      "rightAccepted": 24,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 2,
+      "nearTwinsAlsoStoppedBySheet": 2
+    },
+    {
+      "pageFill": 85,
+      "angle": "tilted",
+      "rightPages": 24,
+      "uploadReads": 21,
+      "rightAccepted": 21,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 1,
+      "nearTwinsAlsoStoppedBySheet": 1
+    },
+    {
+      "pageFill": 95,
+      "angle": "upright",
+      "rightPages": 24,
+      "uploadReads": 24,
+      "rightAccepted": 24,
+      "falseRefusals": 0,
+      "wrongPages": 552,
+      "wrongAccepted": 0,
+      "passedInkStoppedByQr": 1,
+      "nearTwinsAlsoStoppedBySheet": 1
+    }
+  ],
+  "nearTwins": [
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.7,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.7,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch"
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.7,
+      "angle": "tilted",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.77,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.77,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.77,
+      "angle": "tilted",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.77,
+      "angle": "tilted",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.85,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p8",
+      "against": "U4 p5",
+      "scale": 0.85,
+      "angle": "rotated 7 degrees",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.85,
+      "angle": "tilted",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    },
+    {
+      "photo": "U4 p5",
+      "against": "U4 p8",
+      "scale": 0.95,
+      "angle": "upright",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "sheetStops": true
+    }
+  ],
+  "falseRefusals": [],
+  "uploadCannotRead": [
+    {
+      "page": "U4 p3",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p4",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p7",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p3",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p4",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p5",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p6",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p7",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p9",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p10",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p11",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p12",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p13",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p14",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p3",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p4",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p5",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p6",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p7",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p8",
+      "scale": 0.5,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p3",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p4",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p7",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p3",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p4",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p5",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p6",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p7",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p9",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p10",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p11",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p12",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p13",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p14",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p3",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p4",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p5",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p6",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p7",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p8",
+      "scale": 0.5,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p3",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p4",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p7",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p3",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p4",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p5",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p6",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p7",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p9",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p10",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p11",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p12",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p13",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p14",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p3",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p4",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p5",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p6",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p7",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p8",
+      "scale": 0.5,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p3",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p4",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p7",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p3",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p4",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p5",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p6",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p7",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p9",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p10",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p11",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p12",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p13",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p14",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p3",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p4",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p5",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p6",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p7",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p8",
+      "scale": 0.6,
+      "angle": "upright",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p3",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p4",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p7",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p3",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p4",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p5",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p6",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p7",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p9",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p10",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p11",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p12",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p13",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p14",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p3",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p4",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p5",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p6",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p7",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p8",
+      "scale": 0.6,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p3",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p4",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p7",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p3",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p4",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p5",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p6",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p7",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p9",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p10",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p11",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p12",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p13",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p14",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p3",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p4",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p5",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p6",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p7",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p8",
+      "scale": 0.6,
+      "angle": "tilted",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p7",
+      "scale": 0.7,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.7,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p12",
+      "scale": 0.7,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p3",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p4",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p7",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p3",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p4",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p5",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p6",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p7",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p9",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p10",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p11",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p12",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p13",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p14",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U26 p3",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p4",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p5",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p6",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p7",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U26 p8",
+      "scale": 0.7,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.77,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.77,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p3",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U4 p7",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p3",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p4",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p5",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p6",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p7",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p10",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U16 p11",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p13",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U26 p3",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U26 p4",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "refused"
+    },
+    {
+      "page": "U26 p8",
+      "scale": 0.77,
+      "angle": "rotated 7 degrees",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p5",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p8",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U16 p14",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U26 p5",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U26 p7",
+      "scale": 0.85,
+      "angle": "upright",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p5",
+      "scale": 0.85,
+      "angle": "tilted",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p6",
+      "scale": 0.85,
+      "angle": "tilted",
+      "status": "calibrated"
+    },
+    {
+      "page": "U4 p8",
+      "scale": 0.85,
+      "angle": "tilted",
+      "status": "calibrated"
+    }
+  ]
+}
