@@ -218,8 +218,21 @@ describe("first-book two-ways parent review", () => {
 });
 
 describe("write-words whole-page reading", () => {
+  it.each([["7:56", "07:56"], ["8 by 4", "8 x 4"], ["a different colour", "not red"]])("keeps a clear alternate form of %s for a parent instead of marking it wrong", (key, text) => {
+    const f = wordsFrame(), item = f.questions[0].package!.item!;
+    const box = item.regions[0]; if (box.kind === "box") box.answer = { type: "text", value: key };
+    const check = item.checks[0]; if (check.kind === "template") check.source.answer = `'${key}'`;
+    expect(checkQuestionPackage(f.questions[0].package)).toMatchObject({ ok: true });
+    const o = readMarkingOutput(f, output([text]))[0];
+    expect(o).toMatchObject({ state: "pending", result: null, certainty: "certain", readAnswerText: text, issue: "answer-form" });
+    expect(observationProblem(o)).toBeNull();
+    expect(markingEvent(expectedItems(f)[0], o).publish).toBe(false);
+    const judged: Observation = { ...o, state: "parent-checked", method: "parent", actor: "parent", result: "wrong", resultVersion: 2 };
+    expect(markingPageView([{ expected: expectedItems(f)[0], observation: judged, originalEvent: null, eventId: null, at: "2026-11-06T12:00:00Z", model: null, prompt: null }]).completion.status).toBe("complete");
+    expect(judged.readAnswerText).toBe(text);
+  });
   it.each([
-    ["addition", "right"], ["  ADDITION  ", "right"], ["subtraction", "wrong"], ["66", "wrong"], ["", "blank"], [null, null],
+    ["addition", "right"], ["  ADDITION  ", "right"], ["subtraction", null], ["66", null], ["", "blank"], [null, null],
   ] as const)("code checks %j against the stored template rule", (text, result) => {
     const f = wordsFrame(), o = readMarkingOutput(f, output([text]))[0];
     expect(o.result).toBe(result);
@@ -249,7 +262,7 @@ describe("write-words whole-page reading", () => {
     if (r.kind === "box") r.answer = { type: "text", value: "subtraction" };
     expect(readMarkingOutput(changed, output(["subtraction"]))[0].result).toBeNull();
     const bad = output(["subtraction"]); Object.assign(bad.readings[0], { result: "right", answer: "subtraction" });
-    expect(readMarkingOutput(wordsFrame(), bad)[0].result).toBe("wrong");
+    expect(readMarkingOutput(wordsFrame(), bad)[0]).toMatchObject({ result: null, state: "pending", issue: "answer-form", readAnswerText: "subtraction" });
   });
   it("dispatches one text region without its answer key, and retains one result on a retake", async () => {
     const f = wordsFrame(), retake = structuredClone(f); retake.photo = "words-retake";

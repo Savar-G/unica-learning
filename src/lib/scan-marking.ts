@@ -8,7 +8,7 @@ import type { PrintedRegion } from "@/lib/workbook-print-contract";
 import type { LearningEvent, NewLearningEvent } from "@/lib/learning-events";
 import type { SkillMark } from "@/lib/assessment/skill-state";
 
-export const MARKING_PROMPT_VERSION = "whole-page-choice-number-text-v3";
+export const MARKING_PROMPT_VERSION = "whole-page-choice-number-text-v4";
 export const MARKING_MODEL = "anthropic/claude-sonnet-5.5";
 export const MARKING_MAX_TOKENS = 4096;
 export const MARKING_MAX_DISPATCHES = 2;
@@ -118,8 +118,12 @@ function readRegion(a: Alias, readings: unknown[]): RegionReading {
     : a.kind === "text" ? input ? normalizedWords(input) : null
       : numeric !== null && Number.isFinite(numeric) && Math.abs(numeric) <= Number.MAX_SAFE_INTEGER ? numeric : null;
   const certain = blank || value !== null;
+  // A different word form can still mean the same answer (07:56, 8 x 4).
+  // Literal mismatch cannot establish a wrong text answer. A parent checks it.
+  const result = blank ? "blank" : value === null ? null
+    : value === (a.kind === "text" ? normalizedWords(a.answer) : a.answer) ? "right" : a.kind === "text" ? null : "wrong";
   return { regionId: a.regionId, text, value: value === null ? null : String(value), certainty: certain ? "certain" : "uncertain",
-    result: blank ? "blank" : value === null ? null : value === (a.kind === "text" ? normalizedWords(a.answer) : a.answer) ? "right" : "wrong", issue: certain ? null : issue ?? "unreadable" };
+    result, issue: certain ? result === null ? "answer-form" : null : issue ?? "unreadable" };
 }
 /** Read every region once. Code aggregates regions into exactly one item result. */
 export function readMarkingOutput(frame: MarkingFrame, output: unknown): Observation[] {

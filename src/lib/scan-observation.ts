@@ -41,12 +41,12 @@ export type MarkResult = "right" | "wrong" | "blank";
 export type ObservationState = "pending" | "scored" | "parent-pending" | "parent-checked" | "unscored";
 
 export type ReadingCertainty = "certain" | "uncertain" | "not-read";
-export const READING_ISSUES = ["unreadable", "crossed-out", "multiple-marks", "missing", "blurry", "cut-off", "incomplete"] as const;
+export const READING_ISSUES = ["unreadable", "crossed-out", "multiple-marks", "missing", "blurry", "cut-off", "incomplete", "answer-form"] as const;
 export type ReadingIssue = (typeof READING_ISSUES)[number];
 const READING_REASONS: Record<ReadingIssue, string> = {
   unreadable: "We cannot read this answer.", "crossed-out": "This answer is crossed out.",
   "multiple-marks": "More than one choice is marked.", missing: "Part of this answer was not read.",
-  blurry: "The photo is blurry here.", "cut-off": "Part of this answer is cut off.", incomplete: "Part of this answer is empty.",
+  blurry: "The photo is blurry here.", "cut-off": "Part of this answer is cut off.", incomplete: "Part of this answer is empty.", "answer-form": "Please check this answer.",
 };
 export const readingIssueText = (issue: ReadingIssue) => READING_REASONS[issue];
 
