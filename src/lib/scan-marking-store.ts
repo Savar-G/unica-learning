@@ -1,15 +1,17 @@
 import "server-only";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { toJson, type Database, type Json } from "@/lib/database";
+import { toJson, type Database } from "@/lib/database";
 import { storedQuestion } from "@/lib/workbook-content";
 import { printContractForPhoto, storedPrintContract } from "@/lib/workbook-print-contract";
 import { calibrationForPhoto } from "@/lib/scan-calibration";
 import { scanPartPath } from "@/lib/scan-crops";
-import { firstObservation, observationProblem, type Observation } from "@/lib/scan-observation";
+import { firstObservation } from "@/lib/scan-observation";
 import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
-import { currentSheetCheck, MARKING_PROMPT_VERSION, type EffectiveMark, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { currentSheetCheck, MARKING_PROMPT_VERSION, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingCommand, scanMarkingReader, mark, observation } from "@/lib/scan-marking-reader";
+export { markingCommand, type MarkingCommand } from "@/lib/scan-marking-reader";
 import { digestOf } from "@/lib/workbook-digest";
 
 const record = (v: unknown): Record<string, unknown> => {
@@ -19,47 +21,11 @@ const record = (v: unknown): Record<string, unknown> => {
 const list = (v: unknown): unknown[] => { if (!Array.isArray(v)) throw new Error("marking_shape"); return v; };
 const str = (v: unknown): string => { if (typeof v !== "string") throw new Error("marking_shape"); return v; };
 const num = (v: unknown): number => { if (typeof v !== "number" || !Number.isFinite(v)) throw new Error("marking_shape"); return v; };
-/** The persisted JSON is checked before it enters the public observation interface. */
-function observation(v: unknown): Observation {
-  const r = record(v);
-  record(r.identity); list(r.regions); record(r.mastery);
-  const candidate = r as unknown as Observation;
-  if (observationProblem(candidate)) throw new Error("marking_observation");
-  return candidate;
-}
-function mark(v: unknown): EffectiveMark {
-  const r = record(v), o = observation(r.observation), e = record(r.expected);
-  // Expected records were written from the trusted package by claim. Keep the projection tied to the same identity.
-  if (JSON.stringify(e.identity) !== JSON.stringify(record(r.observation).identity)) {
-    const i = record(e.identity);
-    if (i.workbookId !== o.identity.workbookId || i.printedRevision !== o.identity.printedRevision || i.pageId !== o.identity.pageId || i.itemId !== o.identity.itemId) throw new Error("marking_identity");
-  }
-  return { expected: e as unknown as EffectiveMark["expected"], observation: o,
-    originalEvent: r.original_event === null ? null : record(r.original_event) as unknown as EffectiveMark["originalEvent"], eventId: r.event_id === null ? null : str(r.event_id),
-    at: str(r.evidence_at), model: r.model === null ? null : str(r.model), prompt: r.prompt === null ? null : str(r.prompt) };
-}
-export type MarkingCommand = (action: string, parent: string | null, photo: string | null, token: string | null, data?: Json) => Promise<unknown>;
-/** Deliberately uses generated RPC names. Parent must install the migration and generate database types. */
-export function markingCommand(db: SupabaseClient<Database>): MarkingCommand {
-  return async (action, parent, photo, token, data = {}) => {
-    const result = await db.rpc("scan_marking_command", { p_action: action, p_parent: parent, p_photo: photo, p_token: token, p_data: data });
-    if (result.error) throw new Error("marking_store");
-    return result.data;
-  };
-}
 export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
   const command = markingCommand(db), frames = new Map<string, { frame: MarkingFrame; path: string; hash: string }>();
   const refKey = (ref: MarkingRef) => `${ref.parent}:${ref.photo}`;
   const events = learningEvents(learningEventStore(db));
-  async function rows(parent: string, child: string, action: "effective" | "outbox") {
-    const result: { id: string; mark: EffectiveMark }[] = [];
-    for (let after: string | null = null; ;) {
-      const page = list(await command(action, parent, null, null, { child, after }));
-      if (!page.length) return result;
-      for (const row of page) result.push({ id: str(record(row).id), mark: mark(row) });
-      after = str(record(page[page.length - 1]).id);
-    }
-  }
+  const reader = scanMarkingReader(db);
   return {
     async frame(ref) {
       const raw = await command("frame", ref.parent, ref.photo, null);
@@ -114,13 +80,13 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
     async pause(ref, token, status) { await command("pause", ref.parent, ref.photo, token, { status }); },
     async finish(ref, token) { return await command("finish", ref.parent, ref.photo, token) === true; },
     async publish(parent, child) {
-      for (const row of await rows(parent, child, "outbox")) {
+      for (const row of await reader.rows(parent, child, "outbox")) {
         if (!row.mark.originalEvent) continue;
         const appended = await events.append(row.mark.originalEvent);
         if (!appended.ok) throw new Error("marking_publication");
         if (await command("ack", parent, null, null, { child, item: row.id, event: appended.event.id }) !== true) throw new Error("marking_publication_ack");
       }
     },
-    async effective(parent, child) { return (await rows(parent, child, "effective")).map((r) => r.mark); },
+    effective: reader.effective,
   };
 }
