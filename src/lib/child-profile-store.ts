@@ -1,5 +1,5 @@
 import "server-only";
-import { scanMarkingStore, markingCommand } from "@/lib/scan-marking-store";
+import { scanMarkingReader, markingCommand } from "@/lib/scan-marking-reader";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportCallsUnreliable, type Grade, type SkillState } from "@/lib/assessment";
 import type { ChildProfileStore } from "@/lib/child-profile";
@@ -48,7 +48,7 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
     async marks(childId) {
       const owner = await admin.from("children").select("parent_id").eq("id", childId).maybeSingle();
       if (owner.error || !owner.data) throw new Error("marking_profile_owner");
-      const parent = owner.data.parent_id, command = markingCommand(admin), store = scanMarkingStore(admin);
+      const parent = owner.data.parent_id, command = markingCommand(admin), store = scanMarkingReader(admin);
       for (let attempt = 0; attempt < 3; attempt++) {
         const revision = await command("revision", parent, null, null, { child: childId });
         if (typeof revision !== "number") throw new Error("marking_profile_revision");
