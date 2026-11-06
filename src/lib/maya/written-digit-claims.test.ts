@@ -64,3 +64,65 @@ describe("R2-1: pauses and unreadable writing claims", () => {
     expect(result.session.done).toContain("ones");
   });
 });
+
+describe("R3-1: a pause must retain the named column", () => {
+  it.each([
+    "I wrote... 6...in the hundreds",
+    "I carried... 1...from the tens",
+    "I carried... 1...to the ones",
+    "I wrote... 6 ... in the hundreds",
+    "I carried... 1 ... from the tens",
+    "I carried... 1 ... to the ones",
+    "I carried 1, from the tens",
+    "I carried 1. From the tens",
+    "I carried 1...0 to the tens",
+    "I carried 1..0 to the tens",
+  ])("refuses credit for the wrong or unclear relation: %s", claim => {
+    const c = call();
+    c.child("7 plus 9 is 16, " + claim);
+    const result = rightOnes(c);
+    expect(result.refusal).not.toBeNull();
+    expect(result.session.done).not.toContain("ones");
+  });
+  it.each(["I carried... 1 ... from the ones to the tens", "I wrote... 6 ... in the ones"])("keeps the checked relation across pauses: %s", claim => {
+    const c = call();
+    c.child("7 plus 9 is 16, " + claim);
+    const result = rightOnes(c);
+    expect(result.refusal).toBeNull();
+    expect(result.session.done).toContain("ones");
+  });
+});
+
+describe("a carry source cannot be discarded by sentence punctuation", () => {
+  for (const pause of ["...", "…", ",", ".", ";", "?", "!", "\n", ":", "-"]) {
+    it.each([
+      `I carried ${pause} 1 ${pause} from the tens`,
+      `I carried 1 from ${pause} the tens`,
+      `I carried 1 from the ${pause} tens`,
+    ])("keeps the unsafe source visible: %s", claim => {
+      const c = call();
+      c.child("7 plus 9 is 16, " + claim);
+      const result = rightOnes(c);
+      expect(result.refusal).not.toBeNull();
+      expect(result.session.done).not.toContain("ones");
+    });
+  }
+});
+
+it.each([1, 2])("checks the incoming value in a backward carry reference: %s", carry => {
+  const c = call();
+  c.child("7 plus 9 is 16.");
+  expect(rightOnes(c).refusal).toBeNull();
+  c.child(`For the tens, I did 2 plus 3, that's 5, plus the ${carry} I carried. So I got 6 tens.`);
+  const result = c.propose({ act: "guide", step: "result", level: 0,
+    parts: [line("check.right_step", { step: "tens" }), line("step.invite", { step: "result" })],
+    reading: { answers: [{ value: value(6), step: "tens", verdict: "right" }] },
+  });
+  if (carry === 1) {
+    expect(result.refusal).toBeNull();
+    expect(result.session.done).toContain("tens");
+  } else {
+    expect(result.refusal).not.toBeNull();
+    expect(result.session.done).not.toContain("tens");
+  }
+});

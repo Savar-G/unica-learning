@@ -29,3 +29,15 @@ The second independent review resolved fraction and withdrawn-book recovery find
 Root added six unsafe public cases and two correct pause controls. Before the repair: 6 failed and 8 passed. The parser now recognizes a leading ellipsis as a pause after a writing verb or its existing filler words. A recognized verb always yields a claim, including an empty or unreadable value. A missing numeric value remains unclear. The existing digit-role and carry checks then apply without change.
 
 After the repair, 303 tests passed across six files, including the earlier fraction, recovery, desk and delivery cases. The earlier complete check on e9407f90 was stopped after CHANGES and is not counted as a pass. Root will run the final complete gate after scoped approval of this repair. No paid practice ran.
+
+## R3 carry-relation repair
+
+R3 found that a second ellipsis discarded a named carry source or destination. The controller could award the ones step even when the child named an invalid outgoing carry from the tens column. Root added ten unsafe controls and two correct controls. Before the repair, 10 failed and 16 passed in the writing-claim file.
+
+The claim reader now keeps ellipses as spaces throughout the claim, preserves named relations after punctuation as unclear rather than inferring a column, and treats digit-to-digit repeated dots as an unclear value. Public controls also cover ten common punctuation forms at three places in a carry source.
+
+The first 51-file regression found two compatibility regressions: the ESL request "where put?" was read as a completed claim, and "the 1 I carried" lost the incoming digit. Neither expectation or fixture was changed. Root excludes only the empty position question from completed claims and reads the backward carry reference through the same numeric and role checks. A new control refuses an incoming reference of 2 where the checked carry is 1.
+
+Final direct behavior check: 618 tests passed in eight files. The complete 51-file Maya regression then passed 4,125 tests, with zero failures and zero skips. The machine-filtered count is in root's saved r3-regression51-final.log. Type and lint results are recorded separately. These are local fake-model checks, not paid practice or live-family proof.
+
+The planned review limit extends from three to five only for this evidenced progress-state blocker. The public failures award unchecked Session.done progress; maya-text.saved serializes this session in its durable call state. This is the sol-loop state-integrity exception. R4 remains scoped to the changed claim reader and open finding. Budget end is not approval. Paid practice remains 0 of 2.
