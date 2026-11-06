@@ -1,9 +1,12 @@
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { codexCliClient } from "@/lib/ai-codex-cli";
-import { fallbackAiClient, newGate } from "@/lib/ai-fallback";
+import { fallbackAiClient, newGate, type AiCallRecord } from "@/lib/ai-fallback";
 import type { Spawner, SpawnResult } from "@/lib/ai-claude-cli";
+import { sampleAiCache } from "../../scripts/workbook-sample-cache";
 
 const request: AiJsonRequest = {
   name: "sample", system: "Write a sample.", content: [{ type: "text", text: "Two counters." }],
@@ -79,5 +82,34 @@ describe("Codex sample subscription", () => {
     await expect(client().json(request, signal())).rejects.toThrow();
     await expect(client().json(request, signal())).rejects.toThrow();
     expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not report or cache an answer cancelled during the result-file read", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "unica-codex-cache-test-"));
+    const file = join(dir, "sample-ai-cache.jsonl");
+    const controller = new AbortController();
+    const records: AiCallRecord[] = [];
+    let resultDir = "";
+    const spawn: Spawner = async (_command, args, options) => {
+      resultDir = options.cwd;
+      await writeFile(args[args.indexOf("--output-last-message") + 1], JSON.stringify({ text: "x".repeat(1024 * 1024) }));
+      setImmediate(() => controller.abort());
+      return completed;
+    };
+    try {
+      const cache = await sampleAiCache(file);
+      const cli = make(spawn);
+      const client = cache.client(fallbackAiClient({
+        primary: "subscription", subscription: cli, api: null, model: cli.model,
+        onCall: record => { records.push(record); },
+      }));
+      await expect(client.json(request, controller.signal)).rejects.toThrow();
+      expect(controller.signal.aborted).toBe(true);
+      expect(records.some(record => record.outcome === "answered")).toBe(false);
+      expect(await readFile(file, "utf8")).toBe("");
+      await expect(access(resultDir)).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

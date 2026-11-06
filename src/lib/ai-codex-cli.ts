@@ -28,6 +28,7 @@ export function codexCliClient({
       if (signal.aborted) throw new Error("time is up");
       if (request.content.some(p => p.type !== "text")) throw new Error("Codex workbook samples accept text only");
       const dir = await mkdtemp(join(tmpdir(), "unica-codex-sample-"));
+      let response: unknown;
       try {
         const schema = join(dir, "schema.json"), result = join(dir, "result.json");
         await writeFile(schema, JSON.stringify(request.schema));
@@ -60,10 +61,14 @@ export function codexCliClient({
         if (events.some(e => e.item && !["agent_message", "reasoning"].includes(e.item.type))) {
           throw new Error("Codex sample request attempted to use a tool");
         }
-        return JSON.parse(await readFile(result, "utf8")) as unknown;
+        const text = await readFile(result, { encoding: "utf8", signal });
+        signal.throwIfAborted();
+        response = JSON.parse(text) as unknown;
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
+      signal.throwIfAborted();
+      return response;
     },
   };
 }
