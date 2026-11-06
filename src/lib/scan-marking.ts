@@ -104,7 +104,7 @@ export function validMarkingOutput(frame: MarkingFrame, output: unknown): boolea
     const key = `${r.item}:${r.region}`;
     if (seen.has(key) || !local.some(a => a.item === r.item && a.region === r.region)) return false;
     seen.add(key);
-    return ["written", "blank", "uncertain"].includes(String(r.state)) &&
+    return typeof r.state === "string" && ["written", "blank", "uncertain"].includes(r.state) &&
       (r.text === null || (typeof r.text === "string" && r.text.length <= MAX_READ_TEXT)) &&
       (r.issue === null || READING_ISSUES.includes(r.issue as ReadingIssue)) &&
       (r.state !== "uncertain" || r.issue !== null);

@@ -229,6 +229,29 @@ describe("production request, durable dispatch and transport accounting", () => 
 });
 
 describe("D267 denominators, projection and selection", () => {
+  it("R1-01 rejects one definite mark on an unclear item even below the wrong-mark allowance", async () => {
+    const data = manifest(), results = data.photos.map(p => result(p));
+    expect(scoreComparison(data, COMPARISON_MODELS[0], results, evidence()).passed).toBe(true);
+    const index = data.photos.findIndex(p => !p.clear), p = data.photos[index], output = labelledOutput(p);
+    output.readings[0] = labelledOutput(data.photos[0]).readings[0];
+    results[index] = await runComparisonPhoto({ ...runOptions(p, memory()), fetch: async () => response(p, COMPARISON_MODELS[0], {
+      choices: [{ finish_reason: "stop", message: { content: JSON.stringify(output) } }],
+    }) });
+    const score = scoreComparison(data, COMPARISON_MODELS[0], results, evidence());
+    expect(score.wrongMarks).toBe(1);
+    expect(score.wrongMarks * 100).toBeLessThan(score.wrongMarkDenominator);
+    expect(score.passed).toBe(false);
+  });
+  it("R1-02 refuses a state array through the strict validator and public runner", async () => {
+    const p = photo(), output = labelledOutput(p);
+    (output.readings[0] as unknown as { state: unknown }).state = ["written"];
+    expect(validMarkingOutput(p.frame, output)).toBe(false);
+    const r = await runComparisonPhoto({ ...runOptions(p, memory()), fetch: async () => response(p, COMPARISON_MODELS[0], {
+      choices: [{ finish_reason: "stop", message: { content: JSON.stringify(output) } }],
+    }) });
+    expect(r.status).toBe("failed");
+    expect(r.schemaValid).toBe(false);
+  });
   it("counts every automated item, keeps parent methods separate, and measures clear-photo unsure", () => {
     const m = manifest(), results = m.photos.map(p => result(p)), report = scoreComparison(m, COMPARISON_MODELS[0], results, evidence());
     expect(report.denominator).toBe(320); expect(report.parentMethods).toBe(40); expect(report.clearDenominator).toBe(304);

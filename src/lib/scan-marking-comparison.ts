@@ -198,6 +198,7 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
       if (usable && (!o || !["right", "wrong", "blank", null].includes(o.result))) failures++;
       if (!o || o.result === null) { unsure++; if (photo.clear) clearUnsure++; }
       else { wrongMarkDenominator++; if (o.result !== truth.result) { wrongMarks++; if (truth.result === "wrong" && o.result === "right") wrongAsRight++; } }
+      if (truth.result === "uncertain" && o?.result != null) failures++;
       if (o?.result === null && (!o.issue || !READING_ISSUES.includes(o.issue))) failures++;
     }
   }
