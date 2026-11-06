@@ -4,6 +4,7 @@ do $$
 declare
   p uuid:=gen_random_uuid(); c uuid:=gen_random_uuid(); sibling uuid:=gen_random_uuid();
   w uuid:=gen_random_uuid(); pg uuid:=gen_random_uuid(); ph uuid:=gen_random_uuid(); tok uuid:=gen_random_uuid();
+  pg2 uuid:=gen_random_uuid(); ph2 uuid:=gen_random_uuid(); cal2 uuid:=gen_random_uuid();
   old_token uuid:=gen_random_uuid(); item text:=repeat('é',200); rev text:=repeat('a',28);
   expected jsonb; observation jsonb; answer jsonb; original jsonb; row_id uuid; event_id uuid;
   saved jsonb; n int; seen boolean:=false; before_spend bigint;
@@ -18,9 +19,15 @@ begin
       values(pg,p,w,1,'practice',replace(gen_random_uuid()::text,'-',''),p::text||'/'||w::text||'/probe.png',1000,1400,'{}');
     insert into public.workbook_questions(parent_id,workbook_id,page_id,question_number,question_key,schema_version,package,box_x,box_y,box_width,box_height)
       values(p,w,pg,1,item,1,jsonb_build_object('id',item),1,1,20,20);
+    insert into public.workbook_pages(id,parent_id,workbook_id,page_number,page_type,qr_token,image_path,image_width,image_height,print_contract)
+      values(pg2,p,w,2,'practice',replace(gen_random_uuid()::text,'-',''),p::text||'/'||w::text||'/probe-other.png',1000,1400,'{}');
     update public.workbooks set status='shipped',shipped_at=now() where id=w;
     insert into public.scan_photos(id,parent_id,child_id,page_id,workbook_id,printed_revision,state,reserved_bytes,width,height,sent_at)
       values(ph,p,c,pg,w,rev,'saved',0,1000,1400,now());
+    insert into public.scan_photos(id,parent_id,child_id,page_id,workbook_id,printed_revision,state,reserved_bytes,width,height,sent_at)
+      values(ph2,p,c,pg2,w,rev,'saved',0,1000,1400,now());
+    insert into public.scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until,result)
+      values(ph2,p,rev,'ready',cal2,now(),'{"parts":["straight"]}');
     insert into public.scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until)
       values(ph,p,rev,'running',old_token,clock_timestamp()-interval '1 second');
     answer:=public.begin_scan_calibration(p,ph,tok);
@@ -47,8 +54,15 @@ begin
     if exists(select 1 from public.scan_marking_jobs where photo_id=ph) then raise exception 'legacy_sent_job_created'; end if;
     update public.scan_calibrations set result='{"parts":["straight"],"sheetCheck":1}' where photo_id=ph;
     execute 'set local role service_role';
+    answer:=public.reopen_scan_calibration(p,ph2,gen_random_uuid(),1);
+    if answer->>'status'<>'started' or (answer->>'previous')::uuid<>cal2 then raise exception 'recheck_previous_lost'; end if;
+    execute 'reset role';
+    update public.scan_calibrations set state='ready',result='{"parts":["straight"]}' where photo_id=ph2;
+    execute 'set local role service_role';
     answer:=public.scan_marking_command('claim',p,ph,tok,jsonb_build_object('hash','hosted-probe','items',jsonb_build_array(jsonb_build_object('expected',expected,'observation',observation))));
     if jsonb_array_length(answer->'items')<>1 then raise exception 'canonical_seed_failed'; end if;
+    answer:=public.reopen_scan_calibration(p,ph2,gen_random_uuid(),1);
+    if answer->>'status'<>'busy' then raise exception 'recheck_bypassed_marking_slot'; end if;
     select count(*) into before_spend from public.scan_marking_spend;
     if public.scan_marking_command('admit',p,ph,tok,jsonb_build_object('model','anthropic/claude-sonnet-5.5'))<>'"price-unverified"' then raise exception 'unverified_price_dispatched'; end if;
     if (select count(*) from public.scan_marking_spend)<>before_spend then raise exception 'refusal_reserved_spend'; end if;

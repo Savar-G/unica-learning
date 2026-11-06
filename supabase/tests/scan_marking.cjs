@@ -23,7 +23,10 @@ const copy = v => JSON.parse(JSON.stringify(v));
   await db.query(sql('20261029_add_learning_events.sql').replace('alter table public.children add constraint children_id_parent_key unique (id, parent_id);','').replace('alter table public.assessments add constraint assessments_id_child_key unique (id, child_id);',''));
   await db.query(sql('20261102_scan_page_photos.sql'));
   await db.query(sql('20261105_scan_crops.sql'));
+  await db.query(sql('20261105_scan_crops_previous_lease.sql'));
   await db.query(sql('20261105_scan_stack.sql'));
+  await db.query(sql('20261105_scan_sheet_check.sql'));
+  await db.query(sql('20261105_scan_sent_check.sql'));
   const child=sql('20261105_child_delete.sql');
   for(const name of ['child_delete_row_child']) {const f=child.match(new RegExp('create function public\\.'+name+'\\([\\s\\S]*?end \\$\\$;'));assert(f);await db.query(f[0]);}
   await db.query(sql('20261105_child_delete_plan_recovery.sql'));
@@ -31,6 +34,7 @@ const copy = v => JSON.parse(JSON.stringify(v));
   await db.query(sql('20261105_scan_marking.sql'));
   await db.query(sql('20261106_scan_calibration_previous.sql'));
   await db.query(sql('20261106_scan_marking_sheet_check.sql'));
+  await db.query(sql('20261106_scan_recheck_admission.sql'));
  }
  let passed=0,failures=0;
  async function test(name,run){try{await run();passed++;console.log('PASS',name);}catch(e){failures++;console.log('FAIL',name,e.stack);}}
@@ -290,6 +294,28 @@ const copy = v => JSON.parse(JSON.stringify(v));
   else await db.query('update scan_calibrations set state=$2,result=$3 where photo_id=$1',[f.photo,transition==='refused'?'refused':'ready',JSON.stringify(transition==='refused'?{reason:'different-page'}:{parts:['straight']})]);
   assert.equal(await reserve(f),'unavailable');assert.equal(await call(db,'extract',f,f.token,{observations:[f.observation],model:'none',prompt:'none'}),'unavailable');assert.equal(await apply(f),'unavailable');
   assert.equal((await rows(f))[0].observation.state,'pending');assert.equal((await db.query('select count(*)::int n from scan_marking_dispatches where photo_id=$1',[f.photo])).rows[0].n,0);
+ });
+ for(const stage of ['marking','upload','calibration'])for(const order of ['recheck-first','other-first','concurrent'])await test(`integrated legacy recheck shares ${stage} slot, ${order}`,async()=>{
+  const f=await fixture(),g=await fixture(f.p),a=await open(),b=await open(),upload=randomUUID();
+  await db.query('update scan_calibrations set result=$2 where photo_id=$1',[g.photo,JSON.stringify({parts:['straight']})]);
+  if(stage==='upload')assert.equal((await db.query('select admit_scan_photo($1,$2,$3,100) v',[f.p,f.c,upload])).rows[0].v,'reserved');
+  if(stage==='calibration')await db.query('delete from scan_calibrations where photo_id=$1',[f.photo]);
+  const recheck=async()=>(await a.query('select reopen_scan_calibration($1,$2,$3,1) v',[g.p,g.photo,randomUUID()])).rows[0].v.status;
+  const other=async()=>{if(stage==='upload')return (await b.query('select start_scan_photo($1,$2) v',[f.p,upload])).rows[0].v;if(stage==='calibration')return (await b.query('select begin_scan_calibration($1,$2,$3) v',[f.p,f.photo,randomUUID()])).rows[0].v.status;const value=await claim(f,b);return typeof value==='object'?'started':value;};
+  try {
+   if(order==='concurrent')assert.deepEqual((await Promise.all([recheck(),other()])).sort(),['busy','started']);
+   else {const first=order==='recheck-first'?recheck:other,second=order==='recheck-first'?other:recheck;assert.equal(await first(),'started');assert.equal(await second(),'busy');}
+   assert.equal(Number((await db.query('select scan_active_jobs($1) n',[f.p])).rows[0].n),1);
+  }finally{await a.end();await b.end();await db.query('delete from auth.users where id=$1',[f.p]);}
+ });
+ await test('integrated recheck waits on the family lock before it locks the photo',async()=>{
+  const f=await fixture(),a=await open(),b=await open();await db.query('update scan_calibrations set result=$2 where photo_id=$1',[f.photo,JSON.stringify({parts:['straight']})]);
+  try{
+   await a.query('begin');await a.query("select pg_advisory_xact_lock(hashtextextended('scan:'||$1::text,0))",[f.p]);
+   const pending=b.query('select reopen_scan_calibration($1,$2,$3,1) v',[f.p,f.photo,randomUUID()]);pending.catch(()=>{});await waitLock(b);
+   await db.query('begin');await db.query('select id from scan_photos where id=$1 for update nowait',[f.photo]);await db.query('rollback');
+   await a.query('commit');assert.equal((await pending).rows[0].v.status,'started');
+  }finally{await db.query('rollback');await a.query('rollback');await a.end();await b.end();}
  });
  console.log(JSON.stringify({passed,failures,limits:{perTenMinutes:40,perDay:60,concurrentUploads:2,activeJobs:1,queuedJobs:8,inputBytes:20971520,decodedPixels:48000000,familyBytes:2147483648},proof:'local synthetic SQL, not hosted Storage API'}));await db.end();process.exitCode=failures?1:0;
 })().catch(e=>{console.error(e);process.exitCode=1});
