@@ -232,6 +232,12 @@ describe("an invalid simulation never counts as a pass", () => {
     for (const c of PRACTICE_CASES) {
       const pkg = FIXTURES[c.fixture];
       const right = pkg.answer!.value;
+      if (right.type === "fraction") {
+        expect(c.id).toBe("C38");
+        expect(pkg.operation!.operands).not.toContainEqual(right);
+        expect(c.validity.stages.filter(s => s.opens === "start").flatMap(s => s.values ?? [])).toContainEqual(right);
+        continue;
+      }
       expect(right.type, c.id).toBe("number");
       const value = (right as { value: number }).value;
       expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
@@ -430,7 +436,7 @@ describe("the judge", () => {
       expect(j02.levels[0]).toContain("corrects right work as if it were wrong");
       expect(JUDGE_SYSTEM).toContain("J02 (error response) is scored on every call");
       expect(JUDGE_SYSTEM).toContain("including a wrong answer the child corrects later");
-      expect(JUDGE_PROMPT_VERSION).toBe("practice-judge-5");
+      expect(JUDGE_PROMPT_VERSION).toBe("practice-judge-6");
     });
 
     it("the judge's schema never offers not_applicable", () => {

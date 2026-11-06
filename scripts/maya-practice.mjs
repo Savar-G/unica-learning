@@ -14,7 +14,7 @@ mkdirSync(outdir, { recursive: true });
 await build({
   entryPoints: { cli: join(root, "scripts/maya-practice-cli.ts") },
   outdir, bundle: true, format: "esm", platform: "node", target: "node22", outExtension: { ".js": ".mjs" },
-  alias: { "@": join(root, "src") }, external: ["@livekit/*"], logLevel: "warning",
+  alias: { "@": join(root, "src") }, packages: "external", external: ["@livekit/*"], logLevel: "warning",
 });
 process.env.MAYA_ROOT ??= root;
 await import(pathToFileURL(join(outdir, "cli.mjs")).href);
