@@ -142,7 +142,7 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
   const tileOf = (photo: StackPhoto): StackTile => {
     const page = pageById.get(photo.pageId);
     const base = { key: photo.id, photoId: photo.id, uploadKey: null, label: page ? `Page ${page.pageOfDay}` : fullLabel(photo), title: fullLabel(photo), reason: null, refusal: null };
-    if (photo.sentAt) return { ...base, label: fullLabel(photo), status: "sent" };
+    if (photo.sentAt && photo.state === "saved" && o.checks && photo.check === "ready") return { ...base, label: fullLabel(photo), status: "sent" };
     if (photo.state === "pending") return { ...base, status: "checking" };
     if (!o.checks || photo.check === "none") return { ...base, status: "saved" };
     if (photo.check === "refused") {

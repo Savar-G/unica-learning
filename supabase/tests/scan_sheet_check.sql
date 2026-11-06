@@ -59,6 +59,24 @@ begin
   a := public.reopen_scan_calibration(p, run, gen_random_uuid(), 1);
   if a->>'status' <> 'busy' then raise exception 'reopen of a running check answered %', a; end if;
 
+  -- 3. An earlier Send record cannot override a recheck or refusal. Keep the history, require current evidence.
+  update public.scan_photos set sent_at = now() - interval '1 day' where id = old;
+  sent := public.send_scan_photos(p, c, array[old]);
+  if cardinality(sent) <> 0 then raise exception 'sent a running recheck %', sent; end if;
+  update public.scan_calibrations set state = 'ready', result = '{"parts":["straight"]}' where photo_id = old;
+  sent := public.send_scan_photos(p, c, array[old]);
+  if cardinality(sent) <> 0 then raise exception 'sent an old check %', sent; end if;
+  update public.scan_calibrations set state = 'refused', result = '{"reason":"faint"}' where photo_id = old;
+  sent := public.send_scan_photos(p, c, array[old]);
+  if cardinality(sent) <> 0 then raise exception 'sent a refused recheck %', sent; end if;
+  update public.scan_calibrations set state = 'ready', result = '{"sheetCheck":1,"parts":["straight"]}' where photo_id = old;
+  sent := public.send_scan_photos(p, c, array[old]);
+  if sent <> array[old] then raise exception 'lost a valid earlier Send %', sent; end if;
+  if (select sent_at from public.scan_photos where id = old) <> now() - interval '1 day' then raise exception 'changed Send history'; end if;
+  update public.scan_photos set expires_at = now() - interval '1 second' where id = old;
+  sent := public.send_scan_photos(p, c, array[old]);
+  if cardinality(sent) <> 0 then raise exception 'sent an expired earlier Send %', sent; end if;
+
   -- A browser role cannot reopen.
   perform set_config('request.jwt.claims', json_build_object('sub', p, 'role', 'authenticated')::text, true);
   set local role authenticated;
