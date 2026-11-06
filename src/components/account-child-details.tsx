@@ -6,7 +6,7 @@ import { LearningSummary } from "@/components/learning";
 import { gradeLabel } from "@/lib/assessment/grades";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import type { Database } from "@/lib/database";
-import { fromRow, LEARNING_COLUMNS, learningPath } from "@/lib/learning-style";
+import { fromRow, LEARNING_COLUMNS, learningPath, type LearningRow } from "@/lib/learning-style";
 import "./account-child-details.css";
 
 // One section per child on the Account tab (#555): the first name, the school grade, and the learning card. The learning
@@ -15,6 +15,10 @@ import "./account-child-details.css";
 export async function childDetails(db: SupabaseClient<Database>) {
   const { data: kids, error } = await db.from("children").select(`id, first_name, grade, ${LEARNING_COLUMNS}`).order("created_at").order("id");
   if (error || !kids) return <p role="alert" className="acct-alert">We could not load your children&apos;s details. Reload the page.</p>;
+  return <ChildDetailsView kids={kids} />;
+}
+
+export function ChildDetailsView({ kids }: { kids: Array<{ id: string; first_name: string; grade: number } & LearningRow> }) {
   if (!kids.length) return null;
   return (
     <div className="acd">

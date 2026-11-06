@@ -1,0 +1,174 @@
+"use client";
+
+import { AppRouterContext, type AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
+import { renderToStaticMarkup } from "react-dom/server.browser";
+import { ParentShell } from "@/components/parent-shell";
+import { ParentTestStart, ParentReport } from "@/components/parent-assessment";
+import { ParentOverview } from "@/components/parent-overview";
+import { ParentWorkbooks } from "@/components/parent-workbooks";
+import { ParentProgress } from "@/components/parent-progress";
+import { SkillPanel } from "@/components/parent-skill-map";
+import { NoteCard, ParentSessionView } from "@/components/parent-maya-notes";
+import { MinutesRow } from "@/components/parent-home-rows";
+import { AccountBilling } from "@/components/account-billing";
+import { ChildDetailsView } from "@/components/account-child-details";
+import { ParentAccountSettings } from "@/components/parent-account-settings";
+import { ParentPlanView } from "@/components/parent-plan-view";
+import { CancelPlanView, PlanControlView, type PlanControlViewProps } from "@/components/account-plan";
+import { ReportNextView, type CardState } from "@/components/report-next";
+import { ScanPages, type ScanListing } from "@/components/scan-pages";
+import { ScanMarkingResults } from "@/components/scan-marking-results";
+import { SupportPage } from "@/components/support-page";
+import type { StartState } from "@/lib/assessment";
+import { SAMPLE_NOW, SAMPLE_PLANS, sampleChildren, type PreviewSelection } from "@/lib/admin-parent-dashboard";
+import { parentPreviewDocument, type PreviewStyles } from "@/lib/admin-parent-preview-document";
+import type { FamilyBilling } from "@/lib/billing";
+import { familyZone, startWhen } from "@/lib/family-time";
+import type { LearningRow } from "@/lib/learning-style";
+import type { ParentNoteSession } from "@/lib/parent-maya-notes";
+import type { ParentPlan } from "@/lib/parent-plan";
+import type { ChildView, OverviewView, WorkbooksView } from "@/lib/parent-view";
+import { freeMonthWords } from "@/lib/parent-assessment";
+import { tabLinks } from "@/lib/parent-shell";
+import { nextStep } from "@/lib/report-view";
+import { WEEK_SECONDS } from "@/lib/maya-minutes";
+import { PLANS } from "@/lib/site";
+import { sampleReportView } from "@/lib/sample-children";
+import { skillMapView } from "@/lib/skill-map-view";
+import "@/ds/styles/base.css";
+import "@/ds/styles/warm.css";
+import "@/ds/styles/support.css";
+import "./parent-progress.css";
+
+const zone = familyZone({ timeZone: "America/Vancouver" });
+const noAction = () => { throw new Error("Static preview cannot run an action"); };
+// Next hooks need a router context during static rendering. Every method fails closed. No router is attached to the HTML.
+const staticRouter: AppRouterInstance = { bfcacheId: "static-parent-preview", back: noAction, forward: noAction, refresh: noAction, push: noAction, replace: noAction, prefetch: noAction };
+const learning: LearningRow = { learning_styles: null, interests: null, learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null };
+const alerts = { password: false, pin: false, deskError: false, existing: false };
+const minutes = { used: 12, left: WEEK_SECONDS / 60 - 12, backOn: "Monday, November 9" };
+let report: ReturnType<typeof sampleReportView> | undefined;
+const baseReport = () => report ??= sampleReportView();
+
+function sampleNote(child: ChildView, chat = false, missing = false): ParentNoteSession {
+  return {
+    child_id: child.id, call_id: "sample-session", channel: chat ? "chat" : "call", startedAt: "2026-11-04T19:00:00Z", call_ended_at: "2026-11-04T19:05:00Z",
+    facts: { question: { source: "workbook", page: 4, number: 2, text: "24 + 18 = ?" }, finished: "with_help", reason: "solved", help: "hint", stuckOn: "adding the ones", paper: "child_confirmed", minutes: 5, safety: false },
+    sentences: ["{child} worked on page 4, question 2.", "{child} finished with a hint about adding the ones."], warm: null,
+    transcript: missing ? [] : [{ speaker: "child", text: "I need help with the ones.", second: 4 }, { speaker: "maya", text: "Add the ones first. What do you get?", second: 7 }],
+  };
+}
+
+function overview(child: ChildView, state: string): OverviewView {
+  const preparing = state === "preparing" || state === "late";
+  const empty = preparing || state === "empty" || state === "first_book_coming";
+  return { child, level: empty ? null : { working: 2, earlySign: state === "early", testedOn: "2026-10-22", unreliable: state === "unreliable" },
+    areas: empty || state === "unreliable" ? [] : [
+      { area: "number", name: "Number", level: 2, label: "building-up", earlySign: state === "early" },
+      { area: "fractions", name: "Fractions", level: 3, label: "at-grade", earlySign: false },
+      { area: "shapes", name: "Shapes and measurement", level: 4, label: "ahead", earlySign: false },
+    ], resultPreparing: preparing, resultLate: state === "late", workbook: child.currentWorkbook ? { number: 3, scannedDays: 4, days: 10 } : null,
+    action: state === "payment_failed" || state === "no_pin" || state === "learning_card_empty" ? state : null, summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
+}
+
+function workbooks(child: ChildView, state: string): WorkbooksView {
+  const mailed = state === "mail" || state === "hand";
+  return { child, current: state === "first_book_coming" ? null : { id: "sample-book", number: 3, shippedOn: "2026-10-28", deliveredOn: mailed ? null : "2026-11-01", delivery: state === "hand" ? { method: "hand" } : { method: "mail", carrier: "Canada Post", trackingNumber: "SAMPLE 000 000", trackingUrl: "https://example.invalid/track" } },
+    next: child.readOnly || state === "first_book_coming" ? { kind: "none" } : state === "late" ? { kind: "past_estimate" } : { kind: "range", earliest: state === "paused" ? "2026-12-10" : "2026-11-26", latest: state === "paused" ? "2026-12-15" : "2026-12-01" },
+    books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", hasPdf: true })) };
+}
+
+function billing(kids: ChildView[], state: string): FamilyBilling {
+  if (state === "unavailable") return { state: "unavailable" };
+  return { state: "loaded", plans: state === "empty" ? [] : kids.map(child => ({ childId: child.id, firstName: child.firstName, cardId: `sample-card-${child.id}`, plan: SAMPLE_PLANS.paying })),
+    invoices: state === "invoices_unavailable" ? { state: "unavailable" } : { state: "loaded", invoices: state === "empty" ? [] : kids.flatMap(child => (["paid", "no_charge", "due"] as const).map((status, i) => ({ id: `sample-invoice-${child.id}-${i}`, childId: child.id, childName: child.firstName, at: "2026-11-01T20:00:00Z", cents: i === 1 ? 0 : 9900, currency: "cad", status, receiptUrl: "https://example.invalid/receipt" }))) } };
+}
+
+function planControl(name: string, state: string) {
+  const restart = state.startsWith("restart");
+  const pending = state.endsWith("pending");
+  const preview = state === "pause_review" || state === "pause_late";
+  const props: PlanControlViewProps = { name, mode: restart ? "restart" : "pause", pending, open: true, busy: false, weeks: 2,
+    preview: preview ? { token: "sample-token", weeks: 2, remaining: 6, year: 2026, late: state === "pause_late", targetNumber: 5, charge: "December 10, 2026", earliest: state === "pause_late" ? null : "December 10", latest: state === "pause_late" ? null : "December 15" } : null,
+    restart: state === "restart_review" ? { price: PLANS.one.price, token: "sample-token" } : null,
+    error: pending ? "We cannot confirm this change yet. Check again before you make another change or delete the account." : state === "restart_declined" ? "Your payment did not go through. Please update your card. Then return here to restart the plan." : null,
+    done: state === "pause_saved" || state === "restart_started", onOpen: noAction, setWeeks: noAction, setPreview: noAction, send: noAction, close: noAction, cardId: "sample-card" };
+  return <PlanControlView {...props} />;
+}
+
+function scanListing(state: string): ScanListing | null {
+  if (state === "loading" || state === "unavailable") return null;
+  return { checks: true, marking: true, pages: [{ id: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, day: "Day 1", pageOfDay: 1, pagesInDay: 2 }],
+    photos: state === "empty" ? [] : [{ id: "sample-photo", pageId: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, state: "saved", check: state === "refused" ? "refused" : "ready", reason: state === "refused" ? "marks-missing" : null, sentAt: state === "sent" ? "2026-11-05T20:00:00Z" : null, createdAt: "2026-11-05T19:00:00Z" }] };
+}
+
+function scanResult(state: string): Parameters<typeof ScanMarkingResults>[0]["result"] {
+  const pending = state === "pending" || state === "budget";
+  const uncertain = state === "uncertain";
+  const unscored = state === "unscored";
+  return { photoAvailable: state !== "expired", budgetHeld: state === "budget", solutionsAvailable: !pending && !uncertain && !unscored,
+    completion: { total: pending ? 0 : 1, status: pending ? "no-items" : uncertain ? "incomplete" : "complete", finished: pending || uncertain ? 0 : 1, items: pending ? [] : [{ itemId: "sample-question", number: 1, progress: uncertain ? "pending" : "finished" }] },
+    counts: { scored: pending || uncertain || unscored ? 0 : 1, unscored: unscored ? 1 : 0, parentChecks: 0, pending: pending || uncertain ? 1 : 0 },
+    items: pending ? [] : [{ number: 1, itemId: "sample-question", version: 1, state: uncertain ? "pending" : unscored ? "unscored" : "scored", result: uncertain || unscored ? null : "right", readAnswerText: uncertain ? "4?" : "42", label: uncertain ? "Please check this answer" : unscored ? "Not scored" : "Right" }] };
+}
+
+function previewContent(selection: PreviewSelection, child: ChildView | undefined, kids: ChildView[]) {
+  const state = selection.scenario;
+  if (!child && selection.view === "account") return <ParentAccountSettings card={state} hasCard={false} province="BC" billing={<AccountBilling billing={billing([], "empty")} zone={zone} />} details={null} />;
+  if (!child && selection.view === "plan") return <ParentPlanView plans={[]} zone={zone} controls />;
+  if (!child && selection.view === "scan") return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[]} parent="sample-parent" noticeAcknowledged initial={{ listing: scanListing("empty") }} /></SupportPage>;
+  if (!child) return <SupportPage label="Your account" title="Your account"><p className="lead">Add a child on the <a href="/account/settings">Account</a> page to start.</p></SupportPage>;
+  switch (selection.view) {
+    case "assessment": {
+      const start: StartState = state === "test_running" ? { kind: "resume", attemptId: "sample-test", resumeUntil: SAMPLE_NOW + 3600000 }
+        : state === "finish" ? { kind: "finish", attemptId: "sample-test" } : state === "expired" ? { kind: "expired", attemptId: "sample-test" }
+          : state === "report_pending" || state === "wait" ? { kind: "wait", completedAt: SAMPLE_NOW - 86400000, opensAt: SAMPLE_NOW + 29 * 86400000 } : { kind: "start", retake: false };
+      return <ParentTestStart childId={child.id} name={child.firstName} state={start} when={startWhen(start, zone)} report={state === "wait" ? "/account/report/sample-report" : undefined} phone={selection.size === "phone"} sent={false} parentEmail="parent@example.invalid" alerts={alerts} learning={null} />;
+    }
+    case "report": {
+      const base = baseReport();
+      const view = { ...base, id: "sample-report", childName: child.firstName, province: child.stage === "report_ready_waitlist" ? "ON" as const : "BC" as const,
+        completedAt: "2026-11-04T20:00:00Z", timeZone: zone, findings: child.stage === "report_ready_waitlist" ? null : base.findings, model: { ...base.model, ...(state === "unreliable" ? { reliability: { veryFast: 18, answers: 20 } } : {}), callToAction: child.stage === "report_ready_waitlist" ? "waitlist" as const : "card" as const } };
+      const start = { saved: state === "saved" ? "one" as const : null, joined: state === "joined", cancelled: state === "cancelled" };
+      const card: CardState = ["checking", "unknown", "error", "later", "saved"].includes(state) ? state as CardState : "choose";
+      const next = { src: "account" as const, asked: false, start };
+      return <ParentReport view={view} child={child} next={next} newTest={state === "unreliable" ? { state: { kind: "open" }, href: `/account/start/${child.id}`, label: "Start a new test" } : null} learning={null} alerts={alerts} tracked={false} src="account"
+        nextActions={<ReportNextView reportId={view.id} step={nextStep(view)} words={view.model.callToAction === "card" ? freeMonthWords(child.firstName) : undefined} childName={child.firstName} province={view.province} {...next} card={card} wait={state === "joined" ? "joined" : state === "waitlist_error" ? "error" : "join"} busy={state === "busy_card" ? "one" : state === "busy_waitlist" ? "waitlist" : null} announce="" savedPlan={start.saved} choose={noAction} join={noAction} checkAgain={noAction} pinned />} />;
+    }
+    case "overview": return <SupportPage label="Overview" title={child.firstName}><ParentOverview overview={overview(child, state)} maya={child.stage === "active" ? minutes : null} /></SupportPage>;
+    case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} />;
+    case "progress": {
+      const areas = state === "empty" ? [] : skillMapView({ firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: 2, tests: [{ standard: "2.1", correct: 4, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }, { standard: "2.3", correct: 0, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }], workbookStandards: ["2.1", "2.2"], workbookNumber: 3, day: at => at.slice(0, 10) });
+      return <ParentProgress child={child} level={state === "empty" ? null : { working: 2, earlySign: false, testedOn: "2026-11-04", unreliable: state === "unreliable" }} workbookNumber={3} areas={areas}
+        panel={state === "panel" && areas[0]?.tiles[0] ? <dialog open className="pp-panel" aria-labelledby="pp-panel-title"><SkillPanel tile={areas[0].tiles[0]} onClose={noAction} /></dialog> : undefined} />;
+    }
+    case "maya": {
+      const note = sampleNote(child, state === "chat", state === "missing");
+      if (["session", "chat", "missing"].includes(state)) return <ParentSessionView note={note} name={child.firstName} zone={zone} back={{ href: `/account/notes/${child.id}`, label: "← Back to Maya" }} />;
+      return <SupportPage label="Maya" title={child.firstName}><div className="maya-tab-week"><MinutesRow name={child.firstName} minutes={state === "used" ? { ...minutes, used: WEEK_SECONDS / 60, left: 0 } : minutes} /></div><h2 className="maya-tab-notes">Notes from Maya</h2>
+        {state === "empty" ? <p>There are no notes from Maya yet.</p> : <ul className="maya-notes-list">{[note, sampleNote(child, true)].map(n => <li key={n.channel}><NoteCard note={n} name={child.firstName} zone={zone} /></li>)}</ul>}</SupportPage>;
+    }
+    case "account": return <ParentAccountSettings card={state} hasCard={state !== "empty"} province="BC" billing={state === "loading" ? <p role="status">Loading billing...</p> : <AccountBilling billing={billing(kids, state)} zone={zone} />} details={<ChildDetailsView kids={kids.map(k => ({ id: k.id, first_name: k.firstName, grade: k.schoolGrade, ...learning }))} />} />;
+    case "plan": {
+      const control = state.startsWith("pause") && state !== "paused" || state.startsWith("restart");
+      const plan: ParentPlan = Object.hasOwn(SAMPLE_PLANS, state) ? SAMPLE_PLANS[state as keyof typeof SAMPLE_PLANS] : state.startsWith("restart") ? SAMPLE_PLANS.ended : SAMPLE_PLANS.paying;
+      return <ParentPlanView zone={zone} controls plans={state === "unavailable" ? null : state === "none" ? [] : kids.map(k => ({ cardId: `sample-card-${k.id}`, childName: k.firstName, plan }))} control={control ? planControl(child.firstName, state) : undefined}
+        cancellation={state.startsWith("cancel_") ? <CancelPlanView name={child.firstName} consequence="The plan ends on November 26, 2026. We will not charge your card again." asking busy={false} failed={state === "cancel_pending"} cancel={noAction} keep={noAction} ask={noAction} /> : undefined} />;
+    }
+    case "scan": return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={kids.map(k => ({ id: k.id, first_name: k.firstName }))} parent="sample-parent" noticeAcknowledged mode={selection.size === "desktop" ? "desktop" : "phone"} initial={{ listing: scanListing(state), loadFailed: state === "unavailable" }} /></SupportPage>;
+    case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><a href="/account/scan">Back to Scan pages</a><ScanMarkingResults result={scanResult(state)} showHeading={false} /></div></SupportPage>;
+  }
+}
+
+/** Render the actual parent components as HTML, with no mounted tree, event handlers, or effect lifecycle. */
+export function renderParentPreview(selection: PreviewSelection, styles: PreviewStyles): string {
+  const kids = sampleChildren(selection);
+  const child = kids[selection.child === "second" ? 1 : 0];
+  const tab = selection.view === "report" ? "assessment" : selection.view === "scan" || selection.view === "scan_results" ? "scan_pages" : selection.view === "plan" ? "account" : selection.view;
+  const pathname = tabLinks(child).find(l => l.tab === tab)?.href.split("?")[0] ?? "/account/settings";
+  const markup = renderToStaticMarkup(<AppRouterContext.Provider value={staticRouter}><PathnameContext.Provider value={pathname}><SearchParamsContext.Provider value={new URLSearchParams(child ? { child: child.id } : {})}>
+    <ParentShell kids={kids} remembered={child?.id ?? null} pinSet={selection.scenario !== "no_pin"} timeZoneSaved>{previewContent(selection, child, kids)}</ParentShell>
+  </SearchParamsContext.Provider></PathnameContext.Provider></AppRouterContext.Provider>);
+  return parentPreviewDocument(markup, styles);
+}

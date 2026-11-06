@@ -19,7 +19,7 @@ import "./scan-pages.css";
 type Mode = "phone" | "desktop";
 /** `reservation`: the photo id asked for at admission. It stays with the queued photo, so a lost answer takes no second upload slot. */
 type Local = StackUpload & { file: File; replaces?: string; reservation?: string };
-type Listing = { marking?: boolean; checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
+export type ScanListing = { marking?: boolean; checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
 
 const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "image", "size", "frequency", "quota"];
 const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes(code) ? code as UploadRefusal : "unavailable");
@@ -86,8 +86,10 @@ function Tile({ tile, thumb, onOpen }: { tile: StackTile; thumb?: string; onOpen
   </li>;
 }
 
-export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "phone", focus = null }: {
+export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "phone", focus = null, initial }: {
   childrenList: { id: string; first_name: string }[];
+  /** Optional server presentation state; the controller still reloads the signed-in family on mount. */
+  initial?: { listing: ScanListing | null; loadFailed?: boolean };
   parent: string;
   noticeAcknowledged: boolean;
   mode?: Mode;
@@ -95,7 +97,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   focus?: { childId: string; label: string } | null;
 }) {
   const [child, setChild] = useState(focus?.childId ?? childrenList[0]?.id ?? "");
-  const [listing, setListing] = useState<Listing | null>(null);
+  const [listing, setListing] = useState<ScanListing | null>(initial?.listing ?? null);
   const [uploads, setUploads] = useState<Local[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [unavailable, setUnavailable] = useState<Set<string>>(() => new Set());
@@ -103,7 +105,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const [acknowledged, setAcknowledged] = useState(noticeAcknowledged);
   const [message, setMessage] = useState<{ text: string; failed: boolean } | null>(null);
   const [sending, setSending] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(initial?.loadFailed ?? false);
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);
   const epoch = useRef(0);
@@ -135,7 +137,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
   const load = useCallback(async () => {
     const version = epoch.current;
-    const data: Listing = await api(`/api/account/scans?child=${child}`);
+    const data: ScanListing = await api(`/api/account/scans?child=${child}`);
     if (version !== epoch.current) return null;
     setListing(data); setLoadFailed(false);
     return data;
