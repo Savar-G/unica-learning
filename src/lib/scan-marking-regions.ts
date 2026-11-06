@@ -2,7 +2,7 @@
 // This module does not change the print or infer an answer from page text.
 import { checkQuestionPackage, packageItem, type QuestionPackage } from "@/lib/question-package";
 import type { Box, PrintedRegion } from "@/lib/workbook-print-contract";
-import { needsMethodReview } from "@/lib/scan-observation";
+import { MAX_READ_TEXT, needsMethodReview } from "@/lib/scan-observation";
 
 export interface RegionQuestion {
   package: QuestionPackage | null;
@@ -10,6 +10,7 @@ export interface RegionQuestion {
 }
 export type MarkingRegion = { id: string; box: Box } & (
   | { kind: "number"; answer: number; wholeOnly: boolean }
+  | { kind: "text"; answer: string }
   | { kind: "choice"; answer: string; choices: string[]; mark: "tick" | "circle" }
 );
 const usableBox = (box: Box | null): box is Box => box !== null &&
@@ -35,7 +36,7 @@ export function markingRegions(q: RegionQuestion): MarkingRegion[] {
   const item = packageItem(q.package);
   if (!item.scorable || item.parentChecked) return [];
   const legacy = item.format === "write-number" && item.regions.length === 1;
-  if (!legacy && (!["tick-and-number", "circle", "show-work", "spot-the-error"].includes(item.format) || !checkQuestionPackage(q.package).ok)) return [];
+  if (!legacy && (!["tick-and-number", "circle", "show-work", "spot-the-error", "write-words"].includes(item.format) || !checkQuestionPackage(q.package).ok)) return [];
   // Equation regions can accept many linked combinations. Independent key
   // comparison cannot judge them; they stay pending for their own checker.
   if (!legacy && item.checks.some(c => c.kind === "equations")) return [];
@@ -46,6 +47,11 @@ export function markingRegions(q: RegionQuestion): MarkingRegion[] {
     if (printed.length !== 1 || printed[0].kind !== r.kind || !usableBox(printed[0].box)) return [];
     const base = { id: r.id, box: printed[0].box };
     if (r.kind === "box") {
+      if (item.format === "write-words") {
+        if (r.answer?.type !== "text" || !r.answer.value.trim() || r.answer.value.length > MAX_READ_TEXT) return [];
+        out.push({ ...base, kind: "text", answer: r.answer.value });
+        continue;
+      }
       if (r.answer?.type !== "number" || !Number.isFinite(r.answer.value) || Math.abs(r.answer.value) > Number.MAX_SAFE_INTEGER ||
           (legacy && (!Number.isSafeInteger(r.answer.value) || r.answer.value < 0))) return [];
       out.push({ ...base, kind: "number", answer: r.answer.value, wholeOnly: legacy });

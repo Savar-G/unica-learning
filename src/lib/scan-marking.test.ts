@@ -92,6 +92,19 @@ function twoWaysFrame(): MarkingFrame {
   expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
   return f;
 }
+function wordsFrame(): MarkingFrame {
+  const f = circleFrame(), q = f.questions[0];
+  q.package!.text = "Write addition when 27 is less than 39. Otherwise write subtraction.";
+  q.package!.item = { format: "write-words", scorable: true, parentChecked: false, error: null,
+    regions: [{ id: "words", kind: "box", label: null, answer: { type: "text", value: "addition" } }],
+    checks: [{ kind: "template", region: "words", source: { answer: "'addition' if a < b else 'subtraction'", check: null, derived: [], values: null,
+      slots: [{ name: "a", value: { int: "27" }, domain: { min: 1, max: 100 } }, { name: "b", value: { int: "39" }, domain: { min: 1, max: 100 } }] } }],
+  };
+  q.regions = [{ id: "words", kind: "box", box: { x: 10, y: 30, width: 200, height: 30 } }];
+  q.teaching!.eligibility.format = "write-words";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
 function spotFrame(): MarkingFrame {
   const f = tickFrame("spot-photo"), q = f.questions[0];
   q.package!.text = "Someone wrote 27 + 39 = 56. Is it right? Fix it.";
@@ -201,6 +214,58 @@ describe("first-book two-ways parent review", () => {
     q.regions = twoWaysFrame().questions[0].regions;
     q.regions = [...q.regions!, structuredClone(q.regions![0])];
     expect(cropPlan(f.questions).notSupported).toEqual([1]);
+  });
+});
+
+describe("write-words whole-page reading", () => {
+  it.each([
+    ["addition", "right"], ["  ADDITION  ", "right"], ["subtraction", "wrong"], ["66", "wrong"], ["", "blank"], [null, null],
+  ] as const)("code checks %j against the stored template rule", (text, result) => {
+    const f = wordsFrame(), o = readMarkingOutput(f, output([text]))[0];
+    expect(o.result).toBe(result);
+    expect(o.readAnswerText).toBe(text);
+    expect(o.regions).toHaveLength(1);
+    expect(o.regions[0].regionId).toBe("words");
+    expect(observationProblem(o)).toBeNull();
+    const view = markingPageView([{ expected: expectedItems(f)[0], observation: o, originalEvent: null, eventId: null, at: "2026-11-06T12:00:00Z", model: null, prompt: null }]);
+    expect(view.completion.status).toBe(result === null ? "incomplete" : "complete");
+  });
+  it.each([
+    { readings: [] },
+    { readings: [...output(["addition"]).readings, ...output(["subtraction"]).readings] },
+    { readings: [{ item: "i1", region: "r1", state: "blank", text: null }] },
+    { readings: [{ item: "i1", region: "r1", state: "written", text: "addition", issue: "crossed-out" }] },
+    { readings: [{ item: "i1", region: "r1", state: "uncertain", text: "addition" }] },
+  ])("missing, duplicate or ambiguous words stay pending", bad => {
+    const o = readMarkingOutput(wordsFrame(), bad)[0];
+    expect(o).toMatchObject({ state: "pending", result: null });
+    expect(observationProblem(o)).toBeNull();
+  });
+  it("does not trust an unchecked stored word, a changed template key or model verdict", () => {
+    const unchecked = wordsFrame(); unchecked.questions[0].package!.item!.checks = [];
+    expect(readMarkingOutput(unchecked, output(["addition"]))[0].result).toBeNull();
+    const changed = wordsFrame();
+    const r = changed.questions[0].package!.item!.regions[0];
+    if (r.kind === "box") r.answer = { type: "text", value: "subtraction" };
+    expect(readMarkingOutput(changed, output(["subtraction"]))[0].result).toBeNull();
+    const bad = output(["subtraction"]); Object.assign(bad.readings[0], { result: "right", answer: "subtraction" });
+    expect(readMarkingOutput(wordsFrame(), bad)[0].result).toBe("wrong");
+  });
+  it("dispatches one text region without its answer key, and retains one result on a retake", async () => {
+    const f = wordsFrame(), retake = structuredClone(f); retake.photo = "words-retake";
+    const s = new Store(f, retake), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(output(["addition"]), requests))).toBe("finished");
+    expect(s.events).toHaveLength(1);
+    expect(markingPageView(await s.effective(P, C)).completion.status).toBe("complete");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].system).toContain("For a text region");
+    const data = (requests[0].content[0] as { text: string }).text;
+    expect(JSON.parse(data).items).toEqual([{ item: "i1", region: "r1", kind: "text", box: { x: 10, y: 30, width: 200, height: 30 } }]);
+    for (const secret of ["addition", "subtraction", P, C, W, "words", "template"]) expect(data).not.toContain(secret);
+    expect(cropPlan(f.questions)).toMatchObject({ notSupported: [], crops: [{ regionId: "words" }] });
+    expect(await run(s, retake.photo, client(output(["subtraction"]), requests))).toBe("finished");
+    expect(requests).toHaveLength(1); expect(s.events).toHaveLength(1);
+    expect((await s.effective(P, C))[0].observation.readAnswerText).toBe("addition");
   });
 });
 
