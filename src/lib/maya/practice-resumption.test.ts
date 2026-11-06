@@ -123,7 +123,7 @@ describe("carry explanation after an accepted answer (R410-6)", () => {
   const work = { ...accept, reading: { answers: [answer(16, "ones"), answer(6, "tens"), answer(66, "result")] } };
 
   it("keeps the solved answer on the writing path after the explanation", () => {
-    const c = call(); c.child("7 plus 9 is 16. 2 plus 3 plus 1 is 6. I got 66."); c.ok(work);
+    const c = call(); c.child("7 plus 9 is 16, 2 plus 3 plus 1 is 6, so I got 66."); c.ok(work);
     c.child("I didn't carry from the ones to the tens."); expect(said(c.ok(regroup("tens")).effects)).toContain("1 ten");
     expect(c.session.state).toBe("CHECK"); expect(c.session.solved).toBe("child"); expect(c.session.done).toEqual(["ones", "tens"]);
     c.child("Okay."); c.ok(write); expect(c.session.state).toBe("WRITE_CLOSE");
@@ -137,7 +137,7 @@ describe("carry explanation after an accepted answer (R410-6)", () => {
       : input.childTurn === "Okay." ? write : work) }) });
     const options = { callId: "practice-resumption-solved-carry", package: FIXTURES.A, model, clock: () => now, random: 3 };
     let c = createTextSession(options);
-    await c.start(); now += 4000; await c.child("7 plus 9 is 16. 2 plus 3 plus 1 is 6. I got 66.");
+    await c.start(); now += 4000; await c.child("7 plus 9 is 16, 2 plus 3 plus 1 is 6, so I got 66.");
     now += 4000; await c.child("I didn't carry from the ones to the tens.");
     c = createTextSession({ ...options, resume: JSON.parse(JSON.stringify(await c.saved())) });
     now += 4000; const output = await c.child("Okay.");

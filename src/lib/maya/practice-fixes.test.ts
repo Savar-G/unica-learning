@@ -141,7 +141,9 @@ describe("steps the child already did are never asked again", () => {
   });
 
   it("never reads a digit the child points at as their final answer ('the one I carried')", () => {
-    expect(readAnswer("I think it's sixty-six. I added the one I carried.")).toMatchObject({ final: num(66), sure: true });
+    // Two sentences with numbers: the final stays 66, and Maya confirms it (PR #624 review round 3).
+    expect(readAnswer("I think it's sixty-six. I added the one I carried.")).toMatchObject({ final: num(66), sure: false });
+    expect(readAnswer("I think it's sixty-six, I added the one I carried.").final).toEqual(num(66));
     expect(readAnswer("I got 16, so I wrote the 6.").final).toEqual(num(16));
     expect(readAnswer("Yes, I carried the one from sixteen.").final).toEqual(num(16));
     // The answer's own sentence is still the one checked: a later sentence with a pointed-at digit hides nothing.
@@ -182,9 +184,9 @@ describe("steps the child already did are never asked again", () => {
 
   it("never confirms or judges again a right answer that stands", () => {
     const c = call();
-    c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6. I got 66.");
+    c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6, so I got 66.");
     c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(6, "tens", "right"), ans(66, "result", "right")] } });
-    c.child("Yay, I got 66! I'm done. Thanks, Maya, you're the best!");
+    c.child("Yay, I got 66! Thanks, Maya, you're the best!");
     expect(c.acts).not.toContain("confirm");
     // The model's "unclear" and its repeated right answers carry nothing new once the answer stands.
     const r = c.propose({ act: "ask_write", parts: [ln("write.answer")], understanding: "evidence_observed", reading: { unclear: true, answers: [ans(66, "result", "right"), ans(16, "ones", "right")] } });
@@ -196,7 +198,7 @@ describe("steps the child already did are never asked again", () => {
     const c = call();
     c.child("I got 66.");
     c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } });
-    c.child("Yay, I'm done. Thanks, Maya!");
+    c.child("Yay! Thanks, Maya!");
     expect(c.propose({ act: "ask_write", parts: [ln("answer.right")], understanding: "uncertain" }).refusal).toMatchObject({ code: "invalid_proposal" });
     expect(c.propose({ act: "ask_write", parts: [ln("write.answer")], understanding: "uncertain" }).refusal).toBeNull();
   });
@@ -213,7 +215,7 @@ describe("steps the child already did are never asked again", () => {
 
   it("does not ask how the child did a step they worked out aloud", () => {
     const c = call();
-    c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6. I got 66.");
+    c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6, so I got 66.");
     c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(6, "tens", "right"), ans(66, "result", "right")] } });
     c.child("Yes!");
     const offered = (lineOffers(c.session).ask_write ?? []).map((o) => o.line);
@@ -281,7 +283,7 @@ describe("where a carried 1 comes from, before any line names it", () => {
   it("says the regroup line after a lost carry, before 'the 1 you carried'", () => {
     const c = call();
     c.child("I got 56.");
-    c.maya({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: { start: "has_work", answers: [ans(56, "result", "wrong")] } });
+    c.maya({ act: "guide", step: "ones", level: 0, parts: [ln("check.not_yet", { step: "result" }), ln("step.invite", { step: "ones" })], reading: { start: "has_work", answers: [ans(56, "result", "wrong")] } });
     c.child("I added the ones, 7 plus 9. I got 16, so I wrote the 6.");
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [ans(16, "ones", "right")] } });
     c.child("I added the tens, 2 plus 3 is 5.");

@@ -89,7 +89,7 @@ describe("R443-2: limits permit the whole example and question", () => {
       check(await s.child("Okay."));
       script.next([], { paper: "written" });
       check(await s.child("I wrote it."));
-      expect(s.session.outcome).toMatchObject({ reason: "solved", assistance: "worked_example", paperStatus: fallback ? "unknown" : "child_confirmed" });
+      expect(s.session.outcome).toMatchObject({ reason: "solved", assistance: "worked_example", paperStatus: "child_confirmed" });
     }
   });
 });

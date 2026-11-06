@@ -188,7 +188,7 @@ describe("F6: board objects keep their role (modelBoard)", () => {
 describe("F7: the expanded question contract", () => {
   it("teaches a long multiplication", () => {
     const c = call(packageOf({ kind: "multiply", operands: [47, 23] }, num(1081), { kind: "multiply", operands: [47, 3] }, num(141), "5.6"));
-    c.child("7 times 3 is 21. I got 1081.");
+    c.child("7 times 3 is 21, so I got 1081.");
     expect(c.propose({ act: "accept_answer", parts: [t("Yes, how did you get it?")], reading: { answers: [{ value: num(21), step: "r1-ones", verdict: "right" }, { value: num(1081), step: "result", verdict: "right" }] } }).refusal).toBeNull();
   });
 
@@ -202,10 +202,10 @@ describe("F7: the expanded question contract", () => {
   const stateOf = (pkg: unknown) => step(createSession({ callId: "f", package: pkg }), { type: "start", at: 0 }).session;
 
   it("holds a fraction question it cannot teach yet: multiplying, or adding a mixed number (#407)", () => {
-    expect(stateOf(packageOf({ kind: "fraction-multiply", operands: [frac(2, 3), frac(3, 4)] }, frac(1, 2), { kind: "fraction-multiply", operands: [frac(1, 2), frac(1, 3)] }, frac(1, 6), "6.5")).state).toBe("CONTENT_HOLD");
+    expect(stateOf(packageOf({ kind: "fraction-multiply", operands: [frac(2, 3), frac(3, 4)] }, frac(1, 2), { kind: "fraction-multiply", operands: [frac(1, 2), frac(1, 3)] }, frac(1, 6), "6.5")).outcome?.reason).toBe("content_issue");
     const mixed = { type: "mixed" as const, whole: 1, numerator: 1, denominator: 2 };
     const held = stateOf(packageOf({ kind: "fraction-add", operands: [mixed, frac(1, 4)] }, { type: "mixed", whole: 1, numerator: 3, denominator: 4 }, { kind: "fraction-add", operands: [frac(1, 5), frac(2, 5)] }, frac(3, 5), "6.5"));
-    expect(held.state).toBe("CONTENT_HOLD");
+    expect(held.outcome?.reason).toBe("content_issue");
     expect(held.contentProblem).toContain("to-improper");
   });
 
@@ -222,7 +222,7 @@ describe("F8: the learning event follows the learning record's contract", () => 
   it("records a wrong attempt the child left as blank, and it is stored", async () => {
     const c = call();
     c.child("56");
-    c.propose(guide({ reading: { answers: [wrong56] } }));
+    c.propose(guide({ parts: [ln("check.not_yet", { step: "result" }), ln("step.invite", { step: "ones" })], reading: { answers: [wrong56] } }));
     c.child("Stop");
     c.propose({ act: "close", parts: [t("Bye.")], reading: { stop: true } });
     const event = learningEvent(c.s, { parentId, childId })!;
@@ -246,7 +246,7 @@ describe("F8: the learning event follows the learning record's contract", () => 
   it("stores a corrected wrong answer as right, with no mistake", async () => {
     const c = call();
     c.child("56");
-    c.propose(guide({ reading: { answers: [wrong56] } }));
+    c.propose(guide({ parts: [ln("check.not_yet", { step: "result" }), ln("step.invite", { step: "ones" })], reading: { answers: [wrong56] } }));
     c.child("66");
     c.propose({ act: "accept_answer", parts: [t("Yes. How did you do it?")], reading: { answers: [right66] } });
     c.child("I carried");

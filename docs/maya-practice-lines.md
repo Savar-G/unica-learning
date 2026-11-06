@@ -72,3 +72,51 @@ Status: approved by Savar on 2026-11-05 (D-262), without "Mm-hm" and without "I'
 | `ack.see.here` | Let me see here. |
 
 "I'm thinking." and "Hmm, I'm thinking." were dropped in the review of PR #577: they claim a state of mind for an AI. For your reading: a child who says something hard can hear one of these before the model has read the words. When the model has read them, the phrase stops at once and the safety line follows.
+
+
+## First shipment chat repair wordings, 2026-11-06
+
+These are the scoped additions and replacements on the chat repair branch. Review and API practice remain required. The safety-close, secret, and wrong-explanation policy changes from the saved work are excluded.
+
+| Id | Wording |
+|---|---|
+| regroup.why.0 | Ten {from} make 1 {unit}. So {total} {from} is {carry} {big} and {write} {small}. |
+| regroup.why.1 | A column holds up to 9. {total} {from} is too many. So {carry} {big} goes to the {to}. |
+| regroup.why.2 | Bundle 10 {from} together. That bundle is 1 {unit}. It goes in the {to}. |
+| regroup.why.3 | Think of {total} {from}. Ten of them trade for 1 {unit}. That 1 {unit} goes to the {to}. |
+| regroup.why.4 | Count out 10 {from}. Those 10 make 1 {unit}. That is the {carry} in the {to}. |
+| subtract.order.0 | We take the bottom number from the top one. {have} is less than {bottom}. So we regroup. |
+| subtract.order.1 | In subtraction, the top comes first. We can't swap {have} and {bottom}. |
+| subtract.order.2 | We can't flip it and take {have} from {bottom}. So we regroup first. |
+| subtract.order.3 | Order matters here. The top is {have}. We take {bottom} away from it. |
+| subtract.order.4 | The top number goes first. Here it's {have}. We need more {place} to take {bottom}. |
+| subtract.why.0 | One of the {leftCount} {leftPlace} becomes 10 {place}. Now there are {leftAfter} {leftPlace} and {from} {place}. |
+| subtract.why.1 | Trade 1 {big} for 10 {place}. The {leftCount} {leftPlace} become {leftAfter} {leftPlace}, with {from} {place}. |
+| subtract.why.2 | The 10 {place} come from 1 {big}. That changes {leftCount} {leftPlace} to {leftAfter} {leftPlace}, with {from} {place}. |
+| subtract.why.3 | Use 1 of the {leftCount} {leftPlace} for 10 {place}. This leaves {leftAfter} {leftPlace} and {from} {place}. |
+| subtract.why.4 | Change 1 {big} into 10 {place}. Instead of {leftCount} {leftPlace}, there are {leftAfter} {leftPlace} and {from} {place}. |
+| check.together.0 | That's okay. Let's check it together. |
+| check.together.1 | It's okay to feel unsure. Let's check it together. |
+| check.together.2 | No problem. We can check it together. |
+| check.together.3 | That's fine. Let's check it one part at a time. |
+| check.together.4 | That's alright. Let's check it together. |
+| check.guess.0 | Lucky guess? Let's check it together. |
+| check.guess.1 | A guess is a good start. Let's check it. |
+| check.guess.2 | Let's see if your guess works. We'll check it together. |
+| check.guess.3 | Okay, let's check that guess together. |
+| check.guess.4 | Guesses can be right! Let's check this one together. |
+| check.not_yet.0 | Not quite. Let's look at {where} again. |
+| check.not_yet.1 | Not yet. Let's check {where} together. |
+| check.not_yet.2 | Hmm, not yet. Let's try {where} again. |
+| check.not_yet.3 | That's not it yet. Let's look at {where} once more. |
+| check.not_yet.4 | Not yet. Let's go back to {where}. |
+| check.not_yet.5 | Let's check {where} again together. |
+| confirm.answer.0 | Can you say just your final answer? |
+| confirm.answer.1 | Thanks for explaining. What is your final answer on its own? |
+| close.checked.0 | We checked your answer for {expr}. Bye for now! |
+| close.checked.1 | Your answer for {expr} is checked. See you next time! |
+| close.checked.2 | Your answer for {expr} is right. Bye for now! |
+| close.checked.3 | The answer you gave for {expr} is right. See you next time! |
+| close.checked.4 | We've checked your answer for {expr}. Goodbye for now! |
+| held.hello.0 | Hi, I'm Maya, an AI. |
+| held.next.0 | Want to pick another question on this page? |

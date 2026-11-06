@@ -76,7 +76,7 @@ describe("the behaviour gate", () => {
     const reasons = new Set(all.map((v) => v.trace!.outcome!.reason));
     expect([...reasons].sort()).toEqual(["child_stopped", "content_issue", "no_response", "safety", "solved", "technical_issue", "time_limit"]);
     const sources = new Set(all.flatMap((v) => v.trace!.turns.flatMap((t) => (t.kind === "maya" ? t.attempts.map((a) => a.source) : []))));
-    expect([...sources].sort()).toEqual(["fallback", "model", "repair"]);
+    expect([...sources].sort()).toEqual(["controller", "fallback", "model", "repair"]);
   });
 
   it("records the voice agent's inputs in the saved trace (#396), with whether each stopped Maya's output", () => {
