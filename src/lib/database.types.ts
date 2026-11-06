@@ -1282,6 +1282,57 @@ export type Database = {
           },
         ]
       }
+      feedback: {
+        Row: {
+          child_id: string | null
+          created_at: string
+          id: string
+          parent_id: string
+          product: string
+          request_id: string
+          source: string
+          status: string
+          text: string
+        }
+        Insert: {
+          child_id?: string | null
+          created_at?: string
+          id?: string
+          parent_id: string
+          product: string
+          request_id: string
+          source: string
+          status?: string
+          text: string
+        }
+        Update: {
+          child_id?: string | null
+          created_at?: string
+          id?: string
+          parent_id?: string
+          product?: string
+          request_id?: string
+          source?: string
+          status?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "feedback_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       flyer_batches: {
         Row: {
           code: string
@@ -6996,6 +7047,17 @@ export type Database = {
         Args: { c: string; p: string }
         Returns: undefined
       }
+      refresh_scan_marking_evaluation_price: {
+        Args: {
+          p_details: string
+          p_endpoint: string
+          p_evidence: string
+          p_maximum: number
+          p_model: string
+          p_previous_evidence: string
+        }
+        Returns: Json
+      }
       release_card_lock: {
         Args: { p_card: string; p_token: string }
         Returns: boolean
@@ -7088,6 +7150,19 @@ export type Database = {
         }[]
       }
       reserve_scan_marking_evaluation: {
+        Args: {
+          p_attempt: string
+          p_endpoint: string
+          p_evidence: string
+          p_maximum: number
+          p_model: string
+          p_pixels: number
+          p_run: string
+          p_run_maximum: number
+        }
+        Returns: Json
+      }
+      reserve_scan_marking_evaluation_checked: {
         Args: {
           p_attempt: string
           p_endpoint: string
@@ -7309,6 +7384,7 @@ export type Database = {
         }
         Returns: Json
       }
+      scan_marking_evaluation_policy: { Args: { p: Json }; Returns: Json }
       scan_marking_saved_command: {
         Args: {
           p_action: string
@@ -7378,6 +7454,17 @@ export type Database = {
       }
       stop_workbook_run: {
         Args: { p_by: string; p_by_email: string; p_run: string }
+        Returns: string
+      }
+      submit_feedback: {
+        Args: {
+          p_child: string
+          p_parent: string
+          p_product: string
+          p_request: string
+          p_source: string
+          p_text: string
+        }
         Returns: string
       }
       take_card_lock: {
