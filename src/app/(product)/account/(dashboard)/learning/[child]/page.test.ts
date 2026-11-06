@@ -6,7 +6,7 @@ import LearningPage from "./page";
 // The learning card page (#126) that the Account tab links to (#555). A family without the dashboard must get the page
 // it had: `learning-page.golden.html` was written from the page before #555 changed anything.
 vi.mock("server-only", () => ({}));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => "/account/learning/sample-child",
   useRouter: () => ({}),
   notFound: () => { throw new Error("NOT FOUND"); },
   redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); },

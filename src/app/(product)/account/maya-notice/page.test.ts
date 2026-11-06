@@ -12,7 +12,7 @@ const BOOK = "33333333-3333-4333-8333-333333333333";
 const state = vi.hoisted(() => ({ agreement: "none" as "none" | "yes" | "fail" }));
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/navigation", () => ({ redirect: () => { throw new Error("redirect"); }, useRouter: () => ({}) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/account/maya-notice", redirect: () => { throw new Error("redirect"); }, useRouter: () => ({}) }));
 vi.mock("@/lib/supabase-auth", () => ({
   parentId: async () => PARENT,
   sessionClient: async () => ({

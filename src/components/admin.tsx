@@ -33,6 +33,7 @@ const NAV = [
   { key: "flyers", href: `${ADMIN_PATH}/flyers`, label: "Flyers" },
   { key: "tests", href: ADMIN_TESTS_PATH, label: "Tests" },
   { key: "reviews", href: `${ADMIN_PATH}/reviews`, label: "AI reviews" },
+  { key: "feedback", href: `${ADMIN_PATH}/feedback`, label: "Feedback" },
   { key: "parents", href: `${ADMIN_PATH}/parents`, label: "Parents" },
   { key: "children", href: `${ADMIN_PATH}/children`, label: "Children" },
   { key: "scans", href: `${ADMIN_PATH}/scans`, label: "Scan pages" },
