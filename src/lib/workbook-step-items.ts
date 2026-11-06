@@ -25,7 +25,7 @@ import type { SlotName } from "@/lib/workbook-page";
 import type { StepDeclaration } from "@/lib/workbook-print-contract";
 
 /** How the question is answered on the page. */
-export type StepItemKind = "box" | "story" | "choice" | "spot" | "two-ways" | "sequence";
+export type StepItemKind = "box" | "story" | "choice" | "spot" | "two-ways" | "sequence" | "mixed";
 
 /** The template a question was filled from: its step, its place in the step's templates and what code sampled. */
 export interface StepTemplateRef {
@@ -202,6 +202,7 @@ export function plausibleWrong(answer: number, bounds: { min: number; max: numbe
 /** The kind a filled template takes at a place, or null when it cannot print there. */
 function kindAt(place: SlotName | null, answer: string, text: string): { kind: StepItemKind; choices?: string[] } | null {
   const numeric = NUMERIC.test(answer) || UNIT_NUMBER.test(answer);
+  if (place === "mixed-set") return numeric ? { kind: "mixed" } : null;
   if (place === "spot-the-error") return integerAnswer(answer) ? { kind: "spot" } : null;
   if (place === "solve-it-two-ways") return numeric ? { kind: "two-ways" } : null;
   const story = !!place && STEP_STORY_PLACES.has(place);
@@ -212,6 +213,25 @@ function kindAt(place: SlotName | null, answer: string, text: string): { kind: S
   const orderedNumbers = answer.length <= 64 && /^-?\d+(?:\.\d+|\/\d+)?(?:, -?\d+(?:\.\d+|\/\d+)?){1,5}$/.test(answer);
   const short = orderedNumbers || answer.length <= 24 && (answer.split(/\s+/).length <= MOST_ANSWER_WORDS || /^-?\d+(?:, -?\d+)+$/.test(answer));
   return short ? { kind: story ? "story" : "box" } : null;
+}
+
+/** A story with one explicit arithmetic operation. Other tasks cannot ask the child to tick one operation. */
+export function mixedTemplateSign(t: Pick<StepTemplate, "format" | "answer" | "derived"> & { text?: string }): string | null {
+  if (t.format !== "story") return null;
+  let expression = t.answer.trim();
+  for (let depth = 0; depth < 4; depth++) {
+    const binary = /^([A-Za-z]\w*|\d+)\s*(\/\/|[+*\/-])\s*([A-Za-z]\w*|\d+)$/.exec(expression);
+    if (binary) {
+      // A rounded-up division answer such as q + 1 does not make the story an addition. Both operands must be
+      // printed givens. Derived digit-built amounts are valid when their values print as the story's quantities.
+      if (t.text && [binary[1], binary[3]].some(name => /^\d+$/.test(name) ? !new RegExp(`\\b${name}\\b`).test(t.text!) : !t.text!.includes(`{${name}}`))) return null;
+      return ({ "+": "+", "-": "−", "*": "×", "/": "÷", "//": "÷" } as Record<string, string>)[binary[2]];
+    }
+    const derived = t.derived && Object.entries(t.derived).find(([name]) => name === expression);
+    if (!derived) return null;
+    expression = derived[1].trim();
+  }
+  return null;
 }
 
 /** The difficulties a place asks for, the first preferred. */
@@ -407,6 +427,9 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   if (reviewPlace && (r.curriculum.levelOfSkill(r.skill)?.number ?? r.level) < r.level) usable = printable;
   else if (reviewPlace && r.attempt >= 192) usable = printable.filter((x) => !harder.includes(x));
   if (!usable.length) usable = printable;
+  // Mixed set keeps the exact step story and its sampled numbers. A comparison, decimal naming task, missing
+  // number or multi-operation expression cannot become a generic sum with an invented teaching declaration.
+  if (r.place === "mixed-set") usable = usable.filter(({ t }) => mixedTemplateSign(t));
   // Late attempts (an earlier step the book taught, when the page's own tasks ran out) take that step's hard templates
   // too: its Challenge was days before (Savar, 2026-11-04: the full U4 book's Day 9 falls back to hard review items).
   // (U4 to U9 only: from U10 the hard ones stay the Challenge's, and a page keeps its own step.)
@@ -569,7 +592,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
 export function stepAiItem(slot: string, ref: StepTemplateRef, text: string): AiItem {
   return {
     slot, skill: ref.skill, difficulty: ref.difficulty === "easy" ? 1 : ref.difficulty === "medium" ? 2 : 3 as 1 | 2 | 3, text,
-    format: ref.kind === "story" ? "show-work" : ref.kind === "spot" ? "spot-the-error" : ref.kind === "two-ways" ? "two-ways" : "write-number",
+    format: ref.kind === "mixed" ? "tick-and-number" : ref.kind === "story" ? "show-work" : ref.kind === "spot" ? "spot-the-error" : ref.kind === "two-ways" ? "two-ways" : "write-number",
     operation: null, wrongAnswers: [], easier: null, shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null,
     pattern: null, relation: null, figureShows: null, name: null, thing: null,
   } as AiItem;
@@ -584,6 +607,17 @@ export function stepItem(ref: StepTemplateRef): Item {
   const check = (region: string): ItemCheck => ({ kind: "template", region, source: ref.source });
   const base = { scorable: true, parentChecked: false, error: null };
   switch (ref.kind) {
+    case "mixed": {
+      const sign = mixedTemplateSign({ format: ref.format, answer: ref.source.answer, derived: Object.fromEntries(ref.source.derived) });
+      return {
+        ...base, format: "tick-and-number",
+        regions: [
+          { id: "operation", kind: "choice", mark: "tick", label: "Tick the operation", choices: ref.choices ?? ["+", "−", "×", "÷"], answer: sign ?? "" },
+          box("answer", "Write the answer"), { id: "work", kind: "work", label: "Show your work" },
+        ],
+        checks: [check("answer"), { kind: "template-choice", region: "operation", source: { ...ref.source, answer: `'${sign ?? ""}'` } }],
+      };
+    }
     case "story":
       return { ...base, format: "show-work", regions: [box("answer", null), { id: "work", kind: "work", label: "Show your work" }], checks: [check("answer")] };
     case "two-ways":
