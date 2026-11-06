@@ -1,5 +1,5 @@
 // The workbook worker (D-200): a long-running process on Savar's Mac that makes the workbooks "Prepare next workbook"
-// queued for the Mac, on his Claude subscription (`claude -p`), with the paid API (OpenRouter) as the fallback. See
+// queued for the Mac, on the selected subscription. Claude can fall back to OpenRouter; Codex cannot. See
 // docs/workbook-worker.md for setup (a dedicated checkout that follows origin/main, a LaunchAgent that starts it at
 // login and restarts it, logs in ~/Library/Logs).
 //
@@ -10,6 +10,7 @@
 // Settings (environment, or the file WORKBOOK_WORKER_ENV, default ~/.config/unica/workbook-worker.env):
 //   SUPABASE_SECRET_KEY: else the Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item
 //     "supabase-pagewise". No key is printed.
+//   WORKBOOK_SUBSCRIPTION_PROVIDER (claude|codex), WORKBOOK_CODEX_HOME (explicit absolute account home for Codex),
 //   WORKBOOK_AI_PRIMARY (subscription|api), WORKBOOK_CLAUDE_MODEL, WORKBOOK_CLAUDE_SOLVE_MODEL, WORKBOOK_CLAUDE_CONFIG_DIR,
 //     WORKBOOK_CLAUDE_COMMAND, WORKBOOK_CLAUDE_TIMEOUT_MS: src/lib/workbook-ai.ts.
 //   OPENROUTER_API_KEY (the fallback; without it a subscription failure fails the call), AI_MODEL, AI_SOLVE_MODEL.
@@ -22,7 +23,7 @@ import { parseArgs } from "node:util";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { workbookAiPrimary } from "@/lib/workbook-ai";
+import { workbookAiPreflight, workbookAiPrimary, workbookModels, workbookSubscriptionProvider } from "@/lib/workbook-ai";
 import { runWorkbookJobWith } from "@/lib/workbook-job-deps";
 import { workbookWorkerQueue } from "@/lib/workbook-job-store";
 import { workbookWorker } from "@/lib/workbook-worker";
@@ -88,17 +89,25 @@ async function newerMain(): Promise<boolean> {
 }
 
 const code = build();
+// Fail before any service access or claim if the explicitly selected provider is not configured here.
+await workbookAiPreflight();
+const provider = workbookSubscriptionProvider();
 const primary = workbookAiPrimary();
 const id = process.env.WORKBOOK_WORKER_ID?.trim() || hostname().replace(/\.local$/, "");
 const url = process.env.SUPABASE_URL || `https://${PROJECT}.supabase.co`;
 const admin = createClient<Database>(url, await secretKey(), { auth: { persistSession: false, autoRefreshToken: false } });
-if (!process.env.OPENROUTER_API_KEY) log("OPENROUTER_API_KEY is not set: there is no API fallback, so a call the subscription cannot take fails.");
-log(`workbook worker ${id} on ${code.slice(0, 12)}: ${primary === "subscription" ? "the Claude subscription first" : "the API first"}`);
+if (provider === "codex") log("Codex subscription only: API fallback is disabled.");
+else if (!process.env.OPENROUTER_API_KEY) log("OPENROUTER_API_KEY is not set: there is no API fallback, so a call the subscription cannot take fails.");
+log(`workbook worker ${id} on ${code.slice(0, 12)}: ${primary === "subscription" ? `the ${provider} subscription first` : "the API first"}; writer ${workbookModels().write}; solver ${workbookModels().solve}`);
 
 const worker = workbookWorker({
   queue: workbookWorkerQueue(admin, { id, build: code, primary }),
   // No Vercel time limit: one job call makes the whole run (6 hours at most, then it is taken up again).
-  runJob: (runId, resume) => runWorkbookJobWith(admin, runId, { subscription: true, build: code, budgetMs: 6 * 3_600_000, timeLimitMs: 10 * 60_000 }, { resume }),
+  runJob: async (runId, resume) => {
+    // Recheck between jobs. A lost login or removed CLI must not consume the next queued family run.
+    await workbookAiPreflight();
+    return runWorkbookJobWith(admin, runId, { subscription: true, build: code, budgetMs: 6 * 3_600_000, timeLimitMs: 10 * 60_000 }, { resume });
+  },
   keepAwake,
   shouldExit: newerMain,
   log,

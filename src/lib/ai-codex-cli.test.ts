@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
-import { codexCliClient } from "@/lib/ai-codex-cli";
+import { CODEX_SUBSCRIPTION_MODEL, codexCliClient, codexCliPreflight } from "@/lib/ai-codex-cli";
 import { fallbackAiClient, newGate, type AiCallRecord } from "@/lib/ai-fallback";
 import type { Spawner, SpawnResult } from "@/lib/ai-claude-cli";
 import { sampleAiCache } from "../../scripts/workbook-sample-cache";
@@ -45,7 +45,7 @@ describe("Codex sample subscription", () => {
     const client = codexCliClient({ configDir: "/accounts/unify", spawn, env: {
       PATH: "/bin", HOME: "/home/user", CODEX_HOME: "/wrong-account", OPENAI_API_KEY: "secret", OPENROUTER_API_KEY: "secret", SUPABASE_SECRET_KEY: "secret",
     } });
-    expect(client.model).toBe("gpt-6.1-sol");
+    expect(client.model).toBe(CODEX_SUBSCRIPTION_MODEL);
     expect(await Promise.all([client.json(request, signal()), client.json(request, signal())])).toEqual([{ text: "Two counters." }, { text: "Two counters." }]);
     expect(new Set(folders).size).toBe(2);
     for (const folder of folders) await expect(access(folder)).rejects.toThrow();
@@ -111,5 +111,71 @@ describe("Codex sample subscription", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+
+describe("Codex local availability check", () => {
+  const help = "--ignore-user-config --ephemeral --skip-git-repo-check --sandbox --model --config --disable --json --output-schema --output-last-message";
+  const auth = { auth_mode: "chatgpt", tokens: { access_token: "synthetic-token" } };
+
+  async function account(run: (home: string) => Promise<void>, contents: unknown = auth) {
+    const home = await mkdtemp(join(tmpdir(), "unica-codex-account-test-"));
+    try {
+      if (contents !== undefined) await writeFile(join(home, "auth.json"), typeof contents === "string" ? contents : JSON.stringify(contents));
+      await run(home);
+    } finally { await rm(home, { recursive: true, force: true }); }
+  }
+
+  it("checks CLI options and ChatGPT login in the explicit home without a model request", async () => {
+    await account(async home => {
+      const folders: string[] = [];
+      const spawn = vi.fn<Spawner>(async (command, args, options) => {
+        expect(command).toBe("codex");
+        expect(options.env).toEqual({ CODEX_HOME: home, PATH: "/bin" });
+        expect(options.input).toBe("");
+        folders.push(options.cwd);
+        return { code: 0, stdout: args[0] === "exec" ? help : "", stderr: args[0] === "login" ? "Logged in using ChatGPT" : "" };
+      });
+      await codexCliPreflight({ configDir: home, spawn, env: { PATH: "/bin", CODEX_HOME: "/wrong", OPENAI_API_KEY: "secret", OPENROUTER_API_KEY: "secret" } });
+      expect(spawn.mock.calls.map(c => c[1])).toEqual([["exec", "--help"], ["login", "status"]]);
+      for (const folder of folders) await expect(access(folder)).rejects.toThrow();
+    });
+  });
+
+  it.each([null, "not JSON", { auth_mode: "apikey", OPENAI_API_KEY: "synthetic" }, { auth_mode: "chatgpt" }])("refuses missing, malformed or non-ChatGPT credentials before spawning: %j", async contents => {
+    await account(async home => {
+      const spawn = vi.fn<Spawner>();
+      if (contents === null) await rm(join(home, "auth.json"));
+      await expect(codexCliPreflight({ configDir: home, spawn })).rejects.toThrow(/stored ChatGPT login/);
+      expect(spawn).not.toHaveBeenCalled();
+    }, contents);
+  });
+
+  it.each([
+    { code: null, error: { code: "ENOENT", message: "missing" } },
+    { code: 1 }, { timedOut: true }, { stdout: help.replace("--ignore-user-config", "") },
+    { stdout: help.replace("--output-schema", "") },
+  ])("fails closed on an unavailable or incompatible CLI: %j", async failure => {
+    await account(async home => {
+      const spawn = vi.fn<Spawner>(async () => ({ code: 0, stdout: help, stderr: "", ...failure }));
+      await expect(codexCliPreflight({ configDir: home, spawn })).rejects.toThrow(/Codex/);
+      expect(spawn).toHaveBeenCalledTimes(1);
+      await expect(access(spawn.mock.calls[0][2].cwd)).rejects.toThrow();
+    });
+  });
+
+  it("rejects an API-key login and preserves cancellation", async () => {
+    await account(async home => {
+      const controller = new AbortController();
+      const spawn: Spawner = async (_command, args) => ({ code: 0, stdout: args[0] === "exec" ? help : "Logged in using an API key", stderr: "" });
+      await expect(codexCliPreflight({ configDir: home, spawn })).rejects.toThrow(/ChatGPT login/);
+      const cancelled = vi.fn<Spawner>(async () => {
+        controller.abort();
+        return { code: 0, stdout: help, stderr: "" };
+      });
+      await expect(codexCliPreflight({ configDir: home, spawn: cancelled, signal: controller.signal })).rejects.toThrow();
+      expect(cancelled).toHaveBeenCalledTimes(1);
+    });
   });
 });
