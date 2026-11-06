@@ -130101,7 +130101,7 @@
       "b": "count",
       "c": "count"
      },
-     "check": "a != b + c"
+     "check": "a != b + c and 8 <= a + b + c <= 12"
     },
     {
      "format": "story",
@@ -130127,7 +130127,7 @@
       "b": "count",
       "c": "count"
      },
-     "check": "a != b + c"
+     "check": "a != b + c and 8 <= a + b + c <= 12"
     },
     {
      "format": "compare",
