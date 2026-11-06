@@ -1,5 +1,5 @@
 import { isUuid, type Workbook, type WorkbookQuestion, type WorkbookSummary } from "@/lib/workbook-content";
-import { packageItem, valueText, type AnswerValue, type PackageAnswer } from "@/lib/question-package";
+import { packageItem, valueText, type AnswerValue, type Item, type PackageAnswer } from "@/lib/question-package";
 import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
 
 export interface ParentWorkbookAnswerRequest { parentId: string; childId: string; workbookId: string }
@@ -37,16 +37,26 @@ function written(value: AnswerValue, answer: PackageAnswer | null): string {
   const text = valueText(value);
   return answer?.unit && ["number", "fraction", "mixed", "remainder"].includes(value.type) ? `${text} ${answer.unit}` : text;
 }
+/** Follow stored print semantics without changing the renderer or measuring a book again. */
+function answerRegions(item: Item, practiceType: string | null) {
+  const layout = practiceType ?? (item.format === "tick-and-number" ? "mixed-set" : item.format === "spot-the-error" ? "spot-the-error" : null);
+  const regions = item.regions.filter(r => r.kind === "box" || r.kind === "choice");
+  if (layout === "mixed-set" || layout === "spot-the-error") {
+    return [regions.find(r => r.kind === "choice"), regions.find(r => r.kind === "box")].filter(r => r !== undefined);
+  }
+  const sequence = item.checks.find(c => c.kind === "sequence");
+  const order = item.checks.find(c => c.kind === "order");
+  const ids = [...(sequence?.terms.flatMap(t => "region" in t ? [t.region] : []) ?? []), ...(order?.regions ?? []), ...regions.map(r => r.id)];
+  return [...new Set(ids)].flatMap(id => regions.filter(r => r.id === id));
+}
 function questionAnswer(question: WorkbookQuestion, workbookId: string, page: number): ParentQuestionAnswer {
   const unavailable: ParentQuestionAnswer = { number: question.number, kind: "unavailable", answers: [], hasOpenWork: false };
   if (question.content.status !== "found") return unavailable;
   const pkg = question.content.package, ref = pkg.ref;
   if (ref.source !== "workbook" || ref.workbookId !== workbookId || ref.page !== page || ref.question !== question.number) return unavailable;
   const item = packageItem(pkg);
-  // The item regions are frozen in reading order. Do not substitute the package's single operation answer for each region.
   let part = 0;
-  const answers = item.regions.flatMap((region): ParentAnswer[] => {
-    if (region.kind !== "box" && region.kind !== "choice") return [];
+  const answers = answerRegions(item, question.teaching?.practiceType ?? null).flatMap((region): ParentAnswer[] => {
     part++;
     if (region.answer === null) return [];
     const operationAnswer = item.checks.some(check => check.kind === "operation" && check.region === region.id) ? pkg.answer : null;

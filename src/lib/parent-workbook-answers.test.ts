@@ -3,6 +3,9 @@ import { readParentWorkbookAnswers, type ParentWorkbookAnswerSource } from "@/li
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { storedQuestion, type Workbook, type WorkbookPage } from "@/lib/workbook-content";
 import { operationResult, workedSteps, type Item, type Operation, type QuestionPackage } from "@/lib/question-package";
+import { sampleBook } from "@/lib/workbook-sample-book";
+import { workbookTemplate } from "@/lib/workbook-template";
+import { regionNames } from "@/lib/workbook-render";
 
 const PARENT = "11111111-1111-4111-8111-111111111111", CHILD = "22222222-2222-4222-8222-222222222222", BOOK = "33333333-3333-4333-8333-333333333333", OTHER = "44444444-4444-4444-8444-444444444444";
 const NOW = Date.parse("2026-11-06T20:00:00Z");
@@ -84,6 +87,41 @@ it("uses each stored region answer for multiple answers and choices", async () =
   const q = (await readParentWorkbookAnswers(source, request, NOW))?.pages[0].questions[0];
   expect(q?.answers.map(a => a.value)).toEqual(["+", "42"]);
   expect(q?.hasOpenWork).toBe(true);
+});
+
+it.each<{ name: string; item: Item; values: string[]; slot: "mixed-set" | "on-your-own" }>([
+  { name: "Mixed set", slot: "mixed-set", values: ["+", "42"], item: {
+    format: "tick-and-number", scorable: true, parentChecked: false, regions: [
+      { id: "answer", kind: "box", label: null, answer: { type: "number", value: 42 } },
+      { id: "operation", kind: "choice", mark: "tick", label: null, choices: ["+", "−", "×", "÷"], answer: "+" },
+    ], checks: [{ kind: "operation", region: "answer" }, { kind: "operation-sign", region: "operation" }], error: null,
+  } },
+  { name: "sequence", slot: "on-your-own", values: ["27", "31"], item: {
+    format: "boxes", scorable: true, parentChecked: false, regions: [
+      { id: "last", kind: "box", label: null, answer: { type: "number", value: 31 } },
+      { id: "first", kind: "box", label: null, answer: { type: "number", value: 27 } },
+    ], checks: [{ kind: "sequence", terms: [{ type: "number", value: 23 }, { type: "number", value: 25 }, { region: "first" }, { type: "number", value: 29 }, { region: "last" }], step: { type: "number", value: 2 } }], error: null,
+  } },
+  { name: "ordering", slot: "on-your-own", values: ["2", "4", "9"], item: {
+    format: "boxes", scorable: true, parentChecked: false, regions: [
+      { id: "third", kind: "box", label: null, answer: { type: "number", value: 9 } },
+      { id: "first", kind: "box", label: null, answer: { type: "number", value: 2 } },
+      { id: "second", kind: "box", label: null, answer: { type: "number", value: 4 } },
+    ], checks: [{ kind: "order", numbers: [{ type: "number", value: 9 }, { type: "number", value: 2 }, { type: "number", value: 4 }], direction: "up", regions: ["first", "second", "third"] }], error: null,
+  } },
+])("matches the printed $name parts when stored regions have another order", async ({ name, item, values, slot }) => {
+  const draft = sampleBook({ level: "U16", workbookId: BOOK, childId: CHILD, child: "Leah" }).draft;
+  const day = draft.pages.find(p => p.content?.kind === "day");
+  if (!day || day.content?.kind !== "day") throw new Error("Fixture needs a day page");
+  const stored = question(day.number, 1, name === "Mixed set" ? { kind: "add", operands: [24, 18] } : null, item);
+  if (stored.content.status !== "found") throw new Error("Fixture needs a valid stored package");
+  const q = { number: 1, package: stored.content.package };
+  const html = workbookTemplate().page({ ...day, questions: [q], content: { ...day.content, blocks: [{ slot, items: [1] }] } }, { qr: "", qrUrl: "" }, draft);
+  const printed = regionNames(q).map(x => ({ region: x.region, at: html.indexOf(`data-measure="${x.name}"`) })).sort((a, b) => a.at - b.at);
+  expect(printed.every(x => x.at >= 0)).toBe(true);
+  expect(printed.map(x => "answer" in x.region ? x.region.answer : null)).toEqual(values.map(value => value === "+" ? value : { type: "number", value: Number(value) }));
+  book.pages = [page(day.number, [stored])];
+  expect((await readParentWorkbookAnswers(source, request, NOW))?.pages[0].questions[0].answers).toEqual(values.map((value, i) => ({ part: i + 1, value, alternatives: [] })));
 });
 
 it.each<Operation>([
