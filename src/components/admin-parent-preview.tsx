@@ -85,7 +85,7 @@ function billing(kids: ChildView[], state: string): FamilyBilling {
     invoices: state === "invoices_unavailable" ? { state: "unavailable" } : { state: "loaded", invoices: state === "empty" ? [] : kids.flatMap(child => (["paid", "no_charge", "due"] as const).map((status, i) => ({ id: `sample-invoice-${child.id}-${i}`, childId: child.id, childName: child.firstName, at: "2026-11-01T20:00:00Z", cents: i === 1 ? 0 : 9900, currency: "cad", status, receiptUrl: "https://example.invalid/receipt" }))) } };
 }
 
-function planControl(name: string, state: string) {
+function planControl(name: string, state: string, cardId: string) {
   const restart = state.startsWith("restart");
   const pending = state.endsWith("pending");
   const preview = state === "pause_review" || state === "pause_late";
@@ -93,7 +93,7 @@ function planControl(name: string, state: string) {
     preview: preview ? { token: "sample-token", weeks: 2, remaining: 6, year: 2026, late: state === "pause_late", targetNumber: 5, charge: "December 10, 2026", earliest: state === "pause_late" ? null : "December 10", latest: state === "pause_late" ? null : "December 15" } : null,
     restart: state === "restart_review" ? { price: PLANS.one.price, token: "sample-token" } : null,
     error: pending ? "We cannot confirm this change yet. Check again before you make another change or delete the account." : state === "restart_declined" ? "Your payment did not go through. Please update your card. Then return here to restart the plan." : null,
-    done: state === "pause_saved" || state === "restart_started", onOpen: noAction, setWeeks: noAction, setPreview: noAction, send: noAction, close: noAction, cardId: "sample-card" };
+    done: state === "pause_saved" || state === "restart_started", onOpen: noAction, setWeeks: noAction, setPreview: noAction, send: noAction, close: noAction, cardId };
   return <PlanControlView {...props} />;
 }
 
@@ -153,10 +153,10 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
     case "plan": {
       const control = state.startsWith("pause") && state !== "paused" || state.startsWith("restart");
       const plan: ParentPlan = Object.hasOwn(SAMPLE_PLANS, state) ? SAMPLE_PLANS[state as keyof typeof SAMPLE_PLANS] : state.startsWith("restart") ? SAMPLE_PLANS.ended : SAMPLE_PLANS.paying;
-      return <ParentPlanView zone={zone} controls plans={state === "unavailable" ? null : state === "none" ? [] : kids.map(k => ({ cardId: `sample-card-${k.id}`, childName: k.firstName, plan }))} control={control ? planControl(child.firstName, state) : undefined}
-        cancellation={state.startsWith("cancel_") ? <CancelPlanView name={child.firstName} consequence="The plan ends on November 26, 2026. We will not charge your card again." asking busy={false} failed={state === "cancel_pending"} cancel={noAction} keep={noAction} ask={noAction} /> : undefined} />;
+      return <ParentPlanView zone={zone} controls plans={state === "unavailable" ? null : state === "none" ? [] : kids.map(k => ({ cardId: `sample-card-${k.id}`, childName: k.firstName, plan }))} control={control ? row => planControl(row.childName, state, row.cardId) : undefined}
+        cancellation={state.startsWith("cancel_") ? row => <CancelPlanView name={row.childName} consequence="The plan ends on November 26, 2026. We will not charge your card again." asking busy={false} failed={state === "cancel_pending"} cancel={noAction} keep={noAction} ask={noAction} /> : undefined} />;
     }
-    case "scan": return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={kids.map(k => ({ id: k.id, first_name: k.firstName }))} parent="sample-parent" noticeAcknowledged mode={selection.size === "desktop" ? "desktop" : "phone"} initial={{ listing: scanListing(state), loadFailed: state === "unavailable" }} /></SupportPage>;
+    case "scan": return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[child, ...kids.filter(k => k.id !== child.id)].map(k => ({ id: k.id, first_name: k.firstName }))} parent="sample-parent" noticeAcknowledged mode={selection.size === "desktop" ? "desktop" : "phone"} initial={{ listing: scanListing(state), loadFailed: state === "unavailable" }} /></SupportPage>;
     case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><a href="/account/scan">Back to Scan pages</a><ScanMarkingResults result={scanResult(state)} showHeading={false} /></div></SupportPage>;
   }
 }

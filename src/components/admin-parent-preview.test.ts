@@ -99,6 +99,25 @@ it("preserves empty families, child selection, long names and URL round trips wi
   }
 });
 
+it.each(["pause_review", "restart_review", "cancel_review"].flatMap(scenario => ["first", "second"].map(child => ({ scenario, child }))))("uses each plan row's child for $scenario with $child selected", ({ scenario, child }) => {
+  const output = dom(renderParentPreview(previewSelection({ view: "plan", scenario, family: "two", child }), styles));
+  const rows = [...output.querySelectorAll(".acct-plan")];
+  expect(rows).toHaveLength(2);
+  const action = scenario === "cancel_review" ? "Cancel" : scenario === "restart_review" ? "Restart" : "Pause";
+  for (const [index, name] of ["Leah", "Kai"].entries()) {
+    expect(rows[index].textContent).toContain(`${action} ${name}'s plan`);
+    expect(rows[index].textContent).not.toContain(`${action} ${index === 0 ? "Kai" : "Leah"}'s plan`);
+  }
+});
+
+it.each(PARENT_PREVIEW_VIEWS.find(view => view.id === "scan")!.scenarios.flatMap(scenario => ["first", "second"].map(child => ({ scenario: scenario.id, child }))))("selects the same child in the shell and Scan view for $scenario / $child", ({ scenario, child }) => {
+  const output = dom(renderParentPreview(previewSelection({ view: "scan", scenario, family: "two", child }), styles));
+  const name = child === "second" ? "Kai" : "Leah";
+  expect(output.querySelector(".pd-kid b")?.textContent).toBe(name);
+  expect(output.querySelector(".scan-child option[selected]")?.textContent).toBe(name);
+  expect(output.querySelectorAll(".scan-child option")).toHaveLength(2);
+});
+
 it("fails safely on arbitrary, duplicate and cross-view query values", () => {
   const fallback = previewSelection({});
   for (const value of ["__proto__", "constructor", "/account", "javascript:alert(1)", ["paying", "ended"]]) {

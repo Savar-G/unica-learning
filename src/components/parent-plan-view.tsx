@@ -9,11 +9,12 @@ import { canCancel, type ParentPlan } from "@/lib/parent-plan";
 import type { familyPlans } from "@/lib/parent-plan-server";
 
 const Email = () => <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>;
+type PlanRow = NonNullable<Awaited<ReturnType<typeof familyPlans>>>[number];
 
 export function ParentPlanView({ plans, zone, controls, pending, control, cancellation }: {
   plans: Awaited<ReturnType<typeof familyPlans>>; zone: FamilyZone; controls: boolean;
-  control?: ReactNode;
-  cancellation?: ReactNode;
+  control?: (row: PlanRow) => ReactNode;
+  cancellation?: (row: PlanRow) => ReactNode;
   pending?: ReadonlyMap<string, "pause" | "restart" | "cancel">;
 }) {
   return (
@@ -30,8 +31,8 @@ export function ParentPlanView({ plans, zone, controls, pending, control, cancel
             {!control && (pending?.get(cardId) === "pause" || pending?.get(cardId) === "restart") && <PlanControl cardId={cardId} name={childName} mode={pending?.get(cardId) === "restart" ? "restart" : "pause"} pending />}
             {pending?.get(cardId) === "cancel" && <p role="status">Cancellation is not confirmed. Please email <Email />.</p>}
             {!control && controls && !pending?.get(cardId) && (plan.kind === "paying" || plan.kind === "free_month" || plan.kind === "ended") && <PlanControl cardId={cardId} name={childName} mode={plan.kind === "ended" ? "restart" : "pause"} />}
-            {control}
-            {canCancel(plan) && (cancellation ?? <CancelPlan cardId={cardId} name={childName} consequence={consequence(plan, zone)} />)}
+            {control?.({ cardId, childName, plan })}
+            {canCancel(plan) && (cancellation?.({ cardId, childName, plan }) ?? <CancelPlan cardId={cardId} name={childName} consequence={consequence(plan, zone)} />)}
           </li>
         ))}
       </ul>}
