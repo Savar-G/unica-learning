@@ -106,3 +106,13 @@ D-267 reference order: the first available Sonnet probe runs before the other fi
 Root comparison regressions first produced five failures. After repairs, 290 focused tests passed in eight files. The standalone TypeScript check and changed-file lint passed. The disposable PostgreSQL probe passed eight inherited and 21 refresh cases. Its server stopped. These checks prove local fake transport, tariff bounds, admission, retry and source-evidence behavior. They do not prove hosted permissions, live model accuracy or physical photos.
 
 The customer comment batch remains active. No full Chromium gate, paid call, key read, hosted write, push, merge, family switch or print change ran. The price-refresh migration remains unapplied. Root extends the comparison review budget from three to five under the state/concurrency exception for the reproduced budget and journal failures. Budget end is not approval. A new scoped Sol review must cover the repaired behavior and launch mismatch.
+
+## R4 settlement-state repair
+
+R4 independently resolved the cache-read, journal and runtime-model findings. It found R4-01: a first settlement exception could be hidden by an earlier HTTP or output error. A later successful cleanup wrote a settled record, and the matrix could continue.
+
+Root now records a sticky financial failure at each reservation and settlement call boundary. The result and attempt retain that failure. Retry admission checks it before another reservation. Later cleanup can settle a known charge but cannot clear the stop. Normal known-cost HTTP retries remain valid.
+
+Four binding public controls cover HTTP503, schema failure, invalid JSON and refusal, with a first settlement error. They reject another model or photo, preserve the known1000-microdollar charge and refuse saved resume. The HTTP control proves that a later successful settlement still does not clear the fatal marker. Before repair, these four assertions failed; the same run also hit one unrelated existing matrix-test timeout. After repair, all294tests passed in8files at the unchanged30-second test limit. Full TypeScript and changed-code lint passed. These are local fake transport and injected budget failures. They do not establish hosted RPC or model proof.
+
+Root stopped the interrupted full gate on9ee8f622 after R4 CHANGES. It is not a pass. No SQL changed in this repair, so the prior29local SQL cases and independent R4 SQL proof remain separate evidence. No paid call, key read, hosted write, push, merge, family switch or print change occurred. Comparison R5 is the final round of its five-round state/concurrency extension. Budget end is not approval.

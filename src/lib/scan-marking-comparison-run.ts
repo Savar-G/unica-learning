@@ -77,7 +77,16 @@ export async function runComparisonPhoto(options: {
   let observations: Observation[] = [], schemaValid = false, failure: string | null = null;
   const attempts: ComparisonAttempt[] = [];
   let currentKey: string | null = null, current: ComparisonAttempt | null = null;
-  let journalFailed = false;
+  let journalFailed = false, budgetFailed = false;
+  const financial = async <T>(action: () => Promise<T>): Promise<T> => {
+    try { return await action(); }
+    catch {
+      budgetFailed = true;
+      failure = "reservation-or-settlement-failed";
+      if (current) current.error = failure;
+      throw new Error(failure);
+    }
+  };
   const journalFailure = () => {
     journalFailed = true;
     failure = "journal-failure";
@@ -112,12 +121,12 @@ export async function runComparisonPhoto(options: {
     claim: async () => ({ token: "synthetic", extraction: null, items: expectedItems(photo.frame).map(expected => ({ expected, observation: firstObservation(expected, photo.id), originalEvent: null, eventId: null, at: "2000-01-01T00:00:00.000Z", model: null, prompt: null })) }),
     image: async () => options.image,
     admit: async () => {
-      if (journalFailed) return "attempts";
+      if (journalFailed || budgetFailed) return "attempts";
       if (attempts.length >= (options.maxAttempts ?? 1)) return "attempts";
       if (current && (current.usage.costMicros === null || current.usage.inputTokens === null || current.usage.outputTokens === null || current.usage.reasoningTokens === null || current.usage.provider !== model.providerName)) { failure = "unknown-usage-no-retry"; return "attempts"; }
       const key = hashValue({ run: options.run, model, photo: photo.id, attempt: attempts.length + 1 });
       if (!await journal.begin(key)) { failure = "existing-attempt-no-redispatch"; return "attempts"; }
-      const reservation = await budget.reserve({ run: options.run, attempt: key, model: model.model, endpoint: model.endpoint, evidence: hashValue(evidence), pixels: photo.image.width * photo.image.height, maximumMicros: options.maximumMicros, maxRunMicros: options.maxRunMicros });
+      const reservation = await financial(() => budget.reserve({ run: options.run, attempt: key, model: model.model, endpoint: model.endpoint, evidence: hashValue(evidence), pixels: photo.image.width * photo.image.height, maximumMicros: options.maximumMicros, maxRunMicros: options.maxRunMicros }));
       if ("refused" in reservation) { failure = reservation.refused; await journal.save(key, { state: "refused", reason: reservation.refused }); return "budget"; }
       currentKey = key;
       current = { id: reservation.id, usage: transportUsage(null), latencyMs: 0, error: null };
@@ -128,7 +137,7 @@ export async function runComparisonPhoto(options: {
     settle: async (id) => {
       const attempt = attempts.find(a => a.id === id)!;
       // Ignore model JSON and the adapter's convenience cost. Only the captured HTTP envelope is authoritative.
-      await budget.settle(id, attempt.usage.costMicros);
+      await financial(() => budget.settle(id, attempt.usage.costMicros));
       await journal.save(currentKey!, { state: attempt.usage.costMicros === null ? "unknown" : "settled", attempt });
     },
     extract: async (_ref, _token, value) => { observations = value; return true; },

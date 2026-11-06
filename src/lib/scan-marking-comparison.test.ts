@@ -380,6 +380,42 @@ describe("production request, durable dispatch and transport accounting", () => 
   });
 });
 
+it.each(["http", "schema", "json", "refusal"])("retains fatal settlement state after %s even when cleanup succeeds", async kind => {
+  const data = manifest(), mem = memory(), results: ComparisonResult[] = [];
+  const history = COMPARISON_MODELS.slice(0, 2).map(m => evidence(m));
+  const options = runOptions(data.photos[0], mem);
+  let dispatched = 0, fetched = 0, settlements = 0;
+  const budget: EvaluationBudget = { ...mem.budget, settle: async (id, cost) => {
+    settlements++;
+    if (settlements === 1) throw Error("synthetic settlement interruption");
+    await mem.budget.settle(id, cost);
+  } };
+  const dispatch = async (m: ComparisonModel, p: ComparisonPhoto) => {
+    dispatched++;
+    if (dispatched > 1) return result(p, m);
+    return runComparisonPhoto({ ...options, maxAttempts: 2, budget, fetch: async () => {
+      fetched++;
+      if (kind === "http") return new Response(await response(p).text(), { status: 503 });
+      const content = kind === "json" ? "not JSON" : '{"readings":[]}';
+      return response(p, m, { choices: [{ finish_reason: "stop", message: kind === "refusal" ? { refusal: "refused" } : { content } }] });
+    } });
+  };
+  const matrix = () => runComparisonMatrix({ manifest: data, preflight: history.map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: options.maximumMicros })),
+    history, results, records: [...mem.files.values()] as Parameters<typeof assertComparisonResume>[0], maxRunMicros: 15_000_000, maxAttempts: 2, save: async () => {}, dispatch });
+  await expect(matrix()).rejects.toThrow("budget");
+  expect(dispatched).toBe(1); expect(fetched).toBe(1);
+  expect(mem.calls.filter(c => c === "reserve")).toHaveLength(1);
+  expect(results[0].failure).toBe("reservation-or-settlement-failed");
+  expect(results[0].attempts[0].error).toBe("reservation-or-settlement-failed");
+  expect(results[0].attempts[0].usage.costMicros).toBe(1000);
+  if (kind === "http") {
+    expect(settlements).toBe(2);
+    expect([...mem.files.values()]).toEqual([expect.objectContaining({ state: "settled" })]);
+  }
+  await expect(matrix()).rejects.toThrow("budget");
+  expect(dispatched).toBe(1); expect(fetched).toBe(1);
+});
+
 it("probes the Sonnet reference first without changing the fixed model data", async () => {
   const data = manifest(), history = [evidence(), evidence(COMPARISON_MODELS.at(-1)!)], order: string[] = [];
   await runComparisonMatrix({ manifest: data, preflight: history.map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: reserveMaximum(e) })),
