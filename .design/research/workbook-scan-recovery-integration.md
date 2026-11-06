@@ -17,3 +17,15 @@ Validation: six focused suites passed, 66 tests. Scoped ESLint passed. A scoped 
 Proof: local public-interface and route checks only. The callback tests capture and then run `after`; they do not prove hosted post-response execution. Selector SQL, scheduled integration, reminder episodes, hosted recovery, UI, the full gate and final independent review remain open. No printed source, customer draft, model call, email, family flag, push or PR changed.
 
 HANDOFF_INTEGRATION_IN_PROGRESS
+
+## Parent progress HTTP read
+
+The parent read at `/api/account/scans/progress` uses the live scan session and its existing release gate. The session selects the parent. The request supplies only the selected child and workbook IDs. The scoped store checks the family, child, shipped book and printed revision. The route repeats the session check after the read.
+
+The response holds frozen printed page numbers, accepted scans, gaps, separate marking status, delivery clock status and a minimal persisted trigger status. It returns no raw receipts, photo IDs, audit IDs, answer text, child name or costs. The automatic marking release gate remains separate. When marking is off, accepted progress remains available and review status remains unknown. A missing stored calendar does not become an invented deadline. A current readiness calculation does not become a saved claim.
+
+The reader now includes its frozen page-ID to printed-number map for this explicit projection. No stored page or printed content changes.
+
+Falsifiers: a browser parent or time changing scope or admission, another family's book succeeding, an ended session returning progress, marking completion establishing acceptance, raw private records reaching the response, or a calculated deadline replacing the stored calendar.
+
+Validation: the 15 HTTP cases run through the real pure progress and history readers with memory stores. Together with the two reader suites, all 84 tests passed. Scoped ESLint and TypeScript passed with zero diagnostics. These are local source and synthetic HTTP checks. They do not prove hosted session behavior, UI appearance, reminder dispatch or release. The final combined independent review remains open.

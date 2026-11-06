@@ -84,6 +84,7 @@ export async function readWorkbookScanProgress(store: ScanProgressStore, scope: 
   const auditId = book.delivery ? book.delivery.correction?.auditId ?? book.delivery.auditId : null;
   return {
     status: "available" as const, workbookId: book.workbookId, number: book.number, printedRevision: book.printedRevision,
+    pageNumbers: book.pages.map(p => ({ id: p.id, number: p.number })),
     progress,
     persisted: {
       clock: { status: auditId === null ? "missing-delivery" as const : snapshot.currentCalendar ? "recorded" as const : "clock-required" as const,
