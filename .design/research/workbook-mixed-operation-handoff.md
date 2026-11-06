@@ -160,3 +160,19 @@ Local outputs are `/Users/savargupta/unica-workbook-samples/generator-full-send-
 After #670 merged, the controller rebased onto `e9615fd3299bea8348a0ec7763e4cf739b3dae51`. All four patches matched by range-diff. The tested `src`, `scripts`, `data`, `public`, package files and TypeScript/Vitest configuration were byte-identical before and after that rebase.
 
 These selected-day results do not clear the full plain U16 page 22 coverage hold, #617 mastery exclusions, #531 API acceptance, sample approval, or customer regeneration. No live family rows or worker settings changed.
+
+## Final integration and CI correction
+
+PR #671 merged at `bafcb95bb6ac249abd5365472a224b8963e5ecea`. PR #672 then merged at `6acaa2637ad88f88462800a056cdeddcc90678e2`. The controller rebased this branch onto both. All six existing patches matched by range-diff. The scan reader, scan store, child-profile code and database types match main exactly.
+
+The first remote CI run passed all 16,669 tests, then reached its 18-minute step limit before lint. The test-step limit is now 22 minutes. A separate Sol review approved this one-line correction. Commands, assertions, the per-test timeout, permissions and the 30-minute job limit are unchanged.
+
+The final local gate on runtime source `512854866cde47e1c0d26cc3e2f0282357df755e` passed: 445 files, 16,684 tests, one skipped, exit 0, in 471.93 seconds. Source ESLint and the normal production build also exited 0. An interrupted earlier suite had no final result and was not counted as a pass. Logs and the persistent test exit marker are in the controller evidence directory under `674-after-672-*`.
+
+An independent #611 audit checked ten plain U4 and ten plain U16 books with the public planner and generator. All 20 books were retained. U4 had 5,440 items: 5,190 templates, 250 code-builder items and no writer items. It had no Mixed set slots and retained 240 parent-checked activities. U16 had 5,984 items: 4,774 templates, 10 code-builder items and 1,200 writer items. All 320 Mixed set items used templates. There were zero Mixed set writer requests.
+
+Every remaining writer slot was a U16 warm-up. Each seed had 120 distinct slots, 120 initial slot requests and 54 retry slot requests. The slots still lack tested-step references and remain in #617. Source totals that omit warm-ups are not the full retained-item denominator.
+
+The audit used unrestricted logical fit and fake writing. It does not prove physical fit. A separate unsupported-builder control reached the old writer path. Quality rejected its page because four Mixed items lacked the required fields; all 16 checked items and the failed page remained in the draft. No universal builder coverage is claimed. The fitted page 22 hold remains.
+
+No further real sample pair was run for the unchanged generator after these integration rebases. Paid practice authorization was revoked. No paid API calls, family activation, customer regeneration or worker configuration changes occurred.
