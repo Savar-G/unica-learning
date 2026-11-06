@@ -86,8 +86,8 @@ export async function cancelFamilyPlan(parent: string, cardId: string): Promise<
   if (admission.error) throw new Error(`plan cancel admission: ${admission.error.message}`);
   if (typeof admission.data !== "string" || !admission.data) return { ok: false, error: "pending" };
   const result = await cancelPlan(s, data.stripe_customer_id);
-  // Only this command's successful answer releases its hold. A timeout leaves cancellation pending.
-  await finishControl(db, admission.data, "applied");
+  // A definite no-plan refusal preserves the prior state. A thrown or uncertain result keeps its hold.
+  await finishControl(db, admission.data, result.ok ? "applied" : "refused");
   return result.ok ? { ...result, child: data.child.first_name } : result;
 }
 

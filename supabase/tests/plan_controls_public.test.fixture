@@ -89,6 +89,59 @@ it.each(['declined','unknown','finish_lost'])('paid Restart %s keeps only the re
 
 import {customerPlan} from '@/lib/parent-plan-server';
 import {cancelPlan} from '@/lib/stripe';
+import {cancelFamilyPlan} from '@/lib/parent-plan-server';
+
+async function cancellationFamily(priorCancelled=false){
+ const {randomUUID}=await import('node:crypto');const p=randomUUID(),c=randomUUID(),k=randomUUID(),b=randomUUID();
+ await db.query("insert into parents(id,time_zone) values($1,'America/Vancouver')",[p]);
+ await db.query('insert into children(id,parent_id) values($1,$2)',[c,p]);
+ await db.query('insert into card_setups values($1,$2,$3)',[k,p,c]);
+ await db.query("insert into workbooks(id,parent_id,child_id,number,status,shipped_at) values($1,$2,$3,1,'shipped',now()-interval '2 days')",[b,p,c]);
+ await db.query("insert into workbook_delivery_receipts values($1,$3,$2,now()-interval '1 day')",[b,p,c]);
+ if(priorCancelled){const operation=await rpc('admit_plan_cancel',[p,k]);await rpc('finish_plan_control',[operation,'applied']);}
+ f.db={from:()=>({select:()=>({eq:()=>({eq:()=>({maybeSingle:async()=>({data:{stripe_customer_id:'cus',child:{first_name:'Synthetic'}},error:null})})})})}),rpc:async(name:string,args:any)=>{
+  if(name==='admit_plan_cancel')return {data:await rpc(name,[args.p_parent,args.p_card]),error:null};
+  if(name==='finish_plan_control')return {data:await rpc(name,[args.p_id,args.p_state]),error:null};
+  throw Error('Unexpected cancellation RPC '+name);
+ }};
+ return {p,c,k};
+}
+
+it.each(['empty','canceled','incomplete_expired'].flatMap(status=>[false,true].map(priorCancelled=>({status,priorCancelled}))))('no_plan preserves prior cancelled=$priorCancelled for a complete $status list',async({status,priorCancelled})=>{
+ const {randomUUID}=await import('node:crypto');const a=await cancellationFamily(priorCancelled);let writes=0;
+ f.client=new Stripe('sk_test_offline_no_plan',{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
+  const url=new URL(String(input));
+  if((init?.method??'GET')==='GET'&&url.pathname==='/v1/subscriptions')return Response.json({data:status==='empty'?[]:[{id:'ended',status,metadata:{}}],has_more:false});
+  writes++;throw Error('Unexpected offline provider write');
+ })});
+ expect(await cancelFamilyPlan(a.p,a.k)).toEqual({ok:false,error:'no_plan'});expect(writes).toBe(0);
+ expect(await rpc('plan_control_context',[a.p,a.k])).toMatchObject({cancelled:priorCancelled,blocked:false});
+ expect((await db.query('select state from plan_control_operations where child_id=$1 order by created_at desc limit 1',[a.c])).rows[0].state).toBe('refused');
+ expect((await db.query('select count(*)::int n from family_card_operations where parent_id=$1',[a.p])).rows[0].n).toBe(0);
+ if(priorCancelled){
+  await expect(rpc('start_workbook_run',[a.c,randomUUID(),'synthetic@example.invalid',3,360])).rejects.toThrow('plan_cancelled');
+  await expect(rpc('admit_plan_start',[a.k,1,'initial-'+a.k,'pm'])).rejects.toThrow('restart_required');
+ }else{
+  expect(await rpc('start_workbook_run',[a.c,randomUUID(),'synthetic@example.invalid',3,360])).toMatchObject({status:'started'});
+  expect(await rpc('admit_plan_start',[a.k,1,'initial-'+a.k,'pm'])).toMatchObject({state:'open'});
+ }
+});
+
+it('an incomplete provider list leaves cancellation open and blocks deletion',async()=>{
+ const a=await cancellationFamily();let writes=0;
+ f.client=new Stripe('sk_test_offline_partial_cancel',{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
+  const url=new URL(String(input));
+  if((init?.method??'GET')!=='GET'){writes++;throw Error('Unexpected offline provider write');}
+  if(!url.searchParams.has('starting_after'))return Response.json({data:[{id:'old',status:'canceled',metadata:{}}],has_more:true});
+  return Response.json({error:{type:'api_error',message:'Synthetic incomplete list'}},{status:503});
+ })});
+ await expect(cancelFamilyPlan(a.p,a.k)).rejects.toThrow();expect(writes).toBe(0);
+ expect(await rpc('plan_control_context',[a.p,a.k])).toMatchObject({cancelled:false,blocked:true});
+ expect((await db.query('select state from plan_control_operations where child_id=$1',[a.c])).rows[0].state).toBe('open');
+ expect((await db.query('select count(*)::int n from family_card_operations where parent_id=$1',[a.p])).rows[0].n).toBe(1);
+ expect(await rpc('check_parent_family_deletion',[a.p])).toBe('busy');
+});
+
 it('the cancellation boundary matches cancelPlan while the next charge remains delayed',async()=>{
  const original=Date.parse('2027-01-01T18:00:00Z')/1000,shifted=Date.parse('2027-01-15T18:00:00Z')/1000;
  const subscription={id:'sub',status:'active',customer:'cus',schedule:'schedule',cancel_at_period_end:false,trial_end:null,created:1,items:{data:[{current_period_end:original,price:{unit_amount:7999}}]}};

@@ -41,6 +41,8 @@ Cancel shares the same admission lock. It refuses while a start or another contr
 
 Cancel admission changes the confirmation revision but preserves the last confirmed cancellation state. Only an applied resolution sets the permanent cancellation flag. A refused resolution removes the operation hold and preserves that prior state. The cancellation confirmation uses the current period end, separately from the delayed next charge date.
 
+A complete provider list with no plan to cancel resolves the operation as refused. It keeps the prior confirmed cancellation state. A family waiting for its first plan can still prepare and start its first free month. An incomplete list or failed provider read leaves the operation and hold open.
+
 A definitive paid Restart refusal returns `payment_refused` only after the same durable generation reads as refused. The route then releases its card-operation hold. The parent can update the card and review the price again. A failed result save or an unknown provider result retains the holds and the recovery action.
 
 A pending cancellation currently needs a team check. There is no automatic close or public override. The team must prove that every intended provider command has ended before it calls `finish_plan_control`. A current provider read alone does not prove that an earlier command stopped. Do not close an uncertain operation because it is old. Keep this limit in the release decision.
