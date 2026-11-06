@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const f = vi.hoisted(() => ({
   user: vi.fn(), access: vi.fn(), admin: vi.fn(), stripe: vi.fn(), request: vi.fn(), finish: vi.fn(), alert: vi.fn(), after: vi.fn(),
-  signOut: vi.fn(), prover: vi.fn(), retry: vi.fn(), cookieDelete: vi.fn(), cookieSet: vi.fn(),
+  signOut: vi.fn(), proof: vi.fn(), retry: vi.fn(), cookieDelete: vi.fn(), cookieSet: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), after: f.after }));
@@ -13,14 +13,14 @@ vi.mock("next/headers", () => ({ cookies: async () => ({
 vi.mock("@/lib/supabase-auth", () => ({ sessionClient: async () => ({ auth: { getUser: f.user, signOut: f.signOut } }), adminClient: f.admin }));
 vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access }));
 vi.mock("@/lib/stripe", () => ({ stripe: f.stripe }));
-vi.mock("@/lib/desk-server", () => ({ passwordProver: f.prover }));
 vi.mock("@/lib/family-time-server", () => ({ familyRetryTime: f.retry }));
 vi.mock("@/lib/family-delete", async (original) => ({ ...(await original<typeof import("@/lib/family-delete")>()), requestFamilyDelete: f.request }));
-vi.mock("@/lib/family-delete-server", () => ({ supabaseDeleteStore: () => "store", stripeFamilyPlans: () => "plans", finishFamilyDelete: f.finish, familyDeleteAlert: f.alert }));
+vi.mock("@/lib/family-delete-code", () => ({ codeProof: f.proof }));
+vi.mock("@/lib/family-delete-server", () => ({ supabaseDeleteStore: () => "store", supabaseDeleteCodes: () => "codes", stripeFamilyPlans: () => "plans", finishFamilyDelete: f.finish, familyDeleteAlert: f.alert }));
 import { POST } from "./route";
 
 const parent = "11111111-1111-4111-8111-111111111111";
-const body = { password: "secret", confirm: "DELETE" };
+const body = { code: "123456", confirm: "DELETE" };
 const request = (value: unknown = body, headers: Record<string, string> = {}) => new Request("https://unica.test/api/account/family/delete", {
   method: "POST", headers: { origin: "https://unica.test", "content-type": "application/json", ...headers }, body: typeof value === "string" ? value : JSON.stringify(value),
 });
@@ -31,7 +31,7 @@ beforeEach(() => {
   f.access.mockResolvedValue(true);
   f.admin.mockReturnValue({ db: true });
   f.stripe.mockReturnValue({ s: true });
-  f.prover.mockReturnValue("prover");
+  f.proof.mockReturnValue("proof");
   f.signOut.mockResolvedValue({ error: null });
   f.request.mockResolvedValue({ ok: true, plansStopped: 2 });
   f.retry.mockResolvedValue({ retryWhen: "at 3:15 PM", retryTime: "3:15 PM" });
@@ -63,13 +63,14 @@ it("answers 503 with no Stripe key or database key, before any step", async () =
 });
 it("takes the parent and the email from the session, whatever the body says", async () => {
   await POST(request({ ...body, parent: "22222222-2222-4222-8222-222222222222", email: "other@example.invalid" }));
-  expect(f.prover).toHaveBeenCalledWith(parent, "parent@example.invalid");
+  expect(f.proof).toHaveBeenCalledWith("codes", parent, "parent@example.invalid");
   expect(f.request.mock.calls[0][0]).toBe(parent);
-  expect(f.request.mock.calls[0][2]).toBe("prover");
+  expect(f.request.mock.calls[0][2]).toBe("proof");
 });
 it.each([
   [{ ok: false, error: "invalid" }, 400],
-  [{ ok: false, error: "wrong_password", attemptsLeft: 3 }, 403],
+  [{ ok: false, error: "wrong_code", attemptsLeft: 3 }, 403],
+  [{ ok: false, error: "code_ended" }, 403],
   [{ ok: false, error: "protected" }, 403],
   [{ ok: false, error: "not_found" }, 404],
   [{ ok: false, error: "busy" }, 409],
@@ -142,4 +143,18 @@ it("keeps the request and claims no sign-out when both tries return an error", a
   expect(log).toHaveBeenCalledTimes(2);
   expect(f.after).toHaveBeenCalledTimes(1);
   log.mockRestore();
+});
+
+it("answers 409 for an open plan start, and tells the team, whether or not plans stopped", async () => {
+  f.after.mockImplementation((work: () => unknown) => work());
+  for (const plansStopped of [0, 2]) {
+    f.alert.mockClear();
+    f.request.mockResolvedValue({ ok: false, error: "plan_start", plansStopped });
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ ok: false, error: "plan_start", plansStopped });
+    expect(f.alert).toHaveBeenCalledExactlyOnceWith(parent, { plansStopped, state: "plan_start" });
+  }
+  expect(f.finish).not.toHaveBeenCalled();
+  expect(f.signOut).not.toHaveBeenCalled();
 });

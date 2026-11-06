@@ -4,6 +4,7 @@ import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { childProfileAiClient } from "@/lib/child-profile-ai";
 import { readChildProfile, rebuildChildProfile, type ChildProfileStore } from "@/lib/child-profile";
+import { SpendRefused } from "@/lib/maya-spend-ai";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
 import { learningEvents, type LearningEvent, type NewLearningEvent } from "@/lib/learning-events";
 import { hasOperation, type QuestionLookup, type QuestionPackage, type QuestionRef } from "@/lib/question-package";
@@ -399,3 +400,41 @@ describe("a profile stored before the findings", () => {
 function never(): never {
   throw new Error("expected a build");
 }
+
+describe("the findings when Maya's spending stops the AI (review of PR #640)", () => {
+  async function withFindings() {
+    const f = family();
+    const helped = await f.add(call());
+    const ai = fakeAiClient({ answer: () => ({ findings: [finding([helped.id])] }) });
+    const first = await rebuildChildProfile(CHILD, { ...f, ai });
+    expect(first).toMatchObject({ built: true, findings: { outcome: "stored" } });
+    return { f, earlier: (await readChildProfile(f.profiles, CHILD))!.profile.ai };
+  }
+
+  it("keeps the earlier findings beside the new facts in a rebuild with no request", async () => {
+    const { f, earlier } = await withFindings();
+    await f.add(call());
+    const result = await rebuildChildProfile(CHILD, { ...f, ai: null, keepFindings: true });
+    expect(result).toMatchObject({ built: true, findings: { outcome: "off" } });
+    const now = (await readChildProfile(f.profiles, CHILD))!.profile;
+    expect(now.ai).toEqual(earlier);
+    expect(now.events.counted).toBe(2);
+  });
+
+  it("keeps the earlier findings when the ledger refuses the request", async () => {
+    const { f, earlier } = await withFindings();
+    await f.add(call());
+    const refused = { model: "m", json: async () => { throw new SpendRefused("week_used"); } };
+    const result = await rebuildChildProfile(CHILD, { ...f, ai: refused });
+    expect(result).toMatchObject({ built: true, findings: { outcome: "kept" } });
+    expect((await readChildProfile(f.profiles, CHILD))!.profile.ai).toEqual(earlier);
+  });
+
+  it("still drops the findings when the AI fails for another reason", async () => {
+    const { f } = await withFindings();
+    await f.add(call());
+    const failing = { model: "m", json: async () => { throw new Error("no answer"); } };
+    expect(await rebuildChildProfile(CHILD, { ...f, ai: failing })).toMatchObject({ findings: { outcome: "failed" } });
+    expect((await readChildProfile(f.profiles, CHILD))!.profile.ai).toBeNull();
+  });
+});

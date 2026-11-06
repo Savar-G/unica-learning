@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { ChildNameForm } from "@/components/account-child-name";
+import { FamilyDelete } from "@/components/family-delete";
 import { LearningSummary } from "@/components/learning";
 import { gradeLabel } from "@/lib/assessment/grades";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
@@ -28,6 +29,7 @@ export async function childDetails(db: SupabaseClient<Database>) {
             <h4>How {kid.first_name} learns</h4>
             {answers ? <LearningSummary answers={answers} /> : <p className="small">No answers yet.</p>}
             <p className="small"><Link href={learningPath(kid.id)}>{answers ? `Change how ${kid.first_name} learns` : `Tell us how ${kid.first_name} learns`}</Link></p>
+            <FamilyDelete child={{ id: kid.id, name: kid.first_name }} />
           </section>
         );
       })}

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { sendEmailOnce, type DeliveryOutcome, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
+import { sendEmailOnce, sendEmailOnceInTime, type DeliveryOutcome, type EmailMessage, type MailTransport, type ReleasableLedger, type SendLedger, type TimedDeliveryOutcome } from "@/lib/email-delivery";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { findSavedCard, recordSavedCard, type SavedCards, type StripeAnswer } from "@/lib/saved-card";
 import { savedCards } from "@/lib/saved-card-server";
@@ -67,8 +67,48 @@ export async function sendWorkbookNotice(db: SupabaseClient<Database>, key: Work
   return sendEmailOnce(workbookEmailLedger(db, message), key, message, { transport });
 }
 
-/** The confirmation when the free month starts. The ledger allows one per saved card, so a retry cannot send a second copy. */
-export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport): Promise<DeliveryOutcome> {
+/** The plan start email's send key: the start's own record. */
+interface PlanEmailKey { cardId: string; generation: number }
+
+/** The record of one plan start as the send ledger of its email (migration plan_start_holds_deletion). Each generation has its own claim. */
+function planStartEmailLedger(db: SupabaseClient<Database>, message: EmailMessage): ReleasableLedger<PlanEmailKey, PlanEmailKey & { token: string }> {
+  async function outcome(c: PlanEmailKey & { token: string }, status: "sent" | "failed" | "unknown", emailId: string | null, error: string | null) {
+    try {
+      const { error: failed } = await db.rpc("note_plan_start_email_send", { p_card: c.cardId, p_generation: c.generation, p_token: c.token, p_status: status, p_email_id: emailId, p_error: error });
+      if (failed) console.error("[plan start email] outcome not recorded; claim remains held", c.cardId, failed.message);
+    } catch { console.error("[plan start email] outcome write failed; claim remains held", c.cardId); }
+  }
+  return {
+    async claim(key) {
+      const token = randomUUID();
+      const { data, error } = await db.rpc("claim_plan_start_email", {
+        p_card: key.cardId, p_generation: key.generation, p_token: token,
+        p_message: { to: message.to, subject: message.subject, text: message.text, html: message.html ?? null },
+      });
+      if (error) throw Error(error.message);
+      return data ? { ...key, token } : null;
+    },
+    sent: (c, emailId) => outcome(c, "sent", emailId, null),
+    refused: (c, error) => outcome(c, "failed", null, error),
+    unknown: (c, error) => outcome(c, "unknown", null, error),
+    async release(c) {
+      try {
+        const { data, error } = await db.rpc("release_plan_start_email", { p_card: c.cardId, p_generation: c.generation, p_token: c.token });
+        if (error) console.error("[plan start email] release failed; claim remains held", c.cardId, error.message);
+        return !error && data === true;
+      } catch {
+        console.error("[plan start email] release failed; claim remains held", c.cardId);
+        return false;
+      }
+    },
+  };
+}
+
+/**
+ * The confirmation when a free month starts: one per plan start, so a retry cannot send a second copy, and a later start of the same
+ * saved card has its own. `inTime`: when it answers false, also after the transport's wait, nothing goes and the claim is given back.
+ */
+export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; generation: number; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport, inTime: () => boolean = () => true): Promise<TimedDeliveryOutcome> {
   const { data: card, error } = await db.from("card_setups").select("parent_id, child_id").eq("id", p.cardId).maybeSingle();
   if (error || !card) throw Error("store_failed");
   const [parent, child] = await Promise.all([
@@ -82,7 +122,34 @@ export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { card
     sender: { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
     ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, price: p.price, firstCharge, planUrl: `${p.origin}/account/plan` }),
   };
-  return sendEmailOnce(workbookEmailLedger(db, message), { cardId: p.cardId, kind: "plan_start", workbookNumber: 0, delivery: null }, message, { transport });
+  return sendEmailOnceInTime(planStartEmailLedger(db, message), { cardId: p.cardId, generation: p.generation }, message, { transport, inTime });
+}
+
+/** A claim this old stopped with no outcome (the same limit as the dispatch's check of a welcome). The email may have gone. */
+const SENDING_STOPPED_MS = 10 * 60 * 1000;
+
+/**
+ * After a busy send of a plan start's email: what that generation's claim says. `pending`: another run is still sending it, or a refused
+ * send may be claimed again. `sent` and `unknown` are final. Throws when it cannot read.
+ */
+export async function planStartEmailClaim(db: SupabaseClient<Database>, cardId: string, generation: number, now = Date.now()): Promise<"pending" | "sent" | "unknown"> {
+  const state = (status: string | null | undefined, claimedAt: string | null | undefined): "pending" | "sent" | "unknown" => {
+    if (status === "sent") return "sent";
+    if (status === "unknown" || status === "skipped") return "unknown";
+    if (status === "sending" && claimedAt && now - Date.parse(claimedAt) >= SENDING_STOPPED_MS) return "unknown";
+    return "pending";
+  };
+  if (generation > 0) {
+    const { data, error } = await db.from("plan_starts").select("email_send_status, email_claimed_at, email_state").eq("card_setup_id", cardId).eq("generation", generation).maybeSingle();
+    if (error) throw Error("store_failed");
+    if (data?.email_state === "sent" || data?.email_state === "unknown") return data.email_state;
+    if (data?.email_send_status) return state(data.email_send_status, data.email_claimed_at);
+    if (generation > 1) return "pending";
+  }
+  // Generation 0 has only the old ledger. Generation 1 also respects a claim sent by an older deployment.
+  const { data, error } = await db.from("workbook_emails").select("status, claimed_at").eq("card_setup_id", cardId).eq("kind", "plan_start").eq("workbook_number", 0).maybeSingle();
+  if (error) throw Error("store_failed");
+  return state(data?.status, data?.claimed_at);
 }
 
 export async function sendQueuedWorkbookWelcome(db: SupabaseClient<Database>, cardId: string, transport?: MailTransport) {

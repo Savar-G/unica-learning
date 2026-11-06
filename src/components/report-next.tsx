@@ -223,7 +223,7 @@ export function BookCall({ childName }: { childName: string }) {
   return (
     <div className="rpt-next rpt-call">
       <h3>Questions about {childName}&apos;s results?</h3>
-      <p>Book a free 15-minute call with Cedric or Savar, Unica&apos;s founders. We go through the report with you, explain where {childName} starts, and answer your questions.</p>
+      <p>Book a free 15-minute call with Savar or Cedric, Unica&apos;s founders. We go through the report with you, explain where {childName} starts, and answer your questions.</p>
       <a className="btn ghost" href={BOOKING_URL} target="_blank" rel="noopener" onClick={() => track("book_call", { src: "report" })}>
         Book a call <span className="arr">→</span>
       </a>

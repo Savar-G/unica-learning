@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checked } from "@/lib/assessment/scripted-child";
-import { createSession, everyQuestion, finish, learnerProfile, nextQuestion, storedTest, submitAnswer, type ProfileAnswer, type Session } from "@/lib/assessment";
+import { createAdaptiveSession, givenQuestions, lockAdaptiveBlock, createSession, everyQuestion, finish, learnerProfile, nextQuestion, storedTest, submitAnswer, type ProfileAnswer, type Session } from "@/lib/assessment";
 import { EXPORT_DATASETS, exportChunks, type ExportReader, type ExportRequest } from "@/lib/admin-export";
 import { memoryExportReader, type ExportData } from "@/lib/admin-export-memory";
 
@@ -312,6 +312,23 @@ describe("the questions as drawn", () => {
     assessments: [test(1, { route, test: stored }), test(2, { route: null, status: "in_progress", test: stored })],
     testFamilies: [uuid(1003)],
   };
+
+  it("exports the adaptive pool and selected block positions", async () => {
+    let session = createAdaptiveSession({ grade: 4, province: "BC" }, 1);
+    for (let i = 0; i < 6; i++) {
+      const q = nextQuestion(session)!;
+      session = submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 });
+    }
+    session = lockAdaptiveBlock(session);
+    const stored = storedTest(session);
+    const rows = await csv({ assessments: [test(1, { route: "stay", test: stored })] }, { dataset: "questions", withTests: true });
+    expect(rows).toHaveLength(stored.adaptive!.pool.length);
+    const selected = rows.filter(r => r.position !== "").sort((a,b) => Number(a.position)-Number(b.position));
+    expect(selected.map(r => r.question_id)).toEqual(givenQuestions(stored, "stay").map(q => q.id));
+    expect(selected.map(r => r.position)).toEqual(Array.from({ length: 12 }, (_,i) => String(i)));
+    expect(selected.map(r => r.stage)).toEqual([...Array(6).fill("1"), ...Array(6).fill("2")]);
+    expect(rows.filter(r => r.position === "").every(r => r.stage === "")).toBe(true);
+  });
 
   it("are one row per question of the stored test, each with its place in the test as the answers number it", async () => {
     const rows = await csv(data, { dataset: "questions", withTests: false });

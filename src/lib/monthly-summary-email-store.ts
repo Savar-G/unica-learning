@@ -150,7 +150,7 @@ function monthlyLedger(admin: SupabaseClient<Database>, claimLimitMs: number): R
       if (d.retry) {
         if (d.retry.attempts >= MAX_SEND_ATTEMPTS) return null;
         const { data, error } = await admin.from("email_log")
-          .update({ status: "claimed", attempts: d.retry.attempts + 1, unsubscribe_hash, error: null })
+          .update({ status: "claimed", attempts: d.retry.attempts + 1, unsubscribe_hash, error: null, copy_child_ids: d.childIds })
           .eq("id", d.retry.logId).eq("kind", "monthly_summary").eq("status", "failed").eq("attempts", d.retry.attempts)
           .select("id").abortSignal(limit);
         if (error) {
@@ -160,7 +160,7 @@ function monthlyLedger(admin: SupabaseClient<Database>, claimLimitMs: number): R
         return data?.[0]?.id ?? null;
       }
       const { data, error } = await admin.from("email_log")
-        .insert({ parent_id: d.parentId, kind: "monthly_summary", summary_month: `${d.month}-01`, status: "claimed", attempts: 1, unsubscribe_hash })
+        .insert({ parent_id: d.parentId, kind: "monthly_summary", summary_month: `${d.month}-01`, status: "claimed", attempts: 1, unsubscribe_hash, copy_child_ids: d.childIds })
         .select("id").abortSignal(limit).single();
       // One row per parent and month (unique index): another run claimed it first.
       if (error?.code === "23505") return null;

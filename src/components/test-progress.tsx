@@ -13,6 +13,7 @@ export type ProgressAt = "question" | "check" | "halfway" | "facts" | "help" | "
 export interface TestProgressProps {
   /** Questions answered so far. */
   answered: number;
+  block?: { first: number; end: number };
   total: number;
   /** Questions before the halfway ring. */
   breakAfter: number;
@@ -30,7 +31,15 @@ export interface TestProgressProps {
 
 const LABEL: Record<Exclude<ProgressAt, "question">, string> = { check: "Check", halfway: "Halfway", facts: "Quick facts", help: "Almost done", end: "Done" };
 
-export function TestProgress({ answered, total, breakAfter, at, current: shown }: TestProgressProps) {
+export function TestProgress({ answered, block, total, breakAfter, at, current: shown }: TestProgressProps) {
+  if (block) {
+    const count = block.end - block.first + 1;
+    const done = Math.min(count, Math.max(0, answered - block.first + 1));
+    const current = shown ?? answered;
+    return <div className="test-progress"><div className="test-progress-bar" role="progressbar" aria-label="Part progress" aria-valuemin={0} aria-valuemax={count} aria-valuenow={done}>
+      <div className="test-progress-seg" aria-hidden>{Array.from({ length: count }, (_,i) => <span key={i} className={i + block.first - 1 === current ? "is-now" : i < done ? "is-done" : undefined} />)}</div>
+    </div><span className="test-progress-count">{at === "halfway" ? "Break" : at === "facts" ? "Quick facts" : at === "check" && shown === undefined ? "Check" : `Question ${current + 1}`}</span></div>;
+  }
   const ringAt = at === "halfway" || at === "facts";
   const current = shown ?? (at === "question" ? answered : -1);
   const onQuestion = at === "question" || (at === "check" && current >= 0);

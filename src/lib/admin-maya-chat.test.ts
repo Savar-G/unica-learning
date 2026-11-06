@@ -2,49 +2,49 @@ import { describe, expect, it, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 vi.mock("server-only", () => ({}));
-import { setChatFamily } from "@/lib/admin-maya-chat";
+import { setChatFamily, type ChatFamilyChange, type ChatFamilyResult } from "@/lib/admin-maya-chat";
+import { setTestAccount } from "@/lib/admin-store";
 
-// The admin's rehearsal change (#530, review of PR #584). The database refuses a rehearsal row for a family without
-// its test mark (trigger maya_chat_family_guard). Here the admin's read still sees the test mark, as when another admin
-// removed it in between, and the database refuses the update: the admin gets the plain refusal, not a failure.
-
-type Row = Record<string, unknown>;
-function adminDb(tables: Record<string, Row[]>, refuseUpdate = false) {
-  return createClient<Database>("https://test.invalid", "test", { global: { fetch: async (input, init) => {
-    const url = new URL(String(input));
-    const table = url.pathname.split("/").pop()!;
-    let rows = tables[table] ?? [];
-    for (const [key, raw] of url.searchParams) if (raw.startsWith("eq.")) rows = rows.filter((r) => String(r[key]) === raw.slice(3));
-    if (init?.method === "PATCH") {
-      if (refuseUpdate) return Response.json({ code: "55000", message: "maya_chat_rehearsal_not_test_family" }, { status: 400 });
-      const change = JSON.parse(String(init.body));
-      for (const r of rows) Object.assign(r, change);
-      return Response.json(rows);
-    }
-    const single = (init?.headers as Record<string, string> | undefined)?.Accept === "application/vnd.pgrst.object+json"
-      || new Headers(init?.headers).get("accept") === "application/vnd.pgrst.object+json";
-    return Response.json(single ? rows[0] ?? null : rows);
+// Exercise the exported admin functions through the real Supabase client. Direct table access fails, so these
+// controls cannot pass while a writer still uses the old tuple-before-parent path. Postgres concurrency is checked
+// separately by supabase/tests/maya_admin_lock_order.py.
+function session(response: unknown = "ok", status = 200) {
+  const requests: { path: string; body: unknown }[] = [];
+  const db = createClient<Database>("https://test.invalid", "test", { global: { fetch: async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    requests.push({ path, body: JSON.parse(String(init?.body ?? "null")) });
+    if (!path.startsWith("/rest/v1/rpc/")) return Response.json({ message: "Direct table access refused" }, { status: 403 });
+    return Response.json(response, { status });
   } } });
+  return { db, userId: "admin", email: "admin@example.com", requests };
 }
-const session = (db: ReturnType<typeof adminDb>) => ({ db, userId: "admin", email: "admin@example.com" });
 
-describe("rehearsal changes by an admin", () => {
-  it("reports the database refusal when the test mark went away after the admin's read", async () => {
-    const db = adminDb({ maya_chat_families: [{ parent_id: "p", rehearsal: false }], test_accounts: [{ parent_id: "p" }] }, true);
-    expect(await setChatFamily(session(db), "p", { rehearsal: true })).toBe("not_test_family");
+describe("admin family changes", () => {
+  it.each<[ChatFamilyChange, string, boolean]>([
+    [{ listed: true }, "listed", true], [{ listed: false }, "listed", false],
+    [{ rehearsal: true }, "rehearsal", true], [{ rehearsal: false }, "rehearsal", false],
+  ])("changes chat through the parent-first function: %j", async (change, kind, enabled) => {
+    const a = session();
+    expect(await setChatFamily(a, "p", change)).toBe("ok");
+    expect(a.requests).toEqual([{ path: "/rest/v1/rpc/admin_set_maya_chat_family", body: { p_parent: "p", p_change: kind, p_enabled: enabled } }]);
   });
-  it("marks a listed test family", async () => {
-    const families = [{ parent_id: "p", rehearsal: false }];
-    const db = adminDb({ maya_chat_families: families, test_accounts: [{ parent_id: "p" }] });
-    expect(await setChatFamily(session(db), "p", { rehearsal: true })).toBe("ok");
-    expect(families[0].rehearsal).toBe(true);
+
+  it.each<ChatFamilyResult>(["ok", "not_test_family", "not_listed", "taken"])("keeps the database result: %s", async (result) => {
+    expect(await setChatFamily(session(result), "p", { rehearsal: true })).toBe(result);
   });
-  it("refuses a family that is not a test family before writing", async () => {
-    const db = adminDb({ maya_chat_families: [{ parent_id: "p", rehearsal: false }], test_accounts: [] });
-    expect(await setChatFamily(session(db), "p", { rehearsal: true })).toBe("not_test_family");
+
+  it.each([true, false])("changes the test mark through the parent-first function: %s", async (test) => {
+    const a = session(null);
+    await setTestAccount(a, "p", test);
+    expect(a.requests).toEqual([{ path: "/rest/v1/rpc/admin_set_test_account", body: { p_parent: "p", p_test: test } }]);
   });
-  it("says so when the family left the list before the change", async () => {
-    const db = adminDb({ maya_chat_families: [], test_accounts: [{ parent_id: "p" }] });
-    expect(await setChatFamily(session(db), "p", { rehearsal: false })).toBe("not_listed");
+
+  it.each(["admin_required", "family_unavailable"])("reports a refused write: %s", async (message) => {
+    await expect(setChatFamily(session({ message }, 403), "p", { listed: true })).rejects.toThrow(message);
+    await expect(setTestAccount(session({ message }, 403), "p", false)).rejects.toThrow(message);
+  });
+
+  it.each([null, "unexpected"])("refuses an invalid database result: %s", async (result) => {
+    await expect(setChatFamily(session(result), "p", { rehearsal: false })).rejects.toThrow();
   });
 });

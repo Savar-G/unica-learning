@@ -49,6 +49,11 @@ describe("scheduled family deletion", () => {
     expect(cursors).toEqual(["family"]);
     expect(attempts).toEqual([24_998]);
   });
+  it("counts a family kept for an open plan start", async () => {
+    const result = await runRetentionBatch(["family"], { cursor: async () => null, advance: async () => {}, run: async () => ({ state: "plan_start" }) }, () => 840_000);
+    expect(result).toMatchObject({ eligible: 1, plan_start: 1, deleted: 0, failed: 0 });
+  });
+
   it("saves progress before a slow failure and starts the next run with later families", async () => {
     let cursor: string | null = null;
     let remaining = 45_000;

@@ -11,6 +11,8 @@ import {
 } from "@/lib/assessment";
 import { readBookingCustomers, readCustomerPayments } from "@/lib/retention-stripe";
 import { stripe } from "@/lib/stripe";
+import { planNotOver } from "@/lib/card-reconcile";
+import { customerSubscriptions } from "@/lib/stripe-subscriptions";
 
 /** Missing migration permits the existing card path, but no other failure does. Deletion itself never falls back. */
 export async function beginCardOperation(db: SupabaseClient<Database>, parent: string, token: string): Promise<boolean> {
@@ -307,13 +309,32 @@ export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: st
   parent = parent.toLowerCase();
   const token = randomUUID();
   const args = { p: parent, token };
-  type Claim = { state: "ready" | "busy" | "excluded"; reason?: "request" | "retention"; phase?: "checking" | "deleting" };
+  type Claim = { state: "ready" | "busy" | "excluded" | "plan_start"; reason?: "request" | "retention"; phase?: "checking" | "deleting" };
   // jsonb: the claim object each function builds, read on its own, so a change of either answer type fails the build.
   const claim = retention
     ? (await rpc(db, "claim_family_retention", { ...args, subscription_ended_at: retention.endedAt })) as Claim
     : (await rpc(db, "claim_family_deletion", args)) as Claim;
   if (claim.state !== "ready") return { state: claim.state };
   const action = async (): Promise<FamilyDeletionResult> => {
+    // An older deployment could queue deletion while a start was open. Recovery may find its subscription later.
+    // Recheck both phases, including a retry already in deleting. No Storage or Auth removal precedes cancellation.
+    const recovered = await rpc(db, "family_deletion_start_customers", { p: parent });
+    if (recovered.length) {
+      const provider = execution?.payments ?? stripe();
+      if (!provider) throw new Error("Payment provider unavailable");
+      const running = async (customer: string) => {
+        const plans = await customerSubscriptions(provider, customer, paymentOptions(deadline, execution));
+        if (plans.some(plan => (typeof plan.customer === "string" ? plan.customer : plan.customer?.id) !== customer)) throw new Error("Subscription scope changed");
+        return plans.filter(plan => planNotOver(plan.status));
+      };
+      for (const { customer } of recovered) {
+        if (!customer) throw new Error("Recovered customer unreadable");
+        for (const plan of await running(customer)) {
+          await provider.subscriptions.cancel(plan.id, { invoice_now: false, prorate: false }, paymentOptions(deadline, execution));
+        }
+        if ((await running(customer)).length) throw new Error("Recovered subscription can still charge");
+      }
+    }
     if (claim.phase === "checking") {
       const payments = paymentStore(db, parent, token, deadline, control, execution);
       let keep = false;

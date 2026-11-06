@@ -63,6 +63,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
     return (
       <Desk
         name={name}
+        childId={lock.childId}
         chatNote={chat.note}
         problem={view ? `There is no workbook here yet. When ${name ? `${name}'s` : "your"} workbook arrives, its pages show here.`
           : "Your workbook cannot be shown right now. Try again in a moment."}
@@ -82,6 +83,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
       // A new workbook or page starts the desk again, with the question asked for.
       key={`${workbook.id}-${page.number}`}
       name={name}
+      childId={lock.childId}
       chatUsage={chat.usage}
       chatNote={chat.note}
       noticeLine={noticeDue ? MAYA_NOTICE_DESK_LINE : null}

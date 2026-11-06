@@ -136,6 +136,14 @@ function workFor({ shownWork = [], workReviews }: ReportContext): ReportWork[] {
     .map(({ w: { questionId, prompt, correct, image, text } }) => ({ questionId, prompt, correct, image, text, comment: sure.get(questionId) ?? null }));
 }
 
+/**
+ * The report calls its test unreliable: the stored report has the reliability note (#189). The one read of that fact: a
+ * rescore can change the test's pace flag, but not the report the parent reads. A JSON read of a missing key gives null.
+ */
+export function reportCallsUnreliable(model: { reliability?: unknown }): boolean {
+  return model.reliability !== undefined && model.reliability !== null;
+}
+
 export function reportModel(placement: Placement, context: ReportContext): ReportModel {
   const { workingLevel, grade } = placement;
   const tested = testedGrade(grade, placement.levels);

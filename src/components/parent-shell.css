@@ -133,7 +133,9 @@
 .support-page .pd-delete .btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
 .support-page .pd-delete .btn.danger:hover:not(:disabled) { background: #b92620; border-color: #b92620; color: #fff; }
 .support-page .pd-delete .btn.danger:disabled { opacity: 0.45; cursor: not-allowed; }
-.support-page .pd-delete .fld .hint { font-size: 14px; }
+.support-page .pd-delete-ask { margin-top: 24px; }
+.support-page .pd-delete-ask .acct-alert { margin-bottom: 16px; }
+.support-page .pd-delete-sent { margin: 0 0 20px; overflow-wrap: anywhere; }
 
 /* The phone */
 .pd-top, .pd-bar, .pd-main-kid { display: none; }
@@ -165,3 +167,22 @@
   .pd-sheet a { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 10px; border-radius: 10px; color: var(--ink); text-decoration: none; font-size: 15.5px; }
   .pd-sheet a[aria-current="page"] { color: #b43d12; font-weight: 500; }
 }
+
+/* The Account tab's billing (#554) */
+.support-page .pd-plans { margin: 12px 0 0; }
+.pd-plans .acct-plan b { font-size: 19px; font-weight: 500; }
+.support-page .pd-invoices { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line-soft); }
+.support-page .pd-invoices li { display: grid; grid-template-columns: minmax(150px, 1.3fr) minmax(70px, 1fr) minmax(90px, 1fr) minmax(80px, 1fr) minmax(64px, auto); gap: 4px 16px; align-items: center; margin: 0; padding: 14px 0; border-bottom: 1px solid var(--line-soft); }
+.pd-invoice-amount { font-variant-numeric: tabular-nums; }
+.pd-invoice-status { color: var(--ink-2); }
+.pd-invoice-link { justify-self: end; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+@media (max-width: 599px) {
+  .support-page .pd-invoices li { grid-template-columns: 1fr auto; }
+  .pd-invoice-day { grid-column: 1; }
+  .pd-invoice-amount { grid-column: 2; grid-row: 1; justify-self: end; }
+  .pd-invoice-child { grid-column: 1; color: var(--ink-2); }
+  .pd-invoice-status { grid-column: 1; }
+  .pd-invoice-link { grid-column: 2; grid-row: 2 / span 2; display: inline-flex; align-items: center; min-height: 44px; }
+}
+.pd-main .support-page > .acct-alert { margin-top: 20px; }

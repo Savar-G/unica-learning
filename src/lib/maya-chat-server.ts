@@ -7,13 +7,14 @@ import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
 import { chatFamilyGate, chatGradeLine, chatServesGrade, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
 import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
-import type { BoardHistory } from "@/lib/board-history";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { mayaNotice } from "@/lib/maya-notice";
 import { noticeStore } from "@/lib/maya-notice-store";
 import { workbookStore } from "@/lib/workbook-store";
-import { type FamilyZone } from "@/lib/family-time";
+import { weekOf, type FamilyZone } from "@/lib/family-time";
+import { mayaSpendLedger } from "@/lib/maya-spend-server";
+import type { ChatSpend } from "@/lib/maya-chat";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
 
 type DB = SupabaseClient<Database>;
@@ -54,10 +55,29 @@ export async function chatAccess(db: DB, parent: string): Promise<boolean> {
 
 export async function readChatUsage(db: DB, parent: string, child: string, zone: FamilyZone, now = Date.now()): Promise<ChatUsage> {
   const window = chatWindow(now, zone);
-  const { count, error } = await db.from("maya_chat_messages").select("id", { count: "exact", head: true })
-    .eq("parent_id", parent).eq("child_id", child).gte("received_at", new Date(window.start).toISOString()).lt("received_at", new Date(window.end).toISOString());
+  const [{ count, error }, spend] = await Promise.all([
+    db.from("maya_chat_messages").select("id", { count: "exact", head: true })
+      .eq("parent_id", parent).eq("child_id", child).gte("received_at", new Date(window.start).toISOString()).lt("received_at", new Date(window.end).toISOString()),
+    readChatSpend(parent, child, zone, now),
+  ]);
   if (error || count === null) throw Error("Chat usage could not be read");
-  return chatUsage(count, now, zone);
+  return { ...chatUsage(count, now, zone), spend };
+}
+
+/**
+ * The child's spending week (D-290), read with the secret key (the ledger has no parent access). A ledger that cannot be
+ * read shows Maya as paused, as the call module refuses new paid work then.
+ */
+async function readChatSpend(parent: string, child: string, zone: FamilyZone, now: number): Promise<ChatSpend> {
+  try {
+    const admin = adminClient();
+    if (!admin) throw Error("no secret key");
+    const week = await mayaSpendLedger(admin).week({ parentId: parent, childId: child });
+    return { state: week.state, notice: week.notice, resetsAt: week.resetsAt, zone: week.zone };
+  } catch (e) {
+    console.error("[desk chat] Maya spending could not be read", e instanceof Error ? e.message : "unknown");
+    return { state: "paused", notice: false, resetsAt: weekOf(now, zone).resetsAt, zone };
+  }
 }
 
 /** The whole chat check on every chat request: the family first, then the child's grade (Grade 3 and up). */
@@ -92,21 +112,19 @@ export type ChatAction = { type: "start"; id: string; question: WorkbookQuestion
   { type: "child"; id: string; messageId: string; revision: number; text: string } | { type: "end"; id: string; revision: number };
 
 /**
- * The chat's board from the child's desk (#534): the desk's copy of the board, kept with the call so the admin replay
- * shows the child's ink. Only for a chat of this parent and child (the store checks it too, R625b-5), live or ended a
- * few minutes ago at most, and one board a second (R625-6). An older copy than the kept one is a conflict: the answer
- * carries the kept board (R625b-4). Never changes the chat's revision.
+ * The child's ink events of a chat from the desk (#534, #635): appended to the call's log at sequences `from`, `from + 1`,
+ * …, each sequence once; only for a chat of this parent and child (the store checks it too), live or ended a few minutes
+ * ago at most, one append a second. `held` is the last sequence the call holds. Never changes the chat's revision.
  */
-export async function saveChatBoard(ctx: ChatContext, id: string, board: string): ReturnType<ReturnType<typeof mayaCalls>["saveInk"]> {
+export async function appendChatInk(ctx: ChatContext, id: string, from: unknown, events: unknown): ReturnType<ReturnType<typeof mayaCalls>["appendInk"]> {
   const { db, parent, child } = ctx;
-  return mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).saveInk(id, { parentId: parent, childId: child }, board);
+  return mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).appendInk(id, { parentId: parent, childId: child }, from, events);
 }
 
-/** The board the call keeps for a chat of this child (R625b-4), for a desk that has no draft of it; null when none. */
-export async function readChatBoard(ctx: ChatContext, id: string): Promise<BoardHistory | null> {
-  const record = await mayaCallStore(ctx.db).get(id);
-  if (!record || record.kind !== "chat" || record.parentId !== ctx.parent || record.childId !== ctx.child) return null;
-  return record.childInk ?? null;
+/** The ink log the call holds for a chat of this child (#635, R639-4), for the board the desk starts from; null when none. */
+export async function readChatInk(ctx: ChatContext, id: string): ReturnType<ReturnType<typeof mayaCalls>["readInk"]> {
+  const { db, parent, child } = ctx;
+  return mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).readInk(id, { parentId: parent, childId: child });
 }
 
 /** One authorized desk request. The database serializes message admission before the shared call module runs. */

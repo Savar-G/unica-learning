@@ -116,6 +116,6 @@ describe("a stored workbook question", () => {
     expect(call.view.outcome?.reason).toBe("solved");
     expect(f.store.rows()[0].question).toEqual(selected.ref);
     expect(call.view.model.fake).toBe(true);
-    expect(rebuild).toHaveBeenCalledWith(f.ids.child, { factsOnly: true });
+    expect(rebuild).toHaveBeenCalledWith(f.ids.child, expect.objectContaining({ factsOnly: true }));
   });
 });
