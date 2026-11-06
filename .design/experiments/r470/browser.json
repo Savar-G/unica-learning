@@ -1,0 +1,104 @@
+{
+  "computer": "Savars-MacBook-Pro-5.local",
+  "environment": "Local normal application with hosted Auth/database and one owned test family",
+  "initial": {
+    "pages": 6,
+    "statuses": [
+      "ready",
+      "blank",
+      "unscored",
+      "review",
+      "pending",
+      "never-scanned"
+    ],
+    "reviewFilter": {
+      "pages": 1,
+      "checks": 1
+    },
+    "expiredResultRetained": true
+  },
+  "afterCorrection": {
+    "docWidth": 805,
+    "labels": [
+      "Page 1: Results ready · 1 of 1 right · Photo no longer availableView page results",
+      "Page 2: All answers blank · 1 blankView page results",
+      "Page 3: Not scored · 1 not scoredView page results",
+      "Page 4: Results ready · 1 of 1 rightView page results",
+      "Page 5: Waiting for a checkView page results",
+      "Page 6: No photo yet"
+    ],
+    "summary": "Showing 6 printed pages. 0 need a parent check.",
+    "width": 820
+  },
+  "admin": {
+    "filteredPages": 6,
+    "acceptedPages": 4,
+    "logicalCalls": 0,
+    "dispatchAttempts": 0,
+    "reportedMicros": 0,
+    "reservedMicros": 0,
+    "globalCapMicros": 50000000
+  },
+  "authorization": {
+    "ownHistoryStatus": 200,
+    "displayedPages": 6,
+    "countSum": 6,
+    "foreignChildStatus": 404,
+    "parentAdminStatus": 404,
+    "afterDeletionStatus": 404,
+    "afterDeletionReturnedHistory": false
+  },
+  "analytics": {
+    "events": [
+      {
+        "credentials": "omit",
+        "packet": {
+          "event": "scan_post_scan_choice",
+          "properties": {
+            "$process_person_profile": false,
+            "distinct_id": "scan-anonymous",
+            "status": "results_only",
+            "token": "phc_synthetic_s8_browser"
+          }
+        },
+        "path": "/ingest/i/v0/e/",
+        "query": "?ip=0",
+        "referrerPolicy": "no-referrer"
+      }
+    ],
+    "hash": "#page-results",
+    "heading": "Page results",
+    "beforeGrantReplay": 0,
+    "afterRevocation": 1,
+    "transport": "Browser intercept with a synthetic public key; no external ingestion"
+  },
+  "viewports": [
+    {
+      "width": 390,
+      "documentWidth": 375
+    },
+    {
+      "width": 820,
+      "documentWidth": 805
+    },
+    {
+      "width": 1280,
+      "documentWidth": 1280
+    }
+  ],
+  "cleanup": {
+    "parents": 0,
+    "children": 0,
+    "marks": 0,
+    "photos": 0,
+    "credentialsRemoved": true,
+    "openedTabsClosed": true,
+    "ownedServerStopped": true
+  },
+  "limits": [
+    "Synthetic marks and missing test image files. Image requests returned 404; this is not camera, handwriting or Storage delivery acceptance.",
+    "CSS viewport checks only, not physical iPhone Safari or Android Chrome.",
+    "The phone screenshot preceded a singular grammar correction; no layout or behavior changed.",
+    "No real analytics ingestion, paid API, family flag or production deployment."
+  ]
+}

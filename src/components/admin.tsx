@@ -35,6 +35,7 @@ const NAV = [
   { key: "reviews", href: `${ADMIN_PATH}/reviews`, label: "AI reviews" },
   { key: "parents", href: `${ADMIN_PATH}/parents`, label: "Parents" },
   { key: "children", href: `${ADMIN_PATH}/children`, label: "Children" },
+  { key: "scans", href: `${ADMIN_PATH}/scans`, label: "Scan pages" },
   { key: "workbooks", href: `${ADMIN_PATH}/workbooks`, label: "Workbooks" },
   { key: "next-steps", href: `${ADMIN_PATH}/next-steps`, label: "Cards and waitlist" },
   { key: "emails", href: `${ADMIN_PATH}/emails`, label: "Emails" },

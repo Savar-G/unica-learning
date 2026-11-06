@@ -2,10 +2,16 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-vi.mock("@/lib/supabase-browser", () => ({ browserClient: () => ({ auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) } }) }));
+const context = vi.hoisted(() => ({ auth: null as null | ((_event: string, session: { user: { id: string } } | null) => void), prepare: null as null | (() => Promise<Blob>) }));
+vi.mock("@/lib/supabase-browser", () => ({
+  browserClient: () => ({ auth: { onAuthStateChange: (callback: typeof context.auth) => {
+    context.auth = callback;
+    return { data: { subscription: { unsubscribe() {} } } };
+  } } }),
+}));
 vi.mock("next/image", () => ({ default: ({ unoptimized, ...props }: Record<string, unknown>) => { void unoptimized; return createElement("img", props); } }));
 // The prepared photo carries the file's name, so the fake server knows which page it shows.
-vi.mock("@/lib/scan-photo-browser", () => ({ prepareScanPhoto: async (file: File) => new Blob([file.name]) }));
+vi.mock("@/lib/scan-photo-browser", () => ({ prepareScanPhoto: async (file: File) => context.prepare ? context.prepare() : new Blob([file.name]) }));
 import { ScanPages } from "./scan-pages";
 
 // A fake server: Day 4 has pages p10 to p13. A photo named "p11.jpg" shows page p11; "junk.jpg" has no page code;
@@ -36,7 +42,7 @@ const text = () => document.body.textContent ?? "";
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  checks = true; acknowledged = true; photos = new Map(); uploading = 0; overlap = false; calls.length = 0;
+  context.auth = null; context.prepare = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; overlap = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
   losePuts = 0; loseStatus = false; listDown = false; kids = [{ id: "child", first_name: "Leah" }]; released = [];
   vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
@@ -327,4 +333,27 @@ it("releases only a reservation with no photo when the child changes, by the rel
   await changeChild();
   expect(released).toEqual([id]);
   expect(calls).not.toContain(`DELETE /api/account/scans/${id}`);
+});
+
+it("account replacement during normalization sends no later admission, save or thumbnail", async () => {
+  let resume!: (value: Blob) => void;
+  context.prepare = () => new Promise<Blob>((resolve) => { resume = resolve; });
+  await render(); await choose("library", "p11.jpg");
+  expect(calls.filter((c) => c === "POST /api/account/scans")).toEqual([]);
+  await act(async () => context.auth?.("SIGNED_IN", { user: { id: "new-parent" } }));
+  await act(async () => resume(new Blob(["p11.jpg"]))); await settle();
+  expect(calls.filter((c) => c === "POST /api/account/scans" || c.startsWith("PUT "))).toEqual([]);
+  expect(host.textContent).toContain("Your account changed"); expect(host.querySelectorAll("img")).toHaveLength(0);
+});
+it("a held old-account upload response cannot save, refill the stack or start a second request", async () => {
+  const original = globalThis.fetch; let resume!: (response: Response) => void;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (init?.method === "PUT") { calls.push(`PUT ${path}`); return new Promise<Response>((resolve) => { resume = resolve; }); }
+    return original(path, init);
+  });
+  await render(); await choose("library", "p11.jpg"); expect(admitted).toHaveLength(1);
+  await act(async () => context.auth?.("SIGNED_IN", { user: { id: "new-parent" } }));
+  await act(async () => resume(Response.json({ photo: { id: admitted[0], state: "pending" } }))); await settle();
+  expect(calls).not.toContain(`POST /api/account/scans/${admitted[0]}`);
+  expect(host.textContent).toContain("Your account changed"); expect(host.querySelectorAll("img")).toHaveLength(0);
 });

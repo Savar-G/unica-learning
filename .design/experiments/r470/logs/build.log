@@ -1,0 +1,209 @@
+> unica-learning-landing-page@0.1.0 build
+> next build
+
+▲ Next.js 16.3.8 (Turbopack)
+✓ Running next.config.ts took 149ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.6s
+  Running TypeScript ...
+  Finished TypeScript in 5.4s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/132) ...
+  Generating static pages using 11 workers (33/132)
+  Generating static pages using 11 workers (66/132)
+  Generating static pages using 11 workers (99/132)
+✓ Generating static pages using 11 workers (132/132) in 471ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /account
+├ ƒ /account/finish
+├ ƒ /account/learning/[child]
+├ ƒ /account/maya-notice
+├ ƒ /account/notes/[child]
+├ ƒ /account/notes/[child]/[session]
+├ ƒ /account/password
+├ ƒ /account/pin
+├ ƒ /account/plan
+├ ƒ /account/progress/[child]
+├ ƒ /account/report/[id]
+├ ƒ /account/scan
+├ ƒ /account/scan/results/[id]
+├ ƒ /account/settings
+├ ƒ /account/start/[child]
+├ ƒ /account/test/[childId]
+├ ƒ /account/workbooks/[child]
+├ ƒ /admin
+├ ƒ /admin/activity
+├ ƒ /admin/assessments/[id]
+├ ƒ /admin/assessments/[id]/profile
+├ ƒ /admin/board
+├ ƒ /admin/children
+├ ƒ /admin/children/[id]
+├ ƒ /admin/children/[id]/preview-plan
+├ ƒ /admin/children/[id]/profile
+├ ƒ /admin/emails
+├ ƒ /admin/emails/[id]
+├ ƒ /admin/export
+├ ƒ /admin/flyers
+├ ƒ /admin/maya
+├ ƒ /admin/maya-chat
+├ ƒ /admin/maya/[id]
+├ ƒ /admin/next-steps
+├ ƒ /admin/parents
+├ ƒ /admin/parents/[id]
+├ ƒ /admin/reports/[id]
+├ ƒ /admin/reviews
+├ ƒ /admin/scans
+├ ƒ /admin/scans/[id]
+├ ƒ /admin/skill-map
+├ ƒ /admin/templates
+├ ƒ /admin/templates/[id]
+├ ƒ /admin/tests
+├ ƒ /admin/workbooks
+├ ƒ /admin/workbooks/[id]
+├ ƒ /admin/workbooks/runs/[id]
+├ ƒ /api/account/assessments
+├ ƒ /api/account/assessments/[id]
+├ ƒ /api/account/assessments/[id]/answers
+├ ƒ /api/account/assessments/[id]/check
+├ ƒ /api/account/assessments/[id]/context
+├ ƒ /api/account/assessments/[id]/facts
+├ ƒ /api/account/assessments/[id]/facts/answers
+├ ƒ /api/account/assessments/[id]/finish
+├ ƒ /api/account/assessments/[id]/report
+├ ƒ /api/account/card
+├ ƒ /api/account/card-update
+├ ƒ /api/account/card-update/return
+├ ƒ /api/account/card/check
+├ ƒ /api/account/children
+├ ƒ /api/account/children/[id]
+├ ƒ /api/account/children/[id]/delete
+├ ƒ /api/account/children/[id]/delete/code
+├ ƒ /api/account/children/[id]/monthly-summary
+├ ƒ /api/account/family/delete
+├ ƒ /api/account/family/delete/code
+├ ƒ /api/account/finish
+├ ƒ /api/account/learning
+├ ƒ /api/account/maya-notice
+├ ƒ /api/account/pin
+├ ƒ /api/account/plan/cancel
+├ ƒ /api/account/plan/pause
+├ ƒ /api/account/plan/restart
+├ ƒ /api/account/scan-link
+├ ƒ /api/account/scans
+├ ƒ /api/account/scans/[id]
+├ ƒ /api/account/scans/[id]/image
+├ ƒ /api/account/scans/[id]/marking
+├ ƒ /api/account/scans/[id]/preview
+├ ƒ /api/account/scans/[id]/preview/[part]
+├ ƒ /api/account/scans/[id]/release
+├ ƒ /api/account/scans/history
+├ ƒ /api/account/scans/notice
+├ ƒ /api/account/scans/send
+├ ƒ /api/account/sign-in-link
+├ ƒ /api/account/sign-in-link/use
+├ ƒ /api/account/time-zone
+├ ƒ /api/account/waitlist
+├ ƒ /api/account/workbooks/[id]/pdf
+├ ƒ /api/admin/anonymous-copies
+├ ƒ /api/admin/cards/[id]/plan-start
+├ ƒ /api/admin/cards/[id]/start
+├ ƒ /api/admin/cards/[id]/workbook-email
+├ ƒ /api/admin/children/[id]/workbook-runs
+├ ƒ /api/admin/export
+├ ƒ /api/admin/flyers
+├ ƒ /api/admin/maya/calls
+├ ƒ /api/admin/maya/calls/[id]
+├ ƒ /api/admin/maya/calls/[id]/token
+├ ƒ /api/admin/maya/voice
+├ ƒ /api/admin/maya/workbook
+├ ƒ /api/admin/maya/workbook/reference
+├ ƒ /api/admin/parents/[id]/chat
+├ ƒ /api/admin/parents/[id]/delete
+├ ƒ /api/admin/parents/[id]/test
+├ ƒ /api/admin/progress
+├ ƒ /api/admin/workbook-runs/[id]/server
+├ ƒ /api/admin/workbook-runs/[id]/stop
+├ ƒ /api/admin/workbooks/[id]/delivery
+├ ƒ /api/admin/workbooks/[id]/pdf
+├ ƒ /api/admin/workbooks/[id]/status
+├ ƒ /api/admin/workbooks/runs/[id]/approve
+├ ƒ /api/admin/workbooks/runs/[id]/edit
+├ ƒ /api/admin/workbooks/runs/[id]/pdf
+├ ƒ /api/child-deletions
+├ ƒ /api/contact
+├ ƒ /api/desk/chat
+├ ƒ /api/desk/chat/board
+├ ƒ /api/desk/forgot-pin
+├ ƒ /api/desk/leave
+├ ƒ /api/desk/open
+├ ƒ /api/desk/state
+├ ƒ /api/heard
+├ ƒ /api/keepalive
+├ ƒ /api/reminders
+├ ƒ /api/resend-webhook
+├ ƒ /api/retention
+├ ƒ /api/scan-cleanup
+├ ƒ /api/scan-marking
+├ ƒ /api/signup
+├ ƒ /api/stripe-webhook
+├ ƒ /api/unsubscribe
+├ ƒ /api/visit
+├ ƒ /api/visit/step
+├ ƒ /api/workbook-emails
+├ ƒ /api/workbook-render-check
+├ ƒ /api/workbook-runs/[id]/resume
+├ ○ /apple-icon.png
+├ ƒ /auth/callback
+├ ƒ /auth/confirm
+├ ○ /blog
+├   /blog/[slug]
+│ ├ ● /blog/is-spirit-of-math-worth-it
+│ ├ ● /blog/emerging-in-math-report-card
+│ ├ ● /blog/mathnasium-cost-bc
+│ └ ● /blog/sylvan-vs-kumon
+├ ○ /compare
+├ ○ /contact
+├ ○ /curriculum
+├ ƒ /f/[code]
+├ ƒ /family-deleted
+├ ○ /icon.svg
+├ ○ /llms.txt
+├ ○ /math-assessment
+├ ○ /opengraph-image
+├ ○ /our-story
+├ ○ /pricing
+├ ○ /pricing.md
+├ ○ /privacy
+├ ○ /resources
+├   /resources/[slug]
+│ ├ ● /resources/bc-grade-1-math-and-reading
+│ ├ ● /resources/bc-grade-2-math-and-reading
+│ ├ ● /resources/bc-grade-3-math-and-reading
+│ └ ● [+11 more paths]
+├ ○ /rewards
+├ ○ /robots.txt
+├ ○ /sample-report
+├ ƒ /sign-in
+├ ƒ /sign-in/link
+├ ƒ /sign-in/reset
+├ ○ /sitemap.xml
+├ ƒ /start
+├ ○ /terms
+├ ƒ /thank-you
+├ ƒ /tutor
+├ ƒ /tutor/forgot-pin
+├ ƒ /tutor/p/[token]
+├ ƒ /unsubscribe
+└ ○ /whats-included
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand
