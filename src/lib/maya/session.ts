@@ -1396,10 +1396,16 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     }
     // The final answer by the question's wording (#407: an equal fraction may be right); a step by its own values.
     const right = a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : answersStep(at, a.value);
-    // A doubtful final answer cannot establish correct work, including an equal
-    // fraction that still needs simplest form and therefore carries a "wrong" verdict.
+    // The target count is also the missing amount. It needs the same commitment as a final answer.
+    // Keep explicit count descriptions readable without removing any doubt, question or correction words.
+    const targetCount = problem === "target" && at.kind === "count-up";
+    const countText = targetCount && /^\s*(?:because\s+)?i\s+counted\b/i.test(s.turn.text)
+      ? s.turn.text.replace(/^\s*because\s+(?=i\s+counted\b)/i, "").replace(/\b(?:numbers?|hops?|jumps?|steps?)\b/gi, "")
+      : s.turn.text;
+    const sure = read.sure || (targetCount && readAnswer(countText, readOptionsFor(pkg)).sure);
+    // An equal fraction that still needs simplest form also requires commitment before checked progress.
     const checkedProgress = a.verdict === "right" || (problem === "target" && isEqualForm(pkg, a.value));
-    if (checkedProgress && a.step === "result" && !read.sure) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}: confirm it before treating it as checked progress.` };
+    if (checkedProgress && (a.step === "result" || targetCount) && !sure) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}: confirm it before treating it as checked progress.` };
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     if (a.verdict === "wrong" && right) return { code: "rejects_right_answer", reason: `${valueText(a.value)} is right for ${a.step}.` };
     // The child's sure final answer is right: never "not yet" for it as a step (practice: "I think the tens make 66."

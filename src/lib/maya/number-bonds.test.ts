@@ -101,6 +101,49 @@ const checkLength = (out: TextOutput) => {
   }
 };
 
+describe("#526 target count commitment", () => {
+  it.each(["Maybe seven?", "Seven, I guess.", "Could it be seven?", "I counted maybe seven numbers.", "I counted seven hops, I guess.", "Because I counted seven steps, maybe."])("does not complete a doubtful count from %s", text => {
+    const result = propose(child(opened(bond(4, 11, [2, 5])), text), {
+      act: "guide", step: "result", level: 0,
+      parts: [{ line: "check.right_step", slots: { step: "count" } }, { line: "step.invite", slots: { step: "result" } }],
+      reading: { answers: [{ value: num(7), step: "count", verdict: "right" }] },
+    });
+    expect(result.refusal?.code).toBe("answer_not_committed");
+    expect(result.session.done).toEqual([]);
+    expect(result.session.solved).toBeNull();
+  });
+
+  it.each(["I counted seven numbers.", "Because I counted seven.", "I counted seven hops.", "I counted seven numbers from four to eleven.", "Seven."])("keeps a clear count description from %s", text => {
+    const result = propose(child(opened(bond(4, 11, [2, 5])), text), {
+      act: "guide", step: "result", level: 0,
+      parts: [{ line: "check.right_step", slots: { step: "count" } }, { line: "step.invite", slots: { step: "result" } }],
+      reading: { answers: [{ value: num(7), step: "count", verdict: "right" }] },
+    });
+    expect(result.refusal).toBeNull();
+    expect(result.session.done).toEqual(["count"]);
+    expect(result.session.solved).toBeNull();
+  });
+
+  it.each([false, true])("does not release H4 after a doubtful count and two final misses, fallback=%s", async fallback => {
+    const script = scenarioModel();
+    const model = fallback ? { ...script, propose: async (...args: Parameters<typeof script.propose>) => ({ ...await script.propose(...args) as object, parts: "invalid" }) } : script;
+    const s = createTextSession({ callId: `count-commit-${fallback}`, package: bond(4, 11, [2, 5]), grade: 1, model, clock: () => 1000 });
+    script.next([{ act: "open", lines: ["open.hello"] }], undefined);
+    await s.start();
+    script.next([{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }], { answers: [[7, "count", "right"]] });
+    await s.child("Maybe seven?");
+    expect(s.session.done).toEqual([]);
+    script.next([{ act: "guide", step: "result", level: 0, lines: ["step.invite"] }], { answers: [[8, "result", "wrong"]] });
+    await s.child("Eight.");
+    script.next([{ act: "give_answer", lines: [] }], { answers: [[9, "result", "wrong"]] });
+    await s.child("Nine.");
+    expect(s.session.done).toEqual([]);
+    expect(s.session.solved).toBeNull();
+    expect(s.session.highestHint).toBeLessThan(4);
+    expect(s.session.finalMisses).toBe(0);
+  });
+});
+
 describe("#526 public count-up answer checks", () => {
   it("checks the number of hops, not the endpoint, and waits for the final answer", () => {
     const s = child(opened(), "I counted three numbers.");
