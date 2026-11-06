@@ -1,10 +1,10 @@
 # Admin Parent dashboard explorer
 
-The entry is `/admin/parent-dashboard`. It has a distinct Admin tab. The existing Admin metrics page remains at `/admin`.
+The entry is `/admin/dashboard` (the older `/admin/parent-dashboard` address redirects). It has a distinct Admin tab. The existing Admin metrics page remains at `/admin`.
 
-The catalog has 10 views and 93 scenarios. `scenarios.json` comes from the public catalog used by the controls and renderer. It records each scenario, derived child stage, tabs, and URL. The catalog uses exhaustive records for the seven child stages and eight plan states. The controls also select desktop, tablet, phone, no children, one child, two children, the second child, and a long first name.
+The catalog now has 11 views and 97 scenarios, including the delivered workbook answer key. The original round had 10 views and 93 scenarios. `scenarios.json` comes from the public catalog used by the controls and renderer. It records each scenario, derived child stage, tabs, and URL. The catalog uses exhaustive records for the seven child stages and eight plan states. The controls also select desktop, tablet, phone, no children, one child, two children, the second child, and a long first name.
 
-The preview uses the actual `ParentShell`, Assessment/report, Overview, Workbooks, Progress and skill panel, Maya note and transcript, Account, Plan, scan stack, and marking-result components. Workbooks, Progress, Account, Plan, child details, report offers, and plan confirmations share presentation code with the normal parent routes. The normal controllers retain their original actions. Scan stack samples use an optional typed initial state. Its normal controller still reloads the signed-in family on mount.
+The preview uses the actual `ParentShell`, Assessment/report, Overview, Workbooks and their answer keys, Progress and skill panel, Maya note and transcript, Account, Plan, scan stack, and marking-result components. Workbooks, Progress, Account, Plan, child details, report offers, and plan confirmations share presentation code with the normal parent routes. The normal controllers retain their original actions. Scan stack samples use an optional typed initial state. Its normal controller still reloads the signed-in family on mount.
 
 ## Safety
 
@@ -33,3 +33,5 @@ The parent route checks proved that the extracted pages retain sign-in and famil
 This implementation has no browser evidence. The root agent owns rendered checks at the three viewport sizes, narrow Admin overflow checks, keyboard checks, live authorization checks, the full test gate, and independent review. Test DOM output does not prove browser layout, scrolling, fonts, or accessibility behavior.
 
 The samples do not test delivery, payments, camera capture, downloads, emails, real family data, or hosted mutations. No release switch changed. Page history, answer correction, solutions, and future progress details from unimplemented parts of #458, #470, and #565 are omitted and identified in the Admin controls.
+
+The 2026-11-06 Workbooks change removes parent PDF access and adds the delivered answer key. Its current checks and limits are in `../r-parent-workbook-access/`; the original verification report above is historical.

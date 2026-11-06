@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { workbookAnswersPath } from "@/lib/parent-workbook-answers";
 import type { WorkbooksView, CurrentWorkbookView } from "@/lib/parent-view";
 import { SupportPage } from "@/components/support-page";
 import { formatCalendarDate } from "@/lib/family-time";
@@ -45,12 +47,13 @@ export function ParentWorkbooks({ child, current, next, books }: WorkbooksView) 
       )}
       {books.length > 0 && (
         <section className="pw-card pw-section" aria-labelledby="pw-books">
-          <h2 id="pw-books">Print a page again</h2>
+          <h2 id="pw-books">Answer keys</h2>
+          <p className="pw-sub">Each answer key opens after we confirm that workbook has arrived.</p>
           <ul className="pw-books">
             {books.map((b) => (
               <li key={b.id}>
                 <span className="pw-book"><b>Workbook {b.number}</b>{b.shippedOn && <span>Sent {date(b.shippedOn)}</span>}</span>
-                {b.hasPdf && <a className="btn ghost" href={`/api/account/workbooks/${b.id}/pdf`} aria-label={`Download the PDF of workbook ${b.number}`}>Download PDF</a>}
+                {b.deliveredOn ? <Link className="btn ghost" href={workbookAnswersPath(child.id, b.id)} prefetch={false} aria-label={`View the answer key for workbook ${b.number}`}>View answer key</Link> : <span className="pw-sub">Available after delivery</span>}
               </li>
             ))}
           </ul>

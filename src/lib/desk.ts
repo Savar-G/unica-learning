@@ -1,3 +1,5 @@
+import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
+import type { DeliveryStore } from "@/lib/workbook-delivery";
 import { hasOperation } from "@/lib/question-package";
 import { heldReason } from "@/lib/maya";
 import { operationText } from "@/lib/question-package-math";
@@ -16,7 +18,8 @@ import { isUuid, type PageImage, type QuestionBox, type WorkbookPage, type Workb
 // workbook's family, and is refused for anyone else (openPageToken).
 //
 // Reads go through the workbook store seam (src/lib/workbook-content.ts): with the parent's session, row-level security
-// already gives only that family's shipped workbooks; this module checks the family and the status again, so the
+// gives only that family's shipped books, with question packages after confirmed delivery. This module checks identity,
+// status and the effective receipt again, so the
 // in-memory store in its tests behaves the same. Pure TypeScript: no Next.js, React, network, database or clock.
 
 /** The desk's address. */
@@ -84,6 +87,7 @@ export interface DeskPage {
 
 export type DeskView =
   | { status: "no-workbook" }
+  | { status: "awaiting-delivery" }
   | {
       status: "ready";
       /** The child's shipped workbooks, newest first: the covers to switch between. */
@@ -125,17 +129,28 @@ const deskPage = (p: WorkbookPage): DeskPage => ({
 
 /**
  * The desk for one child: their shipped workbooks, the one asked for (else the newest), and the page asked for (else
- * the first page with questions, else the first page).
+ * the first page with questions, else the first page). Without confirmed delivery, no package is read.
  */
 export async function deskView(
   store: WorkbookStore,
   o: { parentId: string; childId: string; workbookId?: string; page?: number; question?: number },
+  delivery: Pick<DeliveryStore, "receipt">,
+  now: number,
 ): Promise<DeskView> {
   const workbooks = (await store.childWorkbooks(o.childId)).filter((w) => w.parentId === o.parentId && w.childId === o.childId && w.status === "shipped");
   if (workbooks.length === 0) return { status: "no-workbook" };
   const asked = o.workbookId === undefined ? undefined : workbooks.find((w) => w.id === o.workbookId);
   const summary = asked ?? workbooks[0];
+  const delivered = async () => {
+    const receipt = await delivery.receipt(summary.id);
+    return !!receipt && receipt.parentId === o.parentId && receipt.childId === o.childId
+      && receipt.workbookId === summary.id && receipt.number === summary.number
+      && confirmedWorkbookDelivery([receipt], [], o.childId, summary.id, now) !== null;
+  };
+  if (!await delivered()) return { status: "awaiting-delivery" };
   const book = await store.workbook(summary.id);
+  // A retraction during the package read must not show a page with no tappable questions.
+  if (!await delivered()) return { status: "awaiting-delivery" };
   if (!book || book.pages.length === 0) return { status: "no-workbook" };
   const page = book.pages.find((p) => p.number === o.page) ?? book.pages.find((p) => p.questions.length > 0) ?? book.pages[0];
   return {

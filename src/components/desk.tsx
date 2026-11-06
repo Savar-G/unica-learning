@@ -162,7 +162,7 @@ export function Desk(props: DeskProps) {
           </dl>
         </header>
 
-        {chat.usage?.left !== 0 && <div ref={talk} className="desk-talk" aria-live="polite">
+        {(chat.usage?.left !== 0 || props.problem) && <div ref={talk} className="desk-talk" aria-live="polite">
           {props.notice && <p className="desk-event warn">{props.notice}</p>}
           {ready?.fromQr && <p className="desk-event"><Icon name="qr" size={15} />Opened from Workbook {ready.book.number} · QR code</p>}
           {props.problem ? (
@@ -203,7 +203,7 @@ export function Desk(props: DeskProps) {
           at={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
           still={still}
           label={card ? `Question ${card.number}${card.text ? `: ${card.text}` : ""}, written in columns` : "Our board"}
-          caption={!card ? "Pick a question from your page. It shows here."
+          caption={!ready ? "Our board" : !card ? "Pick a question from your page. It shows here."
             : card.board ? `Number ${card.number}, from your page.` : `Number ${card.number} is on your card.`}
         />}
       </div>

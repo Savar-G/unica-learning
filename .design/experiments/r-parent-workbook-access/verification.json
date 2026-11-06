@@ -1,0 +1,101 @@
+{
+  "computer": "Savars-MacBook-Pro-5.local",
+  "base": "7584b930ce3ed4f48930010f9c94f03f11e13a08",
+  "focused": {
+    "command": "npx vitest run 'src/components/admin-parent-preview.test.ts' 'src/components/parent-workbooks.test.ts' 'src/lib/parent-view-server.test.ts' 'src/lib/parent-view.test.ts' 'src/lib/parent-workbook-answers-server.test.ts' 'src/lib/parent-workbook-answers.test.ts' 'src/lib/workbook-delivery-access.test.ts' 'src/app/api/account/workbooks/[id]/pdf/route.test.ts' 'src/app/(product)/account/(dashboard)/workbooks/[child]/page.test.ts' 'src/app/(product)/account/(dashboard)/workbooks/[child]/answers/[workbook]/page.test.ts'",
+    "exit": 0,
+    "files": 10,
+    "tests": 319,
+    "passed": 319,
+    "failed": 0,
+    "fileResults": [
+      {
+        "path": "src/components/admin-parent-preview.test.ts",
+        "tests": 121,
+        "status": "passed"
+      },
+      {
+        "path": "src/components/parent-workbooks.test.ts",
+        "tests": 1,
+        "status": "passed"
+      },
+      {
+        "path": "src/lib/parent-view-server.test.ts",
+        "tests": 43,
+        "status": "passed"
+      },
+      {
+        "path": "src/lib/parent-view.test.ts",
+        "tests": 122,
+        "status": "passed"
+      },
+      {
+        "path": "src/lib/parent-workbook-answers-server.test.ts",
+        "tests": 3,
+        "status": "passed"
+      },
+      {
+        "path": "src/lib/parent-workbook-answers.test.ts",
+        "tests": 19,
+        "status": "passed"
+      },
+      {
+        "path": "src/lib/workbook-delivery-access.test.ts",
+        "tests": 2,
+        "status": "passed"
+      },
+      {
+        "path": "src/app/api/account/workbooks/[id]/pdf/route.test.ts",
+        "tests": 3,
+        "status": "passed"
+      },
+      {
+        "path": "src/app/(product)/account/(dashboard)/workbooks/[child]/page.test.ts",
+        "tests": 2,
+        "status": "passed"
+      },
+      {
+        "path": "src/app/(product)/account/(dashboard)/workbooks/[child]/answers/[workbook]/page.test.ts",
+        "tests": 3,
+        "status": "passed"
+      }
+    ]
+  },
+  "lint": {
+    "command": "npx eslint src",
+    "exit": 0,
+    "warnings": 0
+  },
+  "build": {
+    "command": "npm run build",
+    "exit": 0,
+    "typescript": "passed",
+    "route": "/account/workbooks/[child]/answers/[workbook]"
+  },
+  "fullSuite": {
+    "command": [
+      "npm",
+      "test",
+      "--",
+      "--maxWorkers=4",
+      "--reporter=default",
+      "--reporter=json",
+      "--outputFile=/Users/savargupta/unica-workbook-samples/parent-workbook-access-20261106/answer-key-full-suite.json"
+    ],
+    "limitSeconds": 300,
+    "elapsedSeconds": 300.1,
+    "exit": 124,
+    "timedOut": true,
+    "finalCounts": null,
+    "qualification": "Incomplete: stopped at the requested bound. No second full run."
+  },
+  "diffCheck": {
+    "command": "git diff --check",
+    "exit": 0
+  },
+  "limits": [
+    "No browser or hosted authorization check by worker",
+    "No hosted migration or generated type changes",
+    "Existing shipped-question RLS still allows parent reads of raw packages before delivery; root must decide a desk-safe migration for a database-wide guarantee"
+  ]
+}
