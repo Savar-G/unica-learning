@@ -65,7 +65,12 @@ describe("#677 family chat workbook selection through runChat", () => {
     question.content.package = { ...pkg, text: "7 + ? = 10", operation, steps: workedSteps(operation), answer: { value: { type: "number", value: 3 }, accepted: [], unit: null }, wrongAnswers: [{ value: { type: "number", value: 2 }, cause: "counting", description: "Miscounts.", step: null }], easierExample: { text: "1 + ? = 2", operation: easier, answer: { type: "number", value: 1 }, steps: workedSteps(easier) } };
     expect(checkQuestionPackage(question.content.package)).toMatchObject({ ok: true });
     vi.spyOn(f.books, "workbook").mockResolvedValue(book);
-    const view = await deskView(f.books, { parentId: f.ids.parent, childId: f.ids.child, workbookId: f.ids.workbook, page: 4, question: 1 });
+    const now = Date.UTC(2026, 10, 2, 16);
+    const view = await deskView(f.books, { parentId: f.ids.parent, childId: f.ids.child, workbookId: f.ids.workbook, page: 4, question: 1 }, {
+      receipt: async () => ({ workbookId: f.ids.workbook, parentId: f.ids.parent, childId: f.ids.child, number: 1,
+        deliveredAt: new Date(now).toISOString(), localTime: "2026-11-02T08:00", timeZone: "America/Vancouver",
+        recordedAt: new Date(now).toISOString(), actorId: f.ids.parent, auditId: 1 }),
+    }, now);
     if (view.status !== "ready") throw Error("No desk");
     expect(view.page.questions[0]).toMatchObject({ number: 1, text: "7 + ? = 10", held: true });
     expect(view.page.questions[1]).toMatchObject({ held: false });
