@@ -35,6 +35,12 @@ The real `WorkbookEmails` component was bundled into a temporary local fixture w
 
 All temporary public files and browser tabs were removed. These checks prove local rendering and interaction with synthetic data. They do not prove hosted admin sign-in, provider delivery or email-client rendering.
 
+## Review correction
+
+Independent Codex Sol review of `3a188483ee04c7cd2b9bf041a369051662a19d57` found one P2 recovery defect: a busy response left a local hold after another admin's send received a definite refusal. The initial review verdict was FAIL. The builder corrected the hold so only a refreshed failed record can permit that retry. Old failed snapshots, active sends, uncertain outcomes and confirmed sends remain held.
+
+The two new public component tests failed before the fix and passed afterward. All 80 tests in the eight targeted files then passed. Aside also checked Ready and Dispatch through the actual component with a synthetic busy response followed by refreshed failed data. Both permitted another preview and request. No provider send was made. The approved email-copy document has no changes from this correction. The correction was checked by the builder; no second independent review was requested for this small fix.
+
 ## Release remains blocked
 
 Do not merge or release until the Parent Dashboard thread supplies actual merged LIVE route, browser and access evidence. Feedback must work for every signed-in parent, including no-workbook families, with sign-in return and the desk lock. Schedule must preserve multi-child scope and match the stored book/day numbers on printed page 2. No optional product or child query is used. The approved explanation instruction also depends on #675. No family release switches change in this work.

@@ -32,16 +32,19 @@ export function WorkbookEmails({ cardId, parentName, parentEmail, childName, rec
   const [trackingNumber, setTrackingNumber] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
   const [preview, setPreview] = useState<WorkbookNoticeKind | null>(null);
-  const [held, setHeld] = useState<string[]>([]);
+  const [held, setHeld] = useState<{ key: string; records: WorkbookEmailRecord[]; retryAfterRefresh: boolean }[]>([]);
   const delivery = workbookDelivery({ method, carrier, trackingNumber, trackingUrl });
   const welcome = records.find((r) => r.kind === "welcome");
   const dispatch = records.find((r) => r.kind === "dispatch" && r.workbook_number === number);
   const ready = records.find((r) => r.kind === "ready" && r.workbook_number === number);
   const retryable = (row?: WorkbookEmailRecord) => !row || row.status === "pending" || row.status === "failed";
   const key = (kind: WorkbookNoticeKind) => `${kind}:${kind === "welcome" ? 0 : number}`;
-  const canWelcome = !held.includes(key("welcome")) && retryable(welcome) && !records.some((r) => r.kind === "dispatch" || r.kind === "ready");
-  const canDispatch = !held.includes(key("dispatch")) && retryable(dispatch);
-  const canReady = allowReady && !dispatch && !held.includes(key("dispatch")) && !held.includes(key("ready")) && retryable(ready);
+  // A busy response describes another send. Only a new server snapshot confirming refusal can release that hold.
+  const isHeld = (kind: WorkbookNoticeKind, row?: WorkbookEmailRecord) => held.some((h) => h.key === key(kind)
+    && !(h.retryAfterRefresh && h.records !== records && row?.status === "failed"));
+  const canWelcome = !isHeld("welcome", welcome) && retryable(welcome) && !records.some((r) => r.kind === "dispatch" || r.kind === "ready");
+  const canDispatch = !isHeld("dispatch", dispatch) && retryable(dispatch);
+  const canReady = allowReady && !dispatch && !isHeld("dispatch", dispatch) && !isHeld("ready", ready) && retryable(ready);
   const canSend = (kind: WorkbookNoticeKind) => kind === "welcome" ? canWelcome : kind === "ready" ? canReady : canDispatch;
   const validNumber = Number.isInteger(number) && number >= 1 && number <= 10000;
   const email = preview ? workbookEmail({ parentName, childName, kind: preview, workbookNumber: number, delivery }) : null;
@@ -64,7 +67,7 @@ export function WorkbookEmails({ cardId, parentName, parentEmail, childName, rec
       else if (result.status === "refused") setNotice("The email provider refused it. Nothing was sent. You can retry.");
       else if (result.status === "unknown") { setNotice(LABEL.unknown); setUncertain(true); }
       else setNotice("This email is already recorded or sending. Check its status below.");
-      if (result.status !== "refused") setHeld((old) => [...old, key(kind)]);
+      if (result.status !== "refused") setHeld((old) => [...old.filter((h) => h.key !== key(kind)), { key: key(kind), records, retryAfterRefresh: result.status === "busy" }]);
       setPreview(null);
       router.refresh();
     } catch {

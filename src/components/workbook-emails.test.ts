@@ -72,3 +72,30 @@ it("does not offer ready or a second delivery after a persisted dispatch", async
   await act(async () => root.render(createElement(WorkbookEmails, { ...props, records: [sent] })));
   for (const name of ["Workbook ready", "Hand delivery", "Courier"]) expect(button(name).disabled).toBe(true);
 });
+
+it.each(["ready", "dispatch"] as const)("permits a busy %s retry only after refreshed data confirms a definite refusal", async (kind) => {
+  const row: WorkbookEmailRecord = { id: "email", kind, workbook_number: 7, status: "failed", claimed_at: null, sent_at: null, delivery: {}, subject: null, text_body: null };
+  const records = [row];
+  const action = kind === "ready" ? "Workbook ready" : "Hand delivery";
+  const confirm = kind === "ready" ? "Send workbook ready email" : "Send delivery email";
+  f.fetch.mockResolvedValueOnce(Response.json({ status: "busy" })).mockResolvedValueOnce(Response.json({ status: "sent" }));
+  await act(async () => root.render(createElement(WorkbookEmails, { ...props, records })));
+  await click(action); await click(confirm);
+  expect(button(action).disabled).toBe(true);
+  // The failed row from before the busy response is insufficient evidence for a retry.
+  await act(async () => root.render(createElement(WorkbookEmails, { ...props, records })));
+  expect(button(action).disabled).toBe(true);
+  for (const status of ["sending", "unknown", "sent"] as const) {
+    await act(async () => root.render(createElement(WorkbookEmails, { ...props, records: [{ ...row, status }] })));
+    expect(button(action).disabled).toBe(true);
+  }
+  await act(async () => root.render(createElement(WorkbookEmails, { ...props, records: [{ ...row }] })));
+  expect(button(action).disabled).toBe(false);
+  if (kind === "dispatch") expect(button("Courier").disabled).toBe(false);
+  await click(action); await click(confirm);
+  expect(f.fetch).toHaveBeenCalledTimes(2);
+  expect(button(action).disabled).toBe(true);
+  // A confirmed send stays held even if an older failed snapshot arrives afterward.
+  await act(async () => root.render(createElement(WorkbookEmails, { ...props, records: [{ ...row }] })));
+  expect(button(action).disabled).toBe(true);
+});
