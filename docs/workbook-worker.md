@@ -1,8 +1,9 @@
 # The workbook worker (D-200)
 
 Workbooks are made on Savar's Mac, on his Claude subscription, by default. The paid API (OpenRouter) is the fallback.
+Set `WORKBOOK_SUBSCRIPTION_PROVIDER=codex` to use an explicitly selected ChatGPT subscription. Codex mode has no API fallback.
 
-When you press **Prepare next workbook** on the live site, the site only queues the run (`workbook_runs.runner = 'mac'`). The workbook worker on the Mac takes the run, makes it with `claude -p`, and stores the draft. The admin pages show whether the worker is online.
+When you press **Prepare next workbook** on the live site, the site only queues the run (`workbook_runs.runner = 'mac'`). The workbook worker on the Mac takes the run, makes it with the selected subscription CLI, and stores the draft. The admin pages show whether the worker is online.
 
 ## How it works
 
@@ -11,6 +12,7 @@ When you press **Prepare next workbook** on the live site, the site only queues 
 | The worker process | `scripts/workbook-worker.ts` (`npm run workbooks:worker`) |
 | Its loop: heartbeat, take a run, keep the Mac awake | `src/lib/workbook-worker.ts` |
 | The `claude -p` adapter | `src/lib/ai-claude-cli.ts` |
+| The Codex subscription adapter and local availability check | `src/lib/ai-codex-cli.ts` |
 | The subscription first, then the API | `src/lib/ai-fallback.ts` |
 | All settings | `src/lib/workbook-ai.ts` |
 | The job, shared with the server | `src/lib/workbook-job.ts`, `src/lib/workbook-job-deps.ts` |
@@ -26,7 +28,7 @@ Each turn, the worker:
 
 A run continues only on the code it started on (R379-8-2). The worker's build is its commit when the checkout is clean, else a value of its own. A run that started on other code fails with "the site's code changed". Start a new run when this occurs.
 
-### The AI
+### The Claude default
 
 - Each AI call goes to the subscription first: `claude -p --output-format json --json-schema <schema> --safe-mode --tools "" --no-session-persistence`. Claude Code checks the output against the schema. The generator then checks the output again, as it does on the API path.
 - The child process gets no API key. It gets only `PATH`, `HOME` and a few other variables. `WORKBOOK_CLAUDE_CONFIG_DIR` is passed as `CLAUDE_CONFIG_DIR`, so you can choose which Claude account runs it.
@@ -36,12 +38,34 @@ A run continues only on the code it started on (R379-8-2). The worker's build is
 - The generator and the solve check send text only today. No call goes to the API because of images.
 - Each call is logged in `public.workbook_run_ai_calls`, with the provider, the model, the outcome, the time and the cost (USD 0 on the subscription). A durable call ID is saved before the request. Each API dispatch increments its counter immediately before `fetch`, after the intent save and a cancellation check. A failed or cancelled intent adds no dispatch. Replayed intents therefore cannot raise the stored count for a request that did not start. The result and cost are saved before the workbook result checkpoint. Failed saves keep their records for retry. A crash leaves an unfinished call with an unknown final cost and request count; its saved dispatch count is a lower bound. The admin run page labels counts as logical calls and shows recorded API retries separately. These count adapter dispatch attempts, not confirmed network delivery or billable provider requests. Older saved counts are not rewritten.
 
+### Explicit Codex selection
+
+Set these values in the worker settings file before installation:
+
+```dotenv
+WORKBOOK_SUBSCRIPTION_PROVIDER=codex
+WORKBOOK_CODEX_HOME=/Users/savargupta/.codex-t3/unify
+```
+
+The home must be an explicit absolute directory. `CODEX_HOME` alone does not select an account. The selected directory must contain `auth.json` with a ChatGPT file login. API-key logins and keychain-only logins fail the local check. Keep this file private. The worker does not copy or print credentials.
+
+Both the page writer and the independent solve request use `gpt-6.1-sol` at high effort. These are separate requests to the same model. They do not provide a second-model check. `WORKBOOK_CLAUDE_MODEL`, `WORKBOOK_CLAUDE_SOLVE_MODEL`, `AI_MODEL`, and `AI_SOLVE_MODEL` do not change these Codex models. The request timeout is 300,000 ms.
+
+Codex mode disables the API even when API keys, `WORKBOOK_AI_PRIMARY=api`, or an API-first caller override are present. It does not switch to Claude. A server process that cannot run a subscription refuses this mode. An unknown or empty provider setting also fails closed. Omit the setting to retain the Claude default.
+
+Before service access at startup, and again before each generation or edit job claim, the worker checks the selected file login, required CLI options, and `codex login status`. These checks make no model request. A missing CLI, an incompatible CLI, or a lost login prevents the claim. They do not prove remote model access, token validity, or remaining subscription quota. An expired token or a usage limit can still fail the first model request.
+
+Requests use an isolated temporary working directory. They ignore the account's `config.toml` and disable tools, apps, plugins, hooks, web search, project instructions, and session persistence. The child environment contains the explicit `CODEX_HOME` and a small set of system variables. It contains no API keys. Cancellation stops the CLI through the same process adapter as Claude. A cancelled result is not recorded as an answer.
+
+Writer, solver, draft, frame fingerprints, and call records use `codex/gpt-6.1-sol;reasoning=high;auth=chatgpt`. A saved Claude frame cannot resume with Codex. The normal build and model checks still apply. A lasting usage-limit, missing-CLI, or login failure excludes the subscription for the rest of that run. The existing durable provider gate retains this exclusion across a restart or resume. There is no API fallback when this gate is closed.
+
 ## Install (once)
 
 Before you install, make sure these are true:
 
-- `node` (22 or later), `git`, `gh` (logged in as `Savar-G`) and `claude` are on `PATH`.
-- You are logged in to `claude` with the account that must do the work. Run `claude` once and use `/login`.
+- `node` (22 or later), `git`, `gh` (logged in as `Savar-G`) and the selected CLI are on `PATH`.
+- For Claude, you are logged in to `claude` with the account that must do the work. Run `claude` once and use `/login`.
+- For Codex, create the settings file with the two explicit values above first. The selected account must already have a ChatGPT file login. The installer reads the saved provider setting and includes that CLI in the LaunchAgent path. It does not require Claude for a Codex worker.
 - Google Chrome is installed, or `CHROMIUM_PATH` is set in the settings file.
 - The Keychain item `supabase-pagewise` holds a Supabase access token (as for `npm run db:types`), or `SUPABASE_SECRET_KEY` is in the settings file.
 
@@ -57,7 +81,7 @@ The script does these steps:
 2. It writes the settings file `~/.config/unica/workbook-worker.env` (chmod 600), if there is none.
 3. It writes the LaunchAgent `~/Library/LaunchAgents/com.unicalearning.workbook-worker.plist` and loads it. The LaunchAgent has `RunAtLoad`, `KeepAlive` (it starts the worker again when the worker exits or crashes), `ProcessType Interactive`, and the log at `~/Library/Logs/unica-workbook-worker.log`.
 
-Add `OPENROUTER_API_KEY` to the settings file to turn on the API fallback. Without it, a call that the subscription cannot take fails. The generator then marks that question as failed.
+In Claude mode, add `OPENROUTER_API_KEY` to the settings file to turn on the API fallback. Without it, a call that the subscription cannot take fails. The generator then marks that question as failed. Codex mode ignores the API key.
 
 Do not change files in `~/.unica-workbook-worker`. The launcher moves it to `origin/main` at each start.
 
@@ -67,6 +91,8 @@ Put these in `~/.config/unica/workbook-worker.env`. The worker reads the file at
 
 | Setting | Default | What it does |
 |---|---|---|
+| `WORKBOOK_SUBSCRIPTION_PROVIDER` | `claude` | `claude` or `codex`. Codex always disables the API fallback. |
+| `WORKBOOK_CODEX_HOME` | none | Required for Codex: an absolute account directory with a stored ChatGPT file login. |
 | `WORKBOOK_AI_PRIMARY` | `subscription` | Set `api` to put the API first, for example when there are many more customers. |
 | `OPENROUTER_API_KEY` | none | The API fallback. |
 | `AI_MODEL`, `AI_SOLVE_MODEL` | `anthropic/claude-sonnet-5.5`, `anthropic/claude-haiku-5.5` | The API models. |
@@ -92,7 +118,7 @@ On Vercel, `WORKBOOK_RUNNER` sets where runs are made. With `mac` (the default),
 
 Press **Stop this run** on the run page, the child page or the Workbooks list, then **Yes, stop it**. The button shows while a run is queued or running. The stop is written at once (`stop_workbook_run`): the run has status `stale`, no lease and `stopped_by_email`, and the audit log has `run-stopped-by-admin`. The finished pages are not used. "Prepare next workbook" starts a new run at once.
 
-The job asks every 10 seconds whether its run ended (`STOP_CHECK_MS`, `src/lib/workbook-job.ts`), and the 30-second lease renewal is the second check. It then aborts its AI calls and prints. `claude -p` gets SIGTERM, then SIGKILL after 5 seconds. A print closes its browser, and a browser that is still starting is closed when it starts. So the longest delay in normal work is about 15 seconds. If the database does not answer, the renewal's 10-second limit ends the work at about 40 seconds. The worker then goes on to the next run. Every write with the old lease changes nothing. Only the AI cost log (`workbook_run_ai_calls`) can still get a row, so that a paid call stays recorded.
+The job asks every 10 seconds whether its run ended (`STOP_CHECK_MS`, `src/lib/workbook-job.ts`), and the 30-second lease renewal is the second check. It then aborts its AI calls and prints. The selected CLI gets SIGTERM, then SIGKILL after 5 seconds. A print closes its browser, and a browser that is still starting is closed when it starts. So the longest delay in normal work is about 15 seconds. If the database does not answer, the renewal's 10-second limit ends the work at about 40 seconds. The worker then goes on to the next run. Every write with the old lease changes nothing. Only the AI cost log (`workbook_run_ai_calls`) can still get a row, so that a paid call stays recorded.
 
 ## When the Mac is off
 
@@ -108,7 +134,7 @@ A run that stopped part-way on the Mac (for example, the Mac went to sleep with 
 
 When there are many more customers, the API becomes the default again (D-200):
 
-1. In `~/.config/unica/workbook-worker.env`, set `WORKBOOK_AI_PRIMARY=api`. Then restart the worker. This keeps the Mac worker, with the API first.
+1. In `~/.config/unica/workbook-worker.env`, set `WORKBOOK_SUBSCRIPTION_PROVIDER=claude` and `WORKBOOK_AI_PRIMARY=api`. Then restart the worker. This keeps the Mac worker, with the API first.
 2. Or, to make every run on the server: set `WORKBOOK_RUNNER=server` in Vercel (Production) and redeploy. Then stop the worker.
 
 ## What stays on the API
@@ -120,7 +146,7 @@ The work review, the report text, the learner and child profiles and Maya run li
 
 The draft page has a comment reviewer. Click a question or a place on the page. You can also select a question from the list. Enter saves a comment. Esc cancels it. Saved comments survive a reload and do not change the workbook. Use **Edit myself** inside a question comment to change its exact fields. Code calculates its answer and worked steps.
 
-**Send all comments** queues one batch in `workbook_edits`. The saved comments are in `workbook_comments`. A batch uses the configured `WORKBOOK_RUNNER`, with `mac` as the default. The same Mac worker reads these batches as well as generation runs. On the Mac it uses the subscription first, with the API fallback. Server batches use the API. `WORKBOOK_AI_FAKE=on` or `slow` substitutes the fake writer and solve checker in development only.
+**Send all comments** queues one batch in `workbook_edits`. The saved comments are in `workbook_comments`. A batch uses the configured `WORKBOOK_RUNNER`, with `mac` as the default. The same Mac worker reads these batches as well as generation runs. On the Mac it uses the selected subscription. Only the Claude selection permits an API fallback. Server batches use the API. `WORKBOOK_AI_FAKE=on` or `slow` substitutes the fake writer and solve checker in development only.
 
 The batch groups comments by page. A page comment covers the page. Other comments change only their selected questions. Each group uses one request per changed page, plus at most 5 retries on failure. This upper bound includes one writer-helper retry, the subscription-to-API fallback and the API transport retry: at most 2 helper calls, each with at most 3 provider requests. Each completed writer response is saved before code checks, solve checks and rendering. A resume uses the saved response. An expired lease can resume on the same build and models. A different build or model fails the batch and returns its comments to pending. Code checks the changed questions, then the solve checker reads them. Only changed pages enter the print engine. The PDF assembler embeds the saved PNGs in page order, including the new page images. It runs once per batch. The assembled PDF is an image PDF; it has no selectable text.
 

@@ -8,13 +8,18 @@
 //   page writer, WORKBOOK_CLAUDE_SOLVE_MODEL (default claude-haiku-5-5) for the solve check, WORKBOOK_CLAUDE_CONFIG_DIR
 //   (CLAUDE_CONFIG_DIR: which Claude account; default the normal ~/.claude login), WORKBOOK_CLAUDE_COMMAND (default
 //   "claude") and WORKBOOK_CLAUDE_TIMEOUT_MS (default 300000).
+// - WORKBOOK_SUBSCRIPTION_PROVIDER: "claude" (default) or "codex". Codex requires WORKBOOK_CODEX_HOME, an explicit
+//   absolute account directory. It fixes both models to gpt-6.1-sol with high effort and ChatGPT auth. It never uses
+//   the API, even with WORKBOOK_AI_PRIMARY=api or API keys present. The worker checks local availability before claims.
 // - The API (OpenRouter): OPENROUTER_API_KEY, AI_MODEL and AI_SOLVE_MODEL, as for every other AI feature.
-// The run's model name (the frame's model check and the draft's model) does not depend on which provider answers: it
+// In Claude mode, the run's model name (the frame's model check and the draft's model) does not depend on which provider answers: it
 // is the API model id when the subscription model is the same model (the defaults), so a run can go on with the
 // fallback, or on the server, and still pass the check that its model did not change.
 // No "server-only" import: the worker and the sample script (plain Node) use it too.
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
 import { CLAUDE_CLI_DEFAULT_MODEL, CLAUDE_CLI_SOLVE_DEFAULT_MODEL, CLAUDE_CLI_TIMEOUT_MS, claudeCliClient, type Spawner } from "@/lib/ai-claude-cli";
+import { CODEX_SUBSCRIPTION_MODEL, codexCliClient, codexCliPreflight } from "@/lib/ai-codex-cli";
+import { isAbsolute } from "node:path";
 import { fallbackAiClient, newGate, type AiCallRecord, type AiProvider, type ProviderGate } from "@/lib/ai-fallback";
 import { costingFetch, openRouterClient } from "@/lib/ai-openrouter";
 import { aiSolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
@@ -26,8 +31,25 @@ export type WorkbookRunner = "mac" | "server";
 /** Where "Prepare next workbook" makes a run: WORKBOOK_RUNNER, "mac" unless it says "server". */
 export const workbookRunner = (env: Env = process.env): WorkbookRunner => (env.WORKBOOK_RUNNER?.trim().toLowerCase() === "server" ? "server" : "mac");
 
+/** An explicit unknown provider must not silently select a different account or provider. */
+export function workbookSubscriptionProvider(env: Env = process.env): "claude" | "codex" {
+  const provider = env.WORKBOOK_SUBSCRIPTION_PROVIDER?.trim().toLowerCase() ?? "claude";
+  if (provider !== "claude" && provider !== "codex") throw new Error("WORKBOOK_SUBSCRIPTION_PROVIDER must be claude or codex");
+  if (provider === "codex" && !isAbsolute(env.WORKBOOK_CODEX_HOME?.trim() ?? "")) {
+    throw new Error("WORKBOOK_CODEX_HOME must be an explicit absolute Codex account directory");
+  }
+  return provider;
+}
+
+/** Check before startup and before each worker claim. This sends no model request. */
+export async function workbookAiPreflight(env: Env = process.env, options: { spawn?: Spawner; signal?: AbortSignal } = {}): Promise<void> {
+  if (workbookSubscriptionProvider(env) === "codex") {
+    await codexCliPreflight({ configDir: env.WORKBOOK_CODEX_HOME!.trim(), env, ...options });
+  }
+}
+
 /** Which provider goes first: WORKBOOK_AI_PRIMARY, "subscription" unless it says "api". */
-export const workbookAiPrimary = (env: Env = process.env): AiProvider => (env.WORKBOOK_AI_PRIMARY?.trim().toLowerCase() === "api" ? "api" : "subscription");
+export const workbookAiPrimary = (env: Env = process.env): AiProvider => (workbookSubscriptionProvider(env) !== "codex" && env.WORKBOOK_AI_PRIMARY?.trim().toLowerCase() === "api" ? "api" : "subscription");
 
 /** "anthropic/claude-sonnet-5.5" and "claude-sonnet-5-5" name the same model. */
 const sameModel = (cli: string, api: string) => api.replace(/^anthropic\//, "").replace(/\./g, "-") === cli;
@@ -41,6 +63,9 @@ export function workbookModels(env: Env = process.env) {
   const cliSolve = env.WORKBOOK_CLAUDE_SOLVE_MODEL?.trim() || CLAUDE_CLI_SOLVE_DEFAULT_MODEL;
   const api = env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
   const apiSolve = env.AI_SOLVE_MODEL?.trim() || AI_SOLVE_DEFAULT_MODEL;
+  if (workbookSubscriptionProvider(env) === "codex") {
+    return { cli: CODEX_SUBSCRIPTION_MODEL, cliSolve: CODEX_SUBSCRIPTION_MODEL, api, apiSolve, write: CODEX_SUBSCRIPTION_MODEL, solve: CODEX_SUBSCRIPTION_MODEL };
+  }
   return { cli, cliSolve, api, apiSolve, write: runModelName(cli, api), solve: runModelName(cliSolve, apiSolve) };
 }
 
@@ -55,7 +80,7 @@ export interface WorkbookAi {
 }
 
 export interface WorkbookAiOptions {
-  /** Whether `claude -p` may run here: true on the Mac (the worker, the sample script), false on the server. */
+  /** Whether a subscription CLI may run here: true on the Mac, false on the server. */
   subscription: boolean;
   /** Exactly one provider request per ledger dispatch for edit batches. */
   singleDispatch?: boolean;
@@ -79,17 +104,22 @@ const API_SOLVE_TIMEOUT_MS = 60_000;
 
 /**
  * The generator's AI for one run, from the settings. On the server (`subscription: false`) it is the API only; on the
- * Mac, the subscription and the API in WORKBOOK_AI_PRIMARY's order. Each solve check's cost is the cost of its own calls.
+ * Mac, Claude and the API follow WORKBOOK_AI_PRIMARY. Explicit Codex mode is subscription only and refuses the server.
+ * Each solve check's cost is the cost of its own calls.
  */
 export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
+  const codex = workbookSubscriptionProvider(env) === "codex";
+  if (codex && !o.subscription) throw new Error("The selected Codex subscription cannot run here; API fallback is disabled");
   const models = workbookModels(env);
   const gate = o.gate ?? newGate();
-  const primary = o.primary ?? workbookAiPrimary(env);
-  const apiKey = env.OPENROUTER_API_KEY?.trim();
+  const primary = codex ? "subscription" : o.primary ?? workbookAiPrimary(env);
+  const apiKey = codex ? undefined : env.OPENROUTER_API_KEY?.trim();
   const base = o.fetch ?? globalThis.fetch;
   const timeout = Number(env.WORKBOOK_CLAUDE_TIMEOUT_MS) > 0 ? Number(env.WORKBOOK_CLAUDE_TIMEOUT_MS) : CLAUDE_CLI_TIMEOUT_MS;
   const cli = (model: string) => o.subscription
-    ? claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout })
+    ? codex
+      ? codexCliClient({ configDir: env.WORKBOOK_CODEX_HOME!.trim(), spawn: o.spawn, env })
+      : claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout })
     : null;
   const api = (model: string, ms: number) => apiKey
     ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch })
