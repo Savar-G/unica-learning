@@ -1,0 +1,31 @@
+
+ RUN  v4.1.11 /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-8f7f34bc
+
+ ❯ src/lib/scan-marking.test.ts (27 tests | 1 failed) 19ms
+   × shows page results in printed question order without changing the canonical input order 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/scan-marking.test.ts > shows page results in printed question order without changing the canonical input order
+AssertionError: expected [ 3, 1, 2 ] to deeply equal [ 1, 2, 3 ]
+
+- Expected
++ Received
+
+  [
++   3,
+    1,
+    2,
+-   3,
+  ]
+
+ ❯ src/lib/scan-marking.test.ts:28:43
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 26 passed (27)
+   Start at  19:54:21
+   Duration  873ms (transform 620ms, setup 0ms, import 766ms, tests 19ms, environment 0ms)

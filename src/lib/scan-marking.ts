@@ -201,6 +201,7 @@ export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[
   });
 }
 export function markingPageView(marks: readonly EffectiveMark[]) {
+  marks = [...marks].sort((a, b) => a.expected.number - b.expected.number);
   const completion = pageCompletion(marks.map((m) => m.expected), marks.map((m) => m.observation));
   const counts = {
     scored: marks.filter((m) => m.observation.result !== null).length,
