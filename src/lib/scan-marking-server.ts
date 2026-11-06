@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { markedFamily } from "@/lib/scan-pages-access";
-import { markingCommand, scanMarkingStore } from "@/lib/scan-marking-store";
+import { changeScanMark, markingCommand, scanMarkingStore, type ParentMarkChoice } from "@/lib/scan-marking-store";
 import { markingAiClient } from "@/lib/scan-marking-ai";
 import { markingPageView, runScanMarking } from "@/lib/scan-marking";
 import { rebuildChildProfile } from "@/lib/child-profile";
@@ -34,7 +34,13 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
   const marks = (await scanMarkingStore(db).effective(parent, p.child_id)).filter((m) => m.expected.identity.workbookId === p.workbook_id && m.expected.identity.pageId === p.page_id && m.expected.identity.printedRevision === p.printed_revision);
   const detail = await markingCommand(db)("detail", parent, photo, null);
   const held = detail && typeof detail === "object" && "job" in detail && detail.job && typeof detail.job === "object" && "blocked_reason" in detail.job ? detail.job.blocked_reason : null;
-  return { ...markingPageView(marks), budgetHeld: held === "budget", photoAvailable: p.state === "saved" && Date.parse(p.expires_at) > Date.now(), marks, detail };
+  const view = markingPageView(marks);
+  const evidenceIds = [...new Set(view.items.flatMap((i) => i.evidencePhoto ? [i.evidencePhoto] : []))];
+  const evidence = evidenceIds.length ? await db.from("scan_photos").select("id,state,expires_at").eq("parent_id", parent).in("id", evidenceIds) : { data: [], error: null };
+  if (evidence.error) throw new Error("marking_evidence_state");
+  const activeEvidence = new Set((evidence.data ?? []).filter((p) => p.state === "saved" && Date.parse(p.expires_at) > Date.now()).map((p) => p.id));
+  const items = view.items.map((i) => ({ ...i, photoAvailable: i.evidencePhoto !== null && activeEvidence.has(i.evidencePhoto) }));
+  return { ...view, items, budgetHeld: held === "budget", photoAvailable: p.state === "saved" && Date.parse(p.expires_at) > Date.now(), marks, detail };
 }
 /** The persisted keyset cursor includes already-sent photos. No new Send action is needed after deployment. */
 export async function recoverScanMarking(db: SupabaseClient<Database>, env: Readonly<Record<string, string | undefined>> = process.env) {
@@ -49,4 +55,27 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Read
     results.push(await processScanMarking(db, ref.parent, ref.photo, env));
   }
   return { status: "processed", results };
+}
+
+/** Recover the durable event/profile intent without invoking automatic marking or image work. */
+export async function changeScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, choice: ParentMarkChoice) {
+  const changed = await changeScanMark(markingCommand(db), parent, photo, choice);
+  if (changed.status === "refused") return changed;
+  if (changed.status === "saved") {
+    try {
+      const child = await childForPhoto(db, parent, photo);
+      await scanMarkingStore(db).publish(parent, child);
+      const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
+      if ((!rebuilt.built && rebuilt.reason !== "nothing_to_build") || (rebuilt.built && rebuilt.skillStates.outcome === "failed")) throw new Error("mark_change_profile_pending");
+    } catch {
+      // The transaction advanced the durable revision. The existing recovery cursor retries after image expiry.
+      return { status: "saved" as const, recoveryPending: true };
+    }
+  }
+  return { status: changed.status, recoveryPending: false };
+}
+async function childForPhoto(db: SupabaseClient<Database>, parent: string, photo: string) {
+  const r = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).single();
+  if (r.error || !r.data) throw new Error("mark_change_owner");
+  return r.data.child_id;
 }

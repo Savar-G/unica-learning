@@ -117,3 +117,11 @@
 .scan-crops img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
 .scan-holder { display: block; width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 4px; }
 @media (max-width: 700px) { .scan-preview-layout { grid-template-columns: minmax(0, 1fr); } .scan-preview ol.scan-crops { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }
+
+/* Parent item review uses the same paper, controls and 44 px targets as scanning. */
+.scan-mark-review { padding: 16px; margin: 8px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.scan-mark-choices { display: flex; flex-wrap: wrap; gap: 10px; }
+.scan-mark-choices .btn { min-width: 88px; min-height: 44px; justify-content: center; }
+.scan-mark-choices .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.scan-mark-choices .btn:disabled { opacity: .5; }
+.scan-marking-results li { overflow-wrap: anywhere; }

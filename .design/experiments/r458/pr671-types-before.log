@@ -1,0 +1,5 @@
+src/lib/scan-marking-store.ts(105,47): error TS2304: Cannot find name 'MarkingCommand'.
+src/lib/scan-marking-store.ts(105,191): error TS2304: Cannot find name 'EffectiveMark'.
+src/lib/scan-marking-store.ts(114,13): error TS2304: Cannot find name 'EffectiveMark'.
+src/lib/scan-marking-store.ts(114,37): error TS2304: Cannot find name 'Observation'.
+src/lib/scan-marking-store.ts(117,48): error TS2304: Cannot find name 'MarkingCommand'.

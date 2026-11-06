@@ -1,0 +1,475 @@
+{
+  "first": {
+    "requests": [
+      {
+        "request": {
+          "itemId": "browser-1",
+          "result": "right",
+          "version": 1
+        },
+        "response": {
+          "recoveryPending": false,
+          "result": {
+            "budgetHeld": false,
+            "completion": {
+              "finished": 2,
+              "items": [
+                {
+                  "itemId": "browser-3",
+                  "number": 3,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-1",
+                  "number": 1,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-2",
+                  "number": 2,
+                  "progress": "parent-check"
+                }
+              ],
+              "status": "incomplete",
+              "total": 3
+            },
+            "counts": {
+              "parentChecks": 1,
+              "pending": 0,
+              "scored": 1,
+              "unscored": 1
+            },
+            "items": [
+              {
+                "actor": "system",
+                "at": "2026-11-06T03:52:04.104693+00:00",
+                "canChange": false,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-3",
+                "label": "Not scored",
+                "number": 3,
+                "photoAvailable": false,
+                "readAnswerText": null,
+                "result": null,
+                "state": "unscored",
+                "version": 1
+              },
+              {
+                "actor": "parent",
+                "at": "2026-11-06T03:54:01.869118+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-1",
+                "label": "Right",
+                "number": 1,
+                "photoAvailable": false,
+                "readAnswerText": "56",
+                "result": "right",
+                "state": "parent-checked",
+                "version": 2
+              },
+              {
+                "actor": "system",
+                "at": "2026-11-06T03:52:04.104693+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-2",
+                "label": "Please check this answer",
+                "number": 2,
+                "photoAvailable": false,
+                "readAnswerText": "It has equal sides.",
+                "result": null,
+                "state": "parent-pending",
+                "version": 1
+              }
+            ],
+            "photoAvailable": false,
+            "solutionsAvailable": false
+          },
+          "status": "saved"
+        },
+        "status": 200
+      },
+      {
+        "request": {
+          "itemId": "browser-2",
+          "result": "blank",
+          "version": 1
+        },
+        "response": {
+          "recoveryPending": false,
+          "result": {
+            "budgetHeld": false,
+            "completion": {
+              "finished": 3,
+              "items": [
+                {
+                  "itemId": "browser-1",
+                  "number": 1,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-2",
+                  "number": 2,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-3",
+                  "number": 3,
+                  "progress": "finished"
+                }
+              ],
+              "status": "complete",
+              "total": 3
+            },
+            "counts": {
+              "parentChecks": 0,
+              "pending": 0,
+              "scored": 2,
+              "unscored": 1
+            },
+            "items": [
+              {
+                "actor": "parent",
+                "at": "2026-11-06T03:54:01.869118+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-1",
+                "label": "Right",
+                "number": 1,
+                "photoAvailable": false,
+                "readAnswerText": "56",
+                "result": "right",
+                "state": "parent-checked",
+                "version": 2
+              },
+              {
+                "actor": "parent",
+                "at": "2026-11-06T03:55:10.265287+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-2",
+                "label": "Blank",
+                "number": 2,
+                "photoAvailable": false,
+                "readAnswerText": "It has equal sides.",
+                "result": "blank",
+                "state": "parent-checked",
+                "version": 2
+              },
+              {
+                "actor": "system",
+                "at": "2026-11-06T03:52:04.104693+00:00",
+                "canChange": false,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-3",
+                "label": "Not scored",
+                "number": 3,
+                "photoAvailable": false,
+                "readAnswerText": null,
+                "result": null,
+                "state": "unscored",
+                "version": 1
+              }
+            ],
+            "photoAvailable": false,
+            "solutionsAvailable": true
+          },
+          "status": "saved"
+        },
+        "status": 200
+      },
+      {
+        "request": {
+          "itemId": "browser-1",
+          "result": "wrong",
+          "version": 2
+        },
+        "response": {
+          "recoveryPending": false,
+          "result": {
+            "budgetHeld": false,
+            "completion": {
+              "finished": 3,
+              "items": [
+                {
+                  "itemId": "browser-1",
+                  "number": 1,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-2",
+                  "number": 2,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-3",
+                  "number": 3,
+                  "progress": "finished"
+                }
+              ],
+              "status": "complete",
+              "total": 3
+            },
+            "counts": {
+              "parentChecks": 0,
+              "pending": 0,
+              "scored": 2,
+              "unscored": 1
+            },
+            "items": [
+              {
+                "actor": "parent",
+                "at": "2026-11-06T03:56:06.511549+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-1",
+                "label": "Wrong",
+                "number": 1,
+                "photoAvailable": false,
+                "readAnswerText": "56",
+                "result": "wrong",
+                "state": "parent-checked",
+                "version": 3
+              },
+              {
+                "actor": "parent",
+                "at": "2026-11-06T03:55:10.265287+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-2",
+                "label": "Blank",
+                "number": 2,
+                "photoAvailable": false,
+                "readAnswerText": "It has equal sides.",
+                "result": "blank",
+                "state": "parent-checked",
+                "version": 2
+              },
+              {
+                "actor": "system",
+                "at": "2026-11-06T03:52:04.104693+00:00",
+                "canChange": false,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-3",
+                "label": "Not scored",
+                "number": 3,
+                "photoAvailable": false,
+                "readAnswerText": null,
+                "result": null,
+                "state": "unscored",
+                "version": 1
+              }
+            ],
+            "photoAvailable": false,
+            "solutionsAvailable": true
+          },
+          "status": "saved"
+        },
+        "status": 200
+      }
+    ],
+    "scrollWidth": 1265,
+    "width": 1280
+  },
+  "second": {
+    "body": "YOUR ACCOUNT\n\nPage results\nBack to Scan pages\n\nPhoto no longer available\n\nThis page has been checked.\n\nQuestion 1: Blank\n\nWe read: 56\n\nParent · 2026-11-06T03:57:08.59717+00:00\n\nChange this mark\n\nQuestion 1: Blank\n\nPhoto no longer available\n\nWe read: 56\n\nChoose the mark for the original answer. This does not record another try.\n\nRight\nWrong\nBlank\nTake another photo\n\nYour mark is saved.\n\nQuestion 2: Blank\n\nWe read: It has equal sides.\n\nParent · 2026-11-06T03:55:10.265287+00:00\n\nChange this mark\n\nQuestion 3: Not scored\n\nAutomatic check · 2026-11-06T03:52:04.104693+00:00\n\nRefresh results",
+    "requests": [
+      {
+        "request": {
+          "itemId": "browser-1",
+          "result": "right",
+          "version": 2
+        },
+        "response": {
+          "recoveryPending": false,
+          "result": {
+            "budgetHeld": false,
+            "completion": {
+              "finished": 3,
+              "items": [
+                {
+                  "itemId": "browser-1",
+                  "number": 1,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-2",
+                  "number": 2,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-3",
+                  "number": 3,
+                  "progress": "finished"
+                }
+              ],
+              "status": "complete",
+              "total": 3
+            },
+            "counts": {
+              "parentChecks": 0,
+              "pending": 0,
+              "scored": 2,
+              "unscored": 1
+            },
+            "items": [
+              {
+                "actor": "parent",
+                "at": "2026-11-06T03:56:06.511549+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-1",
+                "label": "Wrong",
+                "number": 1,
+                "photoAvailable": false,
+                "readAnswerText": "56",
+                "result": "wrong",
+                "state": "parent-checked",
+                "version": 3
+              },
+              {
+                "actor": "parent",
+                "at": "2026-11-06T03:55:10.265287+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-2",
+                "label": "Blank",
+                "number": 2,
+                "photoAvailable": false,
+                "readAnswerText": "It has equal sides.",
+                "result": "blank",
+                "state": "parent-checked",
+                "version": 2
+              },
+              {
+                "actor": "system",
+                "at": "2026-11-06T03:52:04.104693+00:00",
+                "canChange": false,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-3",
+                "label": "Not scored",
+                "number": 3,
+                "photoAvailable": false,
+                "readAnswerText": null,
+                "result": null,
+                "state": "unscored",
+                "version": 1
+              }
+            ],
+            "photoAvailable": false,
+            "solutionsAvailable": true
+          },
+          "status": "conflict"
+        },
+        "status": 409
+      },
+      {
+        "request": {
+          "itemId": "browser-1",
+          "result": "blank",
+          "version": 3
+        },
+        "response": {
+          "recoveryPending": false,
+          "result": {
+            "budgetHeld": false,
+            "completion": {
+              "finished": 3,
+              "items": [
+                {
+                  "itemId": "browser-1",
+                  "number": 1,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-2",
+                  "number": 2,
+                  "progress": "finished"
+                },
+                {
+                  "itemId": "browser-3",
+                  "number": 3,
+                  "progress": "finished"
+                }
+              ],
+              "status": "complete",
+              "total": 3
+            },
+            "counts": {
+              "parentChecks": 0,
+              "pending": 0,
+              "scored": 2,
+              "unscored": 1
+            },
+            "items": [
+              {
+                "actor": "parent",
+                "at": "2026-11-06T03:57:08.59717+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-1",
+                "label": "Blank",
+                "number": 1,
+                "photoAvailable": false,
+                "readAnswerText": "56",
+                "result": "blank",
+                "state": "parent-checked",
+                "version": 4
+              },
+              {
+                "actor": "parent",
+                "at": "2026-11-06T03:55:10.265287+00:00",
+                "canChange": true,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-2",
+                "label": "Blank",
+                "number": 2,
+                "photoAvailable": false,
+                "readAnswerText": "It has equal sides.",
+                "result": "blank",
+                "state": "parent-checked",
+                "version": 2
+              },
+              {
+                "actor": "system",
+                "at": "2026-11-06T03:52:04.104693+00:00",
+                "canChange": false,
+                "evidencePhoto": "f490d545-2799-4ee9-8d4d-0c4e2cc8acd0",
+                "itemId": "browser-3",
+                "label": "Not scored",
+                "number": 3,
+                "photoAvailable": false,
+                "readAnswerText": null,
+                "result": null,
+                "state": "unscored",
+                "version": 1
+              }
+            ],
+            "photoAvailable": false,
+            "solutionsAvailable": true
+          },
+          "status": "saved"
+        },
+        "status": 200
+      }
+    ],
+    "scrollWidth": 375,
+    "unscoredControls": 0,
+    "width": 390
+  },
+  "phone": {
+    "width": 390,
+    "scrollWidth": 375
+  },
+  "tablet": {
+    "width": 820,
+    "scrollWidth": 805
+  },
+  "desktop": {
+    "width": 1280,
+    "scrollWidth": 1265
+  },
+  "pendingHadDefault": false,
+  "unscoredControls": 0
+}

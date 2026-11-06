@@ -1,0 +1,3 @@
+
+> unica-learning-landing-page@0.1.0 voice:typecheck
+> tsc -p worker/maya-voice/tsconfig.json

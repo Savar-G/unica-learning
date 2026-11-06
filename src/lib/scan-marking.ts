@@ -188,7 +188,10 @@ export function effectiveMarkingEvents(raw: readonly LearningEvent[], marks: rea
   const others = raw.filter((e) => e.source !== "marking");
   return [...others, ...marks.flatMap((m) => {
     const d = markingEvent(m.expected, m.observation);
-    return d.publish && m.originalEvent && m.eventId ? [{ ...m.originalEvent, id: m.eventId, result: d.result }] : [];
+    return d.publish && m.originalEvent && m.eventId ? [{ ...m.originalEvent, id: m.eventId, result: d.result,
+      // A judgment cannot carry an old or inferred mistake cause into the effective facts.
+      mistake: m.observation.actor === "parent" ? null : m.originalEvent.mistake,
+      stuckStep: m.observation.actor === "parent" ? null : m.originalEvent.stuckStep }] : [];
   })];
 }
 export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[] {
@@ -198,6 +201,7 @@ export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[
   });
 }
 export function markingPageView(marks: readonly EffectiveMark[]) {
+  marks = [...marks].sort((a, b) => a.expected.number - b.expected.number);
   const completion = pageCompletion(marks.map((m) => m.expected), marks.map((m) => m.observation));
   const counts = {
     scored: marks.filter((m) => m.observation.result !== null).length,
@@ -207,5 +211,7 @@ export function markingPageView(marks: readonly EffectiveMark[]) {
   };
   return { completion, counts, solutionsAvailable: completion.status === "complete" && counts.scored > 0, items: marks.map((m) => ({ number: m.expected.number, itemId: m.expected.identity.itemId, version: m.observation.resultVersion,
     state: m.observation.state, result: m.observation.result, readAnswerText: m.observation.readAnswerText,
+    canChange: m.expected.method === "code" || m.expected.method === "parent", actor: m.observation.actor, at: m.at,
+    evidencePhoto: m.observation.evidence?.photoRevision ?? null, photoAvailable: false,
     label: m.observation.result === "right" ? "Right" : m.observation.result === "wrong" ? "Wrong" : m.observation.result === "blank" ? "Blank" : m.observation.state === "unscored" ? "Not scored" : "Please check this answer" })) };
 }

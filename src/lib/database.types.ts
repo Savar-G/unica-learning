@@ -2798,6 +2798,67 @@ export type Database = {
           },
         ]
       }
+      scan_mark_changes: {
+        Row: {
+          actor: string
+          changed_at: string
+          child_id: string
+          current: Json
+          from_version: number
+          id: number
+          item_id: string
+          parent_id: string
+          previous: Json
+          to_version: number
+        }
+        Insert: {
+          actor?: string
+          changed_at?: string
+          child_id: string
+          current: Json
+          from_version: number
+          id?: never
+          item_id: string
+          parent_id: string
+          previous: Json
+          to_version: number
+        }
+        Update: {
+          actor?: string
+          changed_at?: string
+          child_id?: string
+          current?: Json
+          from_version?: number
+          id?: never
+          item_id?: string
+          parent_id?: string
+          previous?: Json
+          to_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_mark_changes_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "scan_mark_changes_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_mark_changes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scan_marking_cursor: {
         Row: {
           after_id: string | null
@@ -6544,6 +6605,16 @@ export type Database = {
       }
       scan_active_jobs: { Args: { p_parent: string }; Returns: number }
       scan_child_images_live: { Args: { p_child: string }; Returns: boolean }
+      scan_marking_automatic_command: {
+        Args: {
+          p_action: string
+          p_data?: Json
+          p_parent: string
+          p_photo: string
+          p_token: string
+        }
+        Returns: Json
+      }
       scan_marking_command: {
         Args: {
           p_action: string

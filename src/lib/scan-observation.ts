@@ -236,7 +236,7 @@ const readsWholeItem = (e: ExpectedItem, o: Observation) => {
 };
 
 const isTerminal = (e: ExpectedItem, o: Observation) =>
-  (e.method === "code" && o.state === "scored" && o.result !== null && readsWholeItem(e, o))
+  (e.method === "code" && ((o.state === "scored" && readsWholeItem(e, o)) || (o.state === "parent-checked" && o.actor === "parent")) && o.result !== null)
   || (e.method === "parent" && o.state === "parent-checked" && o.result !== null)
   || (e.method === "unscored" && o.state === "unscored");
 

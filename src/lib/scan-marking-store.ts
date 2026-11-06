@@ -6,11 +6,11 @@ import { storedQuestion } from "@/lib/workbook-content";
 import { printContractForPhoto, storedPrintContract } from "@/lib/workbook-print-contract";
 import { calibrationForPhoto } from "@/lib/scan-calibration";
 import { scanPartPath } from "@/lib/scan-crops";
-import { firstObservation } from "@/lib/scan-observation";
+import { firstObservation, type Observation } from "@/lib/scan-observation";
 import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
-import { currentSheetCheck, MARKING_PROMPT_VERSION, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
-import { markingCommand, scanMarkingReader, mark, observation } from "@/lib/scan-marking-reader";
+import { currentSheetCheck, MARKING_PROMPT_VERSION, type EffectiveMark, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingCommand, scanMarkingReader, mark, observation, type MarkingCommand } from "@/lib/scan-marking-reader";
 export { markingCommand, type MarkingCommand } from "@/lib/scan-marking-reader";
 import { digestOf } from "@/lib/workbook-digest";
 
@@ -89,4 +89,35 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
     },
     effective: reader.effective,
   };
+}
+
+export interface ParentMarkChoice { itemId: string; version: number; result: "right" | "wrong" | "blank" }
+export function parentMarkChoice(value: unknown): ParentMarkChoice | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (Object.keys(v).some((key) => !["itemId", "version", "result"].includes(key))
+    || typeof v.itemId !== "string" || !v.itemId.length || v.itemId.length > 200
+    || typeof v.version !== "number" || !Number.isSafeInteger(v.version) || v.version < 1 || v.version > 999_999_999
+    || (v.result !== "right" && v.result !== "wrong" && v.result !== "blank")) return null;
+  return { itemId: v.itemId, version: v.version, result: v.result };
+}
+/** Public store action. It cannot read an image or dispatch a model request. */
+export async function changeScanMark(command: MarkingCommand, parent: string, photo: string, choice: ParentMarkChoice): Promise<{ status: "refused" } | { status: "saved" | "conflict"; mark: EffectiveMark }> {
+  const raw = await command("change", parent, photo, null, toJson(choice));
+  if (raw === "refused") return { status: "refused" as const };
+  const r = record(raw);
+  if (r.status !== "saved" && r.status !== "conflict") throw new Error("mark_change_shape");
+  return { status: r.status, mark: mark(r.mark) };
+}
+export interface ScanMarkChange {
+  id: number; itemId: string; actor: string; at: string; from: number; to: number;
+  previous: EffectiveMark; current: Observation;
+}
+/** Keyset pages contain every prior parent judgment, including after image cleanup. */
+export async function scanMarkChanges(command: MarkingCommand, parent: string, photo: string, after = 0): Promise<ScanMarkChange[]> {
+  return list(await command("changes", parent, photo, null, { after })).map((v) => {
+    const r = record(v);
+    return { id: num(r.id), itemId: str(r.item_id), actor: str(r.actor), at: str(r.changed_at),
+      from: num(r.from_version), to: num(r.to_version), previous: mark(r.previous), current: observation(r.current) };
+  });
 }

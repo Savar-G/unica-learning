@@ -21,6 +21,14 @@ function frame(photo = "photo-a", answers = [0, 12, 9]): MarkingFrame {
 }
 const output = (texts: (string | null)[]) => ({ readings: texts.map((text, n) => ({ item: `i${n + 1}`, region: `r${n + 1}`, text, state: text === "" ? "blank" : text === null ? "uncertain" : "written" })) });
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
+it("shows page results in printed question order without changing the canonical input order", () => {
+  const expected = expectedItems(frame());
+  const marks: EffectiveMark[] = [2, 0, 1].map((n) => ({ expected: expected[n], observation: firstObservation(expected[n], null), originalEvent: null, eventId: null, at: "2026-11-05T12:00:00Z", model: null, prompt: null }));
+  const view = markingPageView(marks);
+  expect(view.items.map((i) => i.number)).toEqual([1, 2, 3]);
+  expect(view.completion.items.map((i) => i.number)).toEqual([1, 2, 3]);
+  expect(marks.map((m) => m.expected.number)).toEqual([3, 1, 2]);
+});
 /** Atomic fake. SQL tests separately exercise the real database admission and version predicates. */
 class Store implements MarkingStore {
   frames = new Map<string, MarkingFrame>();

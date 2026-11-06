@@ -1,0 +1,21 @@
+{
+  "credential": "Dedicated retention_worker key",
+  "request": "Directly queued only the owned synthetic family after verifying its source/run marker",
+  "result": {
+    "state": "deleted",
+    "images": 0,
+    "copies": 0
+  },
+  "remaining": {
+    "parents": 0,
+    "children": 0,
+    "scan_photos": 0,
+    "scan_marking_items": 0,
+    "scan_mark_changes": 0,
+    "scan_marking_revisions": 0,
+    "learning_events": 0
+  },
+  "authUserAbsent": true,
+  "storageObjectsCreated": 0,
+  "providerCalls": 0
+}

@@ -1,0 +1,31 @@
+{
+  "route": "direct",
+  "job_kind": "fix",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "base": "f3133376535b3c96f4c81f62f1f8d1cc80322a23",
+  "contract": "DESIGN.md Scan pages and D-235",
+  "implementation": [
+    "src/components/scan-mark-change.tsx",
+    "src/app/(product)/admin/scans/[id]/page.tsx"
+  ],
+  "scenarios": "scenarios.md",
+  "visual_review": "Pending root Aside checks and Savar approval",
+  "release": "Family marking and dashboard remain off",
+  "evidence": [
+    "verification.md",
+    "affected-tests.log",
+    "s5-local-sql.log",
+    "s4-before.log",
+    "s4-after.log",
+    "old-route-control.log",
+    "eslint.log",
+    "build.log"
+  ],
+  "test_counts": {
+    "affected": 171,
+    "s5_local_sql": 36,
+    "s4_local_sql_before": 48,
+    "s4_local_sql_after": 48
+  }
+}

@@ -13,7 +13,7 @@ export default async function ScanResultsPage({ params }: { params: Promise<{ id
   if (!result || !await session.active()) notFound();
   return <SupportPage label="Your account" title="Page results"><div className="scan-pages">
     <Link href="/account/scan">Back to Scan pages</Link>
-    <ScanMarkingResults result={result} showHeading={false} />
+    <ScanMarkingResults photo={id} result={result} showHeading={false} />
     <form action={`/account/scan/results/${id}`}><button type="submit" className="btn ghost scan-result-refresh">Refresh results</button></form>
   </div></SupportPage>;
 }

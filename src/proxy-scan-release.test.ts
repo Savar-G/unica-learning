@@ -17,7 +17,7 @@ it.each(["/account/scan", "/api/account/scans", "/api/account/scans/id", "/api/a
   expect(response.headers.get("location")).toBeNull();
 });
 
-it.each(["/account/scan", "/api/account/scans/id/image"])("keeps the desk lock for permitted scanning: %s", async (path) => {
+it.each(["/account/scan", "/api/account/scans/id/image", "/api/account/scans/id/marking"])("keeps the desk lock for permitted scanning: %s", async (path) => {
   release.allowed = true;
   const response = await proxy(lockedRequest(path));
   expect(response.status).toBe(path.startsWith("/api/") ? 423 : 307);
