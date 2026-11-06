@@ -38,8 +38,8 @@ import { FLAG_LEVELS, UNSAFE_REQUEST_FLAG, type AlertState, type AlertStatus, ty
 import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
 import { fakeTalkReviewer, type TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession } from "@/lib/maya-text";
-import { checkTrace, type MayaTrace, type TraceTurn } from "@/lib/maya-trace";
-import { equivalent, sameValue, type AnswerValue, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
+import { checkTrace, packageHash, type MayaTrace, type TraceTurn } from "@/lib/maya-trace";
+import { checkQuestionPackage, equivalent, sameValue, type AnswerValue, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
 import { FIXTURES, type FixtureId } from "./fixtures";
 
 // ---------- The hard failures ----------
@@ -500,8 +500,7 @@ export function sentences(text: string): string[] {
 }
 
 /** The numbers a child said in a run (and the alternatives speech-to-text offered), for the confirmation lines. */
-function heardValues(b: Behaviour, t: MayaTrace): AnswerValue[] {
-  const pkg = packageOf(b);
+function heardValues(b: Behaviour, t: MayaTrace, pkg = packageOf(b)): AnswerValue[] {
   // In a fraction call the child's spoken fractions are read, as the session reads them (#407).
   const opts = readOptionsFor(pkg.operation !== null && pkg.answer !== null && pkg.easierExample !== null ? (pkg as OperationPackage) : null);
   const texts = [
@@ -532,7 +531,7 @@ export function flagLevelsOf(t: MayaTrace): FlagLevel[] {
 }
 
 /** Judges one behaviour from its saved trace (and a call run's saved call). Every failure found is listed; none means the run passed. */
-export function judge(b: Behaviour, saved: string | undefined, savedCall?: string): Verdict {
+export function judge(b: Behaviour, saved: string | undefined, savedCall?: string, checkedPackage?: QuestionPackage): Verdict {
   const empty = (failures: Finding[], trace: MayaTrace | null = null): Verdict => ({ id: b.id, failures, counts: null, states: [], acts: [], trace });
   if (saved === undefined) return empty([{ code: "missing_trace", detail: "no trace was saved for this run" }]);
   let raw: unknown;
@@ -546,7 +545,13 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   const t = read.trace;
   const failures: Finding[] = [];
   const fail = (code: HardFailure, detail: string) => failures.push({ code, detail });
-  const pkg = packageOf(b);
+  const pkg = checkedPackage ?? packageOf(b);
+  if (checkedPackage) {
+    const checked = checkQuestionPackage(checkedPackage);
+    if (!checked.ok) return empty([{ code: "trace_invalid", detail: `the supplied package is not checked: ${checked.reason}` }], t);
+    if (t.question.hash !== packageHash(pkg) || t.question.id !== pkg.id || JSON.stringify(t.question.ref) !== JSON.stringify(pkg.ref) || t.question.text !== pkg.text)
+      return empty([{ code: "trace_invalid", detail: "the trace and supplied question package have different identities" }], t);
+  }
   const maya = mayaTurns(t);
   const counts = countsOf(t);
   const acts = maya.map((m) => m.output?.act ?? null);
@@ -614,7 +619,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
 
   // What Maya may ever say for this question: code lines (math), bank phrases (no math), the safety guidance.
   const op = pkg.operation !== null && pkg.answer !== null && pkg.easierExample !== null ? (pkg as OperationPackage) : null;
-  const lineSentences = new Set(op ? allLineTexts(op, heardValues(b, t)).flatMap(sentences) : []);
+  const lineSentences = new Set(op ? allLineTexts(op, heardValues(b, t, pkg)).flatMap(sentences) : []);
   const bank = Object.values(PHRASES).flat();
   const bankSentences = new Set(bank.filter((p) => !p.includes("{echo}")).flatMap(sentences));
   const echoPatterns = bank.filter((p) => p.includes("{echo}")).flatMap(sentences).filter((s) => s.includes("{echo}")).map(phrasePattern);
@@ -655,7 +660,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   // or equation ("12 − 8 = 4", the regrouped ones of 52 − 28, #604), which code computed. Every other text on the board
   // (a digit put in a cell, a column operand) holds only the question's or the example's own numbers.
   const own = op ? new Set([...valuesIn(JSON.stringify(op.steps)), ...valuesIn(JSON.stringify(op.easierExample.steps)), ...valuesIn(op.text), ...valuesIn(op.easierExample.text)].map((v) => JSON.stringify(v))) : new Set<string>();
-  const notes = op ? lineBoardTexts(op, heardValues(b, t)) : new Set<string>();
+  const notes = op ? lineBoardTexts(op, heardValues(b, t, pkg)) : new Set<string>();
   for (const batch of t.board) {
     for (const command of batch.commands) {
       const x = command as { op?: unknown; text?: unknown };

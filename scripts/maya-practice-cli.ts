@@ -2,6 +2,8 @@
 // scripts/maya-practice.mjs bundles this file. A local tool: nothing in src imports it. See docs/maya-practice.md.
 //
 // Options:
+//   --channel <voice|chat>   voice through the text adapter (default), or actual child chat settings
+//   --generated              add real-generator U4/U16 Day 1 packages with local synthetic inputs
 //   --fake                   fake models only: the rule player as Maya, the scripted children, a fake judge. No key,
 //                            no network, no cost. It checks the plumbing, not Maya.
 //   --estimate               print the cost estimate and stop
@@ -54,9 +56,9 @@ import type { Database } from "@/lib/database";
 import { createSpendLedger, recordLocalSpend, spendConfig } from "@/lib/maya-spend";
 import { mayaSpendStore } from "@/lib/maya-spend-store";
 import {
-  aiChildSimulator, aiJudge, aiValidityJudge, buildReport, fakeValidityJudge, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, meteredFetch, planSuite, PRACTICE_CASES, reportMarkdown,
+  generatedPracticeSet, practiceExecution, aiChildSimulator, aiJudge, aiValidityJudge, buildReport, fakeValidityJudge, fileHash, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, meteredFetch, planSuite, PRACTICE_CASES, reportMarkdown,
   RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending, timedTurns, turnTimeMarkdown,
-  type AiJudge, type ByRole, type ChildSimulator, type ValidityJudge, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
+  type ExecutionOptions, type AiJudge, type ByRole, type ChildSimulator, type ValidityJudge, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
 } from "@/lib/maya-practice";
 
 export const DEFAULT_SIM_MODEL = "anthropic/claude-haiku-5.5";
@@ -84,6 +86,8 @@ type Provider = "openrouter" | "anthropic" | "subscription";
 
 interface Options {
   fake: boolean;
+  channel: "voice" | "chat";
+  generated: boolean;
   provider: Provider;
   freeTalk: boolean;
   reviewCheck: boolean;
@@ -98,7 +102,7 @@ interface Options {
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { fake: false, provider: "openrouter", freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: 3, out: null, report: null, models: {} };
+  const o: Options = { fake: false, channel: "voice", generated: false, provider: "openrouter", freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: 3, out: null, report: null, models: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -111,7 +115,13 @@ function parse(argv: string[]): Options {
       if (!Number.isFinite(y) || y < min) throw new Error(`${a} needs a number of at least ${min}`);
       return y;
     };
-    if (a === "--fake") o.fake = true;
+    if (a === "--channel") {
+      const channel = v();
+      if (channel !== "voice" && channel !== "chat") throw new Error("--channel must be voice or chat");
+      o.channel = channel;
+    }
+    else if (a === "--generated") o.generated = true;
+    else if (a === "--fake") o.fake = true;
     else if (a === "--anthropic") o.provider = "anthropic";
     else if (a === "--subscription") o.provider = "subscription";
     else if (a === "--provider") {
@@ -135,6 +145,7 @@ function parse(argv: string[]): Options {
     else if (a === "--judge-model") o.models.judge = v();
     else throw new Error(`unknown option ${a}`);
   }
+  if (o.channel === "chat") o.freeTalk = false;
   return o;
 }
 
@@ -280,8 +291,8 @@ function folderStore(dir: string): PracticeStore {
   };
 }
 
-function writeReport(cases: readonly PracticeCase[], runs: number, dir: string): boolean {
-  const report = buildReport(cases, folderStore(dir), runs);
+function writeReport(cases: readonly PracticeCase[], runs: number, dir: string, execution: ExecutionOptions): boolean {
+  const report = buildReport(cases, folderStore(dir), runs, execution);
   // What happened to each piece of Maya's own words (D-197): not a gate result.
   const talk = freeTalkReport(cases, folderStore(dir), runs);
   writeFileSync(join(dir, "free-talk.json"), `${JSON.stringify(talk, null, 2)}\n`);
@@ -334,8 +345,11 @@ function git(cmd: string): string {
 async function main() {
   const root = resolve(process.env.MAYA_ROOT ?? process.cwd());
   const o = parse(process.argv.slice(2));
-  const cases = o.cases ? o.cases.map((id) => PRACTICE_CASES.find((c) => c.id === id) ?? (() => { throw new Error(`no case ${id}`); })()) : PRACTICE_CASES;
-  if (o.report) process.exit(writeReport(cases, o.runs, resolve(o.report)) ? 0 : 1);
+  const generated = o.generated ? await generatedPracticeSet() : null;
+  const required = [...PRACTICE_CASES, ...(generated?.cases ?? [])];
+  const execution = practiceExecution(o);
+  const cases = o.cases ? o.cases.map((id) => required.find((c) => c.id === id) ?? (() => { throw new Error(`no case ${id}`); })()) : required;
+  if (o.report) process.exit(writeReport(cases, o.runs, resolve(o.report), execution) ? 0 : 1);
   // The fake rule player is always Maya with --fake: a model named here would be ignored without a word.
   if (o.fake && o.models.maya) throw new Error("--maya-model needs a real model: drop --fake.");
 
@@ -405,7 +419,7 @@ async function main() {
       // About 70 short review calls: a cap of USD 2 is far above them.
       spending = new Spending(o.maxUsd ?? 2);
     } else {
-      const estimate = await estimateCost(cases, o.runs, paid, price);
+      const estimate = await estimateCost(cases, o.runs, paid, price, execution);
       printEstimate(estimate, cases.length, o.runs);
       if (o.estimate) return;
       const cap = o.maxUsd ?? Math.ceil(estimate.usd * 2);
@@ -439,6 +453,7 @@ async function main() {
 
   const dir = resolve(o.out ?? join(root, "traces/maya-practice", new Date().toISOString().replace(/[:.]/g, "-")));
   const store = folderStore(dir);
+  if (generated) store.save("generated-packages.json", JSON.stringify(generated, null, 2));
   const times = timedTurns(maya, reviewer, () => Date.now());
   maya = times.maya;
   reviewer = times.reviewer;
@@ -450,9 +465,11 @@ async function main() {
     reviewer: reviewer ? { model: reviewer.id, promptVersion: reviewer.promptVersion } : null,
     meta: {
       commit: git("rev-parse HEAD"), changes: git("status --porcelain") ? "uncommitted changes" : "clean", date: new Date().toISOString(),
+      ...(generated ? { generatedArtifact: fileHash(store.load("generated-packages.json")!) } : {}),
       mode: o.fake ? "fake" : o.provider, freeTalk: o.freeTalk ? "on" : "off",
     },
-  }, { runs: o.runs, maxUsd: spending.maxUsd });
+  }, { runs: o.runs, maxUsd: spending.maxUsd, ...execution });
+  console.log(`-- channel: ${execution.channel}; free talk: ${execution.freeTalk ? "on" : "off"}; generated packages: ${generated ? "U4,U16 Day 1 (synthetic)" : "none"}`);
   console.log(`-- ${plan.runs.length} runs into ${dir}`);
   let done = 0;
   await runSuite(cases, plan, {
@@ -469,7 +486,7 @@ async function main() {
   writeFileSync(join(dir, "turn-time.json"), `${JSON.stringify(turnTime, null, 2)}\n`);
   writeFileSync(join(dir, "turn-time.md"), `${turnTimeMarkdown(turnTime, o.fake ? "fake" : o.provider)}\n`);
   console.log(`-- turn time: ${turnTime.maya.id}: ${turnTime.maya.calls} calls, ${turnTime.maya.failed} failed, p50 ${turnTime.maya.p50Ms ?? "-"} ms, p95 ${turnTime.maya.p95Ms ?? "-"} ms: ${join(dir, "turn-time.md")}`);
-  const passed = writeReport(cases, o.runs, dir);
+  const passed = writeReport(cases, o.runs, dir, execution);
   console.log(`-- provider: ${o.fake ? "fake" : o.provider}; ${spent(o, spending)}`);
   await countMonthly(o, spending);
   process.exit(passed ? 0 : 1);

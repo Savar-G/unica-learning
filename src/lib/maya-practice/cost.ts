@@ -9,7 +9,7 @@ import { SYSTEM_PROMPT, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { DIMENSION_IDS, type PracticeCase } from "./cases";
 import { fakeJudge, judgeSchema, JUDGE_SYSTEM, type AiJudge } from "./judge";
-import { BudgetReached, memoryPracticeStore, planSuite, runSuite } from "./practice";
+import { BudgetReached, memoryPracticeStore, planSuite, runSuite, type ExecutionOptions } from "./practice";
 import { scriptedSimulator, SIMULATOR_SCHEMA, SIMULATOR_SYSTEM, type ChildSimulator } from "./simulator";
 import { fakeValidityJudge, VALIDITY_SCHEMA, VALIDITY_SYSTEM, type ValidityJudge } from "./validity-judge";
 
@@ -42,7 +42,7 @@ export interface CostEstimate {
 }
 
 /** Runs the suite with the fakes and measures every request: calls and input size per role. */
-export async function measureSuite(cases: readonly PracticeCase[], runs: number): Promise<Record<Role, { calls: number; inputChars: number }>> {
+export async function measureSuite(cases: readonly PracticeCase[], runs: number, execution: ExecutionOptions = {}): Promise<Record<Role, { calls: number; inputChars: number }>> {
   const m: Record<Role, { calls: number; inputChars: number }> = { maya: { calls: 0, inputChars: 0 }, simulator: { calls: 0, inputChars: 0 }, validity: { calls: 0, inputChars: 0 }, judge: { calls: 0, inputChars: 0 }, reviewer: { calls: 0, inputChars: 0 } };
   const fixed = {
     maya: SYSTEM_PROMPT.length + JSON.stringify(PROPOSAL_SCHEMA).length,
@@ -59,7 +59,7 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number)
   for (const c of cases) {
     const sim0 = scriptedSimulator(c.fakeScript);
     const simulator: ChildSimulator = { id: "estimate", promptVersion: sim0.promptVersion, next: (input, s) => { m.simulator.calls++; m.simulator.inputChars += fixed.simulator + JSON.stringify(input).length; return sim0.next(input, s); } };
-    const plan = planSuite([c], { maya: { model: "estimate", promptVersion: "" }, simulator: { model: "estimate", promptVersion: "" }, validity: { model: "estimate", promptVersion: "" }, judge: { model: "estimate", promptVersion: "" }, meta: {} }, { runs: 1 });
+    const plan = planSuite([c], { maya: { model: "estimate", promptVersion: "" }, simulator: { model: "estimate", promptVersion: "" }, validity: { model: "estimate", promptVersion: "" }, judge: { model: "estimate", promptVersion: "" }, meta: {} }, { runs: 1, ...execution });
     await runSuite([c], plan, { maya, simulator, validity, judge, store: memoryPracticeStore() });
   }
   // Every run of a case sends about what its first run sends. Both judges are asked once for every run in a real
@@ -78,8 +78,8 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number)
 }
 
 /** The estimate for a real suite: the dry run's measures, the prices, the output assumptions and the margin. */
-export async function estimateCost(cases: readonly PracticeCase[], runs: number, models: ByRole<string>, prices: ByRole<Price>): Promise<CostEstimate> {
-  const m = await measureSuite(cases, runs);
+export async function estimateCost(cases: readonly PracticeCase[], runs: number, models: ByRole<string>, prices: ByRole<Price>, execution: ExecutionOptions = {}): Promise<CostEstimate> {
+  const m = await measureSuite(cases, runs, execution);
   const roles: CostEstimate["roles"] = {};
   let usd = 0;
   for (const role of ROLES) {

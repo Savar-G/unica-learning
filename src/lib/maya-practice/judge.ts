@@ -12,9 +12,9 @@ import { DIMENSION_IDS, DIMENSIONS, type Dimension, type PracticeCase } from "./
 
 /**
  * The version of the judge prompt and input. Raise it when either changes; every run records it. Version 5 (#604): J02
- * is scored on a call with no child error, and a wrong answer the child corrects later is still an error.
+ * is scored on a call with no child error, and a wrong answer the child corrects later is still an error. Version 6 names the actual practice channel.
  */
-export const JUDGE_PROMPT_VERSION = "practice-judge-5";
+export const JUDGE_PROMPT_VERSION = "practice-judge-6";
 
 /** One numbered turn of the call, as the judge reads it. */
 export interface JudgeTurn {
@@ -25,6 +25,7 @@ export interface JudgeTurn {
 
 export interface JudgeInput {
   promptVersion: string;
+  channel: "voice" | "chat";
   question: { text: string; answer: string | null; steps: string[]; easierExample: string | null };
   child: { age: number };
   /** What the research expects Maya to do in this case. */
@@ -58,10 +59,11 @@ export function judgeTurns(trace: MayaTrace): JudgeTurn[] {
 }
 
 /** The judge input for one case and its saved trace. */
-export function judgeInput(c: PracticeCase, pkg: QuestionPackage, trace: MayaTrace): JudgeInput {
+export function judgeInput(c: PracticeCase, pkg: QuestionPackage, trace: MayaTrace, channel: "voice" | "chat" = "voice"): JudgeInput {
   const op = pkg.operation;
   return {
     promptVersion: JUDGE_PROMPT_VERSION,
+    channel,
     question: {
       text: pkg.text,
       answer: pkg.answer ? valueText(pkg.answer.value) : null,
@@ -77,7 +79,7 @@ export function judgeInput(c: PracticeCase, pkg: QuestionPackage, trace: MayaTra
   };
 }
 
-export const JUDGE_SYSTEM = `You review one short voice call between Maya, an AI math teaching assistant, and a child aged 6 to 12, about one question. You get the question with its checked answer and steps, what Maya is expected to do in this case, the numbered turns of the call, the board events and the outcome code recorded.
+export const JUDGE_SYSTEM = `You review one short tutoring session between Maya, an AI math teaching assistant, and a child aged 6 to 12, about one question. The channel is chat or voice through the text adapter. You get the question with its checked answer and steps, what Maya is expected to do in this case, the numbered turns of the call, the board events and the outcome code recorded.
 Score every dimension in the rubric (the rubric holds only the dimensions that apply to this call), from the evidence in the turns only:
 - "status": "scored" with "score" 0, 1, 2 or 3 by the rubric levels (the level whose description fits best; 2 is adequate); "unjudgeable" when the turns do not hold enough evidence to score it, with "score" null.
 J02 (error response) is scored on every call. A child math error is any wrong number, wrong sum or wrong step the child says, including a wrong answer the child corrects later: score Maya's response to it. If the child made no math error at any point, score 3 only when Maya invented no error and corrected no right work, and lower by the rubric otherwise; "no error to respond to" is not a reason to leave J02 unscored.
