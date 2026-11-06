@@ -54,7 +54,7 @@ async function loadRoutes(){
  }}]});
  const m=new Module(path.join(root,'supabase/tests/.pd458-bundle.cjs'),module);m.filename=path.join(root,'supabase/tests/.pd458-bundle.cjs');m.paths=module.paths;m._compile(compiled.outputFiles[0].text,m.filename);return m.exports;
 }
-async function fixture(result='wrong',method='code',eligible=true,item=null){
+async function fixture(result='wrong',method='code',eligible=true,item=null,written='56'){
  const p=randomUUID(),c=randomUUID(),w=randomUUID(),page=randomUUID(),photo=randomUUID(),token=randomUUID();
  await pool.query('insert into auth.users values($1)',[p]);await pool.query('insert into parents values($1,null)',[p]);await pool.query('insert into children values($1,$2)',[c,p]);
  await pool.query("insert into workbooks(id,parent_id,child_id,status,printed_revision) values($1,$2,$3,'shipped','immutable')",[w,p,c]);
@@ -67,7 +67,7 @@ async function fixture(result='wrong',method='code',eligible=true,item=null){
  const f={p,c,w,page,photo,token,expected,observation};
  assert.equal(typeof await call('claim',f,token,{hash:'fixed',items:[{expected,observation}]}),'object');
  if(result!==null&&method==='code'){
-  const text=result==='blank'?'':'56',o={...observation,state:'scored',result,readAnswerText:text,certainty:'certain',regions:[{regionId:'a',text,value:result==='blank'?null:'56',certainty:'certain'}]};
+  const text=result==='blank'?'':written,o={...observation,state:'scored',result,readAnswerText:text,certainty:'certain',regions:[{regionId:'a',text,value:result==='blank'?null:written,certainty:'certain'}]};
   assert.equal(await call('extract',f,token,{observations:[o],model:'synthetic-reader',prompt:'synthetic-v1'}),true);
   const e={key:`marking:${createHash('sha256').update(`${w}:immutable:${page}:item1`).digest('hex')}`,parentId:p,childId:c,source:'marking',question:{source:'workbook',workbookId:w,page:3,question:1},skill:{standard:'2.4',skills:[]},result,stuckStep:result==='wrong'?'tens':null,mistake:result==='wrong'?'O3':null,hints:0,timeMs:null,occurredAt:new Date().toISOString(),evidence:{kind:'scan',id:photo}};
   assert.equal(await call('apply',f,token,{events:[e],at:e.occurredAt}),true);
@@ -167,6 +167,16 @@ async function test(name,fn){try{await fn();passed++;console.log('PASS',name);}c
   const h=await pool.query("select relrowsecurity from pg_class where oid='public.scan_mark_changes'::regclass");assert.equal(h.rows[0].relrowsecurity,true);
   await pool.query('delete from children where id=$1',[f.c]);assert.equal((await pool.query('select count(*)::int n from scan_mark_changes where parent_id=$1',[f.p])).rows[0].n,0);
   const g=await fixture();assert.equal((await patch(g,await choice(g,'right'))).status,200);await pool.query('delete from auth.users where id=$1',[g.p]);assert.equal((await pool.query('select count(*)::int n from scan_mark_changes where parent_id=$1',[g.p])).rows[0].n,0);
+ });
+ if(process.argv.includes('--scalar-readings'))for(const written of ['1/9','1 1/4','6.1'])await test(`post-expiry parent right/blank/wrong retains the original ${written}`,async()=>{
+  const f=await fixture('wrong','code',true,null,written);await terminate(f,'expired');
+  for(const result of ['right','blank','wrong']){
+   assert.equal((await patch(f,await choice(f,result))).status,200);
+   const current=await state(f);assert.equal(current.observation.result,result);assert.equal(current.observation.readAnswerText,written);
+   assert.equal(current.observation.regions[0].value,written);
+  }
+  assert.equal((await call('changes',f)).length,3);
+  assert.equal((await pool.query('select count(*)::int n from learning_events where child_id=$1',[f.c])).rows[0].n,1);
  });
  if(process.argv.includes('--method-policy')||process.argv.includes('--method-policy-old'))await test('R2-01 upgrades old two-ways, fences old writers, and rebuilds without changing evidence',async()=>{
   const item={format:'two-ways',scorable:true,parentChecked:false};

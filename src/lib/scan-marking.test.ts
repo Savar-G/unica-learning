@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, type Observation } from "@/lib/scan-observation";
 import { effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, MARKING_CAP_MICROS, MARKING_MODEL, readMarkingOutput, runScanMarking, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
-import { checkQuestionPackage, workedSteps, type Operation, type QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
+import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
 import { rebuildChildProfile } from "@/lib/child-profile";
 import type { LearningEvent, NewLearningEvent } from "@/lib/learning-events";
@@ -102,6 +103,17 @@ function wordsFrame(): MarkingFrame {
   };
   q.regions = [{ id: "words", kind: "box", box: { x: 10, y: 30, width: 200, height: 30 } }];
   q.teaching!.eligibility.format = "write-words";
+  expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+  return f;
+}
+function numericFrame(value: NumberValue, expression: string): MarkingFrame {
+  const f = wordsFrame(), q = f.questions[0];
+  q.package!.text = "Write the answer.";
+  q.package!.item!.format = "write-number";
+  q.package!.item!.regions = [{ id: "answer", kind: "box", label: null, answer: value }];
+  q.package!.item!.checks = [{ kind: "template", region: "answer", source: { answer: expression, check: null, derived: [], slots: [], values: null } }];
+  q.regions = [{ id: "answer", kind: "box", box: { x: 10, y: 30, width: 200, height: 40 } }];
+  q.teaching!.eligibility.format = "write-number";
   expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
   return f;
 }
@@ -279,6 +291,90 @@ describe("write-words whole-page reading", () => {
     expect(await run(s, retake.photo, client(output(["subtraction"]), requests))).toBe("finished");
     expect(requests).toHaveLength(1); expect(s.events).toHaveLength(1);
     expect((await s.effective(P, C))[0].observation.readAnswerText).toBe("addition");
+  });
+});
+
+describe("fraction and mixed-number scan responses", () => {
+  it.each([
+    ["1/9", "right"], ["2/18", "right"], [" 1 / 9 ", "right"], ["-1/9", "wrong"], ["1/0", "wrong"],
+    ["0/0", "wrong"], ["2/9", "wrong"], ["19", "wrong"], ["1/?", null], ["1//9", null], ["1/9 or 2/9", null], ["", "blank"], [null, null],
+  ] as const)("checks the exact rational form %j", (text, result) => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'");
+    const o = readMarkingOutput(f, output([text]))[0];
+    expect(o.result).toBe(result); expect(o.readAnswerText).toBe(text); expect(observationProblem(o)).toBeNull();
+  });
+  it.each(["5/4", "1 1/4", "10/8"])("accepts %s for a template's exact mixed amount", text => {
+    const f = numericFrame({ type: "mixed", whole: 1, numerator: 1, denominator: 4 }, "'1 1/4'");
+    expect(readMarkingOutput(f, output([text]))[0].result).toBe("right");
+  });
+  it("uses the operation's accepted forms and required simplification", () => {
+    const f = numericFrame({ type: "fraction", numerator: 7, denominator: 8 }, "'7/8'"), q = f.questions[0];
+    q.package = structuredClone(FIXTURES.D_SIMPLEST);
+    q.package.item = { format: "write-number", scorable: true, parentChecked: false, error: null,
+      regions: [{ id: "answer", kind: "box", label: null, answer: q.package.answer!.value }], checks: [{ kind: "operation", region: "answer" }] };
+    expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+    expect(readMarkingOutput(f, output(["7/8"]))[0].result).toBe("right");
+    expect(readMarkingOutput(f, output(["14/16"]))[0].result).toBe("wrong");
+    q.package.text = "Add the fractions.";
+    q.package.answer!.accepted = [{ type: "fraction", numerator: 14, denominator: 16 }, { type: "number", value: 0.875 }];
+    expect(checkQuestionPackage(q.package)).toMatchObject({ ok: true });
+    expect(readMarkingOutput(f, output(["14/16"]))[0].result).toBe("right");
+    expect(readMarkingOutput(f, output([".875"]))[0].result).toBe("right");
+    expect(readMarkingOutput(f, output([".87500000000000001"]))[0].result).toBeNull();
+  });
+  it("keeps an ambiguous fraction bar or sign pending and refuses a rounded integer part", () => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'");
+    for (const text of ["19", "1/9", "-1/9"]) expect(readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text, issue: "unreadable" }] })[0].result).toBeNull();
+    expect(readMarkingOutput(f, output(["9007199254740993/81064793292668937"]))[0].result).toBeNull();
+  });
+  it("does not compare a linked equation's example fraction as its only accepted answer", () => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'");
+    f.questions[0].package!.item!.checks = [{ kind: "equations", different: false, numbers: "any", equations: [{
+      left: { region: "answer" }, op: "×", right: { type: "number", value: 0 }, result: { type: "number", value: 0 },
+    }] }];
+    expect(checkQuestionPackage(f.questions[0].package)).toMatchObject({ ok: true });
+    expect(readMarkingOutput(f, output(["2/9"]))[0]).toMatchObject({ state: "pending", result: null });
+  });
+  it("finishes a fraction page with one event, one crop and no extra attempt on retake", async () => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'"), retake = structuredClone(f); retake.photo = "fraction-retake";
+    const s = new Store(f, retake), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(output(["2/18"]), requests))).toBe("finished");
+    expect(markingPageView(await s.effective(P, C)).completion.status).toBe("complete"); expect(s.events).toHaveLength(1);
+    const data = (requests[0].content[0] as { text: string }).text;
+    expect(JSON.parse(data).items[0].kind).toBe("fraction"); expect(data).not.toContain("1/9");
+    expect(cropPlan(f.questions)).toMatchObject({ notSupported: [], crops: [{ regionId: "answer" }] });
+    expect(await run(s, retake.photo, client(output(["1/9"]), requests))).toBe("finished"); expect(requests).toHaveLength(1); expect(s.events).toHaveLength(1);
+    expect((await s.effective(P, C))[0].observation.readAnswerText).toBe("2/18");
+  });
+  it("serializes fraction photos across devices and lets a retake resolve unreadable writing once", async () => {
+    const f = numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'"), b = structuredClone(f); b.photo = "fraction-device-b";
+    const s = new Store(f, b), held = deferred<unknown>(), started = deferred<void>(), requests: AiJsonRequest[] = [];
+    const first = run(s, f.photo, client(async () => { started.resolve(); return held.promise; }, requests)); await started.promise;
+    expect(await run(s, b.photo, client(output(["1/9"]), requests))).toBe("busy");
+    held.resolve(output([null])); expect(await first).toBe("finished"); expect(s.events).toHaveLength(0);
+    expect(await run(s, b.photo, client(output(["2/18"]), requests))).toBe("finished");
+    expect(s.events).toHaveLength(1); expect(requests).toHaveLength(2);
+    expect(markingPageView(await s.effective(P, C)).completion.status).toBe("complete");
+  });
+});
+
+describe("decimal scan responses", () => {
+  it.each([
+    ["6.1", "right"], ["06.100", "right"], ["+6.1", "right"], ["-6.1", "wrong"], ["61", "wrong"], ["6.01", "wrong"],
+    ["6.1000000000000001", null], ["6,1", null], ["6.?", null], ["", "blank"], [null, null],
+  ] as const)("keeps every decimal digit in %j", (text, result) => {
+    const f = numericFrame({ type: "number", value: 6.1 }, "6.1"), o = readMarkingOutput(f, output([text]))[0];
+    expect(o.result).toBe(result); expect(o.readAnswerText).toBe(text); expect(observationProblem(o)).toBeNull();
+  });
+  it("supports negative keys, zero and an omitted leading zero without losing precision", () => {
+    for (const [key, text] of [[-0.5, "-.50"], [0, "00.00"], [0.5, ".500"]] as const) {
+      const f = numericFrame({ type: "number", value: key }, String(key));
+      expect(readMarkingOutput(f, output([text]))[0].result).toBe("right");
+    }
+  });
+  it("does not turn an ambiguous decimal point into a digit or a blank", () => {
+    const f = numericFrame({ type: "number", value: 6.1 }, "6.1");
+    expect(readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text: "61", issue: "unreadable" }] })[0]).toMatchObject({ state: "pending", result: null, readAnswerText: "61" });
   });
 });
 
