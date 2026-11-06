@@ -14,6 +14,9 @@ const REFUSED: Record<ScanRefusal, string> = {
   "orientation-unclear": "We could not tell which way up this page is. To check it, take another photo with the page upright.",
   "ambiguous-page": "This photo seems to show more than one page. To check it, take another photo with only this page in view.",
   "qr-mismatch": "We could not read this page's QR code in the photo. To check it, take another photo with the code clear and in view.",
+  "another-page": "Part of this photo looks like a different page. To check it, take another photo of this page on its own, flat, with nothing on top of it.",
+  faint: "Part of the page is too bright or faint to read. Take another photo without glare.",
+  "check-timeout": "We couldn't check this page right now. Try again in a minute.",
   "printed-page-changed": "We cannot line up this photo with the printed page.",
   failed: "We cannot line up this photo with the printed page.",
 };
@@ -36,6 +39,7 @@ export function ScanPreview({ photo, child }: { photo: string; child?: string })
   const [images, setImages] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [canRetry, setCanRetry] = useState(false);
   const urls = useRef<string[]>([]);
 
   const clear = useCallback(() => {
@@ -57,6 +61,8 @@ export function ScanPreview({ photo, child }: { photo: string; child?: string })
       if (answer.status === "busy" && tries > 0) { timer = setTimeout(() => { void load(tries - 1).catch(() => { if (live) setFailed(true); }); }, 2000); return; }
       if (answer.status === "busy") { setFailed(true); return; }
       setPreview(answer);
+      // Another call starts nothing while the job's lease holds, so the button waits for it to end.
+      if (answer.status === "refused" && answer.reason === "check-timeout") { timer = setTimeout(() => setCanRetry(true), answer.retryInMs ?? 0); return; }
       if (answer.status !== "ready") return;
       await Promise.all([answer.straight.part, ...answer.crops.map((c) => c.part)].map(async (part) => {
         const image = await fetch(`${base}/${part}`, { cache: "no-store" });
@@ -86,7 +92,9 @@ export function ScanPreview({ photo, child }: { photo: string; child?: string })
   }
   if (preview.status === "refused" || preview.status === "unavailable") {
     const text = preview.status === "refused" ? `${REFUSED[preview.reason]} Your photo is still here.` : UNAVAILABLE[preview.reason];
-    return <section className="scan-preview" aria-label="How we read this page">{heading}<p role="status" className="acct-alert">{text}</p></section>;
+    return <section className="scan-preview" aria-label="How we read this page">{heading}<p role="status" className="acct-alert">{text}</p>
+      {preview.status === "refused" && preview.reason === "check-timeout" && <button type="button" className="btn ghost" disabled={!canRetry} onClick={() => { setCanRetry(false); setPreview(null); setAttempt((n) => n + 1); }}>Try again</button>}
+    </section>;
   }
   return <section className="scan-preview" aria-label="How we read this page">{heading}
     <p className="small">No marks yet. This shows what we would check.</p>

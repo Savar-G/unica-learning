@@ -1,0 +1,66 @@
+PR #637, fixes after the review of 496b35f04da76974c08a7619a6cba80b7d59d356.
+
+Falsifiers:
+- A ready result with no sheet-check version or an older version reaches the preview, stack ready ids or Send.
+- The job stores a result or a file after its sheet-check deadline.
+
+Fail-first on 496b35f0:
+The new scan-crops.test.ts cases ran against that commit's scan-crops.ts through a temporary Vitest alias.
+Test Files: 1 failed. Tests: 6 failed, 20 skipped. Exit 1.
+Two old-version cases returned ready instead of not-started.
+The recheck refusal case returned the old ready result.
+The final-batch deadline case stored ready.
+The held frame and photo-read cases did not return within the deadline.
+The preview-part route test also failed before its fix in the earlier run: 1 failed, 8 passed.
+
+Fixed-state checks:
+scan-crops.test.ts: 26 passed. Exit 0.
+scan-stack-server.test.ts and preview/route.test.ts: 15 passed. Exit 0.
+The concurrent old-result checks perform one photo read and replace the old lease's files with one new set.
+Refusal after reopening removes the old files.
+These tests use the public crop functions and the in-memory store. They do not prove hosted permissions.
+
+Independent review reproductions, rerun with the current source:
+3 passed, 18 skipped. Exit 0.
+The exact legacy glare snapshot was supplied the other printed pages that its frame lists.
+It now reads the photo once and refuses with faint.
+The forced final-batch deadline refuses with check-timeout.
+Real-clock final batches with a 1000 ms budget returned check-timeout at 1005, 1052 and 1046 ms.
+The last synchronous comparison can finish after the deadline. Its answer cannot store ready.
+
+Hosted database:
+Migration scan_sheet_check, version 20261105205003, was already applied before the account change.
+It adds reopen_scan_calibration and updates send_scan_photos.
+The sheet-check version is in result.sheetCheck. No new column is needed.
+The live count before the synthetic probe was 0 scan_calibrations rows, 0 ready rows.
+No existing family result was changed or deleted.
+supabase/tests/scan_sheet_check.sql and scan_stack.sql both reached PROBE_OK.
+Each probe raises that exception to roll back all synthetic rows.
+The CLI regenerated database types. Only the added RPC declaration was retained from that generated output.
+
+Hosted API and Storage:
+scripts/scan-crops-hosted.ts prepare, seed, check and deletion passed using synthetic test families.
+All 12 API and Storage checks passed. The old ready result served no crop, showed Checking in the stack,
+and returned no ids from Send. POST reopened it, stored sheetCheck 1 and restored Ready under a new lease.
+The checks also covered numbered crop contents, restrictive Storage policy, live sessions, lost leases,
+concurrent jobs, photo deletion and expiry. The family-deletion worker removed rows and files. Cleanup then removed the remaining synthetic families.
+The final live count was again 0 calibration rows, 0 ready rows.
+These checks used hosted Supabase and a local Next.js server. They do not prove a deployed Vercel route.
+
+Browser:
+The synthetic owner signed in through the local server. The scan stack showed its ready page, the cut-off
+refusal and the old book's Cannot be checked state. The browser tab was closed before the negative API probe.
+This is a desktop browser check. It does not prove a phone camera, real handwriting or a curled physical page.
+
+Final page matrix:
+SCAN_MATRIX_OUT=/tmp/pr637-final-page-matrix.json npx vitest run src/lib/scan-binding-chromium.test.ts
+Exit 0. Test Files: 1 passed. Tests: 28 passed. Duration: 518.07 s.
+24 pages, 16 conditions, 384 right-page photos. The upload read 184. All 184 passed, with 0 false refusals.
+Wrong pages accepted: 0 of 8832. The sheet check alone also stopped all 16 near-twin pairs with a usable transform.
+The upload could not read 200 photos before calibration. Those are outside the accepted-photo count.
+
+Full test gate:
+npm test -- --maxWorkers=2
+Exit 0. Test Files: 397 passed (397). Tests: 15621 passed, 1 skipped (15622). Duration: 604.12 s.
+npx eslint src: exit 0.
+npm run build: exit 0, including TypeScript and static page generation.

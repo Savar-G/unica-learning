@@ -264,13 +264,13 @@ describe("#534, #635: the child's ink is kept with the chat as a log", () => {
     const legacy = inkLog(old);
     expect(await c.memory.update(id, c.memory.rows()[0].revision, { childInk: old } as CallChange)).toBe(true);
     // A desk with no draft reads the old ink, and a desk from another child reads nothing.
-    expect(await c.calls.readInk(id, owner)).toEqual(legacy);
-    expect(await c.calls.readInk(id, { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" })).toBeNull();
+    expect(await c.calls.readInk(id, owner)).toEqual({ ok: true, events: legacy });
+    expect(await c.calls.readInk(id, { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" })).toEqual({ ok: false, error: "not_this_desk" });
     const next: InkEvent = { kind: "clear", t: 900_000 };
     // A new event goes after the old ink, and the old ink is kept as it was.
     expect(await c.calls.appendInk(id, owner, legacy.length + 1, [next])).toEqual({ ok: true, held: legacy.length + 1 });
     expect(await c.memory.readInk(id)).toEqual([...legacy, next]);
-    expect(await c.calls.readInk(id, owner)).toEqual([...legacy, next]);
+    expect(await c.calls.readInk(id, owner)).toEqual({ ok: true, events: [...legacy, next] });
     const view = (await c.calls.view(id))!;
     expect(view.boardHistory.events.some((e) => e.kind === "stroke")).toBe(true);
   });
@@ -284,13 +284,42 @@ describe("#534, #635: the child's ink is kept with the chat as a log", () => {
     expect(await c.memory.readInk(id)).toEqual([]);
   });
 
-  it("R625b-5: keeps ink only for a chat of that parent and child", async () => {
+  it("R654: another family's call answers as no call at all, so no desk learns whether it exists", async () => {
     const c = await clocked();
     const id = c.r.view.id;
     const log = inkLog(grow(createHistory(), c.r.view.batches, 1, 1000));
-    expect(await c.calls.appendInk(id, { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" }, 1, log)).toEqual({ ok: false, error: "not_found", held: 0 });
-    expect(await c.calls.appendInk(id, { parentId: "66666666-6666-4666-8666-666666666666", childId: child }, 1, log)).toEqual({ ok: false, error: "not_found", held: 0 });
+    const otherFamily = { parentId: "66666666-6666-4666-8666-666666666666", childId: child };
+    expect(await c.calls.appendInk(id, otherFamily, 1, log)).toEqual({ ok: false, error: "not_found", held: 0 });
+    expect(await c.calls.readInk(id, otherFamily)).toEqual({ ok: false, error: "not_found" });
+    expect(await c.memory.readInk(id)).toEqual([]);
+  });
+
+  it("R654: a call that is not a text chat answers as no call at all, for a sibling's desk and its own", async () => {
+    const c = await clocked();
+    const log = inkLog(grow(createHistory(), c.r.view.batches, 1, 1000));
+    const sibling = { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" };
+    const voice = "77777777-7777-4777-8777-777777777777";
+    await c.memory.insert({ ...c.memory.rows()[0], id: voice, mode: "voice" });
+    expect(await c.calls.appendInk(voice, sibling, 1, log)).toEqual({ ok: false, error: "not_found", held: 0 });
+    expect(await c.calls.readInk(voice, sibling)).toEqual({ ok: false, error: "not_found" });
+    expect(await c.calls.appendInk(voice, owner, 1, log)).toEqual({ ok: false, error: "not_found", held: 0 });
+    expect(await c.calls.readInk(voice, owner)).toEqual({ ok: false, error: "not_found" });
+  });
+
+  it("R625b-5, #652: keeps ink only for a chat of that parent and child, and tells another desk's chat from a chat that is gone", async () => {
+    const c = await clocked();
+    const id = c.r.view.id;
+    const log = inkLog(grow(createHistory(), c.r.view.batches, 1, 1000));
+    const sibling = { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" };
+    // A sibling's chat: an answer about the desk, which says nothing about the ink (#652).
+    expect(await c.calls.appendInk(id, sibling, 1, log)).toEqual({ ok: false, error: "not_this_desk", held: 0 });
+    expect(await c.calls.readInk(id, sibling)).toEqual({ ok: false, error: "not_this_desk" });
+    // No such chat at all: the one answer that says the ink can never go.
+    const gone = "99999999-9999-4999-8999-999999999999";
+    expect(await c.calls.appendInk(gone, owner, 1, log)).toEqual({ ok: false, error: "not_found", held: 0 });
+    expect(await c.calls.readInk(gone, owner)).toEqual({ ok: false, error: "not_found" });
     expect(await c.memory.readInk(id)).toEqual([]);
     expect(await c.calls.appendInk(id, owner, 1, log)).toEqual({ ok: true, held: log.length });
+    expect(await c.calls.readInk(id, owner)).toEqual({ ok: true, events: log });
   });
 });

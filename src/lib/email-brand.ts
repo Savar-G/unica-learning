@@ -21,7 +21,7 @@ export interface EmailFooter {
 }
 
 export function emailSignatureText(support?: "email", signer: Signer = "team"): string {
-  const by = signer === "founders" ? `Cedric & Savar\nCo-founders, ${BUSINESS_NAME}` : `The ${BUSINESS_NAME} team`;
+  const by = signer === "founders" ? `Savar & Cedric\nCo-founders, ${BUSINESS_NAME}` : `The ${BUSINESS_NAME} team`;
   return `Thank you,\n${by}\n${support === "email" ? `Questions? Email ${SUPPORT_EMAIL}.` : "Questions? Reply to this email."}`;
 }
 
@@ -47,7 +47,7 @@ export function emailEndHtml(f: EmailFooter, inset = 24): string {
   const p = (s: string) => `<p style="margin:0 0 16px">${s}</p>`;
   return `<tr><td style="padding:24px ${inset}px 32px;font-size:16px;line-height:1.6;color:${INK}">
 Thank you,<br>${f.signer === "founders"
-    ? `<strong style="font-weight:600">Cedric &amp; Savar</strong><br><span style="color:${SECONDARY}">Co-founders, ${esc(BUSINESS_NAME)}</span>`
+    ? `<strong style="font-weight:600">Savar &amp; Cedric</strong><br><span style="color:${SECONDARY}">Co-founders, ${esc(BUSINESS_NAME)}</span>`
     : `<strong style="font-weight:600">The ${esc(BUSINESS_NAME)} team</strong>`}<br>
 <span style="font-size:14px;color:${SECONDARY}">${support}</span>
 </td></tr>

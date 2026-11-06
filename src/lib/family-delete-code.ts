@@ -44,10 +44,12 @@ export interface DeleteCodeStore {
 export type DeleteCodeResult =
   /** `unsure`: the provider gave no clear answer, so the email may or may not have gone. */
   | { ok: true; sentTo: string; unsure: boolean }
-  | { ok: false; error: "no_confirmed_email" | "protected" | "busy" | "not_found" | "unavailable" | "email_failed" }
+  | { ok: false; error: "no_confirmed_email" | "protected" | "busy" | "plan_start" | "not_found" | "unavailable" | "email_failed" }
   | { ok: false; error: "too_many" | "locked"; retryAt: number };
 
 export interface DeleteCodeSeams {
+  /** A child delete shares the code store and limits, but its proof cannot authorize any other delete. */
+  action?: { child: string };
   codes: DeleteCodeStore;
   store: Pick<FamilyDeleteStore, "check">;
   send(message: EmailMessage): Promise<SendResult>;
@@ -59,13 +61,13 @@ export interface DeleteCodeSeams {
 const randomCode = () => String(randomInt(0, 10 ** DELETE_CODE_LENGTH)).padStart(DELETE_CODE_LENGTH, "0");
 
 /** What the hash covers. A stored hash is worth nothing for another parent, another address or another action. */
-const bound = (parent: string, email: string, code: string) => ["family_delete", parent.toLowerCase(), email.trim().toLowerCase(), code].join("\n");
+const bound = (parent: string, email: string, code: string, action?: { child: string }) => [action ? `child_delete:${action.child.toLowerCase()}` : "family_delete", parent.toLowerCase(), email.trim().toLowerCase(), code].join("\n");
 
 /**
  * Makes a new code and emails it. `account` is what the Auth server says about this session, never the request. Stops before
  * any write when no email can go, or when the delete would refuse anyway, so that the parent gets no useless code.
  */
-export async function requestDeleteCode(parent: string, account: { email: string | null | undefined; confirmed: boolean }, { codes, store, send, configProblem, newCode = randomCode, policy = DELETE_CODE_POLICY }: DeleteCodeSeams): Promise<DeleteCodeResult> {
+export async function requestDeleteCode(parent: string, account: { email: string | null | undefined; confirmed: boolean }, { codes, store, send, configProblem, newCode = randomCode, policy = DELETE_CODE_POLICY, action }: DeleteCodeSeams): Promise<DeleteCodeResult> {
   if (!account.email || !account.confirmed) return { ok: false, error: "no_confirmed_email" };
   const ready = await store.check(parent);
   if (ready === "missing") return { ok: false, error: "not_found" };
@@ -77,11 +79,11 @@ export async function requestDeleteCode(parent: string, account: { email: string
   }
 
   const code = newCode();
-  const hash = await hashPin(bound(parent, account.email, code));
+  const hash = await hashPin(bound(parent, account.email, code, action));
   const begun = await codes.begin(parent, hash, policy);
   if (begun.kind !== "ok") return { ok: false, error: begun.kind, retryAt: begun.until };
 
-  const sent = await send({ sender: { to: "parent" }, to: account.email, replyTo: SUPPORT_EMAIL, ...deleteCodeEmail(code) });
+  const sent = await send({ sender: { to: "parent" }, to: account.email, replyTo: SUPPORT_EMAIL, ...deleteCodeEmail(code, !!action) });
   if (sent.status === "refused") {
     // No one has this code, so take it back. The send stays counted. If this fails, the code ends by itself.
     await codes.spend(parent, hash).catch(() => false);
@@ -95,17 +97,28 @@ export async function requestDeleteCode(parent: string, account: { email: string
  * The check of a code for this session's parent and address. Spends the code when it is right, once, across requests sent
  * together. It has no clock: the database decides when a code has ended, so time lost in a slow read or hash cannot pass one.
  */
-export function codeProof(codes: Pick<DeleteCodeStore, "read" | "spend">, parent: string, email: string): ProveCode {
+export function codeProof(codes: Pick<DeleteCodeStore, "read" | "spend">, parent: string, email: string, action?: { child: string }): ProveCode {
   return async (code) => {
     const hash = await codes.read(parent);
     if (!hash) return "ended";
-    if (!(await matches(bound(parent, email, code), hash))) return "wrong";
+    if (!(await matches(bound(parent, email, code, action), hash))) return "wrong";
     return (await codes.spend(parent, hash)) ? "ok" : "ended";
   };
 }
 
 /** The email. It names no child and has no link: the code is typed on the page the parent already has open. */
-export function deleteCodeEmail(code: string) {
+export function deleteCodeEmail(code: string, child = false) {
+  if (child) {
+    const subject = "Your code to delete one child from Unica Learning";
+    const footer = { why: "You get this email because someone asked to delete one child on your account page." };
+    const asked = "Someone signed in to your account and asked to delete one child. Enter this code on that child's delete form to confirm it:";
+    const limits = "The code ends in 10 minutes and works once. This stops that child's workbook plan and removes that child's data. Your account and other children stay. You cannot undo this.";
+    const notYou = `If you did not ask for this, do not enter the code and do not give it to anyone. Someone else may be signed in to your account, so change your password now and email ${SUPPORT_EMAIL}.`;
+    return {
+      subject, text: ["Hello,", asked, code, limits, notYou, emailSignatureText(), emailFooterText(footer)].join("\n\n"),
+      html: emailDocument({ title: subject, preview: "Enter this code only if you asked to delete one child.", footer, body: `<tr><td style="padding:0 24px"><p>Hello,</p><p>${asked}</p><p style="font-size:30px;letter-spacing:0.12em">${code}</p><p>${limits}</p><p>${notYou}</p></td></tr>` }),
+    };
+  }
   const subject = "Your code to delete your Unica Learning family account";
   const footer = { why: "You get this email because someone asked to delete the family account on your account page." };
   const asked = "Someone signed in to your account and asked to delete your family's account. Enter this code on your account page to confirm it:";

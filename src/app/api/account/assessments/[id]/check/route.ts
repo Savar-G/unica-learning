@@ -1,7 +1,7 @@
 import { isUuid } from "@/lib/assessment-store";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { refusalResponse, testFail, type StepResult } from "@/lib/test-api";
-import { doneChecking } from "@/lib/test-attempt";
+import { doneChecking, type CheckSection } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
 
 // "Done checking" on a "Check your answers" grid (#249, #253): `{ section: "stage1" }`, `"stage2"` or `"stage3"`. It
@@ -22,10 +22,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   } catch {
     return testFail("bad_json", 400);
   }
-  if (body.section !== "stage1" && body.section !== "stage2" && body.section !== "stage3") return testFail("invalid", 400);
+  if (body.section !== "stage1" && body.section !== "stage2" && body.section !== "stage3" && !(typeof body.section === "string" && /^block-[1-9][0-9]*$/.test(body.section))) return testFail("invalid", 400);
 
   // One clock reading for the whole request, as the other test steps (#72).
-  const result = await doneChecking(attemptStore(admin), parent, id, body.section, Date.now());
+  const result = await doneChecking(attemptStore(admin), parent, id, body.section as CheckSection, Date.now());
   if (!result.ok) return refusalResponse(result);
   return Response.json({ ok: true, step: result.step } satisfies StepResult, { headers: { "Cache-Control": "no-store" } });
 }

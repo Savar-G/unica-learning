@@ -65,7 +65,7 @@ describe("the last start reminder", () => {
 
   it("is a note from the founders that asks what is in the way, and does not say it is automatic", () => {
     expect(e.subject).toBe("A quick question about Maya's math test");
-    expect(e.text).toContain("We're Cedric and Savar, the founders of Unica Learning.");
+    expect(e.text).toContain("We're Savar and Cedric, the founders of Unica Learning.");
     expect(e.text).toContain("Is anything getting in the way, like timing, signing in, or questions about how it works?");
     expect(e.text).toContain("It's free, with no card needed.");
     expect(e.text).not.toMatch(/automatic|last reminder/i);
@@ -116,8 +116,8 @@ describe("who signs a reminder (D-225)", () => {
   it("the founders sign the last start reminder; the team signs the others", () => {
     const last = email({ kind: "start_followup" });
     expect(last.founders).toBe(true);
-    expect(last.text).toContain("Thank you,\nCedric & Savar\nCo-founders, Unica Learning");
-    expect(last.html).toContain("Cedric &amp; Savar");
+    expect(last.text).toContain("Thank you,\nSavar & Cedric\nCo-founders, Unica Learning");
+    expect(last.html).toContain("Savar &amp; Cedric");
     for (const kind of ["continue", "come_back", "start"] as const) {
       const e = email({ kind });
       expect(e.founders).toBe(false);

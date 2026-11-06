@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
@@ -68,6 +68,7 @@ function fakeDb(answers: { card?: unknown; state?: unknown; rpc?: unknown; error
     const chain = {
       select: () => chain,
       eq: (column: string, value: unknown) => { filters[table][column] = value; return chain; },
+      abortSignal: () => chain,
       maybeSingle: async () => ({ data: table === "card_setups" ? answers.card ?? null : answers.state ?? null, error: answers.error ?? null }),
     };
     return chain;
@@ -139,4 +140,16 @@ describe("the plan state store on Supabase", () => {
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+describe("the row read during a page render", () => {
+  it("opts out of the render's fetch memoization, so a read after a fill sees the fill", async () => {
+    const signals: unknown[] = [];
+    const db = createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (_input, init) => {
+      signals.push(init?.signal);
+      return Response.json(null);
+    } } }) as never;
+    await supabasePlanStore(db).load({ parentId: "p1", childId: "c1" });
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+  });
 });

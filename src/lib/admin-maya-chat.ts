@@ -1,6 +1,5 @@
 import "server-only";
 import type { AdminSession } from "@/lib/admin-store";
-import { rehearsalRefusal } from "@/lib/maya-chat";
 
 // The Maya chat list (#530, D-241): the families an admin opened chat for, one at a time, and the one rehearsal family
 // (a test family that receives the parent notes and weekly recap). Read and changed with the admin's own session;
@@ -49,22 +48,12 @@ export type ChatFamilyResult = "ok" | "not_test_family" | "not_listed" | "taken"
 
 /** Adds or removes a family, or marks or unmarks the rehearsal family. */
 export async function setChatFamily(a: AdminSession, parentId: string, change: ChatFamilyChange): Promise<ChatFamilyResult> {
-  if ("listed" in change) {
-    const { error } = change.listed
-      ? await a.db.from("maya_chat_families").upsert({ parent_id: parentId, added_by: a.userId }, { onConflict: "parent_id", ignoreDuplicates: true })
-      : await a.db.from("maya_chat_families").delete().eq("parent_id", parentId);
-    fail("chat family", error);
-    return "ok";
-  }
-  if (change.rehearsal) {
-    const refusal = rehearsalRefusal(await chatFamilyState(a, parentId));
-    if (refusal) return refusal;
-  }
-  // The database decides: the unique index allows one rehearsal family, and the trigger maya_chat_family_guard refuses a
-  // family without its test mark (another admin may have removed it since the read above).
-  const { data, error } = await a.db.from("maya_chat_families").update({ rehearsal: change.rehearsal }).eq("parent_id", parentId).select("parent_id");
-  if (error?.code === "23505") return "taken";
-  if (error?.message.includes("maya_chat_rehearsal_not_test_family")) return "not_test_family";
-  fail("chat rehearsal", error);
-  return data?.length ? "ok" : "not_listed";
+  // The database locks the parent before any chat/test tuple and checks the current state under that lock (#621).
+  const { data, error } = await a.db.rpc("admin_set_maya_chat_family", {
+    p_parent: parentId, p_change: "listed" in change ? "listed" : "rehearsal",
+    p_enabled: "listed" in change ? change.listed : change.rehearsal,
+  });
+  fail("chat family", error);
+  if (data === "ok" || data === "not_test_family" || data === "not_listed" || data === "taken") return data;
+  throw new Error("[admin] chat family: invalid result");
 }

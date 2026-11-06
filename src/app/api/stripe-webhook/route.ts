@@ -1,4 +1,6 @@
 import Stripe from "stripe";
+import { checkCustomerCard } from "@/lib/card-reconcile";
+import { liveCardChecks } from "@/lib/card-sweep-server";
 import { PLAN_EVENT_TYPES, applyPlanEvent, type PlanEvent, type PlanEventType } from "@/lib/plan-state";
 import { livePlanStates } from "@/lib/plan-state-server";
 
@@ -6,7 +8,11 @@ import { livePlanStates } from "@/lib/plan-state-server";
 // URL; its signing secret is STRIPE_WEBHOOK_SECRET (docs/stripe-webhook.md). Stripe sends each event again until it gets
 // a 2xx, so a Stripe or store error answers 500 and the event comes back; an event the site cannot use answers 204. The
 // answer holds no data. src/proxy.ts does not match this path, so no session or desk check stands in front of it.
+// A subscription created or updated event also brings the child's Stripe side to their newest card (#554, card-reconcile.ts). A
+// Stripe failure there flags the row, and the sweep comes back, so it does not change the answer. Only a row that cannot be read
+// or flagged answers 500. A corrective write raises one more event, and that event finds nothing to change.
 
+const CARD_EVENTS: ReadonlySet<string> = new Set(["customer.subscription.created", "customer.subscription.updated"]);
 const planType = (type: string): type is PlanEventType => (PLAN_EVENT_TYPES as readonly string[]).includes(type);
 
 /** The customer of a subscription or invoice event: an id, or an object in an expanded payload. */
@@ -39,13 +45,25 @@ export async function POST(request: Request): Promise<Response> {
     console.error("[stripe-webhook] the database or Stripe key is not set");
     return new Response(null, { status: 503 });
   }
+  let status = 204;
   try {
     const outcome = await applyPlanEvent(event, states);
     // An old booking's customer has no card setup. Nothing can use its events, and the log keeps the trace.
     if (outcome === "no_match") console.warn("[stripe-webhook] no card setup for customer", event.customer ?? "(none)", event.type, event.id);
-    return new Response(null, { status: 204 });
   } catch (e) {
     console.error("[stripe-webhook] event not kept; Stripe sends it again", event.type, event.id, e instanceof Error ? e.message : "failed");
-    return new Response(null, { status: 500 });
+    status = 500;
   }
+  // Apart from the plan state, so a failure there cannot hold up the card, and the other way round.
+  const cards = event.customer && CARD_EVENTS.has(event.type) ? liveCardChecks(new URL(request.url).origin) : null;
+  if (event.customer && cards) {
+    try {
+      const check = await checkCustomerCard(event.customer, cards);
+      if (check?.failure) console.error("[stripe-webhook] card check failed; the sweep comes back", event.type, event.id);
+    } catch (e) {
+      console.error("[stripe-webhook] card row failed; Stripe sends it again", event.type, event.id, e instanceof Error ? e.message : "failed");
+      status = 500;
+    }
+  }
+  return new Response(null, { status });
 }

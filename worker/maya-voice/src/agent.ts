@@ -25,7 +25,8 @@ import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceTurn } from "@/lib/maya-call";
 import type { BoardSpeech, SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
-import { boardAudio } from "./speech-audio";
+import { boardAudio, countedSynthesis } from "./speech-audio";
+import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf } from "@/lib/maya";
 import { CONNECTION_RENEW_MS, childTurnFrom, nextTickAt, RECONNECT_GRACE_MS, type Heard } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, nextAcknowledgement } from "@/lib/maya-voice-ack";
@@ -94,10 +95,13 @@ export class MayaVoiceAgent extends voice.Agent {
   }
 
   override async ttsNode(text: ReadableStream<string> | AsyncIterable<string>, settings: voice.ModelSettings) {
-    if (!this.board) return voice.Agent.default.ttsNode(this, text, settings);
+    // Every line reaches the voice provider here: replies, acknowledgement phrases and guidance said again.
+    const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) =>
+      countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said));
+    if (!this.board) return synthesize(text);
     const scope = this.board.scope();
     if (!scope || !this.board.sync.owns(scope)) return null;
-    return boardAudio(text, input => voice.Agent.default.ttsNode(this, input, settings), this.board.sync, scope);
+    return boardAudio(text, synthesize, this.board.sync, scope);
   }
 
   /** Opens the call (the first reply), then answers each finished child turn with what the call's session said. */
@@ -182,6 +186,7 @@ export class VoiceCallRun {
   private graceTimer: unknown = null;
   private limitTimer: unknown = null;
   private leaseTimer: unknown = null;
+  private meterTimer: unknown = null;
   private finishing: Promise<void> | null = null;
   private childHere = false;
   private generation = 0;
@@ -526,6 +531,25 @@ export class VoiceCallRun {
     if (this.call.lost) return this.finish({ detail: "the connection could not be saved" });
     this.renewLease();
     this.scheduleLimit();
+    this.scheduleMeter();
+  }
+
+  /** Speech-to-text runs while the room is open, so its reservation is renewed on this timer, not at the child's turns. */
+  private scheduleMeter() {
+    if (this.finishing) return;
+    this.meterTimer = this.timers.set(VOICE_METER_TICK_MS, () => void this.meterTick());
+  }
+
+  private async meterTick() {
+    this.meterTimer = null;
+    if (this.finishing) return;
+    let close: VoiceTurn | null = null;
+    try { close = await this.call.meter(); } catch { /* The next tick asks again. */ }
+    if (this.finishing) return;
+    if (!close) return this.scheduleMeter();
+    // Whatever Maya is saying finishes first: this speech waits in LiveKit's queue, and the close ends the call after it.
+    this.closeTurn();
+    await this.sayFirst(null, [close]).catch(() => this.finish({ detail: "the final speech failed" }));
   }
 
   private renewLease() {
@@ -682,8 +706,8 @@ export class VoiceCallRun {
     const scope = this.boardScope;
     // Set the promise before calling close, whose event can call finish again.
     this.finishing ??= Promise.resolve().then(async () => {
-      for (const t of [this.tickTimer, this.graceTimer, this.limitTimer, this.leaseTimer]) if (t !== null) this.timers.clear(t);
-      this.tickTimer = this.graceTimer = this.limitTimer = this.leaseTimer = null;
+      for (const t of [this.tickTimer, this.graceTimer, this.limitTimer, this.leaseTimer, this.meterTimer]) if (t !== null) this.timers.clear(t);
+      this.tickTimer = this.graceTimer = this.limitTimer = this.leaseTimer = this.meterTimer = null;
       this.closeTurn();
       if (scope) this.stopBoard(scope);
       // Stop media immediately for a deadline, hang-up, failure or lost ownership.

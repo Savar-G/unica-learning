@@ -1,7 +1,7 @@
 import sharp from "sharp";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
-import { isFenceRefusal, readScanPreview, runScanCrops, scanPartPath, type ScanFrame } from "@/lib/scan-crops";
+import { isFenceRefusal, readScanPreview, runScanCrops, scanPartPath, type ScanCropStore, type ScanFrame } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
 import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
 import { SCAN_MARKS, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
@@ -56,7 +56,7 @@ function setup(o: { book?: string | null; photoRevision?: string | null; contrac
       printedRevision: o.photoRevision === undefined ? REVISION : o.photoRevision,
       book: { printedRevision: book },
       page: {
-        printContract: o.contract === undefined ? contract : o.contract, imagePath: "page.png", qrToken: TOKEN,
+        printContract: o.contract === undefined ? contract : o.contract, imagePath: "page.png", qrToken: TOKEN, others: [],
         questions: o.questions ?? ANSWERS.map((a, i) => ({ number: i + 1, package: pkg(`q${i + 1}`), regions: [{ id: "a", kind: "box", box: a.box }] })),
       },
     },
@@ -137,6 +137,34 @@ describe("making the crops", () => {
     const stored = await m.store.calibration(ref);
     expect(stored).toMatchObject({ state: "ready", revision: REVISION, result: { calibration: { revision: REVISION, version: 1 } } });
     expect(JSON.stringify(stored).length).toBeLessThan(5000);
+  });
+});
+
+describe("results made before the sheet check", () => {
+  it.each([undefined, 0])("rechecks a ready result with version %s before returning its crops", async (sheetCheck) => {
+    // Disproved if an old ready result reaches the preview without reading the photo again.
+    const m = setup();
+    expect((await runScanCrops(m.store, ref, token(1))).status).toBe("ready");
+    m.calibrations.get(PHOTO)!.result!.sheetCheck = sheetCheck;
+    expect(await readScanPreview(m.store, ref)).toEqual({ status: "not-started" });
+    let reads = 0;
+    const store: ScanCropStore = { ...m.store, photoBytes: async (r) => { reads++; return m.store.photoBytes(r); } };
+    const answers = await Promise.all([runScanCrops(store, ref, token(2)), runScanCrops(store, ref, token(3))]);
+    expect(answers.map((a) => a.status).sort()).toEqual(["busy", "ready"]);
+    expect(reads).toBe(1);
+    expect(m.calibrations.get(PHOTO)).toMatchObject({ state: "ready", result: { sheetCheck: 1 } });
+    expect(m.filesOf(PHOTO).every((name) => name.startsWith(token(2)))).toBe(true);
+  });
+
+  it("removes the old crops when the photo fails the new check", async () => {
+    // Disproved if an old ready result survives a failed recheck or its files remain available.
+    const m = setup();
+    await runScanCrops(m.store, ref, token(1));
+    delete m.calibrations.get(PHOTO)!.result!.sheetCheck;
+    m.photos.get(PHOTO)!.bytes = await photoJpeg(blankPage(800, 1000));
+    expect(await runScanCrops(m.store, ref, token(2))).toEqual({ status: "refused", reason: "marks-missing" });
+    expect(m.filesOf(PHOTO)).toEqual([]);
+    expect(await readScanPreview(m.store, ref)).toEqual({ status: "refused", reason: "marks-missing" });
   });
 });
 
@@ -278,5 +306,102 @@ describe("leases", () => {
       m.advance(91_000);
     }
     expect(await runScanCrops(m.store, ref, token(6))).toEqual({ status: "refused", reason: "failed" });
+  });
+});
+
+describe("comparing with the child's other pages", () => {
+  /** A photo whose frame lists `count` other pages, and a store that counts how many it reads at once and can be slow. */
+  function among(count: number, delay = 0) {
+    const m = setup();
+    m.photos.get(PHOTO)!.frame.page.others = Array.from({ length: count }, (_, i) => `other-${i}.png`);
+    for (let i = 0; i < count; i++) m.printed.set(`other-${i}.png`, printedPng);
+    let reading = 0, most = 0, reads = 0;
+    const store: ScanCropStore = {
+      ...m.store,
+      async printedBytes(path) {
+        if (!path.startsWith("other-")) return m.store.printedBytes(path);
+        reading++; reads++; most = Math.max(most, reading);
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+        reading--;
+        return m.store.printedBytes(path);
+      },
+    };
+    return { m, store, most: () => most, reads: () => reads };
+  }
+
+  it("reads them a few at a time, however long the child's history is", async () => {
+    // Disproved if the job holds every page at once: 200 pages took 2.21 GB (the PR #637 review).
+    const c = among(10, 2);
+    const preview = await runScanCrops(c.store, ref, token(1));
+    expect(preview.status).toBe("ready");
+    expect(c.reads()).toBe(10);
+    expect(c.most()).toBeLessThanOrEqual(4);
+  }, 60_000);
+
+  it("runs out of time safely: it refuses, stores nothing, and a later call checks again", async () => {
+    // Disproved if a photo gets crops with its pages unchecked, or a slow day leaves a lasting refusal on it.
+    const c = among(8, 400);
+    const answer = await runScanCrops(c.store, ref, token(1), { sheetCheckMs: 50 });
+    if (answer.status !== "refused") throw new Error(JSON.stringify(answer));
+    expect(answer.reason).toBe("check-timeout");
+    // It says when the lease is over: not before the rest of its 90 s, and no later than a little after it.
+    expect(answer.retryInMs).toBeGreaterThan(80_000);
+    expect(answer.retryInMs).toBeLessThanOrEqual(92_000);
+    expect(c.m.filesOf(PHOTO)).toEqual([]);
+    expect(await readScanPreview(c.store, ref)).toEqual({ status: "busy" });
+    // A call inside the lease starts nothing.
+    const reads = c.reads();
+    expect(await runScanCrops(c.store, ref, token(3))).toEqual({ status: "busy" });
+    expect(c.reads()).toBe(reads);
+    // Once the lease has run out, the next call does the whole check.
+    c.m.advance(91_000);
+    expect((await runScanCrops(c.store, ref, token(2))).status).toBe("ready");
+  }, 60_000);
+
+  it("a page image it cannot read fails the job rather than passing the page unchecked", async () => {
+    const c = among(2);
+    c.m.printed.delete("other-1.png");
+    await expect(runScanCrops(c.store, ref, token(1))).rejects.toThrow(/another page's image/);
+    expect(c.m.filesOf(PHOTO)).toEqual([]);
+  }, 60_000);
+
+  it("refuses when the final batch consumes the remaining time, with no stored result or files", async () => {
+    // Disproved if a final batch can cross the deadline after its timer is cleared and still store ready.
+    const c = among(1), start = Date.now();
+    let clock = start;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const store: ScanCropStore = {
+      ...c.store,
+      async printedBytes(path) {
+        const bytes = await c.store.printedBytes(path);
+        if (path.startsWith("other-")) clock = start + 35_001;
+        return bytes;
+      },
+    };
+    try {
+      expect(await runScanCrops(store, ref, token(1))).toMatchObject({ status: "refused", reason: "check-timeout" });
+      expect(c.m.calibrations.get(PHOTO)).toMatchObject({ state: "running", result: null });
+      expect(c.m.filesOf(PHOTO)).toEqual([]);
+    } finally { now.mockRestore(); }
+  });
+
+  it.each(["frame", "photoBytes"] as const)("the deadline also bounds a held %s read", async (method) => {
+    // Disproved if a held input read ignores the sheet-check limit or stores a late ready result.
+    const m = setup();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const store: ScanCropStore = {
+      ...m.store,
+      [method]: async (r: Parameters<ScanCropStore[typeof method]>[0]) => { await held; return m.store[method](r); },
+    };
+    const job = runScanCrops(store, ref, token(1), { sheetCheckMs: 20 });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const answer = await Promise.race([job, new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), 200); })]);
+    clearTimeout(timer);
+    release();
+    await job;
+    expect(answer).toMatchObject({ status: "refused", reason: "check-timeout" });
+    expect(m.calibrations.get(PHOTO)).toMatchObject({ state: "running", result: null });
+    expect(m.filesOf(PHOTO)).toEqual([]);
   });
 });

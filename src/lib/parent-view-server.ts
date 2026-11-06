@@ -16,9 +16,11 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 //     security returns only the family's rows, and only shipped workbooks.
 //   - The secret key, filtered on the signed-in parent's id, reads the tests: whether every answer of an open test is in
 //     needs the stored test and the answers, which a parent may not read. This is the read the start screen uses.
-//     It also reads test_accounts for the Maya switch, and the dispatch emails' delivery details (carrier and tracking,
-//     #558), which only admins may read in workbook_emails; it selects only the child, the workbook number and the
-//     delivery. Nothing it reads reaches the output except through parent-view.ts, which checks the delivery.
+//     It also reads test_accounts for the Maya switch; child_plan_states, which a parent may not read (#548): a child
+//     with no row reads as `unknown`, and a load of the Account tab fills the row (src/lib/billing.ts); and the dispatch
+//     emails' delivery details (carrier and tracking, #558), which only admins may read in workbook_emails; it selects
+//     only the child, the workbook number and the delivery. Nothing it reads reaches the output except through
+//     parent-view.ts, which checks the delivery.
 // The Overview (#560): the scored answers of a finished test need the stored test, which only the secret key reads,
 // filtered on the parent's id (the test attempt store's `load`, as the start screen reads an open test); the report's level
 // comes from the parent's session. The scans, the pages of a shipped workbook and the learning card come from the session.
@@ -33,8 +35,6 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // stored report calls it unreliable (only the report's reliability note is read, not its model). A test with no report
 // yet gives no tally. A shipped workbook's
 // standards come from the session; only the code in each question package leaves that read.
-// Plan state: the plan state table does not exist yet (#548), so `plans` returns no rows and every plan reads as
-// `unknown`. No family can be `ended` until #548 fills this read in.
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
 
 /** The reader of this parent, from their session and the secret key. */
@@ -87,7 +87,10 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       return { timeZone: data?.time_zone ?? null, postal: data?.postal ?? null };
     },
     async plans() {
-      return [];
+      if (!admin) throw new Error("plans read: no secret key");
+      const { data, error } = await admin.from("child_plan_states").select("child_id, kind").eq("parent_id", parent);
+      if (error) throw new Error(`plans read: ${error.message}`);
+      return data.map((p) => ({ childId: p.child_id, kind: p.kind }));
     },
     async testResult(assessmentId) {
       if (!admin) throw new Error("test result read: no secret key");

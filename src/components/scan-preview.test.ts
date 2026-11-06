@@ -61,6 +61,9 @@ it.each([
   [{ status: "refused", reason: "page-mismatch" }, "does not match the printed page"],
   [{ status: "refused", reason: "ambiguous-page" }, "more than one page"],
   [{ status: "refused", reason: "qr-mismatch" }, "QR code"],
+  [{ status: "refused", reason: "another-page" }, "looks like a different page"],
+  [{ status: "refused", reason: "faint" }, "too bright or faint to read"],
+  [{ status: "refused", reason: "check-timeout" }, "Try again in a minute"],
   [{ status: "unavailable", reason: "no-contract" }, "checking is not available for this workbook"],
   [{ status: "unavailable", reason: "other-revision" }, "earlier printing"],
 ])("says so plainly: %j", async (answer, text) => {
@@ -82,6 +85,29 @@ it("keeps the photo's message when an image route refuses, and can try again", a
   await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Try again")!.click());
   await flush(); await flush();
   expect(host.querySelectorAll("img")).toHaveLength(3);
+});
+
+it("after running out of time, offers Try again only when the job's lease has run out", async () => {
+  // Disproved if the screen tells a parent to try again with nothing to press, or lets them call while the lease holds.
+  answers = [{ status: "refused", reason: "check-timeout", retryInMs: 60 }];
+  await show();
+  const button = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Try again");
+  expect(host.textContent).toContain("Try again in a minute");
+  expect(button()?.disabled).toBe(true);
+  await act(async () => button()!.click());
+  expect(calls.filter((c) => c.startsWith("POST"))).toHaveLength(1);
+  await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+  expect(button()?.disabled).toBe(false);
+  await act(async () => button()!.click());
+  await flush(); await flush();
+  expect(calls.filter((c) => c.startsWith("POST"))).toHaveLength(2);
+  expect(host.querySelectorAll("img")).toHaveLength(3);
+});
+
+it("a refusal that another call cannot change offers no Try again", async () => {
+  answers = [{ status: "refused", reason: "faint" }];
+  await show();
+  expect([...host.querySelectorAll("button")]).toEqual([]);
 });
 
 it("Scan pages asks for no preview unless the server says this family has checks", async () => {

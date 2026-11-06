@@ -4,6 +4,54 @@ import type { AudioFrame } from "@livekit/rtc-node";
 import { speechKey } from "@/lib/maya/speech";
 import { SPEECH_SCOPE_DATA, speechSentences, speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 
+/**
+ * Passes text to the voice provider and its audio back, and tells `count` the text once when audio came back, also when
+ * the speech is cut later. Failed output counts nothing. The count never holds the audio back, and its failure is ignored.
+ */
+export async function countedSynthesis(
+  text: ReadableStream<string> | AsyncIterable<string>,
+  synthesize: (text: ReadableStream<string>) => Promise<ReadableStream<AudioFrame> | null>,
+  count: (text: string) => void,
+): Promise<ReadableStream<AudioFrame> | null> {
+  let sent = "";
+  const chunks = text[Symbol.asyncIterator]();
+  const frames = await synthesize(new ReadableStream<string>({
+    async pull(controller) {
+      const { value, done } = await chunks.next();
+      if (done) return controller.close();
+      sent += value;
+      controller.enqueue(value);
+    },
+    async cancel() { await chunks.return?.(); },
+  }));
+  if (!frames) return null;
+  const reader = frames.getReader();
+  let heard = false;
+  let counted = false;
+  const charge = () => {
+    if (!heard || counted) return;
+    counted = true;
+    try { count(sent); } catch { /* The words are already said. */ }
+  };
+  return new ReadableStream<AudioFrame>({
+    async pull(controller) {
+      try {
+        const { value, done } = await reader.read();
+        if (done) { charge(); return controller.close(); }
+        heard = true;
+        controller.enqueue(value);
+      } catch (e) {
+        charge();
+        controller.error(e);
+      }
+    },
+    async cancel(reason) {
+      charge();
+      await reader.cancel(reason);
+    },
+  });
+}
+
 /** Synthesize separate sentences so a provider without word times still has real sentence audio boundaries. */
 export function boardAudio(
   text: ReadableStream<string> | AsyncIterable<string>,
