@@ -1,0 +1,137 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import { readParentWorkbookAnswers, type ParentWorkbookAnswerSource } from "@/lib/parent-workbook-answers";
+import { sampleWorkbook } from "@/lib/workbook-sample";
+import { storedQuestion, type Workbook, type WorkbookPage } from "@/lib/workbook-content";
+import { operationResult, workedSteps, type Item, type Operation, type QuestionPackage } from "@/lib/question-package";
+
+const PARENT = "11111111-1111-4111-8111-111111111111", CHILD = "22222222-2222-4222-8222-222222222222", BOOK = "33333333-3333-4333-8333-333333333333", OTHER = "44444444-4444-4444-8444-444444444444";
+const NOW = Date.parse("2026-11-06T20:00:00Z");
+const request = { parentId: PARENT, childId: CHILD, workbookId: BOOK };
+const original = sampleWorkbook({ workbookId: BOOK, parentId: PARENT, childId: CHILD, qrTokens: ["sample-token-00000001", "sample-token-00000002", "sample-token-00000003"] });
+const base = original.pages.flatMap(p => p.questions)[0].package;
+function question(page: number, number: number, operation: Operation | null = { kind: "add", operands: [24, 18] }, item?: Item) {
+  const easier: Operation | null = !operation ? null : operation.kind === "divide" ? { kind: "divide", operands: [8, 3] }
+    : operation.kind === "fraction-add" ? { kind: "fraction-add", operands: [{ type: "number", value: 1 }, { type: "number", value: 2 }] }
+      : operation.kind === "quantity-add" ? { kind: "quantity-add", operands: [{ type: "quantity", value: 1, unit: "$" }, { type: "quantity", value: 2, unit: "$" }] }
+        : operation.kind === "clock-convert" ? { kind: "clock-convert", operands: [{ type: "time", hours: 1, minutes: 15, period: null }] }
+          : { kind: "add", operands: [2, 1] };
+  const pkg: QuestionPackage = { ...base, item: undefined, id: `question-${page}-${number}`, ref: { source: "workbook", workbookId: BOOK, page, question: number }, text: "PRIVATE WORKSHEET WORDING", wrongAnswers: operation ? [{ value: { type: "number", value: 99999 }, cause: "O3", description: "A different answer", step: null }] : [],
+    operation, answer: operation ? { value: operationResult(operation), accepted: [], unit: null } : null, steps: operation ? workedSteps(operation) : [],
+    easierExample: easier ? { text: "PRIVATE EXAMPLE", operation: easier, answer: operationResult(easier), steps: workedSteps(easier) } : null, ...(item ? { item } : {}) };
+  const stored = storedQuestion({ number, box: { x: 0, y: 0, width: 100, height: 100 }, schemaVersion: 2, package: pkg }, { source: "workbook", workbookId: BOOK, page, question: number });
+  if (stored.content.status !== "found") throw new Error(stored.content.detail);
+  return stored;
+}
+const page = (number: number, questions = [question(number, 1)]): WorkbookPage => ({ number, dayLabel: `Day ${number}`, type: "practice", image: { path: "PRIVATE PAGE IMAGE", width: 100, height: 100 }, qrToken: "PRIVATE QR TOKEN", printContract: null, questions });
+let book: Workbook, source: ParentWorkbookAnswerSource;
+const receipt = { workbookId: BOOK, childId: CHILD, parentId: PARENT, number: 1, deliveredAt: "2026-11-05T20:00:00Z" };
+beforeEach(() => {
+  book = { id: BOOK, parentId: PARENT, childId: CHILD, number: 1, levels: [2], status: "shipped", pdfPath: "PRIVATE WORKBOOK PDF", profileBuild: "PRIVATE PROFILE", createdAt: "2026-10-01T20:00:00Z", approvedAt: null, printedAt: null, shippedAt: "2026-11-01T20:00:00Z", printedRevision: null, pdfSha256: null, printManifest: null, pages: [page(1)] };
+  source = { child: vi.fn().mockResolvedValue({ id: CHILD, parentId: PARENT, firstName: "Leah" }), workbook: vi.fn().mockImplementation(async () => book), delivery: vi.fn().mockResolvedValue(receipt), content: vi.fn().mockImplementation(async () => book) };
+});
+
+it.each([null, { ...receipt, deliveredAt: "2026-11-07T20:00:00Z" }, { ...receipt, deliveredAt: "bad time" }])("reads no answers without an effective confirmed delivery: %s", async delivery => {
+  vi.mocked(source.delivery).mockResolvedValue(delivery);
+  expect(await readParentWorkbookAnswers(source, request, NOW)).toBeNull();
+  expect(source.content).not.toHaveBeenCalled();
+});
+
+it.each(["parentId", "childId", "workbookId"] as const)("refuses a foreign %s and never reads packages", async field => {
+  expect(await readParentWorkbookAnswers(source, { ...request, [field]: OTHER }, NOW)).toBeNull();
+  expect(source.content).not.toHaveBeenCalled();
+});
+
+it("requires the exact receipt identity, book number, shipped status and child", async () => {
+  for (const change of [{ parentId: OTHER }, { childId: OTHER }, { workbookId: OTHER }, { number: 2 }]) {
+    vi.mocked(source.delivery).mockResolvedValue({ ...receipt, ...change });
+    expect(await readParentWorkbookAnswers(source, request, NOW)).toBeNull();
+  }
+  vi.mocked(source.delivery).mockResolvedValue(receipt);
+  book.status = "printed";
+  expect(await readParentWorkbookAnswers(source, request, NOW)).toBeNull();
+  expect(source.content).not.toHaveBeenCalled();
+});
+
+it("refuses malformed route identities before any read", async () => {
+  expect(await readParentWorkbookAnswers(source, { ...request, workbookId: "../workbook.pdf" }, NOW)).toBeNull();
+  expect(source.child).not.toHaveBeenCalled();
+});
+
+it("rechecks delivery after reading content so a retraction or latest correction closes the key", async () => {
+  vi.mocked(source.delivery).mockResolvedValueOnce(receipt).mockResolvedValueOnce(null);
+  expect(await readParentWorkbookAnswers(source, request, NOW)).toBeNull();
+  vi.mocked(source.delivery).mockResolvedValueOnce(receipt).mockResolvedValueOnce({ ...receipt, deliveredAt: "2026-11-07T20:00:00Z" });
+  expect(await readParentWorkbookAnswers(source, request, NOW)).toBeNull();
+});
+
+it("shows the entire delivered legacy book without a print revision or any marking read, in printed order", async () => {
+  book.pages = [page(8, [question(8, 3), question(8, 1)]), page(1, []), page(4)];
+  const view = await readParentWorkbookAnswers(source, request, NOW);
+  expect(view?.pages.map(p => p.number)).toEqual([4, 8]);
+  expect(view?.pages[1].questions.map(q => q.number)).toEqual([1, 3]);
+  expect(view?.pages.flatMap(p => p.questions).flatMap(q => q.answers.map(a => a.value))).toEqual(["42", "42", "42"]);
+  const output = JSON.stringify(view);
+  for (const hidden of ["PRIVATE", "pdfPath", "image", "qrToken", "steps", "package", "profileBuild", "operation"]) expect(output).not.toContain(hidden);
+});
+
+it("uses each stored region answer for multiple answers and choices", async () => {
+  const item: Item = { format: "tick-and-number", scorable: true, parentChecked: false, regions: [
+    { id: "operation", kind: "choice", mark: "tick", label: "Tick the operation", choices: ["+", "−", "×", "÷"], answer: "+" },
+    { id: "answer", kind: "box", label: "Write the answer", answer: { type: "number", value: 42 } },
+    { id: "work", kind: "work", label: "Show your work" },
+  ], checks: [{ kind: "operation-sign", region: "operation" }, { kind: "operation", region: "answer" }], error: null };
+  book.pages = [page(1, [question(1, 1, { kind: "add", operands: [24, 18] }, item)])];
+  const q = (await readParentWorkbookAnswers(source, request, NOW))?.pages[0].questions[0];
+  expect(q?.answers.map(a => a.value)).toEqual(["+", "42"]);
+  expect(q?.hasOpenWork).toBe(true);
+});
+
+it.each<Operation>([
+  { kind: "divide", operands: [27, 4] },
+  { kind: "fraction-add", operands: [{ type: "fraction", numerator: 1, denominator: 4 }, { type: "fraction", numerator: 1, denominator: 4 }] },
+  { kind: "quantity-add", operands: [{ type: "quantity", value: 4.75, unit: "$" }, { type: "quantity", value: 2.5, unit: "$" }] },
+  { kind: "clock-convert", operands: [{ type: "time", hours: 15, minutes: 45, period: null }] },
+])("keeps the stored typed answer for $kind", async operation => {
+  book.pages = [page(1, [question(1, 1, operation)])];
+  const value = (await readParentWorkbookAnswers(source, request, NOW))?.pages[0].questions[0].answers[0].value;
+  expect(value).toBe(({ divide: "6 R 3", "fraction-add": "1/2", "quantity-add": "$7.25", "clock-convert": "3:45 p.m." } as Record<string, string>)[operation.kind]);
+});
+
+it("identifies a stored example for equations and admits that a drawing has no fixed key", async () => {
+  const equation: Item = { format: "boxes", scorable: true, parentChecked: false, regions: [
+    { id: "a", kind: "box", label: null, answer: { type: "number", value: 3 } },
+    { id: "b", kind: "box", label: null, answer: { type: "number", value: 9 } },
+  ], checks: [{ kind: "equations", equations: [{ left: { region: "a" }, op: "+", right: { region: "b" }, result: { type: "number", value: 12 } }], different: false, numbers: "whole" }], error: null };
+  const drawing: Item = { format: "draw", scorable: false, parentChecked: true, regions: [{ id: "picture", kind: "picture", label: "Draw" }], checks: [], error: null };
+  book.pages = [page(1, [question(1, 1, null, equation), question(1, 2, null, drawing)])];
+  const questions = (await readParentWorkbookAnswers(source, request, NOW))!.pages[0].questions;
+  expect(questions[0].kind).toBe("example"); expect(questions[0].answers.map(a => a.value)).toEqual(["3", "9"]);
+  expect(questions[1]).toMatchObject({ kind: "open", answers: [] });
+});
+
+it("keeps an unavailable legacy question visible without internal reasons, and safely handles an empty book", async () => {
+  book.pages[0].questions[0].content = { status: "unavailable", reason: "invalid-package", detail: "PRIVATE VALIDATION" };
+  expect((await readParentWorkbookAnswers(source, request, NOW))?.pages[0].questions[0]).toMatchObject({ kind: "unavailable", answers: [] });
+  expect(JSON.stringify(await readParentWorkbookAnswers(source, request, NOW))).not.toContain("VALIDATION");
+  book.pages = [];
+  expect((await readParentWorkbookAnswers(source, request, NOW))?.pages).toEqual([]);
+});
+
+
+it("keeps version 1 keys and their accepted forms without inventing a print contract", async () => {
+  const q = question(1, 1);
+  if (q.content.status !== "found" || !q.content.package.answer) throw new Error("Fixture must have a stored answer");
+  q.content.package.answer.accepted = [{ type: "fraction", numerator: 84, denominator: 2 }];
+  const legacy = storedQuestion({ number: 1, box: q.box, schemaVersion: 1, package: q.content.package }, { source: "workbook", workbookId: BOOK, page: 1, question: 1 });
+  expect(legacy.content.status).toBe("found");
+  book.pages = [page(1, [legacy])];
+  expect((await readParentWorkbookAnswers(source, request, NOW))?.pages[0].questions[0].answers).toEqual([{ part: 1, value: "42", alternatives: ["84/2"] }]);
+});
+it("discloses a part with no fixed key even when another part has an answer", async () => {
+  const item: Item = { format: "hands-on", scorable: false, parentChecked: true, regions: [
+    { id: "open", kind: "box", label: null, answer: null },
+    { id: "known", kind: "box", label: null, answer: { type: "number", value: 10 } },
+  ], checks: [], error: null };
+  book.pages = [page(1, [question(1, 1, null, item)])];
+  expect((await readParentWorkbookAnswers(source, request, NOW))?.pages[0].questions[0]).toMatchObject({ answers: [{ part: 2, value: "10" }], hasOpenWork: true });
+});

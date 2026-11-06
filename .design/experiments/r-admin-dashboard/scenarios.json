@@ -1,13 +1,14 @@
 {
   "source": "src/lib/admin-parent-dashboard.ts",
   "base": "f3133376535b3c96f4c81f62f1f8d1cc80322a23",
-  "views": 10,
-  "scenarios": 93,
+  "views": 11,
+  "scenarios": 97,
   "countsByView": {
     "assessment": 6,
     "report": 14,
     "overview": 11,
     "workbooks": 7,
+    "workbook_answers": 4,
     "progress": 5,
     "maya": 7,
     "account": 9,
@@ -67,7 +68,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=assessment&scenario=no_test&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=assessment&scenario=no_test&size=desktop&family=one&child=first"
     },
     {
       "view": "assessment",
@@ -78,7 +79,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=assessment&scenario=test_running&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=assessment&scenario=test_running&size=desktop&family=one&child=first"
     },
     {
       "view": "assessment",
@@ -89,7 +90,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=assessment&scenario=finish&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=assessment&scenario=finish&size=desktop&family=one&child=first"
     },
     {
       "view": "assessment",
@@ -100,7 +101,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=assessment&scenario=expired&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=assessment&scenario=expired&size=desktop&family=one&child=first"
     },
     {
       "view": "assessment",
@@ -111,7 +112,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=assessment&scenario=report_pending&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=assessment&scenario=report_pending&size=desktop&family=one&child=first"
     },
     {
       "view": "assessment",
@@ -127,7 +128,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=assessment&scenario=wait&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=assessment&scenario=wait&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -138,7 +139,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=choose&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=choose&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -149,7 +150,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=checking&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=checking&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -160,7 +161,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=unknown&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=unknown&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -171,7 +172,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=error&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=error&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -182,7 +183,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=busy_card&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=busy_card&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -193,7 +194,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=cancelled&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=cancelled&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -204,7 +205,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=later&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=later&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -215,7 +216,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=saved&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=saved&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -226,7 +227,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=waitlist&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=waitlist&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -237,7 +238,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=busy_waitlist&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=busy_waitlist&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -248,7 +249,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=joined&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=joined&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -259,7 +260,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=waitlist_error&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=waitlist_error&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -275,7 +276,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=unreliable&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=unreliable&size=desktop&family=one&child=first"
     },
     {
       "view": "report",
@@ -290,7 +291,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=report&scenario=ended&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=report&scenario=ended&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -306,7 +307,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=active&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=active&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -320,7 +321,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=first_book_coming&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=first_book_coming&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -335,7 +336,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=ended&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=ended&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -351,7 +352,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=early&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=early&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -367,7 +368,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=unreliable&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=unreliable&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -383,7 +384,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=preparing&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=preparing&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -399,7 +400,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=late&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=late&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -413,7 +414,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=empty&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=empty&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -429,7 +430,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=payment_failed&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=payment_failed&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -445,7 +446,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=no_pin&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=no_pin&size=desktop&family=one&child=first"
     },
     {
       "view": "overview",
@@ -461,7 +462,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=overview&scenario=learning_card_empty&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=overview&scenario=learning_card_empty&size=desktop&family=one&child=first"
     },
     {
       "view": "workbooks",
@@ -477,7 +478,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=workbooks&scenario=delivered&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=workbooks&scenario=delivered&size=desktop&family=one&child=first"
     },
     {
       "view": "workbooks",
@@ -493,7 +494,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=workbooks&scenario=mail&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=workbooks&scenario=mail&size=desktop&family=one&child=first"
     },
     {
       "view": "workbooks",
@@ -509,7 +510,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=workbooks&scenario=hand&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=workbooks&scenario=hand&size=desktop&family=one&child=first"
     },
     {
       "view": "workbooks",
@@ -523,7 +524,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=workbooks&scenario=first_book_coming&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=workbooks&scenario=first_book_coming&size=desktop&family=one&child=first"
     },
     {
       "view": "workbooks",
@@ -539,7 +540,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=workbooks&scenario=late&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=workbooks&scenario=late&size=desktop&family=one&child=first"
     },
     {
       "view": "workbooks",
@@ -555,7 +556,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=workbooks&scenario=paused&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=workbooks&scenario=paused&size=desktop&family=one&child=first"
     },
     {
       "view": "workbooks",
@@ -570,7 +571,70 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=workbooks&scenario=ended&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=workbooks&scenario=ended&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbook_answers",
+      "scenario": "complete",
+      "label": "Whole delivered workbook",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbook_answers&scenario=complete&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbook_answers",
+      "scenario": "mixed",
+      "label": "Multiple answers, examples and open work",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbook_answers&scenario=mixed&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbook_answers",
+      "scenario": "empty",
+      "label": "No stored answers",
+      "stage": "active",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "scan_pages",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbook_answers&scenario=empty&size=desktop&family=one&child=first"
+    },
+    {
+      "view": "workbook_answers",
+      "scenario": "ended",
+      "label": "Delivered book after plan ended",
+      "stage": "ended",
+      "tabs": [
+        "overview",
+        "progress",
+        "workbooks",
+        "maya",
+        "assessment",
+        "account"
+      ],
+      "url": "/admin/dashboard?view=workbook_answers&scenario=ended&size=desktop&family=one&child=first"
     },
     {
       "view": "progress",
@@ -586,7 +650,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=progress&scenario=map&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=progress&scenario=map&size=desktop&family=one&child=first"
     },
     {
       "view": "progress",
@@ -602,7 +666,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=progress&scenario=panel&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=progress&scenario=panel&size=desktop&family=one&child=first"
     },
     {
       "view": "progress",
@@ -616,7 +680,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=progress&scenario=empty&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=progress&scenario=empty&size=desktop&family=one&child=first"
     },
     {
       "view": "progress",
@@ -632,7 +696,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=progress&scenario=unreliable&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=progress&scenario=unreliable&size=desktop&family=one&child=first"
     },
     {
       "view": "progress",
@@ -647,7 +711,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=progress&scenario=ended&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=progress&scenario=ended&size=desktop&family=one&child=first"
     },
     {
       "view": "maya",
@@ -663,7 +727,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=maya&scenario=notes&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=maya&scenario=notes&size=desktop&family=one&child=first"
     },
     {
       "view": "maya",
@@ -679,7 +743,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=maya&scenario=empty&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=maya&scenario=empty&size=desktop&family=one&child=first"
     },
     {
       "view": "maya",
@@ -695,7 +759,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=maya&scenario=used&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=maya&scenario=used&size=desktop&family=one&child=first"
     },
     {
       "view": "maya",
@@ -711,7 +775,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=maya&scenario=session&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=maya&scenario=session&size=desktop&family=one&child=first"
     },
     {
       "view": "maya",
@@ -727,7 +791,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=maya&scenario=chat&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=maya&scenario=chat&size=desktop&family=one&child=first"
     },
     {
       "view": "maya",
@@ -743,7 +807,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=maya&scenario=missing&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=maya&scenario=missing&size=desktop&family=one&child=first"
     },
     {
       "view": "maya",
@@ -758,7 +822,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=maya&scenario=ended&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=maya&scenario=ended&size=desktop&family=one&child=first"
     },
     {
       "view": "account",
@@ -774,7 +838,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=account&scenario=loaded&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=account&scenario=loaded&size=desktop&family=one&child=first"
     },
     {
       "view": "account",
@@ -785,7 +849,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=account&scenario=empty&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=account&scenario=empty&size=desktop&family=one&child=first"
     },
     {
       "view": "account",
@@ -801,7 +865,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=account&scenario=loading&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=account&scenario=loading&size=desktop&family=one&child=first"
     },
     {
       "view": "account",
@@ -817,7 +881,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=account&scenario=unavailable&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=account&scenario=unavailable&size=desktop&family=one&child=first"
     },
     {
       "view": "account",
@@ -833,7 +897,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=account&scenario=invoices_unavailable&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=account&scenario=invoices_unavailable&size=desktop&family=one&child=first"
     },
     {
       "view": "account",
@@ -849,7 +913,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=account&scenario=updated&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=account&scenario=updated&size=desktop&family=one&child=first"
     },
     {
       "view": "account",
@@ -865,7 +929,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=account&scenario=unchanged&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=account&scenario=unchanged&size=desktop&family=one&child=first"
     },
     {
       "view": "account",
@@ -881,7 +945,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=account&scenario=unconfirmed&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=account&scenario=unconfirmed&size=desktop&family=one&child=first"
     },
     {
       "view": "account",
@@ -897,7 +961,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=account&scenario=failed&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=account&scenario=failed&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -913,7 +977,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=not_started&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=not_started&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -929,7 +993,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=free_month&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=free_month&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -945,7 +1009,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=paying&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=paying&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -961,7 +1025,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=payment_failed&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=payment_failed&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -977,7 +1041,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=paused&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=paused&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -993,7 +1057,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=ending&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=ending&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1008,7 +1072,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=ended&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=ended&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1024,7 +1088,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=unknown&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=unknown&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1035,7 +1099,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=none&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=none&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1051,7 +1115,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=unavailable&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=unavailable&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1067,7 +1131,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=pause&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=pause&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1083,7 +1147,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=pause_review&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=pause_review&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1099,7 +1163,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=pause_late&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=pause_late&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1115,7 +1179,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=pause_pending&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=pause_pending&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1130,7 +1194,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=restart&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=restart&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1145,7 +1209,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=restart_review&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=restart_review&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1160,7 +1224,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=restart_declined&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=restart_declined&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1175,7 +1239,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=restart_pending&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=restart_pending&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1191,7 +1255,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=pause_saved&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=pause_saved&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1206,7 +1270,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=restart_started&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=restart_started&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1222,7 +1286,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=cancel_review&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=cancel_review&size=desktop&family=one&child=first"
     },
     {
       "view": "plan",
@@ -1238,7 +1302,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=plan&scenario=cancel_pending&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=plan&scenario=cancel_pending&size=desktop&family=one&child=first"
     },
     {
       "view": "scan",
@@ -1254,7 +1318,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan&scenario=empty&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan&scenario=empty&size=desktop&family=one&child=first"
     },
     {
       "view": "scan",
@@ -1270,7 +1334,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan&scenario=loading&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan&scenario=loading&size=desktop&family=one&child=first"
     },
     {
       "view": "scan",
@@ -1286,7 +1350,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan&scenario=unavailable&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan&scenario=unavailable&size=desktop&family=one&child=first"
     },
     {
       "view": "scan",
@@ -1302,7 +1366,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan&scenario=ready&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan&scenario=ready&size=desktop&family=one&child=first"
     },
     {
       "view": "scan",
@@ -1318,7 +1382,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan&scenario=sent&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan&scenario=sent&size=desktop&family=one&child=first"
     },
     {
       "view": "scan",
@@ -1334,7 +1398,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan&scenario=refused&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan&scenario=refused&size=desktop&family=one&child=first"
     },
     {
       "view": "scan_results",
@@ -1350,7 +1414,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan_results&scenario=scored&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan_results&scenario=scored&size=desktop&family=one&child=first"
     },
     {
       "view": "scan_results",
@@ -1366,7 +1430,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan_results&scenario=uncertain&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan_results&scenario=uncertain&size=desktop&family=one&child=first"
     },
     {
       "view": "scan_results",
@@ -1382,7 +1446,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan_results&scenario=unscored&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan_results&scenario=unscored&size=desktop&family=one&child=first"
     },
     {
       "view": "scan_results",
@@ -1398,7 +1462,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan_results&scenario=expired&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan_results&scenario=expired&size=desktop&family=one&child=first"
     },
     {
       "view": "scan_results",
@@ -1414,7 +1478,7 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan_results&scenario=budget&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan_results&scenario=budget&size=desktop&family=one&child=first"
     },
     {
       "view": "scan_results",
@@ -1430,7 +1494,8 @@
         "assessment",
         "account"
       ],
-      "url": "/admin/parent-dashboard?view=scan_results&scenario=pending&size=desktop&family=one&child=first"
+      "url": "/admin/dashboard?view=scan_results&scenario=pending&size=desktop&family=one&child=first"
     }
-  ]
+  ],
+  "updatedBase": "7584b930ce3ed4f48930010f9c94f03f11e13a08"
 }

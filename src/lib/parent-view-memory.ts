@@ -183,7 +183,7 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       async shippedWorkbooks() {
         read("workbooks");
         return own(tables.workbooks).filter((w) => w.status === "shipped")
-          .map((w) => ({ ...w, id: w.id ?? `wb-${w.childId}-${w.number}`, shippedAt: w.shippedAt ?? null, hasPdf: (w.pdfPath ?? null) !== null }));
+          .map((w) => ({ ...w, id: w.id ?? `wb-${w.childId}-${w.number}`, shippedAt: w.shippedAt ?? null }));
       },
       async dispatches() {
         read("dispatches");
