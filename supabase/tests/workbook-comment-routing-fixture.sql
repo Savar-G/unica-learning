@@ -39,7 +39,7 @@ begin
     select jsonb_agg(jsonb_build_object('number',n,'image',jsonb_build_object('path',p::text||'/'||d::text||'/old-'||n::text||'.png','width',816,'height',1056),
       'questions',case when n=3 then '[{"number":1},{"number":2}]'::jsonb else '[]'::jsonb end,
       'printContract',jsonb_build_object('version',1,'workbookId',d,'page',n,'label','Test','coordinates','{}'::jsonb,'marks','{}'::jsonb,'fingerprints',jsonb_build_object('content',repeat('c',64),'image',repeat('a',64))))) from generate_series(1,3) n));
-  insert into public.workbook_drafts values(d,p,c,v);
+  insert into public.workbook_drafts(id,parent_id,child_id,draft) values(d,p,c,v);
   insert into public.workbook_draft_revisions(draft_id,revision,parent_id,child_id,kind,content,rendering) values(d,1,p,c,'generated',v,r);
   return d;
 end $$;

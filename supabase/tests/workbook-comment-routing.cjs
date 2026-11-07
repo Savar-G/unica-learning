@@ -41,6 +41,32 @@ function definition(file, name) {
     if (JSON.stringify(states) !== JSON.stringify(["queued", "refused"])) throw new Error(`Concurrent admission: ${states}`);
     if (sql(`select count(*) from public.workbook_edits where draft_id='${draft}' and status='queued'`).trim() !== "1") throw new Error("Duplicate active batch");
     console.log("WORKBOOK_COMMENT_ROUTING_CONCURRENCY_OK 1");
+    sql(fs.readFileSync(path.join(__dirname, "workbook-comment-routing-regressions.sql"), "utf8"));
+    sql(definition("20261105_workbook_print_contract_lock.sql", "apply_workbook_print_contract"));
+    sql(definition("20261104_workbook_print_contract.sql", "approve_workbook_draft"));
+    const failures = [];
+    for (const name of ["qa_check_stored_layout", "qa_check_outcome_promotion"]) {
+      try { sql(`select public.${name}()`);console.log(`${name} PASS`); }
+      catch (e) { failures.push(name);console.error(String(e.stderr || e.message).trim()); }
+    }
+    // Session B starts before expiry but must recheck the real clock after A releases the draft lock.
+    const timing = JSON.parse(sql("select public.qa_layout_case(1,'applied')").trim());
+    const app = `layout-expiry-${process.pid}`;
+    const locker = run(path.join(bin, "psql"), [...sqlArgs, "-At", "-c", `set application_name='${app}';begin;select id from public.workbook_drafts where id='${timing.draft}' for no key update;select pg_sleep(2);commit;`]);
+    let locked = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (sql(`select exists(select 1 from pg_stat_activity where application_name='${app}' and wait_event='PgSleep')`).trim() === "t") { locked = true;break; }
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    if (!locked) throw new Error("Expiry test did not acquire the draft lock");
+    sql(`update public.workbook_edits set heartbeat_at=clock_timestamp()-interval '5 minutes 59 seconds' where id='${timing.edit}'`);
+    const elapsed = JSON.parse(sql(`select public.finish_workbook_layout_edit('${timing.edit}','${timing.lease}','${JSON.stringify(timing.rendering)}','${JSON.stringify(timing.results)}',null)`).trim());
+    await locker;
+    if (elapsed.status !== "refused" || sql(`select max(revision) from public.workbook_draft_revisions where draft_id='${timing.draft}'`).trim() !== "1") {
+      failures.push("qa_check_expiry_after_lock");console.error("F3: finish accepted a lease that expired during the draft lock wait");
+    } else console.log("qa_check_expiry_after_lock PASS");
+    if (failures.length) throw new Error(`Review regressions failed: ${failures.join(", ")}`);
+    console.log("WORKBOOK_COMMENT_ROUTING_REVIEW_REGRESSIONS_OK 3");
   } catch (e) {
     if (e.stderr) process.stderr.write(String(e.stderr));
     console.error(e.message);process.exitCode = 1;

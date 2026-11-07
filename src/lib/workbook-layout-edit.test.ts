@@ -10,9 +10,13 @@ import { layoutCoverageProblem, layoutEditPlan, runWorkbookLayoutEdit, type Layo
 import { packageItem } from "./question-package";
 import type { EditCheckpoint, EditFrame, EditSnapshot, ReviewComment } from "./workbook-edit";
 import type { DraftRendering } from "./workbook-job";
+import { commentFromRow } from "./workbook-edit-store";
+
+vi.mock("server-only", () => ({}));
 
 const id = "55555555-5555-4555-8555-000000000002", child = "22222222-2222-4222-8222-222222222222";
 let draft: GeneratedWorkbook, input: GenerateInput;
+let dayContent: GeneratedWorkbook["pages"][number]["content"];
 let scalar: GeneratedWorkbook["pages"][number]["questions"][number];
 beforeAll(async () => {
   const curriculum = curriculumFor("bc")!;
@@ -22,6 +26,7 @@ beforeAll(async () => {
   let serial = 0;
   const result = await generateWorkbook(input, { ai: workbookFakeAi({ NODE_ENV: "test", WORKBOOK_AI_FAKE: "on" })!, solver: keySolver(), fit: { fits: async () => ({ ok: true }) }, store: memoryDraftStore({ [child]: id }), qrToken: () => `synthetic-token-${++serial}` });
   if (result.status !== "stored") throw new Error(result.status);
+  dayContent = result.draft.pages.find(p => p.content?.kind === "day")!.content;
   scalar = result.draft.pages.flatMap(p => p.questions).find(q => q.package && packageItem(q.package).format === "write-number" && packageItem(q.package).scorable && !packageItem(q.package).parentChecked)!;
   draft = { ...result.draft, pages: result.draft.pages.slice(0, 2), counts: { ...result.draft.counts, pages: 2, questions: 0 } };
 });
@@ -73,6 +78,21 @@ it("requires explicit reviewed outcomes, current comments, a build and real page
   expect(layoutEditPlan(value, [{ ...s.comment, revision: 2 }], s.snapshot, "reviewed-source")).toBeNull();
   expect(layoutEditPlan(value, [s.comment], s.snapshot, null)).toBeNull();
   expect(layoutEditPlan({ ...value, results: [{ ...s.plan.results[0], status: "unsupported" }] }, [s.comment], s.snapshot, "reviewed-source")?.results[0].status).toBe("unsupported");
+});
+
+it("preserves an explicit layout route and its result through row conversion and plan admission", () => {
+  const s = setup();
+  const page = s.snapshot.draft.pages[0];
+  page.content = dayContent;
+  const comment = commentFromRow({ id: s.comment.id, draft_id: id, parent_id: id, child_id: child,
+    revision: 1, page_number: 1, question_number: null, x: 0.5, y: 0.5,
+    note: "Make this easier to read.", item: null, actor_id: "admin", actor_email: "test@example.com",
+    created_at: s.comment.createdAt, status: "failed", error: null, batch_id: null,
+    before_value: null, after_value: null, request_key: null, client_request_key: null,
+    route: "layout", result_note: "The previous correction was incomplete." });
+  expect(comment.route).toBe("layout");
+  expect(comment.resultNote).toBe("The previous correction was incomplete.");
+  expect(layoutEditPlan({ reviewed: true, pages: [1], results: s.plan.results }, [comment], s.snapshot, "reviewed-source")).toEqual(s.plan);
 });
 
 it("renders only reviewed pages and passes the other image and all saved content through unchanged", async () => {

@@ -61,14 +61,14 @@ grant execute on function public.claim_workbook_layout_edit(uuid,uuid) to servic
 
 create function public.finish_workbook_layout_edit(p_id uuid,p_lease uuid,p_rendering jsonb,p_results jsonb,p_error text) returns jsonb
 language plpgsql security definer set search_path='' as $$
-declare e record; d record; r record; v_status text; b jsonb; a jsonb; v_resolution jsonb; v_changed int[]; v_outcome text; v_note text;
+declare e record; d record; r record; v_status text; b jsonb; a jsonb; v_resolution jsonb; v_changed int[]; v_outcome text; v_note text; v_page_number int; v_page_id uuid;
 begin
   select * into e from public.workbook_edits where id=p_id;
   if not found then return jsonb_build_object('status','refused','reason','This layout edit is unavailable.'); end if;
   select * into d from public.workbook_drafts where id=e.draft_id for no key update;
   select status into v_status from public.workbooks where id=e.draft_id for update;
   select * into e from public.workbook_edits where id=p_id for update;
-  if e.edit_kind<>'layout' or e.status<>'running' or e.lease is distinct from p_lease or e.heartbeat_at<=now()-interval '6 minutes' then
+  if e.edit_kind<>'layout' or e.status<>'running' or e.lease is distinct from p_lease or e.heartbeat_at<=clock_timestamp()-interval '6 minutes' then
     return jsonb_build_object('status','refused','reason','This layout edit stopped. Reload the page.');
   end if;
   select * into r from public.workbook_draft_revisions where draft_id=e.draft_id order by revision desc limit 1;
@@ -110,6 +110,7 @@ begin
     if p_error is null and (exists(select 1 from jsonb_array_elements(p_results) entry(value) where not exists(
       select 1 from jsonb_array_elements(e.layout_plan->'results') planned where planned->>'id'=entry.value->>'id' and planned->'page'=entry.value->'page'
         and entry.value->>'status' in ('applied','partial','unsupported') and length(btrim(entry.value->>'note')) between 1 and 2000
+        and (entry.value->>'status'<>'applied' or planned->>'status'='applied')
         and (planned->>'status'<>'unsupported' or entry.value->>'status'='unsupported')))
       or (select count(distinct entry.value->>'id') from jsonb_array_elements(p_results) entry(value))<>jsonb_array_length(p_results)) then
       p_error:='The comment outcomes do not match this reviewed request.';
@@ -123,7 +124,21 @@ begin
   -- The saved draft is copied from the database. No caller-supplied question, answer, plan or schedule can replace it.
   insert into public.workbook_draft_revisions(draft_id,revision,parent_id,child_id,kind,by_user,by_email,note,content,rendering,render_problems)
     values(e.draft_id,r.revision+1,e.parent_id,e.child_id,'edit',e.actor_id,e.actor_email,'Reviewed page-layout changes',coalesce(r.content,d.draft),p_rendering,r.render_problems);
-  if v_status is not null then update public.workbooks set status='draft',approved_at=null,pdf_path=p_rendering->>'pdfPath' where id=e.draft_id; end if;
+  if v_status is not null then
+    update public.workbooks set status='draft',approved_at=null,pdf_path=p_rendering->>'pdfPath' where id=e.draft_id;
+    foreach v_page_number in array v_changed loop
+      select id into v_page_id from public.workbook_pages where workbook_id=e.draft_id and page_number=v_page_number;
+      if not found then raise exception 'The stored page is unavailable'; end if;
+      update public.workbook_pages set image_path=pg->'image'->>'path',image_width=(pg->'image'->>'width')::int,image_height=(pg->'image'->>'height')::int
+        from jsonb_array_elements(p_rendering->'pages') pg where id=v_page_id and (pg->>'number')::int=v_page_number;
+      update public.workbook_questions w set box_x=(q->'box'->>'x')::int,box_y=(q->'box'->>'y')::int,
+        box_width=(q->'box'->>'width')::int,box_height=(q->'box'->>'height')::int
+        from jsonb_array_elements(p_rendering->'pages') pg,jsonb_array_elements(pg->'questions') q
+        where w.page_id=v_page_id and (pg->>'number')::int=v_page_number and w.question_number=(q->>'number')::int;
+    end loop;
+    -- Approval applies this revision's full print contract and marking regions through the existing path.
+    -- Packages, question identities, QR tokens and unselected stored rows do not change here.
+  end if;
   for v_resolution in select value from jsonb_array_elements(p_results) loop
     v_outcome:=v_resolution->>'status';v_note:=v_resolution->>'note';
     if not (v_resolution->>'page')::int=any(v_changed) then v_outcome:='unsupported';v_note:='The page did not change. This comment stays open.'; end if;

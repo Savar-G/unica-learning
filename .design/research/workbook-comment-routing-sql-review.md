@@ -39,3 +39,16 @@ No customer write is authorized by this checkpoint. The current customer revisio
 ## Review result
 
 Return separate SPEC and STANDARDS results. Report only a concrete failure with evidence, severity, file and line, and the smallest correction. State proof limits. Write a report in this review checkout with `HANDOFF_DONE`. Do not change product source.
+
+## First review corrections
+
+The first independent review rejected checkpoint `8e3cf5c7` with four findings. The controller corrected them locally:
+
+- F1: The layout finish now updates the selected stored page images, dimensions and question boxes in the finish transaction. Packages and QR identities stay unchanged. The existing approval path still applies the full print contract and marking regions.
+- F2: A reviewed partial outcome cannot become applied at finish. A new review is required to authorize completion.
+- F3: The lease check uses `clock_timestamp()` after the draft, workbook and edit locks.
+- F4: `commentFromRow` preserves the explicit route and previous result note.
+
+The new PostgreSQL controls failed against the prior source for F1, F2 and F3. The route-conversion test failed for F4. The corrected runs passed 41 focused tests, the existing 23 PostgreSQL groups, the concurrent queue group and three added database regressions. The stored-row regression loads the real committed approval and print-contract functions. It checks finish followed by approval. The lease regression uses two concurrent local sessions and a real lock wait.
+
+The new local fixture adds only the columns needed for the approval proof. It still does not establish hosted schema, permissions or storage behavior. Migrations, official types, the complete API/UI checks and release checks remain pending.
