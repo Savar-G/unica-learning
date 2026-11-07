@@ -1,0 +1,19 @@
+{
+  "schema_version": 2,
+  "issue": 675,
+  "decision": "D-299",
+  "route": "direct",
+  "job_kind": "new",
+  "surface": ["component", "product"],
+  "constraint_mode": "existing-system",
+  "base": "356e6f40fc12552fbdedb717a8607f498832f09a",
+  "phase": "build",
+  "contract": ".design/experiments/r675/contract.md",
+  "preview": "/admin/parent-dashboard?view=scan_results&scenario=explain_ready",
+  "states": ["idle", "loading", "ready", "retry", "cap", "stale", "unavailable"],
+  "references": ["DESIGN.md", "src/components/scan-marking-results.tsx", "src/components/scan-mark-change.tsx", "src/components/scan-pages.css", "src/components/admin-parent-preview.tsx"],
+  "screenshots": [],
+  "browser_review": "pending with root",
+  "independent_review": "pending with root",
+  "release": "off; preserve D236 and D249"
+}

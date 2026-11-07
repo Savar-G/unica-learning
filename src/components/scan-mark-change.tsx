@@ -4,6 +4,7 @@ import { useScanContext } from "@/lib/use-scan-context";
 import { scanEventTicket } from "@/lib/scan-track";
 import { useRouter } from "next/navigation";
 import type { markingPageView } from "@/lib/scan-marking";
+import { ScanProblemExplanation } from "@/components/scan-problem-explanation";
 import { ScanPrivateImages } from "@/components/scan-private-images";
 
 type Page = ReturnType<typeof markingPageView> & { photoAvailable: boolean; budgetHeld?: boolean };
@@ -38,6 +39,8 @@ export function ScanMarkChange({ photo, item, parent, complete = false }: { phot
     finally { if (currentContext()) setSaving(false); }
   }
   return <div className="scan-mark-change">
+    {current.result === "wrong" && (current.state === "scored" || current.state === "parent-checked") && current.readAnswerText?.trim() && <ScanProblemExplanation
+      key={`${parent}:${photo}:${current.itemId}:${current.version}:${current.readAnswerText}`} parent={parent} photo={photo} itemId={current.itemId} version={current.version} number={current.number} />}
     <button type="button" className="scan-link" aria-expanded={open} onClick={() => setOpen(!open)}>{item.result === null ? "Check this answer" : "Change this mark"}</button>
     {open && <div className="scan-mark-review" aria-label={`Review question ${item.number}`}>
       <p><b>Question {item.number}</b>: {current.label}</p>
