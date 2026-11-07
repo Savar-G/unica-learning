@@ -3,7 +3,7 @@ import { adminClient } from "@/lib/supabase-auth";
 import { setScanTeamMark, teamMarkChoice } from "@/lib/scan-team-marks";
 
 // #715: our team sets the mark of an answer the AI was unsure of. Body { item, version, result }. Answers
-// { status: "saved", recoveryPending } or { status: "conflict" | "not_waiting", version } (409), or an error.
+// { status: "saved", recoveryPending } or { status: "conflict" | "not_waiting" | "no_photo", version } (409), or an error.
 export async function POST(request: Request) {
   // Checks Auth and live admin membership for every request; the database function checks it again.
   const admin = await adminSession();

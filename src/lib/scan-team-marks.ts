@@ -18,9 +18,16 @@ export function teamMarkChoice(value: unknown): TeamMarkChoice | null {
   return { item: v.item, version: v.version, result: v.result };
 }
 
+/**
+ * One rule for "can be marked", the same as admin_set_scan_mark: an answer that counts toward progress, with no learning
+ * event yet, needs a photo, because its event must name the photo it came from. Without one, the list says so instead of
+ * offering a mark, and the function answers no_photo.
+ */
+export const teamMarkNeedsPhoto = (a: { eligible: boolean; hasEvent: boolean; photo: string | null }) => a.eligible && !a.hasEvent && !a.photo;
+
 export type TeamMarkResult =
   | { status: "saved"; version: number; recoveryPending: boolean }
-  | { status: "conflict" | "not_waiting"; version: number }
+  | { status: "conflict" | "not_waiting" | "no_photo"; version: number }
   | { status: "refused" };
 /** Set the mark with the admin's session, then publish the event and rebuild the profile with the server's key. */
 export async function setScanTeamMark(adminDb: SupabaseClient<Database>, serviceDb: SupabaseClient<Database>, choice: TeamMarkChoice): Promise<TeamMarkResult> {
@@ -29,7 +36,7 @@ export async function setScanTeamMark(adminDb: SupabaseClient<Database>, service
   const v = r.data;
   if (v === "refused") return { status: "refused" };
   if (!v || typeof v !== "object" || Array.isArray(v) || typeof v.version !== "number") throw new Error("team_mark_shape");
-  if (v.status === "conflict" || v.status === "not_waiting") return { status: v.status, version: v.version };
+  if (v.status === "conflict" || v.status === "not_waiting" || v.status === "no_photo") return { status: v.status, version: v.version };
   if (v.status !== "saved" || typeof v.parent !== "string" || typeof v.child !== "string") throw new Error("team_mark_shape");
   return { status: "saved", version: v.version, recoveryPending: await publishMarkChange(serviceDb, v.parent, v.child) };
 }

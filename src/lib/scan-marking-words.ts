@@ -1,6 +1,6 @@
 // Write-words marking (#715, D-266): the AI only transcribes the words; code decides whether they name the key.
 // A number name in an ordinary form is the same number: with or without "and" (after hundred or thousand), with hyphens
-// or spaces, in any case. An ordinal word is never a number name.
+// or spaces, in any case. A misspelling counts only when it is in a short closed list (KNOWN_MISSPELLINGS).
 // A clear different number is wrong. Anything code cannot read as a number name stays unsure, for our team to check.
 // Pure TypeScript: no network, database, clock or Math.random.
 import type { MarkResult } from "@/lib/scan-observation";
@@ -17,7 +17,6 @@ const TEENS: Record<string, number> = { ten: 10, eleven: 11, twelve: 12, thirtee
 const TENS: Record<string, number> = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
 const SCALES: Record<string, number> = { thousand: 1_000, million: 1_000_000 };
 const VOCABULARY = ["zero", "hundred", "and", ...Object.keys(UNITS), ...Object.keys(TEENS), ...Object.keys(TENS), ...Object.keys(SCALES)];
-const NUMBER_WORDS = VOCABULARY.filter(w => w !== "and");
 /** Pairs of word answers where the other word is a clear wrong answer. */
 const OPPOSITES: readonly (readonly [string, string])[] = [["true", "false"], ["even", "odd"], ["yes", "no"]];
 
@@ -27,15 +26,22 @@ function plainNumberWords(text: string): string {
 }
 /** Any other answer: only case and spacing, so "9 4" is not "9 - 4" and "$4 05" is not "$4.05". */
 const plainText = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
-/** An ordinal word (fifth, forty-second, twentieth, hundredth). No cardinal number word ends in "th", "st" or "rd". */
-const ordinal = (token: string) => /(th|first|second|third)$/.test(token);
+/**
+ * Known child spellings of a number word, each to its one word. A closed list: nothing is guessed from how close a word
+ * is, so a real word ("fifths", "sixties", "tens") or a cut-off word ("sevente") is never read as a number. Add a spelling
+ * only when it cannot be another real word.
+ */
+export const KNOWN_MISSPELLINGS: Readonly<Record<string, string>> = {
+  fourty: "forty", ninty: "ninety", ninteen: "nineteen", eightteen: "eighteen", eigth: "eight", twelv: "twelve",
+  fivety: "fifty", fivty: "fifty", fiveteen: "fifteen", hundered: "hundred", hunderd: "hundred",
+};
 
-/** A run-together token ("fortytwo") as known number words, fewest pieces first; null when it is not one. */
-function split(token: string): string[] | null {
+/** A run-together token ("fortytwo", "fourtyfive") as known words, fewest pieces first; null when it is not one. */
+function split(token: string, words: readonly string[]): string[] | null {
   const best: (string[] | null)[] = [[]];
   for (let end = 1; end <= token.length; end++) {
     best[end] = null;
-    for (const word of VOCABULARY) {
+    for (const word of words) {
       const start = end - word.length, before = start >= 0 ? best[start] : null;
       if (before && token.slice(start, end) === word && (!best[end] || before.length + 1 < best[end]!.length)) best[end] = [...before, word];
     }
@@ -43,36 +49,19 @@ function split(token: string): string[] | null {
   return best[token.length];
 }
 
-/** Edit distance with one swap of neighbours counted as one edit. */
-function distance(a: string, b: string): number {
-  const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
-  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
-    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
-  }
-  return d[a.length][b.length];
-}
-
-/** The one number word a misspelled token clearly is: one edit for short words, two for long ones, and no tie. */
-function corrected(token: string): string | null {
-  if (token.length < 3 || /[^a-z]/.test(token)) return null;
-  const allowed = token.length <= 5 ? 1 : 2;
-  const near = NUMBER_WORDS.map(w => ({ w, d: distance(token, w) })).filter(x => x.d <= allowed).sort((a, b) => a.d - b.d);
-  return near.length && (near.length === 1 || near[1].d > near[0].d) ? near[0].w : null;
-}
-
+/** Every token must be a number word, "and", or (with fixSpelling) a known misspelling; anything else makes it unsure. */
 function tokens(text: string, fixSpelling: boolean): { words: string[]; fixed: boolean } | null {
+  const known = fixSpelling ? [...VOCABULARY, ...Object.keys(KNOWN_MISSPELLINGS)] : VOCABULARY;
   const out: string[] = [];
   let fixed = false;
   for (const raw of plainNumberWords(text).split(" ")) {
     if (!raw) continue;
-    // Never correct an ordinal into a number ("fifth" is not "fifty"): the reading is not a number name.
-    if (ordinal(raw)) return null;
-    const pieces = VOCABULARY.includes(raw) ? [raw] : split(raw);
-    if (pieces) { out.push(...pieces); continue; }
-    const fix = fixSpelling ? corrected(raw) : null;
-    if (!fix) return null;
-    out.push(fix); fixed = true;
+    const pieces = known.includes(raw) ? [raw] : split(raw, known);
+    if (!pieces) return null;
+    for (const piece of pieces) {
+      const word = KNOWN_MISSPELLINGS[piece];
+      if (fixSpelling && word) { out.push(word); fixed = true; } else out.push(piece);
+    }
   }
   return out.length ? { words: out, fixed } : null;
 }
@@ -109,7 +98,7 @@ function wordsValue(words: readonly string[]): number | null {
   return at === w.length && total <= Number.MAX_SAFE_INTEGER ? total : null;
 }
 
-/** The number a written number name gives, or null. With fixSpelling, a clear misspelling of a number word counts. */
+/** The number a written number name gives, or null. With fixSpelling, a known misspelling of a number word counts. */
 export function numberFromWords(text: string, fixSpelling = false): { value: number; misspelled: boolean } | null {
   // "a" is "one" only at the start, before "hundred" or "thousand" ("a hundred and six").
   const read = tokens(text.replace(/^\s*a\s+(?=(?:hundred|thousand)\b)/i, "one "), fixSpelling);

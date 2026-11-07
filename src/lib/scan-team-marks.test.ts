@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
-import { readScanTeamQueue, setScanTeamMark, teamMarkChoice } from "./scan-team-marks";
+import { readScanTeamQueue, setScanTeamMark, teamMarkChoice, teamMarkNeedsPhoto } from "./scan-team-marks";
 
 vi.mock("server-only", () => ({}));
 const after = vi.hoisted(() => ({ calls: [] as string[][], pending: false }));
@@ -32,7 +32,7 @@ it("sets the mark with the admin's own session, then publishes and rebuilds with
   after.pending = true;
   expect(await setScanTeamMark(adminDb, serviceDb, { item: ITEM, version: 2, result: "wrong" })).toMatchObject({ recoveryPending: true });
 });
-it.each([["conflict", 5], ["not_waiting", 3]] as const)("answers %s without publishing", async (status, version) => {
+it.each([["conflict", 5], ["not_waiting", 3], ["no_photo", 2]] as const)("answers %s without publishing", async (status, version) => {
   state.answer = { status, version };
   expect(await setScanTeamMark(adminDb, serviceDb, { item: ITEM, version: 2, result: "right" })).toEqual({ status, version });
   expect(after.calls).toEqual([]);
@@ -59,4 +59,10 @@ it("reads the team list with nullable reading, reason and photo, and its total",
   expect(await readScanTeamQueue(adminDb)).toEqual({ items: [], total: 0 });
   state.answer = [{ ...row, question_number: "2" }];
   await expect(readScanTeamQueue(adminDb)).rejects.toThrow("team_queue_shape");
+});
+it("one rule for 'can be marked': only an answer that counts toward progress, with no event and no photo, needs a photo (P3)", () => {
+  expect(teamMarkNeedsPhoto({ eligible: true, hasEvent: false, photo: null })).toBe(true);
+  expect(teamMarkNeedsPhoto({ eligible: true, hasEvent: false, photo: "photo" })).toBe(false);
+  expect(teamMarkNeedsPhoto({ eligible: true, hasEvent: true, photo: null })).toBe(false);
+  expect(teamMarkNeedsPhoto({ eligible: false, hasEvent: false, photo: null })).toBe(false);
 });

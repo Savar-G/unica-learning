@@ -29,6 +29,7 @@ declare deleting timestamptz; begin select deletion_requested_at into deleting f
   if not found or deleting is not null then raise exception 'family_unavailable' using errcode = '55000'; end if; end $$;
 \i supabase/migrations/20261107204619_scan_team_marks.sql
 \i supabase/migrations/20261107213302_scan_team_mark_followups.sql
+\i supabase/migrations/20261107220421_scan_team_mark_no_photo.sql
 insert into public.parents values ('00000000-0000-4000-8000-000000000001', null);
 insert into public.children values ('00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000001','Iris');
 insert into public.workbooks values ('00000000-0000-4000-8000-000000000003', 1);
@@ -78,3 +79,16 @@ do $$ begin
   raise notice 'one waiting rule in the list: ok';
 end $$;
 select public.admin_set_scan_mark('00000000-0000-4000-8000-000000000021',2,'right')->>'status' as no_model_reading_marked;
+-- One rule for "can be marked" (#715 review P3): an answer that counts toward progress, with no event yet and no photo,
+-- cannot be marked (its event must name a photo). The function answers no_photo and saves nothing; /admin/scans shows no
+-- buttons for it (teamMarkNeedsPhoto in src/lib/scan-team-marks.ts). Without a photo an answer that does not count is marked.
+insert into public.scan_marking_items(id,parent_id,child_id,workbook_id,printed_revision,page_id,item_id,expected,observation,result_version,model) values
+ ('00000000-0000-4000-8000-000000000031','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','rev','00000000-0000-4000-8000-000000000004','q6',
+  '{"number":6,"method":"code","mastery":{"eligible":true}}','{"state":"pending","result":null,"actor":"system","method":"code","certainty":"uncertain","issue":"unreadable","resultVersion":2}',2,'m');
+do $$ declare r jsonb; begin
+  r := public.admin_set_scan_mark('00000000-0000-4000-8000-000000000031',2,'wrong');
+  if r->>'status' is distinct from 'no_photo' then raise exception 'expected no_photo, got %', r; end if;
+  if (select result_version from public.scan_marking_items where id='00000000-0000-4000-8000-000000000031') <> 2
+    or exists (select 1 from public.scan_mark_changes where item_id='00000000-0000-4000-8000-000000000031') then raise exception 'no_photo saved something'; end if;
+  raise notice 'no photo and counts toward progress: no_photo, nothing saved: ok';
+end $$;

@@ -8,6 +8,7 @@ const MESSAGES: Record<string, string> = {
   conflict: "This answer changed since you opened the page. Reload and look again.",
   not_waiting: "This answer already has a mark. Reload to see it.",
   refused: "This answer can no longer be marked here.",
+  no_photo: "This answer has no saved photo, so it cannot be marked here. Ask the family to send a new photo of this page.",
   failed: "The mark was not saved. Reload and try again.",
 };
 
