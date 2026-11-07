@@ -1,0 +1,193 @@
+{
+  "run": "2ae4cf38-4f6f-41cc-b1bb-bb842490c830",
+  "source": "f3133376535b3c96f4c81f62f1f8d1cc80322a23",
+  "mode": "test",
+  "checks": [
+    {
+      "label": "account_verified",
+      "account": "acct_1UOOQgGTsggtqumU",
+      "livemode": false,
+      "apiVersion": "2026-09-30.endive"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "trial_extension"
+    },
+    {
+      "label": "pause_applied",
+      "kind": "trial",
+      "subscription": "sub_1UYd0uGTsggtqumUt06K1Afd",
+      "previous": "2026-12-06T02:37:23.000Z",
+      "resume": "2026-12-20T02:37:23.000Z"
+    },
+    {
+      "label": "trial_old_end_no_charge",
+      "subscription": "sub_1UYd0uGTsggtqumUt06K1Afd",
+      "invoices": [
+        {
+          "id": "in_1UYd0wGTsggtqumUwLTtj2TO",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_update",
+          "created": 1793932643,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1797734243,
+                "start": 1796524643
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd0uGTsggtqumUj7IeFXMy",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932643,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524643,
+                "start": 1793932643
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "trial_new_end_full_charge",
+      "subscription": "sub_1UYd0uGTsggtqumUt06K1Afd",
+      "invoices": [
+        {
+          "id": "in_1UYd14GTsggtqumUlBFjNrnZ",
+          "status": "paid",
+          "total": 7999,
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_cycle",
+          "created": 1797734243,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1800412643,
+                "start": 1797734243
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd0wGTsggtqumUwLTtj2TO",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_update",
+          "created": 1793932643,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1797734243,
+                "start": 1796524643
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd0uGTsggtqumUj7IeFXMy",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932643,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524643,
+                "start": 1793932643
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "scenario_passed",
+      "scenario": "trial_extension"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "paid_pause_resume"
+    }
+  ],
+  "errors": [
+    {
+      "path": "/v1/products/unica_math",
+      "status": 404,
+      "type": "invalid_request_error",
+      "code": "resource_missing",
+      "param": "id",
+      "message": "No such product: 'unica_math'"
+    },
+    {
+      "path": "/v1/subscription_schedules",
+      "status": 400,
+      "type": "invalid_request_error",
+      "message": "You cannot set `metadata` if `from_subscription` is set."
+    }
+  ],
+  "resources": [
+    {
+      "kind": "clock",
+      "id": "clock_1UYd0tGTsggtqumUbCzZ4uio",
+      "label": "trial_extension"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZmaseCW12VQya",
+      "clock": "clock_1UYd0tGTsggtqumUbCzZ4uio"
+    },
+    {
+      "kind": "clock",
+      "id": "clock_1UYd1DGTsggtqumUb3y0OBbn",
+      "label": "paid_pause_resume"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZmayihacRB96U",
+      "clock": "clock_1UYd1DGTsggtqumUb3y0OBbn"
+    }
+  ],
+  "cleanup": [
+    {
+      "clock": "clock_1UYd0tGTsggtqumUbCzZ4uio",
+      "customer": "cus_VZmaseCW12VQya",
+      "deleted": true
+    },
+    {
+      "clock": "clock_1UYd1DGTsggtqumUb3y0OBbn",
+      "customer": "cus_VZmayihacRB96U",
+      "deleted": true
+    }
+  ],
+  "failure": {
+    "scenario": "paid_pause_resume",
+    "message": "provider pause outcome refused\n+ actual - expected\n\n+ 'refused'\n- 'applied'\n"
+  }
+}

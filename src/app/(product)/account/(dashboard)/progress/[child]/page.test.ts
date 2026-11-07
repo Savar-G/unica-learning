@@ -13,7 +13,7 @@ import Progress from "./page";
 vi.mock("server-only", () => ({}));
 
 const state = vi.hoisted(() => ({ signedIn: true, dashboard: true, reader: null as unknown }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => "/account/progress/sample-child",
   redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); },
   notFound: () => { throw new Error("NOT_FOUND"); },
 }));

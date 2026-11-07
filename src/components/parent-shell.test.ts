@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => address.pathname,
   useSearchParams: () => new URLSearchParams(address.child ? { child: address.child } : {}),
 }));
-vi.mock("next/link", () => ({ default: ({ children, href }: { children: unknown; href: string }) => createElement("a", { href }, children as never) }));
+vi.mock("next/link", () => ({ default: ({ children, href, ...props }: { children: unknown; href: string }) => createElement("a", { ...props, href }, children as never) }));
 vi.mock("@/components/account", () => ({ SaveTimeZone: () => null }));
 
 import { ParentShell } from "@/components/parent-shell";
@@ -59,4 +59,29 @@ describe("the frame keeps the child in view across pages", () => {
     await go("/account/settings");
     expect(shownName()).toBe("asha");
   });
+});
+
+it("keeps the selected child and stage links when Feedback opens, with a parent link on desktop and phone", async () => {
+  await go("/account", "omar");
+  const before = Array.from(host.querySelectorAll<HTMLAnchorElement>(".pd-bar a")).map(a => a.getAttribute("href"));
+  await go("/account/feedback");
+  expect(shownName()).toBe("omar");
+  expect(deskChild()).toBe("omar");
+  expect(Array.from(host.querySelectorAll<HTMLAnchorElement>(".pd-bar a")).map(a => a.getAttribute("href"))).toEqual(before);
+  expect(host.querySelector('.pd-side a[href^="/account/feedback?"][aria-current="page"]')).not.toBeNull();
+  expect(host.querySelector('.pd-top a[href^="/account/feedback?"][aria-current="page"]')).not.toBeNull();
+});
+
+it("keeps Schedule and the owned child in the address, switch links and cookie", async () => {
+  kids.forEach(k => k.tabs.push("schedule"));
+  try {
+    await go("/account/schedule", "omar");
+    expect(shownName()).toBe("omar");
+    expect(savedCookies.at(-1)).toContain("omar");
+    expect(host.querySelector('.pd-side a[href="/account/schedule?child=omar"][aria-current="page"]')).not.toBeNull();
+    expect(host.querySelector('.pd-switch-list a[href="/account/schedule?child=asha"]')).not.toBeNull();
+    await go("/account/schedule", "asha");
+    expect(shownName()).toBe("asha");
+    expect(host.querySelector('.pd-bar a[href="/account/schedule?child=asha"][aria-current="page"]')).not.toBeNull();
+  } finally { kids.forEach(k => { k.tabs = k.tabs.filter(t => t !== "schedule"); }); }
 });

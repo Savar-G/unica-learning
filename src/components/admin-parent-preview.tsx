@@ -3,10 +3,19 @@
 import { AppRouterContext, type AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server.browser";
+import { FeedbackFormView } from "@/components/feedback-form";
+import { AdminFrame } from "@/components/admin";
+import { AdminFeedbackList } from "@/components/admin-feedback";
+import { FEEDBACK_MESSAGES, type FeedbackError } from "@/lib/feedback";
 import { ParentShell } from "@/components/parent-shell";
 import { ParentTestStart, ParentReport } from "@/components/parent-assessment";
 import { ParentOverview } from "@/components/parent-overview";
+import { ParentWorkbookAnswerKey } from "@/components/parent-workbook-answers";
+import { workbookAnswerPages, type ParentWorkbookAnswers } from "@/lib/parent-workbook-answers";
+import { sampleWorkbook } from "@/lib/workbook-sample";
+import { storedQuestion } from "@/lib/workbook-content";
 import { ParentWorkbooks } from "@/components/parent-workbooks";
+import { ParentSchedule } from "@/components/parent-schedule";
 import { ParentProgress } from "@/components/parent-progress";
 import { SkillPanel } from "@/components/parent-skill-map";
 import { NoteCard, ParentSessionView } from "@/components/parent-maya-notes";
@@ -18,6 +27,7 @@ import { ParentPlanView } from "@/components/parent-plan-view";
 import { CancelPlanView, PlanControlView, type PlanControlViewProps } from "@/components/account-plan";
 import { ReportNextView, type CardState } from "@/components/report-next";
 import { ScanPages, type ScanListing } from "@/components/scan-pages";
+import { ScanProblemExplanationView, type ExplanationState } from "@/components/scan-problem-explanation";
 import { ScanMarkingResults } from "@/components/scan-marking-results";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
@@ -76,7 +86,21 @@ function workbooks(child: ChildView, state: string): WorkbooksView {
   const mailed = state === "mail" || state === "hand";
   return { child, current: state === "first_book_coming" ? null : { id: "sample-book", number: 3, shippedOn: "2026-10-28", deliveredOn: mailed ? null : "2026-11-01", delivery: state === "hand" ? { method: "hand" } : { method: "mail", carrier: "Canada Post", trackingNumber: "SAMPLE 000 000", trackingUrl: "https://example.invalid/track" } },
     next: child.readOnly || state === "first_book_coming" ? { kind: "none" } : state === "late" ? { kind: "past_estimate" } : { kind: "range", earliest: state === "paused" ? "2026-12-10" : "2026-11-26", latest: state === "paused" ? "2026-12-15" : "2026-12-01" },
-    books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", hasPdf: true })) };
+    books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", deliveredOn: number === 3 && mailed ? null : "2026-11-01" })) };
+}
+
+function answerKey(child: ChildView, state: string): ParentWorkbookAnswers {
+  const draft = sampleWorkbook({ workbookId: "sample-book", childId: child.id, parentId: "sample-parent", qrTokens: ["sample-page-token-0001", "sample-page-token-0002", "sample-page-token-0003"] });
+  const pages = workbookAnswerPages({ id: draft.id, pages: draft.pages.map(page => ({ ...page, printContract: null,
+    questions: page.questions.map(q => storedQuestion({ number: q.number, box: q.box, schemaVersion: 2, package: q.package }, { source: "workbook", workbookId: draft.id, page: page.number, question: q.number })) })) }) ?? [];
+  if (state === "empty") return { childId: child.id, childName: child.firstName, workbookId: draft.id, number: 1, pages: [] };
+  if (state === "mixed" && pages[0]) pages[0].questions = [
+    { number: 1, kind: "fixed", answers: [{ part: 1, value: "+", alternatives: [] }, { part: 2, value: "425", alternatives: [] }], hasOpenWork: true },
+    { number: 2, kind: "example", answers: [{ part: 1, value: "3", alternatives: [] }, { part: 2, value: "9", alternatives: [] }], hasOpenWork: false },
+    { number: 3, kind: "open", answers: [], hasOpenWork: true },
+    { number: 4, kind: "unavailable", answers: [], hasOpenWork: false },
+  ];
+  return { childId: child.id, childName: child.firstName, workbookId: draft.id, number: 1, pages };
 }
 
 function billing(kids: ChildView[], state: string): FamilyBilling {
@@ -110,9 +134,9 @@ function scanResult(state: string): Parameters<typeof ScanMarkingResults>[0]["re
   return { photoAvailable: state !== "expired", budgetHeld: state === "budget", solutionsAvailable: !pending && !uncertain && !unscored,
     completion: { total: pending ? 0 : 1, status: pending ? "no-items" : uncertain ? "incomplete" : "complete", finished: pending || uncertain ? 0 : 1, items: pending ? [] : [{ itemId: "sample-question", number: 1, progress: uncertain ? "pending" : "finished" }] },
     counts: { scored: pending || uncertain || unscored ? 0 : 1, unscored: unscored ? 1 : 0, parentChecks: 0, pending: pending || uncertain ? 1 : 0 },
-    items: pending ? [] : [{ number: 1, itemId: "sample-question", version: 1, state: uncertain ? "pending" : unscored ? "unscored" : "scored", result: uncertain || unscored ? null : "right", readAnswerText: uncertain ? "4?" : "42",
+    items: pending ? [] : [{ number: 1, itemId: "sample-question", version: 1, state: uncertain ? "pending" : unscored ? "unscored" : "scored", result: uncertain || unscored ? null : state.startsWith("explain_") ? "wrong" : "right", readAnswerText: uncertain ? "4?" : state.startsWith("explain_") ? "41" : "42",
       canChange: !unscored, actor: "system", at: "2026-11-05T20:00:00Z", evidencePhoto: "sample-photo", photoAvailable: state !== "expired",
-      label: uncertain ? "Please check this answer" : unscored ? "Not scored" : "Right" }] };
+      label: uncertain ? "Please check this answer" : unscored ? "Not scored" : state.startsWith("explain_") ? "Wrong" : "Right" }] };
 }
 
 function previewContent(selection: PreviewSelection, child: ChildView | undefined, kids: ChildView[]) {
@@ -120,6 +144,17 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
   if (!child && selection.view === "account") return <ParentAccountSettings card={state} hasCard={false} province="BC" billing={<AccountBilling billing={billing([], "empty")} zone={zone} />} details={null} />;
   if (!child && selection.view === "plan") return <ParentPlanView plans={[]} zone={zone} controls />;
   if (!child && selection.view === "scan") return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[]} parent="sample-parent" noticeAcknowledged initial={{ listing: scanListing("empty") }} /></SupportPage>;
+  if (selection.view === "feedback") {
+    if (state === "admin_rows") return <AdminFrame email="admin@example.invalid" section="feedback" title="Feedback"><AdminFeedbackList product={null} rows={[
+      { id: "sample-1", parent_id: "sample-parent-1", child_id: null, product: "workbook", text: "The space for the written answer was helpful.\nCould you add more room for working?", source: "/account/workbooks", created_at: "2026-11-05T19:00:00Z", status: "new" },
+      { id: "sample-2", parent_id: "sample-parent-2", child_id: null, product: "parent_dashboard", text: "I found the report quickly on my phone.", source: "/account", created_at: "2026-11-05T18:00:00Z", status: "read" },
+    ]} /></AdminFrame>;
+    const error = Object.hasOwn(FEEDBACK_MESSAGES, state) ? state as FeedbackError : null;
+    return <SupportPage label="Your account" title="Feedback"><p className="lead">Tell us what worked well or what we can improve.</p>
+      <FeedbackFormView product={state === "form" || state === "no_product" || state.startsWith("stage_") ? "" : "workbook"} text={state === "too_long" ? "Thank you for the workbook. ".repeat(193) : state === "unavailable" || state === "no_product" ? "Could you add more room for working?" : ""}
+        busy={false} result={state === "sent" ? { ok: true } : error ? { ok: false, error } : null} />
+    </SupportPage>;
+  }
   if (!child) return <SupportPage label="Your account" title="Your account"><p className="lead">Add a child on the <a href="/account/settings">Account</a> page to start.</p></SupportPage>;
   switch (selection.view) {
     case "assessment": {
@@ -139,7 +174,15 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
         nextActions={<ReportNextView reportId={view.id} step={nextStep(view)} words={view.model.callToAction === "card" ? freeMonthWords(child.firstName) : undefined} childName={child.firstName} province={view.province} {...next} card={card} wait={state === "joined" ? "joined" : state === "waitlist_error" ? "error" : "join"} busy={state === "busy_card" ? "one" : state === "busy_waitlist" ? "waitlist" : null} announce="" savedPlan={start.saved} choose={noAction} join={noAction} checkAgain={noAction} pinned />} />;
     }
     case "overview": return <SupportPage label="Overview" title={child.firstName}><ParentOverview overview={overview(child, state)} maya={child.stage === "active" ? minutes : null} /></SupportPage>;
+    case "workbook_answers": return <ParentWorkbookAnswerKey answerKey={answerKey(child, state)} />;
     case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} />;
+    case "schedule": return <ParentSchedule schedule={state === "waiting" || state === "unavailable" ? { kind: state, child: { ...child, parentId: "sample-parent" } } : {
+      kind: "ready", child: { ...child, parentId: "sample-parent" }, book: { id: "sample-printed-book", number: child.id === "sample-child-2" ? 2 : 1 }, dailyTime: "about 20 minutes, plus Extra if there's time",
+      rows: Array.from({ length: 10 }, (_, i) => ({ day: i + 1, topic: child.id === "sample-child-2" ? "Multiplication" : "Addition", second: i === 6 ? "Level check" : "Number practice",
+        pages: [3 + i * 8, 10 + i * 8], requiredMinutes: 20, extra: true,
+        scan: state === "accepted" || state === "expired" ? { kind: "known", accepted: 8, required: 8 } : state === "partial" && i === 0 ? { kind: "known", accepted: 3, required: 8 } : { kind: "unknown" },
+      })),
+    }} />;
     case "progress": {
       const areas = state === "empty" ? [] : skillMapView({ firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: 2, tests: [{ standard: "2.1", correct: 4, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }, { standard: "2.3", correct: 0, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }], workbookStandards: ["2.1", "2.2"], workbookNumber: 3, day: at => at.slice(0, 10) });
       return <ParentProgress child={child} level={state === "empty" ? null : { working: 2, earlySign: false, testedOn: "2026-11-04", unreliable: state === "unreliable" }} workbookNumber={3} areas={areas}
@@ -159,7 +202,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
         cancellation={state.startsWith("cancel_") ? row => <CancelPlanView name={row.childName} consequence="The plan ends on November 26, 2026. We will not charge your card again." asking busy={false} failed={state === "cancel_pending"} cancel={noAction} keep={noAction} ask={noAction} /> : undefined} />;
     }
     case "scan": return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[child, ...kids.filter(k => k.id !== child.id)].map(k => ({ id: k.id, first_name: k.firstName }))} parent="sample-parent" noticeAcknowledged mode={selection.size === "desktop" ? "desktop" : "phone"} initial={{ listing: scanListing(state), loadFailed: state === "unavailable" }} /></SupportPage>;
-    case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><a href="/account/scan">Back to Scan pages</a><ScanMarkingResults result={scanResult(state)} showHeading={false} /></div></SupportPage>;
+    case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><a href="/account/scan">Back to Scan pages</a><ScanMarkingResults result={scanResult(state)} showHeading={false} itemExplanation={state.startsWith("explain_") ? item => <ScanProblemExplanationView number={item.number} state={state.slice(8) as ExplanationState} result={state === "explain_ready" ? { status: "ready", context: "synthetic", correctAnswer: "42", explanation: { steps: ["Add the ones: 4 plus 8 is 12. Write 2 and carry 1 ten.", "Add the tens and the carried ten: 2 plus 1 plus 1 is 4."], say: "Let us add one column at a time." } } : undefined} /> : undefined} /></div></SupportPage>;
   }
 }
 
@@ -167,10 +210,12 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
 export function renderParentPreview(selection: PreviewSelection, styles: PreviewStyles): string {
   const kids = sampleChildren(selection);
   const child = kids[selection.child === "second" ? 1 : 0];
-  const tab = selection.view === "report" ? "assessment" : selection.view === "scan" || selection.view === "scan_results" ? "scan_pages" : selection.view === "plan" ? "account" : selection.view;
+  const tab = selection.view === "report" ? "assessment" : selection.view === "scan" || selection.view === "scan_results" ? "scan_pages" : selection.view === "plan" ? "account" : selection.view === "workbook_answers" ? "workbooks" : selection.view;
   const pathname = tabLinks(child).find(l => l.tab === tab)?.href.split("?")[0] ?? "/account/settings";
+  const content = previewContent(selection, child, kids);
+  const isAdminFeedback = selection.view === "feedback" && selection.scenario === "admin_rows";
   const markup = renderToStaticMarkup(<AppRouterContext.Provider value={staticRouter}><PathnameContext.Provider value={pathname}><SearchParamsContext.Provider value={new URLSearchParams(child ? { child: child.id } : {})}>
-    <ParentShell kids={kids} remembered={child?.id ?? null} pinSet={selection.scenario !== "no_pin"} timeZoneSaved>{previewContent(selection, child, kids)}</ParentShell>
+    {isAdminFeedback ? content : <ParentShell kids={kids} remembered={child?.id ?? null} pinSet={selection.scenario !== "no_pin"} timeZoneSaved>{content}</ParentShell>}
   </SearchParamsContext.Provider></PathnameContext.Provider></AppRouterContext.Provider>);
   return parentPreviewDocument(markup, styles);
 }

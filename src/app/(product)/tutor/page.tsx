@@ -10,6 +10,7 @@ import { MAYA_NOTICE_DESK_LINE } from "@/lib/maya-notice";
 import { mayaNoticeDue } from "@/lib/maya-notice-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
+import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
 import { workbookStore } from "@/lib/workbook-store";
 import { Desk, type DeskBook } from "@/components/desk";
 
@@ -28,6 +29,10 @@ const sentOn = (w: WorkbookSummary, timeZone: FamilyZone) =>
 const book = (w: WorkbookSummary, timeZone: FamilyZone): DeskBook => ({ id: w.id, number: w.number, sent: sentOn(w, timeZone) });
 const whole = (v: string | string[] | undefined) => (typeof v === "string" && /^\d{1,4}$/.test(v) ? Number(v) : undefined);
 
+async function loadDesk(db: Awaited<ReturnType<typeof sessionClient>>, options: Parameters<typeof deskView>[1]) {
+  return deskView(workbookStore(db), options, workbookDeliveryStore(db), Date.now());
+}
+
 // The child's desk (#301, D-184): open on this device for one child (the desk cookie, src/lib/desk.ts), read with the
 // parent's own session, so row-level security gives only the family's shipped workbooks and their page images. `w`
 // picks a workbook, `p` a page, `q` the question; `pick=1` opens "Pick from my page", `from=qr` says a page QR code
@@ -44,7 +49,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
     db.from("children").select("id, first_name, grade, province").eq("id", lock.childId).maybeSingle(),
     db.from("parents").select("postal, time_zone").maybeSingle(),
     // A failed read still shows the desk, with Leave, and says the workbook cannot be shown.
-    deskView(workbookStore(db), {
+    loadDesk(db, {
       parentId: parent, childId: lock.childId, workbookId: typeof w === "string" ? w : undefined, page: whole(p), question: whole(q),
     }).catch((error: unknown): DeskView | null => {
       console.error("[desk] workbook load failed", error instanceof Error ? error.message : error);
@@ -59,13 +64,15 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   const noticeDue = child ? await mayaNoticeDue(parent, child.grade) : false;
   const chat = child && !noticeDue ? await deskChat(db, parent, child, timeZone) : { usage: null, note: null };
 
-  if (!child || !view || view.status === "no-workbook") {
+  if (!child || !view || view.status !== "ready") {
     return (
       <Desk
         name={name}
         childId={lock.childId}
+        chatUsage={chat.usage}
         chatNote={chat.note}
-        problem={view ? `There is no workbook here yet. When ${name ? `${name}'s` : "your"} workbook arrives, its pages show here.`
+        noticeLine={noticeDue ? MAYA_NOTICE_DESK_LINE : null}
+        problem={view?.status === "awaiting-delivery" ? "Your workbook pages will open here after we confirm delivery." : view ? `There is no workbook here yet. When ${name ? `${name}'s` : "your"} workbook arrives, its pages show here.`
           : "Your workbook cannot be shown right now. Try again in a moment."}
       />
     );

@@ -41,6 +41,14 @@ export type MarkResult = "right" | "wrong" | "blank";
 export type ObservationState = "pending" | "scored" | "parent-pending" | "parent-checked" | "unscored";
 
 export type ReadingCertainty = "certain" | "uncertain" | "not-read";
+export const READING_ISSUES = ["unreadable", "crossed-out", "multiple-marks", "missing", "blurry", "cut-off", "incomplete", "answer-form"] as const;
+export type ReadingIssue = (typeof READING_ISSUES)[number];
+const READING_REASONS: Record<ReadingIssue, string> = {
+  unreadable: "We cannot read this answer.", "crossed-out": "This answer is crossed out.",
+  "multiple-marks": "More than one choice is marked.", missing: "Part of this answer was not read.",
+  blurry: "The photo is blurry here.", "cut-off": "Part of this answer is cut off.", incomplete: "Part of this answer is empty.", "answer-form": "Please check this answer.",
+};
+export const readingIssueText = (issue: ReadingIssue) => READING_REASONS[issue];
 
 /** Why a result does not count toward mastery, or null when it does. */
 export type MasteryExclusion =
@@ -62,6 +70,9 @@ export interface RegionReading {
   /** The typed value code used, as text; null when code could not type it. */
   value: string | null;
   certainty: ReadingCertainty;
+  /** Code's check of this region, never a model verdict. Absent in older single-box observations. */
+  result?: MarkResult | null;
+  issue?: ReadingIssue | null;
 }
 
 /** A reference to the frozen teaching context, whole. Never a current profile, template or page heading. */
@@ -90,6 +101,7 @@ export interface Observation {
   actor: Actor;
   /** The canonical result's version: a higher one replaces a lower one. */
   resultVersion: number;
+  issue?: ReadingIssue | null;
 }
 
 /**
@@ -97,6 +109,10 @@ export interface Observation {
  * as genuinely empty. Reading uncertainty is pending, never blank.
  */
 function scoredReadingProblem(o: Observation): string | null {
+  // Another region may be unreadable, but one definite wrong region rules out
+  // a right item. Keep all region readings and their uncertainty as evidence.
+  if (o.result === "wrong" && o.certainty !== "not-read" && o.readAnswerText !== null && o.readAnswerText.trim() !== "" &&
+      o.regions.some(r => r.result === "wrong" && r.certainty === "certain" && r.text !== null && r.text.trim() !== "")) return null;
   if (o.certainty === "uncertain") return "an uncertain reading stays pending";
   if (o.certainty !== "certain") return "a score needs a confirmed reading";
   if (o.regions.length === 0) return "a score needs a confirmed reading of its regions";
@@ -127,6 +143,8 @@ export function observationProblem(o: Observation): string | null {
   // The page's certainty cannot say more than its regions do.
   if (o.certainty === "certain" && o.regions.some((r) => r.certainty !== "certain")) return "a region is less certain than the observation says";
   if (o.regions.some((r) => r.certainty === "not-read" && r.text !== null)) return "a region not read holds text";
+  if ([o.issue, ...o.regions.map(r => r.issue)].some(i => i != null && !READING_ISSUES.includes(i))) return "a reading has an unknown uncertainty reason";
+  if (o.regions.some(r => r.result != null && !["right", "wrong", "blank"].includes(r.result))) return "a region has an unknown result";
   if (o.state === "scored") {
     const problem = scoredReadingProblem(o);
     if (problem) return problem;
@@ -154,6 +172,9 @@ export function masteryDecision(pkg: QuestionPackage | null, teaching: TeachingC
   const e = teaching.eligibility;
   if (e.format !== item.format || e.scorable !== item.scorable || e.parentChecked !== item.parentChecked) return no("context-mismatch");
   if (teaching.practiceType === "try-first") return no("try-first");
+  // First-book two-ways needs a parent to check both methods. A frozen
+  // automatic-answer eligibility record does not authorize parent mastery.
+  if (needsMethodReview(pkg) && !item.parentChecked) return no("parent-checked");
   if (item.parentChecked) return e.mastery && teaching.itemStep ? { eligible: true, reason: null } : no("parent-checked");
   if (!item.scorable) return no("not-scorable");
   if (!teaching.itemStep) return no("no-item-step");
@@ -161,9 +182,14 @@ export function masteryDecision(pkg: QuestionPackage | null, teaching: TeachingC
   return { eligible: true, reason: null };
 }
 
+export function needsMethodReview(pkg: QuestionPackage | null): boolean {
+  return !!pkg?.item && pkg.item.format === "two-ways" && (pkg.item.scorable || pkg.item.parentChecked);
+}
+
 export function checkMethod(pkg: QuestionPackage | null): CheckMethod {
   if (!pkg || (!pkg.item && !pkg.answer)) return "unavailable";
   const item = packageItem(pkg);
+  if (needsMethodReview(pkg)) return "parent";
   return item.scorable ? "code" : item.parentChecked ? "parent" : "unscored";
 }
 
@@ -174,6 +200,8 @@ export interface ExpectedItem {
   /** The printed question number. */
   number: number;
   method: CheckMethod;
+  /** First-book method review; absent in older expected records. */
+  review?: "two-ways";
   /** The regions a score must read: each answer box and choice of the item. */
   scoredRegions: string[];
   mastery: MasteryDecision;
@@ -200,6 +228,7 @@ export function expectedItems(page: PageForObservation): ExpectedItem[] {
     identity: { workbookId: page.workbookId, printedRevision: page.printedRevision, pageId: page.pageId, itemId: q.package?.id ?? `question-${q.number}` },
     number: q.number,
     method: checkMethod(q.package),
+    ...(needsMethodReview(q.package) ? { review: "two-ways" as const } : {}),
     scoredRegions: scoredRegions(q.package),
     mastery: masteryDecision(q.package, q.teaching),
     teaching: reference(q.teaching),

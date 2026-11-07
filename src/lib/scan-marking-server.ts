@@ -4,14 +4,28 @@ import type { Database } from "@/lib/database";
 import { markedFamily } from "@/lib/scan-pages-access";
 import { changeScanMark, markingCommand, scanMarkingStore, type ParentMarkChoice } from "@/lib/scan-marking-store";
 import { markingAiClient } from "@/lib/scan-marking-ai";
-import { markingPageView, runScanMarking } from "@/lib/scan-marking";
+import { MARKING_MODEL, MARKING_PROMPT_VERSION, markingPageView, runScanMarking } from "@/lib/scan-marking";
+import { SCAN_MARKING_LAUNCH_EVIDENCE, scanMarkingLaunchReadiness } from "@/lib/scan-marking-launch";
 import { rebuildChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { learningEventStore } from "@/lib/learning-events-store";
 
-/** S4 is restricted to marked families even if the wider scan release switch changes. Off is the default. */
+/** No family mode is implemented. Evidence completion alone cannot change SQL admission or release flags. */
+export function scanMarkingServerReadiness(env: Readonly<Record<string, string | undefined>> = process.env, now: string = new Date().toISOString()) {
+  const saved = SCAN_MARKING_LAUNCH_EVIDENCE;
+  const current = saved.candidate ? { ...saved.candidate, model: env.SCAN_MARKING_MODEL?.trim() || MARKING_MODEL, prompt: MARKING_PROMPT_VERSION } : null;
+  const evidence = scanMarkingLaunchReadiness(current, saved, now);
+  return {
+    mode: env.SCAN_MARKING_ENABLED === "test-only" ? "test-only" as const : "off" as const,
+    familyReady: false as const,
+    blockers: [...evidence.blockers, "family-release-held"],
+  };
+}
+
+/** Test-only admission is not family approval. SCAN_PAGES_ENABLED and browser claims cannot grant it. */
 export async function markingAccess(db: SupabaseClient<Database>, parent: string, env: Readonly<Record<string, string | undefined>> = process.env) {
-  return env.SCAN_MARKING_ENABLED === "test-only" && await markedFamily(parent, db);
+  const release = scanMarkingServerReadiness(env);
+  return release.mode === "test-only" && await markedFamily(parent, db);
 }
 export async function processScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, env: Readonly<Record<string, string | undefined>> = process.env) {
   if (!await markingAccess(db, parent, env)) return "off";
@@ -44,7 +58,7 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
 }
 /** The persisted keyset cursor includes already-sent photos. No new Send action is needed after deployment. */
 export async function recoverScanMarking(db: SupabaseClient<Database>, env: Readonly<Record<string, string | undefined>> = process.env) {
-  if (env.SCAN_MARKING_ENABLED !== "test-only") return { status: "off" };
+  if (scanMarkingServerReadiness(env).mode !== "test-only") return { status: "off" };
   const rows = await db.rpc("recover_scan_marking", { p_limit: 1 });
   if (rows.error) throw new Error("marking_recovery");
   const value: unknown = rows.data;

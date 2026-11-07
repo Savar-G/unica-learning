@@ -15,7 +15,17 @@ function part(p: AiPart) {
   return { type: "image_url", image_url: { url: `data:${p.mediaType};base64,${Buffer.from(p.data).toString("base64")}` } };
 }
 
-function body(model: string, request: AiJsonRequest) {
+export interface OpenRouterProvider {
+  only: string[];
+  order: string[];
+  allow_fallbacks: false;
+  require_parameters: true;
+  ignore?: string[];
+  zdr?: true;
+  data_collection?: "deny";
+}
+
+function body(model: string, request: AiJsonRequest, provider?: OpenRouterProvider) {
   return {
     model,
     stream: false,
@@ -26,7 +36,7 @@ function body(model: string, request: AiJsonRequest) {
       { role: "user", content: request.content.map(part) },
     ],
     response_format: { type: "json_schema", json_schema: { name: request.name, strict: true, schema: request.schema } },
-    provider: { require_parameters: true },
+    provider: provider ?? { require_parameters: true },
     ...(request.effort ? { reasoning: { effort: request.effort, exclude: true } } : {}),
   };
 }
@@ -100,6 +110,7 @@ export function openRouterClient({
   timeout = AI_REQUEST_TIMEOUT_MS,
   onRequest,
   onDispatch,
+  provider,
 }: {
   apiKey: string;
   model: string;
@@ -110,6 +121,8 @@ export function openRouterClient({
   onRequest?: () => Promise<void>;
   /** Synchronous observation immediately before fetch, after the durable permission and abort check. */
   onDispatch?: () => void;
+  /** Optional feature-owned route. The default route is unchanged. */
+  provider?: OpenRouterProvider;
 }): AiClient {
   return {
     model,
@@ -117,7 +130,7 @@ export function openRouterClient({
       const init: RequestInit = {
         method: "POST",
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", "x-openrouter-title": "Unica Learning" },
-        body: JSON.stringify(body(model, request)),
+        body: JSON.stringify(body(model, request, provider)),
       };
       for (let attempt = 0; ; attempt++) {
         if (signal.aborted) throw new Error("time is up");

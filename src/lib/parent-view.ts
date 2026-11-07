@@ -11,6 +11,7 @@ import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
 import { skillMapView, type SkillAreaView } from "@/lib/skill-map-view";
+import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
 import { workbookDelivery } from "@/lib/workbook-email";
 
 // The parent view module (spec #544): the one server module for the dashboard's data. One seam: the reader, which is
@@ -43,7 +44,6 @@ export interface ShippedWorkbook {
   childId: string;
   number: number;
   shippedAt: string | null;
-  hasPdf: boolean;
 }
 /** A confirmed delivery, as first recorded. */
 export interface DeliveryRecord {
@@ -220,7 +220,8 @@ export interface ShippedBookView {
   id: string;
   number: number;
   shippedOn: string | null;
-  hasPdf: boolean;
+  /** A confirmed receipt, after its latest correction; null before delivery. */
+  deliveredOn: string | null;
 }
 
 export interface WorkbooksView {
@@ -254,14 +255,13 @@ export async function readWorkbooks(reader: ParentViewReader, childId: string, n
   const newest = books[0] ?? null;
   let current: CurrentWorkbookView | null = null;
   if (newest) {
-    const receipt = deliveries.find((d) => d.childId === child.id && d.workbookId === newest.id);
-    const corrected = corrections.filter((c) => c.workbookId === newest.id).reduce<DeliveryCorrectionRecord | null>((best, c) => (!best || c.auditId > best.auditId ? c : best), null);
+    const deliveredAt = confirmedWorkbookDelivery(deliveries, corrections, child.id, newest.id, now);
     const dispatch = dispatches.find((d) => d.childId === child.id && d.number === newest.number);
     current = {
       id: newest.id,
       number: newest.number,
       shippedOn: day(newest.shippedAt),
-      deliveredOn: receipt ? day(corrected?.deliveredAt ?? receipt.deliveredAt) : null,
+      deliveredOn: day(deliveredAt),
       delivery: dispatch ? deliveryView(dispatch.delivery) : null,
     };
   }
@@ -269,7 +269,7 @@ export async function readWorkbooks(reader: ParentViewReader, childId: string, n
   const next: NextBook = current && current.shippedOn === null && !child.readOnly
     ? { kind: "none" }
     : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly, pausedWeeks });
-  return { child, current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), hasPdf: w.hasPdf })) };
+  return { child, current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), deliveredOn: day(confirmedWorkbookDelivery(deliveries, corrections, child.id, w.id, now)) })) };
 }
 
 /** One reported area's bar (D-243). The school grade line is the child's `schoolGrade`. */

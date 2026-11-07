@@ -52,6 +52,8 @@ async function handle(
 
   const { id } = await ctx.params;
   if (!isUuid(id)) return testFail("not_found", 404);
+  // The screen stopped waiting (its time limit) and may have sent a newer answer: this old request must not store over it.
+  if (request.signal.aborted) return testFail("store_failed", 503);
   // One clock reading for the whole request: the expiry check and the guarded write use the same time (#72).
   const result = await run(attemptStore(admin), parent, id, {
     questionId: typeof body.questionId === "string" ? body.questionId : "",

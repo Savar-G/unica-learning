@@ -19,3 +19,11 @@
 @media (max-width: 899px) {
   .pw-tiles { margin-top: 20px; }
 }
+
+.support-page .pw-answers { list-style: none; margin: 0; padding: 0; }
+.support-page .pw-answers > li { border-top: 1px solid var(--line-soft); padding: 16px 0; }
+.support-page .pw-answers > li:first-child { border-top: 0; padding-top: 0; }
+.support-page .pw-answers h3 { margin: 0 0 8px; font: 500 16px/1.4 var(--sans); }
+.support-page .pw-answer-parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.support-page .pw-answer-parts li { margin: 0; overflow-wrap: anywhere; }
+.pw-answer-label { color: var(--ink-2); font-size: 14px; }

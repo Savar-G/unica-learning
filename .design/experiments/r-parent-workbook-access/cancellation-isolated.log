@@ -1,0 +1,11 @@
+
+ RUN  v4.1.11 /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-bda8c699
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 26 skipped (27)
+   Start at  12:15:54
+   Duration  2.33s (transform 327ms, setup 0ms, import 537ms, tests 1.74s, environment 0ms)
+
+
+EXIT_STATUS=0

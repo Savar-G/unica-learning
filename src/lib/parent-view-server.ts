@@ -72,9 +72,9 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       return data.map((c) => ({ workbookId: c.workbook_id, deliveredAt: c.delivered_at, auditId: c.audit_id }));
     },
     async shippedWorkbooks() {
-      const { data, error } = await session.from("workbooks").select("id, child_id, number, shipped_at, pdf_path").eq("status", "shipped");
+      const { data, error } = await session.from("workbooks").select("id, child_id, number, shipped_at").eq("status", "shipped");
       if (error) throw new Error(`workbooks read: ${error.message}`);
-      return data.map((w) => ({ id: w.id, childId: w.child_id, number: w.number, shippedAt: w.shipped_at, hasPdf: w.pdf_path !== null }));
+      return data.map((w) => ({ id: w.id, childId: w.child_id, number: w.number, shippedAt: w.shipped_at }));
     },
     async pauseWeeks(child, number) {
       if (!admin) throw new Error("pause read: no secret key");

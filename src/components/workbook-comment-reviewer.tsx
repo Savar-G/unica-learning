@@ -1,5 +1,6 @@
 "use client";
 import { workbookEditMessage } from "@/lib/workbook-edit-message";
+import { watchWorkbookEditProgress, type EditProgress } from "@/lib/workbook-edit-progress";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RunDetail } from "@/lib/admin-store";
@@ -56,10 +57,13 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const [anchor, setAnchor] = useState<Anchor | null>(null), [note, setNote] = useState("");
   const [item, setItem] = useState<unknown>(null), [exact, setExact] = useState(false);
   const [saving, setSaving] = useState(false), [error, setError] = useState("");
+  const [progress, setProgress] = useState<EditProgress | null>(null), [progressErrors, setProgressErrors] = useState(0);
   const input = useRef<HTMLTextAreaElement>(null);
   const locked = detail.approved?.status === "printed" || detail.approved?.status === "shipped";
   const active = detail.editBatch?.status === "queued" || detail.editBatch?.status === "running";
-  const stalled = active && detail.editBatch?.stalled;
+  const currentProgress = progress?.id === detail.editBatch?.id ? progress : null;
+  const loadingResult = active && (currentProgress?.status === "done" || currentProgress?.status === "failed");
+  const stalled = active && (currentProgress ? currentProgress.phase === "stalled" : detail.editBatch?.stalled);
   const working = active && !stalled;
   const resultMessage = workbookEditMessage(detail.editBatch, detail.comments);
   const pending = detail.comments.filter((c) => c.status === "pending" || c.status === "failed");
@@ -68,9 +72,22 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const comments = detail.comments.filter((c) => c.page === selected);
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(() => router.refresh(), 2500);
-    return () => clearInterval(t);
-  }, [active, router]);
+    return watchWorkbookEditProgress({
+      async read(signal) {
+        const response = await fetch(`/api/admin/workbooks/runs/${detail.run.id}/edit`, { cache: "no-store", signal });
+        if (!response.ok) throw new Error("Progress is unavailable.");
+        return response.json();
+      },
+      update(next) {
+        setProgressErrors(0);
+        if (!next || next.id !== detail.editBatch?.id || next.status === "done" || next.status === "failed") {
+          setProgress(next); router.refresh(); return false;
+        }
+        setProgress(next); return true;
+      },
+      unavailable() { setProgressErrors(n => n + 1); },
+    });
+  }, [active, detail.editBatch?.id, detail.run.id, router]);
   useEffect(() => { if (anchor) input.current?.focus(); }, [anchor]);
   function select(a: Anchor, comment?: ReviewComment) {
     if (locked || working) return;
@@ -96,15 +113,25 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     page: selected, question: question.number, level: question.package.level, skills: question.package.skill.skills }) : null;
   const changed = new Set(comments.filter((c) => c.status === "done").map((c) => c.question));
   const workingPages = [...new Set(detail.comments.filter((c) => c.status === "sent").map((c) => c.page))];
-  const state = working ? detail.editBatch?.status === "queued" && detail.editBatch.runner === "mac" ? "Waiting for your Mac" : `Rewriting ${workingPages.length === 1 ? `page ${workingPages[0]}` : `${workingPages.length} pages`}...` : "Comment mode";
+  const phaseText: Record<EditProgress["phase"], string> = { waiting: "Waiting for your Mac", working: "Applying comments",
+    retrying: "Retrying with saved work", stalled: "The edit stopped", saving: "Saving the new revision",
+    done: "Changes saved. Loading the new revision", failed: "The edit stopped. Loading the comment results" };
+  const state = active && currentProgress ? phaseText[currentProgress.phase]
+    : working ? detail.editBatch?.status === "queued" && detail.editBatch.runner === "mac" ? "Waiting for your Mac"
+      : `Applying comments to ${workingPages.length} ${workingPages.length === 1 ? "page" : "pages"}` : "Comment mode";
   return <section className="wbr" aria-label="Workbook review">
     <header className="wbr-bar"><div><strong>Review workbook</strong><span>Version {draft.revision} · {state}</span></div>
-      <button className="btn adm-btn" disabled={locked || working || saving || (!pending.length && !stalled)} onClick={() => post({ send: true })}>
-        {stalled ? "Try again" : working ? "Applying comments..." : `Send all comments (${pending.length})`}</button>
+      <div className="wbr-progress"><button className="btn adm-btn" disabled={locked || working || saving || (!pending.length && !stalled)} onClick={() => post({ send: true })}>
+        {loadingResult ? "Loading results..." : stalled ? "Try again" : working ? "Applying comments..." : `Send all comments (${pending.length})`}</button>
+        {active && <span role="status">{currentProgress
+          ? `${currentProgress.checked} of ${currentProgress.total} pages checked. ${currentProgress.ready} ready. ${currentProgress.failed} need attention.`
+          : "Checking saved progress..."}</span>}
+      </div>
     </header>
     {locked && <p className="wbr-message" role="note">This workbook is {detail.approved?.status}. It cannot change. You can read its comments.</p>}
     {stalled && <p role="alert" className="wbr-message">The edit stopped. Try again to continue with the saved responses.</p>}
     {working && <p className="wbr-message" role="status">{state} Your current workbook stays in place until the checked changes are ready.</p>}
+    {active && progressErrors > 0 && <p className="wbr-message" role="alert">Progress is unavailable. Retrying shortly.{currentProgress ? " The last saved counts stay above." : " No saved count is available yet."}</p>}
     {resultMessage && <p role="alert" className="wbr-message">{resultMessage}</p>}
     <div className="wbr-body">
       <nav className="wbr-thumbs" aria-label="Workbook pages">{pages.map((p) => {

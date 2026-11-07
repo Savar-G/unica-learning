@@ -1,0 +1,15 @@
+[
+  { "model": "z-ai/glm-5.3-flash", "host": "Wafer", "providerName": "Wafer", "endpoint": "wafer/us" },
+  { "model": "deepseek/deepseek-v4.1-flash-1017", "host": "OpenInference", "providerName": "OpenInference", "endpoint": "open-inference/fp4" },
+  { "model": "bytedance-seed/seed-1.6-flash", "host": "Seed", "providerName": "Seed", "endpoint": "seed/fp8" },
+  { "model": "xiaomi/mimo-v2.6-flash", "host": "Makora", "providerName": "Makora", "endpoint": "makora/fp8" },
+  { "model": "anthropic/claude-haiku-5.5", "host": "Google Vertex", "providerName": "Google", "endpoint": "google-vertex/global" },
+  { "model": "openai/gpt-6-luna", "host": "Azure", "providerName": "Azure", "endpoint": "azure" },
+  { "model": "qwen/qwen3.8-flash", "host": "Alibaba", "providerName": "Alibaba", "endpoint": "alibaba/us-east-1" },
+  { "model": "minimax/minimax-m3.1-flash", "host": "Fireworks", "providerName": "Fireworks", "endpoint": "fireworks" },
+  { "model": "mistralai/mistral-small-2603", "host": "Mistral", "providerName": "Mistral", "endpoint": "mistral/zdr" },
+  { "model": "google/gemini-3.1-flash-lite", "host": "Google Vertex", "providerName": "Google", "endpoint": "google-vertex/global" },
+  { "model": "google/gemini-3.5-flash-lite", "host": "Google Vertex", "providerName": "Google", "endpoint": "google-vertex/global" },
+  { "model": "google/gemini-3.8-flash", "host": "Google Vertex", "providerName": "Google", "endpoint": "google-vertex/global" },
+  { "model": "anthropic/claude-sonnet-5.5", "host": "Google Vertex", "providerName": "Google", "endpoint": "google-vertex/global" }
+]

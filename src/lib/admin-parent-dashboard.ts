@@ -58,6 +58,16 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("first_book_coming", "First workbook not sent", "first_book_coming"), scenario("late", "Later than estimate"),
     scenario("paused", "Pause moves next mailing"), scenario("ended", "Past books only", "ended"),
   ] },
+  { id: "schedule", label: "Schedule", scenarios: [
+    scenario("printed", "Printed first workbook", "first_book_coming"), scenario("accepted", "Accepted required pages"),
+    scenario("partial", "Some required pages accepted"), scenario("expired", "Accepted pages after photo expiry"),
+    scenario("unknown", "Scan read unavailable"), scenario("waiting", "No printed workbook", "first_book_coming"),
+    scenario("unavailable", "Print binding unavailable"), scenario("ended", "Printed book after plan ended", "ended"),
+  ] },
+  { id: "workbook_answers", label: "Workbook answer key", scenarios: [
+    scenario("complete", "Whole delivered workbook"), scenario("mixed", "Multiple answers, examples and open work"),
+    scenario("empty", "No stored answers"), scenario("ended", "Delivered book after plan ended", "ended"),
+  ] },
   { id: "progress", label: "Progress / skill panel", scenarios: [
     scenario("map", "Skill map"), scenario("panel", "Selected skill"), scenario("empty", "No test report", "first_book_coming"),
     scenario("unreliable", "Unreliable result"), scenario("ended", "Past skills", "ended"),
@@ -89,6 +99,15 @@ export const PARENT_PREVIEW_VIEWS = [
   { id: "scan_results", label: "Scan results", scenarios: [
     scenario("scored", "Scored answers"), scenario("uncertain", "Please check the answer"), scenario("unscored", "Not scored"),
     scenario("expired", "Photo no longer available"), scenario("budget", "Checking limit reached"), scenario("pending", "Waiting to be checked"),
+    scenario("explain_idle", "Wrong answer: explanation control"), scenario("explain_loading", "Explanation loading"),
+    scenario("explain_ready", "Explanation ready"), scenario("explain_retry", "Explanation retry"),
+    scenario("explain_cap", "Explanation limit"), scenario("explain_stale", "Changed mark"), scenario("explain_unavailable", "Explanation unavailable"),
+  ] },
+  { id: "feedback", label: "Feedback", scenarios: [
+    scenario("form", "Parent form", "no_test"), scenario("sent", "Saved confirmation"),
+    scenario("empty", "Empty text refusal"), scenario("too_long", "Long text refusal"), scenario("no_product", "Product choice refusal"),
+    scenario("unavailable", "Retryable failure"), scenario("admin_rows", "Admin list with sample rows"),
+    ...Object.keys(SAMPLE_STAGE_FACTS).map(stage => scenario(`stage_${stage}`, stage.replaceAll("_", " "), stage as ChildStage)),
   ] },
 ] as const;
 
@@ -116,7 +135,9 @@ export function sampleChildren(selection: PreviewSelection): ChildView[] {
   if (selection.family === "none") return [];
   const make = (id: string, firstName: string): ChildView => {
     const stage = selectedScenario(selection).stage;
-    return { id, firstName, schoolGrade: 3, ...childStage(SAMPLE_STAGE_FACTS[stage], { progress: true, maya: true, scanPages: true }),
+    const view = childStage(SAMPLE_STAGE_FACTS[stage], { progress: true, maya: true, scanPages: true });
+    if (selection.view === "schedule" && !["waiting", "unavailable"].includes(selection.scenario)) view.tabs.splice(view.tabs.indexOf("workbooks") + 1, 0, "schedule");
+    return { id, firstName, schoolGrade: 3, ...view,
       currentWorkbook: stage === "active" || stage === "ended" ? { number: 3 } : null,
       reportIds: SAMPLE_STAGE_FACTS[stage].test.state === "report_ready" ? ["sample-report"] : [],
       finishedTests: SAMPLE_STAGE_FACTS[stage].test.state === "report_ready" ? [{ reportId: "sample-report", finishedAt: SAMPLE_NOW - 86400000 }] : [],

@@ -5,7 +5,7 @@ import { memoryParentViewReaders, type MemoryParentViewTables } from "@/lib/pare
 
 vi.mock("server-only", () => ({}));
 const state = vi.hoisted(() => ({ signedIn: true, dashboard: true, reader: null as unknown }));
-vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/account/workbooks/sample-child", redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => state.dashboard ? {} : null }));
 vi.mock("@/lib/parent-view-server", () => ({ signedInParentView: async () => state.signedIn ? state.reader : null }));
 const own = { parentId: "p1", childId: "c1" };
@@ -25,10 +25,10 @@ it("keeps sign-in, dashboard and family checks before the extracted view", async
   await expect(render({ cards: [] })).rejects.toThrow("NOT_FOUND");
 });
 
-it("keeps the first-book empty state and real download and tracking links on the normal parent route", async () => {
+it("keeps tracking and the first-book state but never exposes a parent PDF", async () => {
   expect(await render()).toContain("first workbook is on its way");
   const html = await render({ workbooks: [{ ...own, id: "wb-1", number: 1, status: "shipped", shippedAt: "2026-11-01T20:00:00Z", pdfPath: "private/book.pdf" }], dispatches: [{ ...own, number: 1, delivery: { method: "mail", carrier: "Canada Post", trackingNumber: "7023 1234", trackingUrl: "https://www.canadapost-postescanada.ca/track" } }] });
-  expect(html).toContain('href="/api/account/workbooks/wb-1/pdf"');
+  expect(html).not.toMatch(/Download PDF|Print a page again|\/api\/account\/workbooks/);
   expect(html).toContain('href="https://www.canadapost-postescanada.ca/track"');
   expect(html).toContain("7023 1234");
 });

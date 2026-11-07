@@ -33,6 +33,7 @@ const NAV = [
   { key: "flyers", href: `${ADMIN_PATH}/flyers`, label: "Flyers" },
   { key: "tests", href: ADMIN_TESTS_PATH, label: "Tests" },
   { key: "reviews", href: `${ADMIN_PATH}/reviews`, label: "AI reviews" },
+  { key: "feedback", href: `${ADMIN_PATH}/feedback`, label: "Feedback" },
   { key: "parents", href: `${ADMIN_PATH}/parents`, label: "Parents" },
   { key: "children", href: `${ADMIN_PATH}/children`, label: "Children" },
   { key: "scans", href: `${ADMIN_PATH}/scans`, label: "Scan pages" },
@@ -57,11 +58,12 @@ export function AdminFrame({ email, section, title, children, wide = false }: { 
   return (
     <div className={`look-root adm-root${wide ? " is-wide" : ""}`} data-look="warm">
       <header className="adm-bar">
-        <Link className="adm-brand" href={ADMIN_PATH}>{BRAND} <span>admin</span></Link>
+        <Link className="adm-brand" href={ADMIN_PATH} prefetch={false}>{BRAND} <span>admin</span></Link>
+        {/* No prefetch: every link is a full page with database reads, loaded again after each refresh (2026-11-06). */}
         <nav aria-label="Admin">
           <ul>
             {NAV.map((n) => (
-              <li key={n.key}><Link href={n.href} aria-current={n.key === section ? "page" : undefined}>{n.label}</Link></li>
+              <li key={n.key}><Link href={n.href} prefetch={false} aria-current={n.key === section ? "page" : undefined}>{n.label}</Link></li>
             ))}
           </ul>
         </nav>
