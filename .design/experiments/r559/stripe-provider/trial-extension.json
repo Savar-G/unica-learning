@@ -1,0 +1,160 @@
+{
+  "run": "143c02bd-56c3-45b4-aa33-d2d9b85dafa1",
+  "source": "f3133376535b3c96f4c81f62f1f8d1cc80322a23 + pause entry operation-key repair",
+  "mode": "test",
+  "checks": [
+    {
+      "label": "account_verified",
+      "account": "acct_1UOOQgGTsggtqumU",
+      "livemode": false,
+      "apiVersion": "2026-09-30.endive"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "trial_extension"
+    },
+    {
+      "label": "pause_applied",
+      "kind": "trial",
+      "subscription": "sub_1UYd3BGTsggtqumU4Y8E6Csn",
+      "previous": "2026-12-06T02:39:43.000Z",
+      "resume": "2026-12-20T02:39:43.000Z"
+    },
+    {
+      "label": "trial_old_end_no_charge",
+      "subscription": "sub_1UYd3BGTsggtqumU4Y8E6Csn",
+      "invoices": [
+        {
+          "id": "in_1UYd3CGTsggtqumUTg3Gcrgo",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_update",
+          "created": 1793932783,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1797734383,
+                "start": 1796524783
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd3BGTsggtqumU6TvvonFI",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932783,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524783,
+                "start": 1793932783
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "trial_new_end_full_charge",
+      "subscription": "sub_1UYd3BGTsggtqumU4Y8E6Csn",
+      "invoices": [
+        {
+          "id": "in_1UYd3MGTsggtqumUQwC2jBor",
+          "status": "paid",
+          "total": 7999,
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_cycle",
+          "created": 1797734383,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1800412783,
+                "start": 1797734383
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd3CGTsggtqumUTg3Gcrgo",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_update",
+          "created": 1793932783,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1797734383,
+                "start": 1796524783
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd3BGTsggtqumU6TvvonFI",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932783,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524783,
+                "start": 1793932783
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "scenario_passed",
+      "scenario": "trial_extension"
+    }
+  ],
+  "errors": [
+    {
+      "path": "/v1/prices/price_1UYd3BGTsggtqumUmTphblG0",
+      "status": 400,
+      "type": "invalid_request_error",
+      "message": "The price was created by Stripe automatically and cannot be updated."
+    }
+  ],
+  "resources": [
+    {
+      "kind": "clock",
+      "id": "clock_1UYd39GTsggtqumUFptngP4H",
+      "label": "trial_extension"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZmcYsPcWW3fsK",
+      "clock": "clock_1UYd39GTsggtqumUFptngP4H"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd3BGTsggtqumUmTphblG0"
+    }
+  ],
+  "cleanup": []
+}

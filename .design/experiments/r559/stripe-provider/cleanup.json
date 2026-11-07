@@ -1,0 +1,8 @@
+{
+  "result": "CLEANUP_VERIFIED",
+  "clocks": 9,
+  "customers": 9,
+  "remainingOwnedCustomers": 0,
+  "remainingOwnedClocks": 0,
+  "limits": "Stripe retains immutable inline price and payment history; no active customer or subscription remains."
+}
