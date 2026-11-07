@@ -5,6 +5,9 @@ import type { Json } from "@/lib/database.types";
 import { isUuid } from "@/lib/workbook-content";
 import { runWorkbookJobNow } from "@/lib/workbook-job-server";
 import { workbookEditProgress } from "@/lib/workbook-edit-progress";
+import { commentFromRow, workbookEditStore } from "@/lib/workbook-edit-store";
+import { layoutEditPlan } from "@/lib/workbook-layout-edit";
+import { toJson } from "@/lib/database";
 
 export const maxDuration = 300;
 
@@ -43,15 +46,31 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/workb
   if (!isUuid(id)) return new Response("Not found", { status: 404 });
   const run = await db.from("workbook_runs").select("draft_id,status").eq("id", id).maybeSingle();
   if (run.error || !run.data?.draft_id || run.data.status !== "done") return Response.json({ reason: "This draft is unavailable." }, { status: 409 });
-  let body: { revision: number; send?: boolean; delete?: boolean; comment?: unknown };
+  let body: { revision: number; send?: boolean; delete?: boolean; comment?: unknown; layout?: unknown };
   try { body = await request.json(); } catch { return Response.json({ reason: "Check the fields." }, { status: 400 }); }
   if (!body || !Number.isInteger(body.revision) || body.revision < 1) return Response.json({ reason: "Reload the page." }, { status: 400 });
   const runner = process.env.WORKBOOK_RUNNER === "server" ? "server" : "mac";
-  const result = body.send
-    ? await db.rpc("send_workbook_comments", { p_draft: run.data.draft_id, p_revision: body.revision, p_by: actor.userId, p_email: actor.email, p_runner: runner })
-    : await db.rpc("save_workbook_comment", { p_draft: run.data.draft_id, p_revision: body.revision, p_comment: body.comment as Json, p_by: actor.userId, p_email: actor.email, p_delete: !!body.delete });
+  let plan = null;
+  if (body.layout !== undefined) {
+    const build = process.env.VERCEL_GIT_COMMIT_SHA;
+    if (!build || !/^[a-f0-9]{40}$/.test(build)) return Response.json({ reason: "The current layout version is unavailable. Try again when its deployment is ready." }, { status: 503 });
+    if (!body.layout || typeof body.layout !== "object" || !("reviewed" in body.layout) || body.layout.reviewed !== true) {
+      return Response.json({ reason: "Review the layout correction before rendering." }, { status: 400 });
+    }
+    const snapshot = await workbookEditStore(db).load(run.data.draft_id);
+    const comments = await db.from("workbook_comments").select("*", { count: "exact" }).eq("draft_id", run.data.draft_id)
+      .in("status", ["pending", "failed"]).order("created_at").limit(501);
+    if (!snapshot || snapshot.revision !== body.revision || comments.error || comments.count === null || comments.count > 500
+      || !comments.data || comments.data.length !== comments.count) return Response.json({ reason: "Reload the current layout comments." }, { status: 409 });
+    plan = layoutEditPlan(body.layout, comments.data.map(commentFromRow), snapshot, build);
+    if (!plan) return Response.json({ reason: "Review the template correction, each result and its affected pages before rendering." }, { status: 400 });
+  }
+  const result = plan ? await db.rpc("queue_workbook_layout_edit", { p_draft: run.data.draft_id, p_revision: body.revision,
+    p_plan: toJson({ ...plan, reviewed: true }), p_by: actor.userId, p_email: actor.email })
+    : body.send ? await db.rpc("send_workbook_comments", { p_draft: run.data.draft_id, p_revision: body.revision, p_by: actor.userId, p_email: actor.email, p_runner: runner })
+      : await db.rpc("save_workbook_comment", { p_draft: run.data.draft_id, p_revision: body.revision, p_comment: body.comment as Json, p_by: actor.userId, p_email: actor.email, p_delete: !!body.delete });
   if (result.error) return Response.json({ reason: "The comments could not be saved. Reload the page and try again." }, { status: 409 });
   const data = result.data as { status?: string; id?: string; runner?: string; reason?: string };
   if (data.status === "queued" && (data.runner ?? runner) === "server") after(async () => { await runWorkbookJobNow(data.id!, { origin: new URL(request.url).origin }); });
-  return Response.json(data, { status: data.status === "refused" ? 409 : body.send ? 202 : 200 });
+  return Response.json(data, { status: data.status === "refused" ? 409 : data.status === "queued" || body.send ? 202 : 200 });
 }

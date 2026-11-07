@@ -3289,6 +3289,92 @@ export type Database = {
           },
         ]
       }
+      scan_marking_evaluation_resolutions: {
+        Row: {
+          actor: string
+          amount_micros: number
+          attempt_hash: string
+          dispatch_id: string
+          endpoint: string
+          evidence: Json
+          evidence_hash: string
+          maximum_micros: number
+          model: string
+          outcome: string
+          period: string
+          pixels: number
+          recorded_at: string
+          reserved_micros: number
+          run_hash: string
+          run_maximum_micros: number
+        }
+        Insert: {
+          actor: string
+          amount_micros: number
+          attempt_hash: string
+          dispatch_id: string
+          endpoint: string
+          evidence: Json
+          evidence_hash: string
+          maximum_micros: number
+          model: string
+          outcome: string
+          period: string
+          pixels: number
+          recorded_at?: string
+          reserved_micros: number
+          run_hash: string
+          run_maximum_micros: number
+        }
+        Update: {
+          actor?: string
+          amount_micros?: number
+          attempt_hash?: string
+          dispatch_id?: string
+          endpoint?: string
+          evidence?: Json
+          evidence_hash?: string
+          maximum_micros?: number
+          model?: string
+          outcome?: string
+          period?: string
+          pixels?: number
+          recorded_at?: string
+          reserved_micros?: number
+          run_hash?: string
+          run_maximum_micros?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_marking_evaluation_resol_model_endpoint_evidence_hash_fkey"
+            columns: ["model", "endpoint", "evidence_hash"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_evaluation_prices"
+            referencedColumns: ["model", "endpoint", "evidence_hash"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_resolutions_attempt_hash_fkey"
+            columns: ["attempt_hash"]
+            isOneToOne: true
+            referencedRelation: "scan_marking_evaluation_attempts"
+            referencedColumns: ["attempt_hash"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_resolutions_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: true
+            referencedRelation: "scan_marking_evaluation_attempts"
+            referencedColumns: ["dispatch_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_resolutions_run_hash_fkey"
+            columns: ["run_hash"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_evaluations"
+            referencedColumns: ["run_hash"]
+          },
+        ]
+      }
       scan_marking_evaluations: {
         Row: {
           maximum_micros: number
@@ -4099,7 +4185,9 @@ export type Database = {
           parent_id: string
           question_number: number | null
           request_key: string | null
+          result_note: string | null
           revision: number
+          route: string
           status: string
           x: number
           y: number
@@ -4122,7 +4210,9 @@ export type Database = {
           parent_id: string
           question_number?: number | null
           request_key?: string | null
+          result_note?: string | null
           revision: number
+          route?: string
           status?: string
           x: number
           y: number
@@ -4145,7 +4235,9 @@ export type Database = {
           parent_id?: string
           question_number?: number | null
           request_key?: string | null
+          result_note?: string | null
           revision?: number
+          route?: string
           status?: string
           x?: number
           y?: number
@@ -4538,12 +4630,14 @@ export type Database = {
           child_id: string
           created_at: string
           draft_id: string
+          edit_kind: string
           error: string | null
           finished_at: string | null
           frame: Json | null
           heartbeat_at: string
           id: string
           item: Json | null
+          layout_plan: Json | null
           lease: string | null
           note: string
           page_number: number
@@ -4564,12 +4658,14 @@ export type Database = {
           child_id: string
           created_at?: string
           draft_id: string
+          edit_kind?: string
           error?: string | null
           finished_at?: string | null
           frame?: Json | null
           heartbeat_at?: string
           id?: string
           item?: Json | null
+          layout_plan?: Json | null
           lease?: string | null
           note: string
           page_number: number
@@ -4590,12 +4686,14 @@ export type Database = {
           child_id?: string
           created_at?: string
           draft_id?: string
+          edit_kind?: string
           error?: string | null
           finished_at?: string | null
           frame?: Json | null
           heartbeat_at?: string
           id?: string
           item?: Json | null
+          layout_plan?: Json | null
           lease?: string | null
           note?: string
           page_number?: number
@@ -6748,6 +6846,10 @@ export type Database = {
           id: string
         }[]
       }
+      claim_workbook_layout_edit: {
+        Args: { p_id: string; p_lease: string }
+        Returns: boolean
+      }
       claim_workbook_run:
         | { Args: { p_lease: string; p_run: string }; Returns: boolean }
         | {
@@ -6972,6 +7074,27 @@ export type Database = {
         Returns: string
       }
       finish_workbook_edit: {
+        Args: {
+          p_content: Json
+          p_error: string
+          p_id: string
+          p_lease: string
+          p_problems: Json
+          p_rendering: Json
+        }
+        Returns: Json
+      }
+      finish_workbook_layout_edit: {
+        Args: {
+          p_error: string
+          p_id: string
+          p_lease: string
+          p_rendering: Json
+          p_results: Json
+        }
+        Returns: Json
+      }
+      finish_workbook_question_edit_checked: {
         Args: {
           p_content: Json
           p_error: string
@@ -7218,6 +7341,16 @@ export type Database = {
         }
         Returns: Json
       }
+      queue_workbook_layout_edit: {
+        Args: {
+          p_by: string
+          p_draft: string
+          p_email: string
+          p_plan: Json
+          p_revision: number
+        }
+        Returns: Json
+      }
       read_family_delete_code: {
         Args: { p_parent: string }
         Returns: {
@@ -7433,6 +7566,16 @@ export type Database = {
           p_question: string
         }
         Returns: Json
+      }
+      resolve_scan_marking_evaluation_full_reservation: {
+        Args: {
+          p_actor: string
+          p_attempt: string
+          p_evidence: Json
+          p_id: string
+          p_run: string
+        }
+        Returns: boolean
       }
       resume_workbook_run:
         | {
@@ -7758,6 +7901,11 @@ export type Database = {
         }
         Returns: boolean
       }
+      workbook_comment_route: {
+        Args: { p_note: string; p_page: Json; p_route?: string }
+        Returns: string
+      }
+      workbook_edit_target_value: { Args: { p_value: Json }; Returns: Json }
       workbook_run_held: {
         Args: { p_lease: string; p_run: string }
         Returns: boolean
