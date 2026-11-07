@@ -22,15 +22,15 @@ export function historyPage(r: HistoryRecord, now: number): HistoryPage {
   const view = markingPageView(r.marks);
   const failedJob = r.jobs.some((j) => j.blocked === "attempts" || j.blocked === "pending") || r.photos.some((p) => p.state === "rejected");
   const complete = view.completion.status === "complete";
-  // A job still reading (not finished and not held) means a retake is being marked: not marked yet.
-  const reading = r.jobs.some((j) => j.state !== "finished" && j.blocked === null);
   const blank = r.marks.filter((m) => m.observation.result === "blank").length;
   const status: HistoryStatus = complete ? view.counts.scored === 0 ? "unscored" : blank === view.counts.scored ? "blank" : "ready"
-    : view.counts.teamChecks > 0 && !reading ? "review"
+    // One rule with the results page and the team list: an answer our team is checking wins.
+    : view.counts.teamChecks > 0 ? "review"
     : failedJob ? "failed" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
   const photo = r.photos.find((p) => p.sentAt !== null) ?? r.photos.at(-1);
   return { id: r.id, childId: r.childId, childName: r.childName, workbookId: r.workbookId, book: r.book, revision: r.revision, day: r.day, pageNumber: r.pageNumber,
-    status, label: HISTORY_LABELS[status], photo: photo?.id ?? null, photoAvailable: Boolean(photo && photo.state === "saved" && Date.parse(photo.expiresAt) > now), failedJob,
+    // Same rule as the results page line: a page with some marks and some answers not read yet says so.
+    status, label: status === "pending" && view.counts.scored > 0 ? "Some answers not marked yet" : HISTORY_LABELS[status], photo: photo?.id ?? null, photoAvailable: Boolean(photo && photo.state === "saved" && Date.parse(photo.expiresAt) > now), failedJob,
     counts: view.counts, right: r.marks.filter((m) => m.observation.result === "right").length, blank, wrong: r.marks.filter((m) => m.observation.result === "wrong").length };
 }
 /** Aggregates only the displayed, filtered canonical records. Unknown costs remain reservations. */

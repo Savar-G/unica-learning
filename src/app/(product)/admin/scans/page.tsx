@@ -6,6 +6,8 @@ import { isUuid } from "@/lib/workbook-content";
 import { readScanHistoryNow } from "@/lib/scan-history-reader";
 import { readScanTeamQueue } from "@/lib/scan-team-marks";
 import { AdminTeamMark } from "@/components/admin-team-mark";
+import { familyMoment, type FamilyZone } from "@/lib/family-time";
+import { loadFamilyZone } from "@/lib/family-time-server";
 import { readingIssueText, READING_ISSUES, type ReadingIssue } from "@/lib/scan-observation";
 import { AdminFrame, Table } from "@/components/admin";
 const usd = (micros: number) => `USD ${(micros / 1_000_000).toFixed(4)}`;
@@ -22,6 +24,8 @@ export default async function AdminScans({ searchParams }: { searchParams: Promi
   const noPhoto = team.items.filter((t) => !t.photo).map((t) => t.item);
   const versions = noPhoto.length ? await db.from("scan_marking_items").select("id,result_version").in("id", noPhoto) : { data: [], error: null };
   if (versions.error) throw new Error("team_queue_versions");
+  // "Waiting since" in each family's own time zone (the shared rule in src/lib/family-time.ts).
+  const zones = new Map<string, FamilyZone>(await Promise.all([...new Set(team.items.map((t) => t.parent))].map(async (p) => [p, await loadFamilyZone(db, p)] as const)));
   const version = (item: string) => (versions.data ?? []).find((v) => v.id === item)?.result_version ?? null;
   const reason = (issue: string | null) => issue && READING_ISSUES.includes(issue as ReadingIssue) ? readingIssueText(issue as ReadingIssue) : "Waiting for a person to mark it.";
   return <AdminFrame email={admin.email} section="scans" title="Scan pages">
@@ -30,7 +34,7 @@ export default async function AdminScans({ searchParams }: { searchParams: Promi
       {team.total > team.items.length && ` The first ${team.items.length} are below.`}</p>
     {team.items.length > 0 && <Table label="Answers waiting for our team" head={["Child", "Workbook / page / question", "What the AI read", "Why it is waiting", "Waiting since", "Open"]} empty="None.">
       {team.items.map((t) => <tr key={t.item}><td>{t.childName}{t.testFamily && " (test family)"}</td><td>Workbook {t.book} · page {t.page} · question {t.question}</td>
-        <td>{t.read === null ? "Not read" : t.read === "" ? "Empty" : t.read}</td><td>{reason(t.issue)}</td><td>{t.since}</td>
+        <td>{t.read === null ? "Not read" : t.read === "" ? "Empty" : t.read}</td><td>{reason(t.issue)}</td><td>{familyMoment(t.since, zones.get(t.parent)!)}</td>
         <td>{t.photo ? <Link href={`/admin/scans/${t.photo}`}>Open scan to mark</Link>
           : <>No photo is saved for this answer. Mark it from what the AI read.{version(t.item) !== null && <AdminTeamMark item={t.item} version={version(t.item)!} number={t.question} />}</>}</td></tr>)}
     </Table>}
