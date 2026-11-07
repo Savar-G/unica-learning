@@ -61,7 +61,7 @@ import {
 } from "@/lib/workbook-generator";
 import { planNextWorkbook } from "@/lib/workbook-placement";
 import { skillUnits } from "@/lib/workbook-teaching-frame";
-import type { WorkbookPlan } from "@/lib/workbook-plan";
+import type { WorkbookPlan, PlanInput } from "@/lib/workbook-plan";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
 import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderedPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
@@ -251,6 +251,8 @@ export interface RunFrame {
   grade: Grade;
   /** The child profile revision the plan was made from, or null. */
   profileRevision: number | null;
+  /** Exact planner input captured before the planner runs. Absent on legacy frames. */
+  planningInput?: PlanInput;
   workbooks: { number: number; levels: number[] }[];
   plan: WorkbookPlan;
   versions: {
@@ -627,10 +629,12 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     inputs = { ...inputs, profile: prepared.profile };
     const assessmentId = inputs.profile?.profile.assessment?.assessmentId;
     const metadata = assessmentId ? await deps.source.planningMetadata?.(assessmentId) : undefined;
-    const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
+    let planningInput: PlanInput | undefined;
+    const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number }, input => { planningInput = input; });
     if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
     const made: RunFrame = {
       version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,
+      planningInput,
       plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan), versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
     };
     if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(generateInput(run, made, name), deps.fit(run.parentId));

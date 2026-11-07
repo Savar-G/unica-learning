@@ -1,5 +1,6 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { canonical, sourceHash } from "./workbook-progress-hash";
+export { canonical, sourceHash } from "./workbook-progress-hash";
 import { isDeepStrictEqual } from "node:util";
 import type { Tables } from "./database";
 import { storedContent, isUuid } from "./workbook-content";
@@ -68,14 +69,6 @@ export interface SourceUnavailable {
 }
 export type SourceLoadResult = { ok: false; reason: "invalid-request" | "scope-unavailable" | "source-error" | "invalid-source" | "changed-during-read" }
   | { ok: true; frozen: FrozenWorkbookSources; outcome: SourceUnavailable };
-export const sourceHash = (v: unknown): string => createHash("sha256").update(canonical(v)).digest("hex");
-export function canonical(v: unknown): string {
-  if (v === null || typeof v === "boolean" || typeof v === "string") return JSON.stringify(v);
-  if (typeof v === "number" && Number.isFinite(v)) return JSON.stringify(v);
-  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
-  if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) return `{${Object.entries(v).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, x]) => `${JSON.stringify(k)}:${canonical(x)}`).join(",")}}`;
-  throw Error("invalid-json");
-}
 const exact = (v: object, keys: string[]) => isDeepStrictEqual(Object.keys(v).sort(), keys.sort());
 export function workbookPreviewRequest(v: unknown): WorkbookPreviewRequest | null {
   try {
