@@ -1,5 +1,5 @@
 import { beforeAll, expect, it, vi } from "vitest";
-import { buildPrintContract } from "./workbook-print-contract";
+import { buildPrintContract, pageContentFingerprint } from "./workbook-print-contract";
 import { generateWorkbook, type GenerateInput, type GeneratedWorkbook } from "./workbook-generator";
 import { curriculumFor } from "./workbook-curriculum";
 import { planLevel, planWorkbook } from "./workbook-plan";
@@ -55,7 +55,7 @@ function setup() {
   const snapshot: EditSnapshot = { draft: structuredClone(draft), input, parentId: id, revision: 1, problems: [], rendering: { pdfPath: "old.pdf", pages: draft.pages.map(p => image(p.number)) } };
   const comment: ReviewComment = { id: "layout-comment", draftId: id, revision: 1, page: 1, question: null, x: 0.5, y: 0.5,
     note: "Use normal capitals on the cover", route: "layout", item: null, actor: { id: "admin", email: "test@example.com" }, createdAt: "2026-11-07T00:00:00Z", status: "pending", error: null, batchId: null, before: null, after: null };
-  const plan: LayoutEditPlan = { build: "reviewed-source", pages: [1], results: [{ id: comment.id, page: 1, status: "applied", note: "Normal display case is now printed." }] };
+  const plan: LayoutEditPlan = { build: "reviewed-source", pages: [1], contentFingerprints: { 1: pageContentFingerprint(snapshot.draft.pages[0]) }, results: [{ id: comment.id, page: 1, status: "applied", note: "Normal display case is now printed." }] };
   let currentFrame: EditFrame | null = null, owned = true;
   const checkpoints = new Map<number, EditCheckpoint>();
   const finish = vi.fn<LayoutEditDeps["store"]["finish"]>(async () => true);
@@ -84,6 +84,7 @@ it("preserves an explicit layout route and its result through row conversion and
   const s = setup();
   const page = s.snapshot.draft.pages[0];
   page.content = dayContent;
+  s.plan.contentFingerprints[1] = pageContentFingerprint(page);
   const comment = commentFromRow({ id: s.comment.id, draft_id: id, parent_id: id, child_id: child,
     revision: 1, page_number: 1, question_number: null, x: 0.5, y: 0.5,
     note: "Make this easier to read.", item: null, actor_id: "admin", actor_email: "test@example.com",
@@ -108,6 +109,23 @@ it("reuses saved image checkpoints and accepts a JSONB frame with different key 
   const s = setup();
   s.checkpoints.set(1, { number: 1, image: image(1, "b") });
   expect(await runWorkbookLayoutEdit("batch", s.deps)).toBe("done");
+  expect(s.renderPage).not.toHaveBeenCalled();
+});
+
+it("repairs a saved proof page using the saved content rather than an absent old contract", async () => {
+  const s = setup(), prior = s.snapshot.rendering!.pages[0];
+  s.snapshot.rendering!.pages[0] = { number: prior.number, image: prior.image, questions: [], proof: true };
+  s.snapshot.problems = [{ page: 1, question: null, reason: "The old cover did not fit." }];
+  expect(await runWorkbookLayoutEdit("batch", s.deps)).toBe("done");
+  expect(s.assemble).toHaveBeenCalledTimes(1);
+  expect(s.finish.mock.calls[0][2]).toMatchObject({ results: [{ status: "applied" }] });
+});
+
+it("refuses content that changed after review and ignores browser-supplied content fingerprints", async () => {
+  const s = setup();
+  expect(layoutEditPlan({ reviewed: true, pages: [1], results: s.plan.results, contentFingerprints: { 1: "forged" } }, [s.comment], s.snapshot, "reviewed-source")?.contentFingerprints).toEqual(s.plan.contentFingerprints);
+  s.snapshot.draft.pages[0].qrToken = "changed-after-review";
+  expect(await runWorkbookLayoutEdit("batch", s.deps)).toBe("failed");
   expect(s.renderPage).not.toHaveBeenCalled();
 });
 

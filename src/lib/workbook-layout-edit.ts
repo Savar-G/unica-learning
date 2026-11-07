@@ -2,7 +2,7 @@ import type { EditCheckpoint, EditFrame, EditSnapshot, ReviewComment } from "@/l
 import type { DraftRendering } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
 import { workbookCommentRoute } from "@/lib/workbook-comment-route";
-import { storedPrintContract } from "@/lib/workbook-print-contract";
+import { pageContentFingerprint, storedPrintContract } from "@/lib/workbook-print-contract";
 import { expectedItems } from "@/lib/scan-observation";
 import { markingRegions, reviewRegions } from "@/lib/scan-marking-regions";
 import type { GeneratedPage } from "@/lib/workbook-generator";
@@ -10,7 +10,7 @@ import type { GeneratedPage } from "@/lib/workbook-generator";
 export interface LayoutResolution {
   id: string; page: number; status: "applied" | "partial" | "unsupported"; note: string;
 }
-export interface LayoutEditPlan { build: string; pages: number[]; results: LayoutResolution[] }
+export interface LayoutEditPlan { build: string; pages: number[]; contentFingerprints: Record<number, string>; results: LayoutResolution[] }
 
 /** A human must review the template correction and state each comment's actual result before it can be queued. */
 export function layoutEditPlan(value: unknown, comments: readonly ReviewComment[], snapshot: EditSnapshot, build: string | null): LayoutEditPlan | null {
@@ -31,7 +31,9 @@ export function layoutEditPlan(value: unknown, comments: readonly ReviewComment[
       || !pages.includes(c.page) || results.some(x => x.id === r.id)) return null;
     results.push({ id: c.id, page: c.page, status: r.status, note: r.note.trim() });
   }
-  return { build, pages: [...pages].sort((a, b) => a - b), results };
+  // The authenticated server computes these from its saved snapshot. Ignore any client-supplied fingerprints.
+  const contentFingerprints = Object.fromEntries(pages.map(number => [number, pageContentFingerprint(snapshot.draft.pages.find(p => p.number === number)!)]));
+  return { build, pages: [...pages].sort((a, b) => a - b), contentFingerprints, results };
 }
 
 export interface LayoutEditStore {
@@ -48,13 +50,13 @@ export interface LayoutEditDeps {
   assemble(snapshot: EditSnapshot, pages: DraftRendering["pages"]): Promise<{ pdfPath: string; pdfSha256?: string; paths: string[] }>;
 }
 
-function protectedPage(before: DraftRendering["pages"][number], after: DraftRendering["pages"][number]): boolean {
-  const a = before.printContract;
-  const b = a ? storedPrintContract(after.printContract, { workbookId: a.workbookId, page: before.number, image: after.image }) : null;
-  return !!a && !!b && !after.proof && !after.contractProblem && a.workbookId === b.workbookId
-    && a.page === b.page && a.label === b.label && a.day === b.day && a.pageOfDay === b.pageOfDay
-    && a.fingerprints.content === b.fingerprints.content
-    && JSON.stringify(before.questions.map(q => q.number)) === JSON.stringify(after.questions.map(q => q.number));
+function protectedPage(workbookId: string, source: GeneratedPage, after: DraftRendering["pages"][number]): boolean {
+  const contract = storedPrintContract(after.printContract, { workbookId, page: source.number, image: after.image });
+  const content = source.content, day = content?.kind === "day" && !content.extraPractice ? content : null;
+  return !!contract && !after.proof && !after.contractProblem && after.number === source.number
+    && contract.label === (content?.id ?? null) && contract.day === (day?.day ?? null) && contract.pageOfDay === (day?.page ?? null)
+    && contract.fingerprints.content === pageContentFingerprint(source)
+    && JSON.stringify(source.questions.map(q => q.number)) === JSON.stringify(after.questions.map(q => q.number));
 }
 
 /** A layout correction must not remove the regions used by the existing marking and method-review paths. */
@@ -91,14 +93,15 @@ export async function runWorkbookLayoutEdit(id: string, deps: LayoutEditDeps): P
     const problems: RenderProblem[] = [], changed = new Set<number>();
     for (const number of edit.plan.pages) {
       const prior = images.get(number);
-      if (!prior) throw new Error("A saved page image is unavailable.");
+      const source = snapshot.draft.pages.find(p => p.number === number);
+      if (!prior || !source) throw new Error("A saved page image is unavailable.");
+      if (edit.plan.contentFingerprints[number] !== pageContentFingerprint(source)) throw new Error("The saved page content changed after layout review.");
       let result = checkpoints.get(number);
       if (!result) {
         try {
           const next = await deps.renderPage(snapshot, number);
-          if (!protectedPage(prior, next.page)) throw new Error("The layout check could not preserve the page identity and question data.");
-          const source = snapshot.draft.pages.find(p => p.number === number);
-          const coverage = source ? layoutCoverageProblem(snapshot.draft.id, source, next.page) : "The saved page is unavailable.";
+          if (!protectedPage(snapshot.draft.id, source, next.page)) throw new Error("The layout check could not preserve the page identity and question data.");
+          const coverage = layoutCoverageProblem(snapshot.draft.id, source, next.page);
           if (coverage) throw new Error(coverage);
           if (JSON.stringify(snapshot.draft) !== original) throw new Error("The renderer changed the saved questions.");
           result = { number, image: next.page };
@@ -108,8 +111,9 @@ export async function runWorkbookLayoutEdit(id: string, deps: LayoutEditDeps): P
         catch { return "failed"; }
       }
       if (result.error) problems.push({ page: number, question: null, reason: result.error });
-      else if (result.image && protectedPage(prior, result.image)) {
-        if (result.image.printContract!.fingerprints.image !== prior.printContract!.fingerprints.image) {
+      else if (result.image && protectedPage(snapshot.draft.id, source, result.image)
+        && !layoutCoverageProblem(snapshot.draft.id, source, result.image)) {
+        if (prior.proof || !prior.printContract || result.image.printContract!.fingerprints.image !== prior.printContract.fingerprints.image) {
           images.set(number, result.image); changed.add(number);
         }
       } else throw new Error("The saved layout checkpoint does not match this page.");

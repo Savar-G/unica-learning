@@ -1,6 +1,6 @@
 # Complete workbook comment routing
 
-COMMENT_ROUTING_REVIEW_READY
+COMMENT_ROUTING_REPAIR_REVIEW_PENDING
 
 Machine: `Savars-MacBook-Pro-5.local`.
 
@@ -32,7 +32,7 @@ The first SQL review found four defects. The controller fixed each. The independ
 - `/Users/savargupta/.t3/worktrees/pagewise-landing-page/t3-b21f5abc/.design/research/workbook-comment-routing-sql-independent-review.md`
 - `/Users/savargupta/.t3/worktrees/pagewise-landing-page/t3-975d40f4/.design/research/workbook-comment-routing-sql-r2-independent-review.md`
 
-The committed hosted probe uses one transaction and rolls back. It checks actual service-role queue, claim, frame and finish; parent RLS; anonymous refusal; partial-result preservation; duplicate finish; outcome-promotion refusal; unchanged content and the unselected schedule image; and unsupported-only review. It passed with zero remaining synthetic parents or Auth users. Its two initial fixture setup failures exposed the Auth user foreign key and the revision-1 null-content constraint. Both failed transactions rolled back. The final fixture and local tests now use the production first-revision rule.
+The `c03ae987` hosted probe used one transaction and rolled back. It checked actual service-role queue, claim, frame and finish; parent RLS; anonymous refusal; partial-result preservation; duplicate finish; outcome-promotion refusal; unchanged content and the unselected schedule image; and unsupported-only review. It passed with zero remaining synthetic parents or Auth users. Its two initial fixture setup failures exposed the Auth user foreign key and the revision-1 null-content constraint. Both failed transactions rolled back. The final fixture and local tests now use the production first-revision rule. The current probe script adds the new proof-page and fit-metadata repair case. That revised script has not run on the hosted schema yet.
 
 Official `npm run db:types` exited 0. The generated diff adds 425 lines and deletes none against the base. Existing explanation and evaluation-resolution declarations are retained. Only feature-local `ColumnTypes` and `NullArgs` were added in `database.ts`. The security advisor returned no notice naming the new routing or layout objects. This is not a claim that the whole project has no advisories.
 
@@ -57,3 +57,9 @@ Private evidence: `/Users/savargupta/unica-workbook-samples/comment-routing-2026
 No new customer revision is authorized by this feature. Do not apply the corrected book or close its comments until the roadmap relays Savar's approval or requested changes. Do not revive the previous failed customer batch. Print approval remains separate.
 
 The complete frozen-source Sol review, final full test/lint/build gate, exact-head remote checks, and coordinated merge remain required. Production promotion is not established. There is no generator main reservation; the agreed peer order remains 692 then 693.
+
+## Complete review correction
+
+The complete review of `c03ae987` found two P2 failures: a proof image without an old contract could not be replaced, and old rendering errors survived a successful repair. Its report is at `/Users/savargupta/.t3/worktrees/pagewise-landing-page/t3-0c08880a/.design/research/workbook-comment-routing-complete-independent-review.md`. The full gate at that pin was stopped with exit 143. It is cancelled evidence, not a pass.
+
+The next local correction validates replacement identity and fingerprints against saved content, keeps failed selected pages unchanged, removes errors only for accepted replacements, and repairs only their derived failed-fit metadata. It uses a new additive migration. The migration is not applied yet. See `workbook-comment-routing-repair-handoff.md` for the current review scope and trust boundary.

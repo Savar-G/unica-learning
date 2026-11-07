@@ -9,34 +9,37 @@ begin
   insert into public.parents(id,email,name) values(p,'workbook-routing-qa+'||p::text||'@example.invalid','Synthetic QA');
   insert into public.children(id,parent_id,first_name,grade,province) values(c,p,'Synthetic',1,'BC');
   v:=jsonb_build_object('id',d,'childId',c,'number',1,'levels',jsonb_build_array(16),'profileBuild',null,'model','synthetic-no-model',
-    'counts',jsonb_build_object('pages',2,'questions',0,'checked',0,'failed',0,'notChecked',0,'failedPages',0),'pages',jsonb_build_array(
-      jsonb_build_object('number',1,'qrToken','synthetic-cover-qr','content',jsonb_build_object('kind','cover'),'questions','[]'::jsonb),
-      jsonb_build_object('number',2,'qrToken','synthetic-plan-qr','content',jsonb_build_object('kind','how-plan','rows',jsonb_build_array(jsonb_build_object('day',1,'pages','3-10'))),'questions','[]'::jsonb)));
+    'counts',jsonb_build_object('pages',2,'questions',0,'checked',0,'failed',0,'notChecked',0,'failedPages',1),'pages',jsonb_build_array(
+      jsonb_build_object('number',1,'qrToken','synthetic-cover-qr','fit',jsonb_build_object('status','failed','reason','Old cover layout'),'content',jsonb_build_object('kind','cover','id','Synthetic'),'questions','[]'::jsonb),
+      jsonb_build_object('number',2,'qrToken','synthetic-plan-qr','fit',jsonb_build_object('status','fits'),'content',jsonb_build_object('kind','how-plan','id','Synthetic','rows',jsonb_build_array(jsonb_build_object('day',1,'pages','3-10'))),'questions','[]'::jsonb)));
   r:=jsonb_build_object('pdfPath',p::text||'/'||d::text||'/old.pdf','pdfSha256',repeat('a',64),'pages',(
     select jsonb_agg(jsonb_build_object('number',n,'image',jsonb_build_object('path',p::text||'/'||d::text||'/old-'||n::text||'.png','width',816,'height',1056),
       'questions','[]'::jsonb,'printContract',jsonb_build_object('version',1,'workbookId',d,'page',n,'label','Synthetic',
       'fingerprints',jsonb_build_object('content',repeat('c',64),'image',repeat('a',64))))) from generate_series(1,2) n));
   insert into public.workbook_drafts(id,parent_id,child_id,number,levels,pages,questions,failed,not_checked,failed_pages,model,draft,schema_version)
     values(d,p,c,1,array[16],2,0,0,0,0,'synthetic-no-model',v,1);
-  insert into public.workbook_draft_revisions(draft_id,revision,parent_id,child_id,kind,content,rendering)
-    values(d,1,p,c,'generated',null,r);
+  insert into public.workbook_draft_revisions(draft_id,revision,parent_id,child_id,kind,content,rendering,render_problems)
+    values(d,1,p,c,'generated',null,jsonb_set(r,'{pages,0}',((r->'pages'->0)-'printContract')||'{"proof":true}'::jsonb),
+      '[{"page":1,"question":null,"reason":"Old cover layout"}]');
   perform set_config('unica.routing_probe',jsonb_build_object('parent',p,'child',c,'draft',d,'rendering',r)::text,true);
 end $$;
 set local role service_role;
 do $$
-declare ctx jsonb:=current_setting('unica.routing_probe')::jsonb;d uuid:=(ctx->>'draft')::uuid;c uuid;e uuid;l uuid:=gen_random_uuid();v jsonb;r jsonb;plan jsonb;
+declare ctx jsonb:=current_setting('unica.routing_probe')::jsonb;d uuid:=(ctx->>'draft')::uuid;c uuid;e uuid;l uuid:=gen_random_uuid();v jsonb;r jsonb;plan jsonb;expected_content jsonb;
 begin
   c:=(public.save_workbook_comment(d,1,jsonb_build_object('page',1,'x',.5,'y',.5,'note','Make this easier to read.','route','layout'),gen_random_uuid(),'synthetic@example.invalid',false)->>'id')::uuid;
   if (select route from public.workbook_comments where id=c)<>'layout' then raise exception 'Explicit route lost'; end if;
   if public.send_workbook_comments(d,1,gen_random_uuid(),'synthetic@example.invalid','mac')->>'status'<>'layout-review' then raise exception 'Cover entered the writer queue'; end if;
-  plan:=jsonb_build_object('reviewed',true,'build',repeat('a',40),'pages',jsonb_build_array(1),'results',jsonb_build_array(jsonb_build_object('id',c,'page',1,'status','partial','note','The remaining request stays open.')));
+  plan:=jsonb_build_object('reviewed',true,'build',repeat('a',40),'contentFingerprints',jsonb_build_object('1',repeat('c',64)),'pages',jsonb_build_array(1),'results',jsonb_build_array(jsonb_build_object('id',c,'page',1,'status','partial','note','The remaining request stays open.')));
   v:=public.queue_workbook_layout_edit(d,1,plan,gen_random_uuid(),'synthetic@example.invalid');e:=(v->>'id')::uuid;
   if v->>'status'<>'queued' or public.claim_workbook_edit(e,l,'mac') or not public.claim_workbook_layout_edit(e,l) then raise exception 'Layout claim isolation failed'; end if;
   if public.frame_workbook_edit(e,l,jsonb_build_object('calls',1,'build',repeat('a',40),'model',null,'solveModel','layout-no-model','layoutPages',jsonb_build_array(1))) is null then raise exception 'Layout frame failed'; end if;
   r:=jsonb_set(ctx->'rendering','{pages,0,printContract,fingerprints,image}',to_jsonb(repeat('b',64)));
   v:=public.finish_workbook_layout_edit(e,l,r,plan->'results',null);
   if v->>'status'<>'done' then raise exception 'Hosted finish refused %',v; end if;
-  if (select content from public.workbook_draft_revisions where draft_id=d and revision=2) is distinct from (select draft from public.workbook_drafts where id=d)
+  select jsonb_set(jsonb_set(draft,'{pages,0,fit}','{"status":"fits"}'),'{counts,failedPages}','0') into expected_content from public.workbook_drafts where id=d;
+  if (select content from public.workbook_draft_revisions where draft_id=d and revision=2) is distinct from expected_content
+    or (select render_problems from public.workbook_draft_revisions where draft_id=d and revision=2)<>'[]'::jsonb
     or (select rendering->'pages'->1 from public.workbook_draft_revisions where draft_id=d and revision=2) is distinct from ctx->'rendering'->'pages'->1
     or (select status from public.workbook_comments where id=c)<>'failed'
     or (select revision from public.workbook_comments where id=c)<>2 then raise exception 'Content, schedule or partial result changed'; end if;

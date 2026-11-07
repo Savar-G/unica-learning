@@ -30,9 +30,9 @@ declare p uuid:=gen_random_uuid();c uuid:=gen_random_uuid();d uuid:=gen_random_u
 begin
   insert into public.parents values(p,false);insert into public.children values(c,p,false);
   v:=jsonb_build_object('id',d,'childId',c,'counts',jsonb_build_object('pages',3,'questions',2),'pages',jsonb_build_array(
-    jsonb_build_object('number',1,'qrToken','cover-qr','content',jsonb_build_object('kind','cover'),'questions','[]'::jsonb),
-    jsonb_build_object('number',2,'qrToken','plan-qr','content',jsonb_build_object('kind','how-plan','rows',jsonb_build_array(jsonb_build_object('day',1,'pages','3'))),'questions','[]'::jsonb),
-    jsonb_build_object('number',3,'qrToken','day-qr','content',jsonb_build_object('kind','day','level',16),'questions',jsonb_build_array(
+    jsonb_build_object('number',1,'qrToken','cover-qr','content',jsonb_build_object('kind','cover','id','Test'),'questions','[]'::jsonb),
+    jsonb_build_object('number',2,'qrToken','plan-qr','content',jsonb_build_object('kind','how-plan','id','Test','rows',jsonb_build_array(jsonb_build_object('day',1,'pages','3'))),'questions','[]'::jsonb),
+    jsonb_build_object('number',3,'qrToken','day-qr','content',jsonb_build_object('kind','day','id','Test','level',16),'questions',jsonb_build_array(
       jsonb_build_object('number',1,'package',jsonb_build_object('text','Read the digit.','answer',1,'textSource','code')),
       jsonb_build_object('number',2,'package',jsonb_build_object('text','Read another digit.','answer',2,'textSource','code'))))));
   r:=jsonb_build_object('pdfPath',p::text||'/'||d::text||'/old.pdf','pdfSha256',repeat('a',64),'pages',(

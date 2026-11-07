@@ -8,6 +8,7 @@ import { planLevel, planWorkbook } from "./workbook-plan";
 import { workbookFakeAi } from "./workbook-ai-fake";
 import { keySolver } from "./workbook-solve-check";
 import { memoryDraftStore } from "./workbook-draft-memory";
+import { pageContentFingerprint } from "./workbook-print-contract";
 
 vi.mock("server-only", () => ({}));
 const h = vi.hoisted(() => ({ admin: true, db: null as unknown, load: vi.fn(), after: vi.fn(), job: vi.fn() }));
@@ -61,12 +62,14 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 it("queues reviewed stored-page rendering on the Mac even when question jobs use the server", async () => {
-  const response = await POST(request(), context());
+  const value = body();Object.assign(value.layout, { contentFingerprints: { 1: "forged-browser-value" } });
+  const response = await POST(request(value), context());
   expect(response.status).toBe(202);
   expect(await response.json()).toEqual(queued);
   const rpc = calls.find(c => c.path.includes("/rpc/"))!;
   expect(rpc.path).toBe("/rest/v1/rpc/queue_workbook_layout_edit");
   expect(rpc.body).toMatchObject({ p_draft: draft, p_revision: 1, p_plan: { reviewed: true, build, pages: [1], results: body().layout.results } });
+  expect(rpc.body).toMatchObject({ p_plan: { contentFingerprints: { 1: pageContentFingerprint(snapshot.draft.pages[0]) } } });
   expect(calls.find(c => c.path.endsWith("/workbook_comments"))?.params.get("draft_id")).toBe(`eq.${draft}`);
   expect(h.after).not.toHaveBeenCalled();expect(h.job).not.toHaveBeenCalled();
 });

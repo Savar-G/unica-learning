@@ -11,7 +11,7 @@ declare d uuid;c uuid;e uuid;l uuid:=gen_random_uuid();a uuid:=gen_random_uuid()
 begin
   d:=public.qa_seed_book();
   c:=(public.save_workbook_comment(d,1,jsonb_build_object('page',p_page,'x',.5,'y',.5,'note','Correct the page layout'),a,'test@example.com',false)->>'id')::uuid;
-  plan:=jsonb_build_object('reviewed',true,'build',repeat('a',40),'pages',jsonb_build_array(p_page),'results',jsonb_build_array(jsonb_build_object('id',c,'page',p_page,'status',p_status,'note','Reviewed correction; any remaining request stays open.')));
+  plan:=jsonb_build_object('reviewed',true,'build',repeat('a',40),'contentFingerprints',jsonb_build_object(p_page::text,repeat('c',64)),'pages',jsonb_build_array(p_page),'results',jsonb_build_array(jsonb_build_object('id',c,'page',p_page,'status',p_status,'note','Reviewed correction; any remaining request stays open.')));
   e:=(public.queue_workbook_layout_edit(d,1,plan,a,'test@example.com')->>'id')::uuid;
   if not public.claim_workbook_layout_edit(e,l) then raise exception 'QA layout claim failed'; end if;
   update public.workbook_edits set frame=jsonb_build_object('calls',1,'build',repeat('a',40),'model',null,'solveModel','layout-no-model','layoutPages',jsonb_build_array(p_page)) where id=e;
@@ -64,5 +64,71 @@ begin
   if v->>'status'<>'refused' or (select status from public.workbook_comments where id=(v_case->>'comment')::uuid)='done'
     or (select max(revision) from public.workbook_draft_revisions where draft_id=(v_case->>'draft')::uuid)<>1 then
     raise exception 'F2: a reviewed partial result was promoted to applied';
+  end if;
+end $$;
+
+create function public.qa_check_repaired_problems() returns void language plpgsql as $$
+declare v_case jsonb;v jsonb;d uuid;
+begin
+  v_case:=public.qa_layout_case(1,'applied');d:=(v_case->>'draft')::uuid;
+  update public.workbook_draft_revisions set render_problems='[{"page":1,"question":null,"reason":"Old cover failure"},{"page":2,"question":null,"reason":"Unselected failure"}]' where draft_id=d and revision=1;
+  v:=public.finish_workbook_layout_edit((v_case->>'edit')::uuid,(v_case->>'lease')::uuid,v_case->'rendering',v_case->'results',null);
+  if v->>'status'<>'done' then raise exception 'Repair refused %',v; end if;
+  if (select render_problems from public.workbook_draft_revisions where draft_id=d and revision=2) is distinct from '[{"page":2,"question":null,"reason":"Unselected failure"}]'::jsonb then
+    raise exception 'F2: resolved page errors were retained or an unselected error was removed';
+  end if;
+end $$;
+
+create function public.qa_check_proof_repair() returns void language plpgsql as $$
+declare v_case jsonb;v jsonb;d uuid;
+begin
+  v_case:=public.qa_layout_case(1,'applied');d:=(v_case->>'draft')::uuid;
+  update public.workbook_draft_revisions set rendering=jsonb_set(rendering,'{pages,0}',((rendering->'pages'->0)-'printContract')||'{"proof":true}'::jsonb),
+    render_problems='[{"page":1,"question":null,"reason":"Old cover failure"}]' where draft_id=d and revision=1;
+  v:=public.finish_workbook_layout_edit((v_case->>'edit')::uuid,(v_case->>'lease')::uuid,v_case->'rendering',v_case->'results',null);
+  if v->>'status'<>'done' or (select render_problems from public.workbook_draft_revisions where draft_id=d and revision=2)<>'[]'::jsonb then
+    raise exception 'F1: valid proof-page repair refused or its resolved error stayed';
+  end if;
+end $$;
+
+create function public.qa_check_failed_repair_keeps_error() returns void language plpgsql as $$
+declare v_case jsonb;v jsonb;d uuid;c2 uuid;e uuid;l uuid:=gen_random_uuid();plan jsonb;r jsonb;old_proof jsonb;
+begin
+  v_case:=public.qa_layout_case(1,'applied');d:=(v_case->>'draft')::uuid;
+  perform public.finish_workbook_layout_edit((v_case->>'edit')::uuid,(v_case->>'lease')::uuid,null,null,'Synthetic failed attempt');
+  c2:=(public.save_workbook_comment(d,1,jsonb_build_object('page',2,'x',.5,'y',.5,'note','Fix the spacing'),gen_random_uuid(),'test@example.com',false)->>'id')::uuid;
+  select layout_plan into plan from public.workbook_edits where id=(v_case->>'edit')::uuid;
+  plan:=plan||jsonb_build_object('pages',jsonb_build_array(1,2),'contentFingerprints',jsonb_build_object('1',repeat('c',64),'2',repeat('c',64)),
+    'results',(plan->'results')||jsonb_build_array(jsonb_build_object('id',c2,'page',2,'status','applied','note','Reviewed spacing correction.')));
+  e:=(public.queue_workbook_layout_edit(d,1,plan,gen_random_uuid(),'test@example.com')->>'id')::uuid;
+  perform public.claim_workbook_layout_edit(e,l);
+  perform public.frame_workbook_edit(e,l,jsonb_build_object('calls',1,'build',repeat('a',40),'model',null,'solveModel','layout-no-model','layoutPages',jsonb_build_array(1,2)));
+  select ((rendering->'pages'->1)-'printContract')||'{"proof":true}'::jsonb into old_proof from public.workbook_draft_revisions where draft_id=d and revision=1;
+  update public.workbook_draft_revisions set rendering=jsonb_set(rendering,'{pages,1}',old_proof),
+    render_problems='[{"page":1,"question":null,"reason":"Old cover failure"},{"page":2,"question":null,"reason":"Still fails strict fit"}]' where draft_id=d and revision=1;
+  r:=jsonb_set(v_case->'rendering','{pages,1}',old_proof);
+  v:=public.finish_workbook_layout_edit(e,l,r,plan->'results',null);
+  if v->>'status'<>'done'
+    or (select render_problems from public.workbook_draft_revisions where draft_id=d and revision=2) is distinct from '[{"page":2,"question":null,"reason":"Still fails strict fit"}]'::jsonb
+    or (select status from public.workbook_comments where id=c2)<>'failed'
+    or (select status from public.workbook_comments where id=(v_case->>'comment')::uuid)<>'done' then
+    raise exception 'F2: a failed selected repair prevented a valid repair or lost its error';
+  end if;
+end $$;
+
+create function public.qa_check_repaired_fit_metadata() returns void language plpgsql as $$
+declare v_case jsonb;v jsonb;d uuid;before_content jsonb;after_content jsonb;
+begin
+  v_case:=public.qa_layout_case(1,'applied');d:=(v_case->>'draft')::uuid;
+  update public.workbook_drafts set draft=jsonb_set(jsonb_set(jsonb_set(draft,'{pages,0,fit}','{"status":"failed","reason":"Old layout"}'),
+    '{pages,1,fit}','{"status":"failed","reason":"Retained failure"}'),'{counts,failedPages}','2') where id=d returning draft into before_content;
+  update public.workbook_draft_revisions set render_problems='[{"page":1,"question":null,"reason":"Old layout"},{"page":2,"question":null,"reason":"Retained failure"}]' where draft_id=d and revision=1;
+  v:=public.finish_workbook_layout_edit((v_case->>'edit')::uuid,(v_case->>'lease')::uuid,v_case->'rendering',v_case->'results',null);
+  select content into after_content from public.workbook_draft_revisions where draft_id=d and revision=2;
+  if v->>'status'<>'done' or after_content->'pages'->0->'fit'->>'status'<>'fits'
+    or after_content->'pages'->1 is distinct from before_content->'pages'->1
+    or after_content->'counts'->>'failedPages'<>'1'
+    or (after_content->'pages'->0)-'fit' is distinct from (before_content->'pages'->0)-'fit' then
+    raise exception 'A strict repair did not update only its derived fit metadata';
   end if;
 end $$;

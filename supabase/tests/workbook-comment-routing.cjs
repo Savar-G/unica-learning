@@ -24,8 +24,10 @@ function definition(file, name) {
     sql(fs.readFileSync(path.join(__dirname, "workbook-comment-routing-fixture.sql"), "utf8"));
     for (const [file, name] of [["20261102_workbook_edit.sql", "queue_workbook_edit"], ["20261102_workbook_edit.sql", "claim_workbook_edit"],
       ["20261102155653_workbook_comment_admin_keys.sql", "save_workbook_comment"], ["20261102_workbook_edit_recovery_checks.sql", "send_workbook_comments"],
-      ["20261102_workbook_edit_recovery_checks.sql", "finish_workbook_edit"]]) sql(definition(file, name));
-    for (const file of ["20261107042155_workbook_comment_routing.sql", "20261107042201_workbook_layout_review.sql"]) {
+      ["20261102_workbook_edit_recovery_checks.sql", "finish_workbook_edit"], ["20261102_workbook_edit_legacy_frame.sql", "frame_workbook_edit"]]) sql(definition(file, name));
+    for (const file of ["20261107042155_workbook_comment_routing.sql", "20261107042201_workbook_layout_review.sql", "20261107045738_workbook_layout_repair_contracts.sql"]) {
+      // Counterfactual: the same public tests must fail when only the new repair migration is absent.
+      if (process.env.WORKBOOK_ROUTING_REPAIR_CONTROL === "prior" && file.endsWith("workbook_layout_repair_contracts.sql")) continue;
       sql(fs.readFileSync(path.join(root, "supabase/migrations", file), "utf8"));
     }
     const result = await run(path.join(bin, "psql"), [...sqlArgs, "-f", path.join(__dirname, "workbook-comment-routing.sql")]);
@@ -34,7 +36,7 @@ function definition(file, name) {
     const draft = sql("select public.qa_seed_book()").trim();
     sql(`select public.save_workbook_comment('${draft}',1,'{"page":1,"x":0.5,"y":0.5,"note":"Fix the cover"}','00000000-0000-4000-8000-000000000001','test@example.com',false)`);
     const comment = sql(`select id from public.workbook_comments where draft_id='${draft}'`).trim();
-    const plan = JSON.stringify({ reviewed: true, build: "a".repeat(40), pages: [1], results: [{ id: comment, page: 1, status: "applied", note: "Reviewed correction." }] });
+    const plan = JSON.stringify({ reviewed: true, build: "a".repeat(40), contentFingerprints: { 1: "c".repeat(64) }, pages: [1], results: [{ id: comment, page: 1, status: "applied", note: "Reviewed correction." }] });
     const query = `select public.queue_workbook_layout_edit('${draft}',1,'${plan}','00000000-0000-4000-8000-000000000001','test@example.com')`;
     const responses = await Promise.all([run(path.join(bin, "psql"), [...sqlArgs, "-At", "-c", query]), run(path.join(bin, "psql"), [...sqlArgs, "-At", "-c", query])]);
     const states = responses.map(r => JSON.parse(r.stdout.trim()).status).sort();
@@ -45,7 +47,7 @@ function definition(file, name) {
     sql(definition("20261105_workbook_print_contract_lock.sql", "apply_workbook_print_contract"));
     sql(definition("20261104_workbook_print_contract.sql", "approve_workbook_draft"));
     const failures = [];
-    for (const name of ["qa_check_stored_layout", "qa_check_outcome_promotion"]) {
+    for (const name of ["qa_check_stored_layout", "qa_check_outcome_promotion", "qa_check_repaired_problems", "qa_check_proof_repair", "qa_check_failed_repair_keeps_error", "qa_check_repaired_fit_metadata"]) {
       try { sql(`select public.${name}()`);console.log(`${name} PASS`); }
       catch (e) { failures.push(name);console.error(String(e.stderr || e.message).trim()); }
     }
@@ -66,7 +68,7 @@ function definition(file, name) {
       failures.push("qa_check_expiry_after_lock");console.error("F3: finish accepted a lease that expired during the draft lock wait");
     } else console.log("qa_check_expiry_after_lock PASS");
     if (failures.length) throw new Error(`Review regressions failed: ${failures.join(", ")}`);
-    console.log("WORKBOOK_COMMENT_ROUTING_REVIEW_REGRESSIONS_OK 3");
+    console.log("WORKBOOK_COMMENT_ROUTING_REVIEW_REGRESSIONS_OK 7");
   } catch (e) {
     if (e.stderr) process.stderr.write(String(e.stderr));
     console.error(e.message);process.exitCode = 1;

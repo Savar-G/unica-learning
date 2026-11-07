@@ -29,7 +29,7 @@ begin
   if (select count(*) from public.workbook_comments where batch_id=e and status='done')<>1 or (select count(*) from public.workbook_comments where batch_id=e and status='failed')<>1 then raise exception 'Unchanged peer falsely completed'; end if;checks:=checks+1;
   if (select revision from public.workbook_comments where id=c1)<>2 then raise exception 'Open layout location did not follow revision'; end if;checks:=checks+1;
   -- Queue a reviewed layout correction. Old workers cannot claim it.
-  plan:=jsonb_build_object('reviewed',true,'build',repeat('a',40),'pages',jsonb_build_array(1),'results',jsonb_build_array(jsonb_build_object('id',c1,'page',1,'status','partial','note','Case fixed; the remaining request stays open.')));
+  plan:=jsonb_build_object('reviewed',true,'build',repeat('a',40),'contentFingerprints',jsonb_build_object('1',repeat('c',64)),'pages',jsonb_build_array(1),'results',jsonb_build_array(jsonb_build_object('id',c1,'page',1,'status','partial','note','Case fixed; the remaining request stays open.')));
   v:=public.queue_workbook_layout_edit(d,2,plan,a,'test@example.com');e:=(v->>'id')::uuid;l:=gen_random_uuid();
   if v->>'status'<>'queued' or public.claim_workbook_edit(e,l,'mac') then raise exception 'Legacy worker can claim layout'; end if;checks:=checks+1;
   if not public.claim_workbook_layout_edit(e,l) then raise exception 'Layout claim failed'; end if;checks:=checks+1;
@@ -52,7 +52,7 @@ begin
   for v in select jsonb_build_object('case',n) from generate_series(1,7) n loop
     d:=public.qa_seed_book();l:=gen_random_uuid();
     c1:=(public.save_workbook_comment(d,1,jsonb_build_object('page',1,'x',.5,'y',.5,'note','Fix the cover'),a,'test@example.com',false)->>'id')::uuid;
-    plan:=jsonb_build_object('reviewed',true,'build',repeat('a',40),'pages',jsonb_build_array(1),'results',jsonb_build_array(jsonb_build_object('id',c1,'page',1,'status','applied','note','Reviewed cover correction.')));
+    plan:=jsonb_build_object('reviewed',true,'build',repeat('a',40),'contentFingerprints',jsonb_build_object('1',repeat('c',64)),'pages',jsonb_build_array(1),'results',jsonb_build_array(jsonb_build_object('id',c1,'page',1,'status','applied','note','Reviewed cover correction.')));
     e:=(public.queue_workbook_layout_edit(d,1,plan,a,'test@example.com')->>'id')::uuid;perform public.claim_workbook_layout_edit(e,l);
     update public.workbook_edits set frame=jsonb_build_object('calls',1,'build',repeat('a',40),'model',null,'solveModel','layout-no-model','layoutPages',jsonb_build_array(1)) where id=e;
     select rendering into r from public.workbook_draft_revisions where draft_id=d and revision=1;
