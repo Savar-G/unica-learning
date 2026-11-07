@@ -1,0 +1,74 @@
+{
+  "plain": {
+    "status": 200,
+    "bytes": 30598,
+    "ms": 735,
+    "location": null,
+    "table": true,
+    "refusal": false,
+    "waiting": false
+  },
+  "second": {
+    "status": 200,
+    "bytes": 30927,
+    "ms": 543,
+    "location": null,
+    "table": true,
+    "refusal": false,
+    "waiting": false
+  },
+  "waiting": {
+    "status": 200,
+    "bytes": 26546,
+    "ms": 369,
+    "location": null,
+    "table": false,
+    "refusal": false,
+    "waiting": true
+  },
+  "foreign": {
+    "status": 404,
+    "bytes": 18543,
+    "ms": 313,
+    "location": null,
+    "table": false,
+    "refusal": true,
+    "waiting": false
+  },
+  "sibling-book": {
+    "status": 404,
+    "bytes": 18695,
+    "ms": 448,
+    "location": null,
+    "table": false,
+    "refusal": true,
+    "waiting": false
+  },
+  "admin-refused": {
+    "status": 404,
+    "bytes": 15213,
+    "ms": 162,
+    "location": null,
+    "table": false,
+    "refusal": true,
+    "waiting": false
+  },
+  "signed-out": {
+    "status": 307,
+    "bytes": 17908,
+    "ms": 8,
+    "location": "/sign-in?next=%2Faccount%2Fschedule",
+    "table": false,
+    "refusal": false,
+    "waiting": false
+  },
+  "desk": {
+    "status": 307,
+    "bytes": 6,
+    "ms": 65,
+    "location": "/tutor",
+    "table": false,
+    "refusal": false,
+    "waiting": false
+  }
+}

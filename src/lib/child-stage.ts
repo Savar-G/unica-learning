@@ -8,7 +8,7 @@ import { statusFor, type CurriculumId } from "@/lib/signup";
 export type ChildStage = "ended" | "active" | "first_book_coming" | "test_running" | "report_ready_bc" | "report_ready_waitlist" | "no_test";
 
 /** The dashboard's tabs, in the order they show. */
-export type ChildTab = "overview" | "progress" | "workbooks" | "scan_pages" | "maya" | "assessment" | "account";
+export type ChildTab = "overview" | "progress" | "workbooks" | "schedule" | "scan_pages" | "maya" | "assessment" | "account";
 
 export type OpeningPage = "start_test" | "continue_or_wait" | "report_start_free_month" | "report_waitlist" | "overview";
 

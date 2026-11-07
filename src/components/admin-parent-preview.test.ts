@@ -14,6 +14,34 @@ const styles = { origin: "https://unicalearning.com", links: [], inline: [] };
 const rendered = (view: string, scenario: string, family = "one", size = "desktop") => renderParentPreview(previewSelection({ view, scenario, family, size }), styles);
 const dom = (html: string) => new DOMParser().parseFromString(html, "text/html");
 
+it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({ size, child }))))(
+  "keeps the Schedule field labels in the $size preview for the $child child",
+  ({ size, child }) => {
+    const output = dom(renderParentPreview(previewSelection({ view: "schedule", scenario: "partial", family: "two", child, size }), styles));
+    const rows = [...output.querySelectorAll(".ps-table tbody tr")];
+    expect(rows).toHaveLength(10);
+    for (const row of rows) {
+      expect([...row.querySelectorAll("td")].map(cell => cell.getAttribute("data-label")))
+        .toEqual(["Topic", "Pages", "Required time", "Scanned pages"]);
+    }
+  },
+);
+
+it("shows the real Schedule table on both sizes with each child's rows and honest unknown or waiting states", () => {
+  for (const size of ["desktop", "phone"]) {
+    const selection = previewSelection({ view: "schedule", scenario: "partial", family: "two", child: "second", size });
+    const output = dom(renderParentPreview(selection, styles));
+    expect(output.querySelector("h1")?.textContent).toBe("Kai's schedule");
+    expect(output.querySelectorAll(".ps-table tbody tr")).toHaveLength(10);
+    expect(output.querySelector(".ps-table")?.textContent).toContain("Multiplication");
+    expect(output.querySelector(".ps-table")?.textContent).toContain("3 of 8 recorded");
+  }
+  expect(rendered("schedule", "unknown")).toContain("Scan status unavailable");
+  expect(rendered("schedule", "waiting")).toContain("No printed workbook yet");
+  expect(rendered("schedule", "expired")).toContain("8 of 8 recorded");
+  expect(rendered("schedule", "unavailable")).not.toContain("ps-table");
+});
+
 beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("fetch", calls.fetch); });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -165,4 +193,16 @@ it("renders Feedback and its frame entry for every parent stage and a family wit
   const empty = dom(rendered("feedback", "form", "none"));
   expect(empty.querySelector("h1")?.textContent).toBe("Feedback");
   expect(empty.querySelector("textarea")).not.toBeNull();
+});
+
+it("shows every parent explanation state in the inert preview without network or scripts", () => {
+  for (const state of ["idle", "loading", "ready", "retry", "cap", "stale", "unavailable"]) {
+    const html = rendered("scan_results", `explain_${state}`);
+    const output = dom(html);
+    expect(output.body.textContent).toContain("Wrong");
+    expect(output.querySelector(".scan-marking-results li .scan-explanation")).not.toBeNull();
+    expect(output.body.textContent).toContain(state === "ready" ? "Stored correct answer: 42" : state === "retry" ? "Try explanation again" : "Explain this problem");
+    expect(output.querySelector("script")).toBeNull(); expect(output.querySelector("form")).toBeNull();
+    expect(calls.fetch).not.toHaveBeenCalled(); expect(calls.client).not.toHaveBeenCalled(); expect(calls.track).not.toHaveBeenCalled();
+  }
 });

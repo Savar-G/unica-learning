@@ -1,0 +1,111 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import Stripe from 'stripe';
+import { startPlan, cancelPlan, stopPlanNow } from '@/lib/stripe';
+import { stripePauses } from '@/lib/plan-pause-stripe';
+import { pauseQuote, type PauseOperation } from '@/lib/plan-pause';
+import { memoryBilling } from '@/lib/billing-memory';
+
+const key = fs.readFileSync(process.env.PD_STRIPE_TEST_KEY_FILE!,'utf8').trim();
+assert.match(key,/^sk_test_[A-Za-z0-9]{40,}$/);
+const run = randomUUID();
+const reportPath = process.env.PD_STRIPE_REPORT ?? '/tmp/pd-stripe-provider-results.json';
+const report:any = { run, source:'f3133376535b3c96f4c81f62f1f8d1cc80322a23 + pause entry operation-key repair', mode:'test', checks:[], errors:[], resources:[], cleanup:[] };
+const redact=(v:string)=>v.replace(/(?:sk|rk|pk)_(?:test|live)_[^\s"'<>]+/g,'[REDACTED]');
+const save=()=>fs.writeFileSync(reportPath,JSON.stringify(report,null,2),{mode:0o600});
+const log=(label:string, details:any={})=>{ report.checks.push({label,...details});save();console.log(JSON.stringify({label,...details})); };
+const s = new Stripe(key,{maxNetworkRetries:0,timeout:15000,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
+  const response=await fetch(input,init);
+  if(!response.ok){const body=await response.clone().json().catch(()=>({}));report.errors.push({path:new URL(String(input)).pathname,status:response.status,type:body.error?.type,code:body.error?.code,param:body.error?.param,message:redact(body.error?.message??'')});save();}
+  return response;
+})});
+const test=<T extends {livemode:boolean}>(x:T):T=>{assert.equal(x.livemode,false);return x;};
+const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
+async function fixture(label:string){
+ const base=Math.floor(Date.now()/1000)+60;
+ const clock=test(await s.testHelpers.testClocks.create({frozen_time:base,name:`unica-dashboard-${label}-${run}`}));
+ report.resources.push({kind:'clock',id:clock.id,label});save();
+ const customer=test(await s.customers.create({test_clock:clock.id,description:`Synthetic Unica dashboard QA ${run}`,metadata:{qa_run:run}}));
+ report.resources.push({kind:'customer',id:customer.id,clock:clock.id});save();
+ const method=test(await s.paymentMethods.create({type:'card',card:{token:'tok_visa'}}));
+ await s.paymentMethods.attach(method.id,{customer:customer.id});
+ await s.customers.update(customer.id,{invoice_settings:{default_payment_method:method.id}});
+ const parent=randomUUID(),card=randomUUID(),child=randomUUID();
+ const b=memoryBilling({children:[{parentId:parent,childId:child,firstName:'Sample',card:{id:card,customer:customer.id,saved:true}}]});
+ await b.store.recordCard(card,{parentId:parent,session:randomUUID(),created:base,paymentMethod:method.id});
+ await b.store.settleCard(card,(await b.store.cardRow(card))!.session!,true);
+ const start=(purpose:'initial'|'restart'='initial')=>startPlan(s,{cardSetup:card,customer:customer.id,price:79.99,deliveryConfirmed:true,purpose},new Date(base*1000),b.store);
+ const provider=stripePauses(s,async(p,c)=>p===parent&&c===card?customer.id:null);
+ return {base,clock,customer,method,parent,card,b,start,provider};
+}
+type Fixture=Awaited<ReturnType<typeof fixture>>;
+async function invoiceFacts(f:Fixture){
+ const list=await s.invoices.list({customer:f.customer.id,limit:100});assert.equal(list.has_more,false);
+ return list.data.map(i=>{test(i);return{id:i.id,status:i.status,total:i.total,paid:i.amount_paid,due:i.amount_due,reason:i.billing_reason,created:i.created,lines:i.lines.data.map(l=>({amount:l.amount,proration:l.parent?.subscription_item_details?.proration??null,period:l.period}))};});
+}
+async function advance(f:Fixture,to:number){
+ assert.ok(to>(await s.testHelpers.testClocks.retrieve(f.clock.id)).frozen_time);
+ test(await s.testHelpers.testClocks.advance(f.clock.id,{frozen_time:to}));
+ const deadline=Date.now()+90000;
+ for(;;){const clock=test(await s.testHelpers.testClocks.retrieve(f.clock.id));if(clock.status==='ready')return;assert.notEqual(clock.status,'internal_failure');if(Date.now()>deadline)throw Error('TEST_CLOCK_TIMEOUT');await sleep(1500);}
+}
+async function pause(f:Fixture,sub:Stripe.Subscription):Promise<PauseOperation>{
+ test(sub);const plan=await f.provider.plan(f.parent,f.card);assert.ok(plan,'provider must accept supported plan');
+ const result=pauseQuote({weeks:2,used:0,now:f.base*1000,zone:'America/Vancouver',book:{id:randomUUID(),number:1,shippedAt:new Date((f.base-3*86400)*1000).toISOString(),deliveredAt:new Date((f.base-86400)*1000).toISOString()},plan});assert.equal(result.ok,true);if(!result.ok)throw Error(result.error);
+ const op:PauseOperation={id:randomUUID(),state:'open',send:true,quote:result.quote};
+ const outcome=await f.provider.apply(f.parent,f.card,op);assert.equal(outcome,'applied',`provider pause outcome ${outcome}`);
+ assert.equal(await f.provider.recover(f.parent,f.card,op),true);
+ log('pause_applied',{kind:plan.kind,subscription:sub.id,previous:op.quote.previousCharge,resume:op.quote.chargeAt});return op;
+}
+async function initial(f:Fixture){const result=await f.start();assert.equal(result.ok,true);if(!result.ok)throw Error(result.error);const sub=test(await s.subscriptions.retrieve(result.subscription));report.resources.push({kind:'price',id:sub.items.data[0].price.id});save();assert.equal(sub.status,'trialing');return sub;}
+async function paid(f:Fixture){const old=await initial(f);await stopPlanNow(s,old.id);assert.equal((await s.subscriptions.retrieve(old.id)).status,'canceled');const result=await f.start('restart');assert.equal(result.ok,true);if(!result.ok)throw Error(result.error);const sub=test(await s.subscriptions.retrieve(result.subscription));report.resources.push({kind:'price',id:sub.items.data[0].price.id});save();assert.equal(sub.status,'active');assert.equal(sub.trial_end,null);assert.equal(sub.billing_mode.type,'flexible');return sub;}
+async function cleanup(f:Fixture){
+ const result=await s.testHelpers.testClocks.del(f.clock.id);assert.equal(result.deleted,true);
+ const customer=await s.customers.retrieve(f.customer.id);assert.equal(customer.deleted,true);
+ report.cleanup.push({clock:f.clock.id,customer:f.customer.id,deleted:true});save();
+}
+async function scenario(label:string,body:(f:Fixture)=>Promise<void>){
+ if(process.env.PD_STRIPE_SCENARIOS&&!process.env.PD_STRIPE_SCENARIOS.split(',').includes(label))return;
+ let f:Fixture|undefined;
+ try{f=await fixture(label);log('scenario_started',{scenario:label});await body(f);log('scenario_passed',{scenario:label});}
+ catch(error:any){report.failure={scenario:label,message:redact(String(error?.message??error))};save();console.log(JSON.stringify({label:'SCENARIO_FAILED',...report.failure}));throw error;}
+ finally{if(f)await cleanup(f);}
+}
+async function main(){
+ const account=await s.accounts.retrieve();assert.equal(account.id,'acct_1UOOQgGTsggtqumU');test(await s.balance.retrieve());log('account_verified',{account:account.id,livemode:false,apiVersion:'2026-09-30.endive'});
+ await scenario('trial_extension',async f=>{
+  const before=await initial(f),oldEnd=before.trial_end!,op=await pause(f,before),newEnd=Date.parse(op.quote.chargeAt)/1000;
+  let sub=test(await s.subscriptions.retrieve(before.id));assert.equal(sub.trial_start,before.trial_start);assert.equal(sub.trial_end,newEnd);
+  await advance(f,oldEnd+7200);sub=test(await s.subscriptions.retrieve(before.id));assert.equal(sub.status,'trialing');const early=await invoiceFacts(f);assert.equal(early.filter(i=>i.total!==0).length,0);log('trial_old_end_no_charge',{subscription:sub.id,invoices:early});
+  await advance(f,newEnd);await advance(f,newEnd+7200);sub=test(await s.subscriptions.retrieve(before.id));assert.equal(sub.status,'active');const invoices=await invoiceFacts(f);const charged=invoices.filter(i=>i.total!==0);assert.equal(charged.length,1);assert.equal(charged[0].total,7999);assert.equal(charged[0].paid,7999);assert.equal(charged.flatMap(i=>i.lines).filter(l=>l.proration).length,0);log('trial_new_end_full_charge',{subscription:sub.id,invoices});
+ });
+ await scenario('paid_pause_resume',async f=>{
+  const before=await paid(f),op=await pause(f,before),pauseAt=Date.parse(op.quote.previousCharge)/1000,resumeAt=Date.parse(op.quote.chargeAt)/1000;
+  await advance(f,pauseAt);await advance(f,pauseAt+7200);let sub=test(await s.subscriptions.retrieve(before.id));assert.equal(sub.status,'paused');const paused=await invoiceFacts(f);assert.equal(paused.filter(i=>i.total!==0).length,1);log('paid_paused_no_renewal_charge',{status:sub.status,invoices:paused});
+  await advance(f,resumeAt);await advance(f,resumeAt+7200);sub=test(await s.subscriptions.retrieve(before.id));assert.equal(sub.status,'active');assert.equal(sub.billing_cycle_anchor,resumeAt);const invoices=await invoiceFacts(f);const charged=invoices.filter(i=>i.total!==0);assert.equal(charged.length,2);assert.ok(charged.every(i=>i.total===7999&&i.paid===7999));assert.equal(charged.flatMap(i=>i.lines).filter(l=>l.proration).length,0);log('paid_resume_full_invoice',{status:sub.status,anchor:sub.billing_cycle_anchor,invoices});
+ });
+ await scenario('failed_resume',async f=>{
+  const before=await paid(f),op=await pause(f,before),pauseAt=Date.parse(op.quote.previousCharge)/1000,resumeAt=Date.parse(op.quote.chargeAt)/1000;
+  await advance(f,pauseAt);assert.equal((await s.subscriptions.retrieve(before.id)).status,'paused');
+  const bad=test(await s.paymentMethods.create({type:'card',card:{token:'tok_chargeCustomerFail'}}));await s.paymentMethods.attach(bad.id,{customer:f.customer.id});await s.customers.update(f.customer.id,{invoice_settings:{default_payment_method:bad.id}});await s.subscriptions.update(before.id,{default_payment_method:bad.id});
+  await advance(f,resumeAt);await advance(f,resumeAt+7200);const sub=test(await s.subscriptions.retrieve(before.id));assert.equal(sub.status,'paused');const invoices=await invoiceFacts(f);assert.equal(invoices.filter(i=>i.total!==0&&i.paid===7999).length,1);assert.ok(invoices.some(i=>i.total===7999&&i.paid===0&&i.status==='open'));log('failed_resume_remains_paused',{status:sub.status,invoices});
+ });
+ await scenario('cancel_scheduled_pause',async f=>{
+  const before=await paid(f),op=await pause(f,before);const scheduled=test(await s.subscriptions.retrieve(before.id));const schedule=typeof scheduled.schedule==='string'?scheduled.schedule:scheduled.schedule!.id;
+  const result=await cancelPlan(s,f.customer.id);assert.equal(result.ok,true);if(!result.ok)throw Error(result.error);assert.equal(result.endsAt,op.quote.previousCharge);assert.equal((await s.subscriptionSchedules.retrieve(schedule)).status,'released');
+  await advance(f,Date.parse(op.quote.chargeAt)/1000+7200);const sub=test(await s.subscriptions.retrieve(before.id));assert.equal(sub.status,'canceled');const invoices=await invoiceFacts(f);assert.equal(invoices.filter(i=>i.total!==0).length,1);log('cancel_no_later_resume',{status:sub.status,invoices});
+ });
+ await scenario('delete_paused_plan',async f=>{
+  const before=await paid(f),op=await pause(f,before);await advance(f,Date.parse(op.quote.previousCharge)/1000);const paused=test(await s.subscriptions.retrieve(before.id));assert.equal(paused.status,'paused');const schedule=typeof paused.schedule==='string'?paused.schedule:paused.schedule!.id;const previous=await invoiceFacts(f);
+  await stopPlanNow(s,before.id);assert.equal((await s.subscriptionSchedules.retrieve(schedule)).status,'canceled');assert.equal((await s.subscriptions.retrieve(before.id)).status,'canceled');await advance(f,Date.parse(op.quote.chargeAt)/1000+7200);const invoices=await invoiceFacts(f);assert.equal(invoices.length,previous.length);log('delete_no_final_invoice_or_resume',{invoices});
+ });
+ await scenario('paid_restart_retry_decline',async f=>{
+  const before=await paid(f);const invoices=await invoiceFacts(f);assert.equal(invoices.filter(i=>i.total===7999&&i.paid===7999).length,1);assert.equal(before.trial_start,null);assert.equal(before.trial_end,null);assert.equal(f.b.planStarts.get(f.card)?.at(-1)?.email,'none');
+  const retry=await f.start('restart');assert.equal(retry.ok,false);const plans=await s.subscriptions.list({customer:f.customer.id,status:'all'});assert.equal(plans.data.length,2);log('paid_restart_immediate_once',{retry,invoices});
+  await stopPlanNow(s,before.id);const bad=test(await s.paymentMethods.create({type:'card',card:{token:'tok_chargeCustomerFail'}}));await s.paymentMethods.attach(bad.id,{customer:f.customer.id});await s.customers.update(f.customer.id,{invoice_settings:{default_payment_method:bad.id}});await f.b.store.recordCard(f.card,{parentId:f.parent,session:randomUUID(),created:f.base+1,paymentMethod:bad.id});await f.b.store.settleCard(f.card,(await f.b.store.cardRow(f.card))!.session!,true);
+  const declined=await f.start('restart');assert.deepEqual(declined,{ok:false,error:'payment_refused'});const after=await s.subscriptions.list({customer:f.customer.id,status:'all'});assert.equal(after.data.filter(p=>!['canceled','incomplete_expired'].includes(p.status)).length,0);assert.equal(f.b.planStarts.get(f.card)?.at(-1)?.state,'refused');log('paid_restart_decline_no_live_plan',{declined,subscriptions:after.data.map(p=>({id:p.id,status:p.status,trial_end:p.trial_end}))});
+ });
+ report.result='PASS';save();console.log('PROVIDER_MATRIX_PASS');
+}
+main().catch(error=>{console.error(redact(String(error?.message??error)));process.exitCode=1;});

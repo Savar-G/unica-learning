@@ -35,7 +35,7 @@ A Restart confirmation binds the next start generation and the control revision.
 
 A matched paid creation closes through the existing matching-key recovery. In the same database transaction, it creates `workbook_restart_requests`. The admin child page shows the request beside Prepare next workbook. A new preparation run links the request to its run. An existing run does not consume it. The existing workflow reads the current profile. No response says that generation already completed.
 
-Pause has one durable operation and one family card hold with no expiry. Only the first admission sends a command. After a lost response, a retry reads matching operation metadata and the exact provider dates. It does not send another command. The next press after a reload also checks the pending operation. A request that never reached the provider stays pending for a team check. Time never releases its hold.
+Pause has one durable operation and one family card hold with no expiry. Only the first admission sends a command. After a lost response, a retry reads the matching operation key and exact provider dates. The paid pause entry uses the operation UUID as its key. Stripe limits this key to 40 characters and rejects schedule metadata when `from_subscription` is set. Trial extension keeps its operation key in subscription metadata. It does not send another command. The next press after a reload also checks the pending operation. A request that never reached the provider stays pending for a team check. Time never releases its hold.
 
 Cancel shares the same admission lock. It refuses while a start or another control is open. A scheduled pause is released before the subscription is cancelled at the end of its period. A paused plan ends immediately. Family and child deletion cancel the native schedule and its subscription together. A lost cancellation answer retains its operation and family hold.
 
@@ -49,7 +49,9 @@ A pending cancellation currently needs a team check. There is no automatic close
 
 ## Provider evidence and remaining checks
 
-The implementation uses Stripe SDK 23 types and a synthetic SDK transport. This proves request encoding and response validation. It does not prove hosted API acceptance or invoice timing.
+Stripe test-mode acceptance on 6 November 2026 found that the original paid Pause request was refused: Stripe rejects schedule metadata with `from_subscription`. A second check established the pause-entry key limit of 40 characters. The corrected request puts the operation UUID directly in the pause entry. Recovery requires that exact key, subscription, dates and settings. Public-interface regressions reproduce both provider restrictions and cover lost-response recovery.
+
+The actual application functions then passed test-clock checks for first-trial extension, paid Pause at renewal, full payment and a new anchor on resume, failed resume remaining paused, release before Cancel, schedule cancellation during deletion, and immediate paid Restart with retry and decline. The trial check found no paid invoice at the old end and one full CAD 79.99 invoice at the new end. Paid Pause created no renewal charge during the pause and one full CAD 79.99 invoice at resume, with no proration. Test invoices do not move funds. This does not prove a real reminder email, production restricted-key permissions or the production webhook configuration. See the provider evidence added with the repair.
 
 The parent must use Stripe test mode and a test clock to verify the first-trial extension, the next-renewal invoice, the full resume invoice, failed payment on resume, release before Cancel, schedule cancellation during deletion, and the restricted key's permissions. Check that no credit, refund, new trial email or earlier charge occurs. Keep the dashboard off until these checks pass.
 

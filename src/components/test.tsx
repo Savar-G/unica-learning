@@ -50,12 +50,22 @@ type Screen =
   | { name: "help" }
   | { name: "done"; testId?: string };
 
+/**
+ * The longest the screen waits for one request, a large drawing on slow Wi-Fi included. Saves go one at a time and Next
+ * waits for them, so a server that hangs (up to 300 s per request) would otherwise hold Next with no way forward.
+ */
+const REQUEST_LIMIT_MS = 45_000;
+
 async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false; error: TestError }> {
+  const limit = new AbortController();
+  const timer = setTimeout(() => limit.abort(), REQUEST_LIMIT_MS);
   try {
-    const res = await fetch(url, { ...init, headers: { "Content-Type": "application/json" }, cache: "no-store" });
+    const res = await fetch(url, { ...init, signal: limit.signal, headers: { "Content-Type": "application/json" }, cache: "no-store" });
     return (await res.json()) as T;
   } catch {
     return { ok: false, error: "store_failed" };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -164,6 +174,8 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   const saves = useRef<Promise<void>>(Promise.resolve());
   // A save failed: the question to open again, with the child's answer on it.
   const reopen = useRef<number | null>(null);
+  // The questions whose last save failed. Only the child's press saves them again: a retry by itself would have no end.
+  const failedSaves = useRef(new Set<number>());
   // The question on the screen leaves through this, when a failed save opens another question.
   const leaveScreen = useRef<((to: Target) => Promise<unknown>) | null>(null);
   const onShown = useCallback((leave: ((to: Target) => Promise<unknown>) | null) => {
@@ -261,6 +273,8 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       return true;
     }
     const id = testId.current ?? "";
+    // The server's place is the truth from here: its step holds the answers it has.
+    failedSaves.current.clear();
     // #249: the newest question shows, with the open section's answered questions for Back.
     answeredRef.current = step.answered ?? [];
     setAnswered(answeredRef.current);
@@ -365,12 +379,29 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
    * the next save. When the test moved on (another tab), the screen goes where the server is.
    */
   const saveChange = (number: number, v: Visit) => {
+    failedSaves.current.delete(number);
+    /** Opens that question with the error. On the grid no question is on the screen, so it opens at once (#253). */
+    const reopenFailed = async (failed: number, error: TestError) => {
+      reopen.current = failed;
+      if (leaveScreen.current) await leaveScreen.current({ reopen: failed });
+      else {
+        reopen.current = null;
+        open(failed);
+      }
+      setFailure(error);
+    };
     saves.current = saves.current.then(async () => {
       const res = await call<StepResult>(`/api/account/assessments/${testId.current}/answers`, {
         method: "PUT",
         body: JSON.stringify({ questionId: v.questionId, response: v.response, timeMs: v.timeMs, work: v.work, events: v.events, workChanged: v.workChanged }),
       });
-      if (res.ok) return;
+      if (res.ok) {
+        failedSaves.current.delete(number);
+        // Another question's save failed earlier and waits: it opens now, so the child saves it too.
+        const [waiting] = failedSaves.current;
+        if (waiting !== undefined) await reopenFailed(waiting, "store_failed");
+        return;
+      }
       track("test_error", { code: res.error, status: "change" });
       if (res.error === "expired") return void expire();
       if (res.error === "conflict" && "step" in res && res.step) return void show(res.step);
@@ -378,14 +409,8 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       carry.current.set(v.questionId, before ? { ms: v.timeMs + before.ms, events: mergeEvents(v.events, v.timeMs, before.events)! } : { ms: v.timeMs, events: v.events });
       // The new work stays on the board, and goes as changed work with the next save.
       if (v.workChanged && v.board) setUnsavedWork(v.questionId, v.board);
-      reopen.current = number;
-      // #253: on the grid no question is on the screen: the question whose save failed opens at once.
-      if (leaveScreen.current) await leaveScreen.current({ reopen: number });
-      else {
-        reopen.current = null;
-        open(number);
-      }
-      setFailure(res.error);
+      failedSaves.current.add(number);
+      await reopenFailed(number, res.error);
     });
   };
 
@@ -427,9 +452,16 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       return "kept";
     }
 
+    // A failed save moves the screen, and this question's own last save failed: it keeps the child's answer and work, and
+    // the child presses Next to save it again. A new save here would start by itself after each failure, with no end.
+    const staying = reopening(to) && from !== null && failedSaves.current.has(from);
     // An answered question: a change must be an answer; a child cannot clear one.
     if (!v.response) {
       if (!reopening(to)) return false;
+      keep(v);
+    } else if (staying) {
+      setList(answeredRef.current.map((a) => (a.number === from ? { ...a, response: v.response } : a)));
+      if (v.workChanged && v.board) setUnsavedWork(v.questionId, v.board);
       keep(v);
     } else {
       // #252: changed work is what the server stores (strokes only with a drawing), so the next visit shows it at once.
@@ -442,7 +474,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     }
     if (reopening(to)) reopen.current = null;
     open(target);
-    return v.response ? "saved" : "kept";
+    return v.response && !staying ? "saved" : "kept";
   };
 
   /**

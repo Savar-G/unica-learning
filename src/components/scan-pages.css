@@ -131,3 +131,11 @@
 .scan-history li { overflow-wrap: anywhere; }
 .scan-history .scan-link { margin-left: 12px; }
 .scan-history select { min-height: 44px; font: inherit; padding: 8px; max-width: 100%; }
+
+.scan-explanation { margin: 8px 0; }
+.scan-explanation > [role="status"]:empty { display: none; }
+.scan-explanation .scan-link { min-height: 44px; white-space: normal; text-align: left; }
+.scan-explanation .scan-link:disabled { cursor: default; color: var(--ink-2); }
+.scan-explanation .scan-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.scan-explanation .scan-mark-review { max-width: 64ch; }
+.scan-explanation ol { padding-left: 24px; }
