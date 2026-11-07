@@ -1,6 +1,6 @@
 # Workbook progress pure core, #472
 
-HANDOFF_READY
+HANDOFF_DONE
 
 This change completes only the authorized pure core. It does not complete #472. The real planner does not consume these decisions yet. No customer or recognition approval is granted.
 
@@ -106,7 +106,7 @@ This bounded cause contract accepts conceptual evidence only through trusted exp
 - Keep #473's review-schedule and multi-skill computation separate. This core only preserves valid saved review inputs.
 - Obtain independent review, settle the stated assumptions, run the required full test/lint/build/browser gate, and handle any later push/PR. The implementation sub-agent did not run those actions.
 
-HANDOFF_READY remains pending root consumption. Root can change the marker after integration.
+The root consumed this bounded handoff and repaired both independent findings. The pure core remains inactive until the later public preview integration.
 
 
 ## Root repair round 2
@@ -125,3 +125,8 @@ The next independent recheck must verify F1 and F2. No full suite, build, browse
 The final 94-test selection was run against the exact prior core from 3fde980d through an in-memory Vite loader. No tracked source was replaced. Result: 14 failed and the original 80 passed, exit 1. The same selection then passed all 94 on the repaired source, exit 0. The fixed source and test files passed scoped ESLint with zero errors and zero warnings. Scoped TypeScript returned zero diagnostics. The tool printed a React package auto-detection notice because this isolated checkout has no node_modules; it is not a source warning. No dependency or symlink was installed.
 
 Private evidence: overnight-20261107/472-r2-final-prior-tests.json/log/exit, 472-r2-fixed-tests.json/log/exit, and 472-r2-scoped.log/exit. This remains a new candidate requiring independent recheck. Email #684 retains its reserved main position; no generator heavy or main position is requested.
+
+
+### Independent repair acceptance
+
+The fresh Sol recheck at 14cd5144 passed SPEC, STANDARDS and VERDICT for F1/F2. It passed 94 focused tests, 471 independent probe cases, scoped lint and types. Its prior-source control reproduced 14 failures and 80 passes. Source, index and HEAD stayed unchanged. See workbook-progress-core-472-r2-independent-review.md. This accepts the bounded repair only, not feature or release completion.
