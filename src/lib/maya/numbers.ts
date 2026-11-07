@@ -1042,14 +1042,32 @@ export function plainNumber(text: string): number | null {
 }
 
 /**
- * The child's whole turn when it can be one step template (stepTurnHeard): trimmed, with at most one leading "so", "okay"
- * or "um" and one final full stop or "!". Null for any turn with a question mark or more than one line. Whether the rest is
+ * The child's whole turn when it can be one step template (stepTurnHeard): trimmed, with at most one leading "so", "okay",
+ * "um" or "oh" and one final full stop or "!". Null for any turn with a question mark or more than one line. Whether the rest is
  * one template is for the readers below: a second sentence fits none of them.
  */
 export function wholeTurn(text: string): string | null {
   const t = text.trim().replace(/’/g, "'");
   if (t.includes("?") || t.includes("\n")) return null;
-  return t.replace(/^(?:so|okay|ok|um)\b[,.\s]*/i, "").replace(/[.!]$/, "").trim().toLowerCase() || null;
+  return t.replace(/^(?:so|okay|ok|um|oh)\b[,.\s]*/i, "").replace(/[.!]$/, "").trim().toLowerCase() || null;
+}
+
+/** The whole text is one value, alone or in the child's own words: "16", "it's 16", "I got 16". Else null. */
+export function wholeValue(body: string): number | null {
+  const m = /^(?:it's|i got)\s+(.+)$/.exec(body);
+  return plainNumber(m ? m[1] : body);
+}
+
+/**
+ * The whole text is a plain yes, with at most the number it confirms: "yes", "yeah", "yep", "yes 16", "yes, it's 16". The
+ * number is null when none is said. Null for anything else: "yes I think 16" is not a plain yes.
+ */
+export function wholeYes(body: string): { value: number | null } | null {
+  const m = /^(?:yes|yeah|yep)(?:[,\s]+(?:it's\s+)?(.+))?$/.exec(body);
+  if (!m) return null;
+  if (m[1] === undefined) return { value: null };
+  const value = plainNumber(m[1]);
+  return value === null ? null : { value };
 }
 
 /** The whole text is one sum: "a plus|and|+ b [plus|and|+ c] is|equals|makes|make|= d", in digits or words, or null. */

@@ -44,7 +44,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { claimWordsOnly, committedText, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
+import { claimWordsOnly, committedText, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -1549,10 +1549,16 @@ function yesValue(s: Session): AnswerValue | null {
   return s.heardAsked && s.turn && saysYes(s.turn.text) ? s.heardAsked : null;
 }
 
-/** The right final answer a plain yes gives, as a reading's answer, or null. A yes to a wrong number is judged by the model. */
+/**
+ * What a plain yes gives, as a reading's answer, or null: the right final answer, or the step's value that Maya asked about
+ * (stepTurnHeard), whatever the model reads. A yes to a wrong number gives nothing here: the model judges it.
+ */
 function yesAnswer(s: Session): ChildAnswer | null {
   const value = yesValue(s);
-  return value && s.solved === null && s.package && rightForQuestion(s.package, value) ? { value, step: "result", verdict: "right" } : null;
+  if (!value || s.solved !== null || !s.package) return null;
+  if (rightForQuestion(s.package, value)) return { value, step: "result", verdict: "right" };
+  const st = workSteps(s.package).find((x) => !s.done.includes(x.id));
+  return st && stepTurnHeard(s, st, value) ? { value, step: st.id, verdict: "right" } : null;
 }
 
 /**
@@ -2016,10 +2022,10 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
 }
 
 /**
- * A column step is heard only when the child's WHOLE turn is one of three templates (wholeTurn), on the fallback and on a
- * model's reading alike, so the two cannot disagree: the bare value ("16"), the step's own sum with every operand in any
- * order ("9 and 7 make 16"), or a first-person written-digit or carry claim ("I wrote 6 and carried 1"), which
- * checkColumnClaims checks. A question mark, another sentence, another number, another speaker, a hedge or a negation fits
+ * A column step is heard only when the child's WHOLE turn is one template (wholeTurn), on the fallback and on a model's
+ * reading alike, so the two cannot disagree: the value ("16", "It's 16", "I got 16"), a plain yes to Maya's own "Did you
+ * say 16?", the step's own sum with every operand in any order ("9 and 7 make 16"), or a first-person written-digit or
+ * carry claim ("I wrote 6 and carried 1"), which checkColumnClaims checks. A question mark, another sentence, another number, another speaker, a hedge or a negation fits
  * none of them. An allow-list over the whole turn, because six review rounds of reading one sentence each left a gap in the
  * rest of the turn ("7 plus 9 is 16. My mom told me."). After H3 the value and the sum only copy what Maya showed; a claim
  * about the child's own paper is still theirs. A step of any other kind has no templates: its callers keep their own rules.
@@ -2030,12 +2036,16 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   const body = wholeTurn(s.turn.text);
   if (body === null) return false;
   const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
-  const bare = plainNumber(body);
-  if (bare !== null) {
-    // A lone number names one step: the first not done ("6" is the digit of the ones and the total of the tens).
-    const first = workSteps(pkg).find((st) => !s.done.includes(st.id));
-    return !copy && first?.id === step.id && saidAs(number(bare), value) && answersStep(step, value);
+  // A lone number names one step: the first not done ("6" is the digit of the ones and the total of the tens).
+  const firstNotDone = workSteps(pkg).find((st) => !s.done.includes(st.id))?.id === step.id;
+  // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
+  const yes = wholeYes(body);
+  if (yes) {
+    const asked = s.heardAsked;
+    return !!asked && !copy && firstNotDone && saidAs(asked, value) && answersStep(step, value) && (yes.value === null || saidAs(number(yes.value), asked));
   }
+  const bare = wholeValue(body);
+  if (bare !== null) return !copy && firstNotDone && saidAs(number(bare), value) && answersStep(step, value);
   const sum = wholeSum(body);
   if (sum) {
     const sorted = (xs: readonly number[]) => [...xs].sort((a, b) => a - b).join(",");
