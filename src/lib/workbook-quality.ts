@@ -1,3 +1,4 @@
+import { workbookPageInstruction } from "@/lib/workbook-page-instructions";
 import { mixedTemplateSign, stepTemplateOf } from "./workbook-step-items";
 import { checkQuestionPackage } from "./question-package";
 import { bcStepProgressions } from "./workbook-curriculum";
@@ -81,10 +82,15 @@ const NOT_COUNTED: ReadonlySet<string> = new Set(["spot-the-error", "solve-it-tw
 const ANSWER_WORDS: ReadonlySet<string> = new Set(["if", "else", "and", "or", "not", "in", "str", "int", "max", "min", "abs", "round", "floor", "ceil", "sqrt", "isqrt", "gcd", "lcm", "sum", "len", "sorted", "Fraction", "True", "False"]);
 
 export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
-  pages = pages.map(p => ({ ...p,
-    questions: p.questions.map(q => ({ ...q, package: q.package ? printedWorkbookQuestion(q.package) : null })),
-    ...(p.panelExamples ? { panelExamples: p.panelExamples.map(q => q ? printedWorkbookQuestion(q) : null) } : {}),
-  }));
+  pages = pages.map(p => {
+    const printed = { ...p,
+      questions: p.questions.map(q => ({ ...q, package: q.package ? printedWorkbookQuestion(q.package) : null })),
+      ...(p.panelExamples ? { panelExamples: p.panelExamples.map(q => q ? printedWorkbookQuestion(q) : null) } : {}),
+    };
+    const subtitle = workbookPageInstruction(printed);
+    return subtitle !== null && printed.content?.kind === "day"
+      ? { ...printed, content: { ...printed.content, subtitle } } : printed;
+  });
   const issues: BookIssue[] = [];
   const days: DayQuality[] = [];
   const seen = new Map<string, number[]>();
@@ -126,7 +132,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       if (holes.length) issues.push({ page: p.number, kind: "coverage", reason: `the question grid has an empty cell beside question ${holes[0]}` });
       if (p.type === "warm-up" && (c.blocks.some(b => b.slot === "in-your-head" || /mental math|in your head/i.test(b.label ?? "")) || p.questions.some(q => q.place === "in-your-head"))) issues.push({ page: p.number, kind: "coverage", reason: "a warm-up prints a redundant mental-math block" });
       const work = p.questions.some(q => q.package && (questionWorkSpace(q.package, q.place) > 0 || q.package.item?.regions.some(r => r.kind === "work")));
-      if (work && !c.subtitle.includes(WORK_INSTRUCTION)) issues.push({ page: p.number, kind: "coverage", reason: "the page with work space lacks its work instruction" });
+      if (work && !c.subtitle.includes(workbookPageInstruction(p) ?? WORK_INSTRUCTION)) issues.push({ page: p.number, kind: "coverage", reason: "the page with work space lacks its work instruction" });
       for (const q of p.questions) {
         if (!q.package || q.place === "warm-up" || q.place === "in-your-head") continue;
         const printed = stepTemplateOf(q.package);
@@ -142,10 +148,11 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     }
     // A circled choice on a page whose instruction never says to circle fails (Savar, 2026-11-04).
     // (Every page type: src/lib/workbook-layout-check.ts.)
-    const circle = circleProblem(p.content?.kind === "day" ? p.content : null, p.questions);
+    const printedInstruction = p.content?.kind === "day" ? p.content : null;
+    const circle = circleProblem(printedInstruction, p.questions);
     if (circle) issues.push({ page: p.number, kind: "coverage", reason: circle });
     // No sentence of the page's instruction lines printed twice (Savar, 2026-11-04: U16 r16's New idea page).
-    const twice = p.content?.kind === "day" ? repeatedInstruction([p.content.subtitle, p.content.grownUp, ...p.content.blocks.map(b => b.note)]) : null;
+    const twice = printedInstruction ? repeatedInstruction([printedInstruction.subtitle, printedInstruction.grownUp, ...printedInstruction.blocks.map(b => b.note)]) : null;
     if (twice) issues.push({ page: p.number, kind: "coverage", reason: `the page prints "${twice}" twice` });
     // A minus between numbers prints as "−" (the U16 r14 review): a hyphen there fails.
     for (const q of p.questions) if (q.package && hyphenMinus(q.package.text)) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} prints a hyphen as a minus ("${q.package.text.slice(0, 40)}")` });

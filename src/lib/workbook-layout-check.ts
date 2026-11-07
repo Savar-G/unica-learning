@@ -27,6 +27,7 @@ import type { DraftPage, FitProblem, MeasuredElement } from "@/lib/workbook-rend
 import type { QuestionPackage } from "@/lib/question-package";
 import type { PagePlan } from "@/lib/workbook-template";
 import { questionWorkSpace, WORK_INSTRUCTION } from "./workbook-work-space";
+import { answerInstruction, workbookPageInstruction } from "@/lib/workbook-page-instructions";
 
 /** How far measured things may differ and still count as lined up or even, in CSS pixels. */
 export const LAYOUT_TOLERANCE = {
@@ -341,6 +342,11 @@ export function choiceInstruction(questions: ChoiceQuestions): string | null {
 export function circleProblem(content: DayContent | null | undefined, questions: readonly { package: QuestionPackage | null; place?: string | null }[]): string | null {
   if (!content) return null;
   const instruction = content.subtitle ?? "";
+  if (content.level === 16 && content.consistentLayout) {
+    const expected = answerInstruction(questions);
+    return instruction === expected || instruction.startsWith(`${expected} `) ? null
+      : "the page instruction does not match its boxed, circled and ticked answers";
+  }
   if (circled(questions).length && !/\bcircle\b/i.test(instruction)) return "the page has a question to circle, but its instruction does not say to circle";
   // (Every kind, other choices too: "Circle true or false" on a page that also prints never/sometimes/always passed,
   // Codex on #633.)
@@ -380,7 +386,12 @@ export function layoutProblems(page: DraftPage, measured: Measured, plan: PagePl
     const spaces = [measured.get(`workspace-${q.number}`), ...(q.package.item?.regions ?? []).flatMap(r => r.kind === "work" ? [measured.get(`region-${q.number}-${r.id}`)] : [])].filter(shown);
     if (!spaces.some(m => m.height >= need - .5)) work.push({ question: q.number, slot: null, reason: `question ${q.number} needs at least ${need} px of white work space` });
   }
-  if (page.questions.some(q => questionWorkSpace(q.package, slotOf(c, q.number)) > 0 || q.package.item?.regions.some(r => r.kind === "work")) && !c.subtitle.includes(WORK_INSTRUCTION)) work.push({ question: null, slot: null, reason: "the page with work space lacks its work instruction" });
+  const scopedInstruction = workbookPageInstruction(page);
+  if (scopedInstruction !== null ? c.subtitle !== scopedInstruction
+    : page.questions.some(q => questionWorkSpace(q.package, slotOf(c, q.number)) > 0 || q.package.item?.regions.some(r => r.kind === "work")) && !c.subtitle.includes(WORK_INSTRUCTION)) {
+    work.push({ question: null, slot: null, reason: scopedInstruction !== null
+      ? "the page instruction names different answer or work regions" : "the page with work space lacks its work instruction" });
+  }
   const all = hasLines(measured)
     ? [...spacingProblems(page, c, measured), ...alignmentProblems(page, c, measured, plan), ...clippingProblems(page, c, measured), ...repeat, ...work]
     : [...repeat, ...work];
