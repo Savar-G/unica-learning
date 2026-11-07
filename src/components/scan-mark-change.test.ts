@@ -72,3 +72,16 @@ it("a delayed parent change cannot update the replacement account or emit its co
   await act(async () => resume(answer));
   expect(host.textContent).toContain("New account result"); expect(host.textContent).not.toContain("Your mark is saved"); expect(context.refresh).not.toHaveBeenCalled(); expect(context.events).toEqual([]);
 });
+
+it("a Wrong team mark of an answer the AI read, on a complete page, offers Explain; with no reading it does not (#715)", async () => {
+  const team = { ...item, state: "parent-checked" as const, actor: "admin" as const, result: "wrong" as const, label: "Wrong", readAnswerText: "56" };
+  await show({ ...page, items: [team] });
+  expect(host.textContent).toContain("Our team");
+  expect([...host.querySelectorAll("button")].some((b) => b.textContent?.includes("Explain this problem"))).toBe(true);
+  for (const readAnswerText of [null, "", "   "]) {
+    await show({ ...page, items: [{ ...team, readAnswerText }] });
+    expect(host.textContent).not.toContain("Explain this problem");
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Change this mark"]);
+  }
+  expect(calls).toHaveLength(0);
+});
