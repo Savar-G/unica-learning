@@ -61,3 +61,12 @@
 }
 
 .wbr-thumbs b { display:inline-block; min-width:18px; padding:2px 5px; border-radius:10px; background:var(--adm-info); white-space:nowrap; }
+
+.wbr-layout-review { margin:16px 0; padding:12px; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:13px; }
+.wbr-layout-review summary { cursor:pointer; font-weight:650; }
+.wbr-layout-review fieldset { min-width:0; margin:14px 0; padding:10px; border:1px solid var(--line); }
+.wbr-layout-review legend { padding:0 4px; font-weight:650; }
+.wbr-layout-review label { display:block; margin:10px 0; }
+.wbr-layout-review select,.wbr-layout-review textarea,.wbr-layout-review input:not([type=checkbox]) { display:block; width:100%; min-width:0; margin-top:5px; padding:8px; border:1px solid var(--line); border-radius:5px; font:inherit; }
+.wbr-layout-review textarea { min-height:76px; resize:vertical; }
+.wbr-layout-review .btn { width:100%; white-space:normal; }

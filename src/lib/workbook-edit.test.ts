@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { generateWorkbook, type GeneratedWorkbook, type GenerateInput } from "@/lib/workbook-generator";
+import { generateWorkbook, type GeneratedWorkbook, type GenerateInput, type GeneratedQuestion } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook } from "@/lib/workbook-plan";
 import { fakeWorkbookItems, workbookFakeAi } from "@/lib/workbook-ai-fake";
 import { isCodeWorded } from "@/lib/workbook-generator-items";
@@ -19,9 +19,20 @@ const input:GenerateInput={workbookId:ID,childId:CHILD,number:1,profileBuild:nul
 const fit={fits:async()=>({ok:true as const})}, drafts=memoryDraftStore({[CHILD]:PARENT});
 const gen={ai:workbookFakeAi({NODE_ENV:"test",WORKBOOK_AI_FAKE:"on"})!,solver:keySolver(),fit,store:drafts,qrToken:()=>`token-${++serial}`.padEnd(22,"x")};
 let serial=0, original:GeneratedWorkbook;
+function repairItem(q: GeneratedQuestion) {
+  const item = workbookEditItem(q);
+  if (!item) throw new Error("Expected editable question");
+  return item;
+}
 beforeAll(async()=>{ const result=await generateWorkbook(input,gen); if(result.status!=="stored") throw new Error(result.status); original=result.draft; });
-function setup(status:"draft"|"approved"|"printed"|"shipped"="draft", now?: () => number) {
+function setup(status:"draft"|"approved"|"printed"|"shipped"="draft", now?: () => number, repairStoredKey = false) {
   const snapshot:EditSnapshot={draft:structuredClone(original),rendering:{pdfPath:"old.pdf",pages:original.pages.map(p=>({number:p.number,image:{path:`old-${p.number}.png`,width:816,height:1056},questions:[]}))},problems:[],revision:1,input,parentId:PARENT};
+  // A manual repair must change something real. These cases start from a persisted wrong key,
+  // while the printed question and operation data remain correct. Re-submitting unchanged fields is a separate refusal case.
+  if (repairStoredKey) {
+    const q=snapshot.draft.pages.flatMap(p=>p.questions).find(q=>q.package?.operation&&q.package.answer)!;
+    q.package!.answer!.value={type:"number",value:999};
+  }
   const review=memoryWorkbookReview(snapshot,{status, now});
   const renderPage=vi.fn<EditJobDeps["renderPage"]>(async(s,d,n)=>({page:{number:n,image:{path:`new-${n}.png`,width:816,height:1056},questions:[]},paths:[`new-${n}.png`]}));
   const assemble=vi.fn<EditJobDeps["assemble"]>(async()=>({pdfPath:"new.pdf",paths:["new.pdf"]}));
@@ -33,6 +44,30 @@ function setup(status:"draft"|"approved"|"printed"|"shipped"="draft", now?: () =
   return {review,deps,renderPage,assemble,remove,pages,comment,send};
 }
 describe("workbook comment batches",()=>{
+  it("keeps cover comments in layout review without a model call or revision", async () => {
+    const s=setup(), cover=original.pages.find(p=>p.content?.kind==="cover")!;
+    s.review.save({draftId:ID,revision:1,page:cover.number,question:null,x:.5,y:.5,note:"Use normal capitals",item:null,
+      actor:{id:"admin",email:"admin@example.com"},createdAt:"2026-11-07T00:00:00Z"});
+    expect(s.review.send(1,"mac")).toMatchObject({status:"layout-review"});
+    expect(s.review.comments[0]).toMatchObject({status:"pending",route:"layout",error:expect.stringContaining("stays open")});
+    expect(s.review.batches.size).toBe(0);expect(s.review.snapshot().revision).toBe(1);
+    expect(s.renderPage).not.toHaveBeenCalled();
+  });
+  it("does not create a revision for an unchanged exact-field request", async () => {
+    const s=setup(),q=s.pages[0].questions.find(q=>q.package?.operation)!;
+    s.comment(s.pages[0].number,q.number,workbookEditItem(q));
+    expect(await runWorkbookEdit(s.send(),s.deps)).toBe("failed");
+    expect(s.review.comments[0]).toMatchObject({status:"failed",error:expect.stringContaining("did not change")});
+    expect(s.review.snapshot().revision).toBe(1);expect(s.renderPage).not.toHaveBeenCalled();expect(s.assemble).not.toHaveBeenCalled();
+  });
+  it("keeps an unchanged question open when another comment on its page changes", async () => {
+    const s=setup("draft",undefined,true),p=s.pages.find(p=>p.questions.filter(q=>q.package?.operation).length>=2)!;
+    const [first,second]=p.questions.filter(q=>q.package?.operation);
+    s.comment(p.number,first.number,repairItem(first));s.comment(p.number,second.number,workbookEditItem(second));
+    expect(await runWorkbookEdit(s.send(),s.deps)).toBe("done");
+    expect(s.review.comments.map(c=>c.status)).toEqual(["done","failed"]);
+    expect(s.review.comments[1]).toMatchObject({revision:2,error:expect.stringContaining("did not change")});
+  });
   it("saves comments without touching content, files, checks or the revision",()=>{ const s=setup(); const before=s.review.snapshot();s.comment(); expect(s.review.snapshot()).toEqual(before);expect(s.renderPage).not.toHaveBeenCalled();expect(s.assemble).not.toHaveBeenCalled(); });
   it("groups question comments on a page into one AI request, renders only that page and assembles once",async()=>{
     const s=setup();const page=s.pages.find(p=>p.questions.filter(q=>q.package?.operation).length>=2)!;
@@ -43,10 +78,10 @@ describe("workbook comment batches",()=>{
     const after=s.review.snapshot();expect(after.draft.pages.filter(p=>p.number!==page.number)).toEqual(original.pages.filter(p=>p.number!==page.number));
     expect(s.review.comments.every(c=>c.status==="done"&&c.before&&c.after)).toBe(true);call.mockRestore();
   });
-  it("applies exact fields with no writer call and derives answers from numbers",async()=>{
-    const s=setup();const q=s.pages[0].questions.find(q=>q.package?.operation)!;const item=workbookEditItem(q)!;
-    item.text=q.package!.text; const ai=vi.spyOn(gen.ai,"json");ai.mockClear();s.comment(s.pages[0].number,q.number,{...item,answer:{value:999}});
-    expect(await runWorkbookEdit(s.send(),s.deps)).toBe("done");expect(ai).not.toHaveBeenCalled();
+  it("applies exact response fields with no writer call and derives answers from numbers",async()=>{
+    const s=setup("draft",undefined,true);const q=s.pages[0].questions.find(q=>q.package?.operation)!;const item=repairItem(q);
+    const ai=vi.spyOn(gen.ai,"json");ai.mockClear();s.comment(s.pages[0].number,q.number,{...item,answer:{value:999}});
+    expect({status:await runWorkbookEdit(s.send(),s.deps),errors:s.review.comments.map(c=>c.error)}).toEqual({status:"done",errors:[null]});expect(ai).not.toHaveBeenCalled();
     const edited = s.review.snapshot().draft.pages.find(p=>p.number===s.pages[0].number)!.questions.find(x=>x.number===q.number)!.package!;
     expect(edited.answer).toEqual(q.package!.answer); expect(edited.textSource).toBe("human"); expect(isCodeWorded(edited)).toBe(false); expect(toSolve(edited).questions.length).toBeGreaterThan(0); ai.mockRestore();
   });
@@ -160,9 +195,9 @@ describe("workbook comment batches",()=>{
       expect(s.review.snapshot().revision).toBe(2);
     });
     it(`R428-10 ${runner} reuses a solve after the image checkpoint fails`, async () => {
-      const s = setup(); s.deps.runner = runner;
+      const s = setup("draft",undefined,true); s.deps.runner = runner;
       const q = s.pages[0].questions.find(q => q.package?.operation)!;
-      s.comment(s.pages[0].number, q.number, workbookEditItem(q)); const id = s.send();
+      s.comment(s.pages[0].number, q.number, repairItem(q)); const id = s.send();
       const checkpoint = s.review.store.checkpoint;
       s.review.store.checkpoint = async (...args) => {
         if (args[2].image) throw new Error("page checkpoint before commit");
@@ -196,15 +231,16 @@ describe("workbook comment batches",()=>{
     });
     for (const kind of ["write", "solve"] as const) {
       function counted(now?: () => number) {
-        const s = setup("draft", now); s.deps.runner = runner;
+        const s = setup("draft", now, kind === "solve"); s.deps.runner = runner;
         const q = s.pages[0].questions.find(q => q.package?.operation)!;
-        s.comment(s.pages[0].number, q.number, kind === "solve" ? workbookEditItem(q) : null);
+        s.comment(s.pages[0].number, q.number, kind === "solve" ? repairItem(q) : null);
         const json = vi.fn(gen.ai.json), solve = vi.fn(gen.solver.solve);
         s.deps.generation = { ...gen, ai: { model: gen.ai.model, json }, solver: { model: gen.solver.model, solve } };
         return { ...s, calls: kind === "write" ? json : solve };
       }
       it(`${runner} ${kind}: eight result-save failures cannot spend more than five dispatches`, async () => {
         const s = counted(), id = s.send(), complete = s.review.store.completeCall;
+        const before=structuredClone(s.review.snapshot().draft);
         const reserve = vi.spyOn(s.review.store, "reserveCall");
         s.review.store.completeCall = async () => { throw new Error("result not committed"); };
         for (let n = 0; n < 8; n++) expect(await runWorkbookEdit(id, s.deps)).toBe(n < 6 ? "failed" : "not-claimed");
@@ -212,7 +248,7 @@ describe("workbook comment batches",()=>{
         expect(reserve.mock.results.filter(r => r.type === "return")).toHaveLength(6);
         expect(s.review.comments[0]).toMatchObject({status: "pending", error: expect.stringContaining("limit of 5")});
         expect(s.review.snapshot().revision).toBe(1);
-        expect(s.review.snapshot().draft).toEqual(original);
+        expect(s.review.snapshot().draft).toEqual(before);
         s.review.store.completeCall = complete;
       });
       it(`${runner} ${kind}: a lost dispatch response spends an attempt without sending a call`, async () => {

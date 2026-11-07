@@ -64,3 +64,43 @@ describe("mounted workbook comment progress", () => {
     await advance(1); expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("mounted comment routing", () => {
+  it("shows the layout path before save and prevents a question override on an unsupported page", async () => {
+    const source = detail();source.editBatch = null;source.comments = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ status: "saved", id: "synthetic-comment" }));vi.stubGlobal("fetch", fetch);
+    await mount(source);
+    await act(async () => container.querySelector<HTMLButtonElement>(".wbr-page-hit")!.click());
+    await act(async () => {
+      const note = container.querySelector<HTMLTextAreaElement>(".wbr-compose textarea")!;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(note, "Make this easier to read.");
+      note.dispatchEvent(new Event("input", { bubbles: true }));
+      const route = container.querySelector<HTMLSelectElement>(".wbr-compose select")!;route.value = "question";
+      route.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("This comment needs reviewed page-layout changes.");
+    expect(container.querySelector<HTMLSelectElement>(".wbr-compose select")!.value).toBe("layout");
+    expect(container.querySelector<HTMLOptionElement>('.wbr-compose option[value="question"]')!.disabled).toBe(true);
+    expect(container.querySelector(".wbr-exact")).toBeNull();
+    await act(async () => container.querySelector(".wbr-compose")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(JSON.parse(fetch.mock.calls[0][1]!.body as string)).toMatchObject({ comment: { route: "layout", note: "Make this easier to read.", item: null } });
+  });
+  it("keeps layout partial results open and shows their actual remaining work", async () => {
+    const source = detail();source.editBatch = null;source.comments = [{ ...source.comments[0], status: "failed", route: "layout",
+      error: "Partly applied. The required work area still uses this space.", resultNote: "The row gaps changed. The lower gap remains." }];
+    await mount(source);
+    expect(container.textContent).toContain("Partly applied - open");
+    expect(container.textContent).toContain("The row gaps changed. The lower gap remains.");
+    expect(container.textContent).toContain("Review page-layout changes (1)");
+    expect(container.textContent).not.toContain("Text changed - review result");
+  });
+  it("reports unsupported layout requests instead of claiming that send applied them", async () => {
+    const source = detail();source.editBatch = null;source.comments = [{ ...source.comments[0], status: "pending", route: "layout" }];
+    const fetch = vi.fn(async () => Response.json({ status: "layout-review", reason: "This request still needs reviewed layout changes." }));vi.stubGlobal("fetch", fetch);
+    await mount(source);
+    expect(container.textContent).toContain("Layout requests stay open in the review path below.");
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.startsWith("Send all comments"))!.click());
+    expect(container.textContent).toContain("This request still needs reviewed layout changes.");
+    expect(container.textContent).toContain("Awaiting layout review");
+  });
+});

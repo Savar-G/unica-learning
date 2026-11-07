@@ -21,14 +21,16 @@ export function workbookEditProgress(row: {
     || !Number.isFinite(now) || !Number.isFinite(Date.parse(row.heartbeat_at)) || !object(row.checkpoints)) {
     throw new Error("edit_progress_shape");
   }
-  const pages = [...new Set(comments.filter(c => c.batch_id === row.id).map(c => c.page_number))];
+  const layoutPages = object(row.frame) && Array.isArray(row.frame.layoutPages) ? row.frame.layoutPages : null;
+  if (layoutPages && (layoutPages.some(n => !positive(n)) || new Set(layoutPages).size !== layoutPages.length)) throw new Error("edit_progress_pages");
+  const pages = layoutPages ?? [...new Set(comments.filter(c => c.batch_id === row.id).map(c => c.page_number))];
   if (pages.some(n => !positive(n)) || pages.length > 500) throw new Error("edit_progress_pages");
   let ready = 0, failed = 0;
   for (const number of pages) {
     const saved = row.checkpoints[String(number)];
     if (!object(saved) || saved.number !== number) continue;
     if (typeof saved.error === "string" && saved.error.length > 0) failed++;
-    else if (object(saved.page) && saved.page.number === number && object(saved.image) && saved.image.number === number) ready++;
+    else if ((layoutPages || object(saved.page) && saved.page.number === number) && object(saved.image) && saved.image.number === number) ready++;
   }
   const status = row.status as EditProgress["status"];
   const checked = ready + failed;
