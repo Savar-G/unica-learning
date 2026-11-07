@@ -104,3 +104,9 @@ An interruption before a terminal journal snapshot remains a safe stop. It canno
 The tests use fake HTTP and local SQL. No model or subscription was called. No credentials, Keychain entries, private account fields or old result bodies were read. No old response was copied or relabelled. No hosted write, print change, flag change, privacy change, held-642 change, full test suite, build, Chromium run, push, PR or merge occurred.
 
 Root owns the independent Sol review, hosted migration application, official database type generation, final full gate, billing reconciliation and the new immutable all-13-model run on the fixed 40 photos. Root must report historical schema failures separately. These local checks establish no model accuracy, real handwriting accuracy, hosted acceptance or release approval.
+
+## Review R1 repair: report metrics after a saved block
+
+Review R1 found that a resumed blocked model lost its failure and schema metrics. The report now selects that model's retained, pinned evidence referenced by its stored results when the saved state has no ready evidence. It preserves all measured metrics across a saved block, run reload and report reload. The model remains blocked, incomplete, not passed and ineligible for a measured-cost winner.
+
+A new public report control fails before the repair and passes after it. The actual CLI regression from the review also passes: the schema failure stays counted after file-journal recovery and repeated report loading. The full focused set passes124tests across two files. The separate actual-CLI regression passes one test; three unrelated controls are not selected. Focused types and changed-code lint pass. The migration, held amounts, raw-response classification, timing, retry and reservation code are unchanged. Hosted application remains pending.

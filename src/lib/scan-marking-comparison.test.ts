@@ -847,3 +847,15 @@ it.each(["successful-result", "second-429"])("recovers an interrupted final batc
     expect(scoreComparison(h.data, COMPARISON_MODELS[0], recovered, h.history[0])).toMatchObject({ complete: true, measuredMicros: 40000, heldMicros: h.states[0].maximumMicros });
   }
 });
+
+
+it("retains every measured metric after a saved model block is reloaded", () => {
+  const data=manifest(),model=COMPARISON_MODELS[0],proof=evidence(model);
+  const failed=result(data.photos[0],model);failed.status="failed";failed.failure="schema-invalid";failed.schemaValid=false;failed.observations=[];
+  const blocks=new Map([[model.model,"second-429-not-fully-tested"]]);
+  const before=comparisonReports(data,[{model:model.model,status:"ready",evidence:proof,maximumMicros:reserveMaximum(proof)}],[failed],[proof],blocks)[0];
+  const reloaded=JSON.parse(JSON.stringify([{model:model.model,status:"blocked",reason:"second-429-not-fully-tested"}])) as ComparisonPreflight[];
+  const after=comparisonReports(data,reloaded,[failed],[proof],blocks)[0];
+  expect(before).toMatchObject({schemaFailures:1,failures:1,testedPhotos:1,measuredMicros:1000,status:"blocked",passed:false,complete:false,costPerPageUsd:null});
+  expect(after).toEqual(before);
+});

@@ -330,7 +330,9 @@ export function comparisonReports(manifest: ComparisonManifest, states: readonly
       const attempts = results.filter(r => r.model === model.model).flatMap(r => r.attempts), missingCosts = attempts.filter(a => a.usage.costMicros === null).length;
       const measuredMicros = attempts.reduce((sum, a) => sum + (a.usage.costMicros ?? 0), 0), heldMicros = attempts.reduce((sum, a) => sum + (a.usage.costMicros === null ? a.reservedMicros ?? 0 : 0), 0);
       const missingHoldBounds = attempts.filter(a => a.usage.costMicros === null && a.reservedMicros === undefined).length;
-      return { ...(state?.status === "ready" && testedPhotos > 0 ? scoreComparison(manifest, model, results, state.evidence, history) : {}), model: model.model, host: model.host, endpoint: model.endpoint, status: "blocked", reason: reason ?? "missing-evidence", testedPhotos, complete: false, passed: false, costPerPageUsd: null,
+      const retainedEvidence = state?.status === "ready" ? state.evidence : history.find(e => e.model === model.model && e.endpoint.tag === model.endpoint && e.endpoint.provider_name === model.providerName
+        && results.some(r => r.model === model.model && r.evidenceHash === hashValue(e)));
+      return { ...(retainedEvidence && testedPhotos > 0 ? scoreComparison(manifest, model, results, retainedEvidence, history) : {}), model: model.model, host: model.host, endpoint: model.endpoint, status: "blocked", reason: reason ?? "missing-evidence", testedPhotos, complete: false, passed: false, costPerPageUsd: null,
         measuredMicros: attempts.length ? measuredMicros : null, heldMicros, missingHoldBounds, spentOrHeldMicros: missingHoldBounds ? null : measuredMicros + heldMicros, missingCosts };
     }
     return { ...scoreComparison(manifest, model, results, state.evidence, history), status: testedPhotos === 40 ? "tested" : "incomplete", testedPhotos };
