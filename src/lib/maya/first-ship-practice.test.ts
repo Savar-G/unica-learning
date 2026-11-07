@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { readAnswer, readOptionsFor } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { createTextSession } from "@/lib/maya-text";
-import { checkQuestionPackage, workedSteps } from "@/lib/question-package";
+import { checkQuestionPackage, workedSteps, type Operation } from "@/lib/question-package";
 import { judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type Plan, type Read, type Step } from "@/lib/maya-gate/gate";
 import type { OperationPackage } from "@/lib/question-package";
 
@@ -29,7 +29,7 @@ async function play(fixture: Behaviour["fixture"], steps: Step[]) {
 
 /** The same replay on another addition: [the child's words, what a model reads, its plans]. */
 async function playSum(a: number, b: number, turns: { child: string; read?: Read; maya?: Plan[] }[]): Promise<Told[]> {
-  const operation = { kind: "add" as const, operands: [a, b] };
+  const operation: Operation = { kind: "add", operands: [a, b] };
   const pkg = { ...FIXTURES.A, text: `${a} + ${b} = ?`, operation, steps: workedSteps(operation), answer: { value: { type: "number" as const, value: a + b }, accepted: [], unit: null }, wrongAnswers: [{ value: { type: "number" as const, value: a + b - 10 }, cause: "O3", description: "Forgets the carry", step: "tens" }] };
   expect(checkQuestionPackage(pkg)).toMatchObject({ ok: true });
   let now = 1000;
