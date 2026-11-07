@@ -21,7 +21,7 @@ import { ParentSchedule } from "@/components/parent-schedule";
 import { ParentProgress } from "@/components/parent-progress";
 import { SkillPanel } from "@/components/parent-skill-map";
 import { NoteCard, ParentSessionView } from "@/components/parent-maya-notes";
-import { MinutesRow } from "@/components/parent-home-rows";
+import { MayaChatRow } from "@/components/parent-home-rows";
 import { AccountBilling } from "@/components/account-billing";
 import { ChildDetailsView } from "@/components/account-child-details";
 import { ParentAccountSettings } from "@/components/parent-account-settings";
@@ -44,7 +44,6 @@ import type { ChildView, OverviewView, WorkbooksView } from "@/lib/parent-view";
 import { freeMonthWords } from "@/lib/parent-assessment";
 import { tabLinks } from "@/lib/parent-shell";
 import { nextStep } from "@/lib/report-view";
-import { WEEK_SECONDS } from "@/lib/maya-minutes";
 import { PLANS } from "@/lib/site";
 import { sampleReportView } from "@/lib/sample-children";
 import { skillMapView } from "@/lib/skill-map-view";
@@ -59,7 +58,7 @@ const noAction = () => { throw new Error("Static preview cannot run an action");
 const staticRouter: AppRouterInstance = { bfcacheId: "static-parent-preview", back: noAction, forward: noAction, refresh: noAction, push: noAction, replace: noAction, prefetch: noAction };
 const learning: LearningRow = { learning_styles: null, interests: null, learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null };
 const alerts = { password: false, pin: false, deskError: false, existing: false };
-const minutes = { used: 12, left: WEEK_SECONDS / 60 - 12, backOn: "Monday, November 9" };
+const chatUsage = { used: 12, left: 48, backAt: "12:00 a.m. on Friday, November 6", resetsAt: Date.parse("2026-11-06T07:00:00Z") };
 let report: ReturnType<typeof sampleReportView> | undefined;
 const baseReport = () => report ??= sampleReportView();
 
@@ -193,7 +192,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
       return <ParentReport view={view} child={child} next={next} newTest={state === "unreliable" ? { state: { kind: "open" }, href: `/account/start/${child.id}`, label: "Start a new test" } : null} learning={null} alerts={alerts} tracked={false} src="account"
         nextActions={<ReportNextView reportId={view.id} step={nextStep(view)} words={view.model.callToAction === "card" ? freeMonthWords(child.firstName) : undefined} childName={child.firstName} province={view.province} {...next} card={card} wait={state === "joined" ? "joined" : state === "waitlist_error" ? "error" : "join"} busy={state === "busy_card" ? "one" : state === "busy_waitlist" ? "waitlist" : null} announce="" savedPlan={start.saved} choose={noAction} join={noAction} checkAgain={noAction} pinned />} />;
     }
-    case "overview": return <SupportPage label="Overview" title={child.firstName}><ParentOverview overview={overview(child, state)} maya={child.stage === "active" ? minutes : null} /></SupportPage>;
+    case "overview": return <SupportPage label="Overview" title={child.firstName}><ParentOverview overview={overview(child, state)} /></SupportPage>;
     case "workbook_answers": return <ParentWorkbookAnswerKey answerKey={answerKey(child, state)} />;
     case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} history={workbookHistory(child, state)} />;
     case "schedule": return <ParentSchedule schedule={state === "waiting" || state === "unavailable" ? { kind: state, child: { ...child, parentId: "sample-parent" } } : {
@@ -211,7 +210,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
     case "maya": {
       const note = sampleNote(child, state === "chat", state === "missing");
       if (["session", "chat", "missing"].includes(state)) return <ParentSessionView note={note} name={child.firstName} zone={zone} back={{ href: `/account/notes/${child.id}`, label: "← Back to Maya" }} />;
-      return <SupportPage label="Maya" title={child.firstName}><div className="maya-tab-week"><MinutesRow name={child.firstName} minutes={state === "used" ? { ...minutes, used: WEEK_SECONDS / 60, left: 0 } : minutes} /></div><h2 className="maya-tab-notes">Notes from Maya</h2>
+      return <SupportPage label="Maya" title={child.firstName}>{child.stage !== "ended" && state !== "closed" && <div className="maya-tab-week"><MayaChatRow name={child.firstName} chat={state === "used" ? { ...chatUsage, used: 60, left: 0 } : chatUsage} /></div>}<h2 className="maya-tab-notes">Notes from Maya</h2>
         {state === "empty" ? <p>There are no notes from Maya yet.</p> : <ul className="maya-notes-list">{[note, sampleNote(child, true)].map(n => <li key={n.channel}><NoteCard note={n} name={child.firstName} zone={zone} /></li>)}</ul>}</SupportPage>;
     }
     case "account": return <ParentAccountSettings card={state} hasCard={state !== "empty"} province="BC" billing={state === "loading" ? <p role="status">Loading billing...</p> : <AccountBilling billing={billing(kids, state)} zone={zone} />} details={<ChildDetailsView kids={kids.map(k => ({ id: k.id, first_name: k.firstName, grade: k.schoolGrade, ...learning }))} />} />;

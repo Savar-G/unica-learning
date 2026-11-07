@@ -13,6 +13,7 @@ const tab = vi.hoisted(() => ({
   dashboard: null as import("@/lib/parent-dashboard-server").ParentDashboard | null,
   minutes: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>(),
   minuteReads: [] as string[][],
+  chats: new Map<string, import("@/lib/maya-chat").ChatUsage>(),
 }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => tab.dashboard }));
 vi.mock("@/lib/maya-minutes-server", () => ({
@@ -21,7 +22,7 @@ vi.mock("@/lib/maya-minutes-server", () => ({
     return new Map([...tab.minutes].filter(([id]) => kids.some((k) => k.id === id)));
   },
 }));
-vi.mock("@/lib/maya-chat-server", () => ({ parentChatUsage: async () => new Map() }));
+vi.mock("@/lib/maya-chat-server", () => ({ parentChatUsage: async () => tab.chats }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account/notes",
   notFound: () => { throw new Error("NOT_FOUND"); },
   redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); },
@@ -115,7 +116,7 @@ function row(id = chat, childId = child, parent = "p1", channel = "chat") {
     ],
   };
 }
-beforeEach(() => { tab.dashboard = null; tab.minutes = new Map(); tab.minuteReads = []; state.user = "p1"; state.postal = "V3S 1A1"; state.zone = null; state.name = "Leah"; state.rows = [row(), row(call, child, "p1", "call")]; state.projections = []; state.fail = false; state.metadata = true; });
+beforeEach(() => { tab.dashboard = null; tab.minutes = new Map(); tab.minuteReads = []; tab.chats = new Map(); state.user = "p1"; state.postal = "V3S 1A1"; state.zone = null; state.name = "Leah"; state.rows = [row(), row(call, child, "p1", "call")]; state.projections = []; state.fail = false; state.metadata = true; });
 const html = (node: React.ReactNode) => renderToStaticMarkup(createElement("div", null, node));
 const list = (id = child, cursor?: string) => ParentNotes({ params: Promise.resolve({ child: id }), searchParams: Promise.resolve({ cursor }) });
 const session = (id = child, note = chat) => ParentSession({ params: Promise.resolve({ child: id, session: note }), searchParams: Promise.resolve({}) });
@@ -282,14 +283,17 @@ describe("the Maya tab (#553)", () => {
     tab.minutes = new Map([[child, { used: 12, left: 18, backOn: "Monday, November 9" }], [sibling, { used: 30, left: 0, backOn: "Monday, November 9" }]]);
   };
 
-  it("shows this child's minutes left this week and a note per call, with the transcript one click down", async () => {
+  it("shows this child's gated chat usage and saved notes without a voice allowance or ledger read", async () => {
     open();
+    tab.chats.set(child, { used: 8, left: 52, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
+    tab.chats.set(sibling, { used: 60, left: 0, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
     const out = html(await list());
     expect(out).toContain('<p class="eyebrow">Maya</p>');
     expect(out).toContain("<h1>Leah</h1>");
-    expect(out).toContain("Leah used 12 of 30 minutes. 18 minutes left. The minutes start again on Monday, November 9.");
+    expect(out).toContain("Leah used 8 of 60 chat messages today. 52 left.");
+    expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start call/i);
     expect(out).not.toContain("Sam used");
-    expect(tab.minuteReads).toEqual([[child]]);
+    expect(tab.minuteReads).toEqual([]);
     expect(out.match(/class="maya-note-item"/g)).toHaveLength(2);
     expect(out).toContain(`href="/account/notes/${child}/${chat}"`);
     expect(out).toContain(`href="/account/notes/${child}/${call}"`);
@@ -300,12 +304,40 @@ describe("the Maya tab (#553)", () => {
     expect(out).not.toMatch(/\b(?:she|her|companion)\b/i);
   });
 
-  it("keeps the minutes when there are no notes yet", async () => {
+  it("keeps the no-notes state with chat closed, without an empty usage card", async () => {
     open();
     state.rows = [];
     const out = html(await list());
-    expect(out).toContain("18 minutes left");
+    expect(out).not.toContain("maya-tab-week");
+    expect(out).not.toMatch(/minutes left|Try Maya|Start call|chat messages today/i);
     expect(out).toContain("There are no notes from Maya yet.");
+  });
+
+  it("keeps existing chat usage when no notes are saved, including the daily cap", async () => {
+    open();
+    state.rows = [];
+    tab.chats.set(child, { used: 60, left: 0, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
+    const out = html(await list());
+    expect(out).toContain("Maya chat today");
+    expect(out).toContain("Leah used all 60 chat messages today.");
+    expect(out).toContain("Chat starts again at midnight on November 9.");
+    expect(out).toContain("There are no notes from Maya yet.");
+    expect(out).not.toMatch(/minutes left|Try Maya|Start (?:a )?call/i);
+    expect(tab.minuteReads).toEqual([]);
+  });
+
+  it.each(["ended", "younger", "release_closed"])("keeps historical call and chat notes with no chat usage: %s", async (reason) => {
+    open();
+    const view = tab.dashboard!.children.find(kid => kid.id === child)!;
+    if (reason === "ended") { view.stage = "ended"; view.readOnly = true; }
+    if (reason === "younger") view.schoolGrade = 2;
+    const out = html(await list());
+    expect(out).not.toContain("maya-tab-week");
+    expect(out).not.toMatch(/chat messages today|minutes left|Try Maya|Start (?:a )?call/i);
+    expect(out).toContain("Read the call");
+    expect(out).toContain("Read the chat");
+    expect(out).toContain("6 minutes");
+    expect(tab.minuteReads).toEqual([]);
   });
 
   it("never lists a note that has no family call or chat behind it, such as an admin test call", async () => {

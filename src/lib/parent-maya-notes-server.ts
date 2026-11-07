@@ -3,7 +3,6 @@ import { notFound, redirect } from "next/navigation";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { familyProvince, familyZone, type FamilyZone } from "@/lib/family-time";
 import { parentChatUsage } from "@/lib/maya-chat-server";
-import { parentMinutes } from "@/lib/maya-minutes-server";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -31,10 +30,10 @@ export async function parentNotesFamily(childId: string) {
 }
 
 /**
- * The Maya tab's week (#553): this child's minutes and chat messages, from the minutes ledger and the chat count, as
- * Parent home reads them. Either may be missing; neither read counts an admin test call, which takes no child minutes.
+ * The Maya tab's usage (#553, D-293): existing chat usage only, as Parent home reads it. A closed family or an ineligible
+ * grade has no usage. The shared voice ledger and its callers outside this parent presentation stay intact.
  */
 export async function mayaWeek(db: SupabaseClient<Database>, parent: string, zone: FamilyZone, child: { id: string; grade: number }) {
-  const [minutes, chats] = await Promise.all([parentMinutes(db, parent, zone, [child]), parentChatUsage(db, parent, [child], zone)]);
-  return { minutes: minutes.get(child.id), chat: chats.get(child.id) };
+  const chats = await parentChatUsage(db, parent, [child], zone);
+  return { chat: chats.get(child.id) };
 }

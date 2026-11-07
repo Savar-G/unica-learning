@@ -1,0 +1,26 @@
+{
+  "round": "r-parent-chat-only",
+  "date": "2026-11-06",
+  "decision": "D-293",
+  "route": "direct",
+  "job_kind": "fix",
+  "surface": ["product", "component"],
+  "constraint_mode": "existing-system",
+  "phase": "build",
+  "base": "d4af3d62d5fba25ba3b39441d9cc719b2bf06604",
+  "contract": ".design/experiments/r-parent-chat-only/contract.md",
+  "existing_components": ["ParentOverview", "MayaChatRow", "ChatUsageRow", "NoteCard", "ParentShell", "SupportPage"],
+  "existing_images_inspected": [
+    ".design/experiments/r553/overview-desktop.png",
+    ".design/experiments/r553/maya-tab-phone.png",
+    ".design/experiments/r419/parent-home-laptop.png"
+  ],
+  "local_evidence": "Focused fake public-interface tests, source ESLint and TypeScript. See the implementation report for results.",
+  "rendered_evidence": [],
+  "rendered_evidence_owner": "root after reduced565 integration",
+  "independent_review": "pending with root",
+  "family_release": "held for D-236 and D-249 review and approval",
+  "flags_changed": false,
+  "provider_calls": false,
+  "browser_or_print_runs": false
+}

@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { ChatUsageRow } from "@/components/chat-usage";
 import type { ChatUsage } from "@/lib/maya-chat";
-import { DEMO_DAILY_MINUTES, WEEK_SECONDS } from "@/lib/maya-minutes";
-import type { ChildMinutes } from "@/lib/maya-minutes-server";
 import type { WorkbookSummary } from "@/lib/workbook-content";
 
 /** The parent notice before a child's first chat (#529): one card for the family, above the children. */
@@ -45,23 +43,14 @@ export function DeskRow({ childId, name, workbook, pinSet }: { childId: string; 
   );
 }
 
-/** The child's minutes with Maya this week (#330): used, left, and the day they come back. */
-export function MinutesRow({ name, minutes, chat }: { name: string; minutes?: ChildMinutes; chat?: ChatUsage }) {
-  const week = WEEK_SECONDS / 60;
+/** Existing gated chat usage. D-293 keeps voice allowances out of parent screens. */
+export function MayaChatRow({ name, chat }: { name: string; chat: ChatUsage }) {
   return (
     <div className="acct-desk">
       <span>
-        <b>Maya this week</b>
-        {minutes && <span className="small">{minutes.left > 0
-          ? `${name} used ${minutes.used} of ${week} minutes. ${minutes.left} ${minutes.left === 1 ? "minute" : "minutes"} left. The minutes start again on ${minutes.backOn}.`
-          : `${name} used all ${week} minutes. Maya is back on ${minutes.backOn}.`}</span>}
-        {chat && <ChatUsageRow name={name} usage={chat} />}
+        <b>Maya chat today</b>
+        <ChatUsageRow name={name} usage={chat} />
       </span>
     </div>
   );
-}
-
-/** The parent's own "Try Maya" calls have their own limit, shown beside a child's minutes. */
-export function DemoMinutesLine() {
-  return <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>;
 }

@@ -78,7 +78,8 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("unreliable", "Unreliable result"), scenario("ended", "Past skills", "ended"),
   ] },
   { id: "maya", label: "Maya notes", scenarios: [
-    scenario("notes", "Call and chat notes"), scenario("empty", "No notes"), scenario("used", "Weekly minutes used"),
+    scenario("notes", "Call and chat notes"), scenario("empty", "No notes"), scenario("used", "Daily chat messages used"),
+    scenario("closed", "Chat unavailable, saved notes only"),
     scenario("session", "Call transcript"), scenario("chat", "Chat transcript"), scenario("missing", "Transcript unavailable"),
     scenario("ended", "Past notes", "ended"),
   ] },

@@ -14,6 +14,36 @@ const styles = { origin: "https://unicalearning.com", links: [], inline: [] };
 const rendered = (view: string, scenario: string, family = "one", size = "desktop") => renderParentPreview(previewSelection({ view, scenario, family, size }), styles);
 const dom = (html: string) => new DOMParser().parseFromString(html, "text/html");
 
+it.each(PARENT_PREVIEW_VIEWS.filter(view => view.id === "overview" || view.id === "maya")
+  .flatMap(view => view.scenarios.flatMap(scenario => ["desktop", "phone"].map(size => ({ view: view.id, scenario: scenario.id, size })))))
+  ("keeps the first-ship $view / $scenario / $size free of voice allowances and launch controls", ({ view, scenario, size }) => {
+    for (const child of ["first", "second"]) {
+      const output = dom(renderParentPreview(previewSelection({ view, scenario, family: "two", child, size }), styles));
+      expect(output.body.textContent).not.toMatch(/of 30 minutes|minutes left|minutes start again|weekly minutes|Try Maya|Start (?:a )?call/i);
+      expect(output.querySelector(".po")?.textContent ?? "").not.toMatch(/minutes|messages|this week/i);
+      const name = child === "first" ? "Leah" : "Kai";
+      if (view === "overview" && scenario === "active") {
+        expect(output.querySelector("#po-maya")?.textContent).toBe("Maya");
+        expect(output.querySelector(".po")?.textContent).toContain("Notes from Maya");
+      }
+      if (view === "maya" && scenario === "notes") {
+        expect(output.body.textContent).toContain("Read the call");
+        expect(output.body.textContent).toContain("Read the chat");
+        expect(output.body.textContent).toContain(`${name} used 12 of 60 chat messages today.`);
+      }
+      if (view === "maya" && scenario === "used") expect(output.body.textContent).toContain(`${name} used all 60 chat messages today.`);
+      if (view === "maya" && ["ended", "closed"].includes(scenario)) {
+        expect(output.querySelector(".maya-tab-week")).toBeNull();
+        expect(output.body.textContent).toContain("Read the call");
+        expect(output.body.textContent).toContain("Read the chat");
+      }
+      if (view === "maya" && scenario === "session") expect(output.body.textContent).toContain("Call length5 minutes");
+      expect(calls.fetch).not.toHaveBeenCalled();
+      expect(calls.client).not.toHaveBeenCalled();
+      expect(calls.track).not.toHaveBeenCalled();
+    }
+  });
+
 it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({ size, child }))))(
   "keeps the Schedule field labels in the $size preview for the $child child",
   ({ size, child }) => {
