@@ -412,6 +412,43 @@ it.each(["friday-5", "mixed-set", "show-what-you-know", "practice", "review"])("
 });
 
 describe("S4 whole-page readings", () => {
+  it.each([
+    { name: "whole number", make: () => frame("photo-a", [7]) },
+    { name: "fraction", make: () => numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'") },
+    { name: "decimal", make: () => numericFrame({ type: "number", value: 6.1 }, "6.1") },
+    { name: "words", make: wordsFrame },
+    { name: "circle", make: circleFrame },
+    { name: "tick and number", make: tickFrame },
+    { name: "shown work", make: showWorkFrame },
+    { name: "spot the error", make: spotFrame },
+  ])("accepts schema-valid null and empty blank text for $name", ({ make }) => {
+    const f = make();
+    const part = markingRequest(f, new Uint8Array()).content.find(p => p.type === "text")!;
+    if (part.type !== "text") throw new Error("text request required");
+    const items = JSON.parse(part.text).items as { item: string; region: string }[];
+    const normalized: Observation[] = [];
+    for (const text of [null, ""]) {
+      const response = { readings: items.map(a => ({ item: a.item, region: a.region, state: "blank", text, issue: null })) };
+      expect(validMarkingOutput(f, response)).toBe(true);
+      const [o] = readMarkingOutput(f, response);
+      expect(o).toMatchObject({ state: "scored", result: "blank", certainty: "certain", issue: null, readAnswerText: "" });
+      expect(o.regions.every(r => r.result === "blank" && r.text === "" && r.issue === null)).toBe(true);
+      expect(observationProblem(o)).toBeNull();
+      normalized.push(o);
+    }
+    expect(normalized[0]).toEqual(normalized[1]);
+  });
+  it.each([
+    { text: "7", issue: null }, { text: " ", issue: null },
+    { text: null, issue: "blurry" }, { text: "", issue: "unreadable" },
+    { text: null, issue: "cut-off" }, { text: null, issue: "missing" },
+    { text: undefined, issue: null }, { text: false, issue: null },
+    { text: null, issue: undefined }, { text: "x".repeat(201), issue: null },
+  ])("keeps contradictory or malformed blank text pending: %j", fields => {
+    const [o] = readMarkingOutput(frame("photo-a", [7]), { readings: [{ item: "i1", region: "r1", state: "blank", ...fields }] });
+    expect(o).toMatchObject({ state: "pending", result: null, certainty: "uncertain" });
+    expect(observationProblem(o)).toBeNull();
+  });
   it("zero, wrong, blank and uncertainty remain distinct and code owns the score", () => {
     const f = frame();
     expect(readMarkingOutput(f, output(["0", "56", ""])).map((o) => o.result)).toEqual(["right", "wrong", "blank"]);

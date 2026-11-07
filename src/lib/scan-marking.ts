@@ -123,7 +123,7 @@ function readRegion(a: Alias, readings: unknown[]): RegionReading {
   if (!r) return { regionId: a.regionId, text: null, value: null, certainty: "not-read", result: null, issue: "missing" };
   const text = typeof r.text === "string" && r.text.length <= MAX_READ_TEXT ? r.text : null;
   const issue = r.issue == null ? null : typeof r.issue === "string" && READING_ISSUES.includes(r.issue as ReadingIssue) ? r.issue as ReadingIssue : "unreadable";
-  const blank = r.state === "blank" && text === "" && issue === null;
+  const blank = r.state === "blank" && issue === null && (text === "" || (r.text === null && r.issue === null));
   const input = text?.trim() ?? "";
   const numeric = a.kind === "number" ? exactNumber(input, a.wholeOnly) : null;
   const fraction = a.kind === "fraction" && r.state === "written" && issue === null ? checkFractionReading(input, a) : null;
@@ -138,7 +138,7 @@ function readRegion(a: Alias, readings: unknown[]): RegionReading {
   const result = blank ? "blank" : value === null ? null
     : a.kind === "fraction" ? fraction!.result
       : value === (a.kind === "text" ? normalizedWords(a.answer) : a.answer) ? "right" : a.kind === "text" ? null : "wrong";
-  return { regionId: a.regionId, text, value: value === null ? null : String(value), certainty: certain ? "certain" : "uncertain",
+  return { regionId: a.regionId, text: blank ? "" : text, value: value === null ? null : String(value), certainty: certain ? "certain" : "uncertain",
     result, issue: certain ? result === null ? "answer-form" : null : issue ?? "unreadable" };
 }
 /** Read every region once. Code aggregates regions into exactly one item result. */
