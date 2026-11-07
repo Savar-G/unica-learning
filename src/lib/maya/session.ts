@@ -380,6 +380,8 @@ export interface Session {
    * act clears it. A saved session from before has no field.
    */
   heardAsked?: AnswerValue | null;
+  /** The column total Maya asked about in that confirmation (stepConfirmable): the only number a yes credits for a step. */
+  stepAsked?: AnswerValue | null;
   confirmTries: number;
   offeredOtherInput: boolean;
   redirects: number;
@@ -792,7 +794,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   const again = s.heardAsked != null && s.turn !== null && s.package !== null && sameFinal(s, s.heardAsked) && doubtfulRight(s);
   // ...and only for what was not clear (#605: "I carry the 1 to the tens" got "Was that 1?"): a turn code or the model
   // read as unclear, numbers speech heard two ways, a choice, or a final answer the child is not sure of.
-  const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && (notClear(s, reading) || stepSaidUnheard(s)) ? ["confirm"] : [];
+  const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && (stepSaidUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
     const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
       : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
@@ -1394,8 +1396,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       s.confirmTries += 1;
       s.mishearing.confirmations += 1;
       const asked = spoken.chosen.filter((o) => o.line === "confirm.heard" || o.line === "confirm.which");
-      // After a claim judged wrong (a confirm only an unclear reading allows), a yes gives no number.
-      s.heardAsked = !claimJudgedWrong(s) && asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots.heard ? valuesIn(asked[0].slots.heard, readOptionsFor(pkg))[0] ?? null : null;
+      s.heardAsked = asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots.heard ? valuesIn(asked[0].slots.heard, readOptionsFor(pkg))[0] ?? null : null;
+      const total = stepSaidUnheard(s) ? stepConfirmable(s) : null;
+      s.stepAsked = total && s.heardAsked && saidAs(total, s.heardAsked) ? s.heardAsked : null;
       enterInterrupt(s, "CONFIRM_HEARD");
       break;
     }
@@ -1479,7 +1482,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   s.regroup = { due: regroup.due, said: [...regroup.said, ...explained.filter((c) => !regroup.said.some((v) => sameCarry(c, v)))], times };
   s.regroupDue = [...new Set(regroup.due.map((c) => c.at))];
   s.regroupSaid = [...new Set(s.regroup.said.map((c) => c.in))];
-  if (p.act !== "confirm") delete s.heardAsked;
+  if (p.act !== "confirm") {
+    delete s.heardAsked;
+    delete s.stepAsked;
+  }
   if (p.act !== "confirm" && p.act !== "offer_other_input") {
     s.confirmTries = 0;
     s.offeredOtherInput = false;
@@ -1800,7 +1806,8 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
-      return { code: "answer_not_committed", reason: `The child's whole turn does not say ${valueText(a.value)} for ${a.step} clearly: confirm what they said (confirm).`, unheard: true };
+      const unheard = stepSaidUnheard(s);
+      return { code: "answer_not_committed", reason: `The child's whole turn does not say ${valueText(a.value)} for ${a.step} clearly: ${unheard ? "confirm what they said (confirm)" : "help with this step, and do not say it is right"}.`, unheard };
     }
     if (a.verdict === "wrong" && right) return { code: "rejects_right_answer", reason: `${valueText(a.value)} is right for ${a.step}.` };
     // The child's sure final answer is right: never "not yet" for it as a step (practice: "I think the tens make 66."
@@ -2045,7 +2052,7 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
   const yes = wholeYes(body);
   if (yes) {
-    const asked = s.heardAsked;
+    const asked = s.stepAsked;
     return !!asked && !copy && total && saidAs(asked, value) && (yes.value === null || saidAs(number(yes.value), asked));
   }
   const bare = wholeValue(body);
@@ -2063,6 +2070,9 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   const written = claims.filter((c) => !c.carry);
   const carried = claims.filter((c) => c.carry);
   if (claims.length === 0 || written.some((c) => claimPlaces(c.tail).some((p) => p.place !== step.place))) return false;
+  // A carry alone never credits, even where it equals the written digit (6 + 5 = 11, "I carried 1."). The digit may lead: "1, carry the 1".
+  const lead = /^([^,\s]+)\s*,/.exec(body);
+  if (written.length === 0 && !(lead && plainNumber(lead[1]) !== null && saidAs(number(plainNumber(lead[1])!), value))) return false;
   const named = written.some((c) => claimPlaces(c.tail).some((p) => p.place === step.place));
   if (step.carryOut > 0 ? !carried.some((c) => c.value === step.carryOut) : !named) return false;
   // Every number is the step's written digit (said alone before a carry: "6, carry the 1") or a claim's own carry.
@@ -2082,20 +2092,56 @@ function claimJudgedWrong(s: Session): boolean {
   return !!st && (checkColumnClaims(pkg, st, pkg.steps, st, s.turn.text) === "wrong" || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out)));
 }
 
+/** The turn's final answer is right for the question, sure or not: it keeps the final answer's confirm (P11). */
+const rightFinalIn = (s: Session) => {
+  const final = s.turn && s.package ? readAnswer(s.turn.text, readOptionsFor(s.package)).final : null;
+  return !!final && rightForQuestion(s.package!, final);
+};
+
+/** The first step not done, when it is a column of an addition. */
+function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" }> | null {
+  const st = s.package ? workSteps(s.package).find((x) => !s.done.includes(x.id)) : undefined;
+  return st?.kind === "add-column" ? st : null;
+}
+
 /**
- * The child said this question's value for the step Maya is on, in words that are not heard: Maya may ask (confirm), and code
- * does not say it is right. Not for a right final answer the child is sure of: that is judged as the answer.
+ * The only turn Maya may ask a step's confirm about, and the number she asks: exactly one number, which is the column's full
+ * total, and no written-digit or carry claim. Any other turn gets no step confirm, so she never asks about a number she will
+ * not credit, and a claim about a column cannot pass as a hearing problem ("I wrote 6." on the tens). Review of 6528f2ca.
+ */
+function stepConfirmable(s: Session): AnswerValue | null {
+  const st = currentColumn(s);
+  if (!st || !s.turn || !s.package) return null;
+  const opts = readOptionsFor(s.package);
+  const values = valuesIn(s.turn.text, opts);
+  const total = number(st.total);
+  return values.length === 1 && readAnswer(s.turn.text, opts).kept.length === 1 && saidAs(values[0], total) && columnClaims(s.turn.text).length === 0 ? total : null;
+}
+
+/**
+ * The turn may get the step's confirm now: it is confirmable, it is not already heard, Maya has not shown the step, and it is
+ * not a right final answer the child is sure of (that is judged as the answer).
  */
 function stepSaidUnheard(s: Session): boolean {
-  if (!s.package || !s.turn) return false;
-  const st = workSteps(s.package).find((x) => x.id === s.ladder.step);
-  if (!st || st.kind !== "add-column" || s.done.includes(st.id) || s.ladder.hint >= 3) return false;
-  // A carry on a step that makes none is about the column before: "I write the 6 down and carry the 1 to the tens."
-  if (st.carryOut === 0 && columnClaims(s.turn.text).some((c) => c.carry)) return false;
-  const said = valuesIn(s.turn.text, readOptionsFor(s.package)).filter((v) => answersStep(st, v));
-  if (said.length === 0 || said.some((v) => stepTurnHeard(s, st, v))) return false;
+  const st = currentColumn(s);
+  const total = stepConfirmable(s);
+  if (!st || !total || !s.turn || s.ladder.hint >= 3 && s.ladder.step === st.id || stepTurnHeard(s, st, total)) return false;
   const read = turnRead(s);
-  return !(read.final && read.sure && rightForQuestion(s.package, read.final));
+  return !(read.final && read.sure && rightForQuestion(s.package!, read.final));
+}
+
+/**
+ * The turn is about the current column and may not have its confirm: it holds a claim, or its final number is a value of the
+ * column, or it has no final number but says one. A turn whose final number is another answer keeps the final answer's confirm
+ * (P11, P15); a yes to that credits no step, because only stepAsked does.
+ */
+function stepOnlyTurn(s: Session): boolean {
+  const st = currentColumn(s);
+  if (!st || !s.turn || !s.package || stepSaidUnheard(s)) return false;
+  const opts = readOptionsFor(s.package);
+  if (columnClaims(s.turn.text).length > 0) return !rightFinalIn(s);
+  const final = readAnswer(s.turn.text, opts).final;
+  return final ? answersStep(st, final) && !rightForQuestion(s.package, final) : valuesIn(s.turn.text, opts).some((v) => answersStep(st, v));
 }
 
 /**
@@ -2261,7 +2307,12 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         break;
       case "confirm":
         // The child's doubtful final answer first (#605), then the number they said last.
-        lineSets = [...free].reverse().sort((a, b) => Number(b.slots.heard === (doubtful && valueText(doubtful))) - Number(a.slots.heard === (doubtful && valueText(doubtful)))).map((o) => make(act, [o]));
+        {
+          const stepTotal = unheard ? stepConfirmable(s) : null;
+          const first = doubtful ?? stepTotal;
+          const fits = (o: LineOffer) => Number(o.line === "confirm.heard" && !!first && o.slots.heard === valueText(first));
+          lineSets = [...free].reverse().sort((a, b) => fits(b) - fits(a)).map((o) => make(act, [o]));
+        }
         break;
       default:
         lineSets = byLevel(free).map((o) => make(act, [o], o.slots.step ? { step: o.slots.step } : {}));

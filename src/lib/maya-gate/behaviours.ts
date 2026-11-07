@@ -433,7 +433,8 @@ export const BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
-      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      // Two numbers, so no step confirm (review of 6528f2ca): the ones get no credit, and Maya helps with them.
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
       refused: ["answer_not_committed"],
     },
   },
