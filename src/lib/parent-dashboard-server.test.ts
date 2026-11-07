@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
-import { parentSchedule } from "@/lib/parent-schedule-server";
+import { hasPrintedSchedule } from "@/lib/parent-schedule-server";
 import { listChildren } from "@/lib/parent-view";
 import { childStage } from "@/lib/child-stage";
 
@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({ parent: "p1" as string | null, open: true, fai
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => (state.cookie ? { value: state.cookie } : undefined) }) }));
 vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: async () => state.open }));
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => true }));
-vi.mock("@/lib/parent-schedule-server", () => ({ parentSchedule: vi.fn(async () => ({ kind: "waiting" })) }));
+vi.mock("@/lib/parent-schedule-server", () => ({ hasPrintedSchedule: vi.fn(async () => false) }));
 vi.mock("@/lib/parent-view-server", () => ({ parentViewReader: () => ({}) }));
 vi.mock("@/lib/parent-view", () => ({ listChildren: vi.fn(async () => { if (state.fail) throw new Error("read failed"); return [{ id: "c1" }]; }) }));
 vi.mock("@/lib/supabase-auth", () => ({
@@ -46,11 +46,11 @@ it("gives today's Parent home to a family the switch does not open to, to no one
   expect(await parentDashboard()).toBeNull();
 });
 
-it("adds Schedule only for a bound printed book and keeps shipment and stage unchanged", async () => {
+it("adds Schedule only for a printed book and keeps shipment and stage unchanged", async () => {
   const child = { id: "c1", firstName: "Leah", schoolGrade: 3 as const, currentWorkbook: null, reportIds: [], finishedTests: [],
     ...childStage({ test: { state: "none" }, cardSaved: true, delivered: false, plan: "not_started" }, { progress: false, maya: false, scanPages: false }) };
   vi.mocked(listChildren).mockResolvedValueOnce([child]);
-  vi.mocked(parentSchedule).mockResolvedValueOnce({ kind: "ready", child: { id: "c1", firstName: "Leah", parentId: "p1" }, book: { id: "b1", number: 1 }, rows: [], dailyTime: "20 minutes" });
+  vi.mocked(hasPrintedSchedule).mockResolvedValueOnce(true);
   const shown = (await parentDashboard())!.children[0];
   expect(shown.tabs).toEqual(["overview", "workbooks", "schedule", "assessment", "account"]);
   expect(shown.stage).toBe("first_book_coming"); expect(shown.currentWorkbook).toBeNull();

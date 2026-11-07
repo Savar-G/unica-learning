@@ -50,13 +50,20 @@ it("reads the named approval revision and allows the original draft fallback onl
   expect(await store.revision("p1", "foreign", "b1", 1)).toBeNull();
 });
 
-it("reads all scan pages through pagination, scopes calibration and propagates failed reads", async () => {
-  const photos = Array.from({ length: 101 }, (_, i) => ({ id: String(i).padStart(4, "0"), parent_id: "p1", child_id: "c1", workbook_id: "b1", page_id: "page1", printed_revision: "r1", state: "expired", sent_at: "then" }));
-  const db = database({ scan_photos: photos, scan_calibrations: photos.map(p => ({ photo_id: p.id, parent_id: "p1", state: "ready", printed_revision: "r1", result: { sheetCheck: 1 } })) });
+it("reads every immutable receipt with exact family, child, book and revision scope", async () => {
+  const receipts = Array.from({ length: 101 }, (_, i) => ({ id: String(i).padStart(4, "0"), parent_id: "p1", child_id: "c1", workbook_id: "b1", page_id: "page1", printed_revision: "r1", status: "accepted" }));
+  const foreign = [
+    { ...receipts[0], id: "foreign", parent_id: "p2" }, { ...receipts[0], id: "sibling", child_id: "c2" },
+    { ...receipts[0], id: "book", workbook_id: "b2" }, { ...receipts[0], id: "revision", printed_revision: "r2" },
+  ];
+  const db = database({ workbook_scan_receipts: [...receipts, ...foreign],
+    scan_photos: [{ id: "unrecorded", state: "saved", sent_at: "then" }], scan_calibrations: [{ state: "ready", result: { sheetCheck: 1 } }] });
   const store = parentScheduleStore(db.client, db.client, "p1");
-  const scans = await store.scans("p1", "c1", "b1");
-  expect(scans).toHaveLength(101); expect(scans.every(s => s.calibration?.sheetCheck === 1)).toBe(true);
-  expect(db.reads.filter(r => r.table === "scan_photos")).toHaveLength(3);
-  expect(db.reads.every(r => r.filters.some(([k, v]) => k === "parent_id" && v === "p1"))).toBe(true);
-  db.fail("scan_calibrations"); await expect(store.scans("p1", "c1", "b1")).rejects.toThrow("read failed");
+  expect(await store.receipts("p1", "c1", "b1", "r1")).toHaveLength(101);
+  expect(db.reads).toHaveLength(3);
+  for (const read of db.reads) {
+    expect(read.table).toBe("workbook_scan_receipts");
+    expect(read.filters).toEqual([["parent_id", "p1"], ["child_id", "c1"], ["workbook_id", "b1"], ["printed_revision", "r1"], ["status", "accepted"]]);
+  }
+  db.fail("workbook_scan_receipts"); await expect(store.receipts("p1", "c1", "b1", "r1")).rejects.toThrow("read failed");
 });

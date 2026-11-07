@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { Window } from "happy-dom";
-import { readSchedule, type ScheduleScan } from "@/lib/parent-schedule";
+import { readSchedule, type ScheduleReceipt } from "@/lib/parent-schedule";
 import { memoryScheduleStore, type ScheduleMemory } from "@/lib/parent-schedule-memory";
 import { savedScheduleV1 } from "@/lib/parent-schedule-v1";
 import { buildPrintContract, printedRevision, type ScanManifest } from "@/lib/workbook-print-contract";
@@ -45,7 +45,7 @@ function fixture(child = "c1", parent = "p1", book = "b1"): ScheduleMemory {
     books: [{ id: book, parentId: parent, childId: child, number: 1, status: "printed", printedRevision: identity, pdfPath: rendering.pdfPath, pdfSha256: rendering.pdfSha256, manifest }],
     approvals: [{ parentId: parent, childId: child, draftId: book, workbookId: book, revision: 1, number: 1, printedRevision: identity }],
     revisions: [{ book, revision: 1, source: { parentId: parent, childId: child, number: 1, draft, rendering } }],
-    pages, scans: [],
+    pages, receipts: [],
   };
 }
 const read = (data: ScheduleMemory, request = {}) => readSchedule(memoryScheduleStore(data), "p1", request);
@@ -70,7 +70,7 @@ it("binds to the approved revision, preserves printed row order and exposes only
 it("scopes both children and books and resolves the plain email deterministically", async () => {
   const data = fixture();
   const other = fixture("c2", "p1", "b2"), foreign = fixture("c3", "p2", "b3");
-  for (const key of ["children", "books", "approvals", "revisions", "pages", "scans"] as const) (data[key] as unknown[]).push(...other[key], ...foreign[key]);
+  for (const key of ["children", "books", "approvals", "revisions", "pages", "receipts"] as const) (data[key] as unknown[]).push(...other[key], ...foreign[key]);
   expect(await read(data)).toMatchObject({ kind: "ready", child: { id: "c1" }, book: { id: "b1" } });
   expect(await read(data, { remembered: "c2" })).toMatchObject({ kind: "ready", child: { id: "c2" }, book: { id: "b2" } });
   expect(await read(data, { remembered: "c3" })).toMatchObject({ kind: "ready", child: { id: "c1" } });
@@ -107,19 +107,24 @@ it("accepts equivalent JSONB key order but refuses ambiguous approved revisions"
   expect(await read(data)).toMatchObject({ kind: "unavailable" });
 });
 
-it("counts accepted required pages once, preserves expiry and ignores optional or unversioned records", async () => {
+it("counts immutable receipts once through later rechecks, expiry and image cleanup", async () => {
   const data = fixture();
   const revision = data.books[0].printedRevision!;
-  const scan: ScheduleScan = { parentId: "p1", childId: "c1", workbookId: "b1", pageId: "page-b1-3", revision, state: "saved", sentAt: "2026-11-01", calibration: { state: "ready", revision, sheetCheck: 1 } };
-  data.scans = [scan, { ...scan, state: "expired" }, { ...scan, pageId: "page-b1-5" }];
-  expect(await read(data)).toMatchObject({ rows: [{ scan: { accepted: 0, required: 1 } }, { scan: { accepted: 1, required: 1 } }] });
-  for (const refused of [{ ...scan, state: "pending" }, { ...scan, revision: "old" }, { ...scan, sentAt: null }, { ...scan, calibration: null },
-    { ...scan, calibration: { ...scan.calibration!, state: "running" } }, { ...scan, calibration: { ...scan.calibration!, state: "refused" } },
-    { ...scan, calibration: { ...scan.calibration!, sheetCheck: "1" } }, { ...scan, calibration: { ...scan.calibration!, revision: "old" } }]) {
-    data.scans = [refused];
-    expect(await read(data)).toMatchObject({ rows: [{ scan: { accepted: 0 } }, { scan: { accepted: 0 } }] });
+  const receipt: ScheduleReceipt = { parentId: "p1", childId: "c1", workbookId: "b1", pageId: "page-b1-3", revision, status: "accepted" };
+  data.receipts = [receipt, { ...receipt }, { ...receipt, pageId: "page-b1-5" }];
+  // No photo or calibration read is available. A later recheck cannot remove this fact.
+  const store = memoryScheduleStore(data);
+  const first = await readSchedule(store, "p1");
+  expect(first).toMatchObject({ rows: [{ scan: { kind: "unknown" } }, { scan: { accepted: 1, required: 1 } }] });
+  for (const refused of [{ ...receipt, parentId: "foreign" }, { ...receipt, childId: "foreign" }, { ...receipt, workbookId: "foreign" },
+    { ...receipt, revision: "old" }, { ...receipt, status: "refused" }, { ...receipt, pageId: "unknown" }]) {
+    data.receipts = [refused];
+    expect(await read(data)).toMatchObject({ rows: [{ scan: { kind: "unknown" } }, { scan: { kind: "unknown" } }] });
   }
-  data.fail = "scans";
+  data.receipts = [];
+  // The receipt epoch has no historical backfill. Empty history is unknown, never zero scans.
+  expect(await read(data)).toMatchObject({ rows: [{ scan: { kind: "unknown" } }, { scan: { kind: "unknown" } }] });
+  data.fail = "receipts";
   expect(await read(data)).toMatchObject({ kind: "ready", rows: [{ scan: { kind: "unknown" } }, { scan: { kind: "unknown" } }] });
   data.fail = "pages"; expect(await read(data)).toMatchObject({ kind: "unavailable" });
 });

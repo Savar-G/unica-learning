@@ -66,25 +66,19 @@ export function parentScheduleStore(session: SupabaseClient<Database>, service: 
         }),
       })) ?? [];
     },
-    async scans(parent, child, book) {
+    async receipts(parent, child, book, revision) {
       scope(parent);
-      const result: Awaited<ReturnType<ScheduleStore["scans"]>> = [];
-      // Read until empty. A database row cap must not silently remove accepted pages.
+      const result: Awaited<ReturnType<ScheduleStore["receipts"]>> = [];
+      // Read immutable accepted facts only. Calibration and photo lifecycle cannot retract them.
       for (let after: string | null = null; ;) {
-        const query = service.from("scan_photos").select("id,parent_id,child_id,workbook_id,page_id,printed_revision,state,sent_at")
-          .eq("parent_id", parent).eq("child_id", child).eq("workbook_id", book);
-        const response: { data: Pick<Database["public"]["Tables"]["scan_photos"]["Row"], "id" | "parent_id" | "child_id" | "workbook_id" | "page_id" | "printed_revision" | "state" | "sent_at">[] | null; error: { message: string } | null } = await (after ? query.gt("id", after) : query).order("id").limit(100);
-        const photos = checked(response);
-        if (!photos?.length) break;
-        const calibrations = checked(await service.from("scan_calibrations").select("photo_id,state,printed_revision,result")
-          .eq("parent_id", parent).in("photo_id", photos.map(p => p.id)));
-        for (const p of photos) {
-          const c = calibrations?.find(c => c.photo_id === p.id);
-          result.push({ parentId: p.parent_id, childId: p.child_id, workbookId: p.workbook_id, pageId: p.page_id,
-            revision: p.printed_revision, state: p.state, sentAt: p.sent_at,
-            calibration: c ? { state: c.state, revision: c.printed_revision, sheetCheck: c.result?.sheetCheck } : null });
-        }
-        after = photos[photos.length - 1].id;
+        const query = service.from("workbook_scan_receipts").select("id,parent_id,child_id,workbook_id,page_id,printed_revision,status")
+          .eq("parent_id", parent).eq("child_id", child).eq("workbook_id", book).eq("printed_revision", revision).eq("status", "accepted");
+        const response: { data: Pick<Database["public"]["Tables"]["workbook_scan_receipts"]["Row"], "id" | "parent_id" | "child_id" | "workbook_id" | "page_id" | "printed_revision" | "status">[] | null; error: { message: string } | null } = await (after ? query.gt("id", after) : query).order("id").limit(100);
+        const receipts = checked(response);
+        if (!receipts?.length) break;
+        result.push(...receipts.map(r => ({ parentId: r.parent_id, childId: r.child_id, workbookId: r.workbook_id,
+          pageId: r.page_id, revision: r.printed_revision, status: r.status })));
+        after = receipts[receipts.length - 1].id;
       }
       return result;
     },

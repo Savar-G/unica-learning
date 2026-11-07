@@ -14,10 +14,9 @@ export interface ScheduleBook {
 export interface ScheduleApproval { parentId: string; childId: string; draftId: string | null; workbookId: string | null; revision: number; number: number; printedRevision: string | null }
 export interface ScheduleRevision { parentId: string; childId: string; number: number; draft: GeneratedWorkbook; rendering: DraftRendering | null }
 export interface SchedulePage { id: string; number: number; contract: PagePrintContract | null; qrToken: string; questions: RevisionSource["pages"][number]["questions"] }
-export interface ScheduleScan {
-  parentId: string; childId: string; workbookId: string | null; pageId: string | null;
-  revision: string | null; state: string; sentAt: string | null;
-  calibration: { state: string; revision: string; sheetCheck: unknown } | null;
+export interface ScheduleReceipt {
+  parentId: string; childId: string; workbookId: string; pageId: string;
+  revision: string; status: string;
 }
 
 /** One read seam. Implementations must scope every service read to this parent and child. No writes. */
@@ -27,7 +26,7 @@ export interface ScheduleStore {
   approvals(parent: string, child: string, book: string): Promise<ScheduleApproval[]>;
   revision(parent: string, child: string, book: string, revision: number): Promise<ScheduleRevision | null>;
   pages(parent: string, child: string, book: string): Promise<SchedulePage[]>;
-  scans(parent: string, child: string, book: string): Promise<ScheduleScan[]>;
+  receipts(parent: string, child: string, book: string, revision: string): Promise<ScheduleReceipt[]>;
 }
 export type ScheduleScanState = { kind: "known"; accepted: number; required: number } | { kind: "unknown" };
 export interface ScheduleRow extends SavedScheduleRow { scan: ScheduleScanState }
@@ -81,20 +80,19 @@ export async function readSchedule(store: ScheduleStore, parent: string, request
       const required = book.manifest!.days.find(d => d.day === r.day)?.pages;
       return !required?.length || required.some(n => n < r.pages[0] || n > r.pages[1]);
     })) return { kind: "unavailable", child };
-    let scans: ScheduleScan[] | null;
-    try { scans = await store.scans(parent, child.id, book.id); } catch { scans = null; }
+    let receipts: ScheduleReceipt[] | null;
+    try { receipts = await store.receipts(parent, child.id, book.id, book.printedRevision); } catch { receipts = null; }
     const rows = saved.rows.map(r => {
       const required = book.manifest!.days.find(d => d.day === r.day)!.pages;
       const accepted = new Set<number>();
-      for (const s of scans ?? []) {
+      for (const s of receipts ?? []) {
         const page = pages.find(p => p.id === s.pageId);
-        const c = s.calibration;
-        // Expiry removes image bytes, not a saved, versioned acceptance. Rechecks/refusals are not acceptance.
+        // Immutable accepted facts survive calibration rechecks and image cleanup.
         if (s.parentId === parent && s.childId === child!.id && s.workbookId === book.id && s.revision === book.printedRevision
-          && (s.state === "saved" || s.state === "expired") && s.sentAt && c?.state === "ready" && c.revision === book.printedRevision
-          && typeof c.sheetCheck === "number" && Number.isFinite(c.sheetCheck) && c.sheetCheck >= 1 && page && required.includes(page.number)) accepted.add(page.number);
+          && s.status === "accepted" && page && required.includes(page.number)) accepted.add(page.number);
       }
-      return { ...r, scan: scans ? { kind: "known" as const, accepted: accepted.size, required: required.length } : { kind: "unknown" as const } };
+      // Receipts have no historical backfill. Absence cannot prove that a page was never scanned.
+      return { ...r, scan: accepted.size ? { kind: "known" as const, accepted: accepted.size, required: required.length } : { kind: "unknown" as const } };
     });
     // Only the safe projection leaves this module. No draft, PDF path, questions or contracts.
     return { kind: "ready", child, book: { id: book.id, number: book.number }, rows, dailyTime: saved.dailyTime };

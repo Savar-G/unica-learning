@@ -179,7 +179,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
       kind: "ready", child: { ...child, parentId: "sample-parent" }, book: { id: "sample-printed-book", number: child.id === "sample-child-2" ? 2 : 1 }, dailyTime: "about 20 minutes, plus Extra if there's time",
       rows: Array.from({ length: 10 }, (_, i) => ({ day: i + 1, topic: child.id === "sample-child-2" ? "Multiplication" : "Addition", second: i === 6 ? "Level check" : "Number practice",
         pages: [3 + i * 8, 10 + i * 8], requiredMinutes: 20, extra: true,
-        scan: state === "unknown" ? { kind: "unknown" } : { kind: "known", accepted: state === "accepted" || state === "expired" ? 8 : state === "partial" && i === 0 ? 3 : 0, required: 8 },
+        scan: state === "accepted" || state === "expired" ? { kind: "known", accepted: 8, required: 8 } : state === "partial" && i === 0 ? { kind: "known", accepted: 3, required: 8 } : { kind: "unknown" },
       })),
     }} />;
     case "progress": {

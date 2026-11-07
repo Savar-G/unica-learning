@@ -25,11 +25,11 @@ export function ParentSchedule({ schedule }: { schedule: Exclude<ScheduleView, {
             <td data-label="Topic"><b>{row.topic}</b><span className="ps-second">{row.second}</span></td>
             <td data-label="Pages">{row.pages[0]} to {row.pages[1]}</td>
             <td data-label="Required time">{row.requiredMinutes === null ? "See daily time above" : `${row.requiredMinutes} min`}{row.extra && <span className="ps-second">Extra is optional</span>}</td>
-            <td data-label="Scanned pages">{row.scan.kind === "unknown" ? "Scan status unavailable" : `${row.scan.accepted} of ${row.scan.required} accepted`}</td>
+            <td data-label="Scanned pages">{row.scan.kind === "unknown" ? "Scan status unavailable" : `${row.scan.accepted} of ${row.scan.required} recorded`}</td>
           </tr>)}</tbody>
         </table>
       </section>
-      <p className="pw-sub">Accepted pages have passed the page check and were sent for marking. This count does not show marks or correct answers.</p>
+      <p className="pw-sub">Recorded pages passed the page check. Earlier scans may not appear here. These counts do not show marks or correct answers.</p>
     </>}
   </SupportPage>;
 }

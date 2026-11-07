@@ -21,11 +21,11 @@ it("shows the real Schedule table on both sizes with each child's rows and hones
     expect(output.querySelector("h1")?.textContent).toBe("Kai's schedule");
     expect(output.querySelectorAll(".ps-table tbody tr")).toHaveLength(10);
     expect(output.querySelector(".ps-table")?.textContent).toContain("Multiplication");
-    expect(output.querySelector(".ps-table")?.textContent).toContain("3 of 8 accepted");
+    expect(output.querySelector(".ps-table")?.textContent).toContain("3 of 8 recorded");
   }
   expect(rendered("schedule", "unknown")).toContain("Scan status unavailable");
   expect(rendered("schedule", "waiting")).toContain("No printed workbook yet");
-  expect(rendered("schedule", "expired")).toContain("8 of 8 accepted");
+  expect(rendered("schedule", "expired")).toContain("8 of 8 recorded");
   expect(rendered("schedule", "unavailable")).not.toContain("ps-table");
 });
 
