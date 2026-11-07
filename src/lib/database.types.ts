@@ -4185,7 +4185,9 @@ export type Database = {
           parent_id: string
           question_number: number | null
           request_key: string | null
+          result_note: string | null
           revision: number
+          route: string
           status: string
           x: number
           y: number
@@ -4208,7 +4210,9 @@ export type Database = {
           parent_id: string
           question_number?: number | null
           request_key?: string | null
+          result_note?: string | null
           revision: number
+          route?: string
           status?: string
           x: number
           y: number
@@ -4231,7 +4235,9 @@ export type Database = {
           parent_id?: string
           question_number?: number | null
           request_key?: string | null
+          result_note?: string | null
           revision?: number
+          route?: string
           status?: string
           x?: number
           y?: number
@@ -4624,12 +4630,14 @@ export type Database = {
           child_id: string
           created_at: string
           draft_id: string
+          edit_kind: string
           error: string | null
           finished_at: string | null
           frame: Json | null
           heartbeat_at: string
           id: string
           item: Json | null
+          layout_plan: Json | null
           lease: string | null
           note: string
           page_number: number
@@ -4650,12 +4658,14 @@ export type Database = {
           child_id: string
           created_at?: string
           draft_id: string
+          edit_kind?: string
           error?: string | null
           finished_at?: string | null
           frame?: Json | null
           heartbeat_at?: string
           id?: string
           item?: Json | null
+          layout_plan?: Json | null
           lease?: string | null
           note: string
           page_number: number
@@ -4676,12 +4686,14 @@ export type Database = {
           child_id?: string
           created_at?: string
           draft_id?: string
+          edit_kind?: string
           error?: string | null
           finished_at?: string | null
           frame?: Json | null
           heartbeat_at?: string
           id?: string
           item?: Json | null
+          layout_plan?: Json | null
           lease?: string | null
           note?: string
           page_number?: number
@@ -6834,6 +6846,10 @@ export type Database = {
           id: string
         }[]
       }
+      claim_workbook_layout_edit: {
+        Args: { p_id: string; p_lease: string }
+        Returns: boolean
+      }
       claim_workbook_run:
         | { Args: { p_lease: string; p_run: string }; Returns: boolean }
         | {
@@ -7058,6 +7074,27 @@ export type Database = {
         Returns: string
       }
       finish_workbook_edit: {
+        Args: {
+          p_content: Json
+          p_error: string
+          p_id: string
+          p_lease: string
+          p_problems: Json
+          p_rendering: Json
+        }
+        Returns: Json
+      }
+      finish_workbook_layout_edit: {
+        Args: {
+          p_error: string
+          p_id: string
+          p_lease: string
+          p_rendering: Json
+          p_results: Json
+        }
+        Returns: Json
+      }
+      finish_workbook_question_edit_checked: {
         Args: {
           p_content: Json
           p_error: string
@@ -7301,6 +7338,16 @@ export type Database = {
           p_question: number
           p_revision: number
           p_runner: string
+        }
+        Returns: Json
+      }
+      queue_workbook_layout_edit: {
+        Args: {
+          p_by: string
+          p_draft: string
+          p_email: string
+          p_plan: Json
+          p_revision: number
         }
         Returns: Json
       }
@@ -7854,6 +7901,11 @@ export type Database = {
         }
         Returns: boolean
       }
+      workbook_comment_route: {
+        Args: { p_note: string; p_page: Json; p_route?: string }
+        Returns: string
+      }
+      workbook_edit_target_value: { Args: { p_value: Json }; Returns: Json }
       workbook_run_held: {
         Args: { p_lease: string; p_run: string }
         Returns: boolean
