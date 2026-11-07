@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-06",
+  "account": "acct_1UOOQgGTsggtqumU",
+  "method": "Aside u0 signed-in read-only UI",
+  "siteKeyName": "pagewise-site",
+  "siteKeyPermissions": {
+    "Subscriptions": "Write",
+    "Invoices": "Write",
+    "Customers": "Write",
+    "Payment Methods": "Write"
+  },
+  "permissionsChanged": false,
+  "webhook": {
+    "id": "we_1UYU6EGTsggtqumUYLBZuh4k",
+    "url": "https://unicalearning.com/api/stripe-webhook",
+    "status": "Active",
+    "apiVersion": "2026-09-30.endive",
+    "events": [
+      "customer.subscription.created",
+      "customer.subscription.deleted",
+      "customer.subscription.updated",
+      "invoice.paid",
+      "invoice.payment_failed"
+    ],
+    "missingEvents": [
+      "customer.subscription.paused",
+      "customer.subscription.resumed"
+    ]
+  },
+  "webhookChanged": false,
+  "productionKeyMapping": "Vercel returns SENSITIVE for its stored key. Actual secret and mapping were not retrieved. UI permissions alone do not prove runtime key mapping.",
+  "liveWrites": 0
+}

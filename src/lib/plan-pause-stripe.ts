@@ -68,8 +68,8 @@ export function stripePauses(s: Stripe, customerOf: (parent: string, card: strin
         }
         const schedule = await s.subscriptionSchedules.create({
           from_subscription: q.subscription,
-          metadata: { plan_pause_key: operation.id },
           pause_schedules: [{
+            key: operation.id,
             pause: { pause_at: { type: "timestamp", timestamp: Date.parse(q.previousCharge) / 1000 }, settings: {
               type: "subscription", invoicing_behavior: "pending_invoice_item",
               bill_for: { outstanding_usage_through: { type: "none" }, unused_time_from: { type: "none" } },
@@ -87,9 +87,12 @@ export function stripePauses(s: Stripe, customerOf: (parent: string, card: strin
 
 function scheduleMatches(schedule: Stripe.SubscriptionSchedule, operation: PauseOperation): boolean {
   const pause = schedule.pause_schedules?.[0], q = operation.quote;
-  return schedule.metadata?.plan_pause_key === operation.id && id(schedule.subscription ?? schedule.released_subscription) === q.subscription
-    && schedule.pause_schedules?.length === 1 && !!pause?.key
+  const settings = pause?.pause.settings;
+  return pause?.key === operation.id && id(schedule.subscription ?? schedule.released_subscription) === q.subscription
+    && schedule.pause_schedules?.length === 1
     && pause.pause.pause_at === Date.parse(q.previousCharge) / 1000 && pause.resume?.resume_at === Date.parse(q.chargeAt) / 1000
+    && settings?.type === "subscription" && settings.invoicing_behavior === "pending_invoice_item"
+    && settings.bill_for?.outstanding_usage_through?.type === "none" && settings.bill_for?.unused_time_from?.type === "none"
     && pause.resume.settings.billing_cycle_anchor === "resume_at" && pause.resume.settings.payment_behavior === "resume_on_payment_success"
     && pause.resume.settings.proration_behavior === "none";
 }

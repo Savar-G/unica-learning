@@ -1,0 +1,57 @@
+{
+  "run": "1c2d64ff-c207-42f9-8218-59ef6daef0a7",
+  "source": "f3133376535b3c96f4c81f62f1f8d1cc80322a23 + pause entry operation-key repair",
+  "mode": "test",
+  "checks": [
+    {
+      "label": "account_verified",
+      "account": "acct_1UOOQgGTsggtqumU",
+      "livemode": false,
+      "apiVersion": "2026-09-30.endive"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "paid_pause_resume"
+    }
+  ],
+  "errors": [
+    {
+      "path": "/v1/subscription_schedules",
+      "status": 400,
+      "type": "invalid_request_error",
+      "param": "pause_schedules[0][key]",
+      "message": "Invalid string: plan...4955; must be at most 40 characters"
+    }
+  ],
+  "resources": [
+    {
+      "kind": "clock",
+      "id": "clock_1UYd41GTsggtqumUfu9UesCk",
+      "label": "paid_pause_resume"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZmdL5xqd3QNum",
+      "clock": "clock_1UYd41GTsggtqumUfu9UesCk"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd42GTsggtqumUPfKLu1I1"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd44GTsggtqumUNakHCmce"
+    }
+  ],
+  "cleanup": [
+    {
+      "clock": "clock_1UYd41GTsggtqumUfu9UesCk",
+      "customer": "cus_VZmdL5xqd3QNum",
+      "deleted": true
+    }
+  ],
+  "failure": {
+    "scenario": "paid_pause_resume",
+    "message": "provider pause outcome refused\n+ actual - expected\n\n+ 'refused'\n- 'applied'\n"
+  }
+}
