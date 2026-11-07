@@ -261,7 +261,7 @@ export const BEHAVIOURS: Behaviour[] = [
     steps: [
       child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }, {}, {}]),
       okay,
-      child("Seven plus nine is 16. I write 16 under the ones.", { start: "has_work" }, [
+      child("Seven plus nine is 16. I write 16 under the ones.", { answers: [[16, "ones", "right"]] }, [
         { act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { act: "guide", step: "ones", level: 1, lines: ["step.regroup"] } },
       ]),
       child("Oh, I write 6 and carry 1 ten, then 2 plus 3 plus 1 is 6, so 66.", { answers: [[6, "ones", "right"], [6, "tens", "right"], [66, "result", "right"]] }),

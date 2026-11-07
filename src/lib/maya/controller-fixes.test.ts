@@ -708,9 +708,12 @@ describe("PR #624 review 2: a wrong equation in the child's words is not a right
   it.each(["7 plus 9 is 6.", "7 and 9 make 6.", "7 + 9 = 6."])("refuses 'right' for %j", (text) => {
     expect(ones(text, "right").refusal?.code).toBe("accepts_wrong_answer");
   });
-  it.each(["7 plus 9 is 16.", "6, carry the 1.", "I wrote 6 and carried 1.", "I put 6 in the ones.", "6"])("still takes %j as the right ones step", (text) => {
+  it.each(["7 plus 9 is 16.", "6, carry the 1.", "I wrote 6 and carried 1."])("still takes %j as the right ones step", (text) => {
     const r = ones(text, "right");
     expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
+  });
+  it.each(["I put 6 in the ones.", "6"])("asks about %j: a lone written digit is not the column's total", (text) => {
+    expect(ones(text, "right").refusal?.code).toBe("answer_not_committed");
   });
 });
 

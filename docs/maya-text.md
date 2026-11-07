@@ -62,18 +62,20 @@ Four more rules (practice corrections). A number right after "the", "this" or "t
 
 **A step is heard only on its whole turn (first-ship practice, PR #698).** A column step counts only when the child's entire turn is exactly one of these templates (`stepTurnHeard`). The turn is trimmed, and may have one leading "so", "okay", "um" or "oh" and one final full stop or "!".
 
-1. The value, alone or in the child's own words: "16", "It's 16", "I got 16". It names the first step not done.
-2. A plain yes to Maya's own "Did you say 16?": "yes", "yeah", "yep", "yes 16", "yes it's 16". The child now owns that number, as on the final answer's confirm (P11). A yes with no pending `confirm.heard`, or for a number that is not the step's value, gives nothing.
+1. The column's total, alone or in the child's own words: "16", "It's 16", "I got 16". A lone written digit is not the total: "6" for 7 + 9 = 16 is not heard.
+2. A plain yes to Maya's own "Did you say 16?": "yes", "yeah", "yep", "yes 16", "yes it's 16". The child now owns that number, as on the final answer's confirm (P11). A yes with no pending `confirm.heard`, or for a number that is not the column's total, gives nothing.
 3. The step's own sum: `<a> plus|and|+ <b> [plus|and|+ <carry>] is|equals|makes|make|= <value>`, with every operand of the step in any order, in digits or words.
-4. A first-person written-digit or carry claim that `checkColumnClaims` checks: "I wrote 6", "I put 6 in the ones", "I wrote 6 and carried 1", "6, carry the 1". The subject is "I" or none, and only claim words and numbers may be in the turn.
+4. A first-person written-digit claim that `checkColumnClaims` checks. A column that makes a carry needs its carry: "I wrote 6 and carried 1", "6, carry the 1". A column that makes none must name its column: "I wrote 6 in the tens". The subject is "I" or none, only claim words and numbers may be in the turn, and a column it names must be the step's.
 
-A question mark, another sentence, another number, another speaker, a hedge or a negation fits no template. The fallback and a model's reading use this one check, so they cannot disagree. With the model down, a turn that is not heard gets the same help as before. When a model names the step in such a turn, code refuses the credit and goes to the confirm question. Beside a right final answer the child is sure of ("Six, so 66."), the answer stands and the step gets no credit. After H3, the value, the yes and the sum only copy what Maya showed; a claim about the child's own paper still counts.
+A step counts only when it is the first one not done, so no tens credit comes before the ones.
+
+A question mark, another sentence, another number, another speaker, a hedge or a negation fits no template. The fallback and a model's reading use this one check, so they cannot disagree. With the model down, a turn that is not heard gets the same help as before. When a model names the step in such a turn, code refuses the credit and goes to the confirm question. A turn with a written digit or carry judged wrong ("7 plus 9 is 16. I wrote 16.") or a plan to write the two-digit sum is not a hearing problem: Maya does not ask, and no later yes can credit it. Beside a right final answer the child is sure of ("Six, so 66."), the answer stands and the step gets no credit. After H3, the value, the yes and the sum only copy what Maya showed; a claim about the child's own paper still counts.
 
 Known limits: steps of other kinds have no templates, so the fallback never credits them and a model's reading of them is checked as before. "I write 6 and carry 1 ten." and "7 plus 9 is 16, so I write 6" are not heard, so they go to the confirm question.
 
 With the model down, the fallback also accepts a final answer the child is sure of (`heardAnswers`). It never judges work wrong, a hedge or a guess gets its own path, and a reading that named the turn off topic or harmful stands.
 
-**A sentence that points back.** "I carry the one", "I carried the ten" or a carry of the question's own worked steps ("I carry 1.") is no second answer. "I already said 16." is none only when 16 is from the child's earlier turns or a done step (`saidBefore`, `pointsBack`). Any other turn with two number sentences goes to the confirm question.
+**A sentence that points back.** "I carry the one", "I carried the ten" or a carry of the question's own worked steps ("I carry 1.") is no second answer. "I already said 16." is none only when 16 is from the child's earlier turns or a done step (`saidBefore`, `pointsBack`). Any other turn with two number sentences is not committed: it goes to the confirm question, unless it holds a claim judged wrong ("I carry 6. It's 66."), which gets no confirm.
 
 **A right answer with no method shown (C38).** When the accept turn says `answer.right`, no work step is done and the child's turn shows no working, code adds a `check.thinking` line to the turn, unless the proposal already asks. Code does not add it when the child says they are done, in the closing minute, for an area question, or when the line would pass the turn's word limit.
 

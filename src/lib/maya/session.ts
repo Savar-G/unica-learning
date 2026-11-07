@@ -792,7 +792,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   const again = s.heardAsked != null && s.turn !== null && s.package !== null && sameFinal(s, s.heardAsked) && doubtfulRight(s);
   // ...and only for what was not clear (#605: "I carry the 1 to the tens" got "Was that 1?"): a turn code or the model
   // read as unclear, numbers speech heard two ways, a choice, or a final answer the child is not sure of.
-  const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && (notClear(s, reading) || stepSaidUnheard(s)) ? ["confirm"] : [];
+  const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && (notClear(s, reading) || stepSaidUnheard(s)) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
     const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
       : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
@@ -1394,7 +1394,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       s.confirmTries += 1;
       s.mishearing.confirmations += 1;
       const asked = spoken.chosen.filter((o) => o.line === "confirm.heard" || o.line === "confirm.which");
-      s.heardAsked = asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots.heard ? valuesIn(asked[0].slots.heard, readOptionsFor(pkg))[0] ?? null : null;
+      // After a claim judged wrong (a confirm only an unclear reading allows), a yes gives no number.
+      s.heardAsked = !claimJudgedWrong(s) && asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots.heard ? valuesIn(asked[0].slots.heard, readOptionsFor(pkg))[0] ?? null : null;
       enterInterrupt(s, "CONFIRM_HEARD");
       break;
     }
@@ -1753,7 +1754,7 @@ function turnRead(s: Session): AnswerRead {
  * a final answer is the last number kept outside the child's explanations, readAnswer, D-199), and each verdict is what
  * code computes. Fills `checked`; returns the first problem.
  */
-function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): { code: RefusalCode; reason: string } | null {
+function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): { code: RefusalCode; reason: string; unheard?: boolean } | null {
   const pkg = s.package!;
   if (!s.turn) return { code: "answer_not_heard", reason: "There is no child turn to read an answer from." };
   const read = turnRead(s);
@@ -1797,8 +1798,9 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
     if (a.verdict === "right" && a.step !== "result" && problem === "target" && at.kind === "add-column" && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
-      if (answerToo) continue;
-      return { code: "answer_not_committed", reason: `The child's whole turn does not say ${valueText(a.value)} for ${a.step} clearly: confirm what they said (confirm).` };
+      // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
+      if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
+      return { code: "answer_not_committed", reason: `The child's whole turn does not say ${valueText(a.value)} for ${a.step} clearly: confirm what they said (confirm).`, unheard: true };
     }
     if (a.verdict === "wrong" && right) return { code: "rejects_right_answer", reason: `${valueText(a.value)} is right for ${a.step}.` };
     // The child's sure final answer is right: never "not yet" for it as a step (practice: "I think the tens make 66."
@@ -2035,32 +2037,49 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   if (!pkg || !s.turn || step.kind !== "add-column") return false;
   const body = wholeTurn(s.turn.text);
   if (body === null) return false;
+  // Only the first step not done: no tens credit before the ones.
+  if (workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
   const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
-  // A lone number names one step: the first not done ("6" is the digit of the ones and the total of the tens).
-  const firstNotDone = workSteps(pkg).find((st) => !s.done.includes(st.id))?.id === step.id;
+  // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16).
+  const total = saidAs(number(step.total), value);
   // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
   const yes = wholeYes(body);
   if (yes) {
     const asked = s.heardAsked;
-    return !!asked && !copy && firstNotDone && saidAs(asked, value) && answersStep(step, value) && (yes.value === null || saidAs(number(yes.value), asked));
+    return !!asked && !copy && total && saidAs(asked, value) && (yes.value === null || saidAs(number(yes.value), asked));
   }
   const bare = wholeValue(body);
-  if (bare !== null) return !copy && firstNotDone && saidAs(number(bare), value) && answersStep(step, value);
+  if (bare !== null) return !copy && total && saidAs(number(bare), value);
   const sum = wholeSum(body);
   if (sum) {
     const sorted = (xs: readonly number[]) => [...xs].sort((a, b) => a - b).join(",");
     const operands = step.carryIn > 0 ? [...step.digits, step.carryIn] : step.digits;
-    return !copy && sum.sum === step.total && saidAs(number(step.total), value) && sorted(sum.operands) === sorted(operands);
+    return !copy && total && sum.sum === step.total && sorted(sum.operands) === sorted(operands);
   }
-  if (!claimWordsOnly(body)) return false;
+  // A claim: the step's written digit, with its carry when it makes one ("I wrote 6 and carried 1", "6, carry the 1"). A
+  // step that makes no carry has only the digit, so the claim names its column: "I wrote 6." may be any column's 6.
+  if (!claimWordsOnly(body) || !saidAs(number(step.write), value)) return false;
   const claims = columnClaims(body);
-  if (claims.length === 0 || !claims.some((c) => c.carry) && !claims.some((c) => !c.carry && c.value !== null && saidAs(number(c.value), value))) return false;
+  const written = claims.filter((c) => !c.carry);
+  const carried = claims.filter((c) => c.carry);
+  if (claims.length === 0 || written.some((c) => claimPlaces(c.tail).some((p) => p.place !== step.place))) return false;
+  const named = written.some((c) => claimPlaces(c.tail).some((p) => p.place === step.place));
+  if (step.carryOut > 0 ? !carried.some((c) => c.value === step.carryOut) : !named) return false;
   // Every number is the step's written digit (said alone before a carry: "6, carry the 1") or a claim's own carry.
   const r = readNumbers(body);
-  const carries = claims.filter((c) => c.carry).map((c) => c.value);
-  if (!r.values.some((v) => saidAs(v, value)) || !r.values.every((v) => saidAs(v, value) || (v.type === "number" && carries.includes(v.value)))) return false;
-  const active = workSteps(pkg).find((st) => !s.done.includes(st.id)) ?? step;
-  return checkColumnClaims(pkg, step, pkg.steps, active, body) === "right";
+  if (!r.values.some((v) => saidAs(v, value)) || !r.values.every((v) => saidAs(v, value) || (v.type === "number" && carried.some((c) => c.value === v.value)))) return false;
+  return checkColumnClaims(pkg, step, pkg.steps, step, body) === "right";
+}
+
+/**
+ * The turn holds a written digit or carry judged wrong ("7 plus 9 is 16. I wrote 16."), or a plan to write a column's two-digit
+ * sum in one column. That is not a hearing problem: asking "Was that 16?" would let a yes pass over it, so Maya does not ask.
+ */
+function claimJudgedWrong(s: Session): boolean {
+  if (!s.package || !s.turn) return false;
+  const pkg = s.package;
+  const st = workSteps(pkg).find((x) => !s.done.includes(x.id));
+  return !!st && (checkColumnClaims(pkg, st, pkg.steps, st, s.turn.text) === "wrong" || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out)));
 }
 
 /**
@@ -2070,7 +2089,9 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
 function stepSaidUnheard(s: Session): boolean {
   if (!s.package || !s.turn) return false;
   const st = workSteps(s.package).find((x) => x.id === s.ladder.step);
-  if (!st || st.kind !== "add-column" || s.done.includes(st.id) || (s.ladder.hint >= 3)) return false;
+  if (!st || st.kind !== "add-column" || s.done.includes(st.id) || s.ladder.hint >= 3) return false;
+  // A carry on a step that makes none is about the column before: "I write the 6 down and carry the 1 to the tens."
+  if (st.carryOut === 0 && columnClaims(s.turn.text).some((c) => c.carry)) return false;
   const said = valuesIn(s.turn.text, readOptionsFor(s.package)).filter((v) => answersStep(st, v));
   if (said.length === 0 || said.some((v) => stepTurnHeard(s, st, v))) return false;
   const read = turnRead(s);
@@ -2178,10 +2199,9 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   // final answers on the final step, the given answer takes the place of more help (D-199).
   const solved = s.solved !== null || rightResult;
   const finalGive = ladderStep === "result" && misses >= 2 && !rightResult;
-  // A step a model named, in a turn that is not heard: the confirm question comes before more help.
-  const unheard = refused.flatMap(answersOf).some((a) => a.verdict === "right" && (a.problem ?? "target") === "target" && a.step !== "result" && !session.done.includes(a.step) &&
-    pkg !== null && session.turn !== null && !answers.some((k) => k.step === a.step) && workSteps(pkg).some((st) => st.id === a.step && st.kind === "add-column" && answersStep(st, a.value)) &&
-    valuesIn(session.turn.text, readOptionsFor(pkg)).some((v) => saidAs(v, a.value)));
+  // A step a model named, in a turn that is not heard: the confirm question comes before more help. Only that refusal: a
+  // claim judged wrong is not a hearing problem (review of fec3dac4).
+  const unheard = refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
   const rank = (a: Act) => ((solved && a === "ask_write") || (finalGive && a === "give_answer") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : FALLBACK_ORDER.indexOf(a));
   const order = [...new Set(unheard && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({

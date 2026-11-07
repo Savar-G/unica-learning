@@ -326,10 +326,8 @@ describe("where a carried 1 comes from, before any line names it", () => {
   it("never accepts a plan to write a two-digit sum in the ones", () => {
     const c = call();
     c.child("7 plus 9 is 16. I write 16 under the ones.");
-    expect(c.propose({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work" as const, answers: [ans(16, "ones", "right")] } }).refusal)
-      .toMatchObject({ code: "answer_not_committed" });
-    const reading = { start: "has_work" as const };
-    expect(c.propose({ act: "guide", step: "tens", level: 0, parts: [ln("step.invite", { step: "tens" })], reading }).refusal)
+    const reading = { start: "has_work" as const, answers: [ans(16, "ones", "right")] };
+    expect(c.propose({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading }).refusal)
       .toMatchObject({ code: "wrong_step", reason: expect.stringContaining("step.regroup") });
     const text = c.maya({ act: "guide", step: "ones", level: 1, parts: [ln("step.regroup", { step: "ones", other: "carry" })], reading });
     expect(text).toMatch(/6/);
