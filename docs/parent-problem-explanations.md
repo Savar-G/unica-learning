@@ -10,6 +10,8 @@ The context hash includes the prompt/schema protocol, canonical item identity, e
 
 ## Global spending control
 
+Set only the server secret `PARENT_EXPLANATION_API_KEY` for this feature. There is no fallback to `OPENROUTER_API_KEY`, the marking key or the Maya key. Root created a dedicated key in the Unica Learning workspace with the provider's USD 10 monthly limit. The Mac Keychain item is `unica-parent-explanations-openrouter`. Do not copy it into a repository or a browser. Test/Admin and preview usage share the same feature ledger and limit.
+
 Use only the feature price and anonymous ledger. Test and Admin traffic count. The hard total is USD 10 per UTC calendar month. The global budget lock precedes the period and held-spend calculation. The database clock runs after the lock wait. The model is `anthropic/claude-haiku-5.5`, the lower text model class already used in this repository. This choice is an implementation choice, not a price claim. Global `AI_MODEL`, Maya and marking settings do not change.
 
 Every actual AiClient transport attempt, including a retry, obtains a new reservation. The final wire body is at most 16,384 UTF-8 bytes. The output cap is 768 tokens, including reasoning. The wrapper requires structured output, low effort and required provider parameters. The schema rejects changed bounds. The feature transport selects only the Anthropic endpoint, disables internal provider fallback, and refuses provider rates above USD 1 per million input tokens, USD 3 per million output tokens or USD 0 per request. Shared-client retries still need their own holds. These request filters belong to this feature; the shared AI adapter stays unchanged. No price is enabled by the migration.

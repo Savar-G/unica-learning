@@ -30,8 +30,8 @@ export function explanationAiClient(env: Readonly<Record<string, string | undefi
       } catch { /* Unknown usage keeps the full hold. Never infer zero from HTTP status. */ }
       return response;
     };
-    // This feature ignores global AI_MODEL. It does not alter Maya, marking or generator configuration.
-    const client = aiClient(env, EXPLANATION_MODEL, { fetch, onRequest: async () => { try { await beforeAttempt(); } finally { cost = null; } } });
+    // This feature uses only its dedicated key and model. Global or other feature credentials cannot enable it.
+    const client = aiClient({ OPENROUTER_API_KEY: env.PARENT_EXPLANATION_API_KEY }, EXPLANATION_MODEL, { fetch, onRequest: async () => { try { await beforeAttempt(); } finally { cost = null; } } });
     return client ? { client, costMicros: () => cost } : null;
   };
 }

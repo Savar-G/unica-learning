@@ -5,10 +5,11 @@ const request = { name: "parent_problem_explanation", system: "Use the stored an
 const valid = { steps: ["Add the ones."], say: "Start with the ones." };
 const response = (usage: unknown = { cost: 0.0002, prompt_tokens: 100, completion_tokens: 40 }) => Response.json({ model: EXPLANATION_MODEL, choices: [{ finish_reason: "stop", message: { content: JSON.stringify(valid) } }], usage });
 // Synthetic key, intercepted transport. No provider or credential access.
-const env = { OPENROUTER_API_KEY: "synthetic-key-never-network", AI_MODEL: "must-not-be-used" };
+const env = { PARENT_EXPLANATION_API_KEY: "synthetic-key-never-network", OPENROUTER_API_KEY: "another-feature-key-must-not-be-used", AI_MODEL: "must-not-be-used" };
 it("uses a separate bounded model and reserves independently before every shared-client retry", async () => {
   const order: string[] = [], costs: (number | null)[] = []; let calls = 0;
   const base: typeof fetch = async (_url, init) => { order.push("fetch"); calls++; const body = JSON.parse(String(init?.body));
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer synthetic-key-never-network");
     expect(body.model).toBe(EXPLANATION_MODEL); expect(body.max_tokens).toBe(768); expect(body.reasoning).toEqual({ effort: "low", exclude: true }); expect(body.usage).toEqual({ include: true }); expect(Buffer.byteLength(String(init?.body))).toBeLessThanOrEqual(EXPLANATION_MAX_BYTES);
     expect(body.provider).toEqual({ require_parameters: true, only: ["anthropic"], allow_fallbacks: false, max_price: { prompt: 1, completion: 3, request: 0 } });
     return calls === 1 ? Response.json({ model: EXPLANATION_MODEL, usage: { cost: 0.0001, prompt_tokens: 100, completion_tokens: 0 } }, { status: 503 }) : response(); };
@@ -43,3 +44,6 @@ it("oversize input and changed output limits never reach the transport", async (
   await expect(transport.client.json({ ...request, maxTokens: 769 }, new AbortController().signal)).rejects.toThrow(); expect(base).not.toHaveBeenCalled();
 });
 it("AI off constructs no client", () => { expect(explanationAiClient({})(async () => {})).toBeNull(); });
+it("another feature's global key cannot enable explanations", () => {
+  expect(explanationAiClient({ OPENROUTER_API_KEY: env.OPENROUTER_API_KEY })(async () => {})).toBeNull();
+});

@@ -27,6 +27,6 @@ D-299 records the approved behavior. D236 and D249 still restrict release. This 
 | Deleted family or child | No private result | Fences and cascades; anonymous charge remains | SQL test |
 | Expired photo | Mark remains an identity reference | No photo is sent to AI | Existing result contract and SQL identity path |
 
-## Remaining evidence
+## Review evidence
 
-No screenshot was made. Root must inspect desktop, tablet and phone states in the existing inert Admin preview. Root must check keyboard use, focus, zoom and long text. Root must verify the hosted RPC and a few bounded provider calls after price verification. These tasks remain outside this implementation.
+The manifest lists desktop and phone screenshots. `browser-review.md` records keyboard, long-text, comparison-key, pending-page and changed-mark checks. It separates static Admin states from actual parent results. The hosted RPC and two bounded live provider calls passed. Tablet, real-device and 200-percent-zoom checks remain part of the full dashboard review. Family switches remain off.
