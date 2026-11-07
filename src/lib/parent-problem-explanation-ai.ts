@@ -11,7 +11,10 @@ export function explanationAiClient(env: Readonly<Record<string, string | undefi
       const body = JSON.parse(init.body);
       if (body.model !== EXPLANATION_MODEL || body.max_tokens !== EXPLANATION_MAX_TOKENS || body.stream !== false
         || body.reasoning?.effort !== "low" || body.provider?.require_parameters !== true) throw new Error("explanation_bounds");
-      const text = JSON.stringify({ ...body, usage: { include: true } });
+      // The feature's verified bound uses USD per million tokens and no per-request charge.
+      // Pin one provider so internal routing cannot add unreserved attempts. Shared-client retries still reserve separately.
+      const text = JSON.stringify({ ...body, provider: { ...body.provider, only: ["anthropic"], allow_fallbacks: false,
+        max_price: { prompt: 1, completion: 3, request: 0 } }, usage: { include: true } });
       if (Buffer.byteLength(text, "utf8") > EXPLANATION_MAX_BYTES) throw new Error("explanation_input_limit");
       const response = await base(url, { ...init, body: text });
       try {

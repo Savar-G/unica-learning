@@ -10,6 +10,7 @@ it("uses a separate bounded model and reserves independently before every shared
   const order: string[] = [], costs: (number | null)[] = []; let calls = 0;
   const base: typeof fetch = async (_url, init) => { order.push("fetch"); calls++; const body = JSON.parse(String(init?.body));
     expect(body.model).toBe(EXPLANATION_MODEL); expect(body.max_tokens).toBe(768); expect(body.reasoning).toEqual({ effort: "low", exclude: true }); expect(body.usage).toEqual({ include: true }); expect(Buffer.byteLength(String(init?.body))).toBeLessThanOrEqual(EXPLANATION_MAX_BYTES);
+    expect(body.provider).toEqual({ require_parameters: true, only: ["anthropic"], allow_fallbacks: false, max_price: { prompt: 1, completion: 3, request: 0 } });
     return calls === 1 ? Response.json({ model: EXPLANATION_MODEL, usage: { cost: 0.0001, prompt_tokens: 100, completion_tokens: 0 } }, { status: 503 }) : response(); };
   const transport = explanationAiClient(env, base)(async () => { costs.push(transport!.costMicros()); order.push("reserve"); })!;
   expect(await transport.client.json(request, new AbortController().signal)).toEqual(valid);
