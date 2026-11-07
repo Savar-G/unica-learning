@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
+import { TWO_WAYS_METHOD_MARKS } from "@/lib/scan-marking";
 import type { QuestionPackage } from "@/lib/question-package";
 import type { WorkbookInput } from "@/lib/workbook-content";
 import type { PagePrintContract } from "@/lib/workbook-print-contract";
@@ -52,20 +53,23 @@ describe("frozen-book coverage CLI", () => {
     q.package = structuredClone(fixtures.packages["two-ways"]) as unknown as QuestionPackage;
     q.package.ref = { source: "workbook", workbookId: b.id, page: 1, question: 1 };
     q.regions = q.package.item!.regions.map((r, k) => ({ id: r.id, kind: r.kind, box: { x: 10 + k * 210, y: 10, width: 200, height: 100 } }));
-    expect(run(b)).toMatchObject({ status: 0, output: { complete: true, questions: 1, aiMarked: 1, parent: 0, unsupported: 0,
-      suppliedRight: 1, suppliedNullBlank: 1, suppliedUnclear: 1, suppliedWrongMethod: 1, suppliedMissingMethod: 1, suppliedDoesNotSolve: 1, suppliedFilledIn: 1,
+    // With the method rules off, each of the 7 supplied readings of the item waits for our team.
+    const supplied = TWO_WAYS_METHOD_MARKS
+      ? { suppliedRight: 1, suppliedNullBlank: 1, suppliedUnclear: 1, suppliedWrongMethod: 1, suppliedMissingMethod: 1, suppliedDoesNotSolve: 1, suppliedFilledIn: 1, suppliedTwoWaysToTeam: 0 }
+      : { suppliedRight: 0, suppliedNullBlank: 0, suppliedUnclear: 0, suppliedWrongMethod: 0, suppliedMissingMethod: 0, suppliedDoesNotSolve: 0, suppliedFilledIn: 0, suppliedTwoWaysToTeam: 7 };
+    expect(run(b)).toMatchObject({ status: 0, output: { complete: true, questions: 1, aiMarked: 1, parent: 0, unsupported: 0, ...supplied,
       formats: { "two-ways": 1 }, readingFormats: { "two-ways": 1 } } });
     expect(run(b).output.parentJudgingLabels).toMatchObject({ questions: 0, byPath: { "not-read-yet": { count: 0 }, "model-answer-form": { count: 0 }, "alternate-form": { count: 0 } } });
   });
-  it("counts each question that can show a label asking the parent to judge, by path, format and id", () => {
+  it("finds no label asking the parent to judge, on any path", () => {
     const b = book();
-    expect(run(b).output.parentJudgingLabels).toMatchObject({ questions: 1,
-      byPath: { "not-read-yet": { count: 1, formats: { "write-number": 1 }, ids: ["p1q1"] }, "model-answer-form": { count: 1, ids: ["p1q1"] }, "alternate-form": { count: 0, ids: [] } } });
+    expect(run(b).output.parentJudgingLabels).toEqual({ questions: 0, historyLabelsAskingParent: [],
+      byPath: { "not-read-yet": { count: 0, formats: {}, ids: [] }, "model-answer-form": { count: 0, formats: {}, ids: [] }, "alternate-form": { count: 0, formats: {}, ids: [] } } });
     const words = book(), q = words.pages[0].questions[0];
     q.package = structuredClone(fixtures.packages["write-words"]) as unknown as QuestionPackage;
     q.package.ref = { source: "workbook", workbookId: words.id, page: 1, question: 1 };
     q.regions = q.package.item!.regions.map(r => ({ id: r.id, kind: r.kind, box: { x: 10, y: 10, width: 200, height: 100 } }));
-    expect(run(words).output.parentJudgingLabels.byPath["alternate-form"]).toEqual({ count: 1, formats: { "write-words": 1 }, ids: ["p1q1"] });
+    expect(run(words).output.parentJudgingLabels.byPath["alternate-form"]).toEqual({ count: 0, formats: {}, ids: [] });
   });
   it("reports a gap for a two-ways item with a missing method region", () => {
     const b = book(), q = b.pages[0].questions[0];

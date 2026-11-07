@@ -6,7 +6,7 @@ import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import publicEvidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
 import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, selectComparisonModels, transportUsage, upgradeFixed40Manifest, validateComparisonManifest, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
 import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "@/lib/scan-marking-comparison-run";
-import { markingRequest, readMarkingOutput, validMarkingOutput } from "@/lib/scan-marking";
+import { markingRequest, readMarkingOutput, TWO_WAYS_METHOD_MARKS, validMarkingOutput } from "@/lib/scan-marking";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { fileJournal, refreshEvidence, rpcEvaluationBudget } from "../../scripts/scan-marking-comparison-cli";
@@ -25,17 +25,19 @@ function readingText(region: ReturnType<typeof markingRegions>[number], wrong: b
   if (wrong) return "999/1000";
   return region.answer.type === "mixed" ? `${region.answer.whole} ${region.answer.numerator}/${region.answer.denominator}` : region.answer.type === "fraction" ? `${region.answer.numerator}/${region.answer.denominator}` : String(region.answer.value);
 }
+/** While the method rules are off, our team marks two-ways items, so only the first 4 photos carry one. */
+const formatsFor = (n: number) => COMPARISON_FORMATS.filter(f => f !== "two-ways" || TWO_WAYS_METHOD_MARKS || n < 4);
 function photo(n = 0): ComparisonPhoto {
-  const id = `synthetic-photo-${n}`, state = ["right", "wrong", "blank", "uncertain"][n % 20] ?? "right";
+  const id = `synthetic-photo-${n}`, state = ["right", "wrong", "blank", "uncertain"][n % 20] ?? "right", formats = formatsFor(n);
   const frame: ComparisonPhoto["frame"] = { parentId: SYNTHETIC_IDS.parent, childId: SYNTHETIC_IDS.child, workbookId: SYNTHETIC_IDS.workbook, pageId: "synthetic-page-3", pageNumber: 3, printedRevision: "a".repeat(28), photo: id, ready: true,
-    questions: COMPARISON_FORMATS.map((format, i) => {
+    questions: formats.map((format, i) => {
       const pkg = copy(fixtures.packages[format as keyof typeof fixtures.packages]) as unknown as QuestionPackage;
       pkg.id = `synthetic-item-${i}`; pkg.ref = { source: "workbook", workbookId: SYNTHETIC_IDS.workbook, page: 3, question: i + 1 };
       expect(checkQuestionPackage(pkg).ok).toBe(true);
       return { number: i + 1, package: pkg, teaching: null, regions: pkg.item!.regions.map((r, k) => ({ id: r.id, kind: r.kind, box: { x: 10 + k * 210, y: 10 + i * 110, width: 200, height: 100 } })) };
     }) };
   return { id, clear: state !== "uncertain", image: { path: `${id}.jpg`, sha256: hashBytes(id), width: 1000, height: 1400, metadataFree: true }, frame,
-    truth: frame.questions.map((q, i) => ({ itemId: q.package!.id, format: COMPARISON_FORMATS[i] as ComparisonFormat,
+    truth: frame.questions.map((q, i) => ({ itemId: q.package!.id, format: formats[i] as ComparisonFormat,
       result: state as "right" | "wrong" | "blank" | "uncertain",
       readings: markingRegions(q).map(r => ({ regionId: r.id, state: state === "blank" ? "blank" : state === "uncertain" ? "uncertain" : "written", text: state === "blank" ? "" : state === "uncertain" ? null : readingText(r, state === "wrong"), issue: state === "uncertain" ? "blurry" : null, ...(r.kind === "method" && state !== "blank" && state !== "uncertain" ? { verdict: "solves" } : {}) }) as LabelledReading) })) };
 }
@@ -195,7 +197,8 @@ describe("per-model preflight and refreshed prices", () => {
       expect(results.filter(r => r.model === model.model).map(r => r.photo)).toEqual(data.photos.map(p => p.id));
       expect(bodies.filter(b => b.model === model.model).every(b => JSON.stringify(b.provider) === JSON.stringify(comparisonProvider(model, history.find(e => e.model === model.model)!)))).toBe(true);
     }
-    expect(new Set(bodies.map(b => JSON.stringify([b.messages, b.response_format, b.reasoning]))).size).toBe(1);
+    // One prompt and schema: only the item list differs, between photos with and without a two-ways item.
+    expect(new Set(bodies.map(b => JSON.stringify([b.messages, b.response_format, b.reasoning]))).size).toBe(TWO_WAYS_METHOD_MARKS ? 1 : 2);
     expect(() => assertComparisonResultIdentity(data, results, history, run)).not.toThrow();
     const reports = comparisonReports(data, preflight, results, history, new Map()).filter(r => selected.some(m => m.model === r.model));
     expect(reports.map(r => r.model)).toEqual(selected.map(m => m.model));
@@ -301,7 +304,7 @@ describe("synthetic manifest and fixed truth", () => {
     expect(() => validateComparisonManifest(upgraded)).not.toThrow();
     expect(upgraded.photos.map(p => p.image)).toEqual(current.photos.map(p => p.image));
     const rows = upgraded.photos.flatMap(p => p.truth.filter(t => t.format === "two-ways"));
-    expect(rows).toHaveLength(40);
+    expect(rows).toHaveLength(TWO_WAYS_METHOD_MARKS ? 40 : 4);
     expect(rows.every(t => t.result === "blank" && t.readings.map(r => [r.regionId, r.state, r.text]).join() === "method-1,blank,,method-2,blank,,answer,blank,")).toBe(true);
     for (const [n, p] of upgraded.photos.entries()) expect(p.truth.filter(t => t.format !== "two-ways")).toEqual(current.photos[n].truth.filter(t => t.format !== "two-ways"));
     const bad = copy(legacy); bad.photos[0].truth.find(t => t.format === "two-ways")!.result = "right";
@@ -592,10 +595,12 @@ describe("D267 denominators, projection and selection", () => {
   });
   it("counts every item as AI-marked, with no parent path, and measures clear-photo unsure", () => {
     const m = manifest(), results = m.photos.map(p => result(p)), report = scoreComparison(m, COMPARISON_MODELS[0], results, evidence());
-    expect(report.denominator).toBe(360); expect(report.aiMarked).toBe(360); expect(report.parentMethods).toBe(0); expect(report.clearDenominator).toBe(342);
-    expect(report.wrongMarkDenominator).toBe(340); expect(report.wrongMarks).toBe(0); expect(report.wrongAsRight).toBe(0); expect(report.unsure).toBe(20); expect(report.clearUnsure).toBe(2); expect(report.passed).toBe(true);
+    // With the method rules off, 4 photos carry a two-ways item and our team marks each one, so they count as unsure.
+    const [d, c, w, u, cu] = TWO_WAYS_METHOD_MARKS ? [360, 342, 340, 20, 2] : [324, 307, 302, 22, 5];
+    expect(report.denominator).toBe(d); expect(report.aiMarked).toBe(d); expect(report.parentMethods).toBe(0); expect(report.clearDenominator).toBe(c);
+    expect(report.wrongMarkDenominator).toBe(w); expect(report.wrongMarks).toBe(0); expect(report.wrongAsRight).toBe(0); expect(report.unsure).toBe(u); expect(report.clearUnsure).toBe(cu); expect(report.passed).toBe(true);
     const missing = scoreComparison(m, COMPARISON_MODELS[0], results.slice(1), evidence());
-    expect(missing.denominator).toBe(360); expect(missing.complete).toBe(false); expect(missing.passed).toBe(false); expect(missing.missingRuns).toBe(1);
+    expect(missing.denominator).toBe(TWO_WAYS_METHOD_MARKS ? 360 : 324); expect(missing.complete).toBe(false); expect(missing.passed).toBe(false); expect(missing.missingRuns).toBe(1);
     const refused = copy(results); refused[0].status = "failed"; refused[0].failure = "refusal"; refused[0].schemaValid = false;
     const refusalReport = scoreComparison(m, COMPARISON_MODELS[0], refused, evidence());
     expect(refusalReport.refusals).toBe(1); expect(refusalReport.schemaFailures).toBe(0); expect(refusalReport.schemaUnvalidated).toBe(1);
@@ -609,7 +614,7 @@ describe("D267 denominators, projection and selection", () => {
     const m = manifest(), results = m.photos.map(p => result(p));
     for (let i = 0; i < 4; i++) results[0].observations[i].result = "wrong";
     const report = scoreComparison(m, COMPARISON_MODELS[0], results, evidence());
-    expect(report.wrongMarks).toBe(4); expect(report.wrongMarkDenominator).toBe(340); expect(report.passed).toBe(false);
+    expect(report.wrongMarks).toBe(4); expect(report.wrongMarkDenominator).toBe(TWO_WAYS_METHOD_MARKS ? 340 : 302); expect(report.passed).toBe(false);
   });
   it("schema, refusal, duplicate, missing-cost and excess clear unsure cannot pass", () => {
     const m = manifest();

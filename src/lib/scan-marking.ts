@@ -14,6 +14,11 @@ import type { SkillMark } from "@/lib/assessment/skill-state";
 
 export const MARKING_PROMPT_VERSION = "whole-page-scalar-readings-v8";
 export const MARKING_MODEL = "anthropic/claude-sonnet-5.5";
+/**
+ * Off: the AI reads every two-ways item (both methods and the answer), and every one waits for our team, never Right.
+ * On: code's method rules (`src/lib/scan-marking-methods.ts`, D-302) can mark a valid pair. The method rules ship apart.
+ */
+export const TWO_WAYS_METHOD_MARKS = false;
 export const MARKING_MAX_TOKENS = 4096;
 export const MARKING_MAX_DISPATCHES = 2;
 const MAX_VERDICT_REASON = 120;
@@ -196,12 +201,12 @@ export function readMarkingOutput(frame: MarkingFrame, output: unknown): Observa
     const twoWays = e.twoWays === true;
     const read = group.map(a => readRegion(a, readings));
     const regions = twoWays ? twoWaysRegions(group, read) : read;
-    const result = twoWays ? twoWaysResult(regions) : regions.some(r => r.result === "wrong") ? "wrong" : regions.every(r => r.result === "right") ? "right"
+    const result = twoWays ? (TWO_WAYS_METHOD_MARKS ? twoWaysResult(regions) : null) : regions.some(r => r.result === "wrong") ? "wrong" : regions.every(r => r.result === "right") ? "right"
       : regions.every(r => r.result === "blank") ? "blank" : null;
     const readAnswerText = group.length === 1 ? regions[0].text : regions.every(r => r.result === "blank") ? "" : twoWays ? twoWaysText(group, regions)
       : regions.map((r, n) => `${group[n].kind === "choice" ? "Choice" : group[n].kind === "text" ? "Words" : "Number"}: ${r.text ?? "Not read"}`).join("; ").slice(0, MAX_READ_TEXT);
     return { ...first, readAnswerText, regions, certainty: regions.every(r => r.certainty === "certain") ? "certain" : "uncertain",
-      state: result === null ? "pending" : "scored", result, help: "none", issue: twoWays ? twoWaysIssue(group, regions, result) : regions.find(r => r.issue)?.issue ?? (result === null ? "incomplete" : null) };
+      state: result === null ? "pending" : "scored", result, help: "none", issue: twoWays ? (TWO_WAYS_METHOD_MARKS ? twoWaysIssue(group, regions, result) : regions.find(r => r.issue && PHOTO_ISSUES.includes(r.issue))?.issue ?? "method-form") : regions.find(r => r.issue)?.issue ?? (result === null ? "incomplete" : null) };
   });
 }
 function originalEvents(frame: MarkingFrame, observations: Observation[], at: string): NewLearningEvent[] {

@@ -2,7 +2,7 @@
 import { COMPARISON_ALLOWED_MODELS, COMPARISON_SETTINGS, COMPARISON_DEFERRAL_POLICY, SYNTHETIC_IDS, comparisonItemFormat, hashValue, labelledOutput, scoreComparison, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type TruthRow } from "@/lib/scan-marking-comparison";
 import { expectedItems, READING_ISSUES, type ReadingIssue } from "@/lib/scan-observation";
 import { markingRegions } from "@/lib/scan-marking-regions";
-import { markingRequest, readMarkingOutput, validMarkingOutput, type MarkingFrame } from "@/lib/scan-marking";
+import { markingRequest, readMarkingOutput, TWO_WAYS_METHOD_MARKS, validMarkingOutput, type MarkingFrame } from "@/lib/scan-marking";
 
 export const PHYSICAL_VERSION = "robin-physical-v2";
 /** Both run on the same photos, truth, prompt, reader, scorer and D-267 bar, with fallbacks off. Neither is selected here. */
@@ -124,7 +124,7 @@ export function physicalTruth(mapping: PhysicalMapping, pages: readonly Physical
     for (const t of truth) {
       const observed = observations.find(o => o.identity.itemId === t.itemId)!;
       // A human judges a method; code checks only its arithmetic. A two-ways disagreement is a result to report, not a bad label.
-      if (t.format === "two-ways" && (t.result === "right" || t.result === "wrong")) continue;
+      if (t.format === "two-ways" && (t.result === "right" || t.result === "wrong" || (!TWO_WAYS_METHOD_MARKS && observed.result === null))) continue;
       if (observed.result !== (t.result === "uncertain" ? null : t.result) && !(t.format === "write-words" && t.result === "wrong" && observed.result === null)) fail("human-truth-reader-conflict");
     }
     output.set(m.file, truth);
@@ -202,7 +202,7 @@ export function physicalSideBySide(report: ReturnType<typeof physicalReport>): s
     ["Wrong marked right", m => String(m.wrongAsRight)],
     ["Clear unsure", m => `${m.clearUnsure}/${m.clearDenominator}`],
     ["Clear unsure rate", m => `${percent(m.clearUnsureRate)} (D-267 at most 5%)`],
-    ["Two-ways unsure (clear)", m => `${m.twoWays.clearUnsure}/${m.twoWays.clearItems} (${percent(m.twoWays.clearUnsureRate)})`],
+    ["Two-ways unsure (clear)", m => `${m.twoWays.clearUnsure}/${m.twoWays.clearItems} (${percent(m.twoWays.clearUnsureRate)}; D-267 at most 5%)`],
     ["Two-ways", m => `${m.twoWays.right} right, ${m.twoWays.wrong} wrong, ${m.twoWays.blank} blank, ${m.twoWays.unsure} unsure of ${m.twoWays.items}; ${m.twoWays.wrongMarks} wrong marks`],
     ["Cost per page", m => m.costPerPageUsd === null ? "unknown" : `USD ${m.costPerPageUsd.toFixed(6)}`],
     ["Latency p50", m => m.latencyP50Ms === null ? "unknown" : `${m.latencyP50Ms} ms`],
@@ -283,9 +283,9 @@ export function physicalFixedReport(manifest: ComparisonManifest, results: reado
 export function physicalFixedSideBySide(report: ReturnType<typeof physicalFixedReport>): string {
   const cost = (v: number | null) => v === null ? "unknown" : `USD ${v.toFixed(6)}`, ms = (v: number | null) => v === null ? "unknown" : `${v}`;
   const line = (name: string, p: string, r: { wrongMarks: number; definite: number; wrongAsRight: number; clearUnsure: number; clear: number; schemaFailures: number; costPerPageUsd: number | null; latencyP50Ms: number | null; latencyP95Ms: number | null; twoWays?: TwoWaysTally }, pass: string) =>
-    `${name.padEnd(12)}${p.padEnd(5)}${`${r.wrongMarks}/${r.definite}`.padEnd(8)}${String(r.wrongAsRight).padEnd(7)}${`${r.clearUnsure}/${r.clear}`.padEnd(8)}${(r.twoWays ? `${r.twoWays.clearUnsure}/${r.twoWays.clearItems}` : "parent").padEnd(11)}${String(r.schemaFailures).padEnd(8)}${cost(r.costPerPageUsd).padEnd(14)}${`${ms(r.latencyP50Ms)}/${ms(r.latencyP95Ms)}`.padEnd(13)}${pass}`;
-  return [`Fixed ${report.photos} synthetic photos (${report.proofClass}): prompt v8 next to the saved v7 result. v7 scored 4 fewer rows: the two-ways rows were parent rows.`,
-    `${"".padEnd(12)}${"".padEnd(5)}${"Wrong".padEnd(8)}${"W->R".padEnd(7)}${"Unsure".padEnd(8)}${"2W unsure".padEnd(11)}${"Schema".padEnd(8)}${"Cost/page".padEnd(14)}${"p50/p95 ms".padEnd(13)}D-267`,
+    `${name.padEnd(12)}${p.padEnd(5)}${`${r.wrongMarks}/${r.definite}`.padEnd(8)}${String(r.wrongAsRight).padEnd(7)}${`${r.clearUnsure}/${r.clear}`.padEnd(8)}${(r.twoWays ? `${r.twoWays.clearUnsure}/${r.twoWays.clearItems} ${percent(r.twoWays.clearUnsureRate)}` : "parent").padEnd(14)}${String(r.schemaFailures).padEnd(8)}${cost(r.costPerPageUsd).padEnd(14)}${`${ms(r.latencyP50Ms)}/${ms(r.latencyP95Ms)}`.padEnd(13)}${pass}`;
+  return [`Fixed ${report.photos} synthetic photos (${report.proofClass}): prompt v8 next to the saved v7 result. v7 scored 4 fewer rows: the two-ways rows were parent rows. D-267 allows at most 5% unsure on clear photos, for the page and for two-ways.`,
+    `${"".padEnd(12)}${"".padEnd(5)}${"Wrong".padEnd(8)}${"W->R".padEnd(7)}${"Unsure".padEnd(8)}${"2W unsure".padEnd(14)}${"Schema".padEnd(8)}${"Cost/page".padEnd(14)}${"p50/p95 ms".padEnd(13)}D-267`,
     ...report.rows.flatMap(r => [line(MODEL_NAMES[r.model] ?? r.model, "v8", r.v8, r.v8.passed ? "pass" : r.v8.complete ? "fail" : "not complete"), line("", "v7", r.v7, "pass (saved)")])].join("\n");
 }
 export function physicalPhotoId(file: string) { return `synthetic-physical-${hashValue(file).slice(0, 24)}`; }

@@ -15,6 +15,7 @@ import type { EvaluationBudget, EvaluationJournal } from "./scan-marking-compari
 import { blankPage, drawMark, drawPrintedContent, drawQr, pagePng } from "./scan-synthetic";
 import { SCAN_MARKS, type PagePrintContract } from "./workbook-print-contract";
 import type { WorkbookInput } from "./workbook-content";
+import { TWO_WAYS_METHOD_MARKS } from "./scan-marking";
 import { expectedItems } from "./scan-observation";
 
 const root = process.cwd(), folders: string[] = [];
@@ -212,7 +213,7 @@ describe("physical plans, journals and accounting", () => {
   it("replays saved HTTP without inference and rejects a copied or edited result", async () => {
     const input = await setAndPlan("local-fake"); await fakePhysicalHttp(input.out, input.set, input.plan, input.run);
     const original = JSON.parse(await readFile(resolve(input.out, "results.json"), "utf8")) as ComparisonResult[];
-    expect(physicalReport(input.set, original, evidences(), input.run).passed).toBe(true);
+    expect(physicalReport(input.set, original, evidences(), input.run).passed).toBe(TWO_WAYS_METHOD_MARKS);
     const refused = structuredClone(input.set); refused.photos[0].status = "refused"; refused.photos[0].reason = "wrong-page-qr";
     expect(physicalReport(refused, original, evidences(), input.run)).toMatchObject({ passed: false, complete: false, refusedPhotos: 1 });
     const missing = structuredClone(input.set); missing.missing.push("android:pdf-11");
@@ -227,13 +228,16 @@ describe("physical plans, journals and accounting", () => {
 });
 
 describe("Sonnet and Terra side by side", () => {
-  /** Fake readings: Terra reads the two-ways item as wrong and is unsure of one other item; Sonnet reads the labels. */
+  /** Fake readings: Terra reads the decimal item as wrong and is unsure of the whole-number item; Sonnet reads the labels. */
   const terraDiffers = (p: ComparisonPhoto, m: { model: string }) => {
     const out = labelledOutput(p) as { readings: { item: string; region: string; state: string; text: string | null; issue: string | null }[] };
     if (m.model !== TERRA.model) return out;
-    const items = expectedItems(p.frame), twoWays = `i${items.findIndex(e => p.frame.questions.find(q => q.number === e.number)!.package!.item!.format === "two-ways") + 1}`;
-    return { readings: out.readings.map(r => r.item === twoWays && r.region.endsWith("-3") ? { ...r, state: "written", text: "431", issue: null } : r.item === "i1" ? { ...r, state: "uncertain", text: null, issue: "blurry" } : r) };
+    const items = expectedItems(p.frame), decimal = `i${items.findIndex(e => p.truth.find(t => t.itemId === e.identity.itemId)!.format === "decimal") + 1}`;
+    return { readings: out.readings.map(r => r.item === decimal ? { ...r, state: "written", text: "431", issue: null } : r.item === "i1" ? { ...r, state: "uncertain", text: null, issue: "blurry" } : r) };
   };
+  // Blank truth on the two-ways item: code reads it blank with the method rules on, and our team marks it with them off.
+  const twoWaysBlank = TWO_WAYS_METHOD_MARKS ? { blank: 2, unsure: 0, clearUnsure: 0, clearUnsureRate: 0, unsureRate: 0 } : { blank: 0, unsure: 2, clearUnsure: 1, clearUnsureRate: 1, unsureRate: 1 };
+  const team = TWO_WAYS_METHOD_MARKS ? 0 : 1;
   async function fakeRun() {
     const input = await setAndPlan("local-fake");
     await fakePhysicalHttp(input.out, input.set, input.plan, input.run, terraDiffers);
@@ -253,21 +257,22 @@ describe("Sonnet and Terra side by side", () => {
   });
   it("reports wrong marks, wrong marked right, clear unsure, two-ways, cost and latency for each model", async () => {
     const { report } = await fakeRun(), [sonnet, terra] = report.models;
-    expect(sonnet).toMatchObject({ model: SONNET.model, endpoint: "google-vertex/global", wrongMarks: 0, wrongAsRight: 0, clearUnsure: 0, passed: true, complete: true,
-      twoWays: { items: 2, right: 0, wrong: 0, blank: 2, unsure: 0, wrongMarks: 0, wrongAsRight: 0 } });
-    expect(terra).toMatchObject({ model: TERRA.model, endpoint: "azure", wrongMarks: 2, wrongAsRight: 0, clearUnsure: 1, passed: false, complete: true,
-      twoWays: { items: 2, right: 0, wrong: 2, blank: 0, unsure: 0, wrongMarks: 2, wrongAsRight: 0 } });
+    expect(sonnet).toMatchObject({ model: SONNET.model, endpoint: "google-vertex/global", wrongMarks: 0, wrongAsRight: 0, clearUnsure: team, passed: !team, complete: true,
+      twoWays: { items: 2, right: 0, wrong: 0, wrongMarks: 0, wrongAsRight: 0, ...twoWaysBlank } });
+    expect(terra).toMatchObject({ model: TERRA.model, endpoint: "azure", wrongMarks: 2, wrongAsRight: 0, clearUnsure: 1 + team, passed: false, complete: true,
+      twoWays: { items: 2, right: 0, wrong: 0, wrongMarks: 0, wrongAsRight: 0, ...twoWaysBlank } });
     for (const m of report.models) { expect(m.costPerPageUsd).toBe(0); expect(m.latencyP50Ms).not.toBeNull(); expect(m.latencyP95Ms).not.toBeNull(); }
     expect(report.passed).toBe(false);
   });
   it("shows the two-ways unsure rate apart from the whole-page unsure rate, for each model", async () => {
     const { report } = await fakeRun(), [sonnet, terra] = report.models;
-    expect(sonnet).toMatchObject({ clearUnsureRate: 0, twoWays: { clearItems: 1, clearUnsure: 0, clearUnsureRate: 0, unsureRate: 0 } });
-    expect(terra).toMatchObject({ clearUnsureRate: 1 / 9, twoWays: { clearItems: 1, clearUnsure: 0, clearUnsureRate: 0, unsureRate: 0 } });
+    expect(sonnet).toMatchObject({ clearUnsureRate: team / 9, twoWays: { clearItems: 1, clearUnsure: twoWaysBlank.clearUnsure, clearUnsureRate: twoWaysBlank.clearUnsureRate, unsureRate: twoWaysBlank.unsureRate } });
+    expect(terra).toMatchObject({ clearUnsureRate: (1 + team) / 9, twoWays: { clearItems: 1, clearUnsure: twoWaysBlank.clearUnsure, clearUnsureRate: twoWaysBlank.clearUnsureRate } });
     const text = physicalSideBySide(report);
     expect(text).toContain("Clear unsure rate");
     expect(text).toContain("Two-ways unsure (clear)");
-    expect(text).toContain("11.1%");
+    expect(text).toContain(`${((1 + team) / 9 * 100).toFixed(1)}%`);
+    expect(text).toContain("D-267 at most 5%");
   });
   it("re-scores saved model output through the current method rules on replay, with no new call", async () => {
     const { input } = await fakeRun(), journal = resolve(input.out, "journal");
@@ -288,9 +293,10 @@ describe("Sonnet and Terra side by side", () => {
   it("lists each disagreement by photo and item, with the truth and each model's result", async () => {
     const { report, input } = await fakeRun();
     expect(report.disagreements).toHaveLength(4);
-    const twoWays = report.disagreements.filter(d => d.format === "two-ways");
-    expect(twoWays).toHaveLength(2);
-    expect(twoWays[0]).toEqual({ photo: "iphone.jpg", pdfPage: 2, question: 9, itemId: input.set.photos[0].photo.truth.find(t => t.format === "two-ways")!.itemId, format: "two-ways", truth: "blank", results: { [SONNET.model]: "blank", [TERRA.model]: "wrong" } });
+    expect(report.disagreements.filter(d => d.format === "two-ways")).toHaveLength(0);
+    const decimal = report.disagreements.filter(d => d.format === "decimal");
+    expect(decimal).toHaveLength(2);
+    expect(decimal[0]).toEqual({ photo: "iphone.jpg", pdfPage: 2, question: 3, itemId: input.set.photos[0].photo.truth.find(t => t.format === "decimal")!.itemId, format: "decimal", truth: "blank", results: { [SONNET.model]: "blank", [TERRA.model]: "wrong" } });
     expect(report.disagreements.filter(d => d.question === 1).map(d => d.results[TERRA.model])).toEqual(["unsure", "unsure"]);
   });
   it("prints a side-by-side table with no key or child data", async () => {
@@ -487,7 +493,7 @@ describe("fixed 40 set in the same paid step", () => {
     expect(report.rows.map(r => r.model)).toEqual([SONNET.model, TERRA.model]);
     expect(report.rows[0]).toMatchObject({ v8: { complete: false, wrongMarks: 0, wrongAsRight: 0, prompt: "whole-page-scalar-readings-v8" }, v7: { prompt: "whole-page-scalar-readings-v7", wrongMarks: 0, definite: 218, wrongAsRight: 0, clearUnsure: 1, clear: 219, costPerPageUsd: 0.01095165, latencyP50Ms: 2551, latencyP95Ms: 3164 } });
     expect(report.rows[1].v7).toMatchObject({ costPerPageUsd: 0.005076625, latencyP50Ms: 2270, latencyP95Ms: 3264 });
-    expect(report.rows[0].v8).toMatchObject({ clearUnsureRate: 0, twoWays: { items: 2, clearItems: 2, clearUnsure: 0, clearUnsureRate: 0 } });
+    expect(report.rows[0].v8).toMatchObject({ clearUnsureRate: TWO_WAYS_METHOD_MARKS ? 0 : 2 / 18, twoWays: { items: 2, clearItems: 2, clearUnsure: TWO_WAYS_METHOD_MARKS ? 0 : 2, clearUnsureRate: TWO_WAYS_METHOD_MARKS ? 0 : 1 } });
     const text = physicalFixedSideBySide(report);
     for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219", "2W unsure"]) expect(text).toContain(piece);
   });

@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, type ExpectedItem, type Observation } from "../src/lib/scan-observation";
 import { markingRegions, type MarkingRegion } from "../src/lib/scan-marking-regions";
 import { suppliedFilledInText, suppliedMethodText } from "../src/lib/scan-marking-methods";
-import { markingPageView, readMarkingOutput, validMarkingOutput, MARKING_PROMPT_VERSION, type MarkingFrame } from "../src/lib/scan-marking";
+import { markingPageView, readMarkingOutput, TWO_WAYS_METHOD_MARKS, validMarkingOutput, waitsForTeam, MARKING_PROMPT_VERSION, type MarkingFrame } from "../src/lib/scan-marking";
+import { HISTORY_LABELS } from "../src/lib/scan-history";
 import { comparisonItemFormat, labelledOutput, type ComparisonPhoto } from "../src/lib/scan-marking-comparison";
 import { isUuid, storedQuestion, type WorkbookInput } from "../src/lib/workbook-content";
 import { QUESTION_PACKAGE_VERSION } from "../src/lib/question-package";
@@ -25,7 +26,7 @@ if (book.pages.some(p => !p.image || ![p.image.width, p.image.height].every(n =>
   || !storedPrintContract(p.printContract, {
   workbookId: book.id, page: p.number, image: { width: p.image.width, height: p.image.height },
 }))) throw new Error("invalid-frozen-page-contract");
-const totals = { questions: 0, aiMarked: 0, parent: 0, suppliedRight: 0, suppliedNullBlank: 0, suppliedUnclear: 0, suppliedWrongMethod: 0, suppliedMissingMethod: 0, suppliedDoesNotSolve: 0, suppliedFilledIn: 0 };
+const totals = { questions: 0, aiMarked: 0, parent: 0, suppliedRight: 0, suppliedNullBlank: 0, suppliedUnclear: 0, suppliedWrongMethod: 0, suppliedMissingMethod: 0, suppliedDoesNotSolve: 0, suppliedFilledIn: 0, suppliedTwoWaysToTeam: 0 };
 /** Labels that ask a parent to judge. Counted from what markingPageView shows for each stored question, on each path. */
 const ASKS_PARENT = /please check|check this answer|check both/i;
 const judging: Record<"not-read-yet" | "model-answer-form" | "alternate-form", { count: number; formats: Record<string, number>; ids: string[] }> = {
@@ -107,6 +108,12 @@ for (const page of book.pages) {
       const found = observations.filter(o => o.identity.itemId === e.identity.itemId);
       const o = found.length === 1 ? found[0] : null;
       if (!supported.has(e.identity.itemId) || (badMethod && !e.twoWays)) continue;
+      // Until the method rules ship, every two-ways reading waits for our team, whatever it shows.
+      if (e.twoWays && !TWO_WAYS_METHOD_MARKS) {
+        if (!o || o.result !== null || o.state !== "pending" || !waitsForTeam({ observation: o, model: null })) gaps.set(`${page.number}:${e.number}`, { page: page.number, question: e.number, reason: `Supplied ${mode} two-ways reading did not wait for our team` });
+        else totals.suppliedTwoWaysToTeam++;
+        continue;
+      }
       const correct = mode === "unclear" ? o?.result === null && o.issue === "blurry" : mode === "filled-in" ? o?.result === null && o.issue === "method-form" : badMethod ? o?.result === "wrong" : o?.result === mode;
       if (!correct) gaps.set(`${page.number}:${e.number}`, { page: page.number, question: e.number, reason: `Supplied ${mode} reading failed the public reader` });
       else if (mode === "right") totals.suppliedRight++; else if (mode === "blank") totals.suppliedNullBlank++; else if (mode === "unclear") totals.suppliedUnclear++;
@@ -116,8 +123,8 @@ for (const page of book.pages) {
   }
 }
 const parentJudgingLabels = { questions: askedParent.size, byPath: judging,
-  // Fixed screen text, on top of the labels: src/components/scan-mark-change.tsx and src/lib/scan-history.ts.
-  screenText: { "Check this answer": { when: "button on any item with no result", questions: totals.questions }, "Please check": { when: "history status of a page with an unsure item", pages: book.pages.filter(p => p.questions.length).length } } };
+  // The page history's fixed text, on top of the item labels (src/lib/scan-history.ts).
+  historyLabelsAskingParent: Object.values(HISTORY_LABELS).filter(label => ASKS_PARENT.test(label)) };
 const complete = totals.questions > 0 && gaps.size === 0 && totals.aiMarked === totals.questions && totals.parent === 0;
 console.log(JSON.stringify({ label: "Offline supplied-reading coverage, not recognition or print approval", sha256, prompt: MARKING_PROMPT_VERSION,
   pages: book.pages.length, ...totals, unsupported: gaps.size, formats: Object.fromEntries(Object.entries(formats).sort()),

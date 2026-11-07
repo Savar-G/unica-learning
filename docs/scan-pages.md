@@ -171,86 +171,23 @@ The item keeps one review crop, canonical result and original event. Its local c
 
 ## Two-ways marking (D-301, D-302)
 
-Savar decided on 7 November that AI does all marking and a parent marks no question. This replaces the parent review of 6 November (#461). A parent keeps "Change this mark".
+Savar decided on 7 November that AI does all marking and a parent marks no question. This replaces the parent review of 6 November (#461). A parent keeps "Change this mark" on a finished mark.
 
-The printed item has two work areas and one final-answer box. The model reads all three regions on the whole page. It transcribes each method as written, one step per line, and it never leaves out or tidies a step. It receives the question with each method region and no answer. For each method it also gives a verdict: `solves`, `does-not-solve` or `unsure`, with a short reason. The reason is evidence for the team and is never shown to a parent. Code checks the answer and the arithmetic in `src/lib/scan-marking-methods.ts`.
+The printed item has two work areas and one final-answer box. The model reads all three regions on the whole page. It transcribes each method as written, one step per line, and it never leaves out or tidies a step. It receives the question with each method region and no answer. For each method it also gives a verdict: `solves`, `does-not-solve` or `unsure`, with a short reason. The reason is evidence for the team and is never shown to a parent.
 
-Code uses an allow-list and fails closed (D-302). A method is valid only when the AI says `solves`, every written step is true arithmetic, and code recognizes the whole method as one kind from the fixed list for the question's shape (`METHOD_KINDS`):
+Until the method rules ship (`TWO_WAYS_METHOD_MARKS` in `src/lib/scan-marking.ts` is off), every two-ways item waits for our team, whatever the reading shows. It is never Right, Wrong or Blank by code. The parent sees "Our team is checking this answer.", with the retake line only for a blurry or cut-off part (#717). Our team's mark finishes the item and publishes its event. The rules, their method kinds and their strategy families are in D-302 and ship apart.
 
-| Question shape | Kinds |
-| --- | --- |
-| `a + b = ?` | split one addend, partial sums, compensation, column, counting on in jumps |
-| `a - b = ?` | split the subtrahend, partial differences, compensation, column, counting back, counting up |
-| `a × b = ?` | split a factor, round and adjust, strip zeros, strip zeros from one factor, repeated addition, skip counting |
-| `a ÷ b = ?` | repeated subtraction, skip counting, repeated addition, division with tens, build-up |
-| `a × ? = c`, `c ÷ ? = a` | the inverse division, plus the division kinds |
-| `a + ? = c`, `a - ? = c` | the inverse subtraction, plus the subtraction kinds |
-| `? - a = c` | the inverse addition, plus the addition kinds |
-| `? ÷ a = c` | the inverse multiplication, plus the multiplication kinds |
+The item keeps one crop of both work areas and the answer box, one canonical result and one event key. It follows its frozen mastery decision. The stored package and print contract stay unchanged. Missing or invalid measured regions make no crop and no reading.
 
-Each kind accounts for every number in the method: the question's numbers, their place-value parts or roundings as the kind defines them, earlier results, and the answer only as a final result. So padding (`× 1`, `+ 0`, `+ n - n`), an extra line, a copied question and a check that uses the answer have no kind. The form does not matter: `36 + 40 + 7 = 83`, the same two steps on two lines and the same steps as jumps are all one kind.
-
-- A skip count goes up by the question's number, from that number to the target. The last line is the count, and the count is the answer.
-- Repeated subtraction takes away that number from the total down to 0. The count is the answer.
-- A bare last line must equal the last result, or the count. A column method's last line joins its column results.
-- A number with a thousands space (`12 500`) is one number.
-- Steps on one line split by commas (`36 + 40 = 76, 76 + 7 = 83`) read as separate lines, and a last `so 5` reads as the count. Neither adds a kind.
-
-Common child forms and their marks, with the AI saying `solves` (tests in `src/lib/scan-marking-methods.test.ts`):
-
-| Form | Mark |
-| --- | --- |
-| `36 + 40 = 76 + 7 = 83` (run-on chain) | Unsure |
-| `36 + 40 = 76, 76 + 7 = 83` | Valid: split one addend |
-| `36 → 76 → 83` (jumps with no amounts) | Unsure |
-| `36 +40 → 76 +7 → 83` | Valid: split one addend |
-| `6 + 7 = 13`, `3 + 4 + 1 = 8`, `83` (column) | Valid: column |
-| `36`, `+47`, `83` (the sum copied down) | Unsure |
-| `8, 16, 24, 32, 40 so 5` | Valid: skip counting |
-| `8, 16, 24, 32, 40 = 5` | Unsure |
-| `8 × 5 = 40` for `8 × ? = 40` | Unsure: the answer is an operand |
-
-These are unsure, never Right: a method code does not recognize, two methods of one kind, a run-on chain (`36 + 40 = 76 + 7 = 83`), a line with `?` or `_`, a question shape code cannot read, and a fraction or decimal answer. Valid work that no kind covers stays unsure. A false step is Wrong, and so is `does-not-solve`.
-
-| Reading | Item result | Label |
-| --- | --- | --- |
-| The answer is right, and both methods are valid and of different kinds | Right | `Right` |
-| The answer is wrong | Wrong | `Wrong` |
-| The answer is right, and a method has a false step or the AI says `does-not-solve` | Wrong | `Wrong. One way does not solve the question.` |
-| The answer is right, and a method is empty (the child did not do two ways) | Wrong | `Wrong. One way is missing.` |
-| The answer is empty, and the methods are read | Wrong | `Wrong` |
-| All three regions are empty | Blank | `Blank` |
-| A region is blurry, cut off or unreadable, and no region is definitely wrong | Unsure | The plain reason of that region |
-| Anything else about a method: the AI is unsure, words or a drawing, no recognized kind, two methods of one kind | Unsure | `We cannot check this method.` |
-| The answer box has a form code cannot check | Unsure | `We cannot check this answer.` |
-
-The AI's verdict is one model's judgment. The AI still decides whether a recognized method solves the question. Robin measures this against human truth, but code alone no longer lets an unrelated sum through. The Robin phone test measures this against human truth. The Robin truth follows the same rule: an item is right only when the answer is right and both methods are valid and of different kinds.
-
-The explanation feature handles a right answer with a wrong method: it tells the model the final answer is right and asks for a way to solve the question.
-
-The item keeps one crop of both work areas and the answer box, one canonical result and one event key. It follows its frozen mastery decision, as other AI-marked formats do. The stored package and print contract stay unchanged. Missing or invalid measured regions make no crop and no reading.
-
-Prompt v8 adds the method rule. It is frozen for the paid run: a test pins the SHA-256 of its system text, output schema, effort and output limit, and a change needs the controller's approval. The method rules are not frozen: the Robin replay scores the saved model output through the current rules and reports how many items changed (`rescoredItems`), so a rule-only change is scored again with no new call. The accepted v7 evaluation does not cover v8, so `scanMarkingServerReadiness` now names the stale candidate and the evaluation items as blockers. This changes no admission: `SCAN_MARKING_ENABLED` and the test-parent list still decide access.
+Prompt v8 adds the method reading. It is frozen for the paid run: a test pins the SHA-256 of its system text, output schema, effort and output limit, and another pins the request name and the item content the model sees. A change needs the controller's approval. The accepted v7 evaluation does not cover v8, so `scanMarkingServerReadiness` names the stale candidate and the evaluation items as blockers. This changes no admission. The Robin replay scores saved model output through the current rules and reports how many items changed (`rescoredItems`), so a rule-only change is scored again with no new call.
 
 ### Round 9 coverage
 
-The first-customer round 9 contract (`bfc5542e`) has 582 questions: 582 have an AI reading path, 0 have a parent marking path and 0 are unsupported ([coverage record](scan-marking-first-book-coverage-ai-only-20261107.json)). This is supplied-reading route proof. It does not prove recognition.
-
-A parent marks no question through a parent path. But some labels still ask a parent to judge, counted from the stored book:
-
-| Text | When | Questions |
-| --- | --- | ---: |
-| `Please check this answer` | Before a non-two-ways item is read | 575 |
-| `Please check this answer.` | The model reports `answer-form` on a non-two-ways item | 575 |
-| `Please check this answer.` | A clear write-words reading is not the literal key | 6 |
-| `Check this answer` (button) | Any item with no result | 582 |
-| `Please check` (page history) | A page with an unsure item | every page with questions |
-
-So "0 parent" means no parent marking path. It does not mean that no text asks a parent to judge. The 7 two-ways items show none of the three labels. They can still show the button and the page history text. #715 owns this wording and the 6 write-words items, and it must land before print or marking opens for this family.
+The first-customer round 9 contract (`bfc5542e`) has 582 questions: 582 have an AI reading path, 0 have a parent marking path and 0 are unsupported ([coverage record](scan-marking-first-book-coverage-ai-only-20261107.json)). The 7 two-ways items wait for our team on every supplied reading. No label, on any path, asks a parent to judge, and no page history status does (#717). This is supplied-reading route proof. It does not prove recognition.
 
 ### Database
 
-Migration `scan_two_ways_ai_marking` makes the old trigger `scan_two_ways_review_policy` do nothing. A later cleanup can drop the trigger and its function. No hosted row held the old policy on 7 November. Code written before this PR writes the parent method itself until the PR merges. If a two-ways row with `expected.review` appears before the merge, it stays parent-pending. Check this count just before the merge: `select count(*) from scan_marking_items where expected->>'review'='two-ways'`.
+Migration `scan_two_ways_ai_marking` makes the old trigger `scan_two_ways_review_policy` do nothing. A later cleanup can drop the trigger and its function. No hosted row held the old policy on 7 November. Check this count just before the merge: `select count(*) from scan_marking_items where expected->>'review'='two-ways'`.
 
 ## Write-words answers (#541, S7n)
 

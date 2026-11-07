@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import models from "../../data/scan-marking-models.json";
 import evaluationModels from "../../data/scan-marking-evaluation-models.json";
 import type { OpenRouterProvider } from "@/lib/ai-openrouter";
-import { markingRequest, MARKING_MAX_TOKENS, MARKING_PROMPT_VERSION, readMarkingOutput, type MarkingFrame } from "@/lib/scan-marking";
+import { markingRequest, MARKING_MAX_TOKENS, MARKING_PROMPT_VERSION, readMarkingOutput, TWO_WAYS_METHOD_MARKS, type MarkingFrame } from "@/lib/scan-marking";
 import { expectedItems, READING_ISSUES, type Observation, type ReadingIssue } from "@/lib/scan-observation";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import type { MethodJudgment } from "@/lib/scan-marking-methods";
@@ -171,6 +171,7 @@ export function validateComparisonManifest(manifest: ComparisonManifest): void {
     for (const t of p.truth) {
       const o = labelled.find(o => o.identity.itemId === t.itemId)!;
       // A word or method form code cannot check stays unsure. Ground truth may still be wrong.
+      if (t.format === "two-ways" && !TWO_WAYS_METHOD_MARKS && o.result === null) continue; // Our team marks it until the method rules ship.
       if (o.result !== (t.result === "uncertain" ? null : t.result) && !((t.format === "write-words" || t.format === "two-ways") && t.result === "wrong" && o.result === null)) fail("truth-disagrees-with-labelled-reading");
     }
   }
