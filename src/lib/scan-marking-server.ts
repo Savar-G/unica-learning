@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { markedFamily } from "@/lib/scan-pages-access";
+import { isUuid } from "@/lib/workbook-content";
 import { changeScanMark, markingCommand, scanMarkingStore, type ParentMarkChoice } from "@/lib/scan-marking-store";
 import { markingAiClient } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL, MARKING_PROMPT_VERSION, markingPageView, runScanMarking } from "@/lib/scan-marking";
@@ -25,7 +26,17 @@ export function scanMarkingServerReadiness(env: Readonly<Record<string, string |
 /** Test-only admission is not family approval. SCAN_PAGES_ENABLED and browser claims cannot grant it. */
 export async function markingAccess(db: SupabaseClient<Database>, parent: string, env: Readonly<Record<string, string | undefined>> = process.env) {
   const release = scanMarkingServerReadiness(env);
-  return release.mode === "test-only" && await markedFamily(parent, db);
+  if (release.mode !== "test-only") return false;
+  const configured = env.SCAN_MARKING_TEST_PARENT_IDS;
+  if (configured !== undefined) {
+    // At most 100 canonical UUIDs and 99 commas. Never expose the configured identities.
+    if (!configured.length || configured.length > 3699) return false;
+    const ids = configured.split(",");
+    if (ids.length > 100 || ids.some(id => id.length !== 36 || !isUuid(id))) return false;
+    const unique = new Set(ids.map(id => id.toLowerCase()));
+    if (unique.size !== ids.length || !unique.has(parent.toLowerCase())) return false;
+  }
+  return markedFamily(parent, db);
 }
 export async function processScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, env: Readonly<Record<string, string | undefined>> = process.env) {
   if (!await markingAccess(db, parent, env)) return "off";

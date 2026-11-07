@@ -11,8 +11,10 @@ import { curriculumFor, curriculumVersion } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { runWorkbookEdit, type EditJobDeps, type EditSnapshot } from "@/lib/workbook-edit";
 import { memoryWorkbookReview } from "@/lib/workbook-edit-memory";
+import { workbookEditItem } from "@/lib/workbook-edit-item";
 import { renderableDraft } from "@/lib/workbook-fit";
-import type { FitCheck, GeneratedWorkbook } from "@/lib/workbook-generator";
+import { workbookCapacityPlan, type FitCheck, type GeneratedWorkbook } from "@/lib/workbook-generator";
+import { buildQuestion } from "@/lib/workbook-generator-items";
 import { memoryRunStore } from "@/lib/workbook-job-memory";
 import { runWorkbookJob, startWorkbookRun, type DraftRendering, type RunFrame, type WorkbookJobDeps } from "@/lib/workbook-job";
 import { layoutProblems } from "@/lib/workbook-layout-check";
@@ -139,6 +141,7 @@ let made: Awaited<ReturnType<typeof jobRun>>;
 let sound: GeneratedWorkbook;
 let rendering: DraftRendering;
 let approval: DraftForApproval;
+let editable: { page: number; question: number };
 
 beforeAll(async () => {
   made = await jobRun();
@@ -155,6 +158,40 @@ beforeAll(async () => {
       }
     }
   }
+  // Seed a checked legacy writer task before the initial rendering and approval. Its small sum fits the day.
+  // Exercise the public manual editor with a real wording change instead of a code-owned story no-op.
+  const plannedPages = workbookCapacityPlan(curriculumFor("bc")!, made.frame.plan).days.flatMap((day) => day.pages);
+  const candidates = sound.pages.flatMap((page) => page.content?.kind !== "day" ? [] : page.questions
+    .filter((q) => q.itemPlan?.source === "code" && q.package?.item?.format === "write-number"
+      && q.package.operation?.kind === "add" && q.package.skill.skills.includes(q.itemPlan.item.skill)
+      && page.content?.kind === "day"
+      && page.content.blocks.some((b) => ["practice-row", "on-your-own", "now-you"].includes(b.slot) && b.items.includes(q.number)))
+    .map((question) => ({ page, question })));
+  expect(candidates.length).toBeGreaterThan(0);
+  const { page, question: target } = candidates[0];
+  editable = { page: page.number, question: target.number };
+  target.existing = true;
+  delete target.itemPlan;
+  delete target.codeText;
+  delete target.itemStep;
+  delete target.stepDeclaration;
+  delete target.itemStepReason;
+  const previous = target.package!;
+  const skills = plannedPages[page.number - 3].parts[Number(target.slot.split(".")[0]) - 1].skills;
+  const legacy = workbookEditItem(target)!;
+  legacy.skill = skills[0];
+  legacy.operation!.operands = legacy.operation!.operands.map((value, index) => ({ ...value, value: index + 1 }));
+  legacy.text = "1 + 2 = ?";
+  legacy.wrongAnswers = legacy.wrongAnswers.slice(0, 1).map((wrong) => ({ ...wrong,
+    value: { ...wrong.value, value: 4 }, description: "Counted one too many.", step: null }));
+  legacy.figure = null;
+  legacy.easier = { text: "1 + 1 = ?", operation: { ...structuredClone(legacy.operation!),
+    operands: legacy.operation!.operands.map((value) => ({ ...value, value: 1 })) } };
+  const built = buildQuestion(legacy, { id: previous.id, workbookId: sound.id, page: page.number,
+    question: target.number, level: sound.levels[0], skills, preserveText: true });
+  expect(built.check).toEqual({ status: "checked" });
+  target.package = built.package!;
+  expect(checkQuestionPackage(target.package).status).toBe("checked");
   rendering = await rendered(sound, "r1");
   approval = { runId: made.runId, runDone: true, draftId: sound.id, revision: 1, oldFormat: false, draft: sound, rendering, renderProblems: [], frame: frameOf(made.frame) };
 }, 400_000);
@@ -328,8 +365,7 @@ describe("a changed revision changes its contract as one unit", () => {
     let serial = 0;
     const deps: EditJobDeps = {
       store: review.store, runner: "mac", newId: () => `lease-${++serial}`,
-      // The note takes effect through the person and the thing the AI names: code rewrites the printed words.
-      generation: { ai: fakeAiClient({ answer: (r) => ({ items: fakeWorkbookItems(r).items.map((x) => ({ ...x, name: "Mia", thing: "apples" })) }) }), solver: keySolver(), fit: fits, store: memoryDraftStore({ [CHILD]: PARENT }), qrToken: () => `edit-token-${++serial}`.padEnd(22, "x") },
+      generation: { ai: fakeAiClient({ answer: () => { throw new Error("A manual edit must not call the writer."); } }), solver: keySolver(), fit: fits, store: memoryDraftStore({ [CHILD]: PARENT }), qrToken: () => `edit-token-${++serial}`.padEnd(22, "x") },
       async renderPage(_s, draft, number) {
         const one = renderableDraft(draft);
         one.pages = one.pages.filter((p) => p.number === number);
@@ -341,16 +377,26 @@ describe("a changed revision changes its contract as one unit", () => {
       assemble: async () => ({ pdfPath: `${PARENT}/${sound.id}/workbook-edit.pdf`, pdfSha256: await sha256Hex(new TextEncoder().encode("edited pdf")), paths: [] }),
       remove: async () => {},
     };
-    const isStory = (q: GeneratedWorkbook["pages"][number]["questions"][number]) => q.itemPlan?.source === "story" && /How many/.test(q.package?.text ?? "");
-    const page = sound.pages.find((p) => p.day !== null && p.questions.some(isStory))!;
-    const target = page.questions.find(isStory)!;
+    const page = sound.pages.find((p) => p.number === editable.page)!;
+    const target = page.questions.find((q) => q.number === editable.question)!;
     const question = target.number;
-    expect(review.save({ draftId: sound.id, revision: 1, page: page.number, question, x: .2, y: .2, note: "Use apples", item: null, actor: ADMIN, createdAt: NOW }).status).toBe("saved");
+    const item = workbookEditItem(target)!;
+    item.text = `Calculate: ${target.package!.text}`;
+    expect(review.save({ draftId: sound.id, revision: 1, page: page.number, question, x: .2, y: .2, note: "Use this checked wording.", item, actor: ADMIN, createdAt: NOW }).status).toBe("saved");
     const sent = review.send(1, "mac");
     if (sent.status !== "queued") throw new Error(sent.reason);
     const outcome = await runWorkbookEdit(sent.id, deps);
     expect([outcome, review.comments[0].error, target.package!.text]).toEqual(["done", null, target.package!.text]);
     const after = review.snapshot();
+    const changed = after.draft.pages.find((p) => p.number === page.number)!.questions.find((q) => q.number === question)!;
+    expect(changed.package!.text).toBe(item.text);
+    expect(changed.package!.text).not.toBe(target.package!.text);
+    expect(changed.package!.operation).toEqual(target.package!.operation);
+    expect(after.draft.pages.filter((p) => p.number !== page.number)).toEqual(sound.pages.filter((p) => p.number !== page.number));
+    expect(after.draft.pages.find((p) => p.number === page.number)!.questions.filter((q) => q.number !== question))
+      .toEqual(page.questions.filter((q) => q.number !== question));
+    expect(after.draft.pages.map((p) => p.qrToken)).toEqual(sound.pages.map((p) => p.qrToken));
+    expect(checkQuestionPackage(changed.package!).status).toBe("checked");
     return { page: page.number, question, after };
   }
 
@@ -365,9 +411,10 @@ describe("a changed revision changes its contract as one unit", () => {
     expect(after.rendering!.pdfSha256).not.toBe(rendering.pdfSha256);
     const before = new Map(rendering.pages.map((p) => [p.number, p.printContract]));
     for (const p of after.rendering!.pages) {
-      // (The edited page was rendered again: this book's code-worded stories print the same words, so its fingerprint
-      // may stay. The next test changes the content. Every other page keeps its contract untouched.)
-      if (p.number === page) expect(p.printContract).toMatchObject({ page, workbookId: sound.id });
+      if (p.number === page) {
+        expect(p.printContract).toMatchObject({ page, workbookId: sound.id });
+        expect(p.printContract!.fingerprints.content).not.toBe(before.get(page)!.fingerprints.content);
+      }
       else expect(p.printContract).toEqual(before.get(p.number));
     }
 

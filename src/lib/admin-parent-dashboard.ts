@@ -57,6 +57,11 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("delivered", "Current and past books"), scenario("mail", "In the mail"), scenario("hand", "Delivery by hand"),
     scenario("first_book_coming", "First workbook not sent", "first_book_coming"), scenario("late", "Later than estimate"),
     scenario("paused", "Pause moves next mailing"), scenario("ended", "Past books only", "ended"),
+    scenario("history_populated", "History: current and past pages"), scenario("history_empty", "History: no saved results"),
+    scenario("history_review", "History: parent check"), scenario("history_pending", "History: waiting for marks"),
+    scenario("history_failed", "History: could not check"), scenario("history_expired", "History: expired photo"),
+    scenario("history_missing_photo", "History: saved marks without photo"), scenario("history_loading", "History: loading"),
+    scenario("history_error", "History: load failed"), scenario("history_unavailable", "History: access closed"),
   ] },
   { id: "schedule", label: "Schedule", scenarios: [
     scenario("printed", "Printed first workbook", "first_book_coming"), scenario("accepted", "Accepted required pages"),
@@ -73,7 +78,8 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("unreliable", "Unreliable result"), scenario("ended", "Past skills", "ended"),
   ] },
   { id: "maya", label: "Maya notes", scenarios: [
-    scenario("notes", "Call and chat notes"), scenario("empty", "No notes"), scenario("used", "Weekly minutes used"),
+    scenario("notes", "Call and chat notes"), scenario("empty", "No notes"), scenario("used", "Daily chat messages used"),
+    scenario("closed", "Chat unavailable, saved notes only"),
     scenario("session", "Call transcript"), scenario("chat", "Chat transcript"), scenario("missing", "Transcript unavailable"),
     scenario("ended", "Past notes", "ended"),
   ] },

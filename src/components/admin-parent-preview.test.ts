@@ -14,6 +14,36 @@ const styles = { origin: "https://unicalearning.com", links: [], inline: [] };
 const rendered = (view: string, scenario: string, family = "one", size = "desktop") => renderParentPreview(previewSelection({ view, scenario, family, size }), styles);
 const dom = (html: string) => new DOMParser().parseFromString(html, "text/html");
 
+it.each(PARENT_PREVIEW_VIEWS.filter(view => view.id === "overview" || view.id === "maya")
+  .flatMap(view => view.scenarios.flatMap(scenario => ["desktop", "phone"].map(size => ({ view: view.id, scenario: scenario.id, size })))))
+  ("keeps the first-ship $view / $scenario / $size free of voice allowances and launch controls", ({ view, scenario, size }) => {
+    for (const child of ["first", "second"]) {
+      const output = dom(renderParentPreview(previewSelection({ view, scenario, family: "two", child, size }), styles));
+      expect(output.body.textContent).not.toMatch(/of 30 minutes|minutes left|minutes start again|weekly minutes|Try Maya|Start (?:a )?call/i);
+      expect(output.querySelector(".po")?.textContent ?? "").not.toMatch(/minutes|messages|this week/i);
+      const name = child === "first" ? "Leah" : "Kai";
+      if (view === "overview" && scenario === "active") {
+        expect(output.querySelector("#po-maya")?.textContent).toBe("Maya");
+        expect(output.querySelector(".po")?.textContent).toContain("Notes from Maya");
+      }
+      if (view === "maya" && scenario === "notes") {
+        expect(output.body.textContent).toContain("Read the call");
+        expect(output.body.textContent).toContain("Read the chat");
+        expect(output.body.textContent).toContain(`${name} used 12 of 60 chat messages today.`);
+      }
+      if (view === "maya" && scenario === "used") expect(output.body.textContent).toContain(`${name} used all 60 chat messages today.`);
+      if (view === "maya" && ["ended", "closed"].includes(scenario)) {
+        expect(output.querySelector(".maya-tab-week")).toBeNull();
+        expect(output.body.textContent).toContain("Read the call");
+        expect(output.body.textContent).toContain("Read the chat");
+      }
+      if (view === "maya" && scenario === "session") expect(output.body.textContent).toContain("Call length5 minutes");
+      expect(calls.fetch).not.toHaveBeenCalled();
+      expect(calls.client).not.toHaveBeenCalled();
+      expect(calls.track).not.toHaveBeenCalled();
+    }
+  });
+
 it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({ size, child }))))(
   "keeps the Schedule field labels in the $size preview for the $child child",
   ({ size, child }) => {
@@ -205,4 +235,36 @@ it("shows every parent explanation state in the inert preview without network or
     expect(output.querySelector("script")).toBeNull(); expect(output.querySelector("form")).toBeNull();
     expect(calls.fetch).not.toHaveBeenCalled(); expect(calls.client).not.toHaveBeenCalled(); expect(calls.track).not.toHaveBeenCalled();
   }
+});
+
+it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({ size, child }))))(
+  "renders the selected child's real history states in the inert $size preview for $child",
+  ({ size, child }) => {
+    const output = dom(renderParentPreview(previewSelection({ view: "workbooks", scenario: "history_populated", family: "two", child, size }), styles));
+    const history = output.querySelector('.pw-history .scan-history')!;
+    expect(output.querySelector("h1")?.textContent).toBe(`${child === "first" ? "Leah" : "Kai"}'s workbooks`);
+    expect(history.textContent).toContain(`Workbook 3 · Day ${child === "first" ? 1 : 2}`);
+    expect(history.textContent).not.toContain("Workbook 2");
+    expect(history.textContent).toContain("More pages");
+    for (const text of ["Results ready", "2 of 3 right", "Please check", "Waiting for a check", "Could not check", "All answers blank", "Not scored", "No saved results"]) expect(history.textContent).toContain(text);
+    expect(history.textContent).not.toContain("Loading page history");
+    expect(history.querySelectorAll('a[role="link"]')).toHaveLength(6);
+    expect(history.querySelectorAll('[href]')).toHaveLength(0);
+    expect(calls.fetch).not.toHaveBeenCalled(); expect(calls.client).not.toHaveBeenCalled();
+  },
+);
+it("has real empty, expired, missing-photo, loading, error and closed history states in the Admin sandbox", () => {
+  const history = (state: string) => dom(rendered("workbooks", state)).querySelector(".scan-history")!;
+  expect(history("history_empty").textContent).toContain("No saved page results");
+  expect(history("history_review").textContent).toContain("Continue checking");
+  expect(history("history_pending").textContent).toContain("Waiting for a check");
+  expect(history("history_failed").textContent).toContain("Could not check");
+  expect(history("history_expired").textContent).toContain("Photo no longer available");
+  expect(history("history_expired").querySelector('a[role="link"]')).not.toBeNull();
+  expect(history("history_missing_photo").textContent).toContain("2 of 3 right");
+  expect(history("history_missing_photo").querySelector("a")).toBeNull();
+  expect(history("history_loading").textContent).toContain("Loading page history");
+  expect(history("history_error").querySelector('[role="alert"]')).not.toBeNull();
+  expect(history("history_unavailable").textContent).toContain("Page history is not available here");
+  expect(calls.fetch).not.toHaveBeenCalled(); expect(calls.client).not.toHaveBeenCalled(); expect(calls.track).not.toHaveBeenCalled();
 });

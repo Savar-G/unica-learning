@@ -4,8 +4,6 @@ import { gradeLabel, type AreaLabel, type Level } from "@/lib/assessment";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { formatCalendarDate } from "@/lib/family-time";
 import { learningPath } from "@/lib/learning-style";
-import { WEEK_SECONDS } from "@/lib/maya-minutes";
-import type { ChildMinutes } from "@/lib/maya-minutes-server";
 import type { ActionItem, OverviewView } from "@/lib/parent-view";
 import { reportPath, unreliableAreasText } from "@/lib/report-view";
 import "./parent-overview.css";
@@ -28,9 +26,11 @@ const scaleTop = (o: OverviewView) => Math.max(8, o.child.schoolGrade, o.level?.
 
 const tick = (l: number) => (l === 0 ? "K" : String(l));
 
-export function ParentOverview({ overview, maya }: { overview: OverviewView; maya: ChildMinutes | null }) {
+export function ParentOverview({ overview }: { overview: OverviewView }) {
   const { child, level, areas, resultPreparing, resultLate, workbook, action, summaryMonth } = overview;
   const n = scaleTop(overview) + 1;
+  // D-293: this is a link to saved notes, not a claim that new chats or calls are available.
+  const maya = child.tabs.includes("maya");
   const tiles = level || workbook || maya;
   return (
     <div className="po">
@@ -55,9 +55,8 @@ export function ParentOverview({ overview, maya }: { overview: OverviewView; may
           )}
           {maya && (
             <section className="po-card" aria-labelledby="po-maya">
-              <p className="po-label" id="po-maya">Maya this week</p>
-              <p className="po-value">{maya.used} of {WEEK_SECONDS / 60} minutes</p>
-              <p className="po-sub">{maya.left > 0 ? `The minutes start again on ${maya.backOn}.` : `Maya is back on ${maya.backOn}.`}</p>
+              <p className="po-label" id="po-maya">Maya</p>
+              <p className="po-sub">Read {child.firstName}&apos;s saved notes and transcripts.</p>
               <Link className="po-more" href={`/account/notes/${encodeURIComponent(child.id)}`}>Notes from Maya <span aria-hidden="true">→</span></Link>
             </section>
           )}

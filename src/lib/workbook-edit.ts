@@ -6,22 +6,25 @@ import type { GeneratedWorkbook, GenerateInput, GenerateDeps } from "@/lib/workb
 import { personalBookIssues, reviseWorkbookPage, withPersonalIssues, WriterPersistenceError } from "@/lib/workbook-generator";
 import type { DraftRendering, RunActor, RunRunner, RunSolve } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
+import { LAYOUT_REVIEW_MESSAGE, UNCHANGED_COMMENT_MESSAGE, workbookCommentChanged, workbookCommentRoute, type CommentRoute } from "@/lib/workbook-comment-route";
 
 export interface ReviewComment {
+  route?: CommentRoute;
+  resultNote?: string | null;
   requestKey?: string;
   id: string; draftId: string; revision: number; page: number; question: number | null;
   x: number; y: number; note: string; item: unknown; actor: RunActor; createdAt: string;
   status: "pending" | "sent" | "done" | "failed" | "stale"; error: string | null;
   batchId: string | null; before: unknown; after: unknown;
 }
-export interface EditFrame { calls?: 1; build: string | null; model: string | null; solveModel: string; }
+export interface EditFrame { calls?: 1; build: string | null; model: string | null; solveModel: string; layoutPages?: number[]; }
 export const EDIT_LEASE_MS = 6 * 60_000;
 
 export interface WorkbookEdit {
   id: string; draftId: string; revision: number; runner: RunRunner;
   status: "queued" | "running" | "done" | "failed"; error: string | null; createdAt: string; lease: string | null; expiresAt?: string | null; stalled?: boolean;
 }
-export type EditResult = { status: "queued"; id: string } | { status: "refused"; reason: string };
+export type EditResult = { status: "queued"; id: string } | { status: "refused" | "layout-review"; reason: string };
 export interface EditSnapshot {
   draft: GeneratedWorkbook; rendering: DraftRendering | null; problems: RenderProblem[]; revision: number; input: GenerateInput; parentId: string;
 }
@@ -87,6 +90,7 @@ export async function runWorkbookEdit(id: string, deps: EditJobDeps): Promise<"d
         const page = draft.pages.find((p) => p.number === number);
         if (!page) throw new Error("This page no longer exists. Select a new location.");
         if (group.some((c) => c.question !== null && !page.questions.some((q) => q.number === c.question))) throw new Error("A question no longer exists. Select a new location.");
+        if (group.some(c => workbookCommentRoute(page, c.note, c.route) === "layout")) throw new Error(LAYOUT_REVIEW_MESSAGE);
         if (!deps.generation.ai) throw new Error("The AI is unavailable.");
         const solves: RunSolve[] = [];
         const next = await reviseWorkbookPage(snapshot.input, { ...deps.generation, ai: deps.generation.ai, editCall: editCalls(deps.store, id, lease, number, { ...frame, revision: edit.revision, current: page }), onSolve(log) {
@@ -98,6 +102,7 @@ export async function runWorkbookEdit(id: string, deps: EditJobDeps): Promise<"d
           note: group.map((c) => `${c.question === null ? "Whole page" : `Question ${c.question}`}: ${c.note}`).join("\n"),
           items: Object.fromEntries(group.filter((c) => c.item && c.question !== null).map((c) => [c.question!, c.item])),
         });
+        if (!group.some(c => workbookCommentChanged(page, next, c.question))) throw new Error(UNCHANGED_COMMENT_MESSAGE);
         // The whole-book check of the candidate book, before it renders (Codex at 09a095cd): its quality is fresh, never the
         // last revision's "ready".
         const pagesNext = draft.pages.map((p) => p.number === number ? next : p);

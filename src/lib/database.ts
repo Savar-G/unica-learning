@@ -24,6 +24,8 @@ import type { CallNote, NoteFacts, NoteTranscriptLine } from "@/lib/maya-call-no
 import type { MayaTrace } from "@/lib/maya-trace";
 import type { WorkbookDelivery, WorkbookEmailKind, WorkbookEmailStatus } from "@/lib/workbook-email";
 import type { ConnectionKind } from "@/lib/maya-voice";
+import type { CommentRoute } from "@/lib/workbook-comment-route";
+import type { LayoutEditPlan } from "@/lib/workbook-layout-edit";
 
 export type { Json };
 
@@ -65,6 +67,8 @@ type ColumnTypes = KnownColumns<{
   workbook_pages: { print_contract: PagePrintContract | null };
   workbook_questions: { regions: PrintedRegion[] | null; teaching: TeachingContext | null };
   workbook_drafts: { draft: GeneratedWorkbook };
+  workbook_comments: { route: CommentRoute };
+  workbook_edits: { edit_kind: "question" | "layout"; layout_plan: LayoutEditPlan | null };
   workbook_emails: { kind: WorkbookEmailKind; status: WorkbookEmailStatus; delivery: WorkbookDelivery | Record<string, never> };
   workbook_runs: { status: RunStatus; step: RunStep | null; errors: RunError[]; runner: RunRunner };
   workbook_draft_revisions: { kind: "generated" | "edit" | "redo-page"; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] };
@@ -114,6 +118,7 @@ type NullArgs = KnownArgs<{
   note_plan_start_alert: "p_email_id" | "p_error";
   note_plan_start_email_send: "p_email_id" | "p_error";
   finish_workbook_edit: "p_content" | "p_rendering" | "p_error";
+  finish_workbook_layout_edit: "p_rendering" | "p_results" | "p_error";
   admin_template_stats_v2: "school_grade" | "curriculum";
   // An idle worker has no run; a worker outside git has no build.
   beat_workbook_worker: "p_build" | "p_run" | "p_note";

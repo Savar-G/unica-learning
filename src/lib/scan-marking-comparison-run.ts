@@ -1,7 +1,7 @@
 import { markingAiClient } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL, markingRequest, runScanMarking, validMarkingOutput, type MarkingStore } from "@/lib/scan-marking";
 import { expectedItems, firstObservation, type Observation } from "@/lib/scan-observation";
-import { COMPARISON_DEFERRAL_POLICY, COMPARISON_MODELS, SYNTHETIC_IDS, assertComparisonResultIdentity, assertComparisonResume, clean429, deferredAttempt, comparisonProvider, hashBytes, hashValue, projectMatrix, transportUsage, type CapturedResponse, type AttemptRecord, type ComparisonAttempt, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointEvidence } from "@/lib/scan-marking-comparison";
+import { COMPARISON_DEFERRAL_POLICY, COMPARISON_ALLOWED_MODELS, SYNTHETIC_IDS, assertComparisonResultIdentity, assertComparisonResume, clean429, deferredAttempt, comparisonProvider, hashBytes, hashValue, projectMatrix, transportUsage, type CapturedResponse, type AttemptRecord, type ComparisonAttempt, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointEvidence } from "@/lib/scan-marking-comparison";
 
 export interface EvaluationBudget {
   refresh(input: { approved: EndpointEvidence; current: EndpointEvidence; maximumMicros: number }): Promise<{ verified: true } | { refused: string }>;
@@ -33,7 +33,8 @@ export async function runComparisonMatrix(options: {
     if (prior && (batch === 0 || prior.status !== "deferred" || prior.batch === 1)) return;
     if (batch === 0 && deferred(state.model).length) return;
     if (spent() + state.maximumMicros > options.maxRunMicros) { blocks.set(state.model, "next-reservation-over-run-cap"); return; }
-    const model = COMPARISON_MODELS.find(m => m.model === state.model)!;
+    const model = COMPARISON_ALLOWED_MODELS.find(m => m.model === state.model);
+    if (!model) throw new Error("invalid-comparison-model-selection");
     const result = await options.dispatch(model, photo, state.evidence, state.maximumMicros, batch, prior);
     if (prior) results.splice(results.indexOf(prior), 1, result); else results.push(result);
     assertComparisonResultIdentity(manifest, results, options.history, options.run);

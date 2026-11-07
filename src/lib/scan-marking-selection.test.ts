@@ -11,6 +11,16 @@ const snapshot = (m: ComparisonModel) => evidence.snapshots[m.model as keyof typ
 const result = (model: string): ComparisonResult => ({ run: hashValue("selection-run"), model, photo: "synthetic-first", status: "failed", failure: "fixture", attempts: [], observations: [], schemaValid: false, requestHash: "", photoHash: "", evidenceHash: "" });
 
 describe("immutable pinned pair selection", () => {
+  it("selects Terra only by explicit evaluation selection without changing the historical default", () => {
+    const selected = selectComparisonModels(["openai/gpt-6.1-terra", "google/gemini-3.8-flash"]);
+    expect(selected).toEqual([
+      COMPARISON_MODELS.find(m => m.model === "google/gemini-3.8-flash"),
+      { model: "openai/gpt-6.1-terra", host: "Azure", providerName: "Azure", endpoint: "azure" },
+    ]);
+    expect(COMPARISON_MODELS).toHaveLength(13);
+    expect(selectComparisonModels(null)).toBe(COMPARISON_MODELS);
+    expect(COMPARISON_MODELS.some(m => m.model === "openai/gpt-6.1-terra")).toBe(false);
+  });
   it("keeps the thirteen-pair default and exact pinned objects", () => {
     expect(selectComparisonModels(null)).toBe(COMPARISON_MODELS);
     const selected = selectComparisonModels([...twelve].reverse());

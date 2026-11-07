@@ -18,13 +18,11 @@ import type { WorkbookSummary } from "@/lib/workbook-content";
 import { AddChild, SaveTimeZone, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
 import { parentChatUsage } from "@/lib/maya-chat-server";
 import { mayaNoticeDue } from "@/lib/maya-notice-server";
-import { DeskRow, MayaNoticeCard, MinutesRow } from "@/components/parent-home-rows";
+import { DeskRow, MayaNoticeCard, MayaChatRow } from "@/components/parent-home-rows";
 import { ParentDashboardHome } from "@/components/parent-dashboard-home";
 import { dashboardOverview, parentDashboard } from "@/lib/parent-dashboard-server";
 import { openingPath } from "@/lib/parent-assessment";
 import { pickChild, signInPath } from "@/lib/parent-shell";
-import { parentMinutes } from "@/lib/maya-minutes-server";
-import { DEMO_DAILY_MINUTES } from "@/lib/maya-minutes";
 import { SupportPage } from "@/components/support-page";
 import { scanPagesAccess } from "@/lib/scan-pages-access";
 import { latestParentMayaNotes } from "@/lib/parent-maya-notes";
@@ -74,15 +72,15 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const children = kids ?? [];
   const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: familyProvince(children) });
   // Parent home (#301): each child's current workbook (the newest shipped one) and the desk, which needs the PIN.
-  // Maya's minutes this week (#330), for test families until Maya opens to families (#337).
-  const [current, pinSet, minutes, chats, scansEnabled, notes, noticeDue] = await Promise.all([
-    currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children),
+  // D-293: show only existing gated chat usage and saved notes. Voice follows later.
+  const [current, pinSet, chats, scansEnabled, notes, noticeDue] = await Promise.all([
+    currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser),
     parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser), latestParentMayaNotes(db, parentUser, children.map((c) => c.id)), mayaNoticeDue(parentUser, children.length ? Math.max(...children.map((c) => c.grade)) : null),
   ]);
   // Everyone else gets today's Parent home below.
   if (dashboard) {
     const overview = await dashboardOverview(dashboard, addressed);
-    const facts = { dashboard, overview, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled, noticeDue };
+    const facts = { dashboard, overview, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, current, chats, notes, scansEnabled, noticeDue };
     return <ParentDashboardHome {...facts} addressChild={addressed} alerts={{ password: password === "1", pin: pin === "1", deskError: desk === "error", existing: existing === "1" }} parentEmail={parent.email} />;
   }
   return (
@@ -117,14 +115,13 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
               ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} />
               : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} when={startWhen(stateFor(states, c.id), timeZone)} report={reportFor(c.id, stateFor(states, c.id))} />}
             {current.has(c.id) && <DeskRow childId={c.id} name={c.first_name} workbook={current.get(c.id)!} pinSet={pinSet} />}
-            {(minutes.has(c.id) || chats.has(c.id)) && <MinutesRow name={c.first_name} minutes={minutes.get(c.id)} chat={chats.get(c.id)} />}
+            {chats.has(c.id) && <MayaChatRow name={c.first_name} chat={chats.get(c.id)!} />}
             {notes.has(c.id) && <NoteCard note={notes.get(c.id)!} name={c.first_name} zone={timeZone} latest />}
           </li>
         ))}
       </ul>
       {scansEnabled && <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>}
       {cards?.some((c) => c.card_saved_at) && <p><Link className="btn ghost" href="/account/plan">Manage or cancel plan</Link></p>}
-      {minutes.size > 0 && <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>}
       {!parent.time_zone && <SaveTimeZone />}
       <AddChild province={children.at(-1)?.province ?? "BC"} />
       <p className="small acct-out">Signed in. <Link href="/account/password">Add or change your password</Link>. <Link href="/account/pin">Set or change your PIN</Link>. <Link href="/account/maya-notice">Maya notice</Link>. <SignOut /></p>
