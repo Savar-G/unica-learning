@@ -1,8 +1,10 @@
 import { PlanControl, UpdateCard } from "@/components/account-plan";
+import { noteGivesCardReason } from "@/components/plan-closed-card";
 import { PlanText, planDay } from "@/components/plan-text";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { canUpdateCard, type FamilyBilling, type FamilyInvoice, type InvoiceStatus } from "@/lib/billing";
 import type { FamilyZone } from "@/lib/family-time";
+import type { ClosedPlan } from "@/lib/plan-access";
 
 const STATUS: Record<InvoiceStatus, string> = { paid: "Paid", no_charge: "No charge", due: "Due", not_paid: "Not paid", cancelled: "Cancelled" };
 const amount = ({ cents, currency }: FamilyInvoice) => `${currency.toUpperCase()} ${(cents / 100).toFixed(2)}`;
@@ -34,8 +36,8 @@ function Invoices({ invoices, zone }: { invoices: FamilyInvoice[]; zone: FamilyZ
   );
 }
 
-/** Each child's plan and the family's invoices, as `loadFamilyBilling` read them. */
-export function AccountBilling({ billing, zone }: { billing: FamilyBilling; zone: FamilyZone }) {
+/** Each child's plan and the family's invoices, as `loadFamilyBilling` read them. `closed`: what the closed plan note above says, when it shows. */
+export function AccountBilling({ billing, zone, closed }: { billing: FamilyBilling; zone: FamilyZone; closed?: ClosedPlan | null }) {
   if (billing.state === "unavailable") return <Unavailable>We cannot load billing now.</Unavailable>;
   return (
     <>
@@ -47,7 +49,7 @@ export function AccountBilling({ billing, zone }: { billing: FamilyBilling; zone
             <li key={childId} className="acct-kid acct-plan">
               <div>
                 <b>{firstName}</b>
-                {plan ? <PlanText plan={plan} zone={zone} cardUpdate="here" /> : <p>No plan yet.</p>}
+                {plan ? <PlanText plan={plan} zone={zone} cardUpdate="here" reasonInNote={noteGivesCardReason(closed, firstName)} /> : <p>No plan yet.</p>}
               </div>
               {cardId && (pending === "pause" || pending === "restart") && <PlanControl cardId={cardId} name={firstName} mode={pending} pending />}
               {pending === "cancel" && <p role="status">Cancellation is not confirmed. Please email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>}
