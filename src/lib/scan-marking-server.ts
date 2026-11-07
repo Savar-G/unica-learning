@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { childPlanAccess, markingAccess, markingMode, type ChildPlanAccess, type Env } from "@/lib/scan-marking-access";
+import { childPlanAccess, markingDecision, markingMode, type ChildPlanAccess, type Env } from "@/lib/scan-marking-access";
 import { changeScanMark, markingCommand, scanMarkingStore, type ParentMarkChoice } from "@/lib/scan-marking-store";
 import { markingAiClient } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL, MARKING_PROMPT_VERSION, markingPageView, runScanMarking } from "@/lib/scan-marking";
@@ -10,7 +10,7 @@ import { rebuildChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { learningEventStore } from "@/lib/learning-events-store";
 
-export { markingAccess, markingDecision, type ChildPlanAccess, type ChildPlanReason, type MarkingDecision, type MarkingScope } from "@/lib/scan-marking-access";
+export { markingAccess, markingDecision, type ChildPlanAccess, type ChildPlanAccessDeps, type ChildPlanReason, type MarkingDecision, type MarkingScope } from "@/lib/scan-marking-access";
 
 /**
  * Evidence readiness. `familyReady` reads only the source-controlled launch record; it is not the switch. The
@@ -28,7 +28,13 @@ export function scanMarkingServerReadiness(env: Env = process.env, now: string =
 }
 
 export async function processScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess) {
-  if (!await markingAccess(db, parent, env, { photo }, plan)) return "off";
+  const decision = await markingDecision(db, parent, env, { photo }, plan);
+  if (!decision.open) {
+    // Families mode: a closed plan stops new (paid) marking, but marks already committed still reach the child's
+    // learning events and profile. No claim, image read or model call happens here.
+    if (markingMode(env) === "families" && decision.reason !== "off" && decision.reason !== "child_unknown") await publishCommitted(db, parent, photo);
+    return "off";
+  }
   const row = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
   if (row.error || !row.data) return "terminal";
   const store = scanMarkingStore(db), child = row.data.child_id;
@@ -39,6 +45,14 @@ export async function processScanMarking(db: SupabaseClient<Database>, parent: s
   const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
   if (!rebuilt.built && rebuilt.reason !== "nothing_to_build") throw new Error("marking_profile_pending");
   return result;
+}
+async function publishCommitted(db: SupabaseClient<Database>, parent: string, photo: string) {
+  const row = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
+  if (row.error || !row.data) return;
+  const child = row.data.child_id;
+  await scanMarkingStore(db).publish(parent, child);
+  const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
+  if (!rebuilt.built && rebuilt.reason !== "nothing_to_build") throw new Error("marking_profile_pending");
 }
 /** Stable results read. Photo expiry is deliberately not a history filter. */
 export async function readScanMarking(db: SupabaseClient<Database>, parent: string, photo: string) {
@@ -56,17 +70,28 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
   const items = view.items.map((i) => ({ ...i, photoAvailable: i.evidencePhoto !== null && activeEvidence.has(i.evidencePhoto) }));
   return { ...view, items, budgetHeld: held === "budget", photoAvailable: p.state === "saved" && Date.parse(p.expires_at) > Date.now(), marks, detail };
 }
+const RECOVERY_STEPS = 10;
 /** The persisted keyset cursor includes already-sent photos. No new Send action is needed after deployment. */
 export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess) {
   if (markingMode(env) === "off") return { status: "off" };
-  const rows = await db.rpc("recover_scan_marking", { p_limit: 1 });
-  if (rows.error) throw new Error("marking_recovery");
-  const value: unknown = rows.data;
-  if (!Array.isArray(value)) throw new Error("marking_recovery_shape");
+  // In families mode a refused photo (closed plan) only publishes committed marks, then the run takes the next photo
+  // on the same cursor, at most RECOVERY_STEPS in one run, so closed plans do not hold up other families.
+  const steps = markingMode(env) === "families" ? RECOVERY_STEPS : 1;
   const results: string[] = [];
-  for (const ref of value) {
-    if (!ref || typeof ref !== "object" || typeof ref.parent !== "string" || typeof ref.photo !== "string") throw new Error("marking_recovery_shape");
-    results.push(await processScanMarking(db, ref.parent, ref.photo, env, plan));
+  for (let step = 0; step < steps; step++) {
+    const rows = await db.rpc("recover_scan_marking", { p_limit: 1 });
+    if (rows.error) throw new Error("marking_recovery");
+    const value: unknown = rows.data;
+    if (!Array.isArray(value)) throw new Error("marking_recovery_shape");
+    if (!value.length) break;
+    let worked = false;
+    for (const ref of value) {
+      if (!ref || typeof ref !== "object" || typeof ref.parent !== "string" || typeof ref.photo !== "string") throw new Error("marking_recovery_shape");
+      const result = await processScanMarking(db, ref.parent, ref.photo, env, plan);
+      results.push(result);
+      if (result !== "off") worked = true;
+    }
+    if (worked) break;
   }
   return { status: "processed", results };
 }

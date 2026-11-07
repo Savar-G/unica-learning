@@ -7,7 +7,7 @@ import { explanationAiClient } from "@/lib/parent-problem-explanation-ai";
 import { explainParentProblem, type ExplanationRef } from "@/lib/parent-problem-explanation";
 
 export async function parentProblemExplanation(db: SupabaseClient<Database>, ref: ExplanationRef, sessionActive: () => Promise<boolean>, signal: AbortSignal) {
-  // D236 stays closed to real families even if the broad scan release is enabled later.
+  // Explanations follow marking admission (D-236, D-300): test families and admins, and in families mode a child whose plan is running.
   const active = async () => await sessionActive() && await markingAccess(db, ref.parent, process.env, { photo: ref.photo });
   return explainParentProblem(parentExplanationStore(db), ref, crypto.randomUUID(), explanationAiClient(), { active, signal });
 }

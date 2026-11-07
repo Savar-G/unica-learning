@@ -14,9 +14,13 @@ vi.mock("@/lib/scan-marking-access", async (importOriginal) => {
   };
   return { ...actual, scanChecksAccess: (...args: Parameters<typeof actual.scanChecksAccess>) => actual.scanChecksAccess(args[0], args[1], args[2], args[3], gate) };
 });
+// The family's children: only CHILD is this family's.
+const children = { from: (table: string) => ({ select: () => ({ eq: (_c: string, id: string) => ({ eq: (_p: string, owner: string) => ({
+  maybeSingle: async () => ({ data: table === "children" && owner === "family" && id === "22222222-2222-4222-8222-222222222222" ? { id } : null, error: null }),
+}) }) }) }) };
 vi.mock("@/lib/scan-photo-server", () => ({
   scanJson: (data: unknown, status = 200) => Response.json(data, { status }),
-  scanSession: async () => ({ parent: "family", admin: { rpc: async (name: string, args: unknown) => { f.sent.push({ name, args }); return { data: 1, error: null }; } } }),
+  scanSession: async () => ({ parent: "family", admin: { ...children, rpc: async (name: string, args: unknown) => { f.sent.push({ name, args }); return { data: 1, error: null }; } } }),
 }));
 import { POST } from "./route";
 

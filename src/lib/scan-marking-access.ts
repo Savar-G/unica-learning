@@ -19,10 +19,11 @@ export function markingMode(env: Env) {
 
 /** The shared stored child-plan gate's contract (owned by the parent dashboard, `src/lib/plan-access.ts`). */
 export type ChildPlanReason = "open" | "ending_until_end" | "no_plan" | "ended" | "payment_failed" | "paused" | "unknown" | "read_failed";
-export type ChildPlanAccess = (input: { parentId: string; childId: string }) => Promise<{ open: boolean; reason: ChildPlanReason }>;
+export type ChildPlanAccessDeps = { db?: SupabaseClient<Database> | null; now?: () => number };
+export type ChildPlanAccess = (input: { parentId: string; childId: string }, deps?: ChildPlanAccessDeps) => Promise<{ open: boolean; reason: ChildPlanReason }>;
 const PLAN_REASONS: readonly ChildPlanReason[] = ["open", "ending_until_end", "no_plan", "ended", "payment_failed", "paused", "unknown", "read_failed"];
 
-// TODO(plan-access): replace with `childPlanAccess` from `@/lib/plan-access` once the dashboard's gate is on main.
+// TODO(plan-access): replace with `childPlanAccess` from `@/lib/plan-access` (PR #705) once the dashboard's gate is on main.
 // Until then no real family's plan reads as running, so families mode admits only test families and admins.
 export const childPlanAccess: ChildPlanAccess = async () => ({ open: false, reason: "unknown" });
 
@@ -43,20 +44,25 @@ function testParentList(env: Env): Set<string> | null | false {
   return unique.size === ids.length ? unique : false;
 }
 
+/** The scoped child, only when it belongs to the signed-in parent: a named child is read on `id` and `parent_id`, a photo on the same. */
 async function scopedChild(db: SupabaseClient<Database>, parent: string, scope: MarkingScope | undefined): Promise<string | null> {
   if (!scope) return null;
-  if ("child" in scope) return isUuid(scope.child) ? scope.child : null;
-  if (!isUuid(scope.photo)) return null;
   try {
+    if ("child" in scope) {
+      if (!isUuid(scope.child)) return null;
+      const row = await db.from("children").select("id").eq("id", scope.child).eq("parent_id", parent).maybeSingle();
+      return !row.error && row.data?.id === scope.child ? scope.child : null;
+    }
+    if (!isUuid(scope.photo)) return null;
     const row = await db.from("scan_photos").select("child_id").eq("id", scope.photo).eq("parent_id", parent).maybeSingle();
     return !row.error && row.data && isUuid(row.data.child_id) ? row.data.child_id : null;
   } catch { return null; }
 }
 
 /** Open only for an explicit running answer. Anything else, including a throw or an odd shape, is closed. */
-async function planDecision(plan: ChildPlanAccess, parentId: string, childId: string): Promise<MarkingDecision> {
+async function planDecision(db: SupabaseClient<Database>, plan: ChildPlanAccess, parentId: string, childId: string): Promise<MarkingDecision> {
   let answer: unknown;
-  try { answer = await plan({ parentId, childId }); } catch { return { open: false, reason: "read_failed" }; }
+  try { answer = await plan({ parentId, childId }, { db }); } catch { return { open: false, reason: "read_failed" }; }
   const a = answer && typeof answer === "object" ? answer as { open?: unknown; reason?: unknown } : null;
   const reason = a && PLAN_REASONS.includes(a.reason as ChildPlanReason) ? a.reason as ChildPlanReason : "unknown";
   return { open: a?.open === true && (reason === "open" || reason === "ending_until_end"), reason };
@@ -69,7 +75,7 @@ async function admission(db: SupabaseClient<Database>, parent: string, families:
   if (!families) return { open: false, reason: "not_test_family" };
   const child = await scopedChild(db, parent, scope);
   if (!child) return { open: false, reason: "child_unknown" };
-  return planDecision(plan, parent, child);
+  return planDecision(db, plan, parent, child);
 }
 
 /** Automatic marking and its reads. Off unless the switch is on; SCAN_MARKING_TEST_PARENT_IDS limits test families and admins. */
