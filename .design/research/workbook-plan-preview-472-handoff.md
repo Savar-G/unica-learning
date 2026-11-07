@@ -88,7 +88,7 @@ Before the planner edit, the public planner produced 20 successful synthetic bas
 - Saved baseline size: 1,187,796 bytes.
 - SHA-256: `fe1476705042bf2a2e1571bcd4448bcb913d110ce6b308c1be6ffdf8ef287a0a`.
 - Final comparison: all 20 serialized results exactly equal the saved pre-edit bytes. No legacy result has a `progress` property.
-- The committed tests independently load the exact base planner from `git show` into memory. They compare all 20 complete results with the candidate. They also test an explicitly undefined optional input. No base source, peer source, or snapshot is replaced.
+- The root replaced the Git-dependent committed test setup with fixed SHA256 pairs for each baseline input and full result. The pre-edit 20-case artifact was independently verified against its saved SHA256 before those pairs were written. Committed tests now compare every full input/result hash and the complete 20-case name distribution without Git or esbuild. Explicitly undefined optional input retains the same result hash. Root can still load the prior planner privately for review, but CI needs no old commit object. No baseline source, peer source, or snapshot is replaced.
 
 Final focused command:
 
@@ -138,3 +138,16 @@ Root must add snapshot and preview storage, the full history reader and paginati
 Root must obtain the next independent review and run any later full, hosted, browser, release, or publishing gates. No full suite, build, generation, render, Chromium, browser, server, provider/model call, hosted write, migration, credential read, customer/book write, email, charge, deletion, push, PR, watch, or issue closure ran here. No heavy reservation or main position was taken. Email #684 and Robin #699 remain root's queue concerns.
 
 The local implementation commit uses the exact requested legacy co-author trailer. Hooks were disabled for local commits so no unrelated heavy task could start. All owned check processes exited. The delivered branch contains only the four implementation files and this report relative to the approved feature base.
+
+
+## Root test portability correction
+
+The initial test setup at 98255f51 executed git show for the feature base. The required CI checkout does not configure full history. A bounded run with an empty GIT_OBJECT_DIRECTORY failed the old global setup before any assertion ran: one failed file, 75 tests not run, exit 1. This proves the old-object dependency. It does not represent 75 product failures.
+
+The corrected tests use the exact pre-edit baseline input/result hashes and do not invoke Git. Ignored-progress controls now call the public planner with progress explicitly undefined. They still prove the repeat, regression and changed-approach assertions fail when the opt-in input is ignored.
+
+With the same empty Git object directory, all 245 tests in four files passed, exit 0: the new preview file, both existing pure planner files and the approved core file. This is a fresh combined selection, not the delegate's prior 150-test count. A separate in-memory mutation changed the default returned pagesADay minimum by one. All 20 result-hash checks failed, the distribution check passed and 55 unrelated cases were outside the selected pattern. Exit 1. The mutation changed no tracked file. This demonstrates that the portable baseline still rejects changed legacy behavior.
+
+Scoped lint across the four preview implementation/test roots passed with zero errors and warnings. Scoped TypeScript returned zero diagnostics. Root changed only the new preview tests and this report; the delivered planner, adapter, fixture and approved core remain byte-identical to 98255f51.
+
+Private evidence is in overnight-20261107/472-preview-history-prior.*, 472-preview-history-fixed.*, 472-preview-default-mutant.*, 472-preview-scoped.* and 472-legacy-manifest.json. The inherited /tmp baseline artifact remains private synthetic evidence. The correction still requires independent Sol review. It gives no application build, whole-feature, hosted, browser, print or customer acceptance.

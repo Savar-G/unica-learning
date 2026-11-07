@@ -1,27 +1,96 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { build } from "esbuild";
-import { execFileSync } from "node:child_process";
-import { createRequire } from "node:module";
+import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { planWorkbook, type WorkbookPlan } from "./workbook-plan";
 import { bookSignals } from "./workbook-signals";
 import { legacyCases, progressFixture, syntheticMiss } from "./workbook-progress-plan.fixture";
 import { previewNextWorkbookPlan, type WorkbookPlanPreviewInput } from "./workbook-progress-plan";
 
-const BASE = "051215dfcff447a3ebe85762a9b2e5a029c18f6b";
-let basePlanner: typeof planWorkbook;
-beforeAll(async () => {
-  // Load only the pinned planner from Git into memory. Resolve its unchanged imports in this checkout.
-  const root = process.cwd();
-  const source = execFileSync("git", ["show", `${BASE}:src/lib/workbook-plan.ts`], { encoding: "utf8" });
-  const result = await build({ stdin: { contents: 'export {planWorkbook} from "./src/lib/workbook-plan";', resolveDir: root, loader: "ts" },
-    bundle: true, write: false, platform: "node", format: "cjs", target: "node22", logLevel: "silent",
-    tsconfigRaw: { compilerOptions: {} }, alias: { "@": root + "/src" },
-    plugins: [{ name: "fixed-base-planner", setup(b) { b.onLoad({ filter: /[/\\]workbook-plan\.ts$/ }, () => ({ contents: source, loader: "ts", resolveDir: root + "/src/lib" })); } }],
-  });
-  const mod = { exports: {} as { planWorkbook: typeof planWorkbook } };
-  new Function("module", "exports", "require", result.outputFiles[0].text)(mod, mod.exports, createRequire(import.meta.url));
-  basePlanner = mod.exports.planWorkbook;
-});
+// Exact public inputs and outputs captured before the optional planner edit, at 051215df.
+// The 20-case artifact SHA256 is fe1476705042bf2a2e1571bcd4448bcb913d110ce6b308c1be6ffdf8ef287a0a.
+// Keep these fixed hashes available to shallow CI checkouts without Git history.
+const LEGACY_EXPECTED: Record<string, { input: string; result: string }> = {
+  "U4-steps-plain": {
+    "input": "556245540a8bf5e7c40b1a2a49cbe570b6548e4fc6516ed6404c9190bee30e2d",
+    "result": "ba2be623afc9b14533556472b9a6d4fbcc734c50f07ad0b8d607cd8507786b97"
+  },
+  "U4-steps-personal": {
+    "input": "bef773aaae1ecf11009b3bae5ff37e07c4d750351d255e76ec20c8896747940b",
+    "result": "ef59c0f6d32e7ba68d706a4edd124960a09e7114061cc0ea3535c4f8a3dae485"
+  },
+  "U4-steps-review": {
+    "input": "214449fff747233ea9bf03eddab1c760ef76e9eb752cd8ad5356890b65066bdf",
+    "result": "93efc5bcbb1a633f91020ef6499031674af073379f25c0e61292adf50ab84385"
+  },
+  "U4-steps-fix-it": {
+    "input": "e2c0f70fc2209096a10601b7332ab8b88d80d6340ad61b440a0d882f5c97d338",
+    "result": "3efe12b7d56aa48528aee7f6169a1ce5319d25806fb5ed80ee09c23c50cbb6fd"
+  },
+  "U4-steps-complete-level": {
+    "input": "6261fa44f06dd29ef2202b7e2fcc99ddef4e1ad55252cb8d8837467f8b33b6d9",
+    "result": "592d27baa06fa34d576da28b83c41647436781c2e7a87b5eaa9bcc9ecdf03d6b"
+  },
+  "U4-units-plain": {
+    "input": "fc271dc0a62eabe0f8ffa0f2c5a2d5b21fdbb2f8a89ac7836d78f81f98a7ed0d",
+    "result": "03fe530425c9ba8a68df44163bbbd9dbefc08c54254b26669cfcb113f602b0ea"
+  },
+  "U4-units-personal": {
+    "input": "9cd8d9079a53301b81e0beb3e798b67a740a010e026e926c521897063e18e780",
+    "result": "4f1c499f04570d4be5a68e9a7ae0fdc94122cb34a3f73020a304a49ccfd82e2d"
+  },
+  "U4-units-review": {
+    "input": "6f2751027535153e45cbed0d7fa0daae1f3f55c06b1e6e552081c906a404a5f5",
+    "result": "70635b111fa780137e590234719fd9650c703e3ae17f084cc637fa424fff9a5e"
+  },
+  "U4-units-fix-it": {
+    "input": "fa75263cafb6be784893fd5b5bf4dd2b8d9f2a9bdfad19d8470a3dfa6e4fb3c7",
+    "result": "88c04d409ed19a95e8421cd4a8e40b92253bda98d0489ca890ec3d8da97ad866"
+  },
+  "U4-units-complete-level": {
+    "input": "a0d7d384084adcd5b03781bf0b70cd33bb94e2e158de938e4637ef0366851434",
+    "result": "9e1499c58de6dcd8f5db538bab3e3e582fcfdc2b1f0ec5d9274a403e1c7ad425"
+  },
+  "U16-steps-plain": {
+    "input": "ee7113dd55ca8db0434b84c90b0519841e81aefc27385032e859c1d435308baf",
+    "result": "143a268dffeaa0d82eb58124e0b50e36d955d6affe02255e4bea6e3cea263cbc"
+  },
+  "U16-steps-personal": {
+    "input": "a9669f2e4971dba5ba849945a9c63381fe7cd5e27e7b2731721873eac8512145",
+    "result": "7b3a28124a8317419fae116bebb6b57b398c935278165ae95a9165b0d59863c8"
+  },
+  "U16-steps-review": {
+    "input": "dd2510c0f97c74fe723091267ed283fdeef52331a2c6932800538c248bc49658",
+    "result": "8ff89b0720c8ebe24fa530c52e9becae1bc0609a1d7a65afdc663c93083a8c2b"
+  },
+  "U16-steps-fix-it": {
+    "input": "4bf85a1437c7cb6a46030986599d3c4413c48545bde40860bcb76736972b4308",
+    "result": "5999861da10960812cc70e6defe8655a8bfa9a1c443911ab7b82cb51f4927052"
+  },
+  "U16-steps-complete-level": {
+    "input": "4772b52d69556e3a8597738750d60f3a51eb6d8e7229cca94898d48fd0ce40b4",
+    "result": "1bd0fc27cb9a2c8b9d0455ec5b441bff0c6837dc0028e03e630f10a5ff3efa8d"
+  },
+  "U16-units-plain": {
+    "input": "8d4d38241ae171afd394ebd3ec497f3e07c26d6dcb9dd7124d534cbb743fe61e",
+    "result": "9b9825b948b2206ec563403cab6fe47ccae5bb819c87cb96c297146c98506e16"
+  },
+  "U16-units-personal": {
+    "input": "a797a6cd65ae5e840bf7d7f8dea27b076104a59ab1a20d9b84e78b67940b89e0",
+    "result": "1cc003605bbfdbac66ae7c9c8236be0b38085419cb2c13bfb88902b9fd61c362"
+  },
+  "U16-units-review": {
+    "input": "acb2a3f803efdd6a7f9b4e762e530fea23fe254db10eb613bf9a8d70ba3e9976",
+    "result": "91d4ae8d548f65dc89ac736c1d09f2a952ec878fb3545d780e59c7c0dde069c0"
+  },
+  "U16-units-fix-it": {
+    "input": "c230d32e1163c715c3faf42705bd8897279c2aba87cfcdfe9466305fad5fc2d6",
+    "result": "84aeffbc92998c69d5e3df0f65443f0c604d5854eed3e92b1d0be6370b34d89a"
+  },
+  "U16-units-complete-level": {
+    "input": "b9e5180f14e76ceff3ca18bcfeb588db8d6609964df556aa7876b759f55242f9",
+    "result": "22fa8db744db7142f1d563c383a494fcfee27458cd58dad5ed6c3971b8581fb7"
+  }
+};
+const hash = (value: object) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 type Fixture = ReturnType<typeof progressFixture>;
 function preview(f: WorkbookPlanPreviewInput) {
@@ -68,12 +137,17 @@ function objects(v: unknown, set = new Set<object>()) {
 }
 
 describe("no progress input: exact fixed-base public plan identity", () => {
-  it.each(legacyCases())("$name", ({ input }) => {
-    const previous = basePlanner(input);
-    expect(previous.ok).toBe(true);
-    expect(JSON.stringify(planWorkbook(input))).toBe(JSON.stringify(previous));
+  it("retains the full fixed baseline distribution", () => {
+    expect(legacyCases().map(c => c.name).sort()).toEqual(Object.keys(LEGACY_EXPECTED).sort());
+  });
+  it.each(legacyCases())("$name", ({ name, input }) => {
+    const expected = LEGACY_EXPECTED[name];
+    expect(hash(input)).toBe(expected.input);
+    const legacy = planWorkbook(input);
+    expect(legacy.ok).toBe(true);
+    expect(hash(legacy)).toBe(expected.result);
     const result = planWorkbook({ ...input, progress: undefined });
-    expect(JSON.stringify(result)).toBe(JSON.stringify(previous));
+    expect(hash(result)).toBe(expected.result);
     if (result.ok) expect(result.plan).not.toHaveProperty("progress");
   });
 });
@@ -175,7 +249,7 @@ describe("the preview consumes the public planner", () => {
     if (kind === "change-approach") repeats(f, 2);
     const r = preview(f), skill = f.curriculum.skill.id, target = r.decision.target.step;
     assertHeld(r.plan, skill, target);
-    const ignored = basePlanner(r.planningInput);
+    const ignored = planWorkbook({ ...r.planningInput, progress: undefined });
     expect(ignored.ok).toBe(true);
     if (!ignored.ok) throw new Error(ignored.reason);
     expect(() => assertHeld(ignored.plan, skill, target)).toThrow();
@@ -188,7 +262,7 @@ describe("the preview consumes the public planner", () => {
     expect(parts(r.plan).some(p => p.kind === "level-test")).toBe(false);
     if (right < 90) assertHeld(r.plan, f.curriculum.skill.id, 2);
     else expect(selectedTeaching(r.plan, f.curriculum.skill.id)[0].step?.step).toBe(3);
-    const ignored = basePlanner(r.planningInput);
+    const ignored = planWorkbook({ ...r.planningInput, progress: undefined });
     expect(ignored.ok && ignored.plan.testWorkbook).toBe(true);
   });
   it.each([0, 4])("preserves proven prefix %i during explicit regression", prefix => {
