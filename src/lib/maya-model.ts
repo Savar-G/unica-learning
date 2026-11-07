@@ -22,7 +22,7 @@ import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
-export const PROMPT_VERSION = "maya-text-chat-28";
+export const PROMPT_VERSION = "maya-text-chat-29";
 
 /** One act the model may propose now, with everything code offers for it. */
 export interface ActOffer {
