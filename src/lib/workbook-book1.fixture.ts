@@ -120,7 +120,7 @@ export function mark(b: FrozenSourceBook, e: ExpectedItem & { page: number }, re
     skill_standard: pkg.skill.standard, skills: pkg.skill.skills };
   b.events.push(event);
   const row: HistoryMarkRow = { id: id(50_000 + n), parent_id: PARENT, child_id: CHILD, workbook_id: b.book.id, printed_revision: b.book.printed_revision!,
-    page_id: e.identity.pageId, item_id: e.identity.itemId, expected: json({ identity: e.identity, number: e.number, method: e.method, ...(e.review ? { review: e.review } : {}),
+    page_id: e.identity.pageId, item_id: e.identity.itemId, expected: json({ identity: e.identity, number: e.number, method: e.method, ...(e.twoWays ? { twoWays: true } : {}),
       scoredRegions: e.scoredRegions, mastery: e.mastery, teaching: e.teaching }), observation: json(observation), result_version: 2, evidence_at: at, event_id: event.id,
     original_event: json({ key: event.idempotency_key, parentId: PARENT, childId: CHILD, source: "marking", question: { source: "workbook", workbookId: b.book.id, page: e.page, question: e.number },
       skill: pkg.skill, result, occurredAt: at }), model: "synthetic-reader", prompt: "synthetic-prompt" };
