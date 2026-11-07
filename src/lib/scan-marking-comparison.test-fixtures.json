@@ -1,0 +1,966 @@
+{
+  "provenance": "Made-up Robin. Fake sampleChild/samplePlanInput U16. No customer profile or draft. Unrendered pure reader fixtures only.",
+  "packages": {
+    "whole": {
+      "id": "5ca70000-0000-4000-8000-000000000542:d1p1s1.1",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "5ca70000-0000-4000-8000-000000000542",
+        "page": 3,
+        "question": 1
+      },
+      "templateId": null,
+      "text": "? = 45 + 3",
+      "item": {
+        "format": "write-number",
+        "scorable": true,
+        "parentChecked": false,
+        "regions": [
+          {
+            "id": "answer",
+            "kind": "box",
+            "label": null,
+            "answer": {
+              "type": "number",
+              "value": 48
+            }
+          }
+        ],
+        "checks": [
+          {
+            "kind": "operation",
+            "region": "answer"
+          }
+        ],
+        "error": null
+      },
+      "answer": {
+        "value": {
+          "type": "number",
+          "value": 48
+        },
+        "accepted": [],
+        "unit": null
+      },
+      "operation": {
+        "kind": "add",
+        "operands": [
+          45,
+          3
+        ]
+      },
+      "steps": [
+        {
+          "id": "ones",
+          "kind": "add-column",
+          "place": "ones",
+          "digits": [
+            5,
+            3
+          ],
+          "carryIn": 0,
+          "total": 8,
+          "write": 8,
+          "carryOut": 0
+        },
+        {
+          "id": "tens",
+          "kind": "add-column",
+          "place": "tens",
+          "digits": [
+            4
+          ],
+          "carryIn": 0,
+          "total": 4,
+          "write": 4,
+          "carryOut": 0
+        },
+        {
+          "id": "result",
+          "kind": "result",
+          "value": {
+            "type": "number",
+            "value": 48
+          }
+        }
+      ],
+      "skill": {
+        "standard": "5.8",
+        "skills": [
+          "5.8-extend-facts"
+        ]
+      },
+      "level": 16,
+      "difficulty": 2,
+      "wrongAnswers": [
+        {
+          "value": {
+            "type": "number",
+            "value": 49
+          },
+          "cause": "careless",
+          "description": "Counts 1 too many.",
+          "step": null
+        }
+      ],
+      "easierExample": {
+        "text": "0 + 3 = ?",
+        "operation": {
+          "kind": "add",
+          "operands": [
+            0,
+            3
+          ]
+        },
+        "answer": {
+          "type": "number",
+          "value": 3
+        },
+        "steps": [
+          {
+            "id": "ones",
+            "kind": "add-column",
+            "place": "ones",
+            "digits": [
+              0,
+              3
+            ],
+            "carryIn": 0,
+            "total": 3,
+            "write": 3,
+            "carryOut": 0
+          },
+          {
+            "id": "result",
+            "kind": "result",
+            "value": {
+              "type": "number",
+              "value": 3
+            }
+          }
+        ]
+      }
+    },
+    "fraction": {
+      "id": "synthetic-scalar-1",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "5ca70000-0000-4000-8000-000000000542",
+        "page": 4,
+        "question": 1
+      },
+      "templateId": "synthetic-marking-1",
+      "textSource": "code",
+      "text": "Which is the least: 2/9, 4/9 or 1/9?",
+      "item": {
+        "format": "write-number",
+        "scorable": true,
+        "parentChecked": false,
+        "error": null,
+        "regions": [
+          {
+            "id": "answer",
+            "kind": "box",
+            "label": null,
+            "answer": {
+              "type": "fraction",
+              "numerator": 1,
+              "denominator": 9
+            }
+          }
+        ],
+        "checks": [
+          {
+            "kind": "template",
+            "region": "answer",
+            "source": {
+              "answer": "'1/9'",
+              "check": null,
+              "derived": [],
+              "slots": [],
+              "values": null
+            }
+          }
+        ]
+      },
+      "answer": null,
+      "operation": null,
+      "steps": [],
+      "skill": {
+        "standard": "5.1",
+        "skills": [
+          "5.1-place-value-million"
+        ]
+      },
+      "level": 16,
+      "difficulty": 1,
+      "wrongAnswers": [],
+      "easierExample": null
+    },
+    "decimal": {
+      "id": "synthetic-scalar-2",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "5ca70000-0000-4000-8000-000000000542",
+        "page": 4,
+        "question": 2
+      },
+      "templateId": "synthetic-marking-2",
+      "textSource": "code",
+      "text": "Write 6 wholes and 1 tenth as a decimal.",
+      "item": {
+        "format": "write-number",
+        "scorable": true,
+        "parentChecked": false,
+        "error": null,
+        "regions": [
+          {
+            "id": "answer",
+            "kind": "box",
+            "label": null,
+            "answer": {
+              "type": "number",
+              "value": 6.1
+            }
+          }
+        ],
+        "checks": [
+          {
+            "kind": "template",
+            "region": "answer",
+            "source": {
+              "answer": "6.1",
+              "check": null,
+              "derived": [],
+              "slots": [],
+              "values": null
+            }
+          }
+        ]
+      },
+      "answer": null,
+      "operation": null,
+      "steps": [],
+      "skill": {
+        "standard": "5.1",
+        "skills": [
+          "5.1-place-value-million"
+        ]
+      },
+      "level": 16,
+      "difficulty": 2,
+      "wrongAnswers": [],
+      "easierExample": null
+    },
+    "circle": {
+      "id": "5ca70000-0000-4000-8000-000000000542:d1p2s1.3",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "5ca70000-0000-4000-8000-000000000542",
+        "page": 4,
+        "question": 3
+      },
+      "templateId": "5.1-place-value-million#1.5:true-false",
+      "textSource": "code",
+      "text": "True or false: in 28257, the digit in the thousands place is bigger than the digit in the hundreds place.",
+      "item": {
+        "scorable": true,
+        "parentChecked": false,
+        "error": null,
+        "format": "circle",
+        "regions": [
+          {
+            "id": "answer",
+            "kind": "choice",
+            "mark": "circle",
+            "label": null,
+            "choices": [
+              "true",
+              "false"
+            ],
+            "answer": "true"
+          }
+        ],
+        "checks": [
+          {
+            "kind": "template-choice",
+            "region": "answer",
+            "source": {
+              "answer": "'true' if n // 1000 % 10 > n // 100 % 10 else 'false'",
+              "check": "'0' not in str(n)",
+              "derived": [
+                [
+                  "n",
+                  "n0"
+                ]
+              ],
+              "slots": [
+                {
+                  "name": "n0",
+                  "value": {
+                    "int": "28257"
+                  },
+                  "domain": {
+                    "min": 10000,
+                    "max": 99999
+                  }
+                }
+              ],
+              "values": null
+            }
+          }
+        ]
+      },
+      "answer": null,
+      "operation": null,
+      "steps": [],
+      "skill": {
+        "standard": "5.1",
+        "skills": [
+          "5.1-place-value-million"
+        ]
+      },
+      "level": 16,
+      "difficulty": 2,
+      "wrongAnswers": [],
+      "easierExample": null
+    },
+    "write-words": {
+      "id": "synthetic-scalar-3",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "5ca70000-0000-4000-8000-000000000542",
+        "page": 4,
+        "question": 4
+      },
+      "templateId": "synthetic-marking-3",
+      "textSource": "code",
+      "text": "Write even if 24 is an even number. Otherwise write odd.",
+      "item": {
+        "format": "write-words",
+        "scorable": true,
+        "parentChecked": false,
+        "error": null,
+        "regions": [
+          {
+            "id": "answer",
+            "kind": "box",
+            "label": null,
+            "answer": {
+              "type": "text",
+              "value": "even"
+            }
+          }
+        ],
+        "checks": [
+          {
+            "kind": "template",
+            "region": "answer",
+            "source": {
+              "answer": "'even'",
+              "check": null,
+              "derived": [],
+              "slots": [],
+              "values": null
+            }
+          }
+        ]
+      },
+      "answer": null,
+      "operation": null,
+      "steps": [],
+      "skill": {
+        "standard": "5.1",
+        "skills": [
+          "5.1-place-value-million"
+        ]
+      },
+      "level": 16,
+      "difficulty": 1,
+      "wrongAnswers": [],
+      "easierExample": null
+    },
+    "spot-the-error": {
+      "id": "5ca70000-0000-4000-8000-000000000542:d1p2s2.1",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "5ca70000-0000-4000-8000-000000000542",
+        "page": 4,
+        "question": 5
+      },
+      "templateId": "5.1-place-value-million#1.2:bare",
+      "textSource": "code",
+      "text": "What is the value of the digit in the ten thousands place of 78291?",
+      "item": {
+        "scorable": true,
+        "parentChecked": false,
+        "error": null,
+        "format": "spot-the-error",
+        "regions": [
+          {
+            "id": "right",
+            "kind": "choice",
+            "mark": "tick",
+            "label": "Is it right?",
+            "choices": [
+              "Yes",
+              "No"
+            ],
+            "answer": "No"
+          },
+          {
+            "id": "fix",
+            "kind": "box",
+            "label": "Fix it",
+            "answer": {
+              "type": "number",
+              "value": 70000
+            }
+          }
+        ],
+        "checks": [
+          {
+            "kind": "template-shown",
+            "region": "right",
+            "source": {
+              "answer": "n // 10000 % 10 * 10000",
+              "check": "'0' not in str(n)",
+              "derived": [
+                [
+                  "n",
+                  "n0"
+                ]
+              ],
+              "slots": [
+                {
+                  "name": "n0",
+                  "value": {
+                    "int": "78291"
+                  },
+                  "domain": {
+                    "min": 10000,
+                    "max": 99999
+                  }
+                }
+              ],
+              "values": null
+            },
+            "shown": "7000"
+          },
+          {
+            "kind": "template",
+            "region": "fix",
+            "source": {
+              "answer": "n // 10000 % 10 * 10000",
+              "check": "'0' not in str(n)",
+              "derived": [
+                [
+                  "n",
+                  "n0"
+                ]
+              ],
+              "slots": [
+                {
+                  "name": "n0",
+                  "value": {
+                    "int": "78291"
+                  },
+                  "domain": {
+                    "min": 10000,
+                    "max": 99999
+                  }
+                }
+              ],
+              "values": null
+            }
+          }
+        ]
+      },
+      "answer": null,
+      "operation": null,
+      "steps": [],
+      "skill": {
+        "standard": "5.1",
+        "skills": [
+          "5.1-place-value-million"
+        ]
+      },
+      "level": 16,
+      "difficulty": 1,
+      "wrongAnswers": [],
+      "easierExample": null
+    },
+    "show-work": {
+      "id": "5ca70000-0000-4000-8000-000000000542:d1p5s1.1",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "5ca70000-0000-4000-8000-000000000542",
+        "page": 7,
+        "question": 1
+      },
+      "templateId": "4.4-subtract-within-10000#5.3:story",
+      "textSource": "code",
+      "text": "Aiyana has 10000 tickets and gives 2104 away. How many tickets are left?",
+      "item": {
+        "scorable": true,
+        "parentChecked": false,
+        "error": null,
+        "format": "show-work",
+        "regions": [
+          {
+            "id": "answer",
+            "kind": "box",
+            "label": null,
+            "answer": {
+              "type": "number",
+              "value": 7896
+            }
+          },
+          {
+            "id": "work",
+            "kind": "work",
+            "label": "Show your work"
+          }
+        ],
+        "checks": [
+          {
+            "kind": "template",
+            "region": "answer",
+            "source": {
+              "answer": "a - b",
+              "check": null,
+              "derived": [
+                [
+                  "A",
+                  "10000"
+                ],
+                [
+                  "B",
+                  "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999"
+                ],
+                [
+                  "a",
+                  "A"
+                ],
+                [
+                  "b",
+                  "B"
+                ],
+                [
+                  "d",
+                  "A - B"
+                ],
+                [
+                  "shown",
+                  "d if flip == 0 else d + 10"
+                ]
+              ],
+              "slots": [
+                {
+                  "name": "u1",
+                  "value": {
+                    "int": "2"
+                  },
+                  "domain": {
+                    "min": 0,
+                    "max": 9
+                  }
+                },
+                {
+                  "name": "u2",
+                  "value": {
+                    "int": "1"
+                  },
+                  "domain": {
+                    "min": 0,
+                    "max": 9
+                  }
+                },
+                {
+                  "name": "u3",
+                  "value": {
+                    "int": "0"
+                  },
+                  "domain": {
+                    "min": 0,
+                    "max": 9
+                  }
+                },
+                {
+                  "name": "u4",
+                  "value": {
+                    "int": "3"
+                  },
+                  "domain": {
+                    "min": 0,
+                    "max": 9
+                  }
+                },
+                {
+                  "name": "flip",
+                  "value": {
+                    "int": "1"
+                  },
+                  "domain": {
+                    "min": 0,
+                    "max": 1
+                  }
+                }
+              ],
+              "values": null
+            }
+          }
+        ]
+      },
+      "answer": null,
+      "operation": null,
+      "steps": [],
+      "skill": {
+        "standard": "4.4",
+        "skills": [
+          "4.4-subtract-within-10000"
+        ]
+      },
+      "level": 16,
+      "difficulty": 2,
+      "wrongAnswers": [],
+      "easierExample": null
+    },
+    "tick-and-number": {
+      "id": "5ca70000-0000-4000-8000-000000000542:d1p7s2.1",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "5ca70000-0000-4000-8000-000000000542",
+        "page": 9,
+        "question": 5
+      },
+      "templateId": "4.1-place-value-10000#3.3:story",
+      "textSource": "code",
+      "text": "Sofia has 9606 tickets. Sofia gets 62 more. How many tickets does Sofia have now?",
+      "item": {
+        "scorable": true,
+        "parentChecked": false,
+        "error": null,
+        "format": "tick-and-number",
+        "regions": [
+          {
+            "id": "operation",
+            "kind": "choice",
+            "mark": "tick",
+            "label": "Tick the operation",
+            "choices": [
+              "+",
+              "\u2212",
+              "\u00d7",
+              "\u00f7"
+            ],
+            "answer": "+"
+          },
+          {
+            "id": "answer",
+            "kind": "box",
+            "label": "Write the answer",
+            "answer": {
+              "type": "number",
+              "value": 9668
+            }
+          },
+          {
+            "id": "work",
+            "kind": "work",
+            "label": "Show your work"
+          }
+        ],
+        "checks": [
+          {
+            "kind": "template",
+            "region": "answer",
+            "source": {
+              "answer": "n + c",
+              "check": "n + c <= 10000",
+              "derived": [],
+              "slots": [
+                {
+                  "name": "n",
+                  "value": {
+                    "int": "9606"
+                  },
+                  "domain": {
+                    "min": 1000,
+                    "max": 10000
+                  }
+                },
+                {
+                  "name": "c",
+                  "value": {
+                    "int": "62"
+                  },
+                  "domain": {
+                    "min": 10,
+                    "max": 100
+                  }
+                }
+              ],
+              "values": null
+            }
+          },
+          {
+            "kind": "template-choice",
+            "region": "operation",
+            "source": {
+              "answer": "'+'",
+              "check": "n + c <= 10000",
+              "derived": [],
+              "slots": [
+                {
+                  "name": "n",
+                  "value": {
+                    "int": "9606"
+                  },
+                  "domain": {
+                    "min": 1000,
+                    "max": 10000
+                  }
+                },
+                {
+                  "name": "c",
+                  "value": {
+                    "int": "62"
+                  },
+                  "domain": {
+                    "min": 10,
+                    "max": 100
+                  }
+                }
+              ],
+              "values": null
+            }
+          }
+        ]
+      },
+      "answer": null,
+      "operation": null,
+      "steps": [],
+      "skill": {
+        "standard": "4.1",
+        "skills": [
+          "4.1-place-value-10000"
+        ]
+      },
+      "level": 16,
+      "difficulty": 2,
+      "wrongAnswers": [],
+      "easierExample": null
+    },
+    "two-ways": {
+      "id": "5ca70000-0000-4000-8000-000000000542:d2p4s2.1",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "5ca70000-0000-4000-8000-000000000542",
+        "page": 14,
+        "question": 9
+      },
+      "templateId": "5.9-multiply-tens#1.3:missing",
+      "textSource": "code",
+      "text": "8 \u00d7 ? = 3440",
+      "item": {
+        "scorable": true,
+        "parentChecked": false,
+        "error": null,
+        "format": "two-ways",
+        "regions": [
+          {
+            "id": "method-1",
+            "kind": "work",
+            "label": "Method 1"
+          },
+          {
+            "id": "method-2",
+            "kind": "work",
+            "label": "Method 2"
+          },
+          {
+            "id": "answer",
+            "kind": "box",
+            "label": null,
+            "answer": {
+              "type": "number",
+              "value": 430
+            }
+          }
+        ],
+        "checks": [
+          {
+            "kind": "template",
+            "region": "answer",
+            "source": {
+              "answer": "b",
+              "check": "b0 >= 10",
+              "derived": [
+                [
+                  "a",
+                  "a0"
+                ],
+                [
+                  "b",
+                  "b0 // 10 * 10"
+                ],
+                [
+                  "c",
+                  "a * b"
+                ]
+              ],
+              "slots": [
+                {
+                  "name": "a0",
+                  "value": {
+                    "int": "8"
+                  },
+                  "domain": {
+                    "min": 1,
+                    "max": 9
+                  }
+                },
+                {
+                  "name": "b0",
+                  "value": {
+                    "int": "437"
+                  },
+                  "domain": {
+                    "min": 10,
+                    "max": 900
+                  }
+                }
+              ],
+              "values": null
+            }
+          }
+        ]
+      },
+      "answer": {
+        "value": {
+          "type": "number",
+          "value": 430
+        },
+        "accepted": [],
+        "unit": null
+      },
+      "operation": {
+        "kind": "divide",
+        "operands": [
+          3440,
+          8
+        ]
+      },
+      "steps": [
+        {
+          "id": "thousands",
+          "kind": "divide-digit",
+          "place": "thousands",
+          "digit": 3,
+          "current": 3,
+          "quotient": 0,
+          "write": null,
+          "product": 0,
+          "remainder": 3
+        },
+        {
+          "id": "hundreds",
+          "kind": "divide-digit",
+          "place": "hundreds",
+          "digit": 4,
+          "current": 34,
+          "quotient": 4,
+          "write": 4,
+          "product": 32,
+          "remainder": 2
+        },
+        {
+          "id": "tens",
+          "kind": "divide-digit",
+          "place": "tens",
+          "digit": 4,
+          "current": 24,
+          "quotient": 3,
+          "write": 3,
+          "product": 24,
+          "remainder": 0
+        },
+        {
+          "id": "ones",
+          "kind": "divide-digit",
+          "place": "ones",
+          "digit": 0,
+          "current": 0,
+          "quotient": 0,
+          "write": 0,
+          "product": 0,
+          "remainder": 0
+        },
+        {
+          "id": "result",
+          "kind": "result",
+          "value": {
+            "type": "number",
+            "value": 430
+          }
+        }
+      ],
+      "skill": {
+        "standard": "5.9",
+        "skills": [
+          "5.9-multiply-tens"
+        ]
+      },
+      "level": 16,
+      "difficulty": 2,
+      "wrongAnswers": [
+        {
+          "value": {
+            "type": "number",
+            "value": 431
+          },
+          "cause": "calculation",
+          "description": "Gives a different result.",
+          "step": null
+        }
+      ],
+      "easierExample": {
+        "text": "0 \u00f7 1 = ?",
+        "operation": {
+          "kind": "divide",
+          "operands": [
+            0,
+            1
+          ]
+        },
+        "answer": {
+          "type": "number",
+          "value": 0
+        },
+        "steps": [
+          {
+            "id": "ones",
+            "kind": "divide-digit",
+            "place": "ones",
+            "digit": 0,
+            "current": 0,
+            "quotient": 0,
+            "write": 0,
+            "product": 0,
+            "remainder": 0
+          },
+          {
+            "id": "result",
+            "kind": "result",
+            "value": {
+              "type": "number",
+              "value": 0
+            }
+          }
+        ]
+      },
+      "operationSource": "maya"
+    }
+  }
+}
