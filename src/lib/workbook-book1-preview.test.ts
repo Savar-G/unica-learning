@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { BOUNDARY, CHILD, CUTOFF, MARKED, PARENT, approvedWorkbook, baselineOf, frozenOf, id, jobBook, mark, parentChange, printedItems, requestOf, secondTry, shippedBook } from "./workbook-book1.fixture";
@@ -62,7 +63,7 @@ describe("Book 1 baseline capture", () => {
     const doc = JSON.parse(record.payload);
     doc.planning.input.passed = { [SELECTION.skill]: 1 };
     const payload = JSON.stringify(doc);
-    expect(readBook1Baseline({ payload, hash: require("node:crypto").createHash("sha256").update(payload).digest("hex") })).toBeNull();
+    expect(readBook1Baseline({ payload, hash: createHash("sha256").update(payload).digest("hex") })).toBeNull();
   });
   it("refuses a book that is not Book 1 and a capture that carries mastery", () => {
     const proof = baseline.planning;
@@ -262,7 +263,7 @@ describe("refusals: any proof incomplete or in conflict", () => {
     const doc = JSON.parse(record.payload); doc.binding.printedRevision = "c".repeat(28);
     const { canonical } = await import("./workbook-progress-hash");
     const payload = canonical(doc);
-    const forged = { payload, hash: require("node:crypto").createHash("sha256").update(payload).digest("hex") };
+    const forged = { payload, hash: createHash("sha256").update(payload).digest("hex") };
     expect(reason(await preview(b, [], { rec: forged }))).toBe("baseline-binding-revision");
   });
 });

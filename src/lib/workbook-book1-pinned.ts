@@ -6,6 +6,7 @@
 // a plan, and the recovery's plan comparison would refuse one that did.
 import "server-only";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { Module } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -27,7 +28,7 @@ interface PinnedExports {
 }
 
 /** Loads the planner of commit `pin` from the repository at `root`. Throws when the commit or a file is not there. */
-export async function loadPinnedPlanningEngine(pin: string, root = process.cwd()): Promise<PinnedPlanningEngine> {
+export async function loadPinnedPlanningEngine(pin: string, root = process.cwd()): Promise<PinnedPlanningEngine & { files: Record<string, string> }> {
   if (!/^[0-9a-f]{40}$/.test(pin)) throw Error("pin-invalid");
   const git = async (...args: string[]) => (await run("git", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })).stdout;
   const commit = (await git("rev-parse", "--verify", `${pin}^{commit}`)).trim();
@@ -35,6 +36,7 @@ export async function loadPinnedPlanningEngine(pin: string, root = process.cwd()
   const tree = (await git("rev-parse", `${pin}^{tree}`)).trim();
   const placementBlob = (await git("rev-parse", `${pin}:src/lib/workbook-placement.ts`)).trim();
   const { build } = await import("esbuild");
+  const files: Record<string, string> = {};
   const result = await build({
     stdin: { contents: ENTRY, resolveDir: root, loader: "ts" }, bundle: true, platform: "node", format: "cjs", write: false, logLevel: "silent",
     tsconfig: path.join(root, "tsconfig.json"),
@@ -45,6 +47,8 @@ export async function loadPinnedPlanningEngine(pin: string, root = process.cwd()
         const relative = path.relative(root, args.path).split(path.sep).join("/");
         if (!relative.startsWith("src/") && !relative.startsWith("data/")) return undefined;
         let text = await git("show", `${pin}:${relative}`);
+        // The Git blob id of exactly what was read: proof that the bundle is the pin's source, not the working tree.
+        files[relative] = createHash("sha1").update(`blob ${Buffer.byteLength(text, "utf8")}\0`).update(text, "utf8").digest("hex");
         if (relative === PLANNER) {
           if (text.split(KEY).length !== 2) throw Error("planner-interception-shape");
           // The public planWorkbook, wrapped: each input is copied before the original planner reads it.
@@ -61,7 +65,7 @@ export async function loadPinnedPlanningEngine(pin: string, root = process.cwd()
   loaded.paths = (Module as unknown as { _nodeModulePaths(dir: string): string[] })._nodeModulePaths(root);
   (loaded as unknown as { _compile(code: string, file: string): void })._compile(code, file);
   const api = loaded.exports as PinnedExports;
-  return engineOf(pin, tree, placementBlob, api);
+  return { ...engineOf(pin, tree, placementBlob, api), files };
 }
 
 function engineOf(pin: string, tree: string, placementBlob: string, api: PinnedExports): PinnedPlanningEngine {
