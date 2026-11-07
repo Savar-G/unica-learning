@@ -41,7 +41,7 @@ function manifest(): ComparisonManifest {
   return { version: 1, synthetic: true, identity: { name: "Robin", madeUp: true, containsRealData: false, profileSource: "sampleChild/samplePlanInput" }, source: { synthetic: true, draftSha256: hashBytes("draft"), renderSha256: hashBytes("render"), fixtureSha256: hashBytes("fixture") }, photos: Array.from({ length: 40 }, (_, n) => photo(n)) };
 }
 function result(p: ComparisonPhoto, m = COMPARISON_MODELS[0], cost = 1000): ComparisonResult {
-  return { model: m.model, photo: p.id, status: "complete", failure: null, attempts: [{ id: hashBytes(p.id + m.model), latencyMs: 100, error: null, usage: { generationId: "gen-synthetic", provider: m.providerName, model: m.model, costMicros: cost, inputTokens: 4000, outputTokens: 100, reasoningTokens: 0, imageTokens: 2000 } }], observations: readMarkingOutput(p.frame, labelledOutput(p)), schemaValid: true, requestHash: hashValue(markingRequest(p.frame, new Uint8Array())), photoHash: p.image.sha256, evidenceHash: hashValue(evidence(m)) };
+  return { run: hashBytes("fixed-run"), model: m.model, photo: p.id, status: "complete", failure: null, attempts: [{ id: hashBytes(p.id + m.model), latencyMs: 100, error: null, usage: { generationId: "gen-synthetic", provider: m.providerName, model: m.model, costMicros: cost, inputTokens: 4000, outputTokens: 100, reasoningTokens: 0, imageTokens: 2000 } }], observations: readMarkingOutput(p.frame, labelledOutput(p)), schemaValid: true, requestHash: hashValue(markingRequest(p.frame, new Uint8Array())), photoHash: p.image.sha256, evidenceHash: hashValue(evidence(m)) };
 }
 function memory() {
   const files = new Map<string, unknown>(), calls: string[] = [], amounts = new Map<string, number | null>();
@@ -165,17 +165,17 @@ describe("per-model preflight and refreshed prices", () => {
   it("retains immutable photo and request identity across a price refresh and rejects mixed resume state", () => {
     const data = manifest(), prior = evidence(), current = copy(prior); current.endpoint.pricing.prompt = "0.0000000812";
     const results = data.photos.map(p => result(p));
-    expect(() => assertComparisonResultIdentity(data, results, [prior, current])).not.toThrow();
+    expect(() => assertComparisonResultIdentity(data, results, [prior, current], hashBytes("fixed-run"))).not.toThrow();
     expect(scoreComparison(data, COMPARISON_MODELS[0], results, current, [prior]).passed).toBe(true);
     for (const field of ["photoHash", "requestHash", "evidenceHash"] as const) {
       const bad = copy(results); bad[0][field] = hashBytes("changed");
-      expect(() => assertComparisonResultIdentity(data, bad, [prior, current])).toThrow("identity");
+      expect(() => assertComparisonResultIdentity(data, bad, [prior, current], hashBytes("fixed-run"))).toThrow("identity");
     }
   });
   it("dispatches the full same 40-photo set for available pairs when one model is blocked", async () => {
     const data = manifest(), states = approved(), results: ComparisonResult[] = [], calls: string[] = [];
     states[3] = { model: COMPARISON_MODELS[3].model, status: "blocked", reason: "pinned-endpoint-unavailable" };
-    const blocks = await runComparisonMatrix({ manifest: data, preflight: states, history: COMPARISON_MODELS.map(m => evidence(m)), results, records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
+    const blocks = await runComparisonMatrix({ run: hashBytes("fixed-run"), manifest: data, preflight: states, history: COMPARISON_MODELS.map(m => evidence(m)), results, records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
       dispatch: async (model, p, e) => { calls.push(`${model.model}:${p.id}`); return { ...result(p, model), evidenceHash: hashValue(e) }; } });
     expect(blocks.has(COMPARISON_MODELS[3].model)).toBe(true); expect(calls).toHaveLength(480);
     for (const model of COMPARISON_MODELS.filter((_, n) => n !== 3)) expect(results.filter(r => r.model === model.model).map(r => r.photo)).toEqual(data.photos.map(p => p.id));
@@ -187,7 +187,7 @@ describe("per-model preflight and refreshed prices", () => {
     expensive.endpoint.pricing = { prompt: "0.00000001", completion: "0.00001" };
     const states: ComparisonPreflight[] = [cheap, expensive].map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: reserveMaximum(e) }));
     const results: ComparisonResult[] = [];
-    const blocks = await runComparisonMatrix({ manifest: data, preflight: states, history: [cheap, expensive], results, records: [], maxRunMicros: 100_000, maxAttempts: 1, save: async () => {},
+    const blocks = await runComparisonMatrix({ run: hashBytes("fixed-run"), manifest: data, preflight: states, history: [cheap, expensive], results, records: [], maxRunMicros: 100_000, maxAttempts: 1, save: async () => {},
       dispatch: async (model, p, e) => ({ ...result(p, model), evidenceHash: hashValue(e) }) });
     expect(blocks.get(expensive.model)).toBe("model-projection-missing-or-over-cap");
     expect(results.filter(r => r.model === cheap.model)).toHaveLength(40); expect(results.filter(r => r.model === expensive.model)).toHaveLength(1);
@@ -195,7 +195,7 @@ describe("per-model preflight and refreshed prices", () => {
   it("an unknown charge stops every paid model, including when its model is now blocked", async () => {
     const data = manifest(), states = approved(), history = COMPARISON_MODELS.map(m => evidence(m));
     let dispatches = 0;
-    const options = { manifest: data, preflight: states, history, results: [] as ComparisonResult[], records: [], maxRunMicros: 15_000_000, maxAttempts: 1 as const, save: async () => {},
+    const options = { run: hashBytes("fixed-run"), manifest: data, preflight: states, history, results: [] as ComparisonResult[], records: [], maxRunMicros: 15_000_000, maxAttempts: 1 as const, save: async () => {},
       dispatch: async (model: ComparisonModel, p: ComparisonPhoto) => { dispatches++; const r = result(p, model); r.attempts[0].usage.costMicros = null; return r; } };
     await expect(runComparisonMatrix(options)).rejects.toThrow("unknown-usage"); expect(dispatches).toBe(1);
     states[0] = { model: COMPARISON_MODELS[0].model, status: "blocked", reason: "unavailable" };
@@ -207,7 +207,7 @@ describe("per-model preflight and refreshed prices", () => {
     current.endpoint.pricing.prompt = "0.0000000812";
     const results = data.photos.slice(0, 3).map(p => result(p, model));
     const records = results.map(r => ({ state: "settled", attempt: r.attempts[0] })), calls: string[] = [];
-    await runComparisonMatrix({ manifest: data, preflight: [{ model: model.model, status: "ready", evidence: current, maximumMicros: reserveMaximum(current) }], history: [prior, current], results, records, maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
+    await runComparisonMatrix({ run: hashBytes("fixed-run"), manifest: data, preflight: [{ model: model.model, status: "ready", evidence: current, maximumMicros: reserveMaximum(current) }], history: [prior, current], results, records, maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
       dispatch: async (m, p, e) => { calls.push(p.id); return { ...result(p, m), evidenceHash: hashValue(e) }; } });
     expect(calls).toEqual(data.photos.slice(3).map(p => p.id)); expect(results).toHaveLength(40);
     expect(scoreComparison(data, model, results, current, [prior]).passed).toBe(true);
@@ -216,7 +216,7 @@ describe("per-model preflight and refreshed prices", () => {
     const data = manifest(), states = approved().slice(0, 2), history = states.flatMap(s => s.status === "ready" ? [s.evidence] : []);
     for (const reason of ["price-unverified", "unresolved-evaluation-cost"]) {
       const results: ComparisonResult[] = [], calls: string[] = [];
-      const run = runComparisonMatrix({ manifest: data, preflight: states, history, results, records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
+      const run = runComparisonMatrix({ run: hashBytes("fixed-run"), manifest: data, preflight: states, history, results, records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
         dispatch: async (model, p) => {
           calls.push(model.model); const r = result(p, model);
           return model === COMPARISON_MODELS[0] ? { ...r, status: "failed", failure: reason, attempts: [], observations: [], schemaValid: false } : r;
@@ -400,7 +400,7 @@ it.each(["http", "schema", "json", "refusal"])("retains fatal settlement state a
       return response(p, m, { choices: [{ finish_reason: "stop", message: kind === "refusal" ? { refusal: "refused" } : { content } }] });
     } });
   };
-  const matrix = () => runComparisonMatrix({ manifest: data, preflight: history.map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: options.maximumMicros })),
+  const matrix = () => runComparisonMatrix({ run: hashBytes("fixed-run"), manifest: data, preflight: history.map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: options.maximumMicros })),
     history, results, records: [...mem.files.values()] as Parameters<typeof assertComparisonResume>[0], maxRunMicros: 15_000_000, maxAttempts: 2, save: async () => {}, dispatch });
   await expect(matrix()).rejects.toThrow("budget");
   expect(dispatched).toBe(1); expect(fetched).toBe(1);
@@ -472,7 +472,7 @@ it("keeps each retry's own response after both settlements", async () => {
 
 it("probes the Sonnet reference first without changing the fixed model data", async () => {
   const data = manifest(), history = [evidence(), evidence(COMPARISON_MODELS.at(-1)!)], order: string[] = [];
-  await runComparisonMatrix({ manifest: data, preflight: history.map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: reserveMaximum(e) })),
+  await runComparisonMatrix({ run: hashBytes("fixed-run"), manifest: data, preflight: history.map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: reserveMaximum(e) })),
     history, results: [], records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
     dispatch: async (m, p) => { order.push(m.model); return result(p, m); },
   });
@@ -501,7 +501,7 @@ it.each([1, 2] as const)("stops retries, the matrix and resume after a response 
     if (!writesFailed && (value as { state: string }).state === "response") { writesFailed = true; throw Error("synthetic disk failure"); }
     await mem.journal.save(key, value);
   } };
-  await expect(runComparisonMatrix({ manifest: data, preflight: [{ model: model.model, status: "ready", evidence: proof, maximumMicros: options.maximumMicros }],
+  await expect(runComparisonMatrix({ run: hashBytes("fixed-run"), manifest: data, preflight: [{ model: model.model, status: "ready", evidence: proof, maximumMicros: options.maximumMicros }],
     history: [proof], results, records: [], maxRunMicros: 15_000_000, maxAttempts, save: async () => {},
     dispatch: async (_model, p) => {
       dispatched++;
@@ -592,4 +592,24 @@ describe("D267 denominators, projection and selection", () => {
     reports[1].passed = false;
     expect(cheapestPassing(reports)?.model).toBe(COMPARISON_MODELS[2].model);
   });
+});
+
+
+it.each(["legacy", "other-run"])("rejects a persisted %s result before any matrix side effect", async kind => {
+  const data = manifest(), model = COMPARISON_MODELS[0], proof = evidence(model), saved = result(data.photos[0], model);
+  if (kind === "legacy") Reflect.deleteProperty(saved, "run");
+  else saved.run = hashBytes("other immutable plan");
+  const run = hashBytes("fixed-run");
+  expect(() => assertComparisonResultIdentity(data,[saved],[proof],run)).toThrow("resume-result-identity-mismatch");
+  let savedReports = 0, dispatches = 0;
+  await expect(runComparisonMatrix({ run, manifest:data, preflight:[{model:model.model,status:"ready",evidence:proof,maximumMicros:reserveMaximum(proof)}], history:[proof], results:[saved], records:[], maxRunMicros:15_000_000,maxAttempts:1,
+    save:async()=>{savedReports++;}, dispatch:async(m,p)=>{dispatches++;return result(p,m);},
+  })).rejects.toThrow("resume-result-identity-mismatch");
+  expect(savedReports).toBe(0); expect(dispatches).toBe(0);
+});
+
+it("persists the current run on a new public photo result", async () => {
+  const p=photo(), mem=memory(), options=runOptions(p,mem);
+  const r=await runComparisonPhoto({...options,fetch:async()=>response(p)});
+  expect(r.run).toBe(options.run); expect(r.status).toBe("complete");
 });

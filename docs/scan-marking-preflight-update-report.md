@@ -164,3 +164,9 @@ No photo, truth, prompt, schema, model host, retry, reservation, settlement, D26
 The final key check at01:13:03UTC showed usageUSD0.015720882, consistent at reporting precision with all seven completed raw response costs, USD0.0157208825. No Qwen charge was visible more than five minutes after its429. The hold was settled at zero through the existing service RPC. Hosted verification found zero unknown holds and15725charged microdollars. Raw local records remain unchanged. The reconciliation receipt is kept outside source.
 
 The aggregate USD15 comparison stop still includes prior charges. Before dispatch, deduct all previous charged or held comparison liability from the new run's maximum. Allocate the later Qwen-only maximum from the remaining amount after the twelve-pair run. Run these phases sequentially. The USD50 ledger and key limits remain separate upper bounds. No family switch or production model is selected by a test.
+
+## Subset review repair: persisted run identity
+
+Subset review R1 found that a copied prior response could pass request/photo/model identity and become scored in a new plan. Each new result now records the run hash from the public photo runner. The matrix requires its current run hash. Identity checks reject absent or different run ownership before report generation, public preflight or matrix dispatch. Legacy stopped results remain diagnostic files and cannot resume as current results.
+
+The repair passes 89 focused tests. Two new persisted-result controls fail against the exact prior identity implementation and pass after repair. They verify zero report saves and zero dispatches for legacy and other-run results. The public photo result retains the supplied current hash. Existing matching-run resume controls still complete forty photos while skipping only that run's prior responses. No schema, prompt, photo, pin, reservation, scoring or unknown-usage rule changed.

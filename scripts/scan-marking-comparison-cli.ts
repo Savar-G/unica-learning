@@ -187,7 +187,7 @@ export async function main() {
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const writeReport = async () => {
     const results = await readResults();
-    assertComparisonResultIdentity(manifest, results, history);
+    assertComparisonResultIdentity(manifest, results, history, run);
     const reports = comparisonReports(manifest, states, results, history, blocks).filter(r => selectedIds.includes(r.model));
     await durableJson(resolve(out, "report.json"), { run, syntheticOnly: true, realHandwritingProven: false, settings: COMPARISON_SETTINGS, reports, blockedOrIncomplete: reports.filter(r => r.status !== "tested"), cheapestMeasuredPassing: cheapestPassing(reports), selectionScope: "fully-tested-passing-available-pairs-only", productionSwitch: "blocked-until-explicit-host-policy-choice", evidence: history });
   };
@@ -196,7 +196,7 @@ export async function main() {
   const priorResults = await readResults();
   const records = await Promise.all((await readdir(journalDir)).filter(p => p.endsWith(".json")).map(p => json<AttemptRecord>(resolve(journalDir, p))));
   assertComparisonResume(records, priorResults);
-  assertComparisonResultIdentity(manifest, priorResults, history);
+  assertComparisonResultIdentity(manifest, priorResults, history, run);
   states = await refreshEvidence(out, approved, fetch, selectedIds);
   for (const e of readyEvidence(states)) if (!history.some(prior => hashValue(prior) === hashValue(e))) history.push(e);
   await durableJson(historyPath, history);
@@ -221,7 +221,7 @@ export async function main() {
   // A saved model block is persistent for this run. It never authorizes retry of an omitted or refused attempt.
   states = states.map(s => blocks.has(s.model) ? { model: s.model, status: "blocked", reason: blocks.get(s.model)! } : s);
   try {
-    await runComparisonMatrix({ manifest, preflight: states, history, results: priorResults, records, maxRunMicros: Math.floor(maxUsd * 1e6), maxAttempts, save,
+    await runComparisonMatrix({ run, manifest, preflight: states, history, results: priorResults, records, maxRunMicros: Math.floor(maxUsd * 1e6), maxAttempts, save,
       dispatch: async (model, photo, current, maximumMicros) => {
         const result = await runComparisonPhoto({ run, photo, image: images.get(photo.id)!, model, evidence: current, maximumMicros, maxRunMicros: Math.floor(maxUsd * 1e6), budget, journal, env: process.env, maxAttempts });
         await durableJson(resultPath(model.model, photo.id), result, true);

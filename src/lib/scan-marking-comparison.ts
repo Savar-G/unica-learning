@@ -177,7 +177,7 @@ export function transportUsage(value: unknown): TransportUsage {
 }
 export interface ComparisonAttempt { id: string; usage: TransportUsage; latencyMs: number; error: string | null }
 export interface ComparisonResult {
-  model: string; photo: string; status: "complete" | "failed"; failure: string | null; attempts: ComparisonAttempt[];
+  run: string; model: string; photo: string; status: "complete" | "failed"; failure: string | null; attempts: ComparisonAttempt[];
   observations: Observation[]; schemaValid: boolean; requestHash: string; photoHash: string; evidenceHash: string;
 }
 export interface AttemptRecord { state: string; attempt?: { id: string; usage: { costMicros: number | null } } }
@@ -197,13 +197,14 @@ export function assertComparisonResume(records: readonly AttemptRecord[], result
     if (record.state !== "settled" || !record.attempt || natural(record.attempt.usage.costMicros) === null || !saved.has(record.attempt.id)) fail("unresolved-attempt-stopped-resume");
   }
 }
-export function assertComparisonResultIdentity(manifest: ComparisonManifest, results: readonly ComparisonResult[], history: readonly EndpointEvidence[]): void {
+export function assertComparisonResultIdentity(manifest: ComparisonManifest, results: readonly ComparisonResult[], history: readonly EndpointEvidence[], run: string): void {
+  if (!hash(run)) fail("invalid-comparison-run");
   const seen = new Set<string>();
   for (const result of results) {
     const photo = manifest.photos.find(p => p.id === result.photo), model = COMPARISON_MODELS.find(m => m.model === result.model);
     const evidence = history.find(e => e.model === result.model && hashValue(e) === result.evidenceHash);
     const key = `${result.model}:${result.photo}`;
-    if (!photo || !model || !evidence || seen.has(key) || result.photoHash !== photo.image.sha256 || result.requestHash !== hashValue(markingRequest(photo.frame, new Uint8Array())) || evidence.endpoint.tag !== model.endpoint || evidence.endpoint.provider_name !== model.providerName) fail("resume-result-identity-mismatch");
+    if (result.run !== run || !photo || !model || !evidence || seen.has(key) || result.photoHash !== photo.image.sha256 || result.requestHash !== hashValue(markingRequest(photo.frame, new Uint8Array())) || evidence.endpoint.tag !== model.endpoint || evidence.endpoint.provider_name !== model.providerName) fail("resume-result-identity-mismatch");
     seen.add(key);
   }
 }

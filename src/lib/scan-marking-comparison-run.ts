@@ -10,7 +10,7 @@ export interface EvaluationBudget {
 }
 /** One fixed matrix. Availability blocks are local; unresolved charged liability stops every model. */
 export async function runComparisonMatrix(options: {
-  manifest: ComparisonManifest; preflight: readonly ComparisonPreflight[]; history: readonly EndpointEvidence[];
+  run: string; manifest: ComparisonManifest; preflight: readonly ComparisonPreflight[]; history: readonly EndpointEvidence[];
   results: ComparisonResult[]; records: readonly AttemptRecord[]; maxRunMicros: number; maxAttempts: 1 | 2;
   dispatch(model: ComparisonModel, photo: ComparisonPhoto, evidence: EndpointEvidence, maximumMicros: number): Promise<ComparisonResult>;
   save(blocks: ReadonlyMap<string, string>, projection: unknown): Promise<void>;
@@ -18,7 +18,7 @@ export async function runComparisonMatrix(options: {
   const { manifest, results } = options, blocks = new Map<string, string>();
   if (!Number.isSafeInteger(options.maxRunMicros) || options.maxRunMicros < 1 || options.maxRunMicros > 15_000_000) throw new Error("invalid-matrix-cap");
   assertComparisonResume(options.records, results);
-  assertComparisonResultIdentity(manifest, results, options.history);
+  assertComparisonResultIdentity(manifest, results, options.history, options.run);
   for (const p of options.preflight) if (p.status === "blocked") blocks.set(p.model, p.reason);
   const spent = () => {
     assertComparisonResume([], results);
@@ -30,7 +30,7 @@ export async function runComparisonMatrix(options: {
     const model = COMPARISON_MODELS.find(m => m.model === state.model)!;
     const result = await options.dispatch(model, photo, state.evidence, state.maximumMicros);
     results.push(result);
-    assertComparisonResultIdentity(manifest, results, options.history);
+    assertComparisonResultIdentity(manifest, results, options.history, options.run);
     spent(); // Unknown usage stops here, before another model can dispatch.
     if (!result.attempts.length) {
       // Only a verified price rejection has no charged liability and is local to this model.
@@ -172,6 +172,6 @@ export async function runComparisonPhoto(options: {
   if (attempts.some(a => a.usage.provider !== model.providerName || a.usage.model !== model.model || !a.usage.generationId)) failure ??= "served-provider-model-or-generation-mismatch";
   if (attempts.some(a => a.usage.costMicros === null || a.usage.inputTokens === null || a.usage.outputTokens === null || a.usage.reasoningTokens === null)) failure ??= "unknown-usage";
   if (status !== "finished" || !schemaValid || !attempts.length) failure ??= status;
-  return { model: model.model, photo: photo.id, status: failure ? "failed" : "complete", failure, attempts, observations, schemaValid,
+  return { run: options.run, model: model.model, photo: photo.id, status: failure ? "failed" : "complete", failure, attempts, observations, schemaValid,
     requestHash: hashValue(markingRequest(photo.frame, new Uint8Array())), photoHash: photo.image.sha256, evidenceHash: hashValue(evidence) };
 }

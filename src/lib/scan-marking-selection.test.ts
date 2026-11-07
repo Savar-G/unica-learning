@@ -8,7 +8,7 @@ import { refreshEvidence } from "../../scripts/scan-marking-comparison-cli";
 const qwen = "qwen/qwen3.8-flash";
 const twelve = COMPARISON_MODELS.filter(m => m.model !== qwen).map(m => m.model);
 const snapshot = (m: ComparisonModel) => evidence.snapshots[m.model as keyof typeof evidence.snapshots] as EndpointSnapshot;
-const result = (model: string): ComparisonResult => ({ model, photo: "synthetic-first", status: "failed", failure: "fixture", attempts: [], observations: [], schemaValid: false, requestHash: "", photoHash: "", evidenceHash: "" });
+const result = (model: string): ComparisonResult => ({ run: hashValue("selection-run"), model, photo: "synthetic-first", status: "failed", failure: "fixture", attempts: [], observations: [], schemaValid: false, requestHash: "", photoHash: "", evidenceHash: "" });
 
 describe("immutable pinned pair selection", () => {
   it("keeps the thirteen-pair default and exact pinned objects", () => {
