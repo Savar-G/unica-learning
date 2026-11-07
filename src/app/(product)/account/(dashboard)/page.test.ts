@@ -5,12 +5,15 @@ import Account from "./page";
 import StartScreen from "../start/[child]/page";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ChildView } from "@/lib/parent-view";
+import { parentMinutes } from "@/lib/maya-minutes-server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account", useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 const minutes = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>() }));
-vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: async () => minutes.value }));
+vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: vi.fn(async () => minutes.value) }));
+const chats = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-chat").ChatUsage>() }));
+vi.mock("@/lib/maya-chat-server", () => ({ parentChatUsage: async () => chats.value }));
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
 const mayaNotice = vi.hoisted(() => ({ due: false, books: [] as { id: string; childId: string; number: number; status: string }[] }));
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async (child: string) => mayaNotice.books.filter((b) => b.childId === child) }) }));
@@ -57,7 +60,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { minutes.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => { minutes.value = new Map(); chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
 
 it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
   family.signedOut = true;
@@ -67,6 +70,9 @@ it("a signed-out parent signs in and comes back to the child the link named (#56
 
 it("shows only the latest note and its links on the matching child's card, without an empty notes section", async () => {
   family.olderChild = true;
+  minutes.value.set("c1", { used: 12, left: 18, backOn: "Monday, November 9" });
+  minutes.value.set("z-old", { used: 30, left: 0, backOn: "Monday, November 9" });
+  chats.value.set("c1", { used: 7, left: 53, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
   notes.latest.set("c1", {
     child_id: "c1", call_id: "latest-chat", channel: "chat", startedAt: "2026-11-08T01:00:00Z", call_ended_at: "2026-11-08T01:06:00Z",
     facts: { question: { source: "workbook", page: 23, number: 4, text: "27 + 39" }, minutes: 6, finished: "with_help", reason: "solved", help: "hint", stuckOn: null, paper: "unknown", safety: false },
@@ -81,6 +87,10 @@ it("shows only the latest note and its links on the matching child's card, witho
   expect(out).not.toContain('href="/account/notes/z-old"');
   expect(out).not.toContain("No notes");
   expect(out).not.toContain("What Asha and Maya said");
+  expect(out).toContain("Asha used 7 of 60 chat messages today.");
+  expect(out).not.toContain("Sam used");
+  expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start (?:a )?call/i);
+  expect(parentMinutes).not.toHaveBeenCalled();
 });
 
 it("adds no note heading or links when no session has a note", async () => {
@@ -221,13 +231,14 @@ describe("a family the switch opens to", () => {
     expect(out).not.toMatch(/\b(?:she|her)\b/i);
   });
 
-  it("moves the minutes and the note to the Maya tab when the child has it", async () => {
+  it("moves chat usage and the note to the Maya tab and removes voice allowances from the home fallback", async () => {
     notes.latest.set("c1", {
       child_id: "c1", call_id: "latest-chat", channel: "chat", startedAt: "2026-11-08T01:00:00Z", call_ended_at: "2026-11-08T01:06:00Z",
       facts: { question: { source: "workbook", page: 23, number: 4, text: "27 + 39" }, minutes: 6, finished: "with_help", reason: "solved", help: "hint", stuckOn: null, paper: "unknown", safety: false },
       sentences: ["{child} called Maya about page 23, question 4.", "{child} finished it after a small hint."], warm: null,
     });
     minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
+    chats.value.set("c1", { used: 7, left: 53, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
     const tabs = ["overview", "workbooks", "maya", "assessment", "account"] as const;
     const asha = { ...view("c1", "Asha"), stage: "active" as const, opensOn: "overview" as const, tabs: [...tabs] };
     dashboard.value = { children: [view("z-old", "Sam"), asha], remembered: null, pinSet: true, timeZoneSaved: true };
@@ -239,7 +250,9 @@ describe("a family the switch opens to", () => {
     dashboard.value = { children: [view("z-old", "Sam"), { ...asha, tabs: tabs.filter((t) => t !== "maya") }], remembered: null, pinSet: true, timeZoneSaved: true };
     const kept = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
     expect(kept).toContain("Latest note from Maya");
-    expect(kept).toContain("Asha used 12 of 30 minutes.");
+    expect(kept).toContain("Asha used 7 of 60 chat messages today. 53 left.");
+    expect(kept).toContain('href="/account/notes/c1/latest-chat"');
+    expect(kept).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start call/i);
   });
 
   it("keeps the note and the scan link until a tab holds them", async () => {
@@ -338,7 +351,8 @@ describe("a family the switch opens to", () => {
       expect(out).toContain("From the test on October 31.");
       expect(out).toContain("Workbook 2</p>");
       expect(out).toContain("3 of 10 days scanned");
-      expect(out).toContain("12 of 30 minutes");
+      expect(out).toContain('href="/account/notes/c1">Notes from Maya');
+      expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start call/i);
       expect(out).toContain("Level by area");
       expect(out).toContain("The line marks Asha&#x27;s school grade, Grade 3.");
       for (const label of ["At grade", "Building up · Early sign", "Ahead"]) expect(out).toContain(label);
@@ -361,15 +375,32 @@ describe("a family the switch opens to", () => {
       expect(await render(full())).not.toContain("may not show");
     });
 
-    it("shows Maya this week only for a child with the Maya tab", async () => {
-      minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
+    it("links to saved notes only for a child with the Maya tab, without a voice allowance read", async () => {
       expect(await render(full())).toContain('id="po-maya"');
-      // Without the tab the home page keeps its own minutes row, as before.
-      expect(await render(full(), tabs.filter((t) => t !== "maya"))).not.toContain('id="po-maya"');
+      const withoutMaya = tabs.filter((t) => t !== "maya");
+      expect(await render(full(withoutMaya), withoutMaya)).not.toContain('id="po-maya"');
+      expect(parentMinutes).not.toHaveBeenCalled();
+    });
+
+    it.each(["active", "first_book_coming", "ended"] as const)("keeps %s notes access independent of voice usage and chat release", async (stage) => {
+      const hasMaya = stage !== "first_book_coming";
+      const t = hasMaya ? tabs : tabs.filter(tab => tab !== "maya");
+      const child = { ...asha(t), stage, readOnly: stage === "ended", currentWorkbook: hasMaya ? { number: 2 } : null };
+      dashboard.value = { children: [view("z-old", "Sam"), child], remembered: null, pinSet: true, timeZoneSaved: true };
+      overview.value = { ...full(t), child, workbook: null, level: null, areas: [], resultPreparing: stage === "active" };
+      minutes.value.set("c1", { used: 30, left: 0, backOn: "Monday, November 9" });
+      const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
+      expect(out.includes('href="/account/notes/c1"')).toBe(hasMaya);
+      expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start (?:a )?call|chat messages today/i);
+      expect(out).not.toContain("Sam");
+      expect(out).not.toContain("/account/notes/z-old");
+      if (stage === "active") expect(out).toContain("Asha&#x27;s new result is being prepared.");
+      expect(parentMinutes).not.toHaveBeenCalled();
     });
 
     it("a tile or a section with no data does not appear, and no card shows when none applies", async () => {
-      const out = await render({ ...full(), level: null, areas: [], workbook: null, action: null });
+      const withoutMaya = tabs.filter((t) => t !== "maya");
+      const out = await render({ ...full(withoutMaya), level: null, areas: [], workbook: null, action: null }, withoutMaya);
       expect(out).not.toContain("po-tiles");
       expect(out).not.toContain("Level by area");
       expect(out).not.toContain("po-action");
