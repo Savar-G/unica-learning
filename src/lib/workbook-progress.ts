@@ -119,6 +119,8 @@ export interface WorkbookProgressDecision {
   passed: Readonly<Record<string, number>>;
   misses: UnresolvedMiss[];
   items: ProgressItemDecision[];
+  /** Valid scoped history held without a required sample. It supplies no mastery denominator. */
+  deferredOriginals: readonly ProgressOriginal[];
   consumed: { key: string; firstVersion: number; effectiveVersion: number }[];
   reviews: readonly SpacedReview[];
   missedReviews: readonly SpacedReview[];
@@ -151,7 +153,8 @@ function teachingOK(t: TeachingReference, s: ProgressSnapshot): boolean {
     && (t.practiceType === null || text(t.practiceType))
     && (t.itemStep === null || same(t.itemStep, stepRef(s.selection)));
 }
-function readingOK(r: ProgressReading, e: ExpectedItem, cutoff: number): boolean {
+type EvidenceExpectation = Pick<ExpectedItem, "identity" | "method" | "mastery" | "teaching" | "scoredRegions">;
+function readingOK(r: ProgressReading, e: EvidenceExpectation, cutoff: number): boolean {
   const o = r.observation;
   if (!time(r.at) || r.at > cutoff || !text(r.provenance.eventId)
     || ![r.provenance.model, r.provenance.prompt].every(v => v === null || text(v))
@@ -237,19 +240,30 @@ function derive(s: ProgressSnapshot, c: ProgressCurriculum, h: ProgressHistory):
   }
   const originals = new Map<string, ProgressOriginal>();
   const eventIds = new Set<string>(), tryIds = new Set<string>();
+  const noSample = !s.requiredSample?.length;
   for (const r of h.originals) {
-    const key = keyOf(r.first.observation.identity), x = samples.get(key);
-    if (!x || r.parentId !== s.parentId || r.childId !== s.childId || r.day !== x.day) return fail("invalid-scope");
+    const o = r.first.observation, key = keyOf(o.identity);
+    const x = samples.get(key);
+    let expected: EvidenceExpectation | undefined = x?.expected;
+    if (noSample) {
+      const allowed = scope.get(JSON.stringify([o.identity.workbookId, o.identity.printedRevision]));
+      if (!identityOK(o.identity) || !allowed?.days.includes(r.day)) return fail("invalid-scope");
+      if (o.teaching && !teachingOK(o.teaching, s)) return fail("invalid-context");
+      // Validate deferred records without inventing a printed question reference or required sample.
+      expected = { identity: o.identity, method: o.method, mastery: o.mastery,
+        teaching: o.teaching, scoredRegions: o.regions.map(region => region.regionId) };
+    }
+    if (!expected || r.parentId !== s.parentId || r.childId !== s.childId || (!noSample && r.day !== x?.day)) return fail("invalid-scope");
     if (originals.has(key)) {
       if (!same(originals.get(key), r)) return fail("conflicting-duplicate");
       continue;
     }
-    if (!readingOK(r.first, x.expected, s.cutoff) || r.first.observation.method !== x.expected.method) return fail("invalid-evidence");
+    if (!readingOK(r.first, expected, s.cutoff) || r.first.observation.method !== expected.method) return fail("invalid-evidence");
     if (eventIds.has(r.first.provenance.eventId)) return fail("conflicting-duplicate");
     eventIds.add(r.first.provenance.eventId);
     let previous = r.first;
     for (const change of r.changes) {
-      if (!readingOK(change, x.expected, s.cutoff) || !resolved(change.observation)
+      if (!readingOK(change, expected, s.cutoff) || !resolved(change.observation)
         || change.observation.state !== "parent-checked" || change.observation.actor === "system"
         || change.observation.resultVersion !== previous.observation.resultVersion + 1 || change.at < previous.at
         || change.provenance.eventId === previous.provenance.eventId) return fail("invalid-evidence");
@@ -257,7 +271,7 @@ function derive(s: ProgressSnapshot, c: ProgressCurriculum, h: ProgressHistory):
       eventIds.add(change.provenance.eventId);
       previous = change;
     }
-    if (previous.observation.resultVersion !== x.resultVersion) return fail("invalid-evidence");
+    if (!noSample && previous.observation.resultVersion !== x?.resultVersion) return fail("invalid-evidence");
     const versions = [r.first, ...r.changes];
     for (const t of r.secondTries) {
       const atVersion = versions.findIndex(v => v.observation.resultVersion === t.basedOnResultVersion);
@@ -352,7 +366,8 @@ function derive(s: ProgressSnapshot, c: ProgressCurriculum, h: ProgressHistory):
       stepPosition: selected.position, mistakeIndex, misconception: selected.mistakes[mistakeIndex].misconception, occurrences: keys.length, keys,
     })) : [],
     passed: { [c.skill.id]: action === "advance" || action === "skill-complete" ? s.selection.step : s.selection.step - 1 },
-    misses, items, consumed: items.filter(x => x.first).map(x => ({ key: x.key, firstVersion: x.first!.observation.resultVersion, effectiveVersion: x.effective!.observation.resultVersion })),
+    misses, items, deferredOriginals: noSample ? copy([...originals.values()]) : [],
+    consumed: items.filter(x => x.first).map(x => ({ key: x.key, firstVersion: x.first!.observation.resultVersion, effectiveVersion: x.effective!.observation.resultVersion })),
     reviews: copy(s.reviews), missedReviews: copy(s.missedReviews),
   } };
 }

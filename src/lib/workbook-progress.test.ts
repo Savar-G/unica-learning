@@ -143,6 +143,14 @@ describe("required frozen evidence", () => {
     } else f.sample[0].contextVersion = null;
     expect(decision(f)).toMatchObject({ status: "insufficient-evidence", action: "retain-unfinished", target: { step: 2 }, repeatIncrement: 0 });
   });
+  it.each([null, []])("defers valid history when the required sample is %j", sample => {
+    const f = fixture(1, 2); f.snapshot.requiredSample = sample;
+    const d = decision(f);
+    expect(d).toMatchObject({ status: "insufficient-evidence", action: "retain-unfinished", target: { step: 2 },
+      repeatIncrement: 0, score: { required: 0, percent: null }, consumed: [], items: [], focusedPractice: [] });
+    expect(d.deferredOriginals).toEqual(f.originals);
+    expect(d.deferredOriginals[1].first.observation.readAnswerText).toBe("56");
+  });
   it.each(["pending", "uncertain"])("keeps the sample incomplete for %s evidence", state => {
     const f = fixture(1, 2), o = f.originals[1].first.observation;
     o.state = "pending"; o.result = null; o.certainty = state === "uncertain" ? "uncertain" : "not-read";
@@ -394,5 +402,12 @@ describe("refusal of foreign, conflicting, or unsupported evidence", () => {
   it("returns a bounded refusal for malformed runtime JSON", () => {
     expect(deriveWorkbookProgress(null as unknown as ProgressSnapshot, fixture().curriculum, fixture().history))
       .toEqual({ ok: false, reason: "invalid-contract" });
+  });
+  it.each(["scope", "version", "cutoff"])("still rejects invalid deferred %s evidence without a sample", part => {
+    const f = fixture(1, 1); f.snapshot.requiredSample = null;
+    if (part === "scope") f.originals[0].parentId = "other";
+    if (part === "version") f.originals[0].first.observation.version = 2;
+    if (part === "cutoff") f.originals[0].first.at = 1_001;
+    refusal(f);
   });
 });
