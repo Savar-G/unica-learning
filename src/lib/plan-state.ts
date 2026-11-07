@@ -110,7 +110,7 @@ export async function applyPlanEvent(event: PlanEvent, { store, provider }: Plan
  * Stores what Stripe says right after a plan start, so the plan gate (src/lib/plan-access.ts) opens with no webhook. It goes
  * through applyPlanEvent, not a fill: a fill leaves a `not_started` row as it is. The event's time is when the start began,
  * before the subscription existed, so no event of that subscription reads as older than this write. The id is one per start
- * and generation. Throws when Stripe or the store fails; the webhook or the sweep then writes the row.
+ * and generation. Throws when Stripe or the store fails. The webhook then writes the row; the sweep writes it only when it closes an open start itself.
  */
 export function applyPlanStart(start: { customer: string; cardSetup: string; generation: number; startedAt: number }, states: PlanStates): Promise<PlanSave> {
   return applyPlanEvent({

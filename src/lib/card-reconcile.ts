@@ -24,7 +24,8 @@ import { rereadPlan, type PlanRead, type PlanStates } from "@/lib/plan-state";
 // unknown outcome is final, as the email delivery module's rule says. So an email problem cannot take away a record's recovery.
 //
 // The plan gate trusts the stored plan state, so the same run also reads each row that can still change again once a day (sweepPlanReads). It writes
-// the plan state and nothing else: it has no card write, no email and no Stripe write.
+// the plan state and nothing else: it has no card write, no email code and no Stripe write. That write can still make a scan reminder due through the
+// database, as the lost webhook's own write would have: _workbook_scan_reminder_program reads the row. The send stays behind its own switches.
 
 /** The sweep's look at a clean row lasts this long after its card changed. */
 export const CARD_WATCH_MS = 7 * 24 * 60 * 60 * 1000;

@@ -228,6 +228,26 @@ begin
   update public.child_plan_states set kind = 'not_started', next_charge_at = null, ends_at = null, read_at = now() - interval '27 hours', read_tried_at = null where child_id = child_c;
   set local role service_role;
   if (select array_agg(d.kind) from public.due_plan_reads(1000) d where d.parent_id = p) <> array['paused', 'payment_failed'] then raise exception 'closed kinds were not due in order'; end if;
+  -- A reopen can make a scan reminder due through the database, as a webhook's write can. The save itself writes no email row.
+  reset role;
+  if public._workbook_scan_reminder_program(p, child_a, now()) then raise exception 'a payment_failed row was in the reminder program'; end if;
+  update public.child_plan_states set kind = 'free_month', next_charge_at = now() - interval '1 day' where child_id = child_c;
+  if public._workbook_scan_reminder_program(p, child_c, now()) then raise exception 'a passed free month was in the reminder program'; end if;
+  set local role service_role;
+  r := public.save_child_plan_state(customer, 'paying', t0 + interval '30 days', null, 7999, false, t0, 'plan-read:probe-reopen', public.take_plan_read_order());
+  if r <> 'stored' then raise exception 'reopen answered %', r; end if;
+  r := public.save_child_plan_state(customer_c, 'paying', t0 + interval '30 days', null, 7999, false, t0, 'plan-read:probe-trial', public.take_plan_read_order());
+  if r <> 'stored' then raise exception 'passed trial answered %', r; end if;
+  reset role;
+  if not public._workbook_scan_reminder_program(p, child_a, now()) then raise exception 'a reopened row did not turn the reminder program true'; end if;
+  if not public._workbook_scan_reminder_program(p, child_c, now()) then raise exception 'a passed trial read as paying did not turn the reminder program true'; end if;
+  select count(*) into n from public.email_log where parent_id = p;
+  if n <> 0 then raise exception 'a reopen wrote % email rows', n; end if;
+  select count(*) into n from public.workbook_scan_reminder_messages where parent_id = p;
+  if n <> 0 then raise exception 'a reopen wrote % reminder rows', n; end if;
+  update public.child_plan_states set kind = 'payment_failed', next_charge_at = null, ends_at = null, read_at = now() - interval '25 hours', read_tried_at = null where child_id = child_a;
+  update public.child_plan_states set kind = 'not_started', next_charge_at = null, ends_at = null, read_at = now() - interval '27 hours', read_tried_at = null where child_id = child_c;
+  set local role service_role;
   -- A read that stores nothing leaves the row as it is. The note alone moves it behind, and it stays due.
   select * into s from public.child_plan_states where child_id = child_b;
   perform public.note_plan_read_tried(child_b);
