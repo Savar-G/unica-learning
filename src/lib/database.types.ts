@@ -3020,6 +3020,58 @@ export type Database = {
           },
         ]
       }
+      scan_marking_evaluation_deferrals: {
+        Row: {
+          attempt_hash: string
+          dispatch_id: string
+          policy: string
+          received_at_ms: number
+          recorded_at: string
+          response: Json
+          run_hash: string
+        }
+        Insert: {
+          attempt_hash: string
+          dispatch_id: string
+          policy: string
+          received_at_ms: number
+          recorded_at?: string
+          response: Json
+          run_hash: string
+        }
+        Update: {
+          attempt_hash?: string
+          dispatch_id?: string
+          policy?: string
+          received_at_ms?: number
+          recorded_at?: string
+          response?: Json
+          run_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_marking_evaluation_deferrals_attempt_hash_fkey"
+            columns: ["attempt_hash"]
+            isOneToOne: true
+            referencedRelation: "scan_marking_evaluation_attempts"
+            referencedColumns: ["attempt_hash"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_deferrals_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: true
+            referencedRelation: "scan_marking_evaluation_attempts"
+            referencedColumns: ["dispatch_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_deferrals_run_hash_fkey"
+            columns: ["run_hash"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_evaluations"
+            referencedColumns: ["run_hash"]
+          },
+        ]
+      }
       scan_marking_evaluation_prices: {
         Row: {
           enabled: boolean
@@ -6627,6 +6679,16 @@ export type Database = {
         Args: { keep_family: boolean; p: string; token: string }
         Returns: boolean
       }
+      defer_scan_marking_evaluation: {
+        Args: {
+          p_attempt: string
+          p_id: string
+          p_received_at: number
+          p_response: Json
+          p_run: string
+        }
+        Returns: boolean
+      }
       email_copy_child_scope: {
         Args: { l: Database["public"]["Tables"]["email_log"]["Row"] }
         Returns: string[]
@@ -7383,6 +7445,10 @@ export type Database = {
           p_token: string
         }
         Returns: Json
+      }
+      scan_marking_evaluation_has_generation: {
+        Args: { p: Json }
+        Returns: boolean
       }
       scan_marking_evaluation_policy: { Args: { p: Json }; Returns: Json }
       scan_marking_saved_command: {
