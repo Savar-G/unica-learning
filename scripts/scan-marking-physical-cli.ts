@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import sharp from "sharp";
 import ts from "typescript";
 import savedEvidence from "../data/scan-marking-endpoint-evidence-20261106.json";
+import savedTerraEvidence from "../data/scan-marking-terra-endpoint-evidence-20261107.json";
 import { calibratePhoto, cropBox, cropPlan, sheetChecker, straightenedPage, type Raster } from "../src/lib/scan-calibration";
 import { normalizeScanPhoto } from "../src/lib/scan-photo-image";
 import { printContractForPhoto, printContractProblem, regionsProblem } from "../src/lib/workbook-print-contract";
@@ -15,14 +16,14 @@ import type { WorkbookInput } from "../src/lib/workbook-content";
 import { expectedItems } from "../src/lib/scan-observation";
 import { markingRegions } from "../src/lib/scan-marking-regions";
 import { markingRequest, readMarkingOutput, validMarkingOutput } from "../src/lib/scan-marking";
-import { assertComparisonResultIdentity, assertComparisonResume, assessComparisonEndpoint, deferredAttempt, endpointPolicy, hashBytes, hashValue, labelledOutput, syntheticPrintRevision, transportUsage, type AttemptRecord, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type EndpointSnapshot } from "../src/lib/scan-marking-comparison";
+import { assertComparisonResultIdentity, assertComparisonResume, assessComparisonEndpoint, deferredAttempt, endpointPolicy, hashBytes, hashValue, labelledOutput, syntheticPrintRevision, transportUsage, type AttemptRecord, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type EndpointSnapshot } from "../src/lib/scan-marking-comparison";
 import { runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "../src/lib/scan-marking-comparison-run";
-import { FROZEN_KIT, PHYSICAL_MODEL, PHYSICAL_VERSION, assertPhysicalFrame, physicalPhotoId, physicalReport, physicalScoringInput, physicalSettings, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalPhoto, type PhysicalSet } from "../src/lib/scan-marking-physical";
+import { FROZEN_KIT, PHYSICAL_MODELS, PHYSICAL_VERSION, assertPhysicalFrame, physicalCreditPreflight, physicalEstimate, physicalEstimateLines, physicalPhotoId, physicalReport, physicalScoringInput, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalPhoto, type PhysicalSet, type PhysicalState } from "../src/lib/scan-marking-physical";
 import { durableJson, fileJournal, refreshEvidence, rpcEvaluationBudget } from "./scan-marking-comparison-cli";
 
 const ROOT = resolve(import.meta.dirname, "..");
 // Paths resolved by the launcher are supplied explicitly because the bundled file lives in a temporary directory.
-export const SOURCE_FILES = ["scripts/scan-marking-physical.mjs", "scripts/scan-marking-physical-cli.ts", "src/lib/scan-marking-physical.ts", "src/lib/scan-marking.ts", "src/lib/scan-marking-ai.ts", "src/lib/scan-marking-comparison.ts", "src/lib/scan-marking-comparison-run.ts", "scripts/scan-marking-comparison-cli.ts", "src/lib/scan-calibration.ts", "src/lib/scan-photo-image.ts", "src/lib/scan-marking-regions.ts", "src/lib/scan-marking-numbers.ts", "src/lib/scan-observation.ts", "src/lib/workbook-print-contract.ts", "src/lib/ai-openrouter.ts", "src/lib/ai-client.ts", "data/scan-marking-models.json", "data/scan-marking-endpoint-evidence-20261106.json", "supabase/migrations/20261107_scan_marking_physical_evaluation.sql", "package-lock.json"];
+export const SOURCE_FILES = ["scripts/scan-marking-physical.mjs", "scripts/scan-marking-physical-cli.ts", "src/lib/scan-marking-physical.ts", "src/lib/scan-marking.ts", "src/lib/scan-marking-ai.ts", "src/lib/scan-marking-comparison.ts", "src/lib/scan-marking-comparison-run.ts", "scripts/scan-marking-comparison-cli.ts", "src/lib/scan-calibration.ts", "src/lib/scan-photo-image.ts", "src/lib/scan-marking-regions.ts", "src/lib/scan-marking-numbers.ts", "src/lib/scan-observation.ts", "src/lib/workbook-print-contract.ts", "src/lib/ai-openrouter.ts", "src/lib/ai-client.ts", "data/scan-marking-models.json", "data/scan-marking-endpoint-evidence-20261106.json", "data/scan-marking-terra-endpoint-evidence-20261107.json", "supabase/migrations/20261107_scan_marking_physical_evaluation.sql", "package-lock.json"];
 export async function regularBytes(path: string, max = 25 * 1024 * 1024): Promise<Buffer> {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try { const stat = await file.stat(); if (!stat.isFile() || stat.size > max || stat.size < 1) throw Error("unsafe-or-oversized-file"); return await file.readFile(); }
@@ -68,7 +69,7 @@ export async function loadPhysicalKit(path: string) {
     const frame: ComparisonPhoto["frame"] = { parentId: "00000000-0000-4000-8000-000000000543", childId: book.childId, workbookId: book.id, pageId: `synthetic-physical-page-${page.number}`, pageNumber: page.number, photo: "synthetic-physical-template", printedRevision: revision, ready: true,
       questions: page.questions.map(q => ({ number: q.number, package: q.package, regions: q.regions ?? null, teaching: q.teaching ?? null })) };
     if (!page.printContract.label || frame.questions.some(q => regionsProblem(q.regions, page.image) || q.regions?.some(r => !r.box))) throw Error("unmeasured-physical-region");
-    for (const e of expectedItems(frame)) if (!["code", "parent"].includes(e.method) || (e.method === "code" && !markingRegions(frame.questions.find(q => q.number === e.number)!).length)) throw Error("unsupported-physical-item");
+    for (const e of expectedItems(frame)) if (e.method !== "code" || !markingRegions(frame.questions.find(q => q.number === e.number)!).length) throw Error("unsupported-physical-item");
     pages.push({ pdfPage: index + 1, printedPage: page.number, label: page.printContract.label, frame }); printed.set(page.number, decoded);
   }
   if (pages.length !== 10 || pages.reduce((n, p) => n + p.frame.questions.length, 0) !== 74) throw Error("frozen-kit-coverage");
@@ -88,7 +89,7 @@ export async function calibratePhysicalPhoto(raw: Uint8Array, page: WorkbookInpu
   if (sheet.verdict !== "this-page") throw Error(`sheet:${sheet.verdict}`);
   if (contract.status !== "available") throw Error("no-contract");
   const plan = cropPlan(page.questions.map(q => ({ ...q, regions: q.regions ?? null }))), straight = await jpeg(straightenedPage(photo, result.calibration, contract.contract));
-  if (plan.notSupported.some(n => page.questions.find(q => q.number === n)?.package?.item?.format !== "two-ways")) throw Error("unsupported-measured-crop");
+  if (plan.notSupported.length) throw Error("unsupported-measured-crop");
   const crops = [];
   for (const c of plan.crops) { const bytes = await jpeg(cropBox(photo, result.calibration, contract.contract, c.box)); crops.push({ ...c, sha256: hashBytes(bytes) }); }
   return { straight, oriented: normalized.bytes, calibration: result.calibration, sheet, crops };
@@ -148,7 +149,7 @@ export async function preparePhysical(options: { kit: string; photos: string; tr
 }
 async function writeBytes(path: string, bytes: Uint8Array) { const file = await open(path, "wx", 0o600); try { await file.writeFile(bytes); await file.sync(); } finally { await file.close(); } }
 
-export interface PhysicalPlan { version: typeof PHYSICAL_VERSION; owner: string; source: Record<string, string>; setHash: string; settings: ReturnType<typeof physicalSettings>; evidence: EndpointEvidence; requests: { photo: string; image: string; request: string }[] }
+export interface PhysicalPlan { version: typeof PHYSICAL_VERSION; owner: string; source: Record<string, string>; setHash: string; settings: ReturnType<typeof physicalSettings>; evidences: EndpointEvidence[]; requests: { photo: string; image: string; request: string }[] }
 async function sourceHashes(root: string) {
   const hashes = new Map<string, string>();
   const visit = async (path: string): Promise<void> => {
@@ -179,15 +180,21 @@ async function sourceHashes(root: string) {
   for (const file of SOURCE_FILES) await visit(resolve(root, file));
   return Object.fromEntries([...hashes].map(([p, hash]) => [p.slice(resolve(root).length + 1), hash]).sort(([a], [b]) => a.localeCompare(b)));
 }
-export async function sealPhysicalPlan(out: string, set: PhysicalSet, root: string, maxMicros: number) {
-  const state = assessComparisonEndpoint(PHYSICAL_MODEL, savedEvidence.snapshots[PHYSICAL_MODEL.model as keyof typeof savedEvidence.snapshots] as EndpointSnapshot, savedEvidence.zdr);
+/** Saved public metadata only. The saved evidence file predates the Terra option, so Terra has its own. */
+function savedPhysicalState(model: ComparisonModel): PhysicalState {
+  const saved = savedEvidence.snapshots[model.model as keyof typeof savedEvidence.snapshots];
+  const state = saved ? assessComparisonEndpoint(model, saved as EndpointSnapshot, savedEvidence.zdr) : assessComparisonEndpoint(model, savedTerraEvidence.snapshot as EndpointSnapshot, savedTerraEvidence.zdr);
   if (state.status !== "ready") throw Error(`saved-endpoint:${state.reason}`);
+  return { evidence: state.evidence, maximumMicros: state.maximumMicros };
+}
+export async function sealPhysicalPlan(out: string, set: PhysicalSet, root: string, maxMicros: number) {
+  const states = PHYSICAL_MODELS.map(savedPhysicalState);
   const owner = await json<{ owner: string }>(resolve(out, "owner.json"));
-  const plan: PhysicalPlan = { version: PHYSICAL_VERSION, owner: owner.owner, source: await sourceHashes(root), setHash: hashValue(set), settings: physicalSettings(maxMicros), evidence: state.evidence,
+  const plan: PhysicalPlan = { version: PHYSICAL_VERSION, owner: owner.owner, source: await sourceHashes(root), setHash: hashValue(set), settings: physicalSettings(maxMicros), evidences: states.map(s => s.evidence),
     requests: set.photos.map(p => ({ photo: p.photo.id, image: p.photo.image.sha256, request: hashValue(markingRequest(p.photo.frame, new Uint8Array())) })) };
   await durableJson(resolve(out, "plan.json"), plan, true);
   await durableJson(resolve(out, "plan-hash.json"), { run: hashValue(plan) }, true);
-  return { plan, run: hashValue(plan), maximumMicros: state.maximumMicros };
+  return { plan, run: hashValue(plan), states };
 }
 /** No preflight, credential read or reservation can precede these current-run checks. */
 export async function assertPhysicalOwnership(out: string, set: PhysicalSet, plan: PhysicalPlan, root: string, pristine = false) {
@@ -195,7 +202,7 @@ export async function assertPhysicalOwnership(out: string, set: PhysicalSet, pla
   const saved = await json<PhysicalPlan>(resolve(out, "plan.json")), owner = await json<{ owner: string }>(resolve(out, "owner.json")), identity = await json<{ run: string }>(resolve(out, "plan-hash.json"));
   if (hashValue(saved) !== hashValue(plan) || identity.run !== hashValue(plan) || owner.owner !== plan.owner || plan.version !== PHYSICAL_VERSION || plan.setHash !== hashValue(set) || hashValue(await json(resolve(out, "set.json"))) !== plan.setHash || hashValue(plan.settings) !== hashValue(physicalSettings(plan.settings.maxMicros)) || hashValue(plan.source) !== hashValue(await sourceHashes(root))) throw Error("saved-plan-or-current-run-ownership");
   const files = await readdir(out);
-  if (pristine && (files.some(f => !["owner.json", "inventory.json", "images", "set.json", "plan.json", "plan-hash.json", "estimate.json", "report.json"].includes(f)))) throw Error("stale-run-files-no-dispatch");
+  if (pristine && (files.some(f => !["owner.json", "inventory.json", "images", "set.json", "plan.json", "plan-hash.json", "estimate.json", "report.json", "side-by-side.json"].includes(f)))) throw Error("stale-run-files-no-dispatch");
   const expectedImages: string[] = [];
   await directory(resolve(out, "images"));
   for (const p of set.photos.filter(p => p.status === "ready")) {
@@ -227,8 +234,8 @@ export function physicalBudget(serviceKey: string, base: typeof fetch = fetch, a
   } };
 }
 
-/** One serial pass and at most one delayed retry of a clean 429. No paid resume. */
-export async function executePhysical(options: { out: string; set: PhysicalSet; plan: PhysicalPlan; root: string; budget: () => EvaluationBudget; env: () => Readonly<Record<string, string | undefined>>; preflight: () => Promise<{ evidence: EndpointEvidence; maximumMicros: number }>; fetch?: typeof fetch; now?: () => number; wait?: (ms: number) => Promise<void>; journal?: EvaluationJournal }) {
+/** One serial pass over both models and at most one delayed retry of a clean 429. No paid resume. */
+export async function executePhysical(options: { out: string; set: PhysicalSet; plan: PhysicalPlan; root: string; budget: () => EvaluationBudget; env: () => Readonly<Record<string, string | undefined>>; preflight: () => Promise<PhysicalState[]>; fetch?: typeof fetch; creditFetch?: typeof fetch; now?: () => number; wait?: (ms: number) => Promise<void>; journal?: EvaluationJournal }) {
   const { out, set, plan } = options;
   const preparationRun = await assertPhysicalOwnership(out, set, plan, options.root, true);
   if (set.missing.length || set.photos.some(p => p.status !== "ready")) throw Error("incomplete-physical-set-no-dispatch");
@@ -236,13 +243,22 @@ export async function executePhysical(options: { out: string; set: PhysicalSet; 
   // Exclusive irreversible execution marker precedes public preflight. An exit never grants a retry.
   await durableJson(resolve(out, "execution.json"), { run: preparationRun, owner: plan.owner, state: "started" }, true);
   await mkdir(resolve(out, "journal"), { mode: 0o700 });
-  const state = await options.preflight();
-  if (hashValue(endpointPolicy(state.evidence)) !== hashValue(endpointPolicy(plan.evidence))) throw Error("endpoint-policy-changed");
+  const live = await options.preflight();
+  const liveState = (model: ComparisonModel) => live.find(s => s.evidence.model === model.model) ?? (() => { throw Error("endpoint-policy-changed"); })();
+  for (const approved of plan.evidences) if (hashValue(endpointPolicy(liveState(PHYSICAL_MODELS.find(m => m.model === approved.model)!).evidence)) !== hashValue(endpointPolicy(approved))) throw Error("endpoint-policy-changed");
   // A second immutable plan binds fresh endpoint evidence, including a changed verified price.
-  const dispatchPlan = { ...plan, evidence: state.evidence }, run = hashValue(dispatchPlan);
-  const dispatchSeal = { preparationRun, run, plan: dispatchPlan, maximumMicros: state.maximumMicros };
+  const dispatchPlan = { ...plan, evidences: PHYSICAL_MODELS.map(m => liveState(m).evidence) }, run = hashValue(dispatchPlan);
+  const dispatchSeal = { preparationRun, run, plan: dispatchPlan, maximums: Object.fromEntries(PHYSICAL_MODELS.map(m => [m.model, liveState(m).maximumMicros])) };
   await durableJson(resolve(out, "dispatch-plan.json"), dispatchSeal, true);
-  const budget = options.budget(), env = options.env();
+  // The expected cost and the credits are checked before any ledger access or provider request.
+  const estimate = physicalEstimate(set.photos.length, live, plan.settings.maxMicros);
+  if (estimate.overStop) { for (const line of physicalEstimateLines(estimate)) console.log(line); throw Error("estimate-over-run-stop"); }
+  const env = options.env();
+  const credit = await physicalCreditPreflight(env.SCAN_MARKING_OPENROUTER_API_KEY?.trim() ?? "", estimate, options.creditFetch ?? fetch);
+  for (const line of physicalEstimateLines(estimate, credit.remainingMicros)) console.log(line);
+  await durableJson(resolve(out, "credit-preflight.json"), credit, true);
+  if (!credit.enough) throw Error(`credit-preflight:${credit.reason}`);
+  const budget = options.budget();
   let fatal = false, unsafeTransport = false;
   const file = options.journal ?? fileJournal(resolve(out, "journal"));
   const protect = async <T>(action: () => Promise<T>) => { try { return await action(); } catch (e) { fatal = true; throw e; } };
@@ -250,7 +266,8 @@ export async function executePhysical(options: { out: string; set: PhysicalSet; 
     const record = value as { state?: string; attempt?: ComparisonResult["attempts"][number] };
     if (record.state === "response" && record.attempt) {
       const a = record.attempt;
-      unsafeTransport = !deferredAttempt(a) && (a.usage.provider !== PHYSICAL_MODEL.providerName || a.usage.model !== PHYSICAL_MODEL.model || !a.usage.generationId || [a.usage.costMicros, a.usage.inputTokens, a.usage.outputTokens, a.usage.reasoningTokens].some(v => v === null));
+      const served = PHYSICAL_MODELS.find(m => m.model === a.usage.model);
+      unsafeTransport = !deferredAttempt(a) && (!served || a.usage.provider !== served.providerName || !a.usage.generationId || [a.usage.costMicros, a.usage.inputTokens, a.usage.outputTokens, a.usage.reasoningTokens].some(v => v === null));
     }
     await file.save(key, value);
   }) };
@@ -264,27 +281,32 @@ export async function executePhysical(options: { out: string; set: PhysicalSet; 
       await budget.settle(id, cost); accounting.get(id)!.settledMicros = cost;
     }); },
     defer: i => { if (fatal || !budget.defer) throw Error("fatal-or-missing-deferral-ledger"); return protect(() => budget.defer!(i)); } };
-  const refreshed = await protect(() => budget.refresh({ approved: plan.evidence, current: dispatchPlan.evidence, maximumMicros: state.maximumMicros }));
-  if ("refused" in refreshed) throw Error(`price-refresh:${refreshed.refused}`);
+  for (const model of PHYSICAL_MODELS) {
+    const state = liveState(model), refreshed = await protect(() => budget.refresh({ approved: plan.evidences.find(e => e.model === model.model)!, current: state.evidence, maximumMicros: state.maximumMicros }));
+    if ("refused" in refreshed) throw Error(`price-refresh:${refreshed.refused}`);
+  }
   const results: ComparisonResult[] = [];
   const accounting = new Map<string, { id: string; reservedMicros: number; settledMicros: number | null }>();
   const save = async () => {
     const ledger = { run, attempts: [...accounting.values()] };
     await durableJson(resolve(out, "accounting.json"), ledger);
     await durableJson(resolve(out, "results.json"), results);
-    const report = physicalReport(set, results, dispatchPlan.evidence, run);
-    await durableJson(resolve(out, "report.json"), { ...report, ledgerAccounting: ledger, heldMicros: ledger.attempts.filter(a => a.settledMicros === null).reduce((n, a) => n + a.reservedMicros, 0),
-      settledMicros: ledger.attempts.reduce((n, a) => n + (a.settledMicros ?? 0), 0), spentOrHeldMicros: ledger.attempts.reduce((n, a) => n + (a.settledMicros ?? a.reservedMicros), 0),
-      costPerPageUsd: fatal || ledger.attempts.some(a => a.settledMicros === null) ? null : report.costPerPageUsd, reconciliationRequired: fatal });
+    const report = physicalReport(set, results, dispatchPlan.evidences, run);
+    const unsettled = fatal || ledger.attempts.some(a => a.settledMicros === null);
+    const final = { ...report, models: report.models.map(m => ({ ...m, costPerPageUsd: unsettled ? null : m.costPerPageUsd })) };
+    await durableJson(resolve(out, "report.json"), { ...final, ledgerAccounting: ledger, heldMicros: ledger.attempts.filter(a => a.settledMicros === null).reduce((n, a) => n + a.reservedMicros, 0),
+      settledMicros: ledger.attempts.reduce((n, a) => n + (a.settledMicros ?? 0), 0), spentOrHeldMicros: ledger.attempts.reduce((n, a) => n + (a.settledMicros ?? a.reservedMicros), 0), reconciliationRequired: fatal });
+    await durableJson(resolve(out, "side-by-side.json"), { text: physicalSideBySide(final) });
   };
-  const dispatch = async (photo: ComparisonPhoto, batch: 0 | 1, prior?: ComparisonResult) => {
+  const dispatch = async (photo: ComparisonPhoto, model: ComparisonModel, batch: 0 | 1, prior?: ComparisonResult) => {
     if (fatal) throw Error("fatal-run-no-dispatch");
     await assertPhysicalOwnership(out, set, plan, options.root);
     if (hashValue(await json(resolve(out, "dispatch-plan.json"))) !== hashValue(dispatchSeal)) throw Error("dispatch-plan-changed-no-dispatch");
     unsafeTransport = false;
-    const result = await runComparisonPhoto({ run, photo, image: await regularBytes(resolve(out, photo.image.path)), model: PHYSICAL_MODEL, evidence: dispatchPlan.evidence, maximumMicros: state.maximumMicros, maxRunMicros: plan.settings.maxMicros,
+    const state = liveState(model);
+    const result = await runComparisonPhoto({ run, photo, image: await regularBytes(resolve(out, photo.image.path)), model, evidence: state.evidence, maximumMicros: state.maximumMicros, maxRunMicros: plan.settings.maxMicros,
       budget: guardedBudget, journal, env, fetch: options.fetch, maxAttempts: 1, batch, prior, now: options.now });
-    const index = results.findIndex(r => r.photo === photo.id); if (index >= 0) results[index] = result; else results.push(result);
+    const index = results.findIndex(r => r.photo === photo.id && r.model === model.model); if (index >= 0) results[index] = result; else results.push(result);
     await save();
     if (fatal || ["journal-failure", "reservation-or-settlement-failed", "existing-attempt-no-redispatch"].includes(result.failure ?? "")) {
       await durableJson(resolve(out, "fatal.json"), { run, state: "reconciliation-required", reason: result.failure, holdsMustNotBeReleased: true, attempts: result.attempts.map(a => ({ id: a.id, reservedMicros: a.reservedMicros })) }, true);
@@ -295,15 +317,17 @@ export async function executePhysical(options: { out: string; set: PhysicalSet; 
     return result;
   };
   try {
-    for (const entry of set.photos) { const result = await dispatch(entry.photo, 0); if (result.status === "deferred") break; }
+    // Serial: one photo and one model at a time. The same photo goes to both models before the next photo.
+    const pairs = set.photos.flatMap(entry => PHYSICAL_MODELS.map(model => ({ photo: entry.photo, model })));
+    for (const { photo, model } of pairs) { const result = await dispatch(photo, model, 0); if (result.status === "deferred") break; }
     const deferred = results.find(r => r.status === "deferred");
     if (deferred) {
       const now = options.now ?? Date.now, retryAt = deferred.attempts.at(-1)!.deferral!.retryAt;
       while (now() < retryAt) { await durableJson(resolve(out, "waiting.json"), { run, retryAt, retainedReservation: deferred.attempts.at(-1)!.reservedMicros }); await (options.wait ?? (ms => new Promise(r => setTimeout(r, ms))))(Math.min(30_000, retryAt - now())); }
-      for (const entry of set.photos) {
-        const prior = results.find(r => r.photo === entry.photo.id); if (prior && prior.status !== "deferred") continue;
-        // A delayed retry belongs only to the deferred pair. Undispatched pages get their initial attempt.
-        const result = await dispatch(entry.photo, prior ? 1 : 0, prior);
+      for (const { photo, model } of pairs) {
+        const prior = results.find(r => r.photo === photo.id && r.model === model.model); if (prior && prior.status !== "deferred") continue;
+        // A delayed retry belongs only to the deferred pair. Undispatched pairs get their initial attempt.
+        const result = await dispatch(photo, model, prior ? 1 : 0, prior);
         if (result.status === "deferred") break; // No second delay or third request.
       }
     }
@@ -319,11 +343,11 @@ export async function executePhysical(options: { out: string; set: PhysicalSet; 
 export async function replayPhysical(input: string, output: string, root: string) {
   const folder = await directory(input), set = await json<PhysicalSet>(resolve(folder, "set.json")), plan = await json<PhysicalPlan>(resolve(folder, "plan.json"));
   const preparationRun = await assertPhysicalOwnership(folder, set, plan, root);
-  let run = preparationRun, evidence = plan.evidence;
+  let run = preparationRun, evidences = plan.evidences;
   if ((await readdir(folder)).includes("dispatch-plan.json")) {
     const dispatch = await json<{ preparationRun: string; run: string; plan: PhysicalPlan }>(resolve(folder, "dispatch-plan.json"));
-    if (dispatch.preparationRun !== preparationRun || dispatch.run !== hashValue(dispatch.plan) || hashValue({ ...dispatch.plan, evidence: plan.evidence }) !== hashValue(plan) || hashValue(endpointPolicy(dispatch.plan.evidence)) !== hashValue(endpointPolicy(plan.evidence))) throw Error("dispatch-plan-identity");
-    run = dispatch.run; evidence = dispatch.plan.evidence;
+    if (dispatch.preparationRun !== preparationRun || dispatch.run !== hashValue(dispatch.plan) || hashValue({ ...dispatch.plan, evidences: plan.evidences }) !== hashValue(plan) || hashValue(dispatch.plan.evidences.map(endpointPolicy)) !== hashValue(plan.evidences.map(endpointPolicy))) throw Error("dispatch-plan-identity");
+    run = dispatch.run; evidences = dispatch.plan.evidences;
   }
   const results = await json<ComparisonResult[]>(resolve(folder, "results.json"));
   const records: AttemptRecord[] = [];
@@ -334,7 +358,7 @@ export async function replayPhysical(input: string, output: string, root: string
     records.push(record);
   }
   assertComparisonResume(records, results);
-  assertComparisonResultIdentity(physicalScoringInput(set), results, [evidence], run);
+  assertComparisonResultIdentity(physicalScoringInput(set), results, evidences, run);
   const interpreted: ComparisonResult[] = [];
   for (const result of results) {
     const photo = set.photos.find(p => p.photo.id === result.photo)!.photo;
@@ -350,13 +374,15 @@ export async function replayPhysical(input: string, output: string, root: string
     interpreted.push({ ...result, schemaValid, observations });
   }
   const out = await newOutput(output);
-  await durableJson(resolve(out, "report.json"), physicalReport(set, interpreted, evidence, run, true), true);
+  const report = physicalReport(set, interpreted, evidences, run, true);
+  await durableJson(resolve(out, "report.json"), report, true);
+  console.log(physicalSideBySide(report));
   return out;
 }
 
 export async function physicalMain() {
   const { values: v } = parseArgs({ options: { kit: { type: "string" }, photos: { type: "string" }, truth: { type: "string" }, out: { type: "string" }, template: { type: "boolean" }, estimate: { type: "boolean" }, run: { type: "boolean" }, replay: { type: "string" }, "fake-http": { type: "boolean" }, example: { type: "boolean" }, help: { type: "boolean" }, "max-usd": { type: "string", default: "15" }, "source-root": { type: "string", default: ROOT } } });
-  if (v.help) { console.log("node scripts/scan-marking-physical.mjs --kit DIR --photos DIR --truth CSV --out EMPTY_DIR [--estimate | --fake-http | --run]\n--template: write region-level CSV with empty human labels; no --truth needed.\n--replay RUN_DIR --out EMPTY_DIR: saved reader interpretation only.\nDefault: free preparation and offline estimate. See docs/scan-marking-physical.md for photos.json and truth columns."); return; }
+  if (v.help) { console.log("node scripts/scan-marking-physical.mjs --kit DIR --photos DIR --truth CSV --out EMPTY_DIR [--estimate | --fake-http | --run]\nBoth models run: Sonnet 5.5 on google-vertex/global and Terra 6.1 on azure.\n--template: write region-level CSV with empty human labels; no --truth needed.\n--replay RUN_DIR --out EMPTY_DIR: saved reader interpretation only.\nDefault: free preparation and offline estimate. See docs/scan-marking-physical.md for photos.json and truth columns."); return; }
   if (!v.out) throw Error("--out-required");
   if ([v.template, v.estimate, v.run, v.replay, v["fake-http"], v.example].filter(Boolean).length > 1) throw Error("choose-one-mode");
   if (v.example) {
@@ -368,22 +394,24 @@ export async function physicalMain() {
   const maxMicros = Number(v["max-usd"]) * 1e6; physicalSettings(maxMicros);
   const prepared = await preparePhysical({ kit: v.kit, photos: v.photos, truth: v.truth, out: v.out, template: v.template, fake: v["fake-http"] });
   if (!prepared.set) { console.log(resolve(prepared.out, "human-truth.csv")); return; }
-  const { out, set } = prepared, { plan, run, maximumMicros } = await sealPhysicalPlan(out, set, v["source-root"]!, maxMicros);
+  const { out, set } = prepared, { plan, run, states } = await sealPhysicalPlan(prepared.out, prepared.set, v["source-root"]!, maxMicros);
   await assertPhysicalOwnership(out, set, plan, v["source-root"]!, true);
-  await durableJson(resolve(out, "estimate.json"), { run, paid: false, proofClass: "local-estimate", model: PHYSICAL_MODEL, source: savedEvidence.source, snapshotDate: savedEvidence.retrievedAt,
-    perAttemptMaximumMicros: maximumMicros, fullInitialMaximumMicros: maximumMicros * set.photos.length, optionalSingleRetryMaximumMicros: maximumMicros,
-    currentAggregateLiabilityMicros: null, reason: "Authoritative live ledger is read only at paid admission. No stored baseline.", limits: plan.settings }, true);
-  await durableJson(resolve(out, "report.json"), physicalReport(set, [], plan.evidence, run));
-  if (v["fake-http"]) await fakePhysicalHttp(out, set, plan, run);
+  const estimate = physicalEstimate(set.photos.length, states, maxMicros);
+  for (const line of physicalEstimateLines(estimate)) console.log(line);
+  await durableJson(resolve(out, "estimate.json"), { run, proofClass: "local-estimate", ...estimate, source: savedEvidence.source, snapshotDate: savedEvidence.retrievedAt,
+    currentAggregateLiabilityMicros: null, reason: "The expected cost uses saved public prices. The live ledger is read only at paid admission, and credits only before a paid run. No stored baseline.", limits: plan.settings }, true);
+  await durableJson(resolve(out, "report.json"), physicalReport(set, [], plan.evidences, run));
+  if (v.run && estimate.overStop) throw Error("estimate-over-run-stop");
+  if (v["fake-http"]) await fakePhysicalHttp(out, set, plan, run, fakeControl);
   if (v.run) await executePhysical({ out, set, plan, root: v["source-root"]!, env: () => {
     if (!process.env.SCAN_MARKING_OPENROUTER_API_KEY?.trim()) throw Error("dedicated-marking-key-required-no-fallback");
     return { SCAN_MARKING_OPENROUTER_API_KEY: process.env.SCAN_MARKING_OPENROUTER_API_KEY };
   }, budget: () => { if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) throw Error("ledger-credential-required"); return physicalBudget(process.env.SUPABASE_SERVICE_ROLE_KEY, fetch, (value, attempt, dispatchRun) => durableJson(resolve(out, `admission-${attempt}.json`), { run: dispatchRun, attempt, ledger: value }, true)); }, preflight: async () => {
     await mkdir(resolve(out, "preflight"), { mode: 0o700 });
-    const states = await refreshEvidence(resolve(out, "preflight"), [{ model: PHYSICAL_MODEL.model, status: "ready", evidence: plan.evidence, maximumMicros }], fetch, [PHYSICAL_MODEL.model]);
-    if (states[0].status !== "ready") throw Error(`live-preflight:${states[0].reason}`);
-    return states[0];
+    const fresh = await refreshEvidence(resolve(out, "preflight"), states.map(s => ({ model: s.evidence.model, status: "ready" as const, ...s })), fetch, PHYSICAL_MODELS.map(m => m.model));
+    return fresh.map(s => { if (s.status !== "ready") throw Error(`live-preflight:${s.reason}`); return { evidence: s.evidence, maximumMicros: s.maximumMicros }; });
   } });
+  console.log(physicalSideBySide(JSON.parse((await regularBytes(resolve(out, "report.json"))).toString()) as ReturnType<typeof physicalReport>));
   console.log(resolve(out, "report.json"));
 }
 
@@ -398,23 +426,30 @@ export async function makePhysicalExample(kitPath: string, output: string) {
     mapping.photos.push({ file, pdf_page: page.pdfPage, device, clarity: "clear" });
   }
   await durableJson(resolve(photos, "photos.json"), mapping, true);
-  const rows = truthTemplate(mapping, kit.pages).map(r => r.parent_methods_required === "true" ? r : { ...r, intended_result: "blank", reading_state: "blank", notes: "LOCAL FAKE: known empty printed source region; no handwriting or model truth." });
+  const rows = truthTemplate(mapping, kit.pages).map(r => ({ ...r, intended_result: "blank", reading_state: "blank", notes: "LOCAL FAKE: known empty printed source region; no handwriting or model truth." }));
   await writeBytes(resolve(out, "fake-truth.csv"), Buffer.from(writeTruthCsv(rows)));
   await durableJson(resolve(out, "example.json"), { proofClass: "local-fake", realPhones: false, photos: mapping.photos.length, truthRows: rows.length, source: FROZEN_KIT, warning: "Known blank print controls only. Never use these labels for human photos." }, true);
   return out;
 }
 
-/** Real production transport and journal, with a local synthetic HTTP response and an in-memory ledger. */
-export async function fakePhysicalHttp(out: string, set: PhysicalSet, plan: PhysicalPlan, run: string) {
+/** A built-in fake control: Terra is unsure of the first method on each two-ways item, so the report shows a disagreement. */
+function fakeControl(photo: ComparisonPhoto, model: ComparisonModel): unknown {
+  const output = labelledOutput(photo);
+  if (model.model !== "openai/gpt-6.1-terra" || !photo.truth.some(t => t.format === "two-ways")) return output;
+  const n = expectedItems(photo.frame).findIndex(e => e.twoWays) + 1;
+  return { readings: output.readings.map(r => r.item === `i${n}` && r.region === `r${n}` ? { ...r, state: "uncertain" as const, text: null, issue: "blurry" as const } : r) };
+}
+/** Real production transport and journal, with a local synthetic HTTP response and an in-memory ledger. Both models, no network. */
+export async function fakePhysicalHttp(out: string, set: PhysicalSet, plan: PhysicalPlan, run: string, shape: (photo: ComparisonPhoto, model: ComparisonModel) => unknown = photo => labelledOutput(photo)) {
   if (set.proofClass !== "local-fake") throw Error("explicit-fake-set-required");
   await mkdir(resolve(out, "journal"), { mode: 0o700 });
   const results: ComparisonResult[] = [], held = new Map<string, number | null>(); let next = 0;
   const budget: EvaluationBudget = { refresh: async () => ({ verified: true }), reserve: async () => { const id = `00000000-0000-4000-8000-${String(++next).padStart(12, "0")}`; held.set(id, null); return { id }; }, settle: async (id, cost) => { held.set(id, cost); } };
-  for (const p of set.photos.filter(p => p.status === "ready")) {
-    results.push(await runComparisonPhoto({ run, photo: p.photo, image: await regularBytes(resolve(out, p.photo.image.path)), model: PHYSICAL_MODEL, evidence: plan.evidence, maximumMicros: 1, maxRunMicros: plan.settings.maxMicros, budget, journal: fileJournal(resolve(out, "journal")), env: { SCAN_MARKING_OPENROUTER_API_KEY: "local-fake-no-credential" }, maxAttempts: 1,
-      fetch: async () => Response.json({ id: `gen-local-fake-${next}`, provider: PHYSICAL_MODEL.providerName, model: PHYSICAL_MODEL.model, usage: { cost: 0, prompt_tokens: 1, completion_tokens: 1, completion_tokens_details: { reasoning_tokens: 0 } }, choices: [{ finish_reason: "stop", message: { content: JSON.stringify(labelledOutput(p.photo)) } }] }) }));
+  for (const p of set.photos.filter(p => p.status === "ready")) for (const model of PHYSICAL_MODELS) {
+    results.push(await runComparisonPhoto({ run, photo: p.photo, image: await regularBytes(resolve(out, p.photo.image.path)), model, evidence: plan.evidences.find(e => e.model === model.model)!, maximumMicros: 1, maxRunMicros: plan.settings.maxMicros, budget, journal: fileJournal(resolve(out, "journal")), env: { SCAN_MARKING_OPENROUTER_API_KEY: "local-fake-no-credential" }, maxAttempts: 1,
+      fetch: async () => Response.json({ id: `gen-local-fake-${next}`, provider: model.providerName, model: model.model, usage: { cost: 0, prompt_tokens: 1, completion_tokens: 1, completion_tokens_details: { reasoning_tokens: 0 } }, choices: [{ finish_reason: "stop", message: { content: JSON.stringify(shape(p.photo, model)) } }] }) }));
   }
   await durableJson(resolve(out, "results.json"), results, true);
-  await durableJson(resolve(out, "report.json"), physicalReport(set, results, plan.evidence, run));
+  await durableJson(resolve(out, "report.json"), physicalReport(set, results, plan.evidences, run));
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) physicalMain().catch(e => { console.error(`Physical evaluation stopped: ${e instanceof Error ? e.message : "unknown failure"}`); process.exitCode = 1; });

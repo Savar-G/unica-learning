@@ -11,6 +11,7 @@ import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-packa
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { fileJournal, refreshEvidence, rpcEvaluationBudget } from "../../scripts/scan-marking-comparison-cli";
 import { syntheticChoiceCenters, syntheticReading, syntheticTextSvg } from "../../scripts/scan-marking-synthetic-photos";
+import { suppliedMethodText } from "./scan-marking-methods";
 import sharp from "sharp";
 
 const copy = <T>(v: T): T => structuredClone(v);
@@ -20,6 +21,7 @@ function readingText(region: ReturnType<typeof markingRegions>[number], wrong: b
   if (region.kind === "number") return String(wrong ? region.answer + 1 : region.answer);
   if (region.kind === "text") return wrong ? "made up wrong words" : region.answer;
   if (region.kind === "choice") return wrong ? region.choices.find(c => c !== region.answer)! : region.answer;
+  if (region.kind === "method") return suppliedMethodText(region, region.id === "method-2" ? 1 : 0, wrong);
   if (wrong) return "999/1000";
   return region.answer.type === "mixed" ? `${region.answer.whole} ${region.answer.numerator}/${region.answer.denominator}` : region.answer.type === "fraction" ? `${region.answer.numerator}/${region.answer.denominator}` : String(region.answer.value);
 }
@@ -34,7 +36,7 @@ function photo(n = 0): ComparisonPhoto {
     }) };
   return { id, clear: state !== "uncertain", image: { path: `${id}.jpg`, sha256: hashBytes(id), width: 1000, height: 1400, metadataFree: true }, frame,
     truth: frame.questions.map((q, i) => ({ itemId: q.package!.id, format: COMPARISON_FORMATS[i] as ComparisonFormat,
-      result: COMPARISON_FORMATS[i] === "two-ways" ? "parent" : state as "right" | "wrong" | "blank" | "uncertain",
+      result: state as "right" | "wrong" | "blank" | "uncertain",
       readings: markingRegions(q).map(r => ({ regionId: r.id, state: state === "blank" ? "blank" : state === "uncertain" ? "uncertain" : "written", text: state === "blank" ? "" : state === "uncertain" ? null : readingText(r, state === "wrong"), issue: state === "uncertain" ? "blurry" : null }) as LabelledReading) })) };
 }
 function manifest(): ComparisonManifest {
@@ -292,7 +294,7 @@ describe("synthetic manifest and fixed truth", () => {
     expect(centers.map(c => [c.x, c.y])).toEqual([[24.5,44.5],[114.5,44.5],[204.5,44.5],[294.5,44.5]]);
     await expect(syntheticChoiceCenters(bytes, { ...region, choices: ["+", "-"] })).rejects.toThrow("geometry");
   });
-  it("accepts all first-book formats with wrong/right/blank/uncertain controls and parent-only methods", () => {
+  it("accepts all first-book formats with wrong/right/blank/uncertain controls and no parent path", () => {
     const m = manifest(); expect(() => validateComparisonManifest(m)).not.toThrow();
     expect(new Set(m.photos.flatMap(p => p.truth.map(t => t.format))).size).toBe(9);
     expect(validMarkingOutput(m.photos[0].frame, labelledOutput(m.photos[0]))).toBe(true);
@@ -575,12 +577,12 @@ describe("D267 denominators, projection and selection", () => {
     expect(r.status).toBe("failed");
     expect(r.schemaValid).toBe(false);
   });
-  it("counts every automated item, keeps parent methods separate, and measures clear-photo unsure", () => {
+  it("counts every item as AI-marked, with no parent path, and measures clear-photo unsure", () => {
     const m = manifest(), results = m.photos.map(p => result(p)), report = scoreComparison(m, COMPARISON_MODELS[0], results, evidence());
-    expect(report.denominator).toBe(320); expect(report.parentMethods).toBe(40); expect(report.clearDenominator).toBe(304);
-    expect(report.wrongMarkDenominator).toBe(302); expect(report.wrongMarks).toBe(0); expect(report.wrongAsRight).toBe(0); expect(report.unsure).toBe(18); expect(report.clearUnsure).toBe(2); expect(report.passed).toBe(true);
+    expect(report.denominator).toBe(360); expect(report.aiMarked).toBe(360); expect(report.parentMethods).toBe(0); expect(report.clearDenominator).toBe(342);
+    expect(report.wrongMarkDenominator).toBe(340); expect(report.wrongMarks).toBe(0); expect(report.wrongAsRight).toBe(0); expect(report.unsure).toBe(20); expect(report.clearUnsure).toBe(2); expect(report.passed).toBe(true);
     const missing = scoreComparison(m, COMPARISON_MODELS[0], results.slice(1), evidence());
-    expect(missing.denominator).toBe(320); expect(missing.complete).toBe(false); expect(missing.passed).toBe(false); expect(missing.missingRuns).toBe(1);
+    expect(missing.denominator).toBe(360); expect(missing.complete).toBe(false); expect(missing.passed).toBe(false); expect(missing.missingRuns).toBe(1);
     const refused = copy(results); refused[0].status = "failed"; refused[0].failure = "refusal"; refused[0].schemaValid = false;
     const refusalReport = scoreComparison(m, COMPARISON_MODELS[0], refused, evidence());
     expect(refusalReport.refusals).toBe(1); expect(refusalReport.schemaFailures).toBe(0); expect(refusalReport.schemaUnvalidated).toBe(1);
@@ -594,7 +596,7 @@ describe("D267 denominators, projection and selection", () => {
     const m = manifest(), results = m.photos.map(p => result(p));
     for (let i = 0; i < 4; i++) results[0].observations[i].result = "wrong";
     const report = scoreComparison(m, COMPARISON_MODELS[0], results, evidence());
-    expect(report.wrongMarks).toBe(4); expect(report.wrongMarkDenominator).toBe(302); expect(report.passed).toBe(false);
+    expect(report.wrongMarks).toBe(4); expect(report.wrongMarkDenominator).toBe(340); expect(report.passed).toBe(false);
   });
   it("schema, refusal, duplicate, missing-cost and excess clear unsure cannot pass", () => {
     const m = manifest();
@@ -810,7 +812,7 @@ describe("durable clean HTTP 429 deferral", () => {
     const prior = { manifestHash: hashValue(manifest()), models: COMPARISON_MODELS, settings: COMPARISON_SETTINGS, maxAttempts: 1, approved: COMPARISON_MODELS.map(model => assessComparisonEndpoint(model, snapshot(model), publicEvidence.zdr)) };
     expect(hashValue({ ...prior, deferralPolicy: COMPARISON_DEFERRAL_POLICY })).not.toBe(hashValue(prior));
     expect(COMPARISON_DEFERRAL_POLICY).toEqual({ version: "clean429-v1", delayMs: 900_000, finalBatches: 1, globalConcurrency: 1, modelConcurrency: 1 });
-    expect(COMPARISON_SETTINGS.promptVersion).toBe("whole-page-scalar-readings-v7");
+    expect(COMPARISON_SETTINGS.promptVersion).toBe("whole-page-scalar-readings-v8");
     expect(hashValue(COMPARISON_MODELS)).toBe("1c61503c7d953b7c6427312dc88b9651a0a0647d2313a30425c81f4b886de5a2");
   });
 });

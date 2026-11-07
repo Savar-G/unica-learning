@@ -41,12 +41,13 @@ export type MarkResult = "right" | "wrong" | "blank";
 export type ObservationState = "pending" | "scored" | "parent-pending" | "parent-checked" | "unscored";
 
 export type ReadingCertainty = "certain" | "uncertain" | "not-read";
-export const READING_ISSUES = ["unreadable", "crossed-out", "multiple-marks", "missing", "blurry", "cut-off", "incomplete", "answer-form"] as const;
+export const READING_ISSUES = ["unreadable", "crossed-out", "multiple-marks", "missing", "blurry", "cut-off", "incomplete", "answer-form", "method-form"] as const;
 export type ReadingIssue = (typeof READING_ISSUES)[number];
 const READING_REASONS: Record<ReadingIssue, string> = {
   unreadable: "We cannot read this answer.", "crossed-out": "This answer is crossed out.",
   "multiple-marks": "More than one choice is marked.", missing: "Part of this answer was not read.",
   blurry: "The photo is blurry here.", "cut-off": "Part of this answer is cut off.", incomplete: "Part of this answer is empty.", "answer-form": "Please check this answer.",
+  "method-form": "We cannot check this method.",
 };
 export const readingIssueText = (issue: ReadingIssue) => READING_REASONS[issue];
 
@@ -172,9 +173,6 @@ export function masteryDecision(pkg: QuestionPackage | null, teaching: TeachingC
   const e = teaching.eligibility;
   if (e.format !== item.format || e.scorable !== item.scorable || e.parentChecked !== item.parentChecked) return no("context-mismatch");
   if (teaching.practiceType === "try-first") return no("try-first");
-  // First-book two-ways needs a parent to check both methods. A frozen
-  // automatic-answer eligibility record does not authorize parent mastery.
-  if (needsMethodReview(pkg) && !item.parentChecked) return no("parent-checked");
   if (item.parentChecked) return e.mastery && teaching.itemStep ? { eligible: true, reason: null } : no("parent-checked");
   if (!item.scorable) return no("not-scorable");
   if (!teaching.itemStep) return no("no-item-step");
@@ -182,14 +180,12 @@ export function masteryDecision(pkg: QuestionPackage | null, teaching: TeachingC
   return { eligible: true, reason: null };
 }
 
-export function needsMethodReview(pkg: QuestionPackage | null): boolean {
-  return !!pkg?.item && pkg.item.format === "two-ways" && (pkg.item.scorable || pkg.item.parentChecked);
-}
+/** A two-ways item: the AI reads both methods and the answer, and code checks all three. */
+export const isTwoWays = (pkg: QuestionPackage | null) => pkg?.item?.format === "two-ways";
 
 export function checkMethod(pkg: QuestionPackage | null): CheckMethod {
   if (!pkg || (!pkg.item && !pkg.answer)) return "unavailable";
   const item = packageItem(pkg);
-  if (needsMethodReview(pkg)) return "parent";
   return item.scorable ? "code" : item.parentChecked ? "parent" : "unscored";
 }
 
@@ -200,8 +196,8 @@ export interface ExpectedItem {
   /** The printed question number. */
   number: number;
   method: CheckMethod;
-  /** First-book method review; absent in older expected records. */
-  review?: "two-ways";
+  /** A two-ways item. Absent on every other format and in older expected records. */
+  twoWays?: true;
   /** The regions a score must read: each answer box and choice of the item. */
   scoredRegions: string[];
   mastery: MasteryDecision;
@@ -216,7 +212,7 @@ export interface PageForObservation {
 }
 
 const scoredRegions = (pkg: QuestionPackage | null) =>
-  (checkMethod(pkg) === "code" ? packageItem(pkg!).regions.filter((r) => r.kind === "box" || r.kind === "choice").map((r) => r.id) : []);
+  (checkMethod(pkg) === "code" ? packageItem(pkg!).regions.filter((r) => r.kind === "box" || r.kind === "choice" || (r.kind === "work" && isTwoWays(pkg))).map((r) => r.id) : []);
 
 const reference = (t: TeachingContext | null): TeachingReference | null => t && {
   curriculum: t.curriculum, part: t.part, slot: t.slot, practiceType: t.practiceType, itemStep: t.itemStep,
@@ -228,7 +224,7 @@ export function expectedItems(page: PageForObservation): ExpectedItem[] {
     identity: { workbookId: page.workbookId, printedRevision: page.printedRevision, pageId: page.pageId, itemId: q.package?.id ?? `question-${q.number}` },
     number: q.number,
     method: checkMethod(q.package),
-    ...(needsMethodReview(q.package) ? { review: "two-ways" as const } : {}),
+    ...(isTwoWays(q.package) ? { twoWays: true as const } : {}),
     scoredRegions: scoredRegions(q.package),
     mastery: masteryDecision(q.package, q.teaching),
     teaching: reference(q.teaching),

@@ -50,9 +50,9 @@ The inherited r454/r455 records used hosted database/Storage and a local app wit
 
 Remaining shared gates are real-phone booklet/calibration/recognition and uncertain-reading acceptance, model selection/evaluation, provider/privacy, and applicable recorded approvals. Provider privacy stays **deferred by Savar**. Real child photos remain blocked until Savar sees a passing host policy and chooses. Do not reopen recorded approvals or the superseded all-level sample requirement. Older pd458 paid-stop and ownership text is historical. The latest user authorization controls spending and ownership; the earlier text does not impose a new paid-call stop or duplicate ownership here.
 
-D-267 permits at most 1% wrong definite marks, zero wrong answers marked right, and at most 5% unsure answers on clear photos. Unsure answers receive no right/wrong mark and need a plain reason. The check requires positive definite and clear-photo denominators, integer counts and the unchanged thresholds. It checks that the recorded bar precedes the run, that the run has finished and that pass proof does not predate completion. Sample, screen and provider-choice approval records must name Savar. The report must separate automatic results from parent-method items. A parent checks both methods and the final answer on two-ways items.
+D-267 permits at most 1% wrong definite marks, zero wrong answers marked right, and at most 5% unsure answers on clear photos. Unsure answers receive no right/wrong mark and need a plain reason. The check requires positive definite and clear-photo denominators, integer counts and the unchanged thresholds. It checks that the recorded bar precedes the run, that the run has finished and that pass proof does not predate completion. Sample, screen and provider-choice approval records must name Savar. AI reads every item, and code marks it from the reading (D-301). A parent marks no question. A parent can still change a mark.
 
-Run synthetic-only comparison first. The physical phone-photo checks follow later. The Robin booklet is `/Users/savargupta/unica-workbook-samples/first-customer-marking-20261106/synthetic-booklet/Robin-marking-test-booklet.pdf`, SHA-256 `d95cec84ed1cd4780e9fef18dd18faf6e02dfa736e02b0e1de1f01bc122b5659`. It has 12 PDF pages, 10 exercise pages and 74 items: 73 code items and 1 parent item. It contains no real child data. Its QR is not registered. A ready PDF is not a filled physical booklet or a recognition pass.
+Run synthetic-only comparison first. The physical phone-photo checks follow later. The Robin booklet is `/Users/savargupta/unica-workbook-samples/first-customer-marking-20261106/synthetic-booklet/Robin-marking-test-booklet.pdf`, SHA-256 `d95cec84ed1cd4780e9fef18dd18faf6e02dfa736e02b0e1de1f01bc122b5659`. It has 12 PDF pages, 10 exercise pages and 74 items, all AI-marked (74 AI, 0 parent). It contains no real child data. Its QR is not registered. A ready PDF is not a filled physical booklet or a recognition pass.
 
 Comparison tools and dedicated-key isolation shipped in PR #692. This candidate adds the reviewed v7 readable-blank prompt, null-blank reader correction, explicit Terra evaluation option and synthetic Sonnet launch evidence. The historical 13-pair default is unchanged. The explicit two-model run completed under the aggregate cap. See `scripts/scan-marking-comparison-cli.ts`, `docs/scan-marking-comparison.md` and [current acceptance evidence](scan-marking-v7-acceptance-20261107.md). These facts do not establish production key loading, physical recognition or family approval.
 
@@ -149,13 +149,32 @@ Code checks the stored right-or-wrong choice and the corrected answer together. 
 
 The item keeps one review crop, canonical result and original event. Its local cases include right choice with wrong correction, wrong choice with right correction, ambiguous marks, missing parts and an extra unrequested printed-example reading. They prove the response contract, not image recognition.
 
-## First-book two-ways review (#461)
+## Two-ways marking (D-301)
 
-Savar chose parent review for the first book on 6 November. The printed item has two work areas and one final-answer box. A parent checks both methods and the answer, then selects Right, Wrong or Blank. The page stays incomplete until that explicit choice. The crop includes both measured work areas and the answer box. The model receives no reading request for this item. The item keeps one canonical result and the existing parent-change history.
+Savar decided on 7 November that AI does all marking and a parent marks no question. This replaces the parent review of 6 November (#461). A parent keeps "Change this mark".
 
-The frozen automatic-answer eligibility does not authorize mastery from this new parent review. The result stays out of mastery unless the frozen context already permits parent-checked mastery. The stored package and print contract stay unchanged. This does not implement automatic checking of alternative equation combinations. Missing or invalid measured regions cannot produce a review crop. Local tests prove the parent-review state, crop boundaries and completion, not a physical booklet or parent screen approval.
+The printed item has two work areas and one final-answer box. The model reads all three regions on the whole page. It transcribes each method as digits and symbols, one step per line, without correcting or judging it. It receives no answer. Code then marks the item in `src/lib/scan-marking-methods.ts`:
 
-The additive scan_two_ways_review_policy migration applies this rule to existing canonical records and to writes from older code. It changes only the current expected review policy. It preserves observations, raw events, printed packages and append-only history. An affected child's marking revision advances, so an old profile save cannot accept the prior eligibility. The normal recovery path rebuilds that profile from the corrected effective set. S5 parent changes then use the same corrected eligibility.
+| Reading | Item result |
+| --- | --- |
+| The answer is right, both methods are valid and they differ | Right |
+| The answer is wrong | Wrong |
+| A method has a false step, stops at a number that is neither the answer nor a number in the question, or is only a number | Wrong |
+| A method or the answer is empty, and nothing else is unsure | Wrong |
+| The same method is written twice | Wrong |
+| All three regions are empty | Blank |
+| A region is blurry, cut off or unreadable, and no region is definitely wrong | Unsure, with the plain reason of that region |
+| A method is words or a drawing, or its true steps do not use a number in the question, or it has the same steps as the other method in another order | Unsure: "We cannot check this method." |
+
+A method is valid when every step is true, it holds the right answer and it uses a number printed in the question. A limit: code checks that the arithmetic is true, not that the method is a sensible way to teach the question. A true method that does not use a printed number (5 × 8 = 40, 40 × 100 = 4000 for 50 × 80) stays unsure. The Robin phone test measures how often this occurs.
+
+The item keeps one crop of both work areas and the answer box, one canonical result and one event key. It follows its frozen mastery decision, as other AI-marked formats do. The stored package and print contract stay unchanged. Missing or invalid measured regions make no crop and no reading.
+
+Prompt v8 adds the method rule. The accepted v7 evaluation does not cover v8, so `scanMarkingServerReadiness` now names the stale candidate and the evaluation items as blockers. This changes no admission: `SCAN_MARKING_ENABLED` and the test-parent list still decide access. The saved fixed-40 manifest holds parent rows, so the new code refuses it. A later run needs a new manifest.
+
+The first-customer round 9 contract (`bfc5542e`) has 582 questions: 582 AI paths, 0 parent, 0 unsupported ([coverage record](scan-marking-first-book-coverage-ai-only-20261107.json)). This is supplied-reading route proof. It does not prove recognition.
+
+Migration `scan_two_ways_ai_marking` makes the old trigger `scan_two_ways_review_policy` do nothing. A later cleanup can drop the trigger and its function. No hosted row held the old policy on 7 November. Code written before this PR writes the parent method itself until the PR merges. If a two-ways row with `expected.review` appears before the merge, it stays parent-pending. Check this count just before the merge: `select count(*) from scan_marking_items where expected->>'review'='two-ways'`.
 
 ## Write-words answers (#541, S7n)
 

@@ -1,17 +1,25 @@
 // Physical photos of the frozen, made-up Robin kit. This is not the fixed40 set.
-import { COMPARISON_MODELS, COMPARISON_SETTINGS, COMPARISON_DEFERRAL_POLICY, SYNTHETIC_IDS, comparisonItemFormat, hashValue, labelledOutput, scoreComparison, type ComparisonManifest, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type TruthRow } from "@/lib/scan-marking-comparison";
+import { COMPARISON_ALLOWED_MODELS, COMPARISON_SETTINGS, COMPARISON_DEFERRAL_POLICY, SYNTHETIC_IDS, comparisonItemFormat, hashValue, labelledOutput, scoreComparison, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type TruthRow } from "@/lib/scan-marking-comparison";
 import { expectedItems, READING_ISSUES, type ReadingIssue } from "@/lib/scan-observation";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { markingRequest, readMarkingOutput, validMarkingOutput, type MarkingFrame } from "@/lib/scan-marking";
 
-export const PHYSICAL_VERSION = "robin-physical-v1";
-export const PHYSICAL_MODEL = COMPARISON_MODELS.find(m => m.model === "anthropic/claude-sonnet-5.5")!;
+export const PHYSICAL_VERSION = "robin-physical-v2";
+/** Both run on the same photos, truth, prompt, reader, scorer and D-267 bar, with fallbacks off. Neither is selected here. */
+export const PHYSICAL_MODELS: readonly ComparisonModel[] = Object.freeze(["anthropic/claude-sonnet-5.5", "openai/gpt-6.1-terra"].map(id => COMPARISON_ALLOWED_MODELS.find(m => m.model === id)!));
+const MODEL_NAMES: Record<string, string> = { "anthropic/claude-sonnet-5.5": "Sonnet 5.5", "openai/gpt-6.1-terra": "Terra 6.1" };
+/** Two complete phone sets of the frozen kit. Extra control photos add to these counts. */
+export const PHYSICAL_EXPECTED = Object.freeze({ photos: 20, itemLabels: 148, aiMarked: 148, parent: 0 });
+/** One provider request at a time, for both models together. */
+export const PHYSICAL_PARALLEL_REQUESTS = 1;
+/** An expected page, about twice the measured v7 cost per page. The worst case is the ledger's reservation bound. */
+export const PHYSICAL_EXPECTED_TOKENS = Object.freeze({ input: 4000, output: 1500 });
 export const FROZEN_KIT = Object.freeze({
   "Robin-marking-test-booklet.pdf": "d95cec84ed1cd4780e9fef18dd18faf6e02dfa736e02b0e1de1f01bc122b5659",
   "rendered-workbook.json": "52bfbe003525759920a47429e10f6b6431950ecce9ba0ce8caf489a1e1ed84e3",
   "fixture-manifest.json": "81a2b2e9f2e1602a5f0960b5941294c267b54cd2326e98e90ad2d23c5eee2025",
 });
-export const TRUTH_COLUMNS = ["pdf_page", "printed_page", "page_id", "question", "format", "parent_methods_required", "final_written_answer", "intended_result", "notes", "photo", "item_id", "region_id", "reading_state", "reading_issue", "photo_clarity", "device"] as const;
+export const TRUTH_COLUMNS = ["pdf_page", "printed_page", "page_id", "question", "format", "methods_required", "final_written_answer", "intended_result", "notes", "photo", "item_id", "region_id", "reading_state", "reading_issue", "photo_clarity", "device"] as const;
 export interface PhotoMapping { file: string; pdf_page: number; device: "iphone" | "android"; clarity: "clear" | "unclear" }
 export interface PhysicalMapping { version: 1; madeUpRobinOnly: true; photos: PhotoMapping[] }
 export interface PhysicalPage { pdfPage: number; printedPage: number; label: string; frame: MarkingFrame }
@@ -73,11 +81,11 @@ export function truthTemplate(mapping: PhysicalMapping, pages: readonly Physical
     const page = pages.find(p => p.pdfPage === m.pdf_page)!;
     return expectedItems(page.frame).flatMap(e => {
       const q = page.frame.questions.find(q => q.number === e.number)!;
-      const regions = e.method === "parent" ? ["parent-methods"] : markingRegions(q).map(r => r.id);
-      if (!regions.length || !["parent", "code"].includes(e.method)) fail("unsupported-or-unmeasured-item");
+      const regions = markingRegions(q).map(r => r.id);
+      if (!regions.length || e.method !== "code") fail("unsupported-or-unmeasured-item");
       return regions.map(region => ({ pdf_page: String(page.pdfPage), printed_page: String(page.printedPage), page_id: page.label, question: String(e.number), format: q.package!.item!.format,
-        parent_methods_required: String(e.method === "parent"), final_written_answer: "", intended_result: e.method === "parent" ? "parent" : "", notes: "",
-        photo: m.file, item_id: e.identity.itemId, region_id: region, reading_state: e.method === "parent" ? "parent" : "", reading_issue: "", photo_clarity: m.clarity, device: m.device }));
+        methods_required: String(e.twoWays === true), final_written_answer: "", intended_result: "", notes: "",
+        photo: m.file, item_id: e.identity.itemId, region_id: region, reading_state: "", reading_issue: "", photo_clarity: m.clarity, device: m.device }));
     });
   });
 }
@@ -92,14 +100,10 @@ export function physicalTruth(mapping: PhysicalMapping, pages: readonly Physical
     const row = indexed.get(key(target)); if (!row) fail("missing-or-extra-truth-row");
     for (const c of TRUTH_COLUMNS.filter(c => !["final_written_answer", "intended_result", "notes", "reading_state", "reading_issue"].includes(c))) if (row![c] !== target[c]) fail(`truth-identity-${c}`);
     if (row!.final_written_answer.length > 200 || row!.notes.length > 2000) fail("truth-text-bound");
-    if (target.parent_methods_required === "true") {
-      if (row!.intended_result !== "parent" || row!.reading_state !== "parent" || row!.reading_issue || row!.final_written_answer) fail("parent-methods-must-stay-pending");
-    } else {
-      if (!["right", "wrong", "blank", "uncertain"].includes(row!.intended_result) || !["written", "blank", "uncertain"].includes(row!.reading_state)) fail("incomplete-human-truth");
-      if (row!.reading_state === "written" && (!row!.final_written_answer.trim() || row!.reading_issue)) fail("written-truth-needs-text");
-      if (row!.reading_state === "blank" && (row!.final_written_answer || row!.reading_issue)) fail("blank-truth-needs-empty-text");
-      if (row!.reading_state === "uncertain" && (!READING_ISSUES.includes(row!.reading_issue as ReadingIssue) || row!.intended_result !== "uncertain")) fail("uncertain-truth-needs-issue");
-    }
+    if (!["right", "wrong", "blank", "uncertain"].includes(row!.intended_result) || !["written", "blank", "uncertain"].includes(row!.reading_state)) fail("incomplete-human-truth");
+    if (row!.reading_state === "written" && (!row!.final_written_answer.trim() || row!.reading_issue)) fail("written-truth-needs-text");
+    if (row!.reading_state === "blank" && (row!.final_written_answer || row!.reading_issue)) fail("blank-truth-needs-empty-text");
+    if (row!.reading_state === "uncertain" && (!READING_ISSUES.includes(row!.reading_issue as ReadingIssue) || row!.intended_result !== "uncertain")) fail("uncertain-truth-needs-issue");
   }
   const output = new Map<string, TruthRow[]>();
   for (const m of mapping.photos) {
@@ -109,7 +113,7 @@ export function physicalTruth(mapping: PhysicalMapping, pages: readonly Physical
       const selected = wanted.filter(r => r.photo === m.file && r.item_id === e.identity.itemId).map(r => indexed.get(key(r))!);
       if (new Set(selected.map(r => r.intended_result)).size !== 1) fail("item-result-conflict");
       return { itemId: e.identity.itemId, format: comparisonItemFormat(page.frame, e.identity.itemId), result: selected[0].intended_result as TruthRow["result"],
-        readings: e.method === "parent" ? [] : markingRegions(q).map((region, n) => ({ regionId: region.id, state: selected[n].reading_state as "written" | "blank" | "uncertain", text: selected[n].reading_state === "uncertain" && !selected[n].final_written_answer ? null : selected[n].final_written_answer, issue: selected[n].reading_issue ? selected[n].reading_issue as ReadingIssue : null })) };
+        readings: markingRegions(q).map((region, n) => ({ regionId: region.id, state: selected[n].reading_state as "written" | "blank" | "uncertain", text: selected[n].reading_state === "uncertain" && !selected[n].final_written_answer ? null : selected[n].final_written_answer, issue: selected[n].reading_issue ? selected[n].reading_issue as ReadingIssue : null })) };
     });
     const photo = { frame: page.frame, truth } as ComparisonPhoto;
     const labelled = labelledOutput(photo);
@@ -117,7 +121,9 @@ export function physicalTruth(mapping: PhysicalMapping, pages: readonly Physical
     const observations = readMarkingOutput(page.frame, labelled);
     for (const t of truth) {
       const observed = observations.find(o => o.identity.itemId === t.itemId)!;
-      if (t.result !== "parent" && observed.result !== (t.result === "uncertain" ? null : t.result) && !(t.format === "write-words" && t.result === "wrong" && observed.result === null)) fail("human-truth-reader-conflict");
+      // A human judges a method; code checks only its arithmetic. A two-ways disagreement is a result to report, not a bad label.
+      if (t.format === "two-ways" && (t.result === "right" || t.result === "wrong")) continue;
+      if (observed.result !== (t.result === "uncertain" ? null : t.result) && !(t.format === "write-words" && t.result === "wrong" && observed.result === null)) fail("human-truth-reader-conflict");
     }
     output.set(m.file, truth);
   }
@@ -129,29 +135,129 @@ export function physicalScoringInput(set: PhysicalSet): ComparisonManifest {
   return { version: 1, synthetic: true, identity: { name: "Robin", madeUp: true, containsRealData: false, profileSource: "sampleChild/samplePlanInput" },
     source: { synthetic: true, draftSha256: set.draftSha256, renderSha256: FROZEN_KIT["rendered-workbook.json"], fixtureSha256: FROZEN_KIT["fixture-manifest.json"] }, photos: set.photos.map(p => p.photo) };
 }
-export function physicalReport(set: PhysicalSet, results: ComparisonResult[], evidence: EndpointEvidence, run: string, replay = false) {
-  const score = scoreComparison(physicalScoringInput(set), PHYSICAL_MODEL, results, evidence);
-  const refused = set.photos.filter(p => p.status === "refused"), incomplete = set.photos.filter(p => p.status === "incomplete");
+type TwoWaysTally = { items: number; right: number; wrong: number; blank: number; unsure: number; wrongMarks: number; wrongAsRight: number };
+const observed = (result: ComparisonResult | undefined, photo: ComparisonPhoto, itemId: string) => result?.status === "complete" && result.schemaValid ? result.observations.find(o => o.identity.itemId === itemId && o.identity.pageId === photo.frame.pageId) ?? null : null;
+function twoWaysTally(set: PhysicalSet, own: readonly ComparisonResult[]): TwoWaysTally {
+  const t: TwoWaysTally = { items: 0, right: 0, wrong: 0, blank: 0, unsure: 0, wrongMarks: 0, wrongAsRight: 0 };
+  for (const { photo } of set.photos) for (const truth of photo.truth.filter(r => r.format === "two-ways")) {
+    t.items++;
+    const o = observed(own.find(r => r.photo === photo.id), photo, truth.itemId);
+    if (!o || o.result === null) { t.unsure++; continue; }
+    t[o.result]++;
+    if (o.result !== truth.result) { t.wrongMarks++; if (truth.result === "wrong" && o.result === "right") t.wrongAsRight++; }
+  }
+  return t;
+}
+/** Every photo and item where the models' results differ, with the human truth beside them. */
+function modelDisagreements(set: PhysicalSet, results: readonly ComparisonResult[]) {
+  return set.photos.flatMap(({ mapping, photo }) => {
+    const items = expectedItems(photo.frame);
+    return photo.truth.flatMap(truth => {
+      const byModel = PHYSICAL_MODELS.map(m => {
+        const result = results.find(r => r.model === m.model && r.photo === photo.id), o = observed(result, photo, truth.itemId);
+        return [m.model, !result || result.status === "deferred" ? "no-result" : o ? o.result ?? "unsure" : "no-result"] as const;
+      });
+      if (new Set(byModel.map(([, r]) => r)).size < 2) return [];
+      return [{ photo: mapping.file, pdfPage: mapping.pdf_page, question: items.find(e => e.identity.itemId === truth.itemId)!.number, itemId: truth.itemId, format: truth.format, truth: truth.result, results: Object.fromEntries(byModel) as Record<string, string> }];
+    });
+  });
+}
+function modelReport(set: PhysicalSet, model: ComparisonModel, results: readonly ComparisonResult[], evidence: EndpointEvidence, inputsComplete: boolean) {
+  const own = results.filter(r => r.model === model.model);
+  const score = scoreComparison(physicalScoringInput(set), model, own, evidence);
   const reasons: Record<string, number> = {};
-  for (const r of results) for (const o of r.observations) if (o.result === null && o.method === "code") reasons[o.issue ?? "missing-reason"] = (reasons[o.issue ?? "missing-reason"] ?? 0) + 1;
-  const complete = score.complete && !refused.length && !incomplete.length && !set.missing.length;
-  const latencies = results.filter(r => r.attempts.length).map(r => r.attempts.reduce((n, a) => n + a.latencyMs, 0)).sort((a, b) => a - b);
+  for (const r of own) for (const o of r.observations) if (o.result === null && o.method === "code") reasons[o.issue ?? "missing-reason"] = (reasons[o.issue ?? "missing-reason"] ?? 0) + 1;
+  const latencies = own.filter(r => r.attempts.length).map(r => r.attempts.reduce((n, a) => n + a.latencyMs, 0)).sort((a, b) => a - b);
   const latency = (p: number) => latencies.length ? latencies[Math.max(0, Math.ceil(latencies.length * p) - 1)] : null;
+  const complete = score.complete && inputsComplete;
+  return { ...score, complete, passed: complete && score.passed, twoWays: twoWaysTally(set, own), latencyP50Ms: latency(.5), latencyP95Ms: latency(.95), unsureReasons: reasons,
+    measuredUsage: own.flatMap(r => r.attempts.map(a => ({ photo: r.photo, latencyMs: a.latencyMs, ...a.usage }))) };
+}
+export function physicalReport(set: PhysicalSet, results: ComparisonResult[], evidences: readonly EndpointEvidence[], run: string, replay = false) {
+  const refused = set.photos.filter(p => p.status === "refused"), incomplete = set.photos.filter(p => p.status === "incomplete");
+  const inputsComplete = !refused.length && !incomplete.length && !set.missing.length;
+  const models = PHYSICAL_MODELS.map(model => modelReport(set, model, results, evidences.find(e => e.model === model.model) ?? fail("physical-evidence-required"), inputsComplete));
+  const items = set.photos.flatMap(p => expectedItems(p.photo.frame));
   return { version: PHYSICAL_VERSION, run, setHash: hashValue(set), proofClass: replay ? "saved-reader-replay" : set.proofClass === "local-fake" ? "local-fake" : results.length ? "physical-provider" : "physical-preparation",
     realHandwritingProven: false, familyRelease: false, selectedModel: null, d267: { wrongDefinitePercentMaximum: 1, wrongAsRightMaximum: 0, clearUnsurePercentMaximum: 5 },
-    ...score, complete, passed: complete && score.passed, totalPhotos: set.photos.length, refusedPhotos: refused.length, incompletePhotos: incomplete.length, missingPhotos: set.missing,
-    latencyP50Ms: latency(.5), latencyP95Ms: latency(.95),
-    inputs: set.photos.map(p => ({ file: p.mapping.file, rawSha256: p.rawSha256, normalizedSha256: p.normalizedSha256, status: p.status, reason: p.reason })), unsureReasons: reasons,
+    counts: { photos: set.photos.length, itemLabels: set.photos.reduce((n, p) => n + p.photo.truth.length, 0), aiMarked: items.filter(e => e.method === "code").length, parent: items.filter(e => e.method === "parent").length }, expectedCounts: PHYSICAL_EXPECTED,
+    complete: models.every(m => m.complete), passed: models.every(m => m.passed), models, disagreements: modelDisagreements(set, results),
+    totalPhotos: set.photos.length, refusedPhotos: refused.length, incompletePhotos: incomplete.length, missingPhotos: set.missing,
+    inputs: set.photos.map(p => ({ file: p.mapping.file, rawSha256: p.rawSha256, normalizedSha256: p.normalizedSha256, status: p.status, reason: p.reason })),
     rawInputs: set.inventory, unmappedFiles: set.inventory.filter(i => i.reason === "unmapped-photo-or-file").length,
     refusedOrIncompleteInputCount: refused.length + incomplete.length + set.inventory.filter(i => !set.photos.some(p => p.mapping.file === i.file)).length,
-    measuredUsage: results.flatMap(r => r.attempts.map(a => ({ photo: r.photo, latencyMs: a.latencyMs, ...a.usage }))),
   };
+}
+const usd = (micros: number | null, digits = 2) => micros === null ? "unknown" : `USD ${(micros / 1e6).toFixed(digits)}`;
+/** The report as a plain table, with each model in its own column. */
+export function physicalSideBySide(report: ReturnType<typeof physicalReport>): string {
+  const [left, right] = report.models;
+  const rows: [string, (m: typeof left) => string][] = [
+    ["Wrong marks", m => `${m.wrongMarks}/${m.wrongMarkDenominator}`],
+    ["Wrong marked right", m => String(m.wrongAsRight)],
+    ["Clear unsure", m => `${m.clearUnsure}/${m.clearDenominator}`],
+    ["Two-ways", m => `${m.twoWays.right} right, ${m.twoWays.wrong} wrong, ${m.twoWays.blank} blank, ${m.twoWays.unsure} unsure of ${m.twoWays.items}; ${m.twoWays.wrongMarks} wrong marks`],
+    ["Cost per page", m => m.costPerPageUsd === null ? "unknown" : `USD ${m.costPerPageUsd.toFixed(6)}`],
+    ["Latency p50", m => m.latencyP50Ms === null ? "unknown" : `${m.latencyP50Ms} ms`],
+    ["Latency p95", m => m.latencyP95Ms === null ? "unknown" : `${m.latencyP95Ms} ms`],
+    ["Complete", m => m.complete ? "yes" : "no"],
+    ["Passes D-267", m => m.passed ? "yes" : "no"],
+  ];
+  const name = (m: typeof left) => `${MODEL_NAMES[m.model] ?? m.model} (${m.endpoint})`;
+  const col = Math.max(...rows.map(([, f]) => f(left).length), name(left).length) + 2;
+  const c = report.counts;
+  return [
+    `Robin phone test (${report.proofClass}). Photos ${c.photos}, item labels ${c.itemLabels}, AI-marked ${c.aiMarked}, parent ${c.parent}. Real handwriting proven: ${report.realHandwritingProven ? "yes" : "no"}.`,
+    `${"".padEnd(20)}${name(left).padEnd(col)}${name(right)}`,
+    ...rows.map(([label, f]) => `${label.padEnd(20)}${f(left).padEnd(col)}${f(right)}`),
+    `Disagreements: ${report.disagreements.length}`,
+    ...report.disagreements.map(d => `  ${d.photo} question ${d.question} (${d.format}), truth ${d.truth}: ${report.models.map(m => `${MODEL_NAMES[m.model] ?? m.model} ${d.results[m.model]}`).join(", ")}`),
+  ].join("\n");
 }
 export const physicalSettings = (maxMicros: number) => {
   if (!Number.isSafeInteger(maxMicros) || maxMicros < 1 || maxMicros > 15_000_000) fail("invalid-physical-cap");
-  return { version: PHYSICAL_VERSION, model: PHYSICAL_MODEL, prompt: COMPARISON_SETTINGS.promptVersion, effort: "low", outputTokens: 4096, fallbacks: false,
+  return { version: PHYSICAL_VERSION, models: PHYSICAL_MODELS, parallelRequests: PHYSICAL_PARALLEL_REQUESTS, prompt: COMPARISON_SETTINGS.promptVersion, effort: "low", outputTokens: 4096, fallbacks: false,
     deferral: COMPARISON_DEFERRAL_POLICY, maxMicros, aggregateMicros: 15_000_000, sharedMonthlyMicros: 50_000_000, dedicatedTotalMicros: 50_000_000 };
 };
+export type PhysicalState = { evidence: EndpointEvidence; maximumMicros: number };
+export type PhysicalEstimate = ReturnType<typeof physicalEstimate>;
+/** Expected cost from the pinned base prices. The in-flight need is the most that requests running at one time can cost. */
+export function physicalEstimate(photos: number, states: readonly PhysicalState[], maxMicros: number) {
+  if (!Number.isSafeInteger(photos) || photos < 0 || PHYSICAL_MODELS.some(m => !states.some(s => s.evidence.model === m.model))) fail("physical-estimate-input");
+  const models = PHYSICAL_MODELS.map(m => {
+    const s = states.find(x => x.evidence.model === m.model)!, input = Number(s.evidence.endpoint.pricing.prompt), output = Number(s.evidence.endpoint.pricing.completion);
+    if (!(input > 0) || !(output > 0) || !Number.isSafeInteger(s.maximumMicros) || s.maximumMicros < 1) fail("physical-estimate-price");
+    const perRequestMicros = Math.ceil((PHYSICAL_EXPECTED_TOKENS.input * input + PHYSICAL_EXPECTED_TOKENS.output * output) * 1e6);
+    return { model: m.model, requests: photos, perRequestMicros, totalMicros: perRequestMicros * photos, worstRequestMicros: s.maximumMicros };
+  });
+  const estimateMicros = models.reduce((n, m) => n + m.totalMicros, 0), inFlightMicros = PHYSICAL_PARALLEL_REQUESTS * Math.max(...models.map(m => m.worstRequestMicros));
+  return { paid: false, models, estimateMicros, inFlightMicros, parallelRequests: PHYSICAL_PARALLEL_REQUESTS, maxMicros, overStop: estimateMicros > maxMicros };
+}
+export function physicalEstimateLines(e: PhysicalEstimate, remainingMicros?: number | null): string[] {
+  return [
+    `Estimate: ${usd(e.estimateMicros)} (${e.models.map(m => `${MODEL_NAMES[m.model] ?? m.model}: ${m.requests} x ${usd(m.perRequestMicros, 4)}`).join("; ")}). Stop: ${usd(e.maxMicros)}.`,
+    `In-flight need: ${usd(e.inFlightMicros)} (${e.parallelRequests} request at a time x the largest request's worst case).`,
+    ...(remainingMicros === undefined ? [] : [`Remaining: ${usd(remainingMicros)}`]),
+  ];
+}
+const CREDITS_URL = "https://openrouter.ai/api/v1/credits";
+const amount = (v: unknown): number | null => typeof v === "number" && Number.isFinite(v) && v >= 0 && Number.isSafeInteger(Math.round(v * 1e6)) ? Math.round(v * 1e6) : null;
+/** Reads total_credits and total_usage. Any failed read refuses. The key and the provider's text never enter the result. */
+export async function physicalCreditPreflight(key: string, estimate: PhysicalEstimate, fetcher: typeof fetch) {
+  const requiredMicros = estimate.estimateMicros + estimate.inFlightMicros, base = { estimateMicros: estimate.estimateMicros, inFlightMicros: estimate.inFlightMicros, requiredMicros };
+  let remainingMicros: number | null = null;
+  try {
+    const response = await fetcher(CREDITS_URL, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(30_000), cache: "no-store" });
+    if (response.ok) {
+      const data = (await response.json() as { data?: { total_credits?: unknown; total_usage?: unknown } } | null)?.data;
+      const total = amount(data?.total_credits), usage = amount(data?.total_usage);
+      if (total !== null && usage !== null) remainingMicros = total - usage;
+    }
+  } catch { /* A failed read refuses below. */ }
+  if (remainingMicros === null) return { ...base, remainingMicros, enough: false, reason: "credit-read-failed" as const };
+  const enough = remainingMicros >= requiredMicros;
+  return { ...base, remainingMicros, enough, reason: enough ? null : "insufficient-credits" as const };
+}
 export function physicalPhotoId(file: string) { return `synthetic-physical-${hashValue(file).slice(0, 24)}`; }
 export function assertPhysicalFrame(photo: ComparisonPhoto) {
   if (photo.frame.parentId !== SYNTHETIC_IDS.parent || photo.frame.childId !== SYNTHETIC_IDS.child || photo.frame.workbookId !== SYNTHETIC_IDS.workbook || !photo.id.startsWith("synthetic-physical-") || photo.frame.photo !== photo.id || !photo.frame.ready) fail("physical-frame-identity");

@@ -81,7 +81,7 @@ export function comparisonProvider(model: ComparisonModel, evidence: EndpointEvi
 }
 
 export interface LabelledReading { regionId: string; state: "written" | "blank" | "uncertain"; text: string | null; issue: ReadingIssue | null }
-export interface TruthRow { itemId: string; format: ComparisonFormat; result: "right" | "wrong" | "blank" | "uncertain" | "parent"; readings: LabelledReading[] }
+export interface TruthRow { itemId: string; format: ComparisonFormat; result: "right" | "wrong" | "blank" | "uncertain"; readings: LabelledReading[] }
 export interface ComparisonPhoto {
   id: string; clear: boolean; image: { path: string; sha256: string; width: number; height: number; metadataFree: true };
   frame: MarkingFrame; truth: TruthRow[];
@@ -100,7 +100,6 @@ export function syntheticPrintRevision(rendered: WorkbookInput): string {
 export function comparisonItemFormat(frame: MarkingFrame, itemId: string): ComparisonFormat {
   const q = frame.questions.find(q => q.package?.id === itemId)!;
   const format = q.package?.item?.format;
-  if (format === "two-ways") return format;
   const rs = markingRegions(q);
   if (!rs.length) fail("unsupported-or-unmeasured-format");
   if (format === "write-number") {
@@ -140,10 +139,6 @@ export function validateComparisonManifest(manifest: ComparisonManifest): void {
       if (!t) throw new Error("truth-item-missing");
       if (t.format !== comparisonItemFormat(f, e.identity.itemId)) fail("truth-format-mismatch");
       coverage.add(t.format); controls.add(t.result);
-      if (e.method === "parent") {
-        if (t.format !== "two-ways" || t.result !== "parent" || t.readings.length) fail("parent-method-truth");
-        continue;
-      }
       if (e.method !== "code" || !["right", "wrong", "blank", "uncertain"].includes(t.result)) fail("truth-result");
       const q = f.questions.find(q => q.package?.id === e.identity.itemId)!;
       const regions = markingRegions(q);
@@ -157,12 +152,11 @@ export function validateComparisonManifest(manifest: ComparisonManifest): void {
     const labelled = readMarkingOutput(f, labelledOutput(p));
     for (const t of p.truth) {
       const o = labelled.find(o => o.identity.itemId === t.itemId)!;
-      if (t.result === "parent") continue;
-      // Text mismatches require a parent check. Ground truth may still be wrong.
-      if (o.result !== (t.result === "uncertain" ? null : t.result) && !(t.format === "write-words" && t.result === "wrong" && o.result === null)) fail("truth-disagrees-with-labelled-reading");
+      // A word or method form code cannot check stays unsure. Ground truth may still be wrong.
+      if (o.result !== (t.result === "uncertain" ? null : t.result) && !((t.format === "write-words" || t.format === "two-ways") && t.result === "wrong" && o.result === null)) fail("truth-disagrees-with-labelled-reading");
     }
   }
-  if (!clear || COMPARISON_FORMATS.some(f => !coverage.has(f)) || ["right", "wrong", "blank", "uncertain", "parent"].some(s => !controls.has(s))) fail("first-book-coverage-or-controls-missing");
+  if (!clear || COMPARISON_FORMATS.some(f => !coverage.has(f)) || ["right", "wrong", "blank", "uncertain"].some(s => !controls.has(s))) fail("first-book-coverage-or-controls-missing");
 }
 
 export interface TransportUsage {
@@ -280,10 +274,8 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
   const latencies: number[] = [], providers = new Set<string>();
   const acceptedHashes = [evidence, ...history].filter(e => e.model === model.model && hashValue(endpointPolicy(e)) === hashValue(endpointPolicy(evidence))).map(hashValue);
   for (const photo of manifest.photos) {
-    for (const truth of photo.truth) {
-      if (truth.result === "parent") parentMethods++;
-      else { denominator++; if (photo.clear) clearDenominator++; }
-    }
+    parentMethods += expectedItems(photo.frame).filter(e => e.method === "parent").length;
+    denominator += photo.truth.length; if (photo.clear) clearDenominator += photo.truth.length;
     const found = results.filter(r => r.model === model.model && r.photo === photo.id), result = found.length === 1 ? found[0] : null;
     const actual = result?.attempts.filter(a => !deferredAttempt(a)) ?? [];
     const usable = result?.status === "complete" && result.schemaValid && actual.length > 0 && actual.every(a => a.usage.provider === model.providerName && a.usage.model === model.model && a.usage.generationId !== null && a.usage.costMicros !== null && a.usage.inputTokens !== null && a.usage.outputTokens !== null && a.usage.reasoningTokens !== null) && result.photoHash === photo.image.sha256 && acceptedHashes.includes(result.evidenceHash) && result.requestHash === hashValue(markingRequest(photo.frame, new Uint8Array()));
@@ -306,7 +298,6 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
     if (result?.failure === "schema-invalid" || result?.failure === "invalid-json") schemaFailures++;
     if (result?.attempts.length) latencies.push(result.attempts.reduce((n, a) => n + a.latencyMs, 0));
     for (const truth of photo.truth) {
-      if (truth.result === "parent") continue;
       const observations = usable ? result!.observations.filter(o => o.identity.itemId === truth.itemId && o.identity.workbookId === photo.frame.workbookId && o.identity.printedRevision === photo.frame.printedRevision && o.identity.pageId === photo.frame.pageId) : [];
       const o = observations.length === 1 ? observations[0] : null;
       if (usable && (!o || !["right", "wrong", "blank", null].includes(o.result))) failures++;
@@ -318,7 +309,7 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
   }
   const complete = completedPhotos === manifest.photos.length && results.filter(r => r.model === model.model).length === manifest.photos.length;
   const passed = complete && failures === 0 && wrongMarkDenominator > 0 && clearDenominator > 0 && wrongMarks * 100 <= wrongMarkDenominator && wrongAsRight === 0 && clearUnsure * 20 <= clearDenominator && missingCosts === 0 && providers.size === 1 && providers.has(model.providerName);
-  return { model: model.model, host: model.host, endpoint: model.endpoint, policy: evidence.policy, passed, complete, wrongMarks, wrongMarkDenominator, denominator, wrongAsRight, unsure, clearUnsure, clearDenominator, parentMethods, failures, missingRuns, invalidRuns, schemaFailures, schemaUnvalidated, refusals: failureReasons.refusal ?? 0, failureReasons, missingCosts,
+  return { model: model.model, host: model.host, endpoint: model.endpoint, policy: evidence.policy, passed, complete, wrongMarks, wrongMarkDenominator, denominator, aiMarked: denominator - parentMethods, wrongAsRight, unsure, clearUnsure, clearDenominator, parentMethods, failures, missingRuns, invalidRuns, schemaFailures, schemaUnvalidated, refusals: failureReasons.refusal ?? 0, failureReasons, missingCosts,
     measuredMicros, heldMicros, missingHoldBounds, deferredAttempts, spentOrHeldMicros: missingHoldBounds ? null : measuredMicros + heldMicros, costPerPageUsd: missingCosts || !complete ? null : measuredMicros / manifest.photos.length / 1e6,
     latencyP50Ms: percentile(latencies, 0.5), latencyP95Ms: percentile(latencies, 0.95), retries, providers: [...providers] };
 }

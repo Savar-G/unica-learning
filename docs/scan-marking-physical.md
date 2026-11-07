@@ -1,6 +1,6 @@
 # Robin physical-photo evaluation
 
-This local tool accepts photos of the frozen, made-up Robin booklet. It does not register its QR tokens. The QR website route does not work for this kit. It does not change production admission, family flags, fixed40, D267, or the selected production model.
+This local tool accepts photos of the frozen, made-up Robin booklet. It runs Sonnet 5.5 on `google-vertex/global` and Terra 6.1 on `azure` on the same photos, human truth, prompt, reader, scorer and D-267 bar, with fallbacks off. It reports them side by side. It does not register its QR tokens. The QR website route does not work for this kit. It does not change production admission, family flags, fixed40, D267, or the selected production model. It selects no model.
 
 The default command is free. Preparation, template output, estimates, fake HTTP checks, and saved replay need no key or database. Only `--run` permits provider and ledger requests. Do not use real customer inputs.
 
@@ -47,25 +47,25 @@ node scripts/scan-marking-physical.mjs --template \
 
 Complete `/absolute/new-robin-template/human-truth.csv` independently. Read the actual writing in each photo. Do not copy model output into truth. Do not copy truth from another photo when its writing is unclear.
 
-The original nine columns remain: `pdf_page,printed_page,page_id,question,format,parent_methods_required,final_written_answer,intended_result,notes`. The extension adds these columns:
+The kit's nine columns remain: `pdf_page,printed_page,page_id,question,format,methods_required,final_written_answer,intended_result,notes`. The extension adds these columns:
 
 | Column | Contract |
 | --- | --- |
 | `photo` | Exact mapped file name. |
 | `item_id` | Exact frozen package ID. Keep the generated value. |
 | `region_id` | Exact scored region ID. Keep the generated value. |
-| `reading_state` | `written`, `blank`, or `uncertain`. Parent rows use `parent`. |
+| `reading_state` | `written`, `blank`, or `uncertain`. |
 | `reading_issue` | Required for uncertain readings. Empty for written and blank readings. |
 | `photo_clarity` | The operator's map label. It must match the map. |
 | `device` | The operator's map label. It must match the map. |
 
-The generated template has one row per scored region in each photo. A tick-and-number item has two region rows. Repeat the same item-level `intended_result` on both rows. A parent-method item has one `parent-methods` row. The frozen kit gives 79 region rows per complete phone series: 78 automatic regions and one parent row. Two phone series give 158 rows and 148 item labels. Each of the three spot-the-error items needs two region readings. The scored item denominator is 146. Additional photos add their own complete rows and items.
+The generated template has one row per scored region in each photo. A tick-and-number item has two region rows. A two-ways item has three: `method-1`, `method-2` and `answer`. Repeat the same item-level `intended_result` on all rows of an item. The frozen kit gives 81 region rows per complete phone series. Two phone series give 20 photos, 162 rows and 148 item labels: 148 AI-marked and 0 parent. Additional photos add their own complete rows and items.
 
-For `written`, supply the visible final text in `final_written_answer`. For a choice, supply its printed choice label. Use `right` or `wrong` as the item result. For `blank`, leave the final text and issue empty and use result `blank`. For `uncertain`, use result `uncertain` and an issue from this list: `unreadable`, `crossed-out`, `multiple-marks`, `missing`, `blurry`, `cut-off`, `incomplete`, `answer-form`. The final text may be empty when it cannot be read. A visible partial transcription may be supplied with an uncertain reading.
+For `written`, supply the visible final text in `final_written_answer`. For a choice, supply its printed choice label. Use `right` or `wrong` as the item result. For `blank`, leave the final text and issue empty and use result `blank`. For `uncertain`, use result `uncertain` and an issue from this list: `unreadable`, `crossed-out`, `multiple-marks`, `missing`, `blurry`, `cut-off`, `incomplete`, `answer-form`, `method-form`. The final text may be empty when it cannot be read. A visible partial transcription may be supplied with an uncertain reading.
 
-Parent-method rows always use result `parent` and state `parent`. Leave their answer and issue empty. Put human method notes in `notes`. Both methods remain pending and do not enter automatic scoring.
+For a `method-1` or `method-2` row, write the work as it appears in `final_written_answer`, one step per line. Use `uncertain` with `method-form` when the work is a drawing or words. The item result is your own judgment: right only if the answer is right and both methods are present and valid. No row can use `parent`.
 
-The tool requires the full generated row set. It rejects duplicate, missing, extra, inconsistent, or incomplete rows. It rejects malformed CSV quoting. It checks human readings through the existing strict output validator and reader for consistency. It never supplies a missing transcription or mark from a stored key. A different word answer can remain pending under the existing reader rule.
+The tool requires the full generated row set. It rejects duplicate, missing, extra, inconsistent, or incomplete rows. It rejects malformed CSV quoting. It checks human readings through the existing strict output validator and reader for consistency. On a two-ways item a human right or wrong stands, even when code's check differs: the report counts that difference. It never supplies a missing transcription or mark from a stored key. A different word answer can remain pending under the existing reader rule.
 
 ## Free preparation and estimate
 
@@ -83,9 +83,9 @@ Omitting `--estimate` has the same free behavior. The output folder must be new 
 
 The tool saves raw hashes before image checks. `normalizeScanPhoto()` applies EXIF orientation, preserves aspect ratio, bounds image size, removes metadata, and decodes the QR. Calibration checks the four corners, page ink, QR location, and page identity. `sheetChecker()` checks all other frozen exercise pages for a conflicting sheet. The tool uses `straightenedPage()`, `cropPlan()`, and `cropBox()` after these checks. It sends one whole straightened page. It does not send separate crops to the model.
 
-Image failures stay in `report.json`. A CSV or source failure writes `validation-report.json`. `inventory.json` retains file hashes and input failures. `set.json` uses version `robin-physical-v1`. The set hash is distinct from fixed40. `plan.json` binds the set, original and normalized hashes, truth, measured frames, request/schema, source dependencies, route evidence, and settings. The source lock includes local transitive imports and `package-lock.json`.
+Image failures stay in `report.json`. A CSV or source failure writes `validation-report.json`. `inventory.json` retains file hashes and input failures. `set.json` uses version `robin-physical-v2`. The set hash is distinct from fixed40. `plan.json` binds the set, original and normalized hashes, truth, measured frames, request/schema, source dependencies, route evidence, and settings. The source lock includes local transitive imports and `package-lock.json`.
 
-The estimate uses saved public endpoint evidence. It gives conservative bounds, not an actual charge. It does not claim current live liability. Only paid atomic admission reads that liability. There is no stored spend baseline.
+The estimate uses saved public endpoint evidence. The expected cost is 4,000 input and 1,500 output tokens per request at each pinned base price, about twice the measured v7 cost: USD 0.69 for 20 photos on both models. It is not an actual charge. It does not claim current live liability. The tool prints it before any paid call and stops when it is over the USD 15 stop or `--max-usd`. Only paid atomic admission reads that liability. There is no stored spend baseline.
 
 ## Local fake example
 
@@ -107,7 +107,7 @@ node scripts/scan-marking-physical.mjs \
   --out .workbook-sample/robin-phone-replay-proof
 ```
 
-Use new output names if those folders exist. Fake HTTP uses the production request, transport, journal, schema validator, and reader with a local in-memory ledger. It sends no HTTP request. A fake score proves local interpretation only. Saved replay reads the saved raw HTTP envelopes and terminal journals. It performs no inference. It validates result ownership and re-runs the same reader. Its proof class is `saved-reader-replay`.
+Use new output names if those folders exist. Fake HTTP uses the production request, transport, journal, schema validator, and reader with a local in-memory ledger. It sends no HTTP request. It has one built-in control: Terra is unsure of the first method on each two-ways item, so the report shows a disagreement. A fake score proves local interpretation only. Saved replay reads the saved raw HTTP envelopes and terminal journals. It performs no inference. It validates result ownership and re-runs the same reader. Its proof class is `saved-reader-replay`.
 
 ## Explicit paid path
 
@@ -129,15 +129,25 @@ node scripts/scan-marking-physical.mjs --run --max-usd 15 \
 
 The required names are `SCAN_MARKING_OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The tool does not retrieve credentials. It does not use `OPENROUTER_API_KEY`. There is no alternate key or provider fallback.
 
-The fixed test pair is Sonnet 5.5 on `google-vertex/global`, with fallbacks off. The reader and prompt v7 remain unchanged. Reasoning stays low. The output limit stays 4096. The tool does not select the final or cheapest model.
+The fixed test pairs are Sonnet 5.5 on `google-vertex/global` and Terra 6.1 on `azure`, with fallbacks off. Prompt v8 and the reader are the same for both. Reasoning stays low. The output limit stays 4096. The tool does not select the final or cheapest model.
 
-Saved plan and output ownership checks occur before public preflight or credential access. An exclusive execution marker prevents a second paid execution. After fresh public preflight, a second immutable dispatch plan binds the live evidence and reservation maximum. A changed route policy stops the run. A verified price refresh uses the existing evaluation RPC. Each admission saves the authoritative liability response. Each HTTP attempt saves its raw envelope before settlement.
+Both models go through one serial queue, one request at a time. Each photo goes to both models before the next photo.
+
+## Credit preflight
+
+The shared OpenRouter account funds the marking key, so a run can stop with 402 errors while the ledger still has room. Before any ledger access or provider request, the tool reads `GET https://openrouter.ai/api/v1/credits` with the marking key. Remaining is `total_credits - total_usage`. The tool refuses to start when remaining is less than the estimate plus the in-flight need. The in-flight need is the parallel requests (1) times the largest single request's worst case, which is the ledger's reservation bound (USD 4.04 for Sonnet in the saved evidence). So a run with 20 photos needs USD 4.73 remaining.
+
+It prints `Estimate`, `In-flight need` and `Remaining`, and saves them in `credit-preflight.json`. It never prints the key. A failed read refuses too, and prints `Remaining: unknown`. Use a new output folder for the next try.
+
+OpenRouter's reference says this route needs a management key. If the marking key is not one, the read fails and the tool refuses. It does not use a different key.
+
+Saved plan and output ownership checks occur before public preflight or credential access. An exclusive execution marker prevents a second paid execution. After fresh public preflight, a second immutable dispatch plan binds the live evidence and reservation maximum. A changed route policy stops the run. A verified price refresh for each model uses the existing evaluation RPC. Each admission saves the authoritative liability response. Each HTTP attempt saves its raw envelope before settlement.
 
 The runner dispatches serially. A clean 429 requires status and error code 429 with no generation, usage, or choices. It retains the hold and defers that pair. It waits at least 15 minutes. It permits one delayed retry. A second 429 stops the remaining work. An unknown outcome stops dispatch. Response, journal, and settlement failures stop dispatch. Existing holds remain for reconciliation. Known settled costs are not refunded. The tool cannot resume paid work after an exit or failure. Root must inspect the saved ledger and journal before any separate action.
 
 ## Report and checks
 
-`report.json` gives the full item counts, definite-mark denominator, wrong definite marks, wrong-as-right count, clear unsure count and reasons, schema failures, refused and incomplete inputs, missing phone/page slots, provider usage, token counts, measured costs, retained holds, and latency. It lists every mapped raw photo hash. The report keeps D267 at at most 1 percent wrong definite marks, zero wrong-as-right, and at most 5 percent unsure on clear photos. Missing or refused inputs cannot pass.
+`report.json` gives the item counts (photos, item labels, AI-marked, parent) and refused and incomplete inputs. Under `models`, it gives each model's definite-mark denominator, wrong definite marks, wrong-as-right count, clear unsure count and reasons, two-ways results, schema failures, provider usage, token counts, measured cost per page, retained holds, and p50 and p95 latency. `disagreements` lists every photo and item where the models differ, with the human truth. The command prints the same result as a side-by-side table. The report keeps D267 at at most 1 percent wrong definite marks, zero wrong-as-right, and at most 5 percent unsure on clear photos, for each model. Missing or refused inputs cannot pass.
 
 Proof classes remain separate: local estimate, local fake, physical input preparation, physical/provider results, and saved reader replay. Actual phone-photo and handwriting recognition remain unproven until the completed human photos arrive and root runs the approved evaluation. Provider privacy and family release remain outside this tool.
 
@@ -156,4 +166,4 @@ SCAN_MARKING_DATABASE=pd542_physical_review \
 node supabase/tests/scan_marking_physical_evaluation.cjs --bootstrap
 ```
 
-The implementation task did not run this SQL probe, a full suite, a build, Chromium, a PDF render, a browser, hosted queries, or paid inference.
+The two-model change did not run this SQL probe, Chromium, a PDF render, a browser, a credits read or paid inference. It proved the tool with fake HTTP and saved replay on the real kit.

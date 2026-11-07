@@ -194,28 +194,98 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
 }
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
 
-describe("first-book two-ways parent review", () => {
-  it("requires both methods to be checked without dispatching or scoring a read final answer", async () => {
-    const f = twoWaysFrame(), s = new Store(f);
-    const e = expectedItems(f)[0];
-    expect(e.method).toBe("parent");
-    expect(e.mastery).toEqual({ eligible: false, reason: "parent-checked" });
-    const o = readMarkingOutput(f, output(["66"]))[0];
-    expect(o).toMatchObject({ state: "parent-pending", method: "parent", result: null, regions: [] });
-    expect(observationProblem(o)).toBeNull();
-    expect(await run(s, f.photo, () => { throw Error("parent review must not dispatch"); })).toBe("finished");
-    const view = markingPageView(await s.effective(P, C));
-    expect(view.completion).toMatchObject({ status: "incomplete", finished: 0 });
-    expect(view.items[0].label).toBe("Please check both methods and the answer.");
-    expect(s.spend.size).toBe(0); expect(s.imageReads).toBe(0); expect(s.events).toHaveLength(0);
-  });
-  it.each(["right", "wrong", "blank"] as const)("a parent's explicit %s finishes one item without changing frozen mastery eligibility", result => {
+const GOOD_ONE = "27 + 30 = 57\n57 + 9 = 66", GOOD_TWO = "39 + 30 = 69\n69 - 3 = 66";
+const reading = (region: string, text: string | null, issue: string | null = null) => ({ item: "i1", region, text, state: text === "" ? "blank" : text === null ? "uncertain" : "written", issue });
+const twoWaysOutput = (one: string | null, two: string | null, answer: string | null, issue: string | null = null) => ({ readings: [reading("r1", one, one === null ? issue ?? "blurry" : null), reading("r1-2", two, two === null ? issue ?? "blurry" : null), reading("r1-3", answer, answer === null ? issue ?? "blurry" : null)] });
+const twoWaysMark = (f: MarkingFrame, o: Observation): EffectiveMark => ({ expected: expectedItems(f)[0], observation: o, originalEvent: null, eventId: null, at: "2026-11-07T12:00:00Z", model: null, prompt: null });
+
+describe("two-ways AI marking", () => {
+  it("routes a two-ways item through the AI path, with no parent method or parent state", () => {
     const f = twoWaysFrame(), e = expectedItems(f)[0];
-    const observation: Observation = { ...firstObservation(e, null), state: "parent-checked", method: "parent", result, actor: "parent", resultVersion: 2 };
-    const view = markingPageView([{ expected: e, observation, originalEvent: null, eventId: null, at: "2026-11-06T12:00:00Z", model: null, prompt: null }]);
-    expect(view.completion).toMatchObject({ status: "complete", finished: 1, total: 1 });
-    expect(markingEvent(e, observation)).toEqual({ publish: false, reason: "parent-checked" });
-    expect(f.questions[0].teaching!.eligibility).toMatchObject({ scorable: true, parentChecked: false, mastery: true });
+    expect(e.method).toBe("code");
+    expect(e).not.toHaveProperty("review");
+    expect(e.scoredRegions).toEqual(["method-1", "method-2", "answer"]);
+    expect(e.mastery).toEqual({ eligible: true, reason: null });
+    expect(firstObservation(e, f.photo)).toMatchObject({ state: "pending", method: "code", result: null });
+  });
+  it("asks the AI to read both methods and the answer, with no answer key in the request", () => {
+    const f = twoWaysFrame(), request = markingRequest(f, new Uint8Array([1]));
+    const part = request.content[0];
+    expect(part.type).toBe("text");
+    const items = JSON.parse((part as { text: string }).text).items;
+    expect(items.map((i: { region: string; kind: string }) => [i.region, i.kind])).toEqual([["r1", "method"], ["r1-2", "method"], ["r1-3", "number"]]);
+    expect(JSON.stringify(items)).not.toContain("66");
+    expect(request.system).toContain("method region");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
+  });
+  it.each([
+    ["both valid methods and the right answer", GOOD_ONE, GOOD_TWO, "66", "right", "Right"],
+    ["a wrong final answer", GOOD_ONE, GOOD_TWO, "56", "wrong", "Wrong"],
+    ["a method with a false step", "20 + 30 = 60\n60 + 16 = 66", GOOD_TWO, "66", "wrong", "Wrong"],
+    ["a method that stops at another number", "27 + 30 = 57", GOOD_TWO, "66", "wrong", "Wrong"],
+    ["only a number in a method", "66", GOOD_TWO, "66", "wrong", "Wrong"],
+    ["a missing first method", "", GOOD_TWO, "66", "wrong", "Wrong"],
+    ["a missing second method", GOOD_ONE, "", "66", "wrong", "Wrong"],
+    ["a missing answer", GOOD_ONE, GOOD_TWO, "", "wrong", "Wrong"],
+    ["the same method twice", GOOD_ONE, GOOD_ONE, "66", "wrong", "Wrong"],
+    ["a false method beside an unreadable answer", "20 + 30 = 60", GOOD_TWO, null, "wrong", "Wrong"],
+    ["nothing written", "", "", "", "blank", "Blank"],
+  ] as const)("marks %s", (_name, one, two, answer, result, label) => {
+    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(one, two, answer))[0];
+    expect(observationProblem(o)).toBeNull();
+    expect(o).toMatchObject({ state: "scored", method: "code", result, actor: "system" });
+    const view = markingPageView([twoWaysMark(f, o)]);
+    expect(view.items[0].label).toBe(label);
+    expect(view.completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(view.counts.parentChecks).toBe(0);
+  });
+  it.each([
+    ["a blurry method", null, GOOD_TWO, "66", "blurry", "The photo is blurry here."],
+    ["a cut-off second method", GOOD_ONE, null, "66", "cut-off", "Part of this answer is cut off."],
+    ["an unreadable answer", GOOD_ONE, GOOD_TWO, null, "unreadable", "We cannot read this answer."],
+    ["a method the AI cannot write out", null, GOOD_TWO, "66", "method-form", "We cannot check this method."],
+    ["a method in words", "I counted up in tens", GOOD_TWO, "66", undefined, "We cannot check this method."],
+    ["the same steps in another order", "27 + 39 = 66", "39 + 27 = 66", "66", undefined, "We cannot check this method."],
+    ["true steps that do not use the question", "60 + 6 = 66", GOOD_TWO, "66", undefined, "We cannot check this method."],
+    ["true steps that reach a question number but not the answer", "27 + 3 = 30\n30 + 9 = 39", GOOD_TWO, "66", undefined, "We cannot check this method."],
+  ] as const)("keeps %s unsure with a plain reason and no parent prompt", (_name, one, two, answer, issue, label) => {
+    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(one, two, answer, issue ?? null))[0];
+    expect(observationProblem(o)).toBeNull();
+    expect(o).toMatchObject({ state: "pending", method: "code", result: null });
+    const view = markingPageView([twoWaysMark(f, o)]);
+    expect(view.items[0].label).toBe(label);
+    expect(view.items[0].label).not.toMatch(/both methods/i);
+    expect(view.completion.status).toBe("incomplete");
+    expect(markingEvent(expectedItems(f)[0], o).publish).toBe(false);
+  });
+  it("gives an unread two-ways item a plain label, never a request to check it", () => {
+    const f = twoWaysFrame(), view = markingPageView([twoWaysMark(f, firstObservation(expectedItems(f)[0], f.photo))]);
+    expect(view.items[0].label).toBe("Not marked yet");
+    expect(view.items[0].state).toBe("pending");
+  });
+  it("shows the answer first in the reading the parent sees, within the limit", () => {
+    const f = twoWaysFrame(), long = `27 + 39 = 66\n${"1 + 1 = 2\n".repeat(17)}`.trim();
+    const o = readMarkingOutput(f, twoWaysOutput(long, GOOD_TWO, "66"))[0];
+    expect(o.readAnswerText!.startsWith("Answer: 66; Method 1: 27 + 39 = 66")).toBe(true);
+    expect(o.readAnswerText!.length).toBeLessThanOrEqual(200);
+  });
+  it("runs one paid reading, then publishes the right item as a marking event", async () => {
+    const f = twoWaysFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(twoWaysOutput(GOOD_ONE, GOOD_TWO, "66"), requests, 1000))).toBe("finished");
+    expect(requests).toHaveLength(1); expect(s.spend.size).toBe(1);
+    const marks = await s.effective(P, C);
+    expect(marks[0].observation).toMatchObject({ state: "scored", result: "right" });
+    expect(s.events).toHaveLength(1); expect(s.events[0]).toMatchObject({ source: "marking", result: "right" });
+    expect(markingPageView(marks).items[0]).toMatchObject({ label: "Right", canChange: true });
+  });
+  it("keeps the parent's correction of an AI mark", () => {
+    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(GOOD_ONE, GOOD_TWO, "66"))[0];
+    const changed: Observation = { ...o, state: "parent-checked", method: "parent", actor: "parent", result: "wrong", resultVersion: 3 };
+    expect(observationProblem(changed)).toBeNull();
+    const view = markingPageView([twoWaysMark(f, changed)]);
+    expect(view.items[0]).toMatchObject({ label: "Wrong", state: "parent-checked", canChange: true, actor: "parent" });
+    expect(view.completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(markingEvent(expectedItems(f)[0], changed)).toMatchObject({ publish: true, result: "wrong" });
   });
   it("crops both measured work areas and the answer, and refuses missing or duplicate method geometry", () => {
     const f = twoWaysFrame();
@@ -223,6 +293,8 @@ describe("first-book two-ways parent review", () => {
       regionId: "method-1", regionIds: ["method-1", "method-2", "answer"], box: { x: 10, y: 20, width: 290, height: 120 } }] });
     const q = f.questions[0]; q.regions![1].box = null;
     expect(cropPlan(f.questions).notSupported).toEqual([1]);
+    expect(expectedItems(f)[0].method).toBe("code");
+    expect(readMarkingOutput(f, twoWaysOutput(GOOD_ONE, GOOD_TWO, "66"))[0]).toMatchObject({ state: "pending", result: null });
     q.regions = twoWaysFrame().questions[0].regions;
     q.regions = [...q.regions!, structuredClone(q.regions![0])];
     expect(cropPlan(f.questions).notSupported).toEqual([1]);
@@ -471,7 +543,7 @@ describe("S4 whole-page readings", () => {
   });
   // These fixtures exercise the request and returned readings, not image recognition.
   it.each([
-    { evidence: "visible readable empty box", state: "blank", text: "", issue: null, result: "blank", reason: "Blank", rule: /entire answer box or choice area is plainly visible, readable and empty/ },
+    { evidence: "visible readable empty box", state: "blank", text: "", issue: null, result: "blank", reason: "Blank", rule: /entire answer box, method area or choice area is plainly visible, readable and empty/ },
     { evidence: "unreadable symbol", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /Not being able to read a symbol does not make an area blank/ },
     { evidence: "blurred marks", state: "uncertain", text: null, issue: "blurry", result: null, reason: "The photo is blurry here.", rule: /If blur could hide writing or marks, report uncertain with issue blurry/ },
     { evidence: "dark answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or covering prevents reading the evidence, report uncertain with issue unreadable/ },
@@ -497,7 +569,7 @@ describe("S4 whole-page readings", () => {
   });
   it.each([frame, tickFrame, circleFrame])("uses one versioned empty-area rule for number, tick and circle requests", makeFrame => {
     const request = markingRequest(makeFrame(), new Uint8Array([1, 2, 3]));
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v7");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
     expect(request.system).toMatch(/Blank requires positive visual evidence/);
     expect(request.system).toMatch(/Check for faint writing or marks before reporting blank with empty text/);
     expect(request.system).toMatch(/Never report blank for these conditions/);
