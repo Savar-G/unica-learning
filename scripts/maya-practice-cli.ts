@@ -40,8 +40,8 @@
 // .env.local. The exit code is 0 only when every planned run passed.
 //
 // Before a paid OpenRouter run, the credit check (src/lib/maya-practice/credits.ts) reads what is left on the account and
-// refuses the run when it is below the estimate plus the need of the runs in flight, or when it cannot be read. OpenRouter's
-// credits route needs a management key: OPENROUTER_MANAGEMENT_KEY or OPENROUTER_MANAGEMENT_KEY_FILE, else the same key.
+// refuses the run when it is below the estimate plus the need of the runs in flight, or when it cannot be read. It uses the
+// run's own key (an ordinary key reads the credits route).
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -177,19 +177,6 @@ function apiKey(root: string): string {
   return key;
 }
 
-/**
- * The key for OpenRouter's credits route, which needs a management key: OPENROUTER_MANAGEMENT_KEY, or
- * OPENROUTER_MANAGEMENT_KEY_FILE (a file that holds only the key), else the run's own key. Put in process.env so every saved
- * file and log line redacts it. Never printed.
- */
-function creditsKey(runKey: string): string {
-  let key = process.env.OPENROUTER_MANAGEMENT_KEY?.trim();
-  const file = process.env.OPENROUTER_MANAGEMENT_KEY_FILE;
-  if (!key && file) key = readFileSync(resolve(file), "utf8").trim();
-  if (!key) return runKey;
-  process.env.OPENROUTER_MANAGEMENT_KEY = key;
-  return key;
-}
 
 /**
  * The Claude API key for --anthropic: ANTHROPIC_API_KEY, else the macOS Keychain item anthropic-unica-tools. Put in
@@ -458,7 +445,7 @@ async function main() {
     } else {
       const key = apiKey(root);
       // Before any model call: a run the account cannot pay for ends in 402s and tells nothing about Maya (PR #698).
-      const credit = await checkCredits({ fetch: globalThis.fetch, key: creditsKey(key), ...need });
+      const credit = await checkCredits({ fetch: globalThis.fetch, key, ...need });
       if (!credit.ok) throw new Error(credit.message);
       console.log(`-- ${credit.message}`);
       client = (role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);

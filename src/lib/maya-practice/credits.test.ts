@@ -46,8 +46,11 @@ describe("the credit check before a paid run", () => {
     expect(r.message).toContain("could not be read");
   });
 
-  it("names the management key when the credits route refuses the key", async () => {
-    expect((await check(credits(15, 0, 403))).message).toContain("OPENROUTER_MANAGEMENT_KEY");
+  it("uses what is left, not the total: the first-ship run's start (total 15, used 9.55, need 12.74) is refused", async () => {
+    const r = await check(credits(15, 9.55), 12.48, 0.26);
+    expect(r.ok).toBe(false);
+    expect(r.remainingUsd).toBeCloseTo(5.45);
+    for (const amount of ["USD 12.48", "USD 0.26", "USD 5.45"]) expect(r.message).toContain(amount);
   });
 
   it("never prints the key", async () => {

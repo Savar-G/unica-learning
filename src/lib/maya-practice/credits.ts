@@ -1,10 +1,11 @@
-// The credit check before a paid OpenRouter practice run. The first-ship run (D-298, PR #698) started with too little
-// credit left for the run and the calls in flight: OpenRouter answered 402 part way, Maya fell back to code's lines, and
-// most of the 26 runs told nothing about her. This check runs before any model call and refuses such a run.
+// The credit check before a paid OpenRouter practice run. The first-ship run (D-298, PR #698) started with about USD 5.45
+// left (total_credits 15, total_usage 9.55) against a need of USD 12.74 (estimate 12.48 plus calls in flight): OpenRouter
+// answered 402 part way, Maya fell back to code's lines, and most of the 26 runs told nothing about her. This check runs
+// before any model call and refuses such a run.
 //
-// It reads OpenRouter's GET /api/v1/credits (total_credits minus total_usage is what is left). OpenRouter's docs say this
-// route needs a management key, so an ordinary inference key may be refused: a failed read refuses the run too, and the
-// message says what to set. It prints amounts and an HTTP status, never a key.
+// It reads OpenRouter's GET /api/v1/credits with the run's own key (verified 2026-11-07: an ordinary inference key gets
+// 200 with total_credits and total_usage). What is left is total_credits minus total_usage, never total_credits alone. A
+// failed read refuses the run too. It prints amounts and an HTTP status, never a key.
 import { MARGIN } from "./cost";
 
 export const CREDITS_URL = "https://openrouter.ai/api/v1/credits";
@@ -44,9 +45,6 @@ async function readRemaining(fetch: typeof globalThis.fetch, key: string): Promi
     res = await fetch(CREDITS_URL, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(TIME_LIMIT_MS) });
   } catch {
     return { why: "no answer from OpenRouter" };
-  }
-  if (res.status === 401 || res.status === 403) {
-    return { why: `OpenRouter answered ${res.status}: its credits route needs a management key, so set OPENROUTER_MANAGEMENT_KEY or OPENROUTER_MANAGEMENT_KEY_FILE` };
   }
   if (!res.ok) return { why: `OpenRouter answered ${res.status}` };
   let data: { data?: { total_credits?: unknown; total_usage?: unknown } };

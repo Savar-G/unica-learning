@@ -38,7 +38,7 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 
 **The key.** `OPENROUTER_API_KEY` in the environment, or `OPENROUTER_API_KEY_FILE` (a file that holds only the key), or `.env.local`. It is a Vercel Secret variable, so `vercel env pull` gives an empty value. Use the Unica OpenRouter key only. The exit code is 0 only when every planned run passed.
 
-**The credit check's key.** `OPENROUTER_MANAGEMENT_KEY` or `OPENROUTER_MANAGEMENT_KEY_FILE`, else the same key. OpenRouter's documentation says its credits route needs a management key, so with an ordinary key the check can refuse every paid run until one of these is set. See "Cost".
+**The credit check's key.** The run's own key: OpenRouter's credits route answers an ordinary key (checked 2026-11-07). What is left is `total_credits` minus `total_usage`. See "Cost".
 
 ## Compare two turn models
 
