@@ -37,6 +37,17 @@ describe("stored workbook comment corrections", () => {
     expect(page.content).toEqual(saved);
   });
 
+  it("rejects a scan address that is missing, wrong or split across lines", () => {
+    const draft=sample(), page=draft.pages.find(p=>p.content?.kind==="how-plan")!, template=workbookTemplate();
+    const firstLine={x:64,y:800,width:180,height:16,baseline:814};
+    const mark={sheet:0,name:"slot-scan-address",text:"unicalearning.com/account",visible:true,textPrinted:true,x:64,y:800,width:180,height:20,clientWidth:180,clientHeight:20,scrollWidth:180,scrollHeight:20,firstLine};
+    expect(template.fit!(page,new Map([[mark.name,mark]]),draft)).toEqual([]);
+    for(const value of [{...mark,height:40},{...mark,text:"unicalearning.com/acco"},{...mark,visible:false}]) {
+      expect(template.fit!(page,new Map([[mark.name,value]]),draft)).toContainEqual(expect.objectContaining({slot:"scan-address"}));
+    }
+    expect(template.fit!(page,new Map(),draft)).toContainEqual(expect.objectContaining({slot:"scan-address"}));
+  });
+
   it.each(["752 × 8 = 6016. Answer: [6016]","50 × 680 = 34 000. Answer: [34000]"])("prints one answer and no empty explanation for %s", line => {
     const book=sample(), page=book.pages.find(p=>p.content?.kind==="day")!;
     if(page.content?.kind!=="day")throw new Error("missing day");

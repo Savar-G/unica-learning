@@ -1,4 +1,5 @@
 import { questionWorkSpace } from "./workbook-work-space";
+import { workbookPageInstruction } from "@/lib/workbook-page-instructions";
 // The workbook templates (#310, spec #296): one layout for every page type of .design/workbooks/DESIGN.md (section
 // 7), with its tokens (section 1 to 4): the 8-page and 6-page days, Math in the world, the cover, How + Plan, the back
 // cover with its level map, Friday 5, Show what you know, the level test, parent-led U1 to U3 pages, the early-level
@@ -36,7 +37,9 @@ import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 
 /** Teaching data does not select a print layout or change a printed method. */
 function printedPage(page: DraftPage): DraftPage {
-  return { ...page, questions: page.questions.map(q => ({ ...q, package: printedWorkbookQuestion(q.package) })) };
+  const printed = { ...page, questions: page.questions.map(q => ({ ...q, package: printedWorkbookQuestion(q.package) })) };
+  const subtitle = workbookPageInstruction(printed);
+  return subtitle && printed.content?.kind === "day" ? { ...printed, content: { ...printed.content, subtitle } } : printed;
 }
 
 /**
@@ -454,8 +457,9 @@ const CSS = `
 .hp .plan-time{display:block;font-size:13px;line-height:18px;color:#44444C}
 .hp .dn{width:56px;text-align:right}
 .hp .how{margin-top:auto;border-top:1px solid #0C0C0E;padding-top:14px;display:flex;flex-direction:column;gap:12px}
-.hp .hw{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
-.hp .hw p{margin:8px 0 0;font-size:14px;overflow-wrap:anywhere}
+.hp .hw{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr);gap:16px}
+.hp .hw p{margin:8px 0 0;font-size:14px;overflow-wrap:normal}
+.hp .scan-address{display:inline-block;white-space:nowrap}
 .hp .chip{font-size:13px}
 /* back cover */
 .bk{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden}
@@ -1489,7 +1493,7 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
   ];
   return `<div class="pg mid">${scanMarks}<div class="hp" ${mark.slot("page")}><div class="top"><span>HOW IT WORKS · ${escape(c.child.toUpperCase())}'S PLAN</span><span>WORKBOOK ${c.workbook}</span></div>`
     + `<table><thead><tr><th style="width:96px">DAY</th><th>TOPIC</th><th style="width:96px">PAGES${times.size ? "<br>REQUIRED TIME" : ""}</th><th style="width:56px;text-align:right">DONE</th></tr></thead><tbody>${rows}</tbody></table>`
-    + `<div class="how"><span class="lab">How it works</span><div class="hw">${how.map((h, i) => `<div>${chipHtml(h.chip)}<p ${mark.slot(`how-${i}`)}>${escape(h.text)}</p></div>`).join("")}</div></div>`
+    + `<div class="how"><span class="lab">How it works</span><div class="hw">${how.map((h, i) => `<div>${chipHtml(h.chip)}<p ${mark.slot(`how-${i}`)}>${escape(h.text).replace("unicalearning.com/account", `<span class="scan-address" ${mark.slot("scan-address")}>unicalearning.com/account</span>`)}</p></div>`).join("")}</div></div>`
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
 
@@ -1599,6 +1603,8 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
   const instruction = measured.get("slot-subtitle");
   if (instructionProblem(c.subtitle) || !instruction?.visible || !instruction.textPrinted || instruction.scrollHeight > instruction.clientHeight + 1 || instruction.scrollWidth > instruction.clientWidth + 1)
     problems.push({ question: null, slot: "subtitle", reason: `${at}: the page instruction is missing or does not fit` });
+  if (c.level === 16 && c.consistentLayout && instruction?.text.trim() !== c.subtitle)
+    problems.push({ question: null, slot: "subtitle", reason: `${at}: the printed instruction does not match the page's answer and work regions` });
   if (c.level > 3 && c.grownUp) problems.push({ question: null, slot: "grown-up", reason: `${at}: grown-up text is only for Kindergarten` });
   if (c.page !== 1 && measured.has("slot-name-date")) problems.push({ question: null, slot: "name-date", reason: `${at}: name and date belong only on the first page` });
 
@@ -1663,7 +1669,12 @@ export function workbookTemplate(fonts?: TemplateFonts): WorkbookTemplate {
     // no clipped text.)
     fit: (page, measured) => {
       const printed = printedPage(page);
-      return [...fitProblems(printed, measured), ...layoutProblems(printed, measured, pagePlan(printed))];
+      const address = measured.get("slot-scan-address");
+      const addressProblem: FitProblem[] = printed.content?.kind === "how-plan" && (!address?.visible || !address.textPrinted
+        || address.text.trim() !== "unicalearning.com/account"
+        || address.firstLine && address.height > address.firstLine.height * 1.7)
+        ? [{ question: null, slot: "scan-address", reason: "the scan address must print in full on one line" }] : [];
+      return [...fitProblems(printed, measured), ...layoutProblems(printed, measured, pagePlan(printed)), ...addressProblem];
     },
     answerMin: ANSWER_MIN,
   };

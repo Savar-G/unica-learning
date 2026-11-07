@@ -1,3 +1,4 @@
+import { workbookPageInstruction } from "@/lib/workbook-page-instructions";
 import { mixedTemplateSign, stepTemplateOf } from "./workbook-step-items";
 import { checkQuestionPackage } from "./question-package";
 import { bcStepProgressions } from "./workbook-curriculum";
@@ -142,10 +143,12 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     }
     // A circled choice on a page whose instruction never says to circle fails (Savar, 2026-11-04).
     // (Every page type: src/lib/workbook-layout-check.ts.)
-    const circle = circleProblem(p.content?.kind === "day" ? p.content : null, p.questions);
+    const printedInstruction = p.content?.kind === "day"
+      ? { ...p.content, subtitle: workbookPageInstruction(p) ?? p.content.subtitle } : null;
+    const circle = circleProblem(printedInstruction, p.questions);
     if (circle) issues.push({ page: p.number, kind: "coverage", reason: circle });
     // No sentence of the page's instruction lines printed twice (Savar, 2026-11-04: U16 r16's New idea page).
-    const twice = p.content?.kind === "day" ? repeatedInstruction([p.content.subtitle, p.content.grownUp, ...p.content.blocks.map(b => b.note)]) : null;
+    const twice = printedInstruction ? repeatedInstruction([printedInstruction.subtitle, printedInstruction.grownUp, ...printedInstruction.blocks.map(b => b.note)]) : null;
     if (twice) issues.push({ page: p.number, kind: "coverage", reason: `the page prints "${twice}" twice` });
     // A minus between numbers prints as "−" (the U16 r14 review): a hyphen there fails.
     for (const q of p.questions) if (q.package && hyphenMinus(q.package.text)) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} prints a hyphen as a minus ("${q.package.text.slice(0, 40)}")` });

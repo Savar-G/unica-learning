@@ -4,22 +4,26 @@ HANDOFF_READY
 
 Computer: Savars-MacBook-Pro-5.local. Implementation model: Unify Codex gpt-6.1-sol, high effort.
 
-Base: 9df7af467f1d9bf11efbee22bc7156ecea9cb466.
+Base: 624134781db0c813879290612ea03fe353f3c70a. This branch includes the reviewed round6 print correction plus the new roadmap instruction correction.
 
-The customer authorized template corrections across all pages that use the same template. This is the explicit exception to the print freeze. No generator, curriculum, plan, question package or customer profile changes. No new model wording, paid call, customer run, email, family switch or print approval.
+The customer authorized corrections across matching templates, as an exception to the print freeze. This change re-renders stored questions. It makes no new AI text, question, answer, curriculum, plan or profile. No model call, customer generation, hosted write, email, family switch or print approval occurs.
 
-The template now shows a normal-case cover name and the first three distinct topics from the saved schedule. It retains mixed-case names and uses no inferred interests or new assessment claim. It explains the account and Scan pages route. Book one describes future correction practice. The printed Maya sentence is unchanged. The schedule table code and stored rows are unchanged.
+The cover uses normal display case and three topics from the saved schedule. The Scan column fits the complete account URL on one line. A measured guard rejects a missing, changed or split URL. First-book Fix it wording describes future correction practice. The printed Maya sentence and page2schedule stay unchanged.
 
-Work areas keep their measured regions and minimum white space but lose borders and padding. Numeric final review items use a full-width row with calculation space beside the question. Finished pages distribute remaining row space. Practice 2 pages without two-method tasks have wider row gaps. Two-method pages reserve at least 102 CSS pixels for each method and keep explicit section spacing. Reminder panels omit an empty explanation heading and omit a repeated numeric answer only when it equals the equation result.
+For consistent U16 pages, one shared pure module derives instructions from the actual answer regions and calculation-space policy. It distinguishes boxed, circled and ticked responses and names the exact questions requiring written work. Other levels retain their instruction wording. The template and book quality check use the same display projection. Strict checks reject a wrong displayed header or work-question list. Stored questions and content stay unchanged.
 
-Local proof uses the private, stored 84-page draft. It renders stored questions only. No planner, writer or model is called. The unchanged base template and candidate use the same Chromium engine and fonts. Both renders pass all template fit and layout checks. The candidate has 582 questions, with no unsupported marking region: 575 code paths and seven parent method-review paths. This is geometry and code-path proof, not recognition accuracy or family release proof.
+Work-area borders and padding are removed while measured regions and minimum writing space remain. Reminder panels omit an empty explanation heading and an identical repeated numeric answer. Different answer content stays. Two-method areas retain at least102CSSpx. A final numeric review task uses a compact full-width row with its calculation region beside it.
 
-Format counts: write-number 388; circle 86; show-work 60; spot-the-error 19; tick-and-number 16; two-ways seven; write-words six.
+The additional spacing trial failed checks. At the roadmap instruction, it is removed. Pages6,30and62 retain the exact previously passing row layout. The original page6spacing comment remains partial: earlier row spacing improved, but the remaining space before Spot the error is retained. It includes required calculation space and must not be described as resolved. Footer IDs remain unchanged. Changing their displayed case can preserve QR tokens, but changes image hashes and requires a new print contract and printed revision. That choice remains with Savar.
 
-Pixel comparison: 62 pages change and 22 do not. The page 2 schedule crop and its measured rows are equal. Every QR crop is equal. Stored questions, answers, page numbers and QR tokens remain unchanged. The private script checks the complete stored input after rendering.
+Current local print proof: full-round-8 renders all84stored pages with strict template and layout checks passing. It retains582questions. Actual geometry gives575code paths and7parent method-review paths with0unsupported. This is geometry and code-path proof, not handwriting recognition or family release proof. The independent Marking lane has not yet repeated this new contract.
 
-Private evidence directory: /Users/savargupta/unica-workbook-samples/customer-first-book-20261106/layout-correction. Base: full-before. Candidate: full-round-6. These contain the PDF, all 84 page images, measured geometry, result, marking coverage and comparison. The candidate also has before-after images for pages 1,2,6,7,8,9,10,21,22,25,37,41. Do not copy private data into Git or a PR.
+All84page images differ from R1 because the shared instructions change every day-page header, in addition to the cover and How it works corrections. All84QR crops are pixel-identical. The page2schedule crop and all10measured rows remain identical. Stored packages, answers, identities and teaching context stay unchanged.
 
-Review limits: No customer revision is saved. The old edit batch remains failed and all comments remain open. A local review candidate is not an applied comment. The existing finish RPC may require a separate supported template path before this can become a reviewed draft revision. The complete comment tool fix remains a following task.
+Formats: write-number388;circle86;show-work60;spot-the-error19;tick-and-number16;two-ways7;write-words6.
 
-Root retains independent Sol review, the full gate, source and visual review, publication, per-comment results and final PDF handoff. Print approval remains with Savar.
+Private evidence: /Users/savargupta/unica-workbook-samples/customer-first-book-20261106/layout-correction/full-round-8. It contains the PDF,84PNGs, measured geometry, render result, marking coverage, pixel comparison and source hashes. Before/after images cover1,2,6,7,8,9,10,21,22,25,30,37,41,62. Do not copy private customer data into Git or a PR.
+
+The earlier Sol review and full gate cover source23000521 only. They do not approve this new correction. Current focused non-Chromium tests:135passed. Fresh Sol review and the full gate remain open.
+
+The saved book remains R1. All14comments remain open. A local PDF is not a saved or applied comment result. The supported template revision-save path and complete comment routing remain separate work. Print approval stays with Savar.
