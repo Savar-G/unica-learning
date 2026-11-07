@@ -16,7 +16,7 @@ export function ScanMarkingResults({ result, showHeading = true, photo, parent, 
           <p><b>Question {item.number}</b>: {item.label}</p>
           {item.readAnswerText !== null && <p>We read: {item.readAnswerText === "" ? "Empty answer" : item.readAnswerText}</p>}
           <p className="small">{item.actor === "parent" ? "Parent" : "Automatic check"} · {item.at}</p>
-          {itemExplanation?.(item)}
+          {result.solutionsAvailable && itemExplanation?.(item)}
           {photo && item.canChange && <ScanMarkChange key={`${parent}:${photo}:${item.itemId}`} photo={photo} item={item} parent={parent} complete={result.completion.status === "complete"} />}
         </li>)}</ol>
       </>}

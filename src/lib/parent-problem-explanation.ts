@@ -7,7 +7,7 @@ import { workbookAnswerPages } from "@/lib/parent-workbook-answers";
 import { explanationOutput, type Explanation, type ExplanationResult } from "@/lib/parent-problem-explanation-contract";
 export { explanationOutput, type Explanation, type ExplanationResult } from "@/lib/parent-problem-explanation-contract";
 
-const plain = (v: unknown, max: number): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= max && !/[<>\u0000-\u0008\u000b\u000c\u000e-\u001f]|https?:|www\.|\]\(/i.test(v);
+const plain = (v: unknown, max: number): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= max && !/<\/?[a-z][^>]*>|[\u0000-\u0008\u000b\u000c\u000e-\u001f]|https?:|www\.|\]\(/i.test(v);
 
 export const EXPLANATION_VERSION = "parent-problem-v1";
 export const EXPLANATION_MODEL = "anthropic/claude-haiku-5.5";

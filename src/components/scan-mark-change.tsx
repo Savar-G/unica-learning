@@ -39,7 +39,7 @@ export function ScanMarkChange({ photo, item, parent, complete = false }: { phot
     finally { if (currentContext()) setSaving(false); }
   }
   return <div className="scan-mark-change">
-    {current.result === "wrong" && (current.state === "scored" || current.state === "parent-checked") && current.readAnswerText?.trim() && <ScanProblemExplanation
+    {complete && current.result === "wrong" && (current.state === "scored" || current.state === "parent-checked") && current.readAnswerText?.trim() && <ScanProblemExplanation
       key={`${parent}:${photo}:${current.itemId}:${current.version}:${current.readAnswerText}`} parent={parent} photo={photo} itemId={current.itemId} version={current.version} number={current.number} />}
     <button type="button" className="scan-link" aria-expanded={open} onClick={() => setOpen(!open)}>{item.result === null ? "Check this answer" : "Change this mark"}</button>
     {open && <div className="scan-mark-review" aria-label={`Review question ${item.number}`}>

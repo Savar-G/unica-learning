@@ -64,6 +64,7 @@ declare
   s public.scan_photos; m public.scan_marking_items; q public.workbook_questions;
   w public.workbooks; page public.workbook_pages; cached public.parent_explanations; price public.parent_explanation_prices;
   ctx text; payload jsonb; budget_period date; held bigint; dispatch uuid; cost bigint; at_time timestamptz;
+  checked_item record; terminal boolean; expected_regions jsonb; observed_regions jsonb; page_items int:=0;
 begin
   -- Reconciliation never needs private ownership and remains possible after cascade deletion.
   if p_action='settle' then
@@ -104,6 +105,44 @@ begin
     or q.package->'ref'->>'workbookId' is distinct from m.workbook_id::text
     or q.package->'ref'->>'page' is distinct from page.page_number::text
     or q.package->'ref'->>'question' is distinct from q.question_number::text then return 'null'; end if;
+  -- Match pageCompletion: no solution while a printed item is missing, pending or awaiting its parent check.
+  -- The scan-family lock serializes this gate with corrections and marking application. Run it for every action,
+  -- including admission, final publication and cached reads, rather than trusting an earlier browser snapshot.
+  for checked_item in
+    select pq.question_number,pm.id,pm.item_id,pm.expected,pm.observation,pm.result_version
+    from public.workbook_questions pq left join public.scan_marking_items pm
+      on pm.parent_id=p_parent and pm.child_id=s.child_id and pm.workbook_id=m.workbook_id
+      and pm.page_id=m.page_id and pm.printed_revision=m.printed_revision
+      and pm.item_id=coalesce(pq.package->>'id','question-'||pq.question_number::text)
+    where pq.parent_id=p_parent and pq.workbook_id=m.workbook_id and pq.page_id=m.page_id
+  loop
+    page_items:=page_items+1;
+    if checked_item.id is null
+      or checked_item.expected->>'number' is distinct from checked_item.question_number::text
+      or checked_item.expected->'identity' is distinct from jsonb_build_object('workbookId',m.workbook_id,'printedRevision',m.printed_revision,'pageId',m.page_id,'itemId',checked_item.item_id)
+      or checked_item.observation->'identity' is distinct from checked_item.expected->'identity'
+      or checked_item.observation->>'resultVersion' is distinct from checked_item.result_version::text then return 'null'; end if;
+    terminal:=false;
+    if checked_item.expected->>'method'='code' then
+      if checked_item.observation->>'state'='parent-checked' then
+        terminal:=checked_item.observation->>'actor'='parent' and checked_item.observation->>'result' in ('right','wrong','blank');
+      elsif checked_item.observation->>'state'='scored'
+        and checked_item.observation->>'result' in ('right','wrong','blank')
+        and jsonb_typeof(checked_item.expected->'scoredRegions')='array'
+        and jsonb_typeof(checked_item.observation->'regions')='array' then
+        select coalesce(jsonb_agg(region order by region),'[]') into expected_regions from jsonb_array_elements(checked_item.expected->'scoredRegions') region;
+        select coalesce(jsonb_agg(region->'regionId' order by region->'regionId'),'[]') into observed_regions from jsonb_array_elements(checked_item.observation->'regions') region;
+        terminal:=expected_regions=observed_regions;
+      end if;
+    elsif checked_item.expected->>'method'='parent' then
+      terminal:=checked_item.observation->>'state'='parent-checked' and checked_item.observation->>'result' in ('right','wrong','blank');
+    elsif checked_item.expected->>'method'='unscored' then
+      terminal:=checked_item.observation->>'state'='unscored' and checked_item.observation->'result'='null'::jsonb;
+    end if;
+    if not coalesce(terminal,false) then return 'null'; end if;
+  end loop;
+  if page_items<>(select count(*) from public.scan_marking_items pm where pm.parent_id=p_parent and pm.child_id=s.child_id
+    and pm.workbook_id=m.workbook_id and pm.page_id=m.page_id and pm.printed_revision=m.printed_revision) then return 'null'; end if;
   payload:=jsonb_build_object('protocol','parent-problem-v1','mark',jsonb_build_array(m.id,m.expected,m.observation,m.result_version),
     'question',jsonb_build_array(q.id,q.schema_version,q.package,q.teaching,q.regions),'print',jsonb_build_array(w.printed_revision,page.print_contract));
   ctx:=encode(sha256(convert_to(payload::text,'UTF8')),'hex');
@@ -133,7 +172,7 @@ begin
       or jsonb_typeof(payload->'steps') is distinct from 'array' or jsonb_typeof(payload->'say') is distinct from 'string'
       or length(btrim(payload->>'say')) not between 1 and 300 or jsonb_array_length(payload->'steps') not between 1 and 4 then return 'false'; end if;
     if exists(select 1 from jsonb_array_elements(payload->'steps') step where jsonb_typeof(step)<>'string' or length(btrim(step#>>'{}')) not between 1 and 240)
-      or payload::text ~* '<|>|https?:|www\.|\]\(' then return 'false'; end if;
+      or payload::text ~* '</?[a-z][^>]*>|https?:|www\.|\]\(' then return 'false'; end if;
     update public.parent_explanations set explanation=payload where item_id=m.id and context=ctx;
     return 'true';
   end if;

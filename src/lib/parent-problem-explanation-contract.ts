@@ -4,7 +4,7 @@ export type ExplanationResult = { status: "ready"; explanation: Explanation; cor
 
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 const plain = (v: unknown, max: number): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= max
-  && !/[<>\u0000-\u0008\u000b\u000c\u000e-\u001f]|https?:|www\.|\]\(/i.test(v);
+  && !/<\/?[a-z][^>]*>|[\u0000-\u0008\u000b\u000c\u000e-\u001f]|https?:|www\.|\]\(/i.test(v);
 /** No output HTML or links. Model text can never replace the separate code-owned stored answer. */
 export function explanationOutput(value: unknown): Explanation | null {
   if (!object(value) || Object.keys(value).sort().join() !== "say,steps" || !Array.isArray(value.steps)

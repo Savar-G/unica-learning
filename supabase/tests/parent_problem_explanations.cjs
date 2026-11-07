@@ -30,7 +30,8 @@ async function fixture(options = {}) {
  const pkg = { ...production.sampleWorkbook({parentId:p,childId:c,workbookId:w,qrTokens:['sample-token-00000001','sample-token-00000002','sample-token-00000003']}).pages[1].questions[0].package, id:item };
  await db.query('insert into workbook_questions(parent_id,workbook_id,page_id,question_number,package,schema_version) values($1,$2,$3,1,$4,2)', [p, w, page, pkg]);
  await db.query("insert into scan_photos(id,parent_id,child_id,page_id,workbook_id,printed_revision,state,reserved_bytes,width,height,sent_at) values($1,$2,$3,$4,$5,'immutable','saved',0,1000,1400,now())", [photo, p, c, page, w]);
- const expected = { identity, number: 1, method: 'code' }, observation = { identity, certainty: 'certain', state: 'scored', result: 'wrong', resultVersion: 2, readAnswerText: '41' };
+ const expected = production.expectedItems({workbookId:w,printedRevision:'immutable',pageId:page,questions:[{number:1,package:pkg,teaching:null} ]})[0];
+ const observation = { ...production.firstObservation(expected, photo), certainty: 'certain', state: 'scored', result: 'wrong', resultVersion: 2, readAnswerText: '41', regions: expected.scoredRegions.map(regionId => ({regionId,text:'41',certainty:'certain',result:'wrong'})) };
  const m = (await db.query("insert into scan_marking_items(parent_id,child_id,workbook_id,printed_revision,page_id,item_id,expected,observation,result_version) values($1,$2,$3,'immutable',$4,$5,$6,$7,2) returning id", [p, c, w, page, item, expected, observation])).rows[0].id;
  const f = { p, c, w, page, photo, item, token, version: 2, m, pkg };
  f.context = (await call('context', f)).context; return f;
@@ -42,7 +43,7 @@ async function waiting(c) { for (let n = 0; n < 1000; n++) { const r = await db.
 (async () => {
  execFileSync(path.join(bin, 'initdb'), ['-D', data, '-A', 'trust', '--no-locale', '-E', 'UTF8'], { stdio: 'ignore' });
  execFileSync(path.join(bin, 'pg_ctl'), ['-D', data, '-l', path.join(temp, 'postgres.log'), '-o', `-h '' -k ${socket} -p 51475 -c shared_buffers=16MB -c max_connections=12`, '-w', 'start'], { stdio: 'ignore' }); started = true;
- const built = await build({stdin:{contents:`export {explainParentProblem} from './src/lib/parent-problem-explanation'; export {parentExplanationStore} from './src/lib/parent-problem-explanation-store'; export {fakeAiClient} from './src/lib/ai-client-fake'; export {sampleWorkbook} from './src/lib/workbook-sample';`,resolveDir:root,sourcefile:'pd675-harness.ts',loader:'ts'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',plugins:[{name:'no-server-only',setup(b){b.onResolve({filter:/^server-only$/},()=>({path:'empty',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'',loader:'js'}));}}]});
+ const built = await build({stdin:{contents:`export {explainParentProblem} from './src/lib/parent-problem-explanation'; export {parentExplanationStore} from './src/lib/parent-problem-explanation-store'; export {fakeAiClient} from './src/lib/ai-client-fake'; export {sampleWorkbook} from './src/lib/workbook-sample'; export {expectedItems,firstObservation,pageCompletion} from './src/lib/scan-observation';`,resolveDir:root,sourcefile:'pd675-harness.ts',loader:'ts'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',plugins:[{name:'no-server-only',setup(b){b.onResolve({filter:/^server-only$/},()=>({path:'empty',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'',loader:'js'}));}}]});
  const compiled = new Module(path.join(root,'supabase/tests/.pd675-bundle.cjs'),module); compiled.filename=path.join(root,'supabase/tests/.pd675-bundle.cjs');compiled.paths=module.paths;compiled._compile(built.outputFiles[0].text,compiled.filename);production=compiled.exports;
  db = await open();
  for (const role of ['anon', 'authenticated', 'service_role']) await db.query(`create role ${role}${role === 'service_role' ? ' bypassrls' : ''}`);
@@ -73,6 +74,56 @@ async function waiting(c) { for (let n = 0; n < 1000; n++) { const r = await db.
   }
  });
  await price();
+ await test('comparison prose with literal symbols can be saved and read without admitting HTML', async () => {
+  for (const symbol of ['<','>','=']) {
+   const f=await fixture(); await claim(f);
+   const words={steps:[`Use ${symbol} to compare the numbers.`],say:`Write the ${symbol} sign.`};
+   assert.equal(await call('finish',f,f.token,{explanation:words}),true);
+   assert.deepEqual(await call('read',f),words);
+  }
+ });
+ await test('a newly pending sibling blocks admission, save and cached reads at every phase', async () => {
+  for (const phase of ['before','after','cache']) {
+   const f=await fixture(); await claim(f);
+   if(phase!=='before') assert((await admit(f)).dispatch);
+   if(phase==='cache') assert.equal(await call('finish',f,f.token,{explanation}),true);
+   const pkg={...f.pkg,id:'sibling',ref:{...f.pkg.ref,question:2}};
+   await db.query('insert into workbook_questions(parent_id,workbook_id,page_id,question_number,package,schema_version) values($1,$2,$3,2,$4,2)',[f.p,f.w,f.page,pkg]);
+   const expected=production.expectedItems({workbookId:f.w,printedRevision:'immutable',pageId:f.page,questions:[{number:2,package:pkg,teaching:null}]})[0];
+   const observation=production.firstObservation(expected,f.photo);
+   const sibling=(await db.query("insert into scan_marking_items(parent_id,child_id,workbook_id,printed_revision,page_id,item_id,expected,observation,result_version) values($1,$2,$3,'immutable',$4,'sibling',$5,$6,1) returning id",[f.p,f.c,f.w,f.page,expected,observation])).rows[0].id;
+   assert.equal(await call('context',f),null,phase+' context');
+   assert.equal(await claim(f),null,phase+' claim');
+   assert.equal(await admit(f),null,phase+' admission');
+   assert.equal(await call('finish',f,f.token,{explanation}),null,phase+' save');
+   assert.equal(await call('read',f),null,phase+' cached read');
+   // The supported parent correction completes the sibling and permits the existing key again.
+   const changed=(await db.query("select scan_marking_command('change',$1,$2,null,$3) v",[f.p,f.photo,{itemId:'sibling',version:1,result:'right'}])).rows[0].v;
+   assert.equal(changed.status,'saved');
+   assert.equal((await call('context',f)).context,f.context);
+   if(phase==='cache') assert.deepEqual(await call('read',f),explanation);
+   assert.equal((await db.query('select id from scan_marking_items where id=$1',[sibling])).rowCount,1);
+  }
+ });
+ await test('SQL page completion agrees with the public rule for pending, parent, unscored and whole-region cases', async () => {
+  for(const kind of ['pending','parent-pending','parent-checked','unscored','unavailable','scored','partial-regions','missing']) {
+   const f=await fixture(), pkg={...f.pkg,id:'sibling',ref:{...f.pkg.ref,question:2}};
+   await db.query('insert into workbook_questions(parent_id,workbook_id,page_id,question_number,package,schema_version) values($1,$2,$3,2,$4,2)',[f.p,f.w,f.page,pkg]);
+   const expected=production.expectedItems({workbookId:f.w,printedRevision:'immutable',pageId:f.page,questions:[{number:2,package:pkg,teaching:null}]})[0];
+   if(kind.startsWith('parent')) expected.method='parent';
+   if(kind==='unscored'||kind==='unavailable') { expected.method=kind; expected.mastery={...expected.mastery,eligible:false}; }
+   let observation=production.firstObservation(expected,f.photo);
+   if(kind==='parent-checked') observation={...observation,state:'parent-checked',method:'parent',actor:'parent',result:'right',certainty:'certain',readAnswerText:'425'};
+   if(kind==='scored'||kind==='partial-regions') observation={...observation,state:'scored',result:'right',certainty:'certain',readAnswerText:'425',regions:expected.scoredRegions.map(regionId=>({regionId,text:'425',certainty:'certain',result:'right'}))};
+   // An incomplete region set is not terminal even when its state says scored.
+   if(kind==='partial-regions') expected.scoredRegions.push('missing-region');
+   if(kind!=='missing') await db.query("insert into scan_marking_items(parent_id,child_id,workbook_id,printed_revision,page_id,item_id,expected,observation,result_version) values($1,$2,$3,'immutable',$4,'sibling',$5,$6,1)",[f.p,f.c,f.w,f.page,expected,observation]);
+   const complete=production.pageCompletion([expected],kind==='missing'?[]:[observation]).status==='complete';
+   const context=await call('context',f);
+   assert.equal(context!==null,complete,kind);
+   if(complete) { f.context=context.context; assert.equal(await claim(f),'claimed',kind); assert.equal(await call('finish',f,f.token,{explanation}),true,kind); }
+  }
+ });
  await test('simultaneous claim, durable success and current-context cached read', async () => {
   const f = await fixture(), a = await open(), b = await open();
   try { await a.query('begin'); assert.equal(await call('claim', f, f.token, {}, a), 'claimed'); const pending = call('claim', f, randomUUID(), {}, b); await waiting(b); await a.query('commit'); assert.equal(await pending, 'busy'); }

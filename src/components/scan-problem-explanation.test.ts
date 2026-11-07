@@ -30,6 +30,14 @@ it.each(["right", "blank", null] as const)("%s has no explanation control or req
   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch); await render({ ...base, items: [{ ...item, result }] });
   expect(host.textContent).not.toContain("Explain this problem"); expect(fetch).not.toHaveBeenCalled();
 });
+it.each(["pending", "parent-pending"] as const)("a %s sibling withholds all explanations until the whole page is complete", async state => {
+  const fetch = vi.fn(async () => Response.json(ready)); vi.stubGlobal("fetch", fetch);
+  const sibling = { ...item, itemId: "sibling", number: 2, state, result: null, label: "Please check this answer" };
+  await render({ ...base, completion: { ...base.completion, total: 2, finished: 1, status: "incomplete" }, solutionsAvailable: false, items: [item, sibling] });
+  expect(host.textContent).not.toContain("Explain this problem"); expect(fetch).not.toHaveBeenCalled();
+  await render({ ...base, completion: { ...base.completion, total: 2, finished: 2 }, items: [item, { ...sibling, state: "parent-checked", result: "right" }] });
+  await press(); expect(fetch).toHaveBeenCalledTimes(1); expect(host.textContent).toContain("Stored correct answer: 42");
+});
 it("the control hides as soon as a parent changes the wrong mark to right", async () => {
   vi.stubGlobal("fetch", async () => Response.json({ status: "saved", result: { ...base, items: [{ ...item, version: 3, result: "right", label: "Right" }] } }));
   await render(); await press("Change this mark"); await press("Right"); expect(host.textContent).not.toContain("Explain this problem");

@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { packageItem } from "@/lib/question-package";
 import { sampleWorkbook } from "@/lib/workbook-sample";
+import { buildQuestion } from "@/lib/workbook-generator-items";
 import { explainParentProblem, explanationInput, EXPLANATION_MODEL, type ExplanationClientFactory, type ExplanationContext } from "@/lib/parent-problem-explanation";
 import { explanationMemory } from "@/lib/parent-problem-explanation-memory";
 const parent = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-4222-8222-222222222222", workbook = "33333333-3333-4333-8333-333333333333";
@@ -100,6 +101,22 @@ it("an expired claim can recover while a late worker cannot save or release its 
 });
 it("input construction refuses missing identity and never reads family metadata", () => {
   expect(explanationInput({ ...value, context: "x", itemId: "sibling" })).toBeNull();
+});
+
+it.each([[8, 3, ">"], [3, 8, "<"], [3, 3, "="]] as const)("explains a valid comparison %s and %s using the unchanged key %s", async (a, b, symbol) => {
+  const f = setup();
+  const number = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
+  const built = buildQuestion({ slot: "1.1", skill: "2.7-greater-less-symbols", text: `Compare ${a} and ${b}.`, format: "compare", numbers: [number(a), number(b)], difficulty: 1,
+    operation: null, wrongAnswers: [], easier: null, shownWrong: null, figure: null, places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null },
+  { id: pkg.id, workbookId: workbook, page: 2, question: 1, level: 10, skills: ["2.7-greater-less-symbols"] });
+  expect(built.check.status).toBe("checked");
+  f.memory.put(ref, { ...value, package: built.package, readAnswer: symbol === "=" ? ">" : "=" });
+  const words = { steps: [`${a} ${symbol} ${b}.`], say: `Use the ${symbol} sign.` };
+  const fake = fakeAiClient({ model: EXPLANATION_MODEL, answer: () => words });
+  const result = await f.run(before => ({ client: { model: fake.model, async json(r, s) { await before(); return fake.json(r, s); } }, costMicros: () => 20_000 }));
+  expect(result).toMatchObject({ status: "ready", correctAnswer: symbol, explanation: words });
+  expect(JSON.parse((fake.requests[0].content[0] as { text: string }).text).correctAnswer).toBe(symbol);
+  expect(fake.requests).toHaveLength(1);
 });
 
 it("not-checked formats and too-long trusted wording cannot dispatch", async () => {
