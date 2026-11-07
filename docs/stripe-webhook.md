@@ -63,7 +63,7 @@ On `customer.subscription.created` and `customer.subscription.updated`, for a cu
 
 ## The daily re-read
 
-A lost event must not leave a stopped plan open, and must not lock out a parent who paid. So the sweep in the `/api/reminders` run reads each row of kind `free_month`, `paying`, `ending`, `payment_failed` or `paused` again when it has not been read for 24 hours (`sweepPlanReads`, `src/lib/card-reconcile.ts`; `rereadPlan`, `src/lib/plan-state.ts`; migrations `plan_state_reread` and `plan_state_reread_closed`). Rows of kind `ended` and `not_started` are not read: a start or a restart writes those rows.
+A lost event must not leave a stopped plan open, and must not lock out a parent who paid. So the sweep in the `/api/reminders` run reads each row of kind `free_month`, `paying`, `ending`, `payment_failed` or `paused` again when it has not been read for 24 hours (`sweepPlanReads`, `src/lib/card-reconcile.ts`; `rereadPlan`, `src/lib/plan-state.ts`; migrations `plan_state_reread` and `plan_state_reread_closed`). Rows of kind `ended` and `not_started` are not read: a start or a restart writes those rows. The case where a read would help is below.
 
 - Each read takes its value from `take_plan_read_order`, reads Stripe through `customerPlan`, and saves through `save_child_plan_state`. So the order rule above holds: an event that took later wins, whichever save lands first.
 - `read_at` is the last read, from the database's clock. Every save writes it, and `due_plan_reads` compares it with the same clock. A row read by a webhook or a start is not due.
@@ -72,18 +72,18 @@ A lost event must not leave a stopped plan open, and must not lock out a parent 
 - A failed read changes nothing, and the row stays due. Stripe being down closes no family and opens no family.
 - What a read may store on a closed row (`payment_failed`, `paused`) is one rule, `planReadMayStore`:
   - `paying`: yes, the row reopens. Stripe `active` is the paid state: `past_due` goes to `active` on payment, and a pause resumes with `resume_on_payment_success`.
-  - `ending` with `free: false`: yes (Stripe `active`, cancelling at the period's end, paid).
+  - `ending` with `free: false`: yes, the row reopens until the end date (Stripe `active`, cancelling at the period's end, paid).
   - `payment_failed`, `paused`, `ended`: yes. The row stays closed.
   - `free_month`, `ending` with `free: true`, `not_started`: no. The row stays exactly as it is, and the read counts as `unclear`. A trial is not paid, and an empty list on a row that had a plan is not a clear answer. `not_started` would also take the family out of `familyHasPlanHistory`, and so away from its card and its plan's controls.
 - An `unclear` row stays due and goes behind the others, so it is read about once in each run while nothing changes, and cannot hold up other rows. The log holds counts only. The take goes unused, and a gap changes nothing.
 - A row of an open kind stores what Stripe says, as before.
 - It runs beside the card rows, under the same times and the one signal: no new row after 25 seconds and no work after 45. One read has Stripe's limit of about 9 seconds. Each run lists at most 200 rows.
-- It writes the plan state and nothing else: no Stripe write and no email code. **That write can still make a scan reminder due through the database, as the lost webhook's own write would have.** `_workbook_scan_reminder_program` reads the row when a reminder comes due. A `free_month` row with a passed `next_charge_at` makes the program false, and the re-read's `paying` makes it true. The reopen of a `payment_failed` row does the same, and so does a `paused` row once no applied pause is left to retire. The send stays behind `WORKBOOK_SCAN_TEST_PARENT_IDS` and `WORKBOOK_SCAN_REMINDERS_ENABLED`. `src/lib/plan-access-emails.test.ts` follows TypeScript imports only, so it cannot see this database path. `supabase/tests/child_plan_states.sql` checks it.
+- It writes the plan state and nothing else: no Stripe write and no email code. **That write can still make a scan reminder due through the database, as the lost webhook's own write would have.** `_workbook_scan_reminder_program` reads the row when a reminder comes due. A `free_month` row with a passed `next_charge_at` makes the program false, and the re-read's `paying` makes it true. The reopen of a `payment_failed` row does the same, to `paying` or to a paid `ending`, and so does a `paused` row once no applied pause is left to retire. The send stays behind `WORKBOOK_SCAN_TEST_PARENT_IDS` and `WORKBOOK_SCAN_REMINDERS_ENABLED`. `src/lib/plan-access-emails.test.ts` follows TypeScript imports only, so it cannot see this database path. `supabase/tests/child_plan_states.sql` checks it.
 - `?dry=1` counts due rows as `planReads`. The run's answer holds `cards.planReads`: `due`, `read`, `changed`, `unclear`, `failed`, `outOfTime`. `changed` above 0 means that a row's kind moved with no event yet, so look for a lost webhook. `unclear` above 0 means that a closed row's plan looks like a trial or has no subscriptions, so a person should look at that customer in Stripe.
 
 ### What the re-read does not cover
 
-A start or a restart with a failed plan state write and a lost webhook stays closed on a running plan. The re-read does not take `not_started` or `ended` rows, and the card sweep writes plan state only when it closes an open start itself, so the webhook is the only fallback. Tracked in #713.
+A start or a restart with a failed plan state write and a lost webhook stays closed on a running plan when the family has a `not_started` or `ended` row. The re-read does not take those rows, and the card sweep writes plan state only when it closes an open start itself, so the webhook is the only fallback. A read would find the running plan, but none is made. Tracked in #713. A family with no row at all is filled on its next Account tab load (`fillChildPlan`), and the gate then opens.
 
 ### The longest time a row can be wrong
 

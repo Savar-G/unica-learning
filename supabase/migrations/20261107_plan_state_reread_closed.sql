@@ -1,6 +1,7 @@
 -- The daily re-read also takes rows of kind payment_failed and paused. A parent who paid and stays locked out after a lost invoice.paid
--- or a lost resume is the worse failure. ended and not_started stay out: nothing a read could find would change them, as a restart or a
--- start writes its own row. What a read may store on these rows is the site's rule (planReadMayStore, src/lib/plan-state.ts).
+-- or a lost resume is the worse failure. ended and not_started stay out: a restart or a start writes its own row. If that write fails
+-- and its webhook is lost, a read would find the running plan, but none is made (#713). What a read may store on the closed rows is the
+-- site's rule (planReadMayStore, src/lib/plan-state.ts).
 --
 -- Same signature, return type and grants as migration plan_state_reread, so the live code keeps working. These rows are few, so there is
 -- no new index. The partial index child_plan_states_due_read_idx lists only the three open kinds, so it no longer serves this query. It

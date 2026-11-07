@@ -121,8 +121,9 @@ export function applyPlanStart(start: { customer: string; cardSetup: string; gen
 
 /**
  * The kinds the daily re-read looks at: free_month, paying and ending hold the plan gate open, so a lost event must not leave them open;
- * payment_failed and paused hold it closed, so a lost event must not lock out a parent who paid. A row of kind ended or not_started has
- * nothing that a read could find: a restart or a start writes its row.
+ * payment_failed and paused hold it closed, so a lost event must not lock out a parent who paid. The re-read does not take a row of kind
+ * ended or not_started: a restart or a start writes its row. If that write fails and its webhook is lost, a read would find the running
+ * plan, but none is made (#713).
  */
 export const PLAN_READ_KINDS = ["free_month", "paying", "ending", "payment_failed", "paused"] as const;
 
