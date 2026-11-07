@@ -88,6 +88,15 @@ function Tile({ tile, thumb, onOpen }: { tile: StackTile; thumb?: string; onOpen
   </li>;
 }
 
+/** The Send result. `started`: how many sent pages the server started to mark now; the cron marks the others later. */
+function sentWords(sent: number, started: number) {
+  const pages = (n: number) => (n === 1 ? "1 page" : `${n} pages`);
+  if (sent === 0) return "0 pages sent for marking.";
+  if (started <= 0) return `${pages(sent)} sent for marking. Marking is not ready yet. The pages wait here.`;
+  if (started >= sent) return `${pages(sent)} sent. We started to mark ${sent === 1 ? "it" : "them"}.`;
+  return `${pages(sent)} sent. We started to mark ${started} of them. We will mark the other ${pages(sent - started)} later.`;
+}
+
 export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "phone", focus = null, initial }: {
   childrenList: { id: string; first_name: string }[];
   /** Optional server presentation state; the controller still reloads the signed-in family on mount. */
@@ -392,7 +401,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       const data = await api("/api/account/scans/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ child, ids }) });
       if (version !== epoch.current) return;
       const n = (data.sent as string[]).filter((id) => ids.includes(id)).length;
-      setMessage({ text: n === 1 ? "1 page sent for marking." : `${n} pages sent for marking.`, failed: false });
+      setMessage({ text: sentWords(n, typeof data.marking === "number" ? data.marking : 0), failed: false });
       await load().catch(() => {});
     } catch { if (version === epoch.current) setMessage({ text: "We could not send the pages. Try again.", failed: true }); }
     finally { if (version === epoch.current) setSending(false); }
