@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { workbookAnswersPath } from "@/lib/parent-workbook-answers";
 import type { WorkbooksView, CurrentWorkbookView } from "@/lib/parent-view";
 import { SupportPage } from "@/components/support-page";
@@ -8,7 +9,7 @@ import "./parent-workbooks.css";
 /** "November 16": a calendar day in family time, which the view already holds. */
 const date = (day: string) => formatCalendarDate(day, { month: "long", day: "numeric" });
 
-export function ParentWorkbooks({ child, current, next, books }: WorkbooksView) {
+export function ParentWorkbooks({ child, current, next, books, history }: WorkbooksView & { history?: ReactNode }) {
   const name = child.firstName;
   return (
     <SupportPage label="Workbooks" title={`${name}'s workbooks`}>
@@ -45,6 +46,7 @@ export function ParentWorkbooks({ child, current, next, books }: WorkbooksView) 
           {current.delivery.trackingUrl && <a className="btn ghost" href={current.delivery.trackingUrl} target="_blank" rel="noopener noreferrer">Track the package <span aria-hidden="true">↗</span></a>}
         </section>
       )}
+      {history && <div className="pw-card pw-section pw-history">{history}</div>}
       {books.length > 0 && (
         <section className="pw-card pw-section" aria-labelledby="pw-books">
           <h2 id="pw-books">Answer keys</h2>
