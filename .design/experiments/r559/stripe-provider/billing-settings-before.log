@@ -1,0 +1,66 @@
+
+ RUN  v4.1.11 /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/site-pd-plan-controls
+
+ ❯ src/lib/plan-pause-stripe.test.ts (20 tests | 7 failed) 28ms
+   × keeps the hold when returned pause billing settings differ: {"type":"other","invoicing_behavior":"pending_invoice_item","bill_for":{"outstanding_usage_through":{"type":"none"},"unused_time_from":{"type":"none"}}} 3ms
+   × keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"invoice","bill_for":{"outstanding_usage_through":{"type":"none"},"unused_time_from":{"type":"none"}}} 1ms
+   × keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"pending_invoice_item","bill_for":{"outstanding_usage_through":{"type":"pause_at"},"unused_time_from":{"type":"none"}}} 1ms
+   × keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"pending_invoice_item","bill_for":{"outstanding_usage_through":{"type":"none"},"unused_time_from":{"type":"item_current_period_start"}}} 1ms
+   × keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"pending_invoice_item"} 1ms
+   × keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"pending_invoice_item","bill_for":{"outstanding_usage_through":{"type":"none"}}} 1ms
+   × keeps the hold when returned pause billing settings differ: null 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/plan-pause-stripe.test.ts > keeps the hold when returned pause billing settings differ: {"type":"other","invoicing_behavior":"pending_invoice_item","bill_for":{"outstanding_usage_through":{"type":"none"},"unused_time_from":{"type":"none"}}}
+ FAIL  src/lib/plan-pause-stripe.test.ts > keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"invoice","bill_for":{"outstanding_usage_through":{"type":"none"},"unused_time_from":{"type":"none"}}}
+ FAIL  src/lib/plan-pause-stripe.test.ts > keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"pending_invoice_item","bill_for":{"outstanding_usage_through":{"type":"pause_at"},"unused_time_from":{"type":"none"}}}
+ FAIL  src/lib/plan-pause-stripe.test.ts > keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"pending_invoice_item","bill_for":{"outstanding_usage_through":{"type":"none"},"unused_time_from":{"type":"item_current_period_start"}}}
+ FAIL  src/lib/plan-pause-stripe.test.ts > keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"pending_invoice_item"}
+ FAIL  src/lib/plan-pause-stripe.test.ts > keeps the hold when returned pause billing settings differ: {"type":"subscription","invoicing_behavior":"pending_invoice_item","bill_for":{"outstanding_usage_through":{"type":"none"}}}
+ FAIL  src/lib/plan-pause-stripe.test.ts > keeps the hold when returned pause billing settings differ: null
+AssertionError: expected { ok: true, token: 'token', …(2) } to deeply equal { ok: false, error: 'pending' }
+
+- Expected
++ Received
+
+  {
+-   "error": "pending",
+-   "ok": false,
++   "ok": true,
++   "quote": {
++     "bookId": "book",
++     "chargeAt": "2027-01-15T18:00:00.000Z",
++     "deliveredAt": "2026-11-03T18:00:00Z",
++     "earliest": "2026-11-20",
++     "kind": "paid",
++     "late": false,
++     "latest": "2026-12-10",
++     "previousCharge": "2027-01-01T18:00:00.000Z",
++     "shippedAt": "2026-11-01T18:00:00Z",
++     "subscription": "sub",
++     "targetNumber": 2,
++     "today": "2026-11-05",
++     "used": 0,
++     "weeks": 2,
++     "year": 2026,
++   },
++   "state": "applied",
++   "token": "token",
+  }
+
+ ❯ src/lib/plan-pause-stripe.test.ts:105:17
+    103|  const f=fixture({},response),o={...operation(),send:false},finish=vi.…
+    104|  const result=await confirmPause("p","c",2,"token",Date.now(),{provide…
+    105|  expect(result).toEqual({ok:false,error:"pending"});
+       |                 ^
+    106|  expect(finish).not.toHaveBeenCalled();
+    107|  expect(f.requests.filter(r=>r.method==="POST")).toHaveLength(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 13 passed (20)
+   Start at  19:14:50
+   Duration  744ms (transform 346ms, setup 0ms, import 635ms, tests 28ms, environment 0ms)

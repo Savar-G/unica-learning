@@ -6,9 +6,12 @@ import type { Database } from "@/lib/database";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/supabase-public";
 
 /** The visitor's own session, from their cookies. Reads through it obey row-level security. */
-export async function sessionClient(): Promise<SupabaseClient<Database>> {
+export async function sessionClient(signal?: AbortSignal): Promise<SupabaseClient<Database>> {
   const store = await cookies();
   return createServerClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    ...(signal ? { global: { fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, {
+      ...init, signal: AbortSignal.any([signal, ...(init?.signal ? [init.signal] : []), ...(input instanceof Request ? [input.signal] : [])]),
+    }) } } : {}),
     cookies: {
       getAll: () => store.getAll(),
       setAll: (list) => {
