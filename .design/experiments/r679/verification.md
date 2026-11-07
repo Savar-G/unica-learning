@@ -23,3 +23,9 @@ Machine: Savars-MacBook-Pro-5.local. Checkout: `site/parent-schedule`. Source ch
 The prepared first-book revision's ten stored rows match the versioned Schedule projection. Visual inspection of its existing PDF page 2 confirms the rows, ranges and global daily time of about 25 minutes. That prepared draft has no selected public approved book. This read-only comparison does not approve printing or prove the parent route for that customer. The hosted browser fixture used synthetic contracts and did not prove real PDF or image bytes.
 
 The receipt owner's positive hosted admission and full #475 release proof remain separate. Current-main integration, required remote checks, live production verification and the full dashboard UI approval remain pending. No family switch, provider call, print source, receipt writer or reminder changed.
+
+## Integration with main
+
+Actual assessment PR688 merge `624134781db0c813879290612ea03fe353f3c70a` merged cleanly into this branch as `9276affb58da2a0ffda9aa4a6c819b244ae0741e`. All Schedule readers, route, components, preview renderer, sanitizer and shell change remain byte-identical to the approved `c3ad24e3` source. Main owns its assessment save-timeout and Admin polling repairs; this branch preserves them. Database types and the shared marking reader/store match main.
+
+The combined post-integration checks passed 314 tests in 14 files, including Schedule, Admin polling, assessment failed-save behavior and route cases. This is focused local evidence. The complete 17,191-test suite and build above belong to the earlier `c3ad24e3` pin; no complete run on the integration commit is claimed. Final-head remote CI and deployment build remain required before merge. The integration and recorded evidence are pending an independent Sol review.

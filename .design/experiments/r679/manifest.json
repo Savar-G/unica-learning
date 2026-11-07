@@ -21,7 +21,7 @@
     "desktop",
     "phone"
   ],
-  "status": "local gates and independent code recheck passed; current-main integration and live verification pending",
+  "status": "current main integrated; 314 focused tests passed; independent integration review and final remote checks pending",
   "screenshots": [
     "admin-desktop.png",
     "admin-phone.png",
