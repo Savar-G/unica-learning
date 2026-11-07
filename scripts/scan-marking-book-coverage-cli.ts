@@ -5,7 +5,8 @@ import { expectedItems } from "../src/lib/scan-observation";
 import { markingRegions, reviewRegions, type MarkingRegion } from "../src/lib/scan-marking-regions";
 import { readMarkingOutput, validMarkingOutput, MARKING_PROMPT_VERSION, type MarkingFrame } from "../src/lib/scan-marking";
 import { comparisonItemFormat, labelledOutput, type ComparisonPhoto } from "../src/lib/scan-marking-comparison";
-import type { WorkbookInput } from "../src/lib/workbook-content";
+import { isUuid, storedQuestion, type WorkbookInput } from "../src/lib/workbook-content";
+import { QUESTION_PACKAGE_VERSION } from "../src/lib/question-package";
 import { isPrintedRevision, storedPrintContract } from "../src/lib/workbook-print-contract";
 
 globalThis.fetch = async () => { throw new Error("book-coverage-is-offline"); };
@@ -14,7 +15,7 @@ if (!path || !/^[a-f0-9]{64}$/.test(expectedHash ?? "")) throw new Error("Use: n
 const bytes = await readFile(path), sha256 = createHash("sha256").update(bytes).digest("hex");
 if (sha256 !== expectedHash) throw new Error("frozen-contract-hash-mismatch");
 const book = JSON.parse(bytes.toString()) as WorkbookInput;
-if (!isPrintedRevision(book.printedRevision) || !Array.isArray(book.pages) || !book.pages.length
+if (!isUuid(book.id) || !isUuid(book.childId) || !isPrintedRevision(book.printedRevision) || !Array.isArray(book.pages) || !book.pages.length
   || new Set(book.pages.map(p => p.number)).size !== book.pages.length
   || book.pages.some(p => !Number.isSafeInteger(p.number) || p.number < 1 || !p.printContract || !Array.isArray(p.questions)
     || p.questions.some(q => !Number.isSafeInteger(q.number) || q.number < 1)
@@ -33,7 +34,12 @@ for (const page of book.pages) {
   if (!page.questions.length) continue;
   const frame: MarkingFrame = { parentId: "local-offline", childId: book.childId, workbookId: book.id, pageId: `local-page-${page.number}`,
     pageNumber: page.number, photo: "local-supplied-reading", printedRevision: book.printedRevision, ready: true,
-    questions: page.questions.map(q => ({ number: q.number, package: q.package, regions: q.regions ?? null, teaching: q.teaching ?? null })) };
+    questions: page.questions.map(q => {
+      const read = storedQuestion({ ...q, schemaVersion: QUESTION_PACKAGE_VERSION },
+        { source: "workbook", workbookId: book.id, page: page.number, question: q.number }, page.image);
+      if (read.content.status !== "found") throw new Error(`invalid-stored-question-page-${page.number}-question-${q.number}`);
+      return { number: read.number, package: read.content.package, regions: read.regions, teaching: read.teaching };
+    }) };
   const expected = expectedItems(frame);
   const supported = new Set<string>();
   for (const e of expected) {
