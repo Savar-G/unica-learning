@@ -18,7 +18,7 @@ export const REMINDER_KINDS = ["continue", "come_back", "start", "start_followup
 export type ReminderKind = (typeof REMINDER_KINDS)[number];
 export const isReminderKind = (v: unknown): v is ReminderKind => REMINDER_KINDS.includes(v as ReminderKind);
 /** The email log (public.email_log) keeps every reminder, every unsubscribe, and the weekly Maya email (src/lib/maya-weekly-email.ts). */
-export type LogKind = ReminderKind | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe";
+export type LogKind = ReminderKind | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe" | "scan_inactivity";
 /**
  * A reminder's send state. "claimed": a run took it and is sending it, or the email may have gone (a 5xx or 408 answer,
  * a timeout, no answer, or a run that stopped). "failed": Resend refused it; a later run tries again.
