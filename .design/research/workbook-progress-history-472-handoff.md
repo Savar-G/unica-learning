@@ -1,4 +1,4 @@
-HANDOFF_READY
+HANDOFF_DONE
 
 This change implements only the bounded retained-history reader and public preview composition for #472. It does not complete #472. The source commit is `333fb6c5d610372ebd7ee60ef06485adea17aedd`. The next local commit adds only this report. Resolve that report commit with `git rev-parse HEAD`.
 
@@ -128,3 +128,8 @@ New public controls cover held outside-days and outside-sample records, right an
 The final four-file selection passes 267 tests, exit 0. Before the source correction, that same selection failed eight unsupported-context assertions while 259 passed, exit 1. Scoped five-root lint has zero errors/warnings and TypeScript has zero diagnostics. The synthetic React package notice is unchanged.
 
 Round 3 has dedicated task arrays/logs/exits under overnight-20261107/472-history-r3-prior.*, -fixed.* and -scoped.*. The first R3 invocation reused the R2 task-array destination. Its output was preserved as the R3 prior array. An exact pinned 6b465b41 in-memory replay then restored the R2 252-pass task array, with its own 472-history-r2-replay.log/exit. No tracked source was replaced. Historical reports keep their original failed verdicts. A new narrow independent F2 recheck remains required.
+
+
+## Bounded independent acceptance
+
+The R3 independent Sol recheck passed at b787dd89 for F2 with F1/F3 preservation. It passed 267 focused tests, 57 independent probes, scoped lint and types. All three reader findings are closed for this bounded source slice. The prior reports retain their failed verdicts at their prior pins. This is not whole-feature, live authorization, persistence, UI, print, customer or release acceptance. Root accepted the handoff and will integrate actual main699 before the combined gate.
