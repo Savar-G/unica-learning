@@ -215,8 +215,8 @@ export function physicalSideBySide(report: ReturnType<typeof physicalReport>): s
   const c = report.counts;
   return [
     `Robin phone test (${report.proofClass}). Photos ${c.photos}, item labels ${c.itemLabels}, AI-marked ${c.aiMarked}, parent ${c.parent}. Real handwriting proven: ${report.realHandwritingProven ? "yes" : "no"}.`,
-    `${"".padEnd(20)}${name(left).padEnd(col)}${name(right)}`,
-    ...rows.map(([label, f]) => `${label.padEnd(20)}${f(left).padEnd(col)}${f(right)}`),
+    `${"".padEnd(25)}${name(left).padEnd(col)}${name(right)}`,
+    ...rows.map(([label, f]) => `${label.padEnd(25)}${f(left).padEnd(col)}${f(right)}`),
     `Disagreements: ${report.disagreements.length}`,
     ...report.disagreements.map(d => `  ${d.photo} question ${d.question} (${d.format}), truth ${d.truth}: ${report.models.map(m => `${MODEL_NAMES[m.model] ?? m.model} ${d.results[m.model]}`).join(", ")}`),
   ].join("\n");
