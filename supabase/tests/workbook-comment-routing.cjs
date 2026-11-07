@@ -25,7 +25,7 @@ function definition(file, name) {
     for (const [file, name] of [["20261102_workbook_edit.sql", "queue_workbook_edit"], ["20261102_workbook_edit.sql", "claim_workbook_edit"],
       ["20261102155653_workbook_comment_admin_keys.sql", "save_workbook_comment"], ["20261102_workbook_edit_recovery_checks.sql", "send_workbook_comments"],
       ["20261102_workbook_edit_recovery_checks.sql", "finish_workbook_edit"], ["20261102_workbook_edit_legacy_frame.sql", "frame_workbook_edit"]]) sql(definition(file, name));
-    for (const file of ["20261107042155_workbook_comment_routing.sql", "20261107042201_workbook_layout_review.sql", "20261107045738_workbook_layout_repair_contracts.sql"]) {
+    for (const file of ["20261107042155_workbook_comment_routing.sql", "20261107042201_workbook_layout_review.sql", "20261107051924_workbook_layout_repair_contracts.sql"]) {
       // Counterfactual: the same public tests must fail when only the new repair migration is absent.
       if (process.env.WORKBOOK_ROUTING_REPAIR_CONTROL === "prior" && file.endsWith("workbook_layout_repair_contracts.sql")) continue;
       sql(fs.readFileSync(path.join(root, "supabase/migrations", file), "utf8"));

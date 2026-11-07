@@ -1,8 +1,8 @@
 # Proof-page repair correction
 
-COMMENT_ROUTING_REPAIR_REVIEW_READY
+COMMENT_ROUTING_REPAIR_REVIEW_ACCEPTED
 
-Previous complete candidate: `c03ae98743b266d8cd22fdb84f337ed6516fba9b`. That review failed two P2 checks. Its full gate was stopped with actual exit 143. It is not passed evidence. The original two migrations remain applied and unchanged. New migration `20261107045738_workbook_layout_repair_contracts.sql` is local and unapplied.
+Previous complete candidate: `c03ae98743b266d8cd22fdb84f337ed6516fba9b`. That review failed two P2 checks. Its full gate was stopped with actual exit 143. It is not passed evidence. The correction passed independent recheck at `126985d3`. The original two migrations remain applied and unchanged. The reviewed repair migration is now applied as `20261107051924_workbook_layout_repair_contracts.sql`; its body is unchanged from the reviewed local file.
 
 ## F1: A proof page needs a saved-content authority
 
@@ -26,8 +26,12 @@ An old failed-fit flag is also derived metadata. A strict accepted replacement c
 - The core, real POST route over fake HTTP, and approval module passed 45 focused tests in three suites. The API test supplies a forged browser fingerprint and checks that the queued plan instead holds the actual saved-content fingerprint.
 - The final correction run passed 180 tests in ten affected suites, exit 0. TypeScript and scoped ESLint passed. No full gate ran on this correction.
 
-These are local and synthetic checks. The original hosted role/rollback proof and browser proof apply to the previous complete candidate. A fresh hosted repair probe is required after this migration is reviewed and applied. No new customer write, model call, rendering or browser action occurred for this correction. The current customer still requires a roadmap approval relay before R2 can be saved.
+These are local and synthetic checks. The browser proof applies to the unchanged interface from the previous complete candidate. After the independent recheck, the controller applied the migration and ran the revised hosted repair probe. It passed the proof-page repair, selected fit-metadata update, retained unselected schedule record, partial outcomes and role checks. It rolled back with zero remaining synthetic parents or Auth users. No customer write, model call, rendering or new browser action occurred for this correction. The current customer still requires a roadmap approval relay before R2 can be saved.
 
 ## Remaining work
 
-Independent Sol recheck, hosted application and rollback proof, official type regeneration, complete final full gate, exact-head remote checks, and coordinated merge remain with the controller. Do not apply the migration or write customer data during review. Keep the existing pending approval and print holds.
+The independent Sol recheck passed F1/F2 with no findings. Its report is `/Users/savargupta/.t3/worktrees/pagewise-landing-page/t3-b32b6c97/.design/research/workbook-comment-routing-repair-independent-review.md`. The review's standalone TypeScript command failed because generated Next.js declarations were absent. It claims no TypeScript or full-gate pass. The controller's typegen and TypeScript check passed separately. After application, official type regeneration exited 0 and was byte-identical, SHA-256 `6963b7a7d31e8c9025eb8bb6f2b815266ef676e1ee48847a3d0d0ff94c29c6ae`.
+
+Hosted verification at `2026-11-07T05:21:14.289739Z` found both deployed function bodies equal to the reviewed bodies, with service-only access. There were zero active runs or edit batches. The customer remained at revision 1 with 14 comments and zero complete comments.
+
+The complete final full gate, exact-head remote checks, and coordinated merge remain with the controller. Keep the existing customer approval and print holds.
