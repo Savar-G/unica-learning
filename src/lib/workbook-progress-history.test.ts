@@ -110,6 +110,38 @@ describe("canonical retained history through public reading and preview", () => 
     f.planning.passed = { ...f.planning.passed, [f.input.curriculum.skill.id]: 0 };
     expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, availability: "unavailable", reason: "invalid-record" });
   });
+  it.each((["outside-days", "outside-sample"] as const).flatMap(reason =>
+    (["right", "wrong"] as const).flatMap(result => [0, 1, 2].map(version => ({ reason, result, version }))),
+  ))("checks $reason $result context version $version without inferring prior mastery", async ({ reason, result, version }) => {
+    const f = historyFixture(10, 8), index = reason === "outside-days" ? 10 : 0, m = f.marks[index];
+    f.input.snapshot.priorMastery.passedSteps = 0;
+    f.planning.passed = { ...f.planning.passed, [f.input.curriculum.skill.id]: 0 };
+    if (reason === "outside-sample") f.input.sample = f.input.sample.filter(i => i.itemId !== m.item_id);
+    const p = f.input.books.flatMap(b => b.pages).find(p => p.pageId === m.page_id)!;
+    Object.assign(p.questions[0].teaching!, { version });
+    const o = m.observation as unknown as Observation, reading = result === "right" ? "13" : "56";
+    m.observation = toJson({ ...o, result, readAnswerText: reading,
+      regions: [{ regionId: "answer", text: reading, value: reading, certainty: "certain" }] });
+    f.events.find(e => e.id === m.event_id)!.result = result;
+    m.original_event = toJson({ ...m.original_event as object, result });
+    const raw = await readWorkbookProgressHistory(f.store, f.input);
+    const preview = await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning);
+    if (version !== 1) {
+      expect(raw).toEqual({ ok: false, availability: "unavailable", reason: "invalid-record" });
+      expect(preview).toEqual(raw);
+      expect(preview).not.toHaveProperty("preview");
+    } else {
+      expect(raw.ok).toBe(true);
+      expect(complete(preview).preview.decision).toMatchObject({ action: "repeat-new-numbers", passed: { [f.input.curriculum.skill.id]: 0 } });
+    }
+  });
+  it.each([0, 1, 2])("keeps selected context version %s under the same version rule", async version => {
+    const f = historyFixture(10, 8), p = f.input.books[0].pages[0];
+    Object.assign(p.questions[0].teaching!, { version });
+    const result = await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning);
+    if (version === 1) expect(complete(result).preview.decision.action).toBe("repeat-new-numbers");
+    else expect(result).toEqual({ ok: false, availability: "unavailable", reason: "invalid-record" });
+  });
 
   it.each(["items", "changes", "events"] as const)("drop-page control for %s fails the same public preview assertion", async source => {
     const f = historyFixture();

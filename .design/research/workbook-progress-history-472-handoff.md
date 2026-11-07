@@ -115,3 +115,16 @@ Final root selection: four files, 252 tests passed, exit 0. The exact same test 
 The five owned TypeScript roots pass scoped lint with zero errors or warnings and scoped TypeScript with zero diagnostics. The React auto-detection notice is a tool notice from the isolated checkout without installed React, not a source warning. No install or symlink was made. No full suite, build, browser, hosted call or production action ran.
 
 Exact task arrays, logs and exits are under overnight-20261107/472-history-r2-prior.*, 472-history-r2-fixed.* and 472-history-r2-scoped.*. Root runners run-472-history-r2-prior.mjs and run-472-history-r2-fixed.mjs retain the explicit source roots, source aliases and no-env configuration. A new independent recheck is still required. Whole #472 remains incomplete.
+
+
+## Root repair round 3
+
+The R2 independent recheck closed F1 and F3. It found one F2 regression: the core no-sample validation cannot see the held item's teaching-context version. Unsupported versions 0 and 2 were accepted for held items while selected items refused them.
+
+Root now validates every non-null catalog context version before accepting the catalog entry. Only version 1 is supported. The held validation still uses requiredSample null, so a valid right answer does not create an isolated mastery decision. No core, preview, planner or print source changed.
+
+New public controls cover held outside-days and outside-sample records, right and wrong results, prior prefix zero and context versions 0/1/2. Selected records use the same 0/1/2 rule. The actual selected mastery-gap guard, F1 correction refusal and F3 structural comparison controls remain.
+
+The final four-file selection passes 267 tests, exit 0. Before the source correction, that same selection failed eight unsupported-context assertions while 259 passed, exit 1. Scoped five-root lint has zero errors/warnings and TypeScript has zero diagnostics. The synthetic React package notice is unchanged.
+
+Round 3 has dedicated task arrays/logs/exits under overnight-20261107/472-history-r3-prior.*, -fixed.* and -scoped.*. The first R3 invocation reused the R2 task-array destination. Its output was preserved as the R3 prior array. An exact pinned 6b465b41 in-memory replay then restored the R2 252-pass task array, with its own 472-history-r2-replay.log/exit. No tracked source was replaced. Historical reports keep their original failed verdicts. A new narrow independent F2 recheck remains required.

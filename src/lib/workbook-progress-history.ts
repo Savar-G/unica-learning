@@ -153,7 +153,10 @@ async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgress
       const k = key(expected.identity);
       if (catalog.has(k)) fail("invalid-contract");
       const q = p.questions.find(q => q.number === expected.number)!;
-      catalog.set(k, { expected, day: p.day, contextVersion: q.teaching?.version ?? null,
+      const contextVersion = q.teaching?.version ?? null;
+      // Version validation applies to every catalog item, including work held outside the selected sample.
+      if (contextVersion !== null && contextVersion !== 1) fail("invalid-record");
+      catalog.set(k, { expected, day: p.day, contextVersion,
         question: { source: "workbook", workbookId: b.workbookId, page: p.number, question: expected.number }, resultVersion: null });
       if (catalog.size > 100_000) fail("safety-bound");
     }
