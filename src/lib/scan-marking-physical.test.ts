@@ -359,6 +359,14 @@ describe("cost estimate and credit preflight", () => {
       await expect(executePhysical({ ...execution(input, mem), preflight: async () => states(), creditFetch: credits(40, 1) })).rejects.toThrow("stale-run");
     } finally { silent.mockRestore(); }
   });
+  it("asks for the ledger before the execution marker, so a missing ledger key leaves the folder usable", async () => {
+    const input = await setAndPlan(), mem = memoryBudget(), silent = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await expect(executePhysical({ ...execution(input, mem), preflight: async () => states(), budget: () => { throw Error("ledger-credential-required"); } })).rejects.toThrow("ledger-credential-required");
+      expect(await readdir(input.out)).not.toContain("execution.json");
+      expect(await executePhysical({ ...execution(input, mem), preflight: async () => states() })).toHaveLength(4);
+    } finally { silent.mockRestore(); }
+  });
   it("reopens a prepared folder only before a run has started", async () => {
     const input = await setAndPlan(), mem = memoryBudget(), silent = vi.spyOn(console, "log").mockImplementation(() => {});
     try {

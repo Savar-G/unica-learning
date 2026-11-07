@@ -285,59 +285,62 @@ describe("two-ways AI marking", () => {
     const { o } = markSum("100 + 700 = 800", "8 × 50 = 400\n400 + 400 = 800", ["does-not-solve", "solves"], "100", f);
     expect(o).toMatchObject({ state: "scored", result: "wrong", issue: "method-wrong" });
   });
+  const notRight = (o: Observation) => expect([o.state, o.result]).not.toEqual(["scored", "right"]);
   it.each([
-    ["a tens-and-ones split", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83", "36 + 40 = 76\n76 + 7 = 83"],
-    ["a number line written as equations", "36 + 4 = 40\n40 + 40 = 80\n80 + 3 = 83", "47 + 3 = 50\n50 + 33 = 83"],
-    ["a number line written as jumps", "36 +40 → 76 +7 → 83", "47 +30 → 77 +6 → 83"],
-    ["jumps with a plain arrow", "36 +4 -> 40 +43 -> 83", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83"],
-    ["steps that run across lines", "36 + 47\n= 36 + 40 + 7\n= 76 + 7\n= 83", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83"],
+    ["split one addend and compensation", "36 + 40 = 76\n76 + 7 = 83", "36 + 50 = 86\n86 - 3 = 83"],
+    ["partial sums and split one addend", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83", "36 + 40 = 76\n76 + 7 = 83"],
+    ["jumps and partial sums", "36 +4 → 40 +40 → 80 +3 → 83", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83"],
+    ["split one addend in jumps and compensation", "47 +30 -> 77 +6 -> 83", "36 + 50 = 86\n86 - 3 = 83"],
+    ["a column and split one addend", "6 + 7 = 13\n3 + 4 + 1 = 8\n83", "36 + 40 = 76\n76 + 7 = 83"],
+    ["counting on in equations and compensation", "36 + 4 = 40\n40 + 40 = 80\n80 + 3 = 83", "40 + 47 = 87\n87 - 4 = 83"],
+    ["a bare last line that repeats the last result", "36 + 40 = 76\n76 + 7 = 83\n83", "36 + 50 = 86\n86 - 3 = 83"],
   ])("marks %s Right when the AI says solves", (_name, one, two) => {
     const { o, label } = markSum(one, two);
     expect(o).toMatchObject({ state: "scored", result: "right", issue: null });
     expect(label).toBe("Right");
   });
-  // The refined rule: the final result is the answer, the answer is never an operand, and it is not the question copied.
-  const missing800 = () => sumFrame("8 × ? = 800", { kind: "divide", operands: [800, 8] }, 100), missing40 = () => sumFrame("8 × ? = 40", { kind: "divide", operands: [40, 8] }, 5);
+  // Every case in the review of 9f4fecc5 stays not Right, with the answer box right and the AI saying solves on both.
   it.each([
-    ["the inverse operation with tens", "800 ÷ 8 = 100", "8 × 10 = 80\n80 × 10 = 800\n10 × 10 = 100", missing800, "100"],
-    ["the inverse operation and repeated subtraction", "40 ÷ 8 = 5", "40 - 8 = 32\n32 - 8 = 24\n24 - 8 = 16\n16 - 8 = 8\n8 - 8 = 0\n5 times", missing40, "5"],
-    ["the inverse operation and a skip count", "40 ÷ 8 = 5", "8, 16, 24, 32, 40\n5 times", missing40, "5"],
-    ["repeated addition with a count of its groups", "8 + 8 + 8 + 8 + 8 = 40\n1 + 1 + 1 + 1 + 1 = 5", "8, 16, 24, 32, 40\n5", missing40, "5"],
-  ])("marks a missing factor Right when the AI says solves: %s", (_name, one, two, frame, answer) => {
-    const { o, label } = markSum(one, two, ["solves", "solves"], answer, frame());
-    expect(o).toMatchObject({ state: "scored", result: "right", issue: null });
-    expect(label).toBe("Right");
-  });
+    // P1-1: the same method twice, in two forms.
+    ["36 + 40 + 7 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 40 = 76\n76 + 7 = 83", "36 +40 → 76 +7 → 83"],
+    ["36 + 40 + 7 = 83", "36 + 40 + 7"], ["36 + 40 + 7 = 83", "(36 + 40) + 7 = 83"],
+    // P1-3: copies with padding or an extra line, each paired with a valid other way.
+    ["36 + 47 - 0 = 83", "47 + 36 × 1 = 83"], ["(36 + 47) × 1 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 47 ÷ 1 = 83", "36 + 40 = 76\n76 + 7 = 83"],
+    ["36 - (0 - 47) = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 47 = 83\n50 + 33 = 83", "36 + 40 = 76\n76 + 7 = 83"],
+    ["36 + 47 + 2 - 2 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 47 + 36 - 36 = 83", "36 + 40 = 76\n76 + 7 = 83"],
+    ["36 + 47 + 0 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 40 = 76\n76 + 7 = 83\n36 + 47 = 83", "36 + 50 = 86\n86 - 3 = 83"],
+    // P2-4: a final result the work did not produce.
+    ["40 + 40 = 80\n83", "36 + 40 = 76\n76 + 7 = 83"], ["2 + 2 = 4\n83 is it", "36 + 40 = 76\n76 + 7 = 83"],
+    // P2-5: a list that does not go up by a step.
+    ["83, 83, 83", "83, 83, 83, 83"], ["85, 84, 83", "81, 82, 83"],
+    // P3-9: a question mark never hides a line.
+    ["36 + 47 = 999 = ?\n40 + 43 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + ? = 83\n36 + 40 = 76\n76 + 7 = 83", "36 + 50 = 86\n86 - 3 = 83"], ["36 + _ = 83\n36 + 40 = 76\n76 + 7 = 83", "36 + 50 = 86\n86 - 3 = 83"],
+  ])("is not Right: %j / %j", (one, two) => notRight(markSum(one, two).o));
   it.each([
-    ["the question copied with the answer", "8 × 100 = 800", missing800, "100"],
-    ["the question turned around", "100 × 8 = 800", missing800, "100"],
-    ["a sum that uses the answer", "100 + 700 = 800", missing800, "100"],
-    ["true steps that stop at the question's number", "8 × 50 = 400\n400 + 400 = 800", missing800, "100"],
-    ["a skip count with no final result", "8, 16, 24, 32, 40", missing40, "5"],
-    ["subtraction with no final result", "40 - 8 = 32\n32 - 8 = 24\n24 - 8 = 16\n16 - 8 = 8\n8 - 8 = 0", missing40, "5"],
-    ["a list that does not count by one number", "8, 16, 25, 32, 40\n5 times", missing40, "5"],
-  ])("is not Right when the AI says solves: %s", (_name, one, frame, answer) => {
-    const good = answer === "100" ? "800 ÷ 8 = 100" : "40 ÷ 8 = 5";
-    const { o, label } = markSum(one, good, ["solves", "solves"], answer, frame());
-    expect(o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
-    expect(label).toBe("We cannot check this method.");
+    ["800 ÷ 8 = 100", "800 ÷ 8"], ["800 ÷ 8 = 100", "800 ÷ 8 = 100.0"],
+    ["800 ÷ 8 × 1 = 100", "80 ÷ 8 = 10\n10 × 10 = 100"], ["800 ÷ 8 = 100\n8 × 100 = 800", "80 ÷ 8 = 10\n10 × 10 = 100"],
+    ["800 ÷ 8 = 100", "800 ÷ 8 = 100\n100"], ["80 ÷ 8 = 10\n10 × 10 = 100\n8 × 100 = 800", "800 ÷ 8 = 100"],
+  ])("is not Right on 8 × ? = 800: %j / %j", (one, two) => {
+    notRight(markSum(one, two, ["solves", "solves"], "100", sumFrame("8 × ? = 800", { kind: "divide", operands: [800, 8] }, 100)).o);
   });
   it.each([
-    ["the reverse that uses the answer", "83 - 47 = 36"],
-    ["the other reverse", "83 - 36 = 47"],
-    ["the question turned around", "47 + 36 = 83"],
-    ["the question with padding", "36 + 47 + 0 = 83"],
-    ["a sum whose final result is not the answer", "27 + 3 = 30\n30 + 6 = 36"],
-  ])("is not Right when the AI says solves on 36 + 47: %s", (_name, one) => {
-    expect(markSum(one, "36 + 40 = 76\n76 + 7 = 83").o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
+    // P1-2: the old exception for a number the question prints.
+    ["5 + 0 = 5", "5 ÷ 1 = 5"], ["5 × 5 ÷ 5 = 5", "5 × 5 = 25\n5 - 0 = 5"], ["5 × 5 = 25", "5 × 1 = 5"],
+    // P2-4 again, and skip counts that break the rule.
+    ["1 + 1 = 2\n5 times", "25 ÷ 5 = 5"], ["5, 10, 15, 20, 25", "25 ÷ 5 = 5"], ["5, 10, 15, 20, 25\n4 times", "25 ÷ 5 = 5"], ["10, 15, 20, 25\n4 times", "25 ÷ 5 = 5"],
+    ["25 - 5 = 20\n20 - 5 = 15\n5 times", "25 ÷ 5 = 5"], ["25 - 5 = 20\n20 - 5 = 15\n15 - 5 = 10\n10 - 5 = 5\n5 - 5 = 0\n4 times", "25 ÷ 5 = 5"],
+  ])("is not Right on 5 × ? = 25: %j / %j", (one, two) => {
+    notRight(markSum(one, two, ["solves", "solves"], "5", sumFrame("5 × ? = 25", { kind: "divide", operands: [25, 5] }, 5)).o);
   });
-  it("lets the answer be an operand only when the question prints the same number", () => {
-    const f = sumFrame("5 × ? = 25", { kind: "divide", operands: [25, 5] }, 5);
-    expect(markSum("25 ÷ 5 = 5", "25 - 5 = 20\n20 - 5 = 15\n15 - 5 = 10\n10 - 5 = 5\n5 - 5 = 0\n5 times", ["solves", "solves"], "5", f).o).toMatchObject({ state: "scored", result: "right" });
+  it.each(["36 + 40 = 76 + 7 = 83", "6 + 7 = 13 + 70 = 83"])("keeps the run-on chain %j unsure, not Wrong", one => {
+    expect(markSum(one, "36 + 50 = 86\n86 - 3 = 83")).toMatchObject({ o: { state: "pending", result: null, issue: "method-form" }, label: "We cannot check this method." });
   });
-  it("keeps a missing method Wrong and the same method twice unsure", () => {
-    expect(markSum("", "36 + 40 = 76\n76 + 7 = 83").o).toMatchObject({ state: "scored", result: "wrong", issue: "method-missing" });
-    expect(markSum("36 + 40 = 76\n76 + 7 = 83", "36 + 40 = 76\n76 + 7 = 83").o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
+  it("still marks a chain Wrong when a step is false however it is read", () => {
+    expect(markSum("36 + 40 = 77 + 6 = 83", "36 + 50 = 86\n86 - 3 = 83").o).toMatchObject({ state: "scored", result: "wrong" });
+  });
+  it("treats two methods of one kind as unsure, however the numbers differ", () => {
+    expect(markSum("36 + 40 = 76\n76 + 7 = 83", "47 + 30 = 77\n77 + 6 = 83")).toMatchObject({ o: { state: "pending", result: null, issue: "method-form" }, label: "We cannot check this method." });
+    expect(markSum("36 + 50 = 86\n86 - 3 = 83", "40 + 47 = 87\n87 - 4 = 83").o).toMatchObject({ state: "pending", result: null });
   });
   it("keeps a valid pair unsure when the AI is unsure, and when it gives no verdict", () => {
     for (const verdicts of [["unsure", "solves"], [null, "solves"]] as const) {

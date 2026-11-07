@@ -81,6 +81,8 @@ export interface RegionReading {
   /** A two-ways method only: the AI's verdict and its short reason. Evidence for the team; never shown to a parent. */
   verdict?: "solves" | "does-not-solve" | "unsure" | null;
   verdictReason?: string | null;
+  /** A two-ways method only: the kind code recognized in the work. Two methods of one kind are not two ways. */
+  methodKind?: string | null;
 }
 
 /** A reference to the frozen teaching context, whole. Never a current profile, template or page heading. */

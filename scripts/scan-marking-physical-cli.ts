@@ -283,6 +283,8 @@ export async function executePhysical(options: { out: string; set: PhysicalSet; 
   for (const line of physicalEstimateLines(estimate, credit.remainingMicros)) console.log(line);
   await durableJson(resolve(out, "credit-preflight.json"), credit);
   if (!credit.enough) throw Error(`credit-preflight:${credit.reason}`);
+  // A missing ledger credential stops here too, so it does not use up the folder.
+  const budget = options.budget();
   // Exclusive irreversible execution marker precedes every ledger and provider request. An exit never grants a retry.
   await durableJson(resolve(out, "execution.json"), { run: preparationRun, owner: plan.owner, state: "started" }, true);
   await mkdir(resolve(out, "journal"), { mode: 0o700 });
@@ -290,7 +292,6 @@ export async function executePhysical(options: { out: string; set: PhysicalSet; 
   const dispatchPlan = { ...plan, evidences: PHYSICAL_MODELS.map(m => liveState(m).evidence) }, run = hashValue(dispatchPlan);
   const dispatchSeal = { preparationRun, run, plan: dispatchPlan, maximums: Object.fromEntries(PHYSICAL_MODELS.map(m => [m.model, liveState(m).maximumMicros])) };
   await durableJson(resolve(out, "dispatch-plan.json"), dispatchSeal, true);
-  const budget = options.budget();
   let fatal = false, unsafeTransport = false;
   const file = options.journal ?? fileJournal(resolve(out, "journal"));
   const protect = async <T>(action: () => Promise<T>) => { try { return await action(); } catch (e) { fatal = true; throw e; } };

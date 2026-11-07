@@ -175,29 +175,41 @@ Savar decided on 7 November that AI does all marking and a parent marks no quest
 
 The printed item has two work areas and one final-answer box. The model reads all three regions on the whole page. It transcribes each method as written, one step per line, and it never leaves out or tidies a step. It receives the question with each method region and no answer. For each method it also gives a verdict: `solves`, `does-not-solve` or `unsure`, with a short reason. The reason is evidence for the team and is never shown to a parent. Code checks the answer and the arithmetic in `src/lib/scan-marking-methods.ts`.
 
-A method is valid only when all of these are true (D-302):
+Code uses an allow-list and fails closed (D-302). A method is valid only when the AI says `solves`, every written step is true arithmetic, and code recognizes the whole method as one kind from the fixed list for the question's shape (`METHOD_KINDS`):
 
-- The AI says `solves`.
-- Every written step is true arithmetic. Code checks each step, including number line jumps such as `36 +40 → 76 +7 → 83` and skip counts such as `8, 16, 24, 32, 40`.
-- Its final result is the answer. A last line such as `5 times` states that result.
-- The answer is never an operand in it, unless the question prints the same number.
-- It is not the question's own operation on the question's own printed numbers, which is the question copied. 0 and 1 do not count as working numbers.
+| Question shape | Kinds |
+| --- | --- |
+| `a + b = ?` | split one addend, partial sums, compensation, column, counting on in jumps |
+| `a - b = ?` | split the subtrahend, partial differences, compensation, column, counting back, counting up |
+| `a × b = ?` | split a factor, round and adjust, strip zeros, strip zeros from one factor, repeated addition, skip counting |
+| `a ÷ b = ?` | repeated subtraction, skip counting, repeated addition, division with tens, build-up |
+| `a × ? = c`, `c ÷ ? = a` | the inverse division, plus the division kinds |
+| `a + ? = c`, `a - ? = c` | the inverse subtraction, plus the subtraction kinds |
+| `? - a = c` | the inverse addition, plus the addition kinds |
+| `? ÷ a = c` | the inverse multiplication, plus the multiplication kinds |
 
-So `800 ÷ 8 = 100` is valid for `8 × ? = 800`, because a child's inverse operation counts. `83 - 47 = 36` for `36 + 47` is not (the answer is an operand), and `8 × 100 = 800` is not (the answer is an operand and it is the question).
+Each kind accounts for every number in the method: the question's numbers, their place-value parts or roundings as the kind defines them, earlier results, and the answer only as a final result. So padding (`× 1`, `+ 0`, `+ n - n`), an extra line, a copied question and a check that uses the answer have no kind. The form does not matter: `36 + 40 + 7 = 83`, the same two steps on two lines and the same steps as jumps are all one kind.
+
+- A skip count goes up by the question's number, from that number to the target. The last line is the count, and the count is the answer.
+- Repeated subtraction takes away that number from the total down to 0. The count is the answer.
+- A bare last line must equal the last result, or the count. A column method's last line joins its column results.
+- A number with a thousands space (`12 500`) is one number.
+
+These are unsure, never Right: a method code does not recognize, two methods of one kind, a run-on chain (`36 + 40 = 76 + 7 = 83`), a line with `?` or `_`, a question shape code cannot read, and a fraction or decimal answer. Valid work that no kind covers stays unsure. A false step is Wrong, and so is `does-not-solve`.
 
 | Reading | Item result | Label |
 | --- | --- | --- |
-| The answer is right, and both methods are valid and different | Right | `Right` |
+| The answer is right, and both methods are valid and of different kinds | Right | `Right` |
 | The answer is wrong | Wrong | `Wrong` |
 | The answer is right, and a method has a false step or the AI says `does-not-solve` | Wrong | `Wrong. One way does not solve the question.` |
 | The answer is right, and a method is empty (the child did not do two ways) | Wrong | `Wrong. One way is missing.` |
 | The answer is empty, and the methods are read | Wrong | `Wrong` |
 | All three regions are empty | Blank | `Blank` |
 | A region is blurry, cut off or unreadable, and no region is definitely wrong | Unsure | The plain reason of that region |
-| Anything else about a method: the AI is unsure, words or a drawing, the question copied, a check that uses the answer, a final result that is not the answer, the same work twice | Unsure | `We cannot check this method.` |
+| Anything else about a method: the AI is unsure, words or a drawing, no recognized kind, two methods of one kind | Unsure | `We cannot check this method.` |
 | The answer box has a form code cannot check | Unsure | `We cannot check this answer.` |
 
-The AI's verdict is one model's judgment. A sum the AI wrongly calls `solves` becomes Right when it meets the code rules, for example `60 + 6 = 66` for `27 + 39`. The Robin phone test measures this against human truth. The Robin truth follows the same rule: an item is right only when the answer is right and both methods are valid and different.
+The AI's verdict is one model's judgment. The AI still decides whether a recognized method solves the question. Robin measures this against human truth, but code alone no longer lets an unrelated sum through. The Robin phone test measures this against human truth. The Robin truth follows the same rule: an item is right only when the answer is right and both methods are valid and of different kinds.
 
 The explanation feature handles a right answer with a wrong method: it tells the model the final answer is right and asks for a way to solve the question.
 
