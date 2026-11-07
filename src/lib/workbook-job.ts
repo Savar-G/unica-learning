@@ -61,7 +61,7 @@ import {
 } from "@/lib/workbook-generator";
 import { planNextWorkbook } from "@/lib/workbook-placement";
 import { skillUnits } from "@/lib/workbook-teaching-frame";
-import type { WorkbookPlan } from "@/lib/workbook-plan";
+import type { WorkbookPlan, PlanInput } from "@/lib/workbook-plan";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
 import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderedPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
@@ -237,8 +237,9 @@ export const RUN_FRAME_VERSION = 1;
 
 /**
  * What a run is made from, stored once by its first job call (R379-8-2), so every later call makes the same book: the
- * child's inputs the plan read (grade, curriculum, profile revision, stored workbooks; never the profile's content or
- * the child's name), the plan itself, and the fingerprints a later call must find unchanged.
+ * child's inputs the plan read (grade, curriculum, profile revision, stored workbooks; never the child's name), the plan
+ * itself, and the fingerprints a later call must find unchanged. Since #472 it also keeps the planning capture: the
+ * frozen profile and report signals the planner read, and its exact PlanInput (admins only, deleted with the family).
  */
 export interface RunFrame {
   version: number;
@@ -251,6 +252,12 @@ export interface RunFrame {
   grade: Grade;
   /** The child profile revision the plan was made from, or null. */
   profileRevision: number | null;
+  /**
+   * The planner's exact input, captured at the public planning boundary before it ran, and the placement facts it was
+   * made from (#472 Book 1 baseline). Admins read it; it is never shown to a parent. Absent on frames stored before it.
+   * It holds the frozen child profile the plan read, because the current profile changes and cannot prove it later.
+   */
+  planning?: RunPlanningCapture;
   workbooks: { number: number; levels: number[] }[];
   plan: WorkbookPlan;
   versions: {
@@ -263,6 +270,21 @@ export interface RunFrame {
     solveModel: string;
     /** The deployed code's version (WorkbookJobDeps.build); null where none is known (development). */
     build: string | null;
+  };
+}
+
+/** What planNextWorkbook read and the PlanInput it gave planWorkbook, frozen once with the run's plan. */
+export interface RunPlanningCapture {
+  version: 1;
+  input: PlanInput;
+  placement: {
+    curriculum: { key: string; version: string };
+    grade: Grade;
+    profile: ChildLearnerProfile | null;
+    report?: import("./workbook-signals").BookSignalsInput["report"];
+    device?: import("./workbook-signals").BookSignalsInput["device"];
+    workbooks: { number: number; levels: number[] }[];
+    number: number;
   };
 }
 
@@ -627,10 +649,15 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     inputs = { ...inputs, profile: prepared.profile };
     const assessmentId = inputs.profile?.profile.assessment?.assessmentId;
     const metadata = assessmentId ? await deps.source.planningMetadata?.(assessmentId) : undefined;
-    const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
+    const placement: RunPlanningCapture["placement"] = structuredClone({ ...metadata, curriculum: { key, version: curriculumVersion(key)! },
+      grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
+    let input: PlanInput | undefined;
+    // The capture is a copy taken at the public boundary: it cannot change the plan.
+    const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number }, captured => { input = captured; });
     if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
     const made: RunFrame = {
       version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,
+      ...(input ? { planning: { version: 1 as const, input, placement } } : {}),
       plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan), versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
     };
     if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(generateInput(run, made, name), deps.fit(run.parentId));

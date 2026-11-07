@@ -48,6 +48,10 @@ export function sourceDbFixture(options: { cap?: number; total?: number; hook?: 
     const u = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     const call = { table: u.pathname.split("/").at(-1)!, params: u.searchParams, method: init?.method ?? "GET", index: calls.length };
     calls.push(call);
+    // The Book 1 source read (#472): no baseline in this fixture, as for a book with none captured.
+    if (u.pathname === "/rest/v1/rpc/workbook_book1_sources" && call.method === "POST") {
+      return new Response(JSON.stringify({ status: "missing" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (!Object.hasOwn(tables, call.table) || !["GET", "HEAD"].includes(call.method) || !u.pathname.startsWith("/rest/v1/")) throw Error("forbidden-source-boundary");
     const hook = options.hook?.(call, tables);
     let rows: Row[] = tables[call.table].map(r => {
