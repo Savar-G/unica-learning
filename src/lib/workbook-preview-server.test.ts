@@ -55,6 +55,13 @@ describe("checked Admin server boundary", () => {
     expect(await readAdminWorkbookPreview(f.request, repo)).toEqual({ ok: false, reason: "saved-preview-unavailable" });
     expect(mocks.adminClient).not.toHaveBeenCalled();
   });
+  it("keeps a failed Auth read unavailable before any credential or source access", async () => {
+    const f = sourceDbFixture(), repo = repository();
+    mocks.adminSession.mockRejectedValue(Error("private auth diagnostic"));
+    expect(await saveAdminWorkbookPreview(f.request, repo)).toEqual({ ok: false, reason: "saved-preview-unavailable" });
+    expect(await readAdminWorkbookPreview(f.request, repo)).toEqual({ ok: false, reason: "saved-preview-unavailable" });
+    expect(mocks.adminClient).not.toHaveBeenCalled(); expect(repo.read).not.toHaveBeenCalled(); expect(repo.save).not.toHaveBeenCalled();
+  });
   it("never accepts caller correction completeness", async () => {
     const f = sourceDbFixture(), repo = repository();
     expect(await saveAdminWorkbookPreview({ ...f.request, corrections: { complete: true, rows: [] } }, repo)).toEqual({ ok: false, reason: "invalid-request" });

@@ -12,9 +12,9 @@ import { createWorkbookPreviewRecord, replayWorkbookPreview, type WorkbookPrevie
 export async function saveAdminWorkbookPreview(raw: unknown, repository: WorkbookPreviewRepository) {
   const request = workbookPreviewRequest(raw);
   if (!request) return { ok: false as const, reason: "invalid-request" };
-  const admin = await adminSession();
-  if (!admin) return { ok: false as const, reason: "admin-required" };
   try {
+    const admin = await adminSession();
+    if (!admin) return { ok: false as const, reason: "admin-required" };
     // SQL rechecks live Admin membership, family fences, ownership and printed revision on every read.
     // Retry uses saved inputs before any source/profile read. A conflicting request ID is never recomputed.
     const existing = await repository.read(admin.userId, request);
@@ -43,9 +43,9 @@ export async function saveAdminWorkbookPreview(raw: unknown, repository: Workboo
 export async function readAdminWorkbookPreview(raw: unknown, repository: WorkbookPreviewRepository) {
   const request = workbookPreviewRequest(raw);
   if (!request) return { ok: false as const, reason: "invalid-request" };
-  const admin = await adminSession();
-  if (!admin) return { ok: false as const, reason: "admin-required" };
   try {
+    const admin = await adminSession();
+    if (!admin) return { ok: false as const, reason: "admin-required" };
     const record = await repository.read(admin.userId, request);
     const document = record && replayWorkbookPreview(record, admin.userId, request);
     const live = await adminSession();
