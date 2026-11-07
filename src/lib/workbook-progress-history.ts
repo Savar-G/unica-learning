@@ -55,7 +55,7 @@ export interface WorkbookProgressHistoryStore {
   events(input: WorkbookProgressHistoryInput, book: HistoryBook, after: string | null, limit: number): Promise<HistoryPage<HistoryEventRow>>;
 }
 export type HistoryRefusal = "invalid-contract" | "scope-unavailable" | "source-error" | "invalid-page" | "safety-bound"
-  | "changed-during-read" | "invalid-record" | "unproved-past-state" | "missing-source-reference" | "preview-refused";
+  | "changed-during-read" | "invalid-record" | "unproved-past-state" | "missing-source-reference" | "preview-refused" | "corrections-unavailable";
 export interface HistoryProof {
   cutoff: number;
   scope: ProgressSnapshot["scope"];
@@ -367,8 +367,8 @@ async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgress
   // The approved core validates all selected records before a complete result leaves this boundary.
   const derived = deriveWorkbookProgress(snapshot, input.curriculum, history);
   if (!derived.ok) fail("invalid-record");
-  // Every retained row has passed the source/observation/journal checks above. Use the core to validate held
-  // selected-step proof too. Other-step records stay raw normalized evidence and supply no progress decision.
+  // Every retained row has passed the source/observation/journal checks above. The no-sample path validates held
+  // selected-step evidence without making an isolated mastery decision. Other steps supply no progress decision.
   for (const h of held) {
     const o = h.original, k = key(o.first.observation.identity), x = catalog.get(k)!;
     if (o.first.observation.teaching?.itemStep?.skill !== s.selection.skill || o.first.observation.teaching?.itemStep?.step !== s.selection.step) {
@@ -377,8 +377,8 @@ async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgress
     }
     const cutoff = Math.max(s.cutoff, o.first.at, ...o.changes.map(c => c.at));
     const check = deriveWorkbookProgress({ ...s, cutoff, scope: [{ workbookId: x.expected.identity.workbookId,
-      printedRevision: x.expected.identity.printedRevision, days: [x.day] }], requiredSample: [{ ...x,
-      resultVersion: (o.changes.at(-1) ?? o.first).observation.resultVersion }] }, input.curriculum, { version: 1, originals: [o], issuedDecisions: [] });
+      printedRevision: x.expected.identity.printedRevision, days: [x.day] }], requiredSample: null }, input.curriculum,
+    { version: 1, originals: [o], issuedDecisions: [] });
     if (!check.ok) fail("invalid-record");
   }
   const end = await store.fence(input);
@@ -399,6 +399,8 @@ export async function previewNextWorkbookPlanFromHistory(store: WorkbookProgress
   const frozen = structuredClone(input), frozenPlanning = structuredClone(planning);
   const retained = await readWorkbookProgressHistory(store, frozen, limits);
   if (!retained.ok) return retained;
+  // Facts remain readable, but unknown corrections cannot establish unresolved work for a definitive plan.
+  if (retained.proof.corrections === "unavailable") return { ok: false, availability: "unavailable", reason: "corrections-unavailable" };
   const preview = previewNextWorkbookPlan({ version: 1, snapshot: retained.snapshot, curriculum: frozen.curriculum, history: retained.history, planning: frozenPlanning });
   if (!preview.ok) return { ok: false, availability: "unavailable", reason: "preview-refused" };
   return { ok: true, availability: "complete", retained, preview };

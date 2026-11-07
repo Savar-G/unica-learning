@@ -32,6 +32,25 @@ function assertPlan(r: WorkbookProgressHistoryPreview, count = 123) {
 describe("canonical retained history through public reading and preview", () => {
   // Falsifiers: dropped pages, lost old 56, changed teaching target, missing original event/question avoidance,
   // post-cutoff judgments, or a partial/failed source presented as complete.
+  it("retains facts but refuses a definitive plan when correction proof is unavailable", async () => {
+    const f = historyFixture(10, 8);
+    f.input.proof.corrections = "unavailable";
+    const retained = await readWorkbookProgressHistory(f.store, f.input);
+    expect(retained.ok).toBe(true);
+    if (retained.ok) expect(retained.proof.corrections).toBe("unavailable");
+    const result = await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning);
+    expect(result).toEqual({ ok: false, availability: "unavailable", reason: "corrections-unavailable" });
+    expect(result).not.toHaveProperty("preview");
+    expect(JSON.stringify(result)).not.toContain("56");
+    f.input.proof.corrections = { reference: "synthetic-validated-empty", completeThrough: f.input.snapshot.cutoff, rows: [] };
+    expect(complete(await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning)).preview.decision.misses).toHaveLength(2);
+    f.input.proof.corrections = { reference: "synthetic-validated-fix", completeThrough: f.input.snapshot.cutoff,
+      rows: [{ identity: f.input.sample[8], tries: [{ id: "known-fix", at: historyTime("2026-02-01T12:00:00Z"),
+        basedOnResultVersion: 2, result: "right", help: "math-help" }] }] };
+    const fixed = complete(await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning));
+    expect(fixed.preview.decision.misses).toHaveLength(1);
+    expect(fixed.preview.decision.score.independentFirstRight).toBe(8);
+  });
   it("takes over 100 originals and over 100 journal rows to the real preview after image lifetime", async () => {
     const f = historyFixture();
     for (let n = 0; n < 105; n++) f.parentChange(n, n < 100 ? "right" : "wrong");
@@ -43,7 +62,7 @@ describe("canonical retained history through public reading and preview", () => 
     const old = r.preview.decision.items.find(i => i.question.workbookId === f.input.books[1].workbookId)!;
     expect(old.first).toMatchObject({ at: historyTime(firstTime), observation: { readAnswerText: "56", result: "wrong" } });
     expect(f.input.snapshot.cutoff - old.first!.at).toBeGreaterThan(90 * 86_400_000);
-    expect(r.retained.proof).toMatchObject({ corrections: "unavailable", causes: "unavailable" });
+    expect(r.retained.proof).toMatchObject({ corrections: "caller-validated", causes: "unavailable" });
   });
 
   it("holds Days 8-10 on Day 7 and includes them in an explicit later-book preview", async () => {
@@ -63,6 +82,33 @@ describe("canonical retained history through public reading and preview", () => 
   it("refuses current Day 8 scope under a normal Day 7 declaration", async () => {
     const f = historyFixture(); f.input.snapshot.scope[0].days = [1, 8];
     expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, reason: "invalid-contract" });
+  });
+
+  it.each([
+    ["outside-days", 0, "right"], ["outside-days", 0, "wrong"], ["outside-days", 1, "right"], ["outside-days", 1, "wrong"],
+    ["outside-sample", 0, "right"], ["outside-sample", 0, "wrong"], ["outside-sample", 1, "right"], ["outside-sample", 1, "wrong"],
+  ] as const)("validates %s evidence with prior %i and %s without applying its isolated mastery", async (reason, prior, result) => {
+    const f = historyFixture(10, 8), index = reason === "outside-days" ? 10 : 0, m = f.marks[index];
+    f.input.snapshot.priorMastery.passedSteps = prior;
+    f.planning.passed = { ...f.planning.passed, [f.input.curriculum.skill.id]: prior };
+    if (reason === "outside-sample") f.input.sample = f.input.sample.filter(i => i.itemId !== m.item_id);
+    const o = m.observation as unknown as Observation, reading = result === "right" ? "13" : "56";
+    m.observation = toJson({ ...o, result, readAnswerText: reading,
+      regions: [{ regionId: "answer", text: reading, value: reading, certainty: "certain" }] });
+    f.events.find(e => e.id === m.event_id)!.result = result;
+    m.original_event = toJson({ ...m.original_event as object, result });
+    const r = complete(await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning));
+    expect(r.preview.decision.action).toBe("repeat-new-numbers");
+    expect(r.preview.decision.passed[f.input.curriculum.skill.id]).toBe(prior);
+    expect(r.retained.held).toContainEqual(expect.objectContaining({ reason,
+      original: expect.objectContaining({ first: expect.objectContaining({ observation: expect.objectContaining({ identity: expect.objectContaining({ itemId: m.item_id }) }) }) }) }));
+    expect(r.preview.decision.items.some(i => i.identity.itemId === m.item_id)).toBe(false);
+  });
+  it("still refuses an actual selected mastery gap", async () => {
+    const f = historyFixture(10, 10);
+    f.input.snapshot.priorMastery.passedSteps = 0;
+    f.planning.passed = { ...f.planning.passed, [f.input.curriculum.skill.id]: 0 };
+    expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, availability: "unavailable", reason: "invalid-record" });
   });
 
   it.each(["items", "changes", "events"] as const)("drop-page control for %s fails the same public preview assertion", async source => {
@@ -100,12 +146,14 @@ describe("canonical retained history through public reading and preview", () => 
     expect(i.effective!.observation).toMatchObject({ state: "parent-checked", result: "right" });
     expect(r.retained.proof.references.some(p => p.source === "scan_mark_changes" && p.reference.endsWith(":previous"))).toBe(true);
     f.input.snapshot.cutoff = historyTime(firstTime);
+    f.input.proof.corrections = { reference: "synthetic-complete-empty-corrections", completeThrough: f.input.snapshot.cutoff, rows: [] };
     const past = complete(await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning));
     expect(past.preview.decision.status).toBe("insufficient-evidence");
   });
 
   it("does not turn an automatic post-cutoff transition into a proved past pending state", async () => {
     const f = historyFixture(); f.input.snapshot.cutoff = historyTime("2025-12-31T12:00:00Z");
+    f.input.proof.corrections = { reference: "synthetic-complete-empty-corrections", completeThrough: f.input.snapshot.cutoff, rows: [] };
     expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, reason: "unproved-past-state" });
   });
 
@@ -119,7 +167,7 @@ describe("canonical retained history through public reading and preview", () => 
     expect(helped.first!.observation.help).toBe("unknown");
     expect(helped.effective!.observation.help).toBe("unknown");
     expect(r.retained.proof.helpEvents).toHaveLength(1);
-    expect(r.retained.proof.corrections).toBe("unavailable");
+    expect(r.retained.proof.corrections).toBe("caller-validated");
   });
 
   it("accepts explicit validated second-try proof without changing first score", async () => {

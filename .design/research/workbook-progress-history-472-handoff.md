@@ -17,7 +17,7 @@ Only these new files belong to this change:
 
 No existing source, test, approved core, preview, planner, generator, curriculum, package, renderer, instruction, decision, configuration, type or migration changed. The source commit contains five new files and 1,077 lines. This report is separate.
 
-The public reader is `readWorkbookProgressHistory(store, input, limits)`. Its input version is 1. The public composition is `previewNextWorkbookPlanFromHistory(store, input, planning, limits)`. The composition calls the approved `previewNextWorkbookPlan`, which calls the approved core and the actual public planner. It returns the retained evidence and the actual preview result. A failed source read returns no successful preview or private evidence.
+The public reader is `readWorkbookProgressHistory(store, input, limits)`. Its input version is 1. The public composition is `previewNextWorkbookPlanFromHistory(store, input, planning, limits)`. The composition calls the approved `previewNextWorkbookPlan` only when correction completeness is explicitly validated. That preview calls the approved core and the actual public planner. Raw facts can remain readable while a definitive plan is refused. It returns the retained evidence and the actual preview result. A failed source read returns no successful preview or private evidence.
 
 `WorkbookProgressHistoryStore` is an explicit read-only seam. It supplies a scope/revision/count fence and exclusive-cursor pages of canonical items, parent changes, and relevant workbook learning events. `workbookProgressHistoryStore(db)` implements that seam with the current generated Supabase schema. Both implementation modules are server-only. The adapter accepts an existing typed client. It does not obtain credentials or create a session.
 
@@ -100,3 +100,18 @@ Proof by subsystem:
 Root work remains: live caller authorization and a trusted frozen package/sample loader; actual issuance/prior-mastery storage; a complete automatic version ledger if every historical pending state is required; merged second-try proof reading; any source that proves help occurred before the paper answer; saved preview/snapshot inputs; Admin UI through the design workflow; #473 review scheduling; #476 snapshot/queue work; hosted RLS, retention and deletion checks; independent review; and the later full test/lint/build/browser gate. Unsupported legacy contexts, incompatible curriculum versions and unprovable history must remain refusals.
 
 No UI, API, writer, real Auth/session, service/provider/model/image/Storage call, credential/environment read, customer-book action, email, charge, flag, deletion, full suite, application build, Chromium, server, push, PR, watch or issue closure ran. Commit hooks were disabled to prevent unrelated checks. Every owned check process exited. Vitest contexts closed. The source commit and this report remain local.
+
+
+## Root repair round 2
+
+The independent review of cc892638 found three P2 defects. Its report remains SPEC FAIL for that prior pin. Root repaired only the new history implementation, fixture and public tests. Existing core, preview, planner and print sources remain unchanged.
+
+- F1: unavailable correction proof no longer produces a definitive plan. readWorkbookProgressHistory can still return the retained facts with corrections unavailable. previewNextWorkbookPlanFromHistory returns the bounded corrections-unavailable refusal before any plan is returned. The synthetic fixture now explicitly attests complete empty corrections for positive plan cases. Unknown, validated-empty and validated-fixed cases are separate. A real caller must supply actual complete proof; this test attestation is not a new production source.
+- F2: held selected-step records use the core's no-sample validation path. They do not become one-item passing samples or trigger an isolated mastery-gap decision. Eight right/wrong, prior-zero/prior-one and outside-day/outside-sample controls retain the selected plan. A separate real selected mastery-gap control still refuses. Malformed held records still refuse.
+- F3: the server adapter uses Node isDeepStrictEqual for manifest structure. Object key order does not change equality. Array order still matters. The actual-client test compares the full preview before and after recursive object-key reversal; another test refuses changed array order.
+
+Final root selection: four files, 252 tests passed, exit 0. The exact same test selection ran against both prior implementation modules loaded from cc892638 in memory: four failures and 248 passes, exit 1. Two failures isolate F2, one F1 and one F3. No tracked source was replaced by that control. The earlier intermediate 251-test selection is not the final count.
+
+The five owned TypeScript roots pass scoped lint with zero errors or warnings and scoped TypeScript with zero diagnostics. The React auto-detection notice is a tool notice from the isolated checkout without installed React, not a source warning. No install or symlink was made. No full suite, build, browser, hosted call or production action ran.
+
+Exact task arrays, logs and exits are under overnight-20261107/472-history-r2-prior.*, 472-history-r2-fixed.* and 472-history-r2-scoped.*. Root runners run-472-history-r2-prior.mjs and run-472-history-r2-fixed.mjs retain the explicit source roots, source aliases and no-env configuration. A new independent recheck is still required. Whole #472 remains incomplete.

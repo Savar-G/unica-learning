@@ -1,4 +1,5 @@
 import "server-only";
+import { isDeepStrictEqual } from "node:util";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
 import type { HistoryBook, HistoryFence, HistoryPage, WorkbookProgressHistoryInput, WorkbookProgressHistoryStore } from "./workbook-progress-history";
@@ -7,7 +8,7 @@ const MARK_COLUMNS = "id,parent_id,child_id,workbook_id,printed_revision,page_id
 const CHANGE_COLUMNS = "id,item_id,parent_id,child_id,from_version,to_version,actor,changed_at,previous,current,scan_marking_items!inner(workbook_id,printed_revision)";
 const EVENT_COLUMNS = "id,idempotency_key,parent_id,child_id,source,question_source,workbook_id,workbook_page,workbook_question,occurred_at,result,hints,evidence_kind,evidence_id,skill_standard,skills";
 const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s);
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const same = isDeepStrictEqual;
 function checked<T>(r: { data: T[] | null; count: number | null; error: unknown }): HistoryPage<T> {
   if (r.error || !Array.isArray(r.data) || r.count === null || !Number.isSafeInteger(r.count) || r.count < 0) throw new Error("history_source");
   return { rows: r.data, remaining: r.count };

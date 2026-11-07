@@ -22,7 +22,8 @@ export function historyFixture(total = 123, right = 100) {
     books: [currentBook, olderBook].map(workbookId => ({ workbookId, printedRevision: revision,
       manifest: { version: 1, curriculum: base.snapshot.curriculum, testWorkbook: false, snapshotDay: 7, days: [], levelTest: null }, pages: [] })),
     sample: [], proof: { frozenPackages: "synthetic-frozen-packages", priorMastery: base.snapshot.priorMastery.evidenceReference,
-      issuedHistory: "synthetic-complete-issued-list", issuedDecisions: [], corrections: "unavailable", causes: "unavailable" },
+      issuedHistory: "synthetic-complete-issued-list", issuedDecisions: [],
+      corrections: { reference: "synthetic-complete-empty-corrections", completeThrough: historyTime(freezeTime), rows: [] }, causes: "unavailable" },
     selection: { kind: "day7", currentWorkbookId: currentBook } };
   const marks: HistoryMarkRow[] = [], changes: HistoryChangeRow[] = [], events: HistoryEventRow[] = [];
   const planning = base.planning;

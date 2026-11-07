@@ -50,6 +50,23 @@ function setup(options: { cap?: number; hook?: (c: Call, rows: Row[], count: num
 describe("read-only typed Supabase history store with synthetic fetch", () => {
   // Falsifiers: any service/image/Storage access, wrong filters, offset, truncated success, missing count,
   // or loss of the old written answer at the public planner boundary.
+  it("accepts equal manifests with different object key order through the actual client", async () => {
+    const f = setup({ cap: 37 });
+    const before = await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning);
+    expect(before.ok).toBe(true);
+    const manifests = structuredClone(f.input.books.map(b => b.manifest));
+    const reverseKeys = (v: unknown): unknown => Array.isArray(v) ? v.map(reverseKeys)
+      : v !== null && typeof v === "object" ? Object.fromEntries(Object.entries(v).reverse().map(([k, value]) => [k, reverseKeys(value)])) : v;
+    f.input.books = f.input.books.map(b => ({ ...b, manifest: reverseKeys(b.manifest) as typeof b.manifest }));
+    expect(f.input.books.map(b => b.manifest)).toEqual(manifests);
+    const after = await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning);
+    expect(after).toEqual(before);
+  });
+  it("still refuses a manifest with a different array order", async () => {
+    const f = setup(), b = f.input.books[0];
+    b.manifest = { ...b.manifest, days: [...b.manifest.days].reverse() };
+    expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, availability: "unavailable" });
+  });
   it("paginates canonical items, journal and relevant events into the real preview with a smaller server cap", async () => {
     const f = setup({ cap: 37 });
     for (let n = 0; n < 105; n++) f.parentChange(n, n < 100 ? "right" : "wrong");
@@ -90,8 +107,10 @@ describe("read-only typed Supabase history store with synthetic fetch", () => {
     for (const e of f.events) e.evidence_id = historyId(999);
     const laterCutoff = f.input.snapshot.cutoff;
     f.input.snapshot.cutoff = Date.parse("2026-02-01T12:00:00Z");
+    f.input.proof.corrections = { reference: "synthetic-complete-empty-corrections", completeThrough: f.input.snapshot.cutoff, rows: [] };
     const first = await readWorkbookProgressHistory(f.store, f.input);
     f.input.snapshot.cutoff = laterCutoff;
+    f.input.proof.corrections = { reference: "synthetic-complete-empty-corrections", completeThrough: f.input.snapshot.cutoff, rows: [] };
     const later = await readWorkbookProgressHistory(f.store, f.input);
     expect(first.ok && later.ok).toBe(true);
     if (!first.ok || !later.ok) return;
