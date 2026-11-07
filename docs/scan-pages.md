@@ -194,6 +194,21 @@ Each kind accounts for every number in the method: the question's numbers, their
 - Repeated subtraction takes away that number from the total down to 0. The count is the answer.
 - A bare last line must equal the last result, or the count. A column method's last line joins its column results.
 - A number with a thousands space (`12 500`) is one number.
+- Steps on one line split by commas (`36 + 40 = 76, 76 + 7 = 83`) read as separate lines, and a last `so 5` reads as the count. Neither adds a kind.
+
+Common child forms and their marks, with the AI saying `solves` (tests in `src/lib/scan-marking-methods.test.ts`):
+
+| Form | Mark |
+| --- | --- |
+| `36 + 40 = 76 + 7 = 83` (run-on chain) | Unsure |
+| `36 + 40 = 76, 76 + 7 = 83` | Valid: split one addend |
+| `36 → 76 → 83` (jumps with no amounts) | Unsure |
+| `36 +40 → 76 +7 → 83` | Valid: split one addend |
+| `6 + 7 = 13`, `3 + 4 + 1 = 8`, `83` (column) | Valid: column |
+| `36`, `+47`, `83` (the sum copied down) | Unsure |
+| `8, 16, 24, 32, 40 so 5` | Valid: skip counting |
+| `8, 16, 24, 32, 40 = 5` | Unsure |
+| `8 × 5 = 40` for `8 × ? = 40` | Unsure: the answer is an operand |
 
 These are unsure, never Right: a method code does not recognize, two methods of one kind, a run-on chain (`36 + 40 = 76 + 7 = 83`), a line with `?` or `_`, a question shape code cannot read, and a fraction or decimal answer. Valid work that no kind covers stays unsure. A false step is Wrong, and so is `does-not-solve`.
 
@@ -215,7 +230,7 @@ The explanation feature handles a right answer with a wrong method: it tells the
 
 The item keeps one crop of both work areas and the answer box, one canonical result and one event key. It follows its frozen mastery decision, as other AI-marked formats do. The stored package and print contract stay unchanged. Missing or invalid measured regions make no crop and no reading.
 
-Prompt v8 adds the method rule. The accepted v7 evaluation does not cover v8, so `scanMarkingServerReadiness` now names the stale candidate and the evaluation items as blockers. This changes no admission: `SCAN_MARKING_ENABLED` and the test-parent list still decide access.
+Prompt v8 adds the method rule. It is frozen for the paid run: a test pins the SHA-256 of its system text, output schema, effort and output limit, and a change needs the controller's approval. The method rules are not frozen: the Robin replay scores the saved model output through the current rules and reports how many items changed (`rescoredItems`), so a rule-only change is scored again with no new call. The accepted v7 evaluation does not cover v8, so `scanMarkingServerReadiness` now names the stale candidate and the evaluation items as blockers. This changes no admission: `SCAN_MARKING_ENABLED` and the test-parent list still decide access.
 
 ### Round 9 coverage
 

@@ -213,7 +213,11 @@ function listLine(line: string): number[] | null {
 function readWork(text: string): { lines: Line[]; unread: boolean; falseStep: boolean } {
   const lines: Line[] = [];
   let unread = false, falseStep = false, carry: Token[] | null = null;
-  const raw = text.split(/[\n;]/).map(l => l.trim()).filter(Boolean);
+  // Children often write steps on one line, split by commas: "36 + 40 = 76, 76 + 7 = 83". Only whole equations split, so a skip count keeps its commas.
+  const raw = text.split(/[\n;]/).map(l => l.trim()).filter(Boolean).flatMap(l => { const parts = l.split(/,\s+/).map(p => p.trim()); return parts.length > 1 && parts.every(p => p.includes("=")) ? parts : [l]; });
+  // "... so 5" on the last line states the result or the count, as a line of its own would.
+  const so = raw.length ? new RegExp(`^(.*\\S)\\s+so\\s+(${NUMBER_TEXT})$`, "i").exec(raw.at(-1)!) : null;
+  if (so) raw.splice(-1, 1, so[1], so[2]);
   const chains: (Token[] | Line)[] = [];
   for (const [n, line] of raw.entries()) {
     const count = n === raw.length - 1 ? COUNT_LINE.exec(line) : null;

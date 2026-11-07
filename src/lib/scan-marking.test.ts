@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, type Observation } from "@/lib/scan-observation";
 import { effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
@@ -194,6 +195,7 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
 }
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
 
+const FROZEN_PROMPT_SHA256 = "d911e7f08fa22d79c80fe91adfbb0059f43ba40c59065630d7547463f374a894";
 const GOOD_ONE = "27 + 30 = 57\n57 + 9 = 66", GOOD_TWO = "39 + 30 = 69\n69 - 3 = 66";
 type Verdict = "solves" | "does-not-solve" | "unsure" | null;
 const reading = (region: string, text: string | null, issue: string | null = null, verdict: Verdict = null) => ({ item: "i1", region, text, state: text === "" ? "blank" : text === null ? "uncertain" : "written", issue, verdict, reason: verdict ? "made-up model reason" : null });
@@ -240,6 +242,12 @@ describe("two-ways AI marking", () => {
     expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
     const props = (request.schema as { properties: { readings: { items: { required: string[]; properties: { verdict: unknown; reason: unknown } } } } }).properties.readings.items;
     expect(props.required).toEqual(expect.arrayContaining(["verdict", "reason"]));
+  });
+  it("keeps the prompt and the output schema frozen for the paid run", () => {
+    const request = markingRequest(twoWaysFrame(), new Uint8Array([1]));
+    // Changing either needs the controller's approval: the paid run is valid only for what ships.
+    expect(createHash("sha256").update(JSON.stringify({ system: request.system, schema: request.schema, effort: request.effort, maxTokens: request.maxTokens })).digest("hex")).toBe(FROZEN_PROMPT_SHA256);
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
   });
   it("tells the AI to report a step it cannot read and never to leave out or tidy a step", () => {
     const system = markingRequest(twoWaysFrame(), new Uint8Array([1])).system!;

@@ -401,6 +401,7 @@ export async function replayPhysical(input: string, output: string, root: string
   assertComparisonResume(records, [...results, ...fixedResults]);
   assertComparisonResultIdentity(physicalScoringInput(set), results, evidences, run);
   if (fixed) assertComparisonResultIdentity(fixed, fixedResults, evidences, run);
+  let rescored = 0;
   const interpret = (list: readonly ComparisonResult[], photoOf: (id: string) => ComparisonPhoto) => list.map(result => {
     const photo = photoOf(result.photo);
     const terminal = records.filter(r => r.result?.photo === result.photo && r.result?.run === run && hashValue(r.result) === hashValue(result));
@@ -410,18 +411,21 @@ export async function replayPhysical(input: string, output: string, root: string
     if (!last.response || hashValue(transportUsage(last.response.envelope)) !== hashValue(last.usage) || last.response.body === null || hashValue(JSON.parse(last.response.body)) !== hashValue(last.response.envelope)) throw Error("saved-http-envelope-mismatch");
     const envelope = last.response.envelope as { choices?: { message?: { content?: string } }[] };
     let output: unknown = null; try { output = JSON.parse(envelope.choices?.[0]?.message?.content ?? ""); } catch { /* Report invalid JSON as an observation failure. */ }
+    // The prompt and schema are frozen, so a schema answer cannot change. The method rules can: replay scores the saved
+    // model output through the current rules, so a rule-only change is scored again with no new call.
     const schemaValid = validMarkingOutput(photo.frame, output), observations = schemaValid ? readMarkingOutput(photo.frame, output) : [];
-    if (schemaValid !== result.schemaValid || hashValue(observations) !== hashValue(result.observations)) throw Error("saved-reader-interpretation-changed");
+    if (schemaValid !== result.schemaValid) throw Error("saved-schema-validity-changed");
+    rescored += observations.filter(o => { const saved = result.observations.find(s => s.identity.itemId === o.identity.itemId); return !saved || saved.result !== o.result || saved.state !== o.state; }).length;
     return { ...result, schemaValid, observations };
   });
-  const interpreted = interpret(results, id => set.photos.find(p => p.photo.id === id)!.photo);
-  const fixedInterpreted = fixed ? interpret(fixedResults, id => fixed.photos.find(p => p.id === id)!) : [];
+  const interpreted = interpret(results, id => set.photos.find(p => p.photo.id === id)!.photo), robinRescored = rescored;
+  const fixedInterpreted = fixed ? interpret(fixedResults, id => fixed.photos.find(p => p.id === id)!) : [], fixedRescored = rescored - robinRescored;
   const out = await newOutput(output);
-  const report = physicalReport(set, interpreted, evidences, run, true);
+  const report = { ...physicalReport(set, interpreted, evidences, run, true), rescoredItems: robinRescored };
   await durableJson(resolve(out, "report.json"), report, true);
   console.log(physicalSideBySide(report));
   if (fixed) {
-    const fixedReport = physicalFixedReport(fixed, fixedInterpreted, evidences, run, "saved-reader-replay");
+    const fixedReport = { ...physicalFixedReport(fixed, fixedInterpreted, evidences, run, "saved-reader-replay"), rescoredItems: fixedRescored };
     await durableJson(resolve(out, "fixed40-report.json"), fixedReport, true);
     console.log(physicalFixedSideBySide(fixedReport));
   }

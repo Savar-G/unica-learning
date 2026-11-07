@@ -260,6 +260,31 @@ describe("Sonnet and Terra side by side", () => {
     for (const m of report.models) { expect(m.costPerPageUsd).toBe(0); expect(m.latencyP50Ms).not.toBeNull(); expect(m.latencyP95Ms).not.toBeNull(); }
     expect(report.passed).toBe(false);
   });
+  it("shows the two-ways unsure rate apart from the whole-page unsure rate, for each model", async () => {
+    const { report } = await fakeRun(), [sonnet, terra] = report.models;
+    expect(sonnet).toMatchObject({ clearUnsureRate: 0, twoWays: { clearItems: 1, clearUnsure: 0, clearUnsureRate: 0, unsureRate: 0 } });
+    expect(terra).toMatchObject({ clearUnsureRate: 1 / 9, twoWays: { clearItems: 1, clearUnsure: 0, clearUnsureRate: 0, unsureRate: 0 } });
+    const text = physicalSideBySide(report);
+    expect(text).toContain("Clear unsure rate");
+    expect(text).toContain("Two-ways unsure (clear)");
+    expect(text).toContain("11.1%");
+  });
+  it("re-scores saved model output through the current method rules on replay, with no new call", async () => {
+    const { input } = await fakeRun(), journal = resolve(input.out, "journal");
+    // Saved results from older rules: every item read Right. Replay must use what the current rules make of the raw output.
+    const results = JSON.parse(await readFile(resolve(input.out, "results.json"), "utf8")) as ComparisonResult[];
+    const older = (r: ComparisonResult) => ({ ...r, observations: r.observations.map(o => ({ ...o, result: "right" as const, state: "scored" as const })) });
+    await durableJson(resolve(input.out, "results.json"), results.map(older));
+    for (const file of await readdir(journal)) {
+      const record = JSON.parse(await readFile(resolve(journal, file), "utf8"));
+      if (record.result) { record.result = older(record.result); await durableJson(resolve(journal, file), record); }
+    }
+    const parent = await temp(), out = resolve(parent, "replay");
+    await replayPhysical(input.out, out, root);
+    const report = JSON.parse(await readFile(resolve(out, "report.json"), "utf8"));
+    expect(report).toMatchObject({ proofClass: "saved-reader-replay", rescoredItems: 36 });
+    expect(report.models.map((m: { wrongMarks: number }) => m.wrongMarks)).toEqual([0, 2]);
+  });
   it("lists each disagreement by photo and item, with the truth and each model's result", async () => {
     const { report, input } = await fakeRun();
     expect(report.disagreements).toHaveLength(4);
@@ -462,8 +487,9 @@ describe("fixed 40 set in the same paid step", () => {
     expect(report.rows.map(r => r.model)).toEqual([SONNET.model, TERRA.model]);
     expect(report.rows[0]).toMatchObject({ v8: { complete: false, wrongMarks: 0, wrongAsRight: 0, prompt: "whole-page-scalar-readings-v8" }, v7: { prompt: "whole-page-scalar-readings-v7", wrongMarks: 0, definite: 218, wrongAsRight: 0, clearUnsure: 1, clear: 219, costPerPageUsd: 0.01095165, latencyP50Ms: 2551, latencyP95Ms: 3164 } });
     expect(report.rows[1].v7).toMatchObject({ costPerPageUsd: 0.005076625, latencyP50Ms: 2270, latencyP95Ms: 3264 });
+    expect(report.rows[0].v8).toMatchObject({ clearUnsureRate: 0, twoWays: { items: 2, clearItems: 2, clearUnsure: 0, clearUnsureRate: 0 } });
     const text = physicalFixedSideBySide(report);
-    for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219"]) expect(text).toContain(piece);
+    for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219", "2W unsure"]) expect(text).toContain(piece);
   });
   it("runs the fixed set after Robin in one serial queue, under one credit check, and replays both", async () => {
     const input = await withFixed(), mem = memoryBudget(), printed = vi.spyOn(console, "log").mockImplementation(() => {});

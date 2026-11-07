@@ -107,7 +107,7 @@ node scripts/scan-marking-physical.mjs \
   --out .workbook-sample/robin-phone-replay-proof
 ```
 
-Use new output names if those folders exist. Fake HTTP uses the production request, transport, journal, schema validator, and reader with a local in-memory ledger. It sends no HTTP request. It has one built-in control: Terra is unsure of the first method on each two-ways item, so the report shows a disagreement. The labels give each written method a `solves` verdict. A fake score proves local interpretation only. Saved replay reads the saved raw HTTP envelopes and terminal journals. It performs no inference. It validates result ownership and re-runs the same reader. Its proof class is `saved-reader-replay`.
+Use new output names if those folders exist. Fake HTTP uses the production request, transport, journal, schema validator, and reader with a local in-memory ledger. It sends no HTTP request. It has one built-in control: Terra is unsure of the first method on each two-ways item, so the report shows a disagreement. The labels give each written method a `solves` verdict. A fake score proves local interpretation only. Saved replay reads the saved raw HTTP envelopes and terminal journals. It performs no inference. It validates result ownership and scores the saved model output through the current reader and method rules. The prompt and schema are frozen, so a change in schema validity stops the replay. A rule-only change is scored again, and `rescoredItems` counts the items whose mark changed. Its proof class is `saved-reader-replay`.
 
 ## Explicit paid path
 
@@ -139,7 +139,7 @@ Add `--fixed-set /Users/savargupta/unica-workbook-samples/first-customer-marking
 
 The photos, frames and truth do not change, except for one thing. v7 drew nothing on a two-ways item, because it was parent-only, so the 4 parent rows become blank AI-marked rows. An ink check found only the printed box frames in those regions on the right, wrong and blank photos; the blurry photo shows no dark pixels. So the v8 denominators are 4 rows higher than v7, and this set does not test written methods. The Robin photos test them.
 
-After Robin, the serial queue runs the 40 photos on both models. `fixed40-report.json` and the printed table show each v8 row next to the saved v7 row. The saved row comes from `docs/scan-marking-v7-acceptance-20261107.md`, and it is not new inference. A fake or replay run shows only the local reader on labels.
+After Robin, the serial queue runs the 40 photos on both models. `fixed40-report.json` and the printed table show each v8 row next to the saved v7 row, with the two-ways unsure count beside the page's unsure count. The saved row comes from `docs/scan-marking-v7-acceptance-20261107.md`, and it is not new inference. A fake or replay run shows only the local reader on labels.
 
 ## Credit preflight
 
@@ -153,7 +153,7 @@ The runner dispatches serially. A clean 429 requires status and error code 429 w
 
 ## Report and checks
 
-`report.json` gives the item counts (photos, item labels, AI-marked, parent) and refused and incomplete inputs. Under `models`, it gives each model's definite-mark denominator, wrong definite marks, wrong-as-right count, clear unsure count and reasons, two-ways results, schema failures, provider usage, token counts, measured cost per page, retained holds, and p50 and p95 latency. `disagreements` lists every photo and item where the models differ, with the human truth. The command prints the same result as a side-by-side table. The report keeps D267 at at most 1 percent wrong definite marks, zero wrong-as-right, and at most 5 percent unsure on clear photos, for each model. Missing or refused inputs cannot pass.
+`report.json` gives the item counts (photos, item labels, AI-marked, parent) and refused and incomplete inputs. Under `models`, it gives each model's definite-mark denominator, wrong definite marks, wrong-as-right count, clear unsure count and reasons, two-ways results, schema failures, provider usage, token counts, measured cost per page, retained holds, and p50 and p95 latency. Each model also shows its clear-photo unsure rate against the D-267 limit of 5%, and the two-ways unsure rate apart from it, on all photos and on clear photos. `disagreements` lists every photo and item where the models differ, with the human truth. The command prints the same result as a side-by-side table. The report keeps D267 at at most 1 percent wrong definite marks, zero wrong-as-right, and at most 5 percent unsure on clear photos, for each model. Missing or refused inputs cannot pass.
 
 Proof classes remain separate: local estimate, local fake, physical input preparation, physical/provider results, and saved reader replay. Actual phone-photo and handwriting recognition remain unproven until the completed human photos arrive and root runs the approved evaluation. Provider privacy and family release remain outside this tool.
 

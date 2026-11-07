@@ -132,3 +132,37 @@ describe("the allow-list fails closed", () => {
     expect(check("64 / 8 = 8", rule("64 ÷ 8 = ?", "8"))).toMatchObject({ verdict: "unknown" });
   });
 });
+
+// How children write. Each form keeps its expected mark, and none of these widens the list of kinds.
+describe("common child forms", () => {
+  it.each([
+    ["36 + 47 = ?", "83", "36 + 40 = 76 + 7 = 83", "unknown", null],
+    ["36 + 47 = ?", "83", "36 + 40 = 76, 76 + 7 = 83", "valid", "split-one-addend"],
+    ["36 + 47 = ?", "83", "36 + 40 = 76\n76 + 7 = 83", "valid", "split-one-addend"],
+    ["36 + 47 = ?", "83", "36 + 40 + 7 = 83", "valid", "split-one-addend"],
+    ["36 + 47 = ?", "83", "36 → 76 → 83", "unknown", null],
+    ["36 + 47 = ?", "83", "36 +40 → 76 +7 → 83", "valid", "split-one-addend"],
+    ["36 + 47 = ?", "83", "36 + 4 = 40, 40 + 40 = 80, 80 + 3 = 83", "valid", "counting-on"],
+    ["36 + 47 = ?", "83", "30 + 40 = 70, 6 + 7 = 13, 70 + 13 = 83", "valid", "partial-sums"],
+    ["36 + 47 = ?", "83", "6 + 7 = 13\n3 + 4 + 1 = 8\n83", "valid", "column"],
+    ["36 + 47 = ?", "83", "36\n+47\n83", "unknown", null],
+    ["36 + 47 = ?", "83", "36 + 47 = 83", "unknown", null],
+    ["36 + 47 = ?", "83", "47 + 36 = 83", "unknown", null],
+    ["36 + 47 = ?", "83", "76 + 7 = 83", "unknown", null],
+    ["36 + 47 = ?", "83", "36 + 40 = 76\n76 + 7 = 83 so 83", "valid", "split-one-addend"],
+    ["36 + 47 = ?", "83", "I added the tens then the ones", "unknown", null],
+    ["8 × ? = 40", "5", "8, 16, 24, 32, 40 so 5", "valid", "skip-counting"],
+    ["8 × ? = 40", "5", "8, 16, 24, 32, 40\n5 times", "valid", "skip-counting"],
+    ["8 × ? = 40", "5", "8, 16, 24, 32, 40 = 5", "unknown", null],
+    ["8 × ? = 40", "5", "8, 16, 24, 32, 40", "unknown", null],
+    ["8 × ? = 40", "5", "8 + 8 + 8 + 8 + 8 = 40 so 5", "valid", "repeated-addition"],
+    ["8 × ? = 40", "5", "40 ÷ 8 = 5", "valid", "inverse-division"],
+    ["8 × ? = 40", "5", "8 × 5 = 40", "unknown", null],
+    ["8 × ? = 40", "5", "5 groups of 8", "unknown", null],
+    ["7 × 360 = ?", "2520", "7 × 300 = 2100, 7 × 60 = 420, 2100 + 420 = 2520", "valid", "split-factor"],
+    ["7 × 360 = ?", "2520", "360 × 7 = 2520", "unknown", null],
+  ] as const)("%s %j is %s", (question, answer, text, verdict, kind) => {
+    expect(check(text, rule(question, answer))).toEqual({ verdict, kind });
+  });
+});
+
