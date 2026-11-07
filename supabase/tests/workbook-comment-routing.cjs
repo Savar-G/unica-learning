@@ -25,7 +25,7 @@ function definition(file, name) {
     for (const [file, name] of [["20261102_workbook_edit.sql", "queue_workbook_edit"], ["20261102_workbook_edit.sql", "claim_workbook_edit"],
       ["20261102155653_workbook_comment_admin_keys.sql", "save_workbook_comment"], ["20261102_workbook_edit_recovery_checks.sql", "send_workbook_comments"],
       ["20261102_workbook_edit_recovery_checks.sql", "finish_workbook_edit"]]) sql(definition(file, name));
-    for (const file of ["20261107033000_workbook_comment_routing.sql", "20261107033001_workbook_layout_review.sql"]) {
+    for (const file of ["20261107042155_workbook_comment_routing.sql", "20261107042201_workbook_layout_review.sql"]) {
       sql(fs.readFileSync(path.join(root, "supabase/migrations", file), "utf8"));
     }
     const result = await run(path.join(bin, "psql"), [...sqlArgs, "-f", path.join(__dirname, "workbook-comment-routing.sql")]);

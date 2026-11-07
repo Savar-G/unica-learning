@@ -5,7 +5,7 @@ create table public.parents(id uuid primary key,deleting boolean not null defaul
 create table public.children(id uuid primary key,parent_id uuid references public.parents on delete cascade,deleting boolean not null default false);
 create table public.workbook_drafts(id uuid primary key,parent_id uuid references public.parents on delete cascade,child_id uuid references public.children on delete cascade,draft jsonb not null);
 create table public.workbooks(id uuid primary key,parent_id uuid,child_id uuid,status text,approved_at timestamptz,pdf_path text);
-create table public.workbook_draft_revisions(draft_id uuid references public.workbook_drafts on delete cascade,revision int,parent_id uuid,child_id uuid,kind text,by_user uuid,by_email text,note text,content jsonb,rendering jsonb,render_problems jsonb not null default '[]',primary key(draft_id,revision));
+create table public.workbook_draft_revisions(draft_id uuid references public.workbook_drafts on delete cascade,revision int,parent_id uuid,child_id uuid,kind text,by_user uuid,by_email text,note text,content jsonb,rendering jsonb,render_problems jsonb not null default '[]',primary key(draft_id,revision),check ((revision=1)=(kind='generated') and (revision=1)=(content is null)));
 create table public.workbook_edits(id uuid primary key default gen_random_uuid(),draft_id uuid references public.workbook_drafts on delete cascade,parent_id uuid,child_id uuid,base_revision int,page_number int,question_number int,action text,note text,item jsonb,actor_id uuid,actor_email text,runner text,status text not null default 'queued',lease uuid,heartbeat_at timestamptz not null default now(),created_at timestamptz not null default now(),finished_at timestamptz,revision int,before_page jsonb,after_page jsonb,frame jsonb,checkpoints jsonb not null default '{}');
 create unique index workbook_edits_active on public.workbook_edits(draft_id) where status in ('queued','running');
 alter table public.workbook_edits add column error text;
@@ -40,6 +40,6 @@ begin
       'questions',case when n=3 then '[{"number":1},{"number":2}]'::jsonb else '[]'::jsonb end,
       'printContract',jsonb_build_object('version',1,'workbookId',d,'page',n,'label','Test','coordinates','{}'::jsonb,'marks','{}'::jsonb,'fingerprints',jsonb_build_object('content',repeat('c',64),'image',repeat('a',64))))) from generate_series(1,3) n));
   insert into public.workbook_drafts(id,parent_id,child_id,draft) values(d,p,c,v);
-  insert into public.workbook_draft_revisions(draft_id,revision,parent_id,child_id,kind,content,rendering) values(d,1,p,c,'generated',v,r);
+  insert into public.workbook_draft_revisions(draft_id,revision,parent_id,child_id,kind,content,rendering) values(d,1,p,c,'generated',null,r);
   return d;
 end $$;

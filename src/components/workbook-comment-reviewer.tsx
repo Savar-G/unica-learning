@@ -117,6 +117,8 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     if (await post({ comment: { ...anchor, note, route, item: exact && route === "question" ? item : null } })) { setAnchor(null); setNote(""); setExact(false); }
   }
   const question = anchor?.question ? pages.find((p) => p.number === anchor.page)?.questions.find((q) => q.number === anchor.question) : null;
+  const questionRouteAvailable = !!anchor && workbookCommentRoute(pages.find(p => p.number === anchor.page), note) === "question";
+  const displayRoute = requestedRoute === "question" && !questionRouteAvailable ? "layout" : requestedRoute;
   const built = exact && question?.package && item ? buildQuestion(item, { id: question.package.id, workbookId: draft.workbook.id,
     page: selected, question: question.number, level: question.package.level, skills: question.package.skill.skills }) : null;
   const changed = new Set(comments.filter((c) => c.status === "done").map((c) => c.question));
@@ -175,8 +177,8 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
         {anchor && <form className="wbr-compose" onSubmit={(e) => { e.preventDefault(); void add(); }}>
           <strong>{location(anchor)}</strong><label>What needs to change?<textarea ref={input} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setAnchor(null); } if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void add(); } }} /></label>
-          <label>Change type<select value={requestedRoute} onChange={e => setRequestedRoute(e.target.value as CommentRoute | "auto")}>
-            <option value="auto">Choose automatically</option><option value="question">Question text</option><option value="layout">Page layout, cover or instructions</option>
+          <label>Change type<select value={displayRoute} onChange={e => setRequestedRoute(e.target.value as CommentRoute | "auto")}>
+            <option value="auto">Choose automatically</option><option value="question" disabled={!questionRouteAvailable}>Question text</option><option value="layout">Page layout, cover or instructions</option>
           </select></label>
           {workbookCommentRoute(pages.find(p => p.number === anchor.page), note, requestedRoute === "auto" ? undefined : requestedRoute) === "layout"
             ? <p role="note">{LAYOUT_REVIEW_MESSAGE}</p>

@@ -16,7 +16,7 @@ begin
   v:=public.send_workbook_comments(d,1,a,'test@example.com','mac');e:=(v->>'id')::uuid;
   if (select status from public.workbook_comments where id=c1)<>'pending' or (select status from public.workbook_comments where id=c2)<>'sent' then raise exception 'Mixed routing failed'; end if;checks:=checks+1;
   if not public.claim_workbook_edit(e,l,'mac') then raise exception 'Question claim failed'; end if;
-  select rr.content,rr.rendering into content,r from public.workbook_draft_revisions rr where draft_id=d and revision=1;
+  select coalesce(rr.content,(select draft from public.workbook_drafts where id=d)),rr.rendering into content,r from public.workbook_draft_revisions rr where draft_id=d and revision=1;
   v:=public.finish_workbook_edit(e,l,content,r,'[]',null);
   if v->>'status'<>'refused' or (select max(revision) from public.workbook_draft_revisions where draft_id=d)<>1 then raise exception 'No-op revision saved'; end if;checks:=checks+1;
   -- A new batch changes one target and leaves its peer open.

@@ -1,10 +1,10 @@
 # Workbook comment routing: database review
 
-SQL_REVIEW_READY
+SQL_REVIEW_ACCEPTED
 
 Base: `7fe49140c807e29f774b84d941c7621d37043a7a`.
 
-This is a local implementation checkpoint. It is not ready to ship. Neither migration has been applied. Official generated types, API and mounted component checks, the hosted rollback probe, browser checks, and the final full gate remain incomplete.
+The local SQL correction passed its independent recheck at `690ecabf`. The hosted migrations are applied as `20261107042155_workbook_comment_routing` and `20261107042201_workbook_layout_review`. The source files now use those actual versions. Official types are regenerated. The hosted rollback and role checks passed. The complete feature review and final full gate remain pending.
 
 ## Required behavior
 
@@ -51,4 +51,4 @@ The first independent review rejected checkpoint `8e3cf5c7` with four findings. 
 
 The new PostgreSQL controls failed against the prior source for F1, F2 and F3. The route-conversion test failed for F4. The corrected runs passed 41 focused tests, the existing 23 PostgreSQL groups, the concurrent queue group and three added database regressions. The stored-row regression loads the real committed approval and print-contract functions. It checks finish followed by approval. The lease regression uses two concurrent local sessions and a real lock wait.
 
-The new local fixture adds only the columns needed for the approval proof. It still does not establish hosted schema, permissions or storage behavior. Migrations, official types, the complete API/UI checks and release checks remain pending.
+The new local fixture adds only the columns needed for the approval proof. It does not establish hosted schema, permissions or storage behavior. A separate hosted rollback probe now checks actual family keys, revision constraints and role access. Release checks remain pending.
