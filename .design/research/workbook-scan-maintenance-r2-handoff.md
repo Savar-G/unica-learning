@@ -1,6 +1,6 @@
 # #475 maintenance review repairs
 
-MAINTENANCE_R2_IMPLEMENTED_RECHECK_PENDING
+MAINTENANCE_R2_REVIEW_VERIFIED_HOSTED_PENDING
 
 Machine: Savars-MacBook-Pro-5.local. Branch: site/workbook-scan-receipts-475. Rejected base:4a847c83d89a5ee2f229c38693e027ebabe08ef8. Actual implementation: Unify Codex gpt-6.1-sol high.
 
@@ -20,3 +20,5 @@ Each changed runtime file was restored byte-for-byte after a prior-source contro
 The repaired focused cluster passed461tests/19files, exit0. Scoped ESLint exited0. Initial scoped TypeScript found an empty-array fixture inferred as never[]; an explicit typed batch record fixes that type only. Final scoped TypeScript returned0diagnostics and exited0. No assertion or runtime guard was weakened.
 
 No full suite, build, browser, Chromium, hosted query/write, provider/email call, customer write, family switch, charge, plan start, deletion or print action ran. All public tests use synthetic data and real Supabase-client request seams. No customerR2, comment closure, print approval or release acceptance is implied. Root retains independent Sol recheck, hosted positive proof, Schedule design/approval, full gate, main integration and publication.
+
+Independent Sol R2 report verifiedF1-F4 atda2020cda65058af37e08e2cc3d311d5cfdf8a41:462focused checks and16independent probes passed, scoped types0diagnostics and lint0. This is bounded repair approval only. Hosted/UI/full-gate/integration/release proof remains with root.
