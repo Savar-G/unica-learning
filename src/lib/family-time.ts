@@ -191,6 +191,10 @@ export function familyZoneName(zone: FamilyZone): string {
   return `${canonical.split("/").at(-1)!.replaceAll("_", " ")} time`;
 }
 
+/** A short date and time, for example "Nov 7, 1:37 p.m.", in the family's time zone. */
+export const familyMoment = (at: Instant, timeZone: FamilyZone): string =>
+  formatInZone(at, timeZone, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
 /** For example, "4:15 p.m. on Monday, October 12", in the family's time zone. */
 export function familyWhen(at: number, timeZone: FamilyZone): string {
   const day = formatInZone(at, timeZone, { weekday: "long", month: "long", day: "numeric" });

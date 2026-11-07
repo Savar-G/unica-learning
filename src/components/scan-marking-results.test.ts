@@ -10,5 +10,11 @@ it("an answer with no mark shows no 'Automatic check' line; a team mark says Our
   const pending = renderToStaticMarkup(createElement(ScanMarkingResults, { result: base }));
   expect(pending).not.toContain("Automatic check");
   const item = { ...base.items[0], state: "parent-checked" as const, result: "wrong" as const, actor: "admin" as const, label: "Wrong" };
-  expect(renderToStaticMarkup(createElement(ScanMarkingResults, { result: { ...base, items: [item] } }))).toContain("Our team · 2026-11-05T00:00:00Z");
+  expect(renderToStaticMarkup(createElement(ScanMarkingResults, { result: { ...base, items: [item] } }))).toContain("Our team · Nov 4, 5:00 p.m.");
+});
+it("shows a mark's time as a short date and time in the family's zone, never the raw time (#715)", () => {
+  const item = { ...base.items[0], state: "parent-checked" as const, result: "wrong" as const, actor: "admin" as const, label: "Wrong", at: "2026-11-07T21:37:13.132333+00:00" };
+  const html = renderToStaticMarkup(createElement(ScanMarkingResults, { result: { ...base, items: [item] }, zone: "America/Toronto" }));
+  expect(html).toContain("Our team · Nov 7, 4:37 p.m.");
+  expect(html).not.toContain("2026-11-07T21:37");
 });
