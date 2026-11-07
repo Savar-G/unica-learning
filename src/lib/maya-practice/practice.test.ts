@@ -180,7 +180,7 @@ describe("an invalid simulation never counts as a pass", () => {
   });
 
   it("a child who works by place value (20 plus 30 is 50) is not using another question", async () => {
-    const { report } = await suite([C07], { runs: 1, simulator: () => sayEach(["20 plus 30 is 50, and 7 plus 9 is 16. So I got 66.", "Because the ones made sixteen.", "I wrote it."]) });
+    const { report } = await suite([C07], { runs: 1, simulator: () => sayEach(["20 plus 30 is 50, and 7 plus 9 is 16, so I got 66.", "Because the ones made sixteen.", "I wrote it."]) });
     expect(report.runs[0].invalid).toEqual([]);
     expect(report.runs[0].status).toBe("pass");
   });
@@ -225,7 +225,7 @@ describe("an invalid simulation never counts as a pass", () => {
 
   it("a number read as negative is checked by its size: '8 minus 2' is not -8, and 'minus 40' is still 40", async () => {
     expect(await codesOf(C37, ["I got 36.", "I do the bigger minus the smaller, so 8 minus 2."])).not.toContain("number_not_allowed");
-    expect(await codesOf(C37, ["I got 36.", "So it is minus 40."])).toContain("number_not_allowed");
+    expect(await codesOf(C37, ["So it is minus 40."])).toContain("number_not_allowed");
   });
 
   it("every case's right answer is behind a stage: never a single digit or an operand, and not open at the start unless the persona solves it", () => {
@@ -405,11 +405,11 @@ describe("the judge", () => {
     // The child's math claims a code parser missed (Codex reviews of #609): each turn holds an error, and no reading of
     // it by code decides whether J02 applies any more. A judge that marks J02 not applicable never gets a pass.
     const inputs: [string, string, number][] = [
-      ["C07", "7 plus 9 is 16. 2 plus 3 plus 1 is 5. So I got 66.", 0],
-      ["C01", "7 plus 9 is 15. So I got 66.", 4],
-      ["C07", "Five = 2 + 3 + 1. So I got 66.", 0],
-      ["C07", "2 plus 3 plus 1 is 6 equals 5. So I got 66.", 0],
-      ["C07", "Two and three make six. So I got 66.", 0],
+      ["C07", "7 plus 9 is 16, and 2 plus 3 plus 1 is 5, so I got 66.", 0],
+      ["C01", "7 plus 9 is 15, so I got 66.", 4],
+      ["C07", "Five = 2 + 3 + 1, so I got 66.", 0],
+      ["C07", "2 plus 3 plus 1 is 6 equals 5, so I got 66.", 0],
+      ["C07", "Two and three make six, so I got 66.", 0],
       ["C07", "7 plus 9 is 16. So my final answer is 16.", 0],
     ];
     it.each(inputs)("%s: '%s' with J02 marked not applicable is unjudgeable, never a pass", async (id, line, at) => {

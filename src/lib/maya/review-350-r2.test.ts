@@ -141,7 +141,7 @@ describe("N1: a checked wrong final answer after a right one ends the solved sta
     c.child("66");
     c.propose({ act: "accept_answer", parts: [t("How did you get it?")], reading: { answers: [right66] } });
     c.child("Actually I got 56.");
-    expect(c.propose(guide({ reading: { answers: [wrong56] } })).refusal).toBeNull();
+    expect(c.propose(guide({ parts: [ln("check.not_yet", { step: "result" }), ln("step.invite", { step: "ones" })], reading: { answers: [wrong56] } })).refusal).toBeNull();
     c.child("Stop");
     const r = c.propose({ act: "close", parts: [t("Bye.")], reading: { stop: true } });
     expect(r.session.outcome).toMatchObject({ reason: "child_stopped" });
@@ -164,7 +164,7 @@ describe("N1: a checked wrong final answer after a right one ends the solved sta
     c.child("66");
     c.propose({ act: "accept_answer", parts: [t("How did you get it?")], reading: { answers: [right66] } });
     c.child("Actually I got 56.");
-    c.propose(guide({ reading: { answers: [wrong56] } }));
+    c.propose(guide({ parts: [ln("check.not_yet", { step: "result" }), ln("step.invite", { step: "ones" })], reading: { answers: [wrong56] } }));
     c.child("No, 66.");
     expect(c.propose({ act: "accept_answer", parts: [t("Yes.")], reading: { answers: [right66] } }).refusal).toBeNull();
     c.child("Stop");

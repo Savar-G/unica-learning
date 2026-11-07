@@ -161,7 +161,7 @@ describe("the question card", () => {
 
   it("keeps the margin inside the image at its edges", () => {
     const page = { number: 1, dayLabel: null, type: "practice", image: { path: "p.png", width: 200, height: 100 },
-      questions: [{ number: 1, box: { x: 4, y: 90, width: 100, height: 10 }, text: null, columns: null }] };
+      questions: [{ number: 1, box: { x: 4, y: 90, width: 100, height: 10 }, text: null, columns: null, held: true }] };
     expect(questionCrop(page, 1)?.box).toEqual({ x: 0, y: 74, width: 120, height: 26 });
   });
 

@@ -36,7 +36,8 @@ it("shows the awaiting-delivery desk without reading packages or signing an imag
   state.receipt.mockResolvedValue(null);
   const body = await html({ w: BOOK, p: "2", q: "1", pick: "1" });
   expect(body).toContain("Your workbook pages will open here after we confirm delivery.");
-  expect(body).toContain("Leave"); expect(body).toContain("Write to Maya");
+  expect(body).toContain("Leave"); expect(body).toContain('aria-label="Page and question number"');
+  expect(body).toContain("Chat with Maya"); expect(body).toContain("60 left today");
   expect(body).not.toContain("Pick from my page"); expect(body).not.toContain("https://example.invalid/page.png");
   expect(state.store!.workbook).not.toHaveBeenCalled(); expect(state.sign).not.toHaveBeenCalled();
   expect(state.chat).toHaveBeenCalledOnce();

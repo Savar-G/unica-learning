@@ -97,7 +97,7 @@ describe("the phrase bank", () => {
   it("gives every math line 5 to 8 wordings", () => {
     for (const [key, wordings] of Object.entries(TEMPLATES)) {
       if (key === "open.hello" || key.startsWith("question.") || key === "assess.ask" || key === "redirect.back") continue;
-      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken", "redirect.workbook"].includes(key)) {
+      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken", "redirect.workbook", "held.hello", "held.next"].includes(key)) {
         expect(wordings).toHaveLength(1);
         continue;
       }
@@ -106,6 +106,7 @@ describe("the phrase bank", () => {
         expect(wordings).toEqual(["I can't talk about this. I'm here to help with math."]);
         continue;
       }
+      if (key === "confirm.answer") { expect(wordings).toHaveLength(2); continue; }
       expect(wordings.length, key).toBeGreaterThanOrEqual(5);
       expect(wordings.length, key).toBeLessThanOrEqual(8);
     }

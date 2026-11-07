@@ -492,7 +492,7 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
       <section className="desk-board" id={chat ? "chat-board" : undefined} aria-labelledby="desk-board-title">
         <header>
           <h2 id="desk-board-title">Our board</h2>
-          <p><Avatar size={22} />{chat ? "Maya draws here" : "Maya draws here in a call"}</p>
+          <p><Avatar size={22} />Maya draws here</p>
         </header>
         <div className="desk-board-body">
           <div ref={canvas} className="desk-canvas" data-pen={pen}>

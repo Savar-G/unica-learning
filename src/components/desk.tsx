@@ -18,9 +18,8 @@ import "./desk.css";
 
 // The child's desk (#301, D-184), as in the guidance demo video: a slim rail (the desk, the workbooks, progress, and the
 // lock that leaves with the parent's PIN), Maya's column (her name, the workbook and day, the limits, the conversation
-// and the picked question as a card cut from the printed page), the Chat / Call / Call + board tabs, and the shared
-// board. "Pick from my page" opens the page image with a tap area on each question. Chat (#358) and calls (#337) come
-// later: their controls are here, turned off, with one plain line that says so. Nothing on the desk shows an answer.
+// and the picked question as a card cut from the printed page), chat, and the shared board.
+// "Pick from my page" opens the page image with a tap area on each question. Nothing on the desk shows an answer.
 
 const subscribeMotion = (change: () => void) => {
   const q = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -48,6 +47,7 @@ export interface DeskCard {
   crop: QuestionCrop | null;
   /** The question in columns on the board, or null when the board cannot lay it out. */
   board: QuestionBoard | null;
+  held?: boolean;
 }
 
 type DeskProps = {
@@ -86,6 +86,7 @@ const deskHref = (o: { w: string; p?: number; q?: number; pick?: boolean }) => {
 };
 
 export function Desk(props: DeskProps) {
+  const router = useRouter();
   const ready = props.problem === undefined ? props : null;
   const [picked, setPicked] = useState<number | null>(ready?.picked ?? null);
   const picker = useRef<HTMLDialogElement>(null);
@@ -93,6 +94,15 @@ export function Desk(props: DeskProps) {
   const talk = useRef<HTMLDivElement>(null);
   const still = useStill();
   const chat = useDeskChat(props.chatUsage ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked }, props.childId);
+
+  // A typed reference uses the same card and URL as a tap. Keep the new call ID before changing pages or hook keys.
+  useEffect(() => {
+    const ref = chat.chat?.question;
+    if (!ready || !ref || ref.workbookId !== ready.book.id || (ref.page === ready.page.number && ref.question === picked)) return;
+    try { sessionStorage.setItem(`unica-chat:${ref.workbookId}:${ref.page}:${ref.question}`, chat.chat!.id); } catch { /* The conversation remains available during this visit. */ }
+    if (ref.page === ready.page.number) queueMicrotask(() => setPicked(ref.question));
+    router.replace(deskHref({ w: ref.workbookId, p: ref.page, q: ref.question }));
+  }, [chat.chat, ready, picked, router]);
 
   useEffect(() => {
     if (ready?.openPicker) picker.current?.showModal();
@@ -105,7 +115,8 @@ export function Desk(props: DeskProps) {
     if (picked !== null && talk.current) talk.current.scrollTop = talk.current.scrollHeight;
   }, [picked, chat.chat?.transcript.length]);
 
-  const card = ready?.questions.find((q) => q.number === picked) ?? null;
+  const ref = chat.chat?.question;
+  const card = ref && ref.page !== ready?.page.number ? null : ready?.questions.find((q) => q.number === (ref?.question ?? picked)) ?? null;
   const where = ready ? `Workbook ${ready.book.number} · ${ready.page.dayLabel ?? `Page ${ready.page.number}`}` : null;
 
   const keepPick = (n: number) => {
@@ -147,7 +158,6 @@ export function Desk(props: DeskProps) {
           <Avatar size={48} />
           <div className="desk-who"><h1>Maya</h1>{where && <p>{where}</p>}</div>
           <dl className="desk-limits" aria-label="Help from Maya">
-            <div><dt><Icon name="phone" size={14} />Calls</dt><dd>30 min a week</dd></div>
             <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null)}</dd></div>
           </dl>
         </header>
@@ -172,8 +182,8 @@ export function Desk(props: DeskProps) {
               <Icon name="page" />{card ? "Pick another question" : "Pick from my page"}
             </button>
           )}
-          {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} /> : <>
-          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat and calls with Maya start soon."}</p>
+          {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} held={card?.held} /> : <>
+          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat with Maya starts soon."}</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>
@@ -184,8 +194,6 @@ export function Desk(props: DeskProps) {
       <div className="desk-main">
         {chat.usage?.left !== 0 && <div className="desk-modes" role="group" aria-label="How Maya helps">
           <button type="button" disabled={!props.chatUsage} aria-pressed={!!props.chatUsage}><Icon name="chat" size={18} />Chat</button>
-          <button type="button" disabled><Icon name="phone" size={18} />Call</button>
-          <button type="button" disabled aria-pressed={!props.chatUsage}><Icon name="board" size={18} />Call + board</button>
         </div>}
 
         {chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}

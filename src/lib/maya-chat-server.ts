@@ -16,6 +16,7 @@ import { weekOf, type FamilyZone } from "@/lib/family-time";
 import { mayaSpendLedger } from "@/lib/maya-spend-server";
 import type { ChatSpend } from "@/lib/maya-chat";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
+import { familyWorkbookIsShipped, selectFamilyWorkbookQuestion, type FamilyWorkbookReader } from "@/lib/maya-workbook-question";
 
 type DB = SupabaseClient<Database>;
 /**
@@ -108,7 +109,8 @@ export async function deskChat(session: DB, parent: string, child: { id: string;
 }
 
 export interface ChatContext { db: DB; parent: string; child: string; name: string; grade?: number; zone: FamilyZone }
-export type ChatAction = { type: "start"; id: string; question: WorkbookQuestionRef } | { type: "read"; id: string } |
+export type ChatAction = { type: "start"; id: string; question: WorkbookQuestionRef; workbookId?: never; reference?: never } |
+  { type: "start"; id: string; workbookId: string; reference: string; question?: never } | { type: "read"; id: string } |
   { type: "child"; id: string; messageId: string; revision: number; text: string } | { type: "end"; id: string; revision: number };
 
 /**
@@ -132,10 +134,17 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
   const { db, parent, child, name, zone } = ctx;
   const store = mayaCallStore(db);
   const seams = callSeams(db);
+  const books = workbookStore(db);
+  const workbookReader: FamilyWorkbookReader = { books, pageExists: async (workbookId, page) => {
+    const { data, error } = await db.from("workbook_pages").select("id").eq("workbook_id", workbookId).eq("page_number", page).maybeSingle();
+    if (error) throw Error("Chat page could not be read");
+    return data !== null;
+  } };
   // The route rechecks plan and feature access before every request. The module keeps that authorization explicit.
   const calls = mayaCalls({ ...seams, canChat: async (p, c) => p === parent && c === child });
   const usage = () => readChatUsage(db, parent, child, zone);
   const owned = (r: CallRecord | null): r is CallRecord => !!r && r.kind === "chat" && r.parentId === parent && r.childId === child;
+  const shipped = async (r: CallRecord) => r.question.source === "workbook" && await familyWorkbookIsShipped(parent, child, r.question.workbookId, workbookReader);
   let childPending = false;
   /** Recovery claims the child's original request under the same lock, even from another question or day. */
   const recoverChild = async () => {
@@ -144,6 +153,14 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
     const recovered = data as { status: string; id?: string; callId?: string; revision?: number; text?: string };
     childPending = recovered.status !== "none";
     if (recovered.status !== "accepted" || !recovered.callId || recovered.revision === undefined || !recovered.text) return;
+    const original = await store.get(recovered.callId);
+    if (!owned(original)) throw Error("Chat recovery is no longer available");
+    if (!await shipped(original)) {
+      const ended = await calls.input(recovered.callId, recovered.revision, { type: "end" }, name);
+      if (!ended.ok) throw Error(`Chat recovery: ${ended.error}`);
+      childPending = false;
+      return;
+    }
     const result = await calls.input(recovered.callId, recovered.revision, { type: "child", text: recovered.text }, name);
     if (!result.ok) throw Error(`Chat recovery: ${result.error}`);
     const saved = await store.get(recovered.callId);
@@ -166,12 +183,13 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
   if (action.type === "start") {
     // No new chat without a parent's agreement (#529). A chat already under way can still be read, answered and ended.
     if (!record && !await mayaNotice(noticeStore(db)).accepted(parent)) return reply(null, "notice_required", "refused");
-    const ref = action.question;
-    const books = workbookStore(db);
-    const book = await books.workbook(ref.workbookId);
-    if (!book || book.childId !== child || book.parentId !== parent || book.status !== "shipped") return reply(null, "not_found");
-    const question = await books.question(ref);
-    if (question.status !== "found") return reply(null, "invalid_question");
+    // A request cannot choose between competing typed and tapped references.
+    if (action.question !== undefined && (action.reference !== undefined || action.workbookId !== undefined)) return reply(null, "reference_again", "refused");
+    const selected = await selectFamilyWorkbookQuestion(parent, child, action.question
+      ? { workbookId: action.question.workbookId, page: action.question.page, question: action.question.question }
+      : { workbookId: action.workbookId, reference: action.reference }, workbookReader);
+    if (!selected.ok) return { ...await reply(null, selected.error, "refused"), errorLine: selected.say };
+    const ref = selected.ref;
     await recoverChild();
     if (record) {
       record = await store.get(record.id);
@@ -180,13 +198,16 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
       return reply(record);
     }
     if ((await usage()).left === 0) return reply(null, "cap");
-    const result = await calls.start({ id: action.id, kind: "chat", parentId: parent, childId: child, childName: name, grade: ctx.grade, startedBy: parent, package: question.package });
+    if (!await familyWorkbookIsShipped(parent, child, ref.workbookId, workbookReader)) return reply(null, "not_found", "refused");
+    const result = await calls.start({ id: action.id, kind: "chat", parentId: parent, childId: child, childName: name, grade: ctx.grade, startedBy: parent, package: selected.package, confirmWorkbook: true });
     return result.ok ? reply(await store.get(result.view.id)) : reply(null, result.error);
   }
   if (!owned(record)) return reply(null, "not_found", "refused");
+  if (action.type !== "end" && !await shipped(record)) return reply(null, "not_found", "refused");
   await recoverChild();
   record = await store.get(action.id);
   if (!owned(record)) return reply(null, "not_found", "refused");
+  if (action.type !== "end" && !await shipped(record)) return reply(null, "not_found", "refused");
   if (action.type === "read") return reply(record);
   if (action.type === "child") {
     const now = Date.now(), window = chatWindow(now, zone);

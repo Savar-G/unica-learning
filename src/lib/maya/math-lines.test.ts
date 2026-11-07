@@ -306,7 +306,7 @@ describe("the line set", () => {
 
   it("has a few child-friendly variants for every line, with no math in a variant's own words", () => {
     for (const [key, variants] of Object.entries(TEMPLATES)) {
-      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken"].includes(key)) {
+      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken", "held.hello", "held.next"].includes(key)) {
         expect(variants).toHaveLength(1);
         expect(variants[0].split(/\s+/).length).toBeLessThanOrEqual(25);
         continue;
@@ -358,7 +358,7 @@ describe("the line set", () => {
   it("offers the model every act's lines, and only the steps not done yet, then the final step", () => {
     const c = call();
     const offers = lineOffers(c.s);
-    expect(Object.keys(offers).sort()).toEqual(["accept_answer", "clarify", "confirm", "example_step", "guide", "try_target"].sort());
+    expect(Object.keys(offers).sort()).toEqual(["accept_answer", "clarify", "example_step", "guide", "redirect", "try_target"].sort());
     const guideSteps = new Set(offers.guide!.flatMap((o) => (o.line.startsWith("step.") ? [o.slots.step] : [])));
     expect([...guideSteps]).toEqual(["ones", "tens", "result"]);
     expect(offers.guide!.every((o) => o.texts.length >= 2)).toBe(true);

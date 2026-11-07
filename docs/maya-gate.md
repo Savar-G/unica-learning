@@ -270,6 +270,43 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | G48 | A | passing | Outside narrative followed by own answer | no numeric confirmation | |
 | G49 | A | passing | Own answer followed by a friend's outside result | no numeric confirmation | |
 
+| P1 | A | passing | 'Is it 66?' read as right: the accept is refused, the confirm is said, and a plain yes is accepted | checked controller behavior | |
+| P1b | A | passing | A doubtful right answer refused twice: code's fallback is the confirmation, never a warm phrase alone | checked controller behavior | |
+| P1c | A | passing | A no after the confirmation accepts nothing: the model's right reading is refused, and the question goes on | checked controller behavior | |
+| P1d | A | passing | An unclear turn with no number, refused twice: code asks for the final answer alone | checked controller behavior | |
+| P2 | A | passing | 'Yes, 16. But I don't know what to do with it.': the negative leaves the 16, so the step counts | checked controller behavior | |
+| P2b | A | passing | '66. That is wrong.': a negative that points back still takes the number back | checked controller behavior | |
+| P3 | A | passing | Repeated fallbacks on one step: each child turn raises help one level (H0, H1, H2) | checked controller behavior | |
+| P4 | A | passing | The opening draws what it is offered: no board offer for an act that cannot draw, so no refused call before hello | checked controller behavior | |
+| P5e | A | passing | 'I got 66. 2 plus 3 is 5, so 56.': a new answer after the working replaces the first one, and 66 is not accepted | checked controller behavior | |
+| P6 | A | passing | The regroup line: its equation once in a turn, and at most twice a carry, the second only after the child denies the carry | checked controller behavior | |
+| P7 | A | passing | 'I wrote 66.' read as writing: the child gets the close, not a wait | checked controller behavior | |
+| P7b | A | passing | 'I'm writing.' keeps its time: a close is refused and Maya waits, then 'I wrote it.' gets the close | checked controller behavior | |
+| P8 | A | passing | A fallback keeps the off-topic reading: the promise request gets the way back to the question, not a teaching step | checked controller behavior | |
+| P8b | A | passing | A fallback keeps a request to be shown: the step is shown (H3) | checked controller behavior | |
+| P8c | A | passing | A fallback keeps a request for harmful content: the decline line, in code's words | checked controller behavior | |
+| P8d | A | passing | A fallback keeps a child who is writing: Maya waits, and the writing time is not lost | checked controller behavior | |
+| P9 | B | passing | 'Eight minus two is six.' in 52 - 28: a flipped column of this question is help on this question, not another problem | checked controller behavior | |
+| P10 | A | passing | 'Oh, so 2 plus 3 plus 1?': the operation line says back the child's own setup; it is accepted and is no hint | checked controller behavior | |
+| P10b | A | passing | 'Yes, the carry. So 1 plus 2 plus 3?': the setup in the last sentence with numbers, carry first, is said back, and is no hint | checked controller behavior | |
+| P11 | A | passing | 'Yes, I said 66.' after 'Did you say 66?': a bare yes with the confirmed number gives it, with no second confirmation | checked controller behavior | |
+| P11b | A | passing | 'Yes, I think 66 is right.' is not a bare yes: the accept is refused and Maya asks again (PR #624 review) | checked controller behavior | |
+| P12 | A | passing | 'The one is not a big deal, so it's still 56.': the negative does not take back the 56 after ', so', and Maya judges it | checked controller behavior | |
+| P15 | A | passing | 'I got 66. I added 20 and 30 and 6 so my final is 56.': dropped working that holds another answer leaves 66 not sure, so Maya asks | checked controller behavior | |
+| P16 | A | passing | '7 plus 9 is 6.': a false equation is not a right ones step; the model's 'not yet' stands and no '7 + 9 = 16' praise is said | checked controller behavior | |
+| P17 | A | passing | 'Yes, I guessed 66.': a guessed right answer gets one light check with the step's question (check.guess), never a third confirmation; no hint | checked controller behavior | |
+| P18 | A | passing | 'Yes, I said 66. I'm not sure it's right.': a doubtful yes hears 'Let's check it together' (check.together), not a second 'Did you say' | checked controller behavior | |
+| P20 | A | passing | 'Why does the 1 go to the tens?': after the regroup line, a second way from code's numbers (step.why: ten ones make one ten) | checked controller behavior | |
+| P21 | B | passing | 'I take the smaller from the bigger.' in 52 - 28: the order of a subtraction, from code's numbers (step.order) | checked controller behavior | |
+| P22 | A | passing | 'I'm done!' once 66 stands: a warm close, with no request to write or explain | checked controller behavior | |
+| P13 | A | passing | 'I don't know about the ten.': a child who says they are stuck gets one level more help, though the model's reading left the request out | checked controller behavior | |
+| P14 | A | passing | An ask to write with no understanding field is said as it is, read as uncertain | checked controller behavior | |
+
+| P5 | A | passing | Two numeric sentences require confirmation | checked answer retained | |
+| P5b | A | passing | A sure answer needs no confirmation | checked answer | |
+| P5c | A | passing | Numeric work after an answer requires confirmation | checked answer retained | |
+| P5d | A | passing | The child already wrote the answer | checked answer | |
+
 ## Pending
 
 `PENDING` is empty. The partial audio behaviours still state their proof limits above.
