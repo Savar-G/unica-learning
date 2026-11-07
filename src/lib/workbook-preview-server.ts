@@ -3,6 +3,7 @@ import { adminSession } from "./admin-store";
 import { adminClient } from "./supabase-auth";
 import { loadWorkbookProgressSources, workbookPreviewRequest } from "./workbook-progress-source";
 import { workbookProgressSourceStore } from "./workbook-progress-source-store";
+import { book1BaselineSql, book1SourceReader } from "./workbook-book1-store";
 import { createWorkbookPreviewRecordAny, replayWorkbookPreviewAny, type WorkbookPreviewRepository } from "./workbook-preview-record";
 
 /**
@@ -26,7 +27,7 @@ export async function saveAdminWorkbookPreview(raw: unknown, repository: Workboo
     }
     const service = adminClient();
     if (!service) return { ok: false as const, reason: "source-unavailable" };
-    const loaded = await loadWorkbookProgressSources(workbookProgressSourceStore(service), request);
+    const loaded = await loadWorkbookProgressSources(workbookProgressSourceStore(service, book1SourceReader(book1BaselineSql(service))), request);
     if (!loaded.ok) return loaded;
     const live = await adminSession();
     if (live?.userId !== admin.userId) return { ok: false as const, reason: "admin-required" };

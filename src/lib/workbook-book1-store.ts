@@ -1,11 +1,13 @@
-// #472 Book 1 baseline storage and capture. The SQL transport is its own interface, apart from the generated database
-// types: root binds it to db.rpc after the migration (workbook_book1_baseline) is applied and the types are generated.
-// Until then nothing in the site calls it: there is no route, worker, switch or default repository.
+// #472 Book 1 baseline storage and capture. The SQL transport is its own interface; book1BaselineSql binds it to the
+// three service-only functions of migration workbook_book1_baseline. There is no route, worker or switch: the admin
+// preview reads Book 1 sources through it, and the capture runs by hand after R2.
 //
 // Capture order (the handoff names the exact root steps): the final draft revision is saved (R2) first; then
 // captureBook1Baseline reads that revision as approval would, proves the planning input, and saves the baseline, whose
 // SQL save opens the correction boundary in the same transaction; review comments are closed after that.
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "./database";
 import { isDeepStrictEqual as same } from "node:util";
 import { createBook1Baseline, proveBook1PlanningCapture, readBook1Baseline, type Book1BaselineRecord, type Book1PlanningProof } from "./workbook-book1-baseline";
 import { recoverBook1PlanningInput, type Book1RecoveryRefusal, type Book1RecoverySources, type PinnedPlanningEngine } from "./workbook-book1-recovery";
@@ -22,6 +24,15 @@ export interface Book1BaselineSql {
   sources(args: { p_parent: string; p_child: string; p_workbook: string }): Promise<unknown>;
   secondTry(args: { p_id: string; p_baseline: string; p_item_row: string; p_based_on_version: number; p_result: string; p_help: string;
     p_evidence_reference: string }): Promise<unknown>;
+}
+/** The transport over db.rpc, with the service client: each call throws on an error, never returns partial data. */
+export function book1BaselineSql(db: SupabaseClient<Database>): Book1BaselineSql {
+  const data = (r: { data: unknown; error: unknown }) => { if (r.error) throw Error("book1-sql-unavailable"); return r.data; };
+  return {
+    command: async (args) => data(await db.rpc("workbook_book1_baseline_command", args)),
+    sources: async (args) => data(await db.rpc("workbook_book1_sources", args)),
+    secondTry: async (args) => data(await db.rpc("record_workbook_second_try", args)),
+  };
 }
 export interface Book1Scope { parentId: string; childId: string; runId: string; draftId: string }
 export interface StoredBook1Baseline { id: string; record: Book1BaselineRecord; boundaryAt: string; initialActivity: Book1CorrectionSources["initialActivity"] }
