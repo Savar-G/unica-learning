@@ -4169,6 +4169,111 @@ export type Database = {
           },
         ]
       }
+      workbook_book1_baselines: {
+        Row: {
+          actor_id: string
+          boundary_at: string
+          child_id: string
+          created_at: string
+          db_content_hash: string
+          db_frame_hash: string
+          db_rendering_hash: string
+          draft_id: string
+          draft_revision: number
+          engine: string
+          id: string
+          initial_activity: Json
+          parent_id: string
+          payload: string
+          payload_hash: string
+          plan_input_hash: string
+          planning_kind: string
+          print_hash: string
+          printed_revision: string
+          run_id: string
+        }
+        Insert: {
+          actor_id: string
+          boundary_at?: string
+          child_id: string
+          created_at?: string
+          db_content_hash: string
+          db_frame_hash: string
+          db_rendering_hash: string
+          draft_id: string
+          draft_revision: number
+          engine: string
+          id: string
+          initial_activity: Json
+          parent_id: string
+          payload: string
+          payload_hash: string
+          plan_input_hash: string
+          planning_kind: string
+          print_hash: string
+          printed_revision: string
+          run_id: string
+        }
+        Update: {
+          actor_id?: string
+          boundary_at?: string
+          child_id?: string
+          created_at?: string
+          db_content_hash?: string
+          db_frame_hash?: string
+          db_rendering_hash?: string
+          draft_id?: string
+          draft_revision?: number
+          engine?: string
+          id?: string
+          initial_activity?: Json
+          parent_id?: string
+          payload?: string
+          payload_hash?: string
+          plan_input_hash?: string
+          planning_kind?: string
+          print_hash?: string
+          printed_revision?: string
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_book1_baselines_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baselines_draft_id_draft_revision_fkey"
+            columns: ["draft_id", "draft_revision"]
+            isOneToOne: true
+            referencedRelation: "workbook_draft_revisions"
+            referencedColumns: ["draft_id", "revision"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baselines_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baselines_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baselines_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_comments: {
         Row: {
           actor_email: string
@@ -6286,6 +6391,92 @@ export type Database = {
           },
         ]
       }
+      workbook_second_tries: {
+        Row: {
+          based_on_version: number
+          baseline_id: string
+          child_id: string
+          engine: string
+          evidence_reference: string
+          help: string
+          id: string
+          item_id: string
+          item_row_id: string
+          page_id: string
+          parent_id: string
+          printed_revision: string
+          recorded_at: string
+          result: string
+          source: string
+          workbook_id: string
+        }
+        Insert: {
+          based_on_version: number
+          baseline_id: string
+          child_id: string
+          engine: string
+          evidence_reference: string
+          help: string
+          id: string
+          item_id: string
+          item_row_id: string
+          page_id: string
+          parent_id: string
+          printed_revision: string
+          recorded_at?: string
+          result: string
+          source: string
+          workbook_id: string
+        }
+        Update: {
+          based_on_version?: number
+          baseline_id?: string
+          child_id?: string
+          engine?: string
+          evidence_reference?: string
+          help?: string
+          id?: string
+          item_id?: string
+          item_row_id?: string
+          page_id?: string
+          parent_id?: string
+          printed_revision?: string
+          recorded_at?: string
+          result?: string
+          source?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_second_tries_baseline_id_fkey"
+            columns: ["baseline_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_book1_baselines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_second_tries_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_second_tries_item_row_id_fkey"
+            columns: ["item_row_id"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_second_tries_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_workers: {
         Row: {
           build: string | null
@@ -7819,6 +8010,18 @@ export type Database = {
         }
         Returns: Json
       }
+      record_workbook_second_try: {
+        Args: {
+          p_based_on_version: number
+          p_baseline: string
+          p_evidence_reference: string
+          p_help: string
+          p_id: string
+          p_item_row: string
+          p_result: string
+        }
+        Returns: Json
+      }
       recover_maya_chat_message: {
         Args: { p_child: string; p_parent: string }
         Returns: Json
@@ -8321,6 +8524,28 @@ export type Database = {
           p_slots: string[]
         }
         Returns: boolean
+      }
+      workbook_book1_access: {
+        Args: { p_child: string; p_parent: string }
+        Returns: boolean
+      }
+      workbook_book1_baseline_command: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_child: string
+          p_draft: string
+          p_hash?: string
+          p_parent: string
+          p_payload?: string
+          p_request: string
+          p_run: string
+        }
+        Returns: Json
+      }
+      workbook_book1_sources: {
+        Args: { p_child: string; p_parent: string; p_workbook: string }
+        Returns: Json
       }
       workbook_comment_route: {
         Args: { p_note: string; p_page: Json; p_route?: string }

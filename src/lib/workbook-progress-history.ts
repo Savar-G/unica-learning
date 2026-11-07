@@ -55,7 +55,8 @@ export interface WorkbookProgressHistoryStore {
   events(input: WorkbookProgressHistoryInput, book: HistoryBook, after: string | null, limit: number): Promise<HistoryPage<HistoryEventRow>>;
 }
 export type HistoryRefusal = "invalid-contract" | "scope-unavailable" | "source-error" | "invalid-page" | "safety-bound"
-  | "changed-during-read" | "invalid-record" | "unproved-past-state" | "missing-source-reference" | "preview-refused" | "corrections-unavailable";
+  | "changed-during-read" | "invalid-record" | "unproved-past-state" | "missing-source-reference" | "preview-refused" | "corrections-unavailable"
+  | "mastery-gap";
 export interface HistoryProof {
   cutoff: number;
   scope: ProgressSnapshot["scope"];
@@ -369,7 +370,8 @@ async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgress
   const history = { version: 1 as const, originals, issuedDecisions: proof.issuedDecisions };
   // The approved core validates all selected records before a complete result leaves this boundary.
   const derived = deriveWorkbookProgress(snapshot, input.curriculum, history);
-  if (!derived.ok) fail("invalid-record");
+  // A passed later step with no proved earlier steps is its own refusal: a printed step proves no prior mastery.
+  if (!derived.ok) fail(derived.reason === "mastery-gap" ? "mastery-gap" : "invalid-record");
   // Every retained row has passed the source/observation/journal checks above. The no-sample path validates held
   // selected-step evidence without making an isolated mastery decision. Other steps supply no progress decision.
   for (const h of held) {
