@@ -128,8 +128,10 @@ it("a real family is closed when no child is named", async () => {
   expect(asked).toEqual([]);
 });
 
-it("the default plan gate stays closed until the dashboard's plan access exists", async () => {
-  expect(await markingDecision(db, parent, families, { child: running })).toEqual({ open: false, reason: "unknown" });
+it("the default plan gate is the dashboard's shared childPlanAccess (#705)", async () => {
+  const shared = await import("@/lib/plan-access");
+  const access = await import("./scan-marking-access");
+  expect(access.childPlanAccess).toBe(shared.childPlanAccess);
 });
 
 it.each(["test", "admin"] as const)("families mode keeps %s access without a plan", async (role) => {

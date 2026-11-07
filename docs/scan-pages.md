@@ -28,7 +28,7 @@ To reverse this restriction, remove `SCAN_MARKING_TEST_PARENT_IDS` from the serv
 
 The same check runs again before recovery marks a previously sent photo, so a plan that ends stops new marking at once. Marks already saved for that photo still go to the child's learning events and profile (no image read, no model call). In families mode one recovery run moves past up to 10 refused photos on the same cursor, so closed plans do not hold up other families. `markingDecision` returns the reason for server code and logs; parents see only the usual not-found or "unavailable" screen, never the reason. `familyReady` still reports only the evidence record below; it is not the switch.
 
-The plan gate is the parent dashboard's `childPlanAccess` (`src/lib/plan-access.ts`). Until the stand-in `childPlanAccess` in `scan-marking-access.ts` is replaced with that import (TODO in that file), it answers `unknown` for every child, so families mode admits only test families and admins.
+The plan gate is the parent dashboard's `childPlanAccess` (`src/lib/plan-access.ts`, PR #705), imported by `scan-marking-access.ts`: in families mode a real family is admitted only for a child whose plan it reports as open or ending at the end of its period.
 
 Send, the photo checks (preview and calibration, with their crops) and the stack's `checks` follow the same rule through `scanChecksAccess` in `src/lib/scan-marking-access.ts`, the one module that holds it: in families mode a real family can check and send a child's pages while that child's plan is running, and not otherwise. In `test-only` and off they stay with test families and admins, and the parent list does not limit them, as before. In families mode a malformed list closes them as it closes marking.
 
