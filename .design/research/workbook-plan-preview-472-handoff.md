@@ -1,6 +1,6 @@
 # Bounded #472 public plan preview
 
-HANDOFF_READY: pure public plan-preview implementation.
+HANDOFF_DONE: bounded pure public plan-preview implementation accepted by the root.
 
 The public preview now composes the approved progress core with the existing public planner. This accepts no customer, recognition, printed-page, or release outcome. Whole #472 and the remaining #475 UI and transport proof stay open.
 
@@ -151,3 +151,8 @@ With the same empty Git object directory, all 245 tests in four files passed, ex
 Scoped lint across the four preview implementation/test roots passed with zero errors and warnings. Scoped TypeScript returned zero diagnostics. Root changed only the new preview tests and this report; the delivered planner, adapter, fixture and approved core remain byte-identical to 98255f51.
 
 Private evidence is in overnight-20261107/472-preview-history-prior.*, 472-preview-history-fixed.*, 472-preview-default-mutant.*, 472-preview-scoped.* and 472-legacy-manifest.json. The inherited /tmp baseline artifact remains private synthetic evidence. The correction still requires independent Sol review. It gives no application build, whole-feature, hosted, browser, print or customer acceptance.
+
+
+## Independent bounded acceptance
+
+Sol review passed SPEC and STANDARDS at 7f1fd64e. Fresh checks passed 245 tests and 783 independent probes, scoped lint and types. The default-plan mutation failed all 20 baseline result checks as required. Tracked source and index stayed unchanged. See workbook-plan-preview-472-independent-review.md. This accepts only the pure preview and its portability repair. It does not establish paginated source history, persisted previews, UI approval, generation, printing, whole-feature or release acceptance.
