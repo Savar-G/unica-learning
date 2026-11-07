@@ -26,5 +26,6 @@ export default async function PlanPage() {
   // A family with a stopped plan has no dashboard, and keeps its plan's controls and the way to its card here.
   const manage = !!dashboard || await planManagementAccess(parent);
   const pending = manage && plans ? await familyPendingControls(parent, plans.map(plan => plan.cardId)) : new Map();
-  return <ParentPlanView plans={plans} zone={zone} controls={manage} pending={pending} note={!dashboard && await planClosedFamily(parent) ? <PlanClosedNote /> : undefined} />;
+  const closed = dashboard ? null : await planClosedFamily(parent);
+  return <ParentPlanView plans={plans} zone={zone} controls={manage} pending={pending} note={closed ? <PlanClosedNote closed={closed} on="plan" /> : undefined} />;
 }

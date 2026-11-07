@@ -4,7 +4,7 @@ vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { parentPlan, type ParentPlan } from "@/lib/parent-plan";
-import { childPlanAccess, familyHasPlanHistory, familyOpenPlanChildren, familyPlanAccess, planAccessRule } from "./plan-access";
+import { childPlanAccess, familyClosedPlan, familyHasPlanHistory, familyOpenPlanChildren, familyPlanAccess, planAccessRule } from "./plan-access";
 
 const NOW = Date.parse("2026-11-07T12:00:00Z");
 const clock = { now: () => NOW };
@@ -174,5 +174,43 @@ describe("familyHasPlanHistory", () => {
     expect(await read({}, ["child_plan_states", "plan_starts"])).toBe(false);
     expect(await familyHasPlanHistory({ parentId: "p1" }, { db: throwingDb })).toBe(false);
     expect(await familyHasPlanHistory({ parentId: "p1" }, { db: null })).toBe(false);
+  });
+});
+
+describe("familyClosedPlan", () => {
+  const kid = (id: string, first_name: string, parent = "p1"): Row => ({ id, first_name, parent_id: parent });
+  const read = (tables: Record<string, Row[]>, fail: string[] = []) => familyClosedPlan({ parentId: "p1" }, { db: fakeDb(tables, fail), ...clock });
+  const kids = [kid("c1", "Leo"), kid("c2", "Ana")];
+
+  it.each(["payment_failed", "ended", "paused"])("names the one child with a %s plan", async (kind) => {
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", kind)], children: kids })).toEqual({ reason: kind, child: "Leo" });
+  });
+  it("counts a sibling with no plan as simple: only one child has a plan to name", async () => {
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", "ended"), stateRow("p1", "c2", "not_started")], children: kids })).toEqual({ reason: "ended", child: "Leo" });
+  });
+  it("names no one when two children have stopped plans, and keeps a kind they share", async () => {
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", "ended"), stateRow("p1", "c2", "ended")], children: kids })).toEqual({ reason: "ended", child: null });
+  });
+  it("reads unknown when two children's plans stopped in different ways", async () => {
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", "ended"), stateRow("p1", "c2", "payment_failed")], children: kids })).toEqual({ reason: "unknown", child: null });
+  });
+  it("reads an ending plan past its date as ended", async () => {
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", "ending", { ends_at: earlier })], children: kids })).toEqual({ reason: "ended", child: "Leo" });
+  });
+  it("reads a start with no plan row yet as unknown", async () => {
+    expect(await read({ plan_starts: [{ parent_id: "p1", state: "started" }], children: kids })).toEqual({ reason: "unknown", child: null });
+  });
+  it("still answers when the child's name cannot be read", async () => {
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", "paused")] }, ["children"])).toEqual({ reason: "paused", child: null });
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", "paused")], children: [kid("c1", "Leo", "p2")] })).toEqual({ reason: "paused", child: null });
+  });
+  it("is null with an open plan, with no plan, and when the plan read fails", async () => {
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", "paying"), stateRow("p1", "c2", "ended")], children: kids })).toBeNull();
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", "ending", { ends_at: later })], children: kids })).toBeNull();
+    expect(await read({ child_plan_states: [stateRow("p1", "c1", "not_started")], children: kids })).toBeNull();
+    expect(await read({})).toBeNull();
+    expect(await read({ plan_starts: [{ parent_id: "p1", state: "started" }] }, ["child_plan_states"])).toBeNull();
+    expect(await familyClosedPlan({ parentId: "p1" }, { db: throwingDb })).toBeNull();
+    expect(await familyClosedPlan({ parentId: "p1" }, { db: null })).toBeNull();
   });
 });

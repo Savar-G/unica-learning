@@ -3,10 +3,10 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account/settings", useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
-const f = vi.hoisted(() => ({ dashboard: null as unknown, manage: false }));
+const f = vi.hoisted(() => ({ dashboard: null as unknown, manage: false, closed: null as null | { reason: string; child: string | null } }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => f.dashboard }));
 vi.mock("@/lib/parent-dashboard-access", () => ({ planManagementAccess: async () => f.manage }));
-vi.mock("@/components/plan-closed-note", () => ({ PlanClosedNote: () => "Your plan is not running" }));
+vi.mock("@/components/plan-closed-note", () => ({ planClosedFamily: async () => f.closed, PlanClosedNote: ({ on }: { on: string }) => `Your plan is closed, on ${on}` }));
 vi.mock("@/components/account-billing-section", () => ({ BillingSection: () => "Update card and invoices" }));
 vi.mock("@/components/account-child-details", () => ({ childDetails: async () => "Child details and delete" }));
 vi.mock("@/components/family-delete", () => ({ FamilyDelete: () => "Delete this family" }));
@@ -25,12 +25,12 @@ vi.mock("@/lib/supabase-auth", () => ({
 import AccountSettings from "./page";
 
 const page = async () => renderToStaticMarkup(await AccountSettings({ searchParams: Promise.resolve({}), params: Promise.resolve({}) }));
-beforeEach(() => { f.dashboard = null; f.manage = false; });
+beforeEach(() => { f.dashboard = null; f.manage = false; f.closed = null; });
 
 it("a closed family with a plan gets its card, its invoices and the deletes, with a plain note and no dashboard", async () => {
-  f.manage = true;
+  f.manage = true; f.closed = { reason: "payment_failed", child: "Leah" };
   const out = await page();
-  for (const text of ["Your plan is not running", "Update card and invoices", "Child details and delete", "Delete this family", "/account/plan"]) expect(out).toContain(text);
+  for (const text of ["Your plan is closed, on account", "Update card and invoices", "Child details and delete", "Delete this family", "/account/plan"]) expect(out).toContain(text);
 });
 
 it("a family with no plan and no dashboard goes to Parent home, as before", async () => {
@@ -40,6 +40,13 @@ it("a family with no plan and no dashboard goes to Parent home, as before", asyn
 it("a dashboard family sees no closed note", async () => {
   f.dashboard = { children: [] };
   const out = await page();
-  expect(out).not.toContain("Your plan is not running");
+  expect(out).not.toContain("Your plan is closed");
+  expect(out).toContain("Update card and invoices");
+});
+
+it("a paying family whose dashboard read failed gets the page with no closed note", async () => {
+  f.manage = true; f.closed = null;
+  const out = await page();
+  expect(out).not.toContain("Your plan is closed");
   expect(out).toContain("Update card and invoices");
 });

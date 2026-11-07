@@ -104,3 +104,25 @@ export async function familyHasPlanHistory(input: { parentId: string }, deps: Pl
     return false;
   }
 }
+
+/** Why a family with a plan is closed, for the words a parent reads. `child` is set only when one child has a stopped plan. */
+export interface ClosedPlan { reason: PlanAccessReason; child: string | null }
+
+/**
+ * A family that has or had a plan, with no child open now. Two children's plans that stopped in different ways read as unknown.
+ * Null with an open plan, with no plan, and when the plan read fails. A failed read of the name only leaves the name out.
+ */
+export async function familyClosedPlan(input: { parentId: string }, deps: PlanAccessDeps = {}): Promise<ClosedPlan | null> {
+  const rows = await familyRows(input.parentId, deps);
+  if (!rows || rows.some((r) => r.access.open) || !(await familyHasPlanHistory(input, deps))) return null;
+  const stopped = rows.filter((r) => r.access.reason !== "no_plan");
+  const reasons = new Set(stopped.map((r) => r.access.reason));
+  const reason: PlanAccessReason = reasons.size === 1 ? stopped[0].access.reason : "unknown";
+  if (stopped.length !== 1) return { reason, child: null };
+  try {
+    const { data } = await clientOf(deps)!.from("children").select("first_name").eq("id", stopped[0].childId).eq("parent_id", input.parentId).maybeSingle();
+    return { reason, child: data?.first_name ?? null };
+  } catch {
+    return { reason, child: null };
+  }
+}
