@@ -8,7 +8,10 @@ import { ScanProblemExplanation } from "@/components/scan-problem-explanation";
 import { ScanPrivateImages } from "@/components/scan-private-images";
 
 type Page = ReturnType<typeof markingPageView> & { photoAvailable: boolean; budgetHeld?: boolean };
-/** One review screen for pending answers and saved judgments. No option is selected by default. */
+/**
+ * A parent corrects a finished mark here. An answer with no mark yet has no control: the AI and our team mark it, and
+ * no screen asks a parent to judge an answer (#715). No option is selected by default.
+ */
 export function ScanMarkChange({ photo, item, parent, complete = false }: { photo: string; item: Page["items"][number]; parent?: string; complete?: boolean }) {
   const router = useRouter();
   const begin = useScanContext(parent, photo);
@@ -32,7 +35,7 @@ export function ScanMarkChange({ photo, item, parent, complete = false }: { phot
       if (answer.status === "saved" && !wasComplete.current && answer.result.completion.status === "complete") emit("scan_review_complete", "completed");
       wasComplete.current = answer.result.completion.status === "complete";
       setCurrent(next);
-      setMessage(answer.status === "conflict" ? "This mark changed on another device. Check the current mark before you choose again."
+      setMessage(answer.status === "conflict" ? "This mark changed on another device. Look at the current mark before you change it again."
         : answer.recoveryPending ? "Your mark is saved. Progress will update shortly." : "Your mark is saved.");
       router.refresh();
     } catch { if (currentContext()) setMessage("We could not confirm the save. Refresh the results before you try again."); }
@@ -41,12 +44,12 @@ export function ScanMarkChange({ photo, item, parent, complete = false }: { phot
   return <div className="scan-mark-change">
     {complete && current.result === "wrong" && (current.state === "scored" || current.state === "parent-checked") && current.readAnswerText?.trim() && <ScanProblemExplanation
       key={`${parent}:${photo}:${current.itemId}:${current.version}:${current.readAnswerText}`} parent={parent} photo={photo} itemId={current.itemId} version={current.version} number={current.number} />}
-    <button type="button" className="scan-link" aria-expanded={open} onClick={() => setOpen(!open)}>{item.result === null ? "Check this answer" : "Change this mark"}</button>
-    {open && <div className="scan-mark-review" aria-label={`Review question ${item.number}`}>
+    {current.result !== null && <button type="button" className="scan-link" aria-expanded={open} onClick={() => setOpen(!open)}>Change this mark</button>}
+    {open && current.result !== null && <div className="scan-mark-review" aria-label={`Review question ${item.number}`}>
       <p><b>Question {item.number}</b>: {current.label}</p>
       {current.photoAvailable && current.evidencePhoto ? <ScanPrivateImages photo={current.evidencePhoto} numbers={[item.number]} cropsOnly /> : <p>Photo no longer available</p>}
       <p>We read: {current.readAnswerText === null ? "Not read" : current.readAnswerText === "" ? "Empty answer" : current.readAnswerText}</p>
-      <p>Choose the mark for the original answer. This does not record another try.</p>
+      <p>Choose the right mark for the original answer if ours is wrong. This does not record another try.</p>
       <div className="scan-mark-choices" role="group" aria-label={`Mark question ${item.number}`}>
         {(["right", "wrong", "blank"] as const).map((choice) => <button type="button" className="btn ghost" key={choice} disabled={saving} onClick={() => void save(choice)}>{choice === "right" ? "Right" : choice === "wrong" ? "Wrong" : "Blank"}</button>)}
       </div>

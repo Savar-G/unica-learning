@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, type Observation } from "@/lib/scan-observation";
-import { effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
+import { waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
@@ -206,7 +206,7 @@ describe("first-book two-ways parent review", () => {
     expect(await run(s, f.photo, () => { throw Error("parent review must not dispatch"); })).toBe("finished");
     const view = markingPageView(await s.effective(P, C));
     expect(view.completion).toMatchObject({ status: "incomplete", finished: 0 });
-    expect(view.items[0].label).toBe("Please check both methods and the answer.");
+    expect(view.items[0].label).toBe("Our team is checking this answer.");
     expect(s.spend.size).toBe(0); expect(s.imageReads).toBe(0); expect(s.events).toHaveLength(0);
   });
   it.each(["right", "wrong", "blank"] as const)("a parent's explicit %s finishes one item without changing frozen mastery eligibility", result => {
@@ -230,7 +230,7 @@ describe("first-book two-ways parent review", () => {
 });
 
 describe("write-words whole-page reading", () => {
-  it.each([["7:56", "07:56"], ["8 by 4", "8 x 4"], ["a different colour", "not red"]])("keeps a clear alternate form of %s for a parent instead of marking it wrong", (key, text) => {
+  it.each([["7:56", "07:56"], ["8 by 4", "8 x 4"], ["a different colour", "not red"]])("keeps a clear alternate form of %s for our team instead of marking it wrong", (key, text) => {
     const f = wordsFrame(), item = f.questions[0].package!.item!;
     const box = item.regions[0]; if (box.kind === "box") box.answer = { type: "text", value: key };
     const check = item.checks[0]; if (check.kind === "template") check.source.answer = `'${key}'`;
@@ -291,6 +291,85 @@ describe("write-words whole-page reading", () => {
     expect(await run(s, retake.photo, client(output(["subtraction"]), requests))).toBe("finished");
     expect(requests).toHaveLength(1); expect(s.events).toHaveLength(1);
     expect((await s.effective(P, C))[0].observation.readAnswerText).toBe("addition");
+  });
+});
+
+describe("#715: no screen asks a parent to judge an answer", () => {
+  const ASKS_PARENT = /please check|check this answer|check both|is (it|this) right\?/i;
+  const numberWordsFrame = (key: string) => {
+    const f = wordsFrame(), item = f.questions[0].package!.item!;
+    f.questions[0].package!.text = "Write 42 in words.";
+    const box = item.regions[0]; if (box.kind === "box") box.answer = { type: "text", value: key };
+    item.checks = [{ kind: "template", region: "words", source: { answer: `'${key}'`, check: null, derived: [], values: null, slots: [] } }];
+    expect(checkQuestionPackage(f.questions[0].package)).toMatchObject({ ok: true });
+    return f;
+  };
+  const view = (f: MarkingFrame, o: Observation, model: string | null = MARKING_MODEL) =>
+    markingPageView([{ expected: expectedItems(f)[0], observation: o, originalEvent: null, eventId: null, at: "2026-11-07T12:00:00Z", model, prompt: null }]);
+  it.each([["Forty Two", "right"], ["forty-two", "right"], ["FORTY TWO", "right"], ["fourty two", "right"], ["forty-three", "wrong"], ["twenty-four", "wrong"]] as const)(
+    "a clear write-words reading %j of the key forty-two is marked %s by code", (text, result) => {
+      const f = numberWordsFrame("forty-two"), o = readMarkingOutput(f, output([text]))[0];
+      expect(o).toMatchObject({ state: "scored", result, readAnswerText: text });
+      expect(observationProblem(o)).toBeNull();
+      expect(view(f, o).items[0].label).toBe(result === "right" ? "Right" : "Wrong");
+    });
+  it("an unclear write-words reading is unsure: our team checks it and the parent is asked nothing", () => {
+    const f = numberWordsFrame("forty-two"), o = readMarkingOutput(f, output(["42"]))[0];
+    expect(o).toMatchObject({ state: "pending", result: null });
+    const item = view(f, o).items[0];
+    expect(item.label).toBe("Our team is checking this answer.");
+    expect(item.canChange).toBe(false);
+    expect(item.label).not.toMatch(ASKS_PARENT);
+  });
+  it("an item that is not read yet says Not marked yet, with no change control", () => {
+    const f = frame(), e = expectedItems(f)[0];
+    const item = view(f, firstObservation(e, f.photo), null).items[0];
+    expect(item).toMatchObject({ label: "Not marked yet", canChange: false, result: null });
+    // A reading in hand is the team's even before the row records its model.
+    const read = readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text: null, issue: "unreadable" }] })[0];
+    expect(view(f, read, null).items[0].label).toBe("Our team is checking this answer.");
+    // One rule with admin_scan_team_queue: a row the AI processed (model set) with no reading also waits for our team.
+    expect(waitsForTeam({ observation: firstObservation(e, f.photo), model: MARKING_MODEL })).toBe(true);
+    expect(waitsForTeam({ observation: firstObservation(e, f.photo), model: null })).toBe(false);
+    expect(waitsForTeam({ observation: read, model: null })).toBe(true);
+  });
+  it.each(["unreadable", "crossed-out", "multiple-marks", "missing", "incomplete", "answer-form"] as const)(
+    "an unsure reading (%s) says our team is checking it", (issue) => {
+      const f = frame(), o = readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text: null, issue }] })[0];
+      const v = view(f, { ...o, issue });
+      // Exactly this: a clear photo the AI was unsure of is not "unreadable", so no reason is guessed for the parent.
+      expect(v.items[0]).toMatchObject({ label: "Our team is checking this answer.", canChange: false });
+      expect(v.counts).toMatchObject({ teamChecks: 1, pending: 0 });
+    });
+  it.each([["blurry", "The photo is blurry here."], ["cut-off", "Part of this answer is cut off."]] as const)(
+    "a bad photo (%s) can still ask for a new photo, and asks for no judgment", (issue, reason) => {
+      const f = frame(), o = readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text: null, issue }] })[0];
+      const label = view(f, o).items[0].label;
+      expect(label).toBe(`Our team is checking this answer. ${reason} You can also send a new photo of this page.`);
+      expect(label).not.toMatch(ASKS_PARENT);
+    });
+  it("an item waiting for a person (an old parent-checked format) is our team's, not the parent's", () => {
+    const f = twoWaysFrame(), e = expectedItems(f)[0];
+    const v = view(f, firstObservation(e, f.photo), null);
+    expect(v.items[0]).toMatchObject({ label: "Our team is checking this answer.", canChange: false });
+    expect(v.counts).toMatchObject({ teamChecks: 1 });
+  });
+  it("a team mark is the effective mark: it finishes the item, publishes its result and the parent can still change it", () => {
+    const f = frame(), e = expectedItems(f)[0];
+    const unsure = readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text: null, issue: "unreadable" }] })[0];
+    const team: Observation = { ...unsure, resultVersion: 2, state: "parent-checked", method: "parent", actor: "admin", result: "wrong" };
+    expect(observationProblem(team)).toBeNull();
+    expect(markingEvent(e, team)).toMatchObject({ publish: true, result: "wrong" });
+    const intent = { key: markingOriginalKey(e), parentId: P, childId: C, source: "marking", question: { source: "workbook", workbookId: W, page: 3, question: 1 }, skill: { standard: STANDARD.code, skills: [STANDARD.skills[0].id] }, result: "wrong", stuckStep: "x", mistake: "y", hints: 0, timeMs: null, occurredAt: "2026-11-07T12:00:00Z", evidence: { kind: "scan", id: f.photo } } as NewLearningEvent;
+    const mark = (o: Observation): EffectiveMark => ({ expected: e, observation: o, originalEvent: intent, eventId: "event-1", at: "2026-11-07T12:00:00Z", model: MARKING_MODEL, prompt: null });
+    const v = markingPageView([mark(team)]);
+    expect(v.completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(v.items[0]).toMatchObject({ label: "Wrong", actor: "admin", canChange: true });
+    expect(effectiveMarkingEvents([], [mark(team)])[0]).toMatchObject({ id: "event-1", result: "wrong", mistake: null, stuckStep: null });
+    const parent: Observation = { ...team, resultVersion: 3, actor: "parent", result: "right" };
+    expect(markingPageView([mark(parent)]).items[0]).toMatchObject({ label: "Right", actor: "parent", canChange: true });
+    expect(effectiveMarkingEvents([], [mark(parent)])[0]).toMatchObject({ result: "right" });
+    expect(effectiveSkillMarks([mark(parent)])[0]).toMatchObject({ right: true });
   });
 });
 
@@ -492,7 +571,9 @@ describe("S4 whole-page readings", () => {
     const [mark] = await s.effective(P, C);
     expect(mark.observation).toMatchObject({ state: fixture.result === null ? "pending" : "scored", result: fixture.result, issue: fixture.issue, readAnswerText: fixture.text });
     expect(observationProblem(mark.observation)).toBeNull();
-    expect(markingPageView([mark]).items[0].label).toBe(fixture.reason);
+    // The reason stays; our team checks every unsure item, and a bad photo may also be sent again (#715).
+    expect(markingPageView([mark]).items[0].label).toBe(fixture.result !== null ? fixture.reason
+      : PHOTO_ISSUES.includes(fixture.issue) ? `Our team is checking this answer. ${fixture.reason} You can also send a new photo of this page.` : "Our team is checking this answer.");
     if (fixture.result === null) expect(s.events).toHaveLength(0);
   });
   it.each([frame, tickFrame, circleFrame])("uses one versioned empty-area rule for number, tick and circle requests", makeFrame => {

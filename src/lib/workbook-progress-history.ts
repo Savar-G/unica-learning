@@ -7,7 +7,8 @@ import { isPrintedRevision, manifestProblem, type ScanManifest } from "./workboo
 
 type Tables = Database["public"]["Tables"];
 export type HistoryMarkRow = Omit<Tables["scan_marking_items"]["Row"], "owner_photo">;
-export type HistoryChangeRow = Tables["scan_mark_changes"]["Row"];
+/** Which admin set a team mark (admin_id) is not progress evidence; the journal's actor says it was our team. */
+export type HistoryChangeRow = Omit<Tables["scan_mark_changes"]["Row"], "admin_id">;
 export type HistoryEventRow = Pick<Tables["learning_events"]["Row"], "id" | "idempotency_key" | "parent_id" | "child_id"
   | "source" | "question_source" | "workbook_id" | "workbook_page" | "workbook_question" | "occurred_at"
   | "result" | "hints" | "evidence_kind" | "evidence_id" | "skill_standard" | "skills">;
@@ -287,14 +288,15 @@ async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgress
       const priorObservation = checkedMark(prior, x);
       const next = j.current as unknown as Observation;
       const nextTime = at(j.changed_at);
-      if (j.parent_id !== s.parentId || j.child_id !== s.childId || j.actor !== "parent" || prior.id !== r.id
+      // A person's mark: the parent's correction or our team's mark of an unsure item (#715).
+      if (j.parent_id !== s.parentId || j.child_id !== s.childId || (j.actor !== "parent" && j.actor !== "admin") || prior.id !== r.id
         || j.from_version !== previous.resultVersion || j.to_version !== j.from_version + 1
         || !same(priorObservation, previous) || at(prior.evidence_at) !== previousTime || nextTime < previousTime
         || prior.model !== firstRow.model || prior.prompt !== firstRow.prompt
         || (prior.original_event !== null && !same(prior.original_event, r.original_event))
         || (prior.event_id !== null && prior.event_id !== r.event_id)) fail("invalid-record");
       checkedMark({ ...prior, observation: j.current, result_version: j.to_version, evidence_at: j.changed_at }, x);
-      const expectedNext = { ...previous, state: "parent-checked", method: "parent", actor: "parent", result: next.result, resultVersion: j.to_version };
+      const expectedNext = { ...previous, state: "parent-checked", method: "parent", actor: j.actor, result: next.result, resultVersion: j.to_version };
       if (!same(next, expectedNext) || !["right", "wrong", "blank"].includes(next.result!)) fail("invalid-record");
       const reference = `scan_mark_changes:${j.id}`;
       const reading = { observation: structuredClone(next), at: nextTime, provenance: { eventId: reference, model: prior.model, prompt: prior.prompt } };

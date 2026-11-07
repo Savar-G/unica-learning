@@ -3031,6 +3031,7 @@ export type Database = {
       scan_mark_changes: {
         Row: {
           actor: string
+          admin_id: string | null
           changed_at: string
           child_id: string
           current: Json
@@ -3043,6 +3044,7 @@ export type Database = {
         }
         Insert: {
           actor?: string
+          admin_id?: string | null
           changed_at?: string
           child_id: string
           current: Json
@@ -3055,6 +3057,7 @@ export type Database = {
         }
         Update: {
           actor?: string
+          admin_id?: string | null
           changed_at?: string
           child_id?: string
           current?: Json
@@ -6837,9 +6840,32 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_scan_team_queue: {
+        Args: { p_limit?: number }
+        Returns: {
+          book: number
+          child_id: string
+          child_name: string
+          issue: string
+          item_id: string
+          page_number: number
+          parent_id: string
+          photo_id: string
+          question_number: number
+          read_text: string
+          test_family: boolean
+          total: number
+          waiting_since: string
+          workbook_id: string
+        }[]
+      }
       admin_set_maya_chat_family: {
         Args: { p_change: string; p_enabled: boolean; p_parent: string }
         Returns: string
+      }
+      admin_set_scan_mark: {
+        Args: { p_item: string; p_result: string; p_version: number }
+        Returns: Json
       }
       admin_set_test_account: {
         Args: { p_parent: string; p_test: boolean }

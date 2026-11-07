@@ -2,10 +2,11 @@
 // The AI owns readings only. No model identity, score, key or eligibility claim enters a result.
 import { createHash } from "node:crypto";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
-import { expectedItems, firstObservation, itemKey, markingEvent, MAX_READ_TEXT, pageCompletion, readingIssueText, READING_ISSUES, type ReadingIssue, type RegionReading, type ExpectedItem, type Observation, type PageForObservation } from "@/lib/scan-observation";
+import { expectedItems, firstObservation, itemKey, markingEvent, MAX_READ_TEXT, pageCompletion, PHOTO_ISSUES, readingIssueText, READING_ISSUES, type ReadingIssue, type RegionReading, type ExpectedItem, type Observation, type PageForObservation } from "@/lib/scan-observation";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { checkFractionReading } from "@/lib/scan-marking-fractions";
 import { exactNumber } from "@/lib/scan-marking-numbers";
+import { checkWordsReading } from "@/lib/scan-marking-words";
 import type { PrintedRegion } from "@/lib/workbook-print-contract";
 import type { LearningEvent, NewLearningEvent } from "@/lib/learning-events";
 import type { SkillMark } from "@/lib/assessment/skill-state";
@@ -133,11 +134,11 @@ function readRegion(a: Alias, readings: unknown[]): RegionReading {
       : a.kind === "fraction" ? fraction?.value ?? null
       : numeric !== null && Number.isFinite(numeric) && Math.abs(numeric) <= Number.MAX_SAFE_INTEGER ? numeric : null;
   const certain = blank || value !== null;
-  // A different word form can still mean the same answer (07:56, 8 x 4).
-  // Literal mismatch cannot establish a wrong text answer. A parent checks it.
+  // Words: code decides whether the reading names the key (#715). A form code cannot decide stays unsure, for our team.
   const result = blank ? "blank" : value === null ? null
     : a.kind === "fraction" ? fraction!.result
-      : value === (a.kind === "text" ? normalizedWords(a.answer) : a.answer) ? "right" : a.kind === "text" ? null : "wrong";
+      : a.kind === "text" ? checkWordsReading(input, a.answer)
+        : value === a.answer ? "right" : "wrong";
   return { regionId: a.regionId, text: blank ? "" : text, value: value === null ? null : String(value), certainty: certain ? "certain" : "uncertain",
     result, issue: certain ? result === null ? "answer-form" : null : issue ?? "unreadable" };
 }
@@ -225,9 +226,9 @@ export function effectiveMarkingEvents(raw: readonly LearningEvent[], marks: rea
   return [...others, ...marks.flatMap((m) => {
     const d = markingEvent(m.expected, m.observation);
     return d.publish && m.originalEvent && m.eventId ? [{ ...m.originalEvent, id: m.eventId, result: d.result,
-      // A judgment cannot carry an old or inferred mistake cause into the effective facts.
-      mistake: m.observation.actor === "parent" ? null : m.originalEvent.mistake,
-      stuckStep: m.observation.actor === "parent" ? null : m.originalEvent.stuckStep }] : [];
+      // A person's mark (parent or team) cannot carry an old or inferred mistake cause into the effective facts.
+      mistake: m.observation.actor === "system" ? m.originalEvent.mistake : null,
+      stuckStep: m.observation.actor === "system" ? m.originalEvent.stuckStep : null }] : [];
   })];
 }
 export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[] {
@@ -236,18 +237,42 @@ export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[
     return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.at }] : [];
   });
 }
+/**
+ * An item with no result that waits for our team (#715): an old format a person marks, or anything the AI read (or
+ * tried to read) without a sure result. An item not read yet is not the team's. A stored row that apply wrote always has
+ * a model, which is the rule admin_scan_team_queue uses; a reading in hand counts too.
+ */
+export const waitsForTeam = (m: Pick<EffectiveMark, "observation" | "model">) =>
+  m.observation.result === null && (m.observation.state === "parent-pending"
+    || (m.observation.state === "pending" && (m.model !== null || m.observation.certainty !== "not-read")));
+/** What a parent sees for one item. It never asks the parent to judge an answer: the AI and our team mark. */
+function itemLabel(m: EffectiveMark): string {
+  const o = m.observation;
+  if (o.result === "right") return "Right";
+  if (o.result === "wrong") return "Wrong";
+  if (o.result === "blank") return "Blank";
+  if (o.state === "unscored") return "Not scored";
+  if (!waitsForTeam(m)) return "Not marked yet";
+  // Exactly this for every unsure answer: a clear photo the AI was unsure of is not "unreadable". Only a reading the AI
+  // marked blurry or cut off adds that reason and the retake.
+  return o.issue && PHOTO_ISSUES.includes(o.issue) ? `Our team is checking this answer. ${readingIssueText(o.issue)} You can also send a new photo of this page.`
+    : "Our team is checking this answer.";
+}
 export function markingPageView(marks: readonly EffectiveMark[]) {
   marks = [...marks].sort((a, b) => a.expected.number - b.expected.number);
   const completion = pageCompletion(marks.map((m) => m.expected), marks.map((m) => m.observation));
   const counts = {
     scored: marks.filter((m) => m.observation.result !== null).length,
     unscored: marks.filter((m) => m.observation.state === "unscored").length,
-    parentChecks: marks.filter((m) => m.observation.state === "parent-pending").length,
-    pending: marks.filter((m) => m.observation.state === "pending").length,
+    /** Items our team is checking. */
+    teamChecks: marks.filter(waitsForTeam).length,
+    /** Items not read yet. */
+    pending: marks.filter((m) => m.observation.state === "pending" && !waitsForTeam(m)).length,
   };
   return { completion, counts, solutionsAvailable: completion.status === "complete" && counts.scored > 0, items: marks.map((m) => ({ number: m.expected.number, itemId: m.expected.identity.itemId, version: m.observation.resultVersion,
     state: m.observation.state, result: m.observation.result, readAnswerText: m.observation.readAnswerText,
-    canChange: m.expected.method === "code" || m.expected.method === "parent", actor: m.observation.actor, at: m.at,
+    // A parent only corrects a finished mark (#715).
+    canChange: (m.expected.method === "code" || m.expected.method === "parent") && m.observation.result !== null, actor: m.observation.actor, at: m.at,
     evidencePhoto: m.observation.evidence?.photoRevision ?? null, photoAvailable: false,
-    label: m.observation.result === "right" ? "Right" : m.observation.result === "wrong" ? "Wrong" : m.observation.result === "blank" ? "Blank" : m.observation.state === "unscored" ? "Not scored" : m.expected.review === "two-ways" ? "Please check both methods and the answer." : m.observation.issue ? readingIssueText(m.observation.issue) : "Please check this answer" })) };
+    label: itemLabel(m) })) };
 }
