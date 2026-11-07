@@ -47,67 +47,6 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     expect(told.map((t) => t.act)).toEqual(["open", "confirm", "accept_answer"]);
   });
 
-  // Review round 1 of 29e2b327: the fallback credits only one exact sentence. Words it cannot prove get the same help as on
-  // 68eb43d4, with no "That's it" for them.
-  it.each([
-    "7 plus 9 is 16.", "9 plus 7 is 16.", "So 7 plus 9 is 16.", "Okay, 7 plus 9 is 16.", "Okay. 7 plus 9 is 16.", "7 plus 9 equals 16.", "7 plus 9 makes 16.", "seven plus nine is sixteen.",
-  ])("hears the step's own sum: %s", async (text) => {
-    const { told } = await play("A", [down(text)]);
-    expect(told[1]).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
-  });
-
-  it.each([
-    "7 is 16.", "9 and 16.", "My mom said 7 plus 9 is 16.", "I think 7 plus 9 is 16.", "Maybe 7 plus 9 is 16.", "I guess 7 plus 9 is 16.", "7 plus 9 is 16?", "16.", "It's 16.",
-    "7 and 9 is 16.", "7 plus 9 plus 1 is 16.", "7 plus 7 is 16.", "7 plus 9 is not 16.", "7 plus 9 is 6.", "Mia says 7 plus 9 is 16.", "9 is 16.", "Then 7 plus 9 is 16.", "I know 7 plus 9 is 16.",
-  ])("does not hear the ones in: %s", async (text) => {
-    const { told } = await play("A", [down(text)]);
-    expect(told[1].lines).not.toContain("check.right_step");
-    expect(told[1].step ?? "ones").toBe("ones");
-    expect(told[1].say).not.toMatch(/7 \+ 9 = 16/);
-  });
-
-  const afterOnes = (text: string) => play("A", [{ child: "7 plus 9 is 16.", read: { answers: [[16, "ones", "right"]] } }, down(text)]);
-  it.each(["So 2 plus 3 plus 1 is 6.", "2 plus 3 plus 1 is 6.", "3 plus 2 plus 1 is 6."])("hears the tens with its carry: %s", async (text) => {
-    const { told } = await afterOnes(text);
-    expect(told[2]).toMatchObject({ act: "guide", step: "result", lines: ["check.right_step", "step.invite"] });
-  });
-  it.each(["3 is 6.", "2 and 6.", "1 and 6.", "2 plus 3 is 6.", "2 plus 3 is 5.", "1 plus 2 plus 3 is 6.", "2 plus 1 is 6.", "My mom said 2 plus 3 plus 1 is 6."])("does not hear the tens in: %s", async (text) => {
-    const { told } = await afterOnes(text);
-    expect(told[2].lines).not.toContain("check.right_step");
-    expect(told[2].step).toBe("tens");
-    expect(told[2].say).not.toMatch(/That's it|Yes|right/i);
-  });
-
-  it("treats the sum Maya just showed as a copy, the same as a lone number (H3)", async () => {
-    const shown: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
-    for (const text of ["7 plus 9 is 16.", "16."]) {
-      const { told } = await play("A", [shown, down(text)]);
-      expect(told[2].lines).not.toContain("check.right_step");
-      expect(told[2]).toMatchObject({ step: "ones" });
-    }
-  });
-
-  // The same sentences when a model reading names them: code refuses the credit, whatever the model read.
-  const named = (text: string, value: number, step: string, before: Step[] = []) => play("A", [...before, {
-    child: text, read: { answers: [[value, step, "right"]] },
-    maya: [{ act: "guide", step: step === "ones" ? "tens" : "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }],
-  }]);
-  const ones: Step = { child: "7 plus 9 is 16.", read: { answers: [[16, "ones", "right"]] } };
-  it.each([["7 is 16.", 16, "ones"], ["9 and 16.", 16, "ones"], ["My mom said 7 plus 9 is 16.", 16, "ones"], ["I think 7 plus 9 is 16.", 16, "ones"]] as const)("refuses a model's credit for: %s", async (text, value, step) => {
-    const { told } = await named(text, value, step);
-    expect(told[1].lines).not.toContain("check.right_step");
-    expect(told[1].step ?? "ones").toBe("ones");
-  });
-  it.each([["3 is 6.", 6, "tens"], ["2 and 6.", 6, "tens"], ["1 and 6.", 6, "tens"], ["The 1 and 6.", 6, "tens"]] as const)("refuses a model's credit after the ones for: %s", async (text, value, step) => {
-    const { told } = await named(text, value, step, [ones]);
-    expect(told[2].lines).not.toContain("check.right_step");
-    expect(told[2].step).toBe("tens");
-  });
-  it.each([["7 plus 9 is 16.", 16], ["9 plus 7 is 16.", 16], ["16.", 16], ["It's 16.", 16], ["6.", 6]] as const)("keeps a model's credit for: %s", async (text, value) => {
-    const { told } = await named(text, value, "ones");
-    expect(told[1]).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
-  });
-
   it.each([
     ["a number about something else", "My dog is 16."],
     ["a wrong sum", "7 plus 9 is 15."],
@@ -119,6 +58,95 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     const { told } = await play("A", [down(text)]);
     expect(told[1].lines).not.toContain("check.right_step");
     expect(told[1].step ?? "ones").toBe("ones");
+  });
+
+  // Review rounds of 29e2b327 and 771d2127: a step is heard only when the WHOLE turn is one template, on both paths.
+  const ones: Step = { child: "7 plus 9 is 16.", read: { answers: [[16, "ones", "right"]] } };
+  const shown: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
+  /** The model names this step right and asks to go on; its repair call fails, so code decides. */
+  const named = (text: string, value: number, step: string): Step => ({
+    child: text, read: { answers: [[value, step, "right"]] },
+    maya: [{ act: "guide", step: step === "ones" ? "tens" : "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }],
+  });
+  const NEXT = { act: "guide", lines: ["check.right_step", "step.invite"] };
+
+  // [turn, the value a model would name]
+  const HEARD_ONES: [string, number][] = [
+    ["16.", 16], ["16", 16], ["16!", 16], ["Okay, 16.", 16], ["So 16.", 16], ["Um, 16.", 16], ["sixteen", 16], ["6.", 6],
+    ["7 plus 9 is 16.", 16], ["9 plus 7 is 16.", 16], ["So 7 plus 9 is 16.", 16], ["Okay, 7 plus 9 is 16.", 16], ["Okay. 7 plus 9 is 16.", 16],
+    ["7 plus 9 equals 16.", 16], ["7 plus 9 makes 16.", 16], ["seven plus nine is sixteen.", 16], ["seven and nine make sixteen", 16], ["7 and 9 is 16.", 16], ["9 + 7 = 16", 16], ["9+7=16", 16],
+    ["I wrote 6.", 6], ["I wrote 6 and carried 1.", 6], ["I put 6 in the ones.", 6], ["6, carry the 1", 6], ["Wrote 6.", 6], ["So I wrote 6.", 6],
+  ];
+  it.each(HEARD_ONES)("hears the ones in %j on both paths", async (text, value) => {
+    expect((await play("A", [down(text)])).told[1]).toMatchObject({ ...NEXT, step: "tens" });
+    expect((await play("A", [named(text, value, "ones")])).told[1]).toMatchObject({ ...NEXT, step: "tens" });
+  });
+
+  const NOT_HEARD_ONES: [string, number][] = [
+    ["7 plus 9 is 16. My mom told me.", 16], ["My mom said so. 7 plus 9 is 16.", 16], ["7 plus 9 is 16. I don't know.", 16], ["7 plus 9 is 16. Or not.", 16], ["7 plus 9 is 16. It's 15.", 16],
+    ["My mom wrote 6.", 6], ["She wrote 6.", 6], ["They wrote 6.", 6], ["Mom says I wrote 6.", 6], ["16. My mom said.", 16],
+    ["Is it 16?", 16], ["Uh, 16?", 16], ["16?", 16], ["7 plus 9 is 16?", 16], ["I wrote 6?", 6],
+    ["7 and 9 make 16 and 3.", 16], ["66 is 16.", 16], ["16 or 15", 16],
+    ["7 is 16.", 16], ["9 and 16.", 16], ["9 is 16.", 16], ["My mom said 7 plus 9 is 16.", 16], ["Mia says 7 plus 9 is 16.", 16], ["I think 7 plus 9 is 16.", 16], ["Maybe 7 plus 9 is 16.", 16], ["I guess 7 plus 9 is 16.", 16],
+    ["7 plus 9 is not 16.", 16], ["Then 7 plus 9 is 16.", 16], ["I know 7 plus 9 is 16.", 16], ["It's 16.", 16], ["I got 16.", 16], ["The ones make 16.", 16],
+    ["16 and 3.", 16], ["I didn't write 6.", 6], ["I wrote 6. I think.", 6],
+  ];
+  it.each(NOT_HEARD_ONES)("does not hear the ones in %j, and goes to the confirm question when a model names it", async (text, value) => {
+    const down1 = (await play("A", [down(text)])).told[1];
+    expect(down1.lines).not.toContain("check.right_step");
+    expect(down1.say).not.toMatch(/7 \+ 9 = 16/);
+    expect(down1.step ?? "ones").toBe("ones");
+    const model = (await play("A", [named(text, value, "ones")])).told[1];
+    expect(model.lines).not.toContain("check.right_step");
+    expect(model.say).not.toMatch(/7 \+ 9 = 16/);
+    expect(model.act).toBe("confirm");
+  });
+
+  // Another expression is outside the question: scope answers it (redirect.workbook), and the ones get no credit.
+  it.each(["7 times 9 is 16.", "7 times 9 is 16", "7 plus 9 plus 1 is 16.", "7 plus 7 is 16.", "16 is 66."])("never credits the ones for another sum: %j", async (text) => {
+    for (const step of [down(text), named(text, 16, "ones")]) {
+      const told = (await play("A", [step])).told[1];
+      expect(told.lines).not.toContain("check.right_step");
+      expect(told.say).not.toMatch(/7 \+ 9 = 16/);
+    }
+  });
+
+  const HEARD_TENS: [string, number][] = [["So 2 plus 3 plus 1 is 6.", 6], ["2 plus 3 plus 1 is 6.", 6], ["3 plus 2 plus 1 is 6.", 6], ["1 plus 2 plus 3 is 6.", 6], ["two and three and one make six", 6], ["6.", 6], ["I wrote 6.", 6]];
+  it.each(HEARD_TENS)("hears the tens in %j on both paths", async (text, value) => {
+    expect((await play("A", [ones, down(text)])).told[2]).toMatchObject({ ...NEXT, step: "result" });
+    expect((await play("A", [ones, named(text, value, "tens")])).told[2]).toMatchObject({ ...NEXT, step: "result" });
+  });
+
+  const NOT_HEARD_TENS: [string, number][] = [
+    ["3 plus 2 plus 1 is 6. My mom said.", 6], ["3 is 6.", 6], ["2 and 6.", 6], ["1 and 6.", 6], ["The 1 and 6.", 6], ["2 plus 3 is 6.", 6], ["2 plus 1 is 6.", 6], ["My mom said 2 plus 3 plus 1 is 6.", 6],
+  ];
+  it.each(NOT_HEARD_TENS)("does not hear the tens in %j", async (text, value) => {
+    const down1 = (await play("A", [ones, down(text)])).told[2];
+    expect(down1.lines).not.toContain("check.right_step");
+    expect(down1.step).toBe("tens");
+    const model = (await play("A", [ones, named(text, value, "tens")])).told[2];
+    expect(model.lines).not.toContain("check.right_step");
+    expect(model.act).toBe("confirm");
+  });
+
+  it.each([["7 plus 9 is 16.", 16], ["9 + 7 = 16", 16], ["16.", 16], ["6.", 6]] as const)("treats %j after H3 as a copy on both paths", async (text, value) => {
+    for (const step of [down(text), named(text, value, "ones")]) {
+      const told = (await play("A", [shown, step])).told[2];
+      expect(told.lines).not.toContain("check.right_step");
+      expect(told.step ?? "ones").toBe("ones");
+    }
+  });
+
+  it("gives no step credit for a plain yes to the confirm question (known limit)", async () => {
+    const { told } = await play("A", [named("It's 16.", 16, "ones"), { child: "Yes.", read: { answers: [[16, "ones", "right"]] }, maya: [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }] }]);
+    expect(told[1].act).toBe("confirm");
+    expect(told[2].lines).not.toContain("check.right_step");
+    expect(told[2].step ?? "ones").toBe("ones");
+  });
+
+  it("gives no credit to a step beside a right final answer, and still accepts the answer", async () => {
+    const { told } = await play("A", [ones, { child: "Six, so 66.", read: { answers: [[6, "tens", "right"], [66, "result", "right"]] } }]);
+    expect(told[2].act).toBe("accept_answer");
   });
 
   it("reads a carry sentence as no second answer only with the point-at forms or the step's real carry", () => {

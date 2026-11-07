@@ -14,6 +14,6 @@ describe("PR624 review requirements",()=>{
  it("does not skip a false equation before a carry",()=>{expect(rightOnes("7 plus 9 is 6 and I carry the 1.").refusal).not.toBeNull();});
  it("does not accept a digit from a false total",()=>{expect(rightOnes("7 plus 9 is 26, I put 6.").refusal).not.toBeNull();});
  it("does not ignore a wrong written digit",()=>{expect(rightOnes("7 plus 9 is 16, I wrote 5.",16).refusal).not.toBeNull();});
- it("accepts a corrected equation and its right digit",()=>{expect(rightOnes("7 plus 9 is 6. No, I mean 7 plus 9 is 16, I wrote 6.").refusal).toBeNull();});
+ it("asks about a corrected equation and its digit: the turn is not one template",()=>{expect(rightOnes("7 plus 9 is 6. No, I mean 7 plus 9 is 16, I wrote 6.").refusal?.code).toBe("answer_not_committed");});
  it("keeps an accepted result when a correction restates it with known working",()=>{const c=call();c.child("66");expect(c.p({act:"accept_answer",parts:[ln("answer.right")],reading:{answers:[{value:n(66),step:"result",verdict:"right"}]}}).refusal).toBeNull();c.child("Actually 66. 7 plus 9 is 16.");expect(c.s.solved).toBe("child");});
 });

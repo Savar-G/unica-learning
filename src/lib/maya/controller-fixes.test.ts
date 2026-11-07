@@ -582,8 +582,10 @@ describe("#605 practice run 1: a negative before ', so' does not take back the n
   });
   it("lets Maya judge the kept 56 wrong", () => {
     const c = call();
-    c.child("Seven plus nine is sixteen. Two plus three is five. The one is not a big deal, so it's still 56.");
-    const r = c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("check.not_yet", { step: "tens" }), ln("step.regroup", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(5, "tens", "wrong"), ans(56, "result", "wrong")] } });
+    c.child("Seven plus nine is sixteen.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    c.child("Two plus three is five. The one is not a big deal, so it's still 56.");
+    const r = c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("check.not_yet", { step: "tens" }), ln("step.regroup", { step: "tens" })], reading: { start: "has_work", answers: [ans(5, "tens", "wrong"), ans(56, "result", "wrong")] } });
     expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
   });
 });
@@ -798,9 +800,11 @@ describe("#605 Maya's new lines (Savar 2026-11-06: conversational and human-like
 
   it("explains a carry a second way (ten ones make one ten) only after the regroup line was said", () => {
     const c = call();
-    c.child("16 for the ones. 2 plus 3 is 5.");
-    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.why", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(5, "tens", "wrong")] } }).refusal?.code).toBe("line_not_offered");
-    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(5, "tens", "wrong")] } });
+    c.child("16.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    c.child("2 plus 3 is 5.");
+    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.why", { step: "tens" })], reading: { answers: [ans(5, "tens", "wrong")] } }).refusal?.code).toBe("line_not_offered");
+    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })], reading: { answers: [ans(5, "tens", "wrong")] } });
     c.child("Why does the 1 go to the tens?");
     const words = c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.why", { step: "tens" })] });
     expect(words).toMatch(/10 ones|Ten ones|16 ones/);

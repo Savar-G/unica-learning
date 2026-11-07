@@ -81,8 +81,10 @@ describe("withdrawal and saved writing state", () => {
 function twoCarries(highestOnly = false) {
   const operation: Operation = { kind: "add", operands: highestOnly ? [67, 58] : [167, 158] };
   const pkg = { ...FIXTURES.A, text: highestOnly ? "67 + 58 = ?" : "167 + 158 = ?", operation, steps: workedSteps(operation), answer: { value: n(highestOnly ? 125 : 325), accepted: [], unit: null }, wrongAnswers: [{ value: n(highestOnly ? 115 : 215), cause: "O3", description: "Missed carry", step: "tens" }] };
-  const c = call(pkg); c.child(`7 plus 8 is 15. I got ${highestOnly ? 115 : 215}.`);
-  c.ok({ ...guide("tens"), parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(15, "ones"), answer(highestOnly ? 115 : 215, "result", "wrong")] } });
+  const c = call(pkg); c.child("7 plus 8 is 15.");
+  c.ok({ ...guide("tens"), parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(15, "ones")] } });
+  c.child(`I got ${highestOnly ? 115 : 215}.`);
+  c.ok({ ...guide("tens"), parts: [line("check.not_yet", { step: "result" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(highestOnly ? 115 : 215, "result", "wrong")] } });
   c.child("Help."); c.ok(regroup("tens")); c.child("6 plus 5 plus 1 is 12.");
   c.ok({ ...guide("hundreds"), parts: [line("check.right_step", { step: "tens" }), line("step.invite", { step: "hundreds" })], reading: { answers: [answer(12, "tens")] } });
   return c;
@@ -120,10 +122,12 @@ describe("carry selection after column progress", () => {
 });
 
 describe("carry explanation after an accepted answer (R410-6)", () => {
-  const work = { ...accept, reading: { answers: [answer(16, "ones"), answer(6, "tens"), answer(66, "result")] } };
+  const ones = { ...guide("tens"), parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(16, "ones")] } };
+  const tens = { ...guide("result"), parts: [line("check.right_step", { step: "tens" }), line("step.invite", { step: "result" })], reading: { answers: [answer(6, "tens")] } };
+  const work = { ...accept, reading: { answers: [answer(66, "result")] } };
 
   it("keeps the solved answer on the writing path after the explanation", () => {
-    const c = call(); c.child("7 plus 9 is 16, 2 plus 3 plus 1 is 6, so I got 66."); c.ok(work);
+    const c = call(); c.child("7 plus 9 is 16."); c.ok(ones); c.child("2 plus 3 plus 1 is 6."); c.ok(tens); c.child("I got 66."); c.ok(work);
     c.child("I didn't carry from the ones to the tens."); expect(said(c.ok(regroup("tens")).effects)).toContain("1 ten");
     expect(c.session.state).toBe("CHECK"); expect(c.session.solved).toBe("child"); expect(c.session.done).toEqual(["ones", "tens"]);
     c.child("Okay."); c.ok(write); expect(c.session.state).toBe("WRITE_CLOSE");
@@ -134,10 +138,11 @@ describe("carry explanation after an accepted answer (R410-6)", () => {
     const model = fakeMayaModel({ answer: (input) => ({ version: 2, ...(!input.childTurn
       ? { act: "open", parts: [line("open.hello"), line("question.problem")] }
       : input.childTurn.includes("didn't carry") ? regroup("tens")
-      : input.childTurn === "Okay." ? write : work) }) });
+      : input.childTurn === "Okay." ? write
+      : input.childTurn.includes("7 plus 9") ? ones : input.childTurn.includes("2 plus 3") ? tens : work) }) });
     const options = { callId: "practice-resumption-solved-carry", package: FIXTURES.A, model, clock: () => now, random: 3 };
     let c = createTextSession(options);
-    await c.start(); now += 4000; await c.child("7 plus 9 is 16, 2 plus 3 plus 1 is 6, so I got 66.");
+    await c.start(); now += 4000; await c.child("7 plus 9 is 16."); now += 4000; await c.child("2 plus 3 plus 1 is 6."); now += 4000; await c.child("I got 66.");
     now += 4000; await c.child("I didn't carry from the ones to the tens.");
     c = createTextSession({ ...options, resume: JSON.parse(JSON.stringify(await c.saved())) });
     now += 4000; const output = await c.child("Okay.");

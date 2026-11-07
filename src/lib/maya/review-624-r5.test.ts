@@ -78,9 +78,9 @@ describe("PR624 round 5: explicit answers and column roles", () => {
     "7 plus 9 is 16, I put 6 in the ones and carry 1 to the tens.",
     "7 plus 9 is 16, I carry the ten.",
     "7 plus 9 is 6. No, I mean 7 plus 9 is 16, I wrote 6.",
-  ])("keeps correct working: %s", (text) => {
+  ])("asks about correct working that is not one whole-turn template: %s", (text) => {
     const c = call(); c.child(text);
-    expect(rightOnes(c).refusal).toBeNull();
-    expect(c.session.done).toContain("ones");
+    expect(rightOnes(c).refusal?.code).toBe("answer_not_committed");
+    expect(c.session.done).not.toContain("ones");
   });
 });

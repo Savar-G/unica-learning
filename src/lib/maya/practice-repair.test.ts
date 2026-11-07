@@ -49,11 +49,17 @@ describe("repairs from the full subscription practice", () => {
     const c = call();
     c.child("Show me the ones.");
     c.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
+    // The sum Maya just showed is a copy; what the child wrote on their paper is theirs.
     c.child("7 plus 9 is 16.");
-    c.ok({ act: "guide", step: "tens", level: 0, parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(16, "ones")] } });
-    expect(c.s.done).toContain("ones");
-    expect(c.s.solved).toBeNull();
-    expect(c.s.ladder.hint).toBe(0);
+    expect(c.propose({ act: "guide", step: "tens", level: 0, parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(16, "ones")] } }).refusal).toMatchObject({ code: "answer_not_committed" });
+    const d = call();
+    d.child("Show me the ones.");
+    d.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
+    d.child("I wrote 6 and carried 1.");
+    d.ok({ act: "guide", step: "tens", level: 0, parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(6, "ones")] } });
+    expect(d.s.done).toContain("ones");
+    expect(d.s.solved).toBeNull();
+    expect(d.s.ladder.hint).toBe(0);
   });
 
   it("refuses strong closing effort praise after one independent answer", () => {
@@ -118,7 +124,7 @@ describe("repairs from the full subscription practice", () => {
     expect(c.s.solved).toBeNull();
   });
 
-  it.each(["Two plus three is five, plus the one is six.", "Two plus three is five, and the carried one makes six."])("keeps the checked tens result in %j", text => {
+  it.each(["Two plus three plus one is six.", "Two and three and one make six."])("keeps the checked tens result in %j", text => {
     const c = call();
     c.child("7 plus 9 is 16.");
     c.ok({ act: "guide", step: "tens", level: 0, parts: [line("step.invite", { step: "tens" })], reading: { answers: [answer(16, "ones")] } });
@@ -128,11 +134,11 @@ describe("repairs from the full subscription practice", () => {
     expect(c.s.solved).toBeNull();
   });
 
-  it("keeps the correct ones step beside a wrong tens result without accepting either as the final answer", () => {
+  it("gives no credit to the ones in a turn with a wrong final answer beside them, and accepts neither as the final answer", () => {
     const c = call();
     c.child("I got 56. I did 7 plus 9 is 16, I wrote the 6, then 2 plus 3 is 5.");
-    c.ok({ act: "guide", step: "tens", level: 1, parts: [line("check.right_step", { step: "ones" }), line("step.regroup", { step: "tens" })], reading: { answers: [answer(16, "ones"), { ...answer(56, "result"), verdict: "wrong" }] } });
-    expect(c.s.done).toEqual(["ones"]);
+    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [line("check.right_step", { step: "ones" }), line("step.regroup", { step: "tens" })], reading: { answers: [answer(16, "ones"), { ...answer(56, "result"), verdict: "wrong" }] } }).refusal).toMatchObject({ code: "answer_not_committed" });
+    expect(c.s.done).toEqual([]);
     expect(c.s.solved).toBeNull();
   });
 

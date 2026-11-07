@@ -229,11 +229,16 @@ describe("a wrong child answer is never accepted", () => {
     // A question is not a committed answer, so it is refused before its math is judged (R391-5).
     expect(c.refused({ act: "accept_answer", parts: [t("Yes!")], reading: { answers: [{ value: num(16), step: "result", verdict: "right" }] } }))
       .toMatchObject({ code: "answer_not_committed" });
-    c.maya({
+    // The question in the turn means the ones are not heard either; the plain sum is.
+    expect(c.refused({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] } }))
+      .toMatchObject({ code: "answer_not_committed" });
+    const d = opened();
+    d.child("Seven plus nine is 16.");
+    d.maya({
       act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })],
       reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }, { value: num(16), step: "result", verdict: "wrong" }] },
     });
-    expect(c.session.state).toBe("GUIDE_TARGET");
+    expect(d.session.state).toBe("GUIDE_TARGET");
   });
 
   it("refuses an equation in Maya's own words: math comes only from code's lines", () => {
@@ -933,7 +938,7 @@ describe("code's fallback keeps what code can check of a refused reading (#389)"
 
   it("keeps only the answers code checks alone, and with one, no off-topic or writing reading, and no paper the child's words do not say", () => {
     const c = opened();
-    c.child("Seven plus nine is sixteen. Two plus three is five.");
+    c.child("Seven plus nine is sixteen.");
     const refused = {
       version: 2, act: "accept_answer", parts: [ln("answer.right")],
       reading: {

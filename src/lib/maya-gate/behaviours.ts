@@ -261,7 +261,7 @@ export const BEHAVIOURS: Behaviour[] = [
     steps: [
       child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }, {}, {}]),
       okay,
-      child("Seven plus nine is 16. I write 16 under the ones.", { answers: [[16, "ones", "right"]] }, [
+      child("Seven plus nine is 16. I write 16 under the ones.", { start: "has_work" }, [
         { act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { act: "guide", step: "ones", level: 1, lines: ["step.regroup"] } },
       ]),
       child("Oh, I write 6 and carry 1 ten, then 2 plus 3 plus 1 is 6, so 66.", { answers: [[6, "ones", "right"], [6, "tens", "right"], [66, "result", "right"]] }),
@@ -280,15 +280,14 @@ export const BEHAVIOURS: Behaviour[] = [
     fixture: "A",
     status: "passing",
     steps: [
-      child("7 plus 9 is 16. I wrote 6, then 2 plus 3 is 5.", { start: "has_work", answers: [[16, "ones", "right"], [5, "tens", "wrong"]] }, [
-        { act: "guide", level: 1, lines: ["check.right_step", "check.not_yet", "step.regroup"] },
-      ]),
+      child("7 plus 9 is 16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("2 plus 3 is 5.", { answers: [[5, "tens", "wrong"]] }, [{ act: "guide", level: 1, lines: ["check.not_yet", "step.regroup"] }]),
       child("2 plus 3 plus 1 is 6, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
-      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
       never: ["example_step"],
     },
   },
@@ -420,6 +419,7 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   {
+    // Whole-turn rule (771d2127 review): a question mark in the turn is not heard, so the ones get no credit from it.
     id: "C11",
     title: "'16. So is the answer 16?': the right ones step, not the whole question",
     fixture: "A",
@@ -433,7 +433,7 @@ export const BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
-      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
       refused: ["answer_not_committed"],
     },
   },
@@ -602,15 +602,15 @@ export const BEHAVIOURS: Behaviour[] = [
     fixture: "A",
     status: "passing",
     steps: [
-      child("7 and 9 is 16. I make ten extra, where put?", { start: "has_work", answers: [[16, "ones", "right"]], help: "more" }, [
-        { act: "guide", level: 2, lines: ["check.right_step", "step.operation"] },
-      ]),
+      // One turn per template (whole-turn rule, review of 771d2127): the question goes in its own turn.
+      child("7 and 9 is 16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("I make ten extra, where put?", { help: "more" }, [{ act: "guide", level: 1, lines: ["step.point"] }]),
       child("2 and 3 and 1, 6, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "hint", highestHint: 2 },
-      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
     },
   },
   {
@@ -1438,7 +1438,7 @@ export const BEHAVIOURS: Behaviour[] = [
     status: "passing",
     steps: [
       child("Because seven and nine make sixteen.", { start: "has_work", answers: [[16, "result", "wrong"]] }, [
-        { act: "guide", level: 0, repair: { act: "guide", level: 0, read: { start: "has_work", answers: [[16, "ones", "right"]] } } },
+        { act: "guide", level: 0, repair: { act: "guide", level: 0, read: { start: "has_work" } } },
       ]),
       child("Sixty-five because five and six. No wait, sixty-six because six tens and six ones.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
@@ -1557,18 +1557,18 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "P2",
-    title: "'Yes, 16. But I don't know what to do with it.': the negative leaves the 16, so the step counts",
+    title: "'Yes, 16. But I don't know what to do with it.': another sentence in the turn, so Maya asks before the step counts",
     fixture: "A",
     status: "passing",
     steps: [
-      child("Yes, 16. But I don't know what to do with it.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Yes, 16. But I don't know what to do with it.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
       child("Two plus three plus one is six, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
-      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
-      counts: { refusals: 0 },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      refused: ["answer_not_committed"],
     },
   },
   {
@@ -1665,7 +1665,7 @@ export const BEHAVIOURS: Behaviour[] = [
     fixture: "A",
     status: "passing",
     steps: [
-      child("I got 16 for the ones.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 1, lines: ["check.right_step", "step.regroup"] }]),
+      child("16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 1, lines: ["check.right_step", "step.regroup"] }]),
       child("2 plus 3 is 5.", { answers: [[5, "tens", "wrong"]] }, [{ act: "guide", step: "tens", level: 1, lines: ["step.regroup"], repair: { act: "guide", step: "tens", level: 1, lines: ["step.point"] } }]),
       child("I didn't carry anything.", undefined, [{ act: "guide", step: "tens", level: 1, lines: ["step.regroup"] }]),
       child("I still didn't carry.", undefined, [{ act: "guide", step: "tens", level: 1, lines: ["step.regroup"], repair: { act: "guide", step: "tens", level: 2, lines: ["step.operation"] } }]),
@@ -1868,13 +1868,14 @@ export const BEHAVIOURS: Behaviour[] = [
     fixture: "A",
     status: "passing",
     steps: [
-      child("Seven plus nine is sixteen. Two plus three is five. The one is not a big deal, so it's still 56.", { start: "has_work", answers: [[16, "ones", "right"], [5, "tens", "wrong"], [56, "result", "wrong"]] }, [{ act: "guide", step: "tens", level: 1, lines: ["check.not_yet", "step.regroup"] }]),
+      child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Two plus three is five. The one is not a big deal, so it's still 56.", { answers: [[5, "tens", "wrong"], [56, "result", "wrong"]] }, [{ act: "guide", step: "tens", level: 1, lines: ["check.not_yet", "step.regroup"] }]),
       child("Two plus three plus one is six, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "hint" },
-      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
     },
   },
@@ -1902,7 +1903,7 @@ export const BEHAVIOURS: Behaviour[] = [
     status: "passing",
     steps: [
       child("I add the ones. 7 plus 9 is 6.", { start: "has_work", answers: [[6, "ones", "wrong"]] }, [{ act: "guide", step: "ones", level: 0, lines: ["check.not_yet", "step.invite"] }]),
-      child("Oh, 7 plus 9 is 16.", { answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Okay, 7 plus 9 is 16.", { answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
       child("Two plus three plus one is six, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
@@ -1958,14 +1959,15 @@ export const BEHAVIOURS: Behaviour[] = [
     fixture: "A",
     status: "passing",
     steps: [
-      child("16 for the ones. 2 plus 3 is 5.", { start: "has_work", answers: [[16, "ones", "right"], [5, "tens", "wrong"]] }, [{ act: "guide", step: "tens", level: 1, lines: ["step.regroup"] }]),
+      child("16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("2 plus 3 is 5.", { answers: [[5, "tens", "wrong"]] }, [{ act: "guide", step: "tens", level: 1, lines: ["step.regroup"] }]),
       child("Why does the 1 go to the tens?", undefined, [{ act: "guide", step: "tens", level: 1, lines: ["step.why"] }]),
       child("Two plus three plus one is six, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "hint" },
-      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
     },
   },

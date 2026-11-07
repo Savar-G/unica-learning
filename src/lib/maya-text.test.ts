@@ -235,8 +235,9 @@ describe("a twice-refused proposal keeps what code can check of its reading (#38
     await session.start();
     const out = await session.child("Seven plus nine is sixteen. Two plus three is five.");
     expect(sources(session)).toEqual(["model", "repair", "fallback"]);
-    expect(session.session.done).toEqual(["ones"]);
-    expect(lastMayaTurn(session).attempts[2].proposal).toMatchObject({ reading: { answers: [answer(16, "ones", "right")] } });
+    // Two sentences are no whole-turn template, so the ones get no credit either.
+    expect(session.session.done).toEqual([]);
+    expect(lastMayaTurn(session).attempts[2].proposal).not.toHaveProperty("reading.answers");
     expect(said(out)).not.toMatch(/2 \+ 3 = 5|\b66\b/);
 
     // A reading with only a wrong step read as right keeps nothing: no reading, no step done, no "Yes".

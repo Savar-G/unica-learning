@@ -929,9 +929,6 @@ function plainClause(clause: string): boolean {
   });
 }
 
-/** Every word of the sentence is a plain answer word, math talk, a number, a place, an operation, a filler or a unit. */
-export const plainWords = (sentence: string) => sentence.split(/[.!?,;:]+/).every((clause) => plainClause(clause.replace(EXPLANATION_ALL, " ")));
-
 /**
  * Every clause of the final number's sentence (with a line before that runs on into it) and of every sentence after it
  * is plain (plainClause: answer words, math talk, numbers, units): the child committed to it (R391-6). Any other word anywhere there ("66, I doubt it", "Maybe" then
@@ -1036,7 +1033,7 @@ function pointsBack(sentence: string, options?: ReadOptions): boolean {
 }
 
 /** The whole text is one plain whole number, in digits or words ("16", "sixteen", "twenty-six"), or null. */
-function plainNumber(text: string): number | null {
+export function plainNumber(text: string): number | null {
   const words = text.trim().toLowerCase().split(/[\s-]+/);
   if (!(words.length === 1 && /^\d+$/.test(words[0])) && !words.every((w) => kindOf(w) !== null)) return null;
   const r = readNumbers(text);
@@ -1045,25 +1042,35 @@ function plainNumber(text: string): number | null {
 }
 
 /**
- * Each sentence of the text that is exactly a sum, as an allow-list: "a plus b [plus c] is|equals|makes d", or the same
- * with + and =, after at most "so" or "okay". Nothing else may be in the sentence: no other speaker, hedge, question or
- * negation. Whether it is a step's own sum is the caller's to say. Every other sentence holds no sum.
+ * The child's whole turn when it can be one step template (stepTurnHeard): trimmed, with at most one leading "so", "okay"
+ * or "um" and one final full stop or "!". Null for any turn with a question mark or more than one line. Whether the rest is
+ * one template is for the readers below: a second sentence fits none of them.
  */
-export function exactSums(text: string): { operands: number[]; sum: number }[] {
-  return text.replace(/’/g, "'").split(/(?<=[.!?;])\s+|\n+/).flatMap((raw) => {
-    const m = /^(?:(?:so|okay|ok)\b[,\s]*)?(.+?)\s*(?:\s(?:is|equals|makes)\s|=)\s*(.+?)\s*[.!]*$/i.exec(raw.trim());
-    if (!m) return [];
-    const operands = m[1].split(/\s*\+\s*|\s+plus\s+/i).map(plainNumber);
-    const sum = plainNumber(m[2]);
-    return sum !== null && operands.length >= 2 && operands.every((n) => n !== null) ? [{ operands: operands as number[], sum }] : [];
-  });
+export function wholeTurn(text: string): string | null {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("?") || t.includes("\n")) return null;
+  return t.replace(/^(?:so|okay|ok|um)\b[,.\s]*/i, "").replace(/[.!]$/, "").trim().toLowerCase() || null;
 }
+
+/** The whole text is one sum: "a plus|and|+ b [plus|and|+ c] is|equals|makes|make|= d", in digits or words, or null. */
+export function wholeSum(body: string): { operands: number[]; sum: number } | null {
+  const m = /^(.+?)\s*(?:\s(?:is|equals|makes|make)\s|=)\s*(.+)$/.exec(body);
+  if (!m) return null;
+  const operands = m[1].split(/\s*\+\s*|\s+(?:plus|and)\s+/).map(plainNumber);
+  const sum = plainNumber(m[2]);
+  return sum !== null && operands.length >= 2 && operands.every((n) => n !== null) ? { operands: operands as number[], sum } : null;
+}
+
+/** Words a first-person written-digit or carry claim may hold besides numbers. No other subject, hedge or negation is here. */
+const CLAIM_ONLY = new Set(["i", "write", "wrote", "written", "writing", "put", "putting", "have", "am", "it", "as", "down", "the", "a", "digit", "number", "and", "then",
+  "carry", "carried", "carrying", "in", "into", "under", "at", "on", "for", "to", "from", "ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
+
+/** Every word of the whole text is a claim word or a number. */
+export const claimWordsOnly = (body: string) => body.split(/[\s,]+/).filter(Boolean).every((w) => CLAIM_ONLY.has(w) || plainNumber(w) !== null);
 
 /** The child's turn shows doubt about its answer: a doubt word or a question mark from its first number on (R391-5). */
 export const showsDoubt = (said: string, options?: ReadOptions) =>
   doubtNearAnswer(prepared(said, options)) || /\b(?:not (?:so |really |very )?sure|no (?:idea|clue)|don'?t know if)\b/i.test(said.replace(/’/g, "'"));
-/** A step said with a hedge is not heard as done: showsDoubt, or "I think" (the final answer's own path, notClear, reads "I think" itself). */
-export const hedgesStep = (said: string, options?: ReadOptions) => showsDoubt(said, options) || /\bi think\b/i.test(said.replace(/’/g, "'"));
 
 /**
  * The final answer among the numbers read: the last one that can be an answer (not a column's digits, "6 tens", and

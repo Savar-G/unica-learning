@@ -787,7 +787,8 @@ describe("R374-6-1: with freeTalk off, Maya picks board offers; the model never 
     c.send({ type: "proposal", at: c.s.now! + 1, proposal: { version: 2, act: "clarify", parts: [{ warm: "smalltalk" }], draw: [{ offer: "question.columns" }] } });
     c.child("I don't know.");
     expect(Object.values(drawOffers(c.s)).flat().map((o) => o!.id)).not.toContain("question.write.ones");
-    c.child("Sixteen for the ones.");
+    c.send({ type: "proposal", at: c.s.now! + 1, proposal: { version: 2, act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }] } });
+    c.child("Sixteen.");
     const r = c.send({ type: "proposal", at: c.s.now! + 100_000, proposal: { version: 2, act: "guide", step: "tens", level: 0,
       reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] },
       parts: [{ line: "check.right_step", slots: { step: "ones" } }, { line: "step.invite", slots: { step: "tens" } }], draw: [{ offer: "question.write.ones" }] } });
