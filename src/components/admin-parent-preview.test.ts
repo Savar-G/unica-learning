@@ -194,3 +194,15 @@ it("renders Feedback and its frame entry for every parent stage and a family wit
   expect(empty.querySelector("h1")?.textContent).toBe("Feedback");
   expect(empty.querySelector("textarea")).not.toBeNull();
 });
+
+it("shows every parent explanation state in the inert preview without network or scripts", () => {
+  for (const state of ["idle", "loading", "ready", "retry", "cap", "stale", "unavailable"]) {
+    const html = rendered("scan_results", `explain_${state}`);
+    const output = dom(html);
+    expect(output.body.textContent).toContain("Wrong");
+    expect(output.querySelector(".scan-marking-results li .scan-explanation")).not.toBeNull();
+    expect(output.body.textContent).toContain(state === "ready" ? "Stored correct answer: 42" : state === "retry" ? "Try explanation again" : "Explain this problem");
+    expect(output.querySelector("script")).toBeNull(); expect(output.querySelector("form")).toBeNull();
+    expect(calls.fetch).not.toHaveBeenCalled(); expect(calls.client).not.toHaveBeenCalled(); expect(calls.track).not.toHaveBeenCalled();
+  }
+});

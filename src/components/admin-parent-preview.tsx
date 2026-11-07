@@ -27,6 +27,7 @@ import { ParentPlanView } from "@/components/parent-plan-view";
 import { CancelPlanView, PlanControlView, type PlanControlViewProps } from "@/components/account-plan";
 import { ReportNextView, type CardState } from "@/components/report-next";
 import { ScanPages, type ScanListing } from "@/components/scan-pages";
+import { ScanProblemExplanationView, type ExplanationState } from "@/components/scan-problem-explanation";
 import { ScanMarkingResults } from "@/components/scan-marking-results";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
@@ -133,9 +134,9 @@ function scanResult(state: string): Parameters<typeof ScanMarkingResults>[0]["re
   return { photoAvailable: state !== "expired", budgetHeld: state === "budget", solutionsAvailable: !pending && !uncertain && !unscored,
     completion: { total: pending ? 0 : 1, status: pending ? "no-items" : uncertain ? "incomplete" : "complete", finished: pending || uncertain ? 0 : 1, items: pending ? [] : [{ itemId: "sample-question", number: 1, progress: uncertain ? "pending" : "finished" }] },
     counts: { scored: pending || uncertain || unscored ? 0 : 1, unscored: unscored ? 1 : 0, parentChecks: 0, pending: pending || uncertain ? 1 : 0 },
-    items: pending ? [] : [{ number: 1, itemId: "sample-question", version: 1, state: uncertain ? "pending" : unscored ? "unscored" : "scored", result: uncertain || unscored ? null : "right", readAnswerText: uncertain ? "4?" : "42",
+    items: pending ? [] : [{ number: 1, itemId: "sample-question", version: 1, state: uncertain ? "pending" : unscored ? "unscored" : "scored", result: uncertain || unscored ? null : state.startsWith("explain_") ? "wrong" : "right", readAnswerText: uncertain ? "4?" : state.startsWith("explain_") ? "41" : "42",
       canChange: !unscored, actor: "system", at: "2026-11-05T20:00:00Z", evidencePhoto: "sample-photo", photoAvailable: state !== "expired",
-      label: uncertain ? "Please check this answer" : unscored ? "Not scored" : "Right" }] };
+      label: uncertain ? "Please check this answer" : unscored ? "Not scored" : state.startsWith("explain_") ? "Wrong" : "Right" }] };
 }
 
 function previewContent(selection: PreviewSelection, child: ChildView | undefined, kids: ChildView[]) {
@@ -201,7 +202,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
         cancellation={state.startsWith("cancel_") ? row => <CancelPlanView name={row.childName} consequence="The plan ends on November 26, 2026. We will not charge your card again." asking busy={false} failed={state === "cancel_pending"} cancel={noAction} keep={noAction} ask={noAction} /> : undefined} />;
     }
     case "scan": return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[child, ...kids.filter(k => k.id !== child.id)].map(k => ({ id: k.id, first_name: k.firstName }))} parent="sample-parent" noticeAcknowledged mode={selection.size === "desktop" ? "desktop" : "phone"} initial={{ listing: scanListing(state), loadFailed: state === "unavailable" }} /></SupportPage>;
-    case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><a href="/account/scan">Back to Scan pages</a><ScanMarkingResults result={scanResult(state)} showHeading={false} /></div></SupportPage>;
+    case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><a href="/account/scan">Back to Scan pages</a><ScanMarkingResults result={scanResult(state)} showHeading={false} itemExplanation={state.startsWith("explain_") ? item => <ScanProblemExplanationView number={item.number} state={state.slice(8) as ExplanationState} result={state === "explain_ready" ? { status: "ready", context: "synthetic", correctAnswer: "42", explanation: { steps: ["Add the ones: 4 plus 8 is 12. Write 2 and carry 1 ten.", "Add the tens and the carried ten: 2 plus 1 plus 1 is 4."], say: "Let us add one column at a time." } } : undefined} /> : undefined} /></div></SupportPage>;
   }
 }
 

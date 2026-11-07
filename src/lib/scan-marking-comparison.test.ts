@@ -174,6 +174,12 @@ describe("per-model preflight and refreshed prices", () => {
   });
   it("dispatches the full same 40-photo set for available pairs when one model is blocked", async () => {
     const data = manifest(), states = approved(), results: ComparisonResult[] = [], calls: string[] = [];
+    // Every pair first reads all formats. Later photos need only one item to test
+    // the same 40-photo schedule, without repeating full-format parsing at every identity check.
+    for (const p of data.photos.slice(1)) {
+      p.frame.questions = p.frame.questions.slice(0, 1);
+      p.truth = p.truth.filter(t => t.itemId === p.frame.questions[0].package!.id);
+    }
     states[3] = { model: COMPARISON_MODELS[3].model, status: "blocked", reason: "pinned-endpoint-unavailable" };
     const blocks = await runComparisonMatrix({ run: hashBytes("fixed-run"), manifest: data, preflight: states, history: COMPARISON_MODELS.map(m => evidence(m)), results, records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
       dispatch: async (model, p, e) => { calls.push(`${model.model}:${p.id}`); return { ...result(p, model), evidenceHash: hashValue(e) }; } });
