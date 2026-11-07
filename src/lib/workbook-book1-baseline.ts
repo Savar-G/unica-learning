@@ -1,158 +1,277 @@
+// #472 Book 1 progress baseline. A trusted, immutable record that binds a child's first workbook, at one final draft
+// revision, to the exact planning input that made it, the mastery it started from (none: the explicit empty passed map),
+// and the steps it issued. The book 2 preview reads it through src/lib/workbook-progress-source.ts.
+//
+// Rules this module keeps:
+// - A printed step does not prove that earlier steps were mastered. The proved starting mastery is the PlanInput's own
+//   passed map, which a first book always has empty.
+// - An initial issue is not an advance or a repeat. Book 1 has no earlier issued decisions; that empty list is valid only
+//   with this record.
+// - It binds the draft revision through the public approval functions (approvalProblems, approvedWorkbook), before an
+//   approved workbooks row exists, and writes nothing: no draft, render, question or workbook row.
+// - The planning input comes from the run frame's prospective capture, or from the pinned original planner
+//   (src/lib/workbook-book1-recovery.ts). Never from today's profile.
+//
+// Pure TypeScript: no network, database, clock or randomness.
 import "server-only";
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual as same } from "node:util";
-import { isUuid, workbookProblem, type WorkbookInput } from "./workbook-content";
+import { storedChildProfile } from "./child-profile";
+import { isUuid } from "./workbook-content";
+import { curriculumFor, curriculumVersion } from "./workbook-curriculum";
+import type { CurriculumSkill, CurriculumStep } from "./workbook-curriculum/types";
+import type { RunFrame, RunPlanningCapture } from "./workbook-job";
+import { planNextWorkbook } from "./workbook-placement";
+import type { PlanInput, StepRef } from "./workbook-plan";
+import { isPrintedRevision, isSha256 } from "./workbook-print-contract";
+import { canonical, sourceHash } from "./workbook-progress-hash";
 import { approvalProblems, approvedWorkbook, type DraftForApproval } from "./workbook-ship";
-import { manifestProblem, printContractProblem, teachingProblem } from "./workbook-print-contract";
-import { planWorkbook, type PlanInput, type WorkbookPlan, type StepRef } from "./workbook-plan";
-import type { WorkbookPlanPreviewInput } from "./workbook-progress-plan";
-import { sourceHash } from "./workbook-progress-hash";
+import { teachingFrame } from "./workbook-teaching-frame";
 
-export const BOOK1_BASELINE_ENGINE = "book1-baseline/1;placement-empty-passed/1";
-export const ORIGINAL_BOOK1_PIN = "de9404ee545517387a241d79f19f1d70ab1e3201";
-export const ORIGINAL_BOOK1_TREE = "958b1b49304e8db1bff5c4675c96ea15fb6f50b9";
-export const ORIGINAL_PLACEMENT_BLOB = "7c562372dc30bab0e259572ecaf4a1b8403c4ec8";
-export const storedJson = <T>(value: T): T => JSON.parse(JSON.stringify(value));
-const hash = (value: unknown) => sourceHash(storedJson(value));
-const validTime = (n: number) => Number.isSafeInteger(n) && n >= 0;
-const sha = (s: string) => /^[0-9a-f]{64}$/.test(s);
-export interface PlanningSourceVersion {
-  reference: string;
-  version: string;
-  hash: string;
-}
-export interface ProvenBook1Planning {
+export const BOOK1_BASELINE_ENGINE = "book1-baseline/1";
+export const BOOK1_MASTERY_POLICY = "book1-empty-passed/1";
+export const MAX_BASELINE_BYTES = 4_000_000;
+
+/** JSON as the database keeps it: undefined fields dropped. Hashes are always of this form. */
+export const stored = <T>(v: T): T => JSON.parse(JSON.stringify(v));
+export const jsonHash = (v: unknown): string => sourceHash(stored(v));
+export const payloadHash = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
+
+export interface Book1PlanningProof {
   version: 1;
-  kind: "public-boundary" | "exact-recovery";
-  engine: typeof BOOK1_BASELINE_ENGINE;
-  pin: string;
-  sourceTree: string;
-  sources: PlanningSourceVersion[];
+  kind: "prospective-capture" | "exact-recovery";
+  /** The code that planned Book 1. Recovery names the pinned commit, its tree and the placement blob it ran. */
+  planner: { build: string | null; tree: string | null; placementBlob: string | null };
   input: PlanInput;
   inputHash: string;
-  originalPlanHash: string;
-  priorMasteryPolicy: "explicit-empty-passed-map";
+  placement: RunPlanningCapture["placement"];
+  placementHash: string;
+  frame: { reference: string; hash: string };
+  sources: { reference: string; version: string; hash: string }[];
 }
-export type RecoveryRefusal = "original-engine-unavailable" | "original-inputs-incomplete" | "source-version-conflict"
-  | "original-plan-conflict" | "not-book1" | "unproved-mastery-policy";
-export type PlanningProof = { ok: true; planning: ProvenBook1Planning } | { ok: false; reason: RecoveryRefusal };
-/** Only a trusted reader can attest these immutable versions. A profile revision match is not this contract. */
-export interface OriginalPlanningSources {
-  version: 1;
-  frameBuild: string;
-  frameHash: string;
-  plannedAt: number;
-  originalPlanHash: string;
-  /** Explicit records include proved absence (null), never an omitted report, device or profile. */
-  records: { name: "profile" | "report" | "device" | "workbooks" | "grade" | "curriculum";
-    reference: string; version: string; hash: string; validFrom: number; validThrough: number; value: unknown }[];
-}
-/**
- * The controller supplies a runner loaded from this exact Git tree, including transitive imports.
- * No current profile, reconstructed result-plan input, or browser-supplied runner is permitted.
- * evaluate returns the PlanInput at the original public planWorkbook call and the final placement plan.
- */
-export interface OriginalPlanningEngine {
-  pin: typeof ORIGINAL_BOOK1_PIN;
-  sourceTree: typeof ORIGINAL_BOOK1_TREE;
-  placementBlob: typeof ORIGINAL_PLACEMENT_BLOB;
-  evaluate(records: OriginalPlanningSources["records"]): { input: PlanInput; plan: WorkbookPlan };
-}
-function planningProof(input: PlanInput, provenance: Omit<ProvenBook1Planning, "version" | "engine" | "input" | "inputHash" | "priorMasteryPolicy">): PlanningProof {
-  try {
-    if (input.workbook.number !== 1 || input.workbook.inLevel !== 0) return { ok: false, reason: "not-book1" };
-    if (Object.hasOwn(input, "progress") || Object.keys(input.passed).length || input.reviews.length || input.missedReviews.length || input.misses.length)
-      return { ok: false, reason: "unproved-mastery-policy" };
-    if (!provenance.sources.length || provenance.sources.some(s => !s.reference || !s.version || !sha(s.hash))
-      || !/^[0-9a-f]{40}$/.test(provenance.pin) || !/^[0-9a-f]{40}$/.test(provenance.sourceTree) || !sha(provenance.originalPlanHash))
-      return { ok: false, reason: "source-version-conflict" };
-    if (!planWorkbook(input).ok) return { ok: false, reason: "original-plan-conflict" };
-    return { ok: true, planning: storedJson({ version: 1, engine: BOOK1_BASELINE_ENGINE, ...provenance,
-      input, inputHash: hash(input), priorMasteryPolicy: "explicit-empty-passed-map" }) };
-  } catch { return { ok: false, reason: "original-inputs-incomplete" }; }
-}
-/** Prospective use: pass the captured copy from planNextWorkbook's public planning boundary and immutable frame provenance. */
-export function proveBook1PlanningCapture(input: PlanInput, provenance: {
-  pin: string; sourceTree: string; frameReference: string; frameVersion: string; frameHash: string; originalPlan: WorkbookPlan;
-}): PlanningProof {
-  return planningProof(input, { kind: "public-boundary", pin: provenance.pin, sourceTree: provenance.sourceTree,
-    sources: [{ reference: provenance.frameReference, version: provenance.frameVersion, hash: provenance.frameHash }], originalPlanHash: hash(provenance.originalPlan) });
-}
-export function verifyBook1OriginalInputRecovery(s: OriginalPlanningSources, engine: OriginalPlanningEngine | null): PlanningProof {
-  try {
-    if (!engine || engine.pin !== ORIGINAL_BOOK1_PIN || engine.sourceTree !== ORIGINAL_BOOK1_TREE || engine.placementBlob !== ORIGINAL_PLACEMENT_BLOB
-      || s.frameBuild !== ORIGINAL_BOOK1_PIN) return { ok: false, reason: "original-engine-unavailable" };
-    const names = ["curriculum", "device", "grade", "profile", "report", "workbooks"];
-    if (s.version !== 1 || !same(s.records.map(r => r.name).sort(), names) || !sha(s.frameHash) || !validTime(s.plannedAt))
-      return { ok: false, reason: "original-inputs-incomplete" };
-    if (s.records.some(r => !r.reference || !r.version || r.hash !== hash(r.value) || !validTime(r.validFrom)
-      || !validTime(r.validThrough) || r.validFrom > s.plannedAt || r.validThrough < s.plannedAt)) return { ok: false, reason: "source-version-conflict" };
-    if (!same(s.records.find(r => r.name === "workbooks")!.value, [])) return { ok: false, reason: "not-book1" };
-    const recovered = engine.evaluate(structuredClone(s.records));
-    if (hash(recovered.plan) !== s.originalPlanHash) return { ok: false, reason: "original-plan-conflict" };
-    return planningProof(recovered.input, { kind: "exact-recovery", pin: engine.pin, sourceTree: engine.sourceTree,
-      originalPlanHash: s.originalPlanHash, sources: [
-        { reference: `original-frame:${s.frameBuild}`, version: "1", hash: s.frameHash },
-        ...s.records.map(({ reference, version, hash }) => ({ reference, version, hash })),
-      ] });
-  } catch { return { ok: false, reason: "original-inputs-incomplete" }; }
-}
+export type Book1PlanningRefusal = "planning-capture-missing" | "not-book1" | "mastery-policy-unproved" | "planning-scope-mismatch" | "invalid-planning";
+export type Book1PlanningResult = { ok: true; proof: Book1PlanningProof } | { ok: false; reason: Book1PlanningRefusal };
+
 export interface Book1Baseline {
   version: 1;
   engine: typeof BOOK1_BASELINE_ENGINE;
+  /** The save request id: a retry with the same id and payload is the same record. */
+  id: string;
   parentId: string;
   childId: string;
-  workbookId: string;
   runId: string;
+  /** Approval stores the draft under this id, so it is the workbook id too. */
+  draftId: string;
   draftRevision: number;
-  capturedAt: number;
-  binding: { draftHash: string; renderHash: string; frameHash: string; workbookHash: string; printedRevision: string };
-  planning: ProvenBook1Planning;
-  curriculum: WorkbookPlanPreviewInput["curriculum"][];
-  /** First issue is separate from advance/repeat decisions. It supplies no mastery. */
-  initialIssues: { kind: "first-issue"; selection: StepRef; planningHash: string; printedRevision: string }[];
-  /** Keep the exact final immutable revision for validation without an approved workbooks row. */
-  final: DraftForApproval;
+  number: 1;
+  binding: {
+    printedRevision: string;
+    contentHash: string;
+    renderHash: string;
+    printHash: string;
+    workbookHash: string;
+    frameHash: string;
+    levels: number[];
+  };
+  curriculum: { key: string; version: string; skills: { skill: CurriculumSkill; steps: CurriculumStep[] }[] };
+  planning: Book1PlanningProof;
+  priorMastery: { policy: typeof BOOK1_MASTERY_POLICY; passed: Record<string, never>; evidence: string };
+  /** The steps the book issued. Each is a first issue: not an advance, not a repeat, and no mastery. */
+  initialIssues: { kind: "initial-issue"; selection: StepRef }[];
 }
-export type BaselineResult = { ok: true; baseline: Book1Baseline; hash: string } | {
-  ok: false; reason: "invalid-final-revision" | "planning-proof-unavailable" | "curriculum-conflict";
-};
-export function createBook1Baseline(o: { parentId: string; childId: string; capturedAt: number;
-  final: DraftForApproval; planning: ProvenBook1Planning; curriculum: Book1Baseline["curriculum"] }): BaselineResult {
+export interface Book1BaselineRecord { payload: string; hash: string }
+export type Book1BaselineRefusal = "invalid-request" | "invalid-final-revision" | "not-book1" | "frame-mismatch"
+  | "planning-proof-invalid" | "curriculum-version-changed" | "curriculum-conflict" | "baseline-bound";
+export type Book1BaselineResult = { ok: true; baseline: Book1Baseline; record: Book1BaselineRecord } | { ok: false; reason: Book1BaselineRefusal };
+
+/** Where a PlanInput breaks the first-book starting-mastery policy, or null. */
+export function masteryPolicyProblem(input: PlanInput): string | null {
+  if (!input || typeof input !== "object") return "no input";
+  if (Object.hasOwn(input, "progress")) return "a progress decision";
+  if (!input.workbook || input.workbook.number !== 1 || input.workbook.inLevel !== 0) return "not workbook 1";
+  if (!input.passed || typeof input.passed !== "object" || Object.keys(input.passed).length) return "passed steps";
+  if (input.reviews?.length || input.missedReviews?.length || input.misses?.length) return "carried reviews or misses";
+  if (input.pausedWeeks !== 0) return "paused weeks";
+  return null;
+}
+
+/** The prospective capture a run frame stored at the planning boundary, as a Book 1 planning proof. */
+export function proveBook1PlanningCapture(frame: RunFrame, frameReference: string): Book1PlanningResult {
   try {
-    const d = o.final, p = o.planning;
-    if (![o.parentId, o.childId, d.draftId, d.runId].every(isUuid) || !validTime(o.capturedAt) || !Number.isSafeInteger(d.revision) || d.revision < 1
-      || d.draft.childId !== o.childId || d.draft.id !== d.draftId || d.draft.number !== 1 || approvalProblems(d).length) return { ok: false, reason: "invalid-final-revision" };
+    const f = stored(frame);
+    const c = f.planning;
+    if (!c) return { ok: false, reason: "planning-capture-missing" };
+    if (c.version !== 1 || !c.input || !c.placement || typeof frameReference !== "string" || !frameReference) return { ok: false, reason: "invalid-planning" };
+    if (c.placement.number !== 1 || c.placement.workbooks.length || f.workbooks.length) return { ok: false, reason: "not-book1" };
+    if (masteryPolicyProblem(c.input)) return { ok: false, reason: "mastery-policy-unproved" };
+    if (c.placement.grade !== f.grade || c.input.grade !== f.grade || c.placement.curriculum.key !== f.curriculum
+      || c.placement.curriculum.version !== f.versions.curriculum || (f.profileRevision === null) !== (c.placement.profile === null)) {
+      return { ok: false, reason: "planning-scope-mismatch" };
+    }
+    const frameHash = jsonHash(f);
+    return { ok: true, proof: stored({ version: 1, kind: "prospective-capture",
+      planner: { build: f.versions.build, tree: null, placementBlob: null },
+      input: c.input, inputHash: jsonHash(c.input), placement: c.placement, placementHash: jsonHash(c.placement),
+      frame: { reference: frameReference, hash: frameHash },
+      sources: [{ reference: frameReference, version: String(f.version), hash: frameHash }] }) };
+  } catch { return { ok: false, reason: "invalid-planning" }; }
+}
+
+function proofProblem(p: Book1PlanningProof, frame: RunFrame): boolean {
+  const f = stored(frame);
+  return p.version !== 1 || !["prospective-capture", "exact-recovery"].includes(p.kind) || p.inputHash !== jsonHash(p.input)
+    || p.placementHash !== jsonHash(p.placement) || p.frame.hash !== jsonHash(f) || !p.frame.reference
+    || !Array.isArray(p.sources) || !p.sources.length || p.sources.some(s => !s.reference || !s.version || !isSha256(s.hash))
+    || !!masteryPolicyProblem(p.input) || p.placement.number !== 1 || p.placement.workbooks.length !== 0
+    || p.placement.grade !== f.grade || p.input.grade !== f.grade || p.placement.curriculum.key !== f.curriculum
+    || p.placement.curriculum.version !== f.versions.curriculum
+    // A prospective proof is the frame's own capture; it cannot differ from it.
+    || (p.kind === "prospective-capture" && (!f.planning || !same(stored(f.planning.input), p.input) || !same(stored(f.planning.placement), p.placement)))
+    || (p.kind === "exact-recovery" && (!!f.planning || !p.planner.build || p.planner.build !== f.versions.build || !p.planner.tree || !p.planner.placementBlob));
+}
+
+/** The steps a printed book issued, from its frozen teaching contexts, in one stable order. */
+export function issuedSteps(questions: readonly { teaching?: { plannedStep: StepRef | null; itemStep: StepRef | null } | null }[]): StepRef[] {
+  const steps = new Map<string, StepRef>();
+  for (const q of questions) for (const s of [q.teaching?.plannedStep, q.teaching?.itemStep]) {
+    if (s) steps.set(JSON.stringify([s.unit, s.skill, s.step]), { unit: s.unit, skill: s.skill, step: s.step });
+  }
+  return [...steps.values()].sort((a, b) => a.unit < b.unit ? -1 : a.unit > b.unit ? 1 : a.skill < b.skill ? -1 : a.skill > b.skill ? 1 : a.step - b.step);
+}
+
+/**
+ * The baseline for a final draft revision. `final` is what approval reads (workbookShipStore.draftForApproval); `frame` is
+ * the run's stored RunFrame. Nothing is written: the caller saves the record through the baseline command.
+ */
+export function createBook1Baseline(o: { id: string; parentId: string; childId: string; final: DraftForApproval; frame: RunFrame;
+  planning: Book1PlanningProof }): Book1BaselineResult {
+  try {
+    const d = o.final;
+    if (![o.id, o.parentId, o.childId, d.runId, d.draftId].every(isUuid)) return { ok: false, reason: "invalid-request" };
+    if (d.draft.number !== 1) return { ok: false, reason: "not-book1" };
+    if (approvalProblems(d).length || d.draft.id !== d.draftId || d.draft.childId !== o.childId || !Number.isSafeInteger(d.revision)
+      || d.revision < 1 || !d.frame || !d.rendering?.pdfSha256) return { ok: false, reason: "invalid-final-revision" };
+    // The frame approval reads must be the stored run frame this proof names.
+    if (!same(stored(teachingFrame(o.frame)), stored(d.frame))) return { ok: false, reason: "frame-mismatch" };
     const w = approvedWorkbook(d);
-    if (!w.printedRevision || workbookProblem(w) || !w.printManifest || !d.frame || !d.rendering
-      || manifestProblem(w.printManifest, w.pages) || w.pages.some(page => printContractProblem(page.printContract)
-        || page.questions.some(q => teachingProblem(q.teaching)))) return { ok: false, reason: "invalid-final-revision" };
-    const checked = planningProof(p.input, p);
-    if (!checked.ok || p.version !== 1 || p.engine !== BOOK1_BASELINE_ENGINE || p.priorMasteryPolicy !== "explicit-empty-passed-map"
-      || p.inputHash !== hash(p.input) || !same(p, checked.planning)) return { ok: false, reason: "planning-proof-unavailable" };
-    const steps = new Map<string, StepRef>();
-    for (const page of w.pages) for (const q of page.questions) {
-      for (const step of [q.teaching?.plannedStep, q.teaching?.itemStep]) if (step) steps.set(sourceHash(step), step);
+    if (!w.printedRevision || !isPrintedRevision(w.printedRevision) || !w.printManifest || !isSha256(w.pdfSha256)) return { ok: false, reason: "invalid-final-revision" };
+    if (proofProblem(o.planning, o.frame)) return { ok: false, reason: "planning-proof-invalid" };
+    const key = o.planning.placement.curriculum.key, version = o.planning.placement.curriculum.version;
+    const curriculum = curriculumFor(key);
+    if (!curriculum || curriculumVersion(key) !== version) return { ok: false, reason: "curriculum-version-changed" };
+    if (w.printManifest.curriculum.key !== key || w.printManifest.curriculum.version !== version) return { ok: false, reason: "curriculum-conflict" };
+    const issues = issuedSteps(w.pages.flatMap(p => p.questions));
+    const skills: Book1Baseline["curriculum"]["skills"] = [];
+    for (const id of [...new Set(issues.map(s => s.skill))].sort()) {
+      const skill = curriculum.levels.flatMap(l => curriculum.levelSkills(l.id) ?? []).find(s => s.id === id), steps = curriculum.skillSteps(id);
+      if (!skill || !steps) return { ok: false, reason: "curriculum-conflict" };
+      skills.push({ skill: structuredClone(skill), steps: structuredClone([...steps]) });
     }
-    if (!o.curriculum.length || new Set(o.curriculum.map(c => c.skill.id)).size !== o.curriculum.length
-      || o.curriculum.some(c => c.key !== w.printManifest!.curriculum.key || c.version !== w.printManifest!.curriculum.version
-        || c.skill.curriculum !== c.key || !same(c.steps, c.skill.steps))) return { ok: false, reason: "curriculum-conflict" };
-    for (const step of steps.values()) {
-      const c = o.curriculum.find(c => c.skill.id === step.skill);
-      if (!c || c.skill.unit !== step.unit || !c.steps.some(s => s.number === step.step)) return { ok: false, reason: "curriculum-conflict" };
+    for (const s of issues) {
+      const c = skills.find(x => x.skill.id === s.skill);
+      if (!c || c.skill.unit !== s.unit || !c.steps.some(x => x.number === s.step)) return { ok: false, reason: "curriculum-conflict" };
     }
-    const baseline: Book1Baseline = storedJson({ version: 1, engine: BOOK1_BASELINE_ENGINE, parentId: o.parentId, childId: o.childId,
-      workbookId: d.draftId, runId: d.runId, draftRevision: d.revision, capturedAt: o.capturedAt, planning: p, curriculum: o.curriculum,
-      binding: { draftHash: hash(d.draft), renderHash: hash(d.rendering), frameHash: hash(d.frame), workbookHash: hash(w), printedRevision: w.printedRevision },
-      initialIssues: [...steps.values()].sort((a, b) => a.unit.localeCompare(b.unit) || a.skill.localeCompare(b.skill) || a.step - b.step)
-        .map(selection => ({ kind: "first-issue", selection, planningHash: p.inputHash, printedRevision: w.printedRevision })), final: d });
-    return { ok: true, baseline, hash: hash(baseline) };
+    const baseline: Book1Baseline = stored({
+      version: 1, engine: BOOK1_BASELINE_ENGINE, id: o.id, parentId: o.parentId, childId: o.childId, runId: d.runId, draftId: d.draftId,
+      draftRevision: d.revision, number: 1,
+      binding: { printedRevision: w.printedRevision, contentHash: jsonHash(d.draft), renderHash: jsonHash(d.rendering), printHash: w.pdfSha256!,
+        workbookHash: jsonHash(w), frameHash: jsonHash(o.frame), levels: [...d.draft.levels] },
+      curriculum: { key, version, skills },
+      planning: o.planning,
+      priorMastery: { policy: BOOK1_MASTERY_POLICY, passed: {}, evidence: o.planning.inputHash },
+      initialIssues: issues.map(selection => ({ kind: "initial-issue" as const, selection })),
+    });
+    const payload = canonical(baseline);
+    if (Buffer.byteLength(payload, "utf8") > MAX_BASELINE_BYTES) return { ok: false, reason: "baseline-bound" };
+    return { ok: true, baseline, record: { payload, hash: payloadHash(payload) } };
   } catch { return { ok: false, reason: "invalid-final-revision" }; }
 }
-export function validateBook1Baseline(b: Book1Baseline, expectedHash: string): boolean {
-  const rebuilt = createBook1Baseline({ parentId: b.parentId, childId: b.childId, capturedAt: b.capturedAt, final: b.final, planning: b.planning, curriculum: b.curriculum });
-  return rebuilt.ok && same(b, rebuilt.baseline) && expectedHash === rebuilt.hash;
+
+const text = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+const exactKeys = (v: unknown, keys: string[]) => !!v && typeof v === "object" && !Array.isArray(v) && same(Object.keys(v).sort(), [...keys].sort());
+
+/**
+ * Reads a saved record back. It checks the exact bytes, the hash, every inner hash and the planning policy again. It
+ * cannot see the draft, so the caller binds it to a book with book1BindingProblem.
+ */
+export function readBook1Baseline(record: Book1BaselineRecord): Book1Baseline | null {
+  try {
+    if (typeof record?.payload !== "string" || Buffer.byteLength(record.payload, "utf8") > MAX_BASELINE_BYTES || payloadHash(record.payload) !== record.hash) return null;
+    const b = JSON.parse(record.payload) as Book1Baseline;
+    if (canonical(b) !== record.payload) return null;
+    if (!exactKeys(b, ["version", "engine", "id", "parentId", "childId", "runId", "draftId", "draftRevision", "number", "binding", "curriculum", "planning", "priorMastery", "initialIssues"])
+      || b.version !== 1 || b.engine !== BOOK1_BASELINE_ENGINE || ![b.id, b.parentId, b.childId, b.runId, b.draftId].every(isUuid)
+      || !Number.isSafeInteger(b.draftRevision) || b.draftRevision < 1 || b.number !== 1) return null;
+    const x = b.binding;
+    if (!exactKeys(x, ["printedRevision", "contentHash", "renderHash", "printHash", "workbookHash", "frameHash", "levels"]) || !isPrintedRevision(x.printedRevision)
+      || ![x.contentHash, x.renderHash, x.printHash, x.workbookHash, x.frameHash].every(isSha256)
+      || !Array.isArray(x.levels) || !x.levels.length || x.levels.some(l => !Number.isSafeInteger(l) || l < 1 || l > 30)) return null;
+    const p = b.planning;
+    if (!exactKeys(p, ["version", "kind", "planner", "input", "inputHash", "placement", "placementHash", "frame", "sources"]) || p.version !== 1
+      || !["prospective-capture", "exact-recovery"].includes(p.kind) || p.inputHash !== jsonHash(p.input) || p.placementHash !== jsonHash(p.placement)
+      || masteryPolicyProblem(p.input) || p.placement.number !== 1 || p.placement.workbooks.length !== 0 || p.frame.hash !== x.frameHash
+      || !text(p.frame.reference) || !p.sources.length || p.sources.some(s => !text(s.reference) || !text(s.version) || !isSha256(s.hash))
+      || (p.kind === "exact-recovery" && (!text(p.planner.build) || !text(p.planner.tree) || !text(p.planner.placementBlob)))) return null;
+    if (!same(b.priorMastery, { policy: BOOK1_MASTERY_POLICY, passed: {}, evidence: p.inputHash })) return null;
+    const c = b.curriculum;
+    if (c.key !== p.placement.curriculum.key || c.version !== p.placement.curriculum.version || !Array.isArray(c.skills)
+      || new Set(c.skills.map(s => s.skill.id)).size !== c.skills.length
+      || c.skills.some(s => s.skill.curriculum !== c.key || !s.steps.length || s.steps.some((step, i) => step.number !== i + 1 || step.skill !== s.skill.id || step.curriculum !== c.key))) return null;
+    if (!Array.isArray(b.initialIssues) || !b.initialIssues.length || !same(b.initialIssues.map(i => i.selection), issuedSteps(b.initialIssues.map(i => ({ teaching: { plannedStep: i.selection, itemStep: null } }))))
+      || b.initialIssues.some(i => !exactKeys(i, ["kind", "selection"]) || i.kind !== "initial-issue"
+        || !c.skills.some(s => s.skill.id === i.selection.skill && s.skill.unit === i.selection.unit && s.steps.some(x => x.number === i.selection.step)))) return null;
+    return b;
+  } catch { return null; }
 }
-/** Later approval must produce this exact immutable contract, including packages and QR tokens. */
-export function book1MatchesApproved(b: Book1Baseline, w: WorkbookInput): boolean {
-  return hash(w) === b.binding.workbookHash && w.printedRevision === b.binding.printedRevision;
+
+/** The shipped (or approved) book's frozen rows, as the source loader holds them. */
+export interface Book1BoundBook {
+  book: { id: string; parent_id: string; child_id: string; number: number; printed_revision: string | null };
+  questions: readonly { teaching: unknown }[];
+  approvals: readonly { run_id: string | null; workbook_id: string | null; action: string; detail: unknown }[];
+  frames: readonly { run_id: string; frame: unknown }[];
+}
+export type Book1BindingProblem = "owner" | "book" | "revision" | "approval" | "frame" | "issues";
+/**
+ * Why a later book is not the one the baseline bound, or null. A new draft revision (R3), a changed printed revision,
+ * QR token or package changes the printed revision or the approved revision, and the binding fails.
+ */
+export function book1BindingProblem(b: Book1Baseline, x: Book1BoundBook): Book1BindingProblem | null {
+  if (x.book.parent_id !== b.parentId || x.book.child_id !== b.childId) return "owner";
+  if (x.book.id !== b.draftId || x.book.number !== 1) return "book";
+  if (x.book.printed_revision !== b.binding.printedRevision) return "revision";
+  const approved = x.approvals.filter(a => a.action === "workbook-approved");
+  if (!approved.length || approved.some(a => a.run_id !== b.runId || a.workbook_id !== b.draftId || !a.detail || typeof a.detail !== "object"
+    || (a.detail as { revision?: unknown }).revision !== b.draftRevision
+    || (a.detail as { printedRevision?: unknown }).printedRevision !== b.binding.printedRevision)) return "approval";
+  const frames = x.frames.filter(f => f.run_id === b.runId);
+  if (frames.length !== 1 || jsonHash(frames[0].frame) !== b.binding.frameHash) return "frame";
+  const printed = issuedSteps(x.questions.map(q => ({ teaching: q.teaching as { plannedStep: StepRef | null; itemStep: StepRef | null } | null })));
+  if (!same(printed, b.initialIssues.map(i => i.selection))) return "issues";
+  return null;
+}
+
+export type Book2PlanningResult = { ok: true; input: PlanInput } | { ok: false; reason: "curriculum-version-changed" | "profile-unreadable" | "next-planner-refused" | "invalid-planning" };
+/**
+ * The next book's planning input, from the frozen Book 1 placement facts and the bound book, through the one public
+ * planner (planNextWorkbook). The baseline's own PlanInput is never changed. No spaced review is added here (#473).
+ */
+export function book2Planning(b: Book1Baseline): Book2PlanningResult {
+  try {
+    const placement = structuredClone(b.planning.placement);
+    const curriculum = curriculumFor(placement.curriculum.key);
+    if (!curriculum || curriculumVersion(placement.curriculum.key) !== placement.curriculum.version) return { ok: false, reason: "curriculum-version-changed" };
+    const captured: PlanInput[] = [];
+    const { curriculum: _version, workbooks, number, profile: frozenProfile, ...facts } = placement;
+    void _version;
+    // The frozen Book 1 profile, read by today's reader. Never the child's current profile.
+    const profile = frozenProfile === null ? null : storedChildProfile(frozenProfile);
+    if (frozenProfile !== null && !profile) return { ok: false, reason: "profile-unreadable" };
+    const planned = planNextWorkbook({ ...facts, profile, curriculum, workbooks: [...workbooks, { number, levels: [...b.binding.levels] }], number: number + 1 },
+      input => { captured.push(input); });
+    if (!planned.ok || captured.length !== 1) return { ok: false, reason: "next-planner-refused" };
+    const input = stored(captured[0]);
+    if (input.workbook.number !== b.number + 1 || Object.hasOwn(input, "progress")) return { ok: false, reason: "invalid-planning" };
+    return { ok: true, input };
+  } catch { return { ok: false, reason: "invalid-planning" }; }
 }

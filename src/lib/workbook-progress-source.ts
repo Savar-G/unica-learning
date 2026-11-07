@@ -4,9 +4,12 @@ export { canonical, sourceHash } from "./workbook-progress-hash";
 import { isDeepStrictEqual } from "node:util";
 import type { Tables } from "./database";
 import { storedContent, isUuid } from "./workbook-content";
-import { expectedItems, observationProblem, type ItemIdentity, type Observation } from "./scan-observation";
+import { expectedItems, observationProblem, type ItemIdentity, type Observation, type PageForObservation } from "./scan-observation";
 import { isPrintedRevision, manifestProblem, printContractProblem, teachingProblem } from "./workbook-print-contract";
 import type { HistoryBook, HistoryMarkRow, HistoryChangeRow, HistoryEventRow } from "./workbook-progress-history";
+import type { Book1BaselineRecord } from "./workbook-book1-baseline";
+import type { Book1CorrectionSources } from "./workbook-correction-journal";
+import { evaluateBook1Preview, type Book1PreviewOutcome } from "./workbook-book1-preview";
 
 export const WORKBOOK_PROGRESS_SOURCE_VERSION = 1;
 export const PREVIEW_ENGINE = "workbook-preview-sources/1;progress/1;history/1;plan-preview/1";
@@ -45,8 +48,18 @@ export interface FrozenWorkbookSources {
   profileReferences: Pick<Tables<"child_profiles">, "parent_id" | "child_id" | "assessment_id" | "revision" | "schema_version" | "build_token" | "built_at">[];
   assessmentReferences: Pick<Tables<"learner_profiles">, "id" | "parent_id" | "child_id" | "assessment_id" | "schema_version" | "built_at">[];
 }
+/** The Book 1 baseline record, its correction boundary and its complete second-try ledger, frozen in the same read. */
+export interface FrozenBook1Sources {
+  version: 1;
+  baseline: Book1BaselineRecord & { id: string };
+  corrections: Book1CorrectionSources;
+}
+/** Version 2 adds the Book 1 sources (#472). Null keeps the version 1 outcome: unavailable. */
+export type FrozenWorkbookSourcesV2 = Omit<FrozenWorkbookSources, "version"> & { version: 2; book1: FrozenBook1Sources | null };
 /** Internal trusted server port. Never accept a store or frozen sources from an HTTP payload. */
 export interface WorkbookProgressSourceStore { capture(request: WorkbookPreviewRequest): Promise<FrozenWorkbookSources | null> }
+/** A store that also reads the Book 1 baseline sources (#472): it answers version 2. */
+export interface WorkbookProgressSourceStoreV2 { capture(request: WorkbookPreviewRequest): Promise<FrozenWorkbookSources | FrozenWorkbookSourcesV2 | null> }
 export interface SourceUnavailable {
   ok: false;
   availability: "unavailable";
@@ -67,8 +80,9 @@ export interface SourceUnavailable {
   decision: null;
   plan: null;
 }
-export type SourceLoadResult = { ok: false; reason: "invalid-request" | "scope-unavailable" | "source-error" | "invalid-source" | "changed-during-read" }
-  | { ok: true; frozen: FrozenWorkbookSources; outcome: SourceUnavailable };
+export type SourceLoadRefusal = { ok: false; reason: "invalid-request" | "scope-unavailable" | "source-error" | "invalid-source" | "changed-during-read" };
+export type SourceLoadResult = SourceLoadRefusal | { ok: true; frozen: FrozenWorkbookSources; outcome: SourceUnavailable };
+export type SourceLoadResultV2 = SourceLoadResult | { ok: true; frozen: FrozenWorkbookSourcesV2; outcome: Book1PreviewOutcome };
 const exact = (v: object, keys: string[]) => isDeepStrictEqual(Object.keys(v).sort(), keys.sort());
 export function workbookPreviewRequest(v: unknown): WorkbookPreviewRequest | null {
   try {
@@ -92,11 +106,23 @@ const time = (v: string) => {
 
 /** Validate frozen catalogs again on restart. Missing canonical proofs remain unavailable in this version. */
 export function evaluateWorkbookProgressSources(request: WorkbookPreviewRequest, frozen: FrozenWorkbookSources): SourceUnavailable {
+  return validateCatalog(request, frozen).outcome;
+}
+/** The frozen catalog, validated: the version 1 outcome and each book's pages as the history reader takes them. */
+export function validateCatalog(request: WorkbookPreviewRequest, frozen: FrozenWorkbookSources | FrozenWorkbookSourcesV2): {
+  outcome: SourceUnavailable; pages: Map<string, HistoryBook["pages"][number][]>;
+  /** Printed pages of no day (D-233 extra practice): validated, never in a day's sample, their marks held. */
+  undated: Map<string, { pageIds: Set<string>; numbers: Set<number> }>;
+} {
   requireSource(workbookPreviewRequest(request));
-  requireSource(exact(frozen, ["version", "parentId", "childId", "markingRevision", "books", "profileReferences", "assessmentReferences"]) && frozen.version === 1 && frozen.parentId === request.parentId && frozen.childId === request.childId
+  const keys = ["version", "parentId", "childId", "markingRevision", "books", "profileReferences", "assessmentReferences"];
+  requireSource(frozen.version === 1 ? exact(frozen, keys) : frozen.version === 2 && exact(frozen, [...keys, "book1"]));
+  requireSource(frozen.parentId === request.parentId && frozen.childId === request.childId
     && (frozen.markingRevision === null || Number.isSafeInteger(frozen.markingRevision) && frozen.markingRevision >= 0)
     && Array.isArray(frozen.books) && frozen.books.length > 0 && frozen.books.length <= 20);
   const ids = new Set<string>(), numbers = new Set<number>(), sample: ItemIdentity[] = [], scopes: SourceUnavailable["scope"] = [];
+  const catalog = new Map<string, HistoryBook["pages"][number][]>();
+  const undatedPages = new Map<string, { pageIds: Set<string>; numbers: Set<number> }>();
   const sources: SourceUnavailable["sources"] = [];
   const selected = frozen.books.find(b => b.book.id === request.workbookId);
   requireSource(selected && selected.book.printed_revision === request.printedRevision);
@@ -111,6 +137,7 @@ export function evaluateWorkbookProgressSources(request: WorkbookPreviewRequest,
       && b.pages.length > 0 && b.pages.length <= 2000 && b.questions.length <= 20_000);
     ids.add(w.id); numbers.add(w.number);
     const pages: HistoryBook["pages"][number][] = [], pageIds = new Set<string>(), pageNumbers = new Set<number>(), questionIds = new Set<string>();
+    const undated: (PageForObservation & { number: number })[] = [];
     for (const p of b.pages) {
       requireSource(isUuid(p.id) && !pageIds.has(p.id) && !pageNumbers.has(p.page_number) && p.parent_id === request.parentId && p.workbook_id === w.id
         && Number.isSafeInteger(p.page_number) && p.page_number > 0);
@@ -134,15 +161,21 @@ export function evaluateWorkbookProgressSources(request: WorkbookPreviewRequest,
         sources.push({ reference: `workbook_questions:${q.id}:teaching/1`, hash: sourceHash(q), version: q.schema_version });
         questions.push({ number: q.question_number, package: content.package, teaching });
       }
-      if (questions.length) {
+      if (questions.length && contract.day === null && !/^Day \d+$/.test(p.day_label ?? "")) {
+        // A page of no day prints optional practice. Its marks are checked like any other and held from every sample.
+        undated.push({ workbookId: w.id, printedRevision: w.printed_revision!, pageId: p.id, number: p.page_number, questions });
+      } else if (questions.length) {
         requireSource(contract.day !== null && Number.isSafeInteger(contract.day) && contract.day >= 1 && contract.day <= 10 && p.day_label === `Day ${contract.day}`);
         pages.push({ workbookId: w.id, printedRevision: w.printed_revision!, pageId: p.id, number: p.page_number, day: contract.day, type: p.page_type, questions });
       }
     }
+    catalog.set(w.id, pages);
+    undatedPages.set(w.id, { pageIds: new Set(undated.map(p => p.pageId)), numbers: new Set(undated.map(p => p.number)) });
     requireSource(questionIds.size === b.questions.length && !manifestProblem(w.print_manifest,
       b.pages.map(p => ({ number: p.page_number, dayLabel: p.day_label, type: p.page_type, questions: b.questions.filter(q => q.page_id === p.id) }))));
     requireSource(w.print_manifest);
     const manifest = w.print_manifest;
+    requireSource(undated.every(p => !manifest.days.some(d => d.pages.includes(p.number))));
     requireSource(manifest.snapshotDay === 7 && typeof manifest.curriculum.key === "string" && typeof manifest.curriculum.version === "string"
       && manifest.curriculum.version.length > 0 && new Set(manifest.days.map(d => d.day)).size === manifest.days.length);
     // No currently marked-row filter defines the sample. Every eligible printed item enters, even without a result.
@@ -155,7 +188,7 @@ export function evaluateWorkbookProgressSources(request: WorkbookPreviewRequest,
         if (e.mastery.eligible && days.includes(p.day) && manifest.days.some(d => d.day === p.day && d.pages.includes(p.number))) sample.push(e.identity);
       }
     }
-    const expectedItemsList = pages.flatMap(p => expectedItems(p));
+    const expectedItemsList = [...pages, ...undated].flatMap(p => expectedItems(p));
     const expected = new Map(expectedItemsList.map(e => [canonical(e.identity), e]));
     requireSource(expected.size === expectedItemsList.length);
     const marks = new Map<string, HistoryMarkRow>(), markKeys = new Set<string>();
@@ -190,7 +223,7 @@ export function evaluateWorkbookProgressSources(request: WorkbookPreviewRequest,
     }
     const events = new Set<string>();
     for (const e of b.events) {
-      const p = pages.find(p => p.number === e.workbook_page), q = p?.questions.find(q => q.number === e.workbook_question)?.package;
+      const p = [...pages, ...undated].find(p => p.number === e.workbook_page), q = p?.questions.find(q => q.number === e.workbook_question)?.package;
       requireSource(owner(e) && e.workbook_id === w.id && isUuid(e.id) && !events.has(e.id) && e.question_source === "workbook"
         && ["marking", "call"].includes(e.source) && ["right", "wrong", "blank", "right_with_help"].includes(e.result)
         && Number.isSafeInteger(e.hints) && e.hints >= 0 && e.hints <= 100
@@ -214,20 +247,23 @@ export function evaluateWorkbookProgressSources(request: WorkbookPreviewRequest,
   for (const p of frozen.assessmentReferences) requireSource(owner(p) && isUuid(p.assessment_id));
   // Neither these mutable metadata references nor the frame's revision number authenticate historical profile facts.
   sources.push({ reference: "profile-source-metadata", hash: sourceHash([frozen.profileReferences, frozen.assessmentReferences]), version: null });
-  return { ok: false, availability: "unavailable", reasons: ["frozen-prior-mastery-unavailable", "frozen-planning-input-unavailable", "issued-decisions-unavailable", "corrections-unavailable"],
+  return { pages: catalog, undated: undatedPages, outcome: { ok: false, availability: "unavailable", reasons: ["frozen-prior-mastery-unavailable", "frozen-planning-input-unavailable", "issued-decisions-unavailable", "corrections-unavailable"],
     sourceStatus: { catalog: "validated", retainedHistory: "loaded-not-derived", priorMastery: "unavailable", planning: "unavailable", issuedDecisions: "unavailable", corrections: "unavailable", causes: "unavailable" },
-    requiredSample: sample, scope: scopes, sources, consumedVersions: [], decision: null, plan: null };
+    requiredSample: sample, scope: scopes, sources, consumedVersions: [], decision: null, plan: null } };
 }
 
-export async function loadWorkbookProgressSources(store: WorkbookProgressSourceStore, raw: unknown): Promise<SourceLoadResult> {
+export async function loadWorkbookProgressSources(store: WorkbookProgressSourceStore, raw: unknown): Promise<SourceLoadResult>;
+export async function loadWorkbookProgressSources(store: WorkbookProgressSourceStoreV2, raw: unknown): Promise<SourceLoadResultV2>;
+export async function loadWorkbookProgressSources(store: WorkbookProgressSourceStoreV2, raw: unknown): Promise<SourceLoadResultV2> {
   const request = workbookPreviewRequest(raw);
   if (!request) return { ok: false, reason: "invalid-request" };
   try {
     const start = await store.capture(request);
     if (!start) return { ok: false, reason: "scope-unavailable" };
-    const outcome = evaluateWorkbookProgressSources(request, start);
+    const result: SourceLoadResultV2 = start.version === 2 ? { ok: true, frozen: start, outcome: await evaluateBook1Preview(request, start) }
+      : { ok: true, frozen: start, outcome: evaluateWorkbookProgressSources(request, start) };
     const end = await store.capture(request);
     if (!end || !isDeepStrictEqual(start, end)) return { ok: false, reason: "changed-during-read" };
-    return structuredClone({ ok: true, frozen: start, outcome });
+    return structuredClone(result);
   } catch (e) { return { ok: false, reason: e instanceof Error && e.message === "invalid-source" ? "invalid-source" : "source-error" }; }
 }
