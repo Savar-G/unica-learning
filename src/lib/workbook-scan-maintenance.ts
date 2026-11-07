@@ -71,12 +71,16 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
   if (clockBooks.length) {
     // In a test-only rollout, the global request reader can include real families. Never record their calendars.
     const allowedBooks = new Set(clockBooks);
+    let fatalClockError = false;
+    let clockError: unknown;
     const scoped: ScanClockStore = {
       reconcile: async ids => {
+        if (fatalClockError) throw clockError;
         if (ids.some(id => !allowedBooks.has(id))) throw new Error("scan_maintenance_clock_scope");
         await deps.clocks.reconcile(ids);
       },
       requests: async bound => {
+        if (fatalClockError) throw clockError;
         if (expired()) return [];
         const rows = await deps.clocks.requests(bound);
         if (rows.length > bound) throw new Error("scan_maintenance_clock_bound");
@@ -84,9 +88,18 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
         return rows.filter(r => allowedBooks.has(r.workbookId));
       },
       record: async (request, calendar) => {
-        const row = [...unseeded, ...due].find(r => r.workbookId === request.workbookId);
-        if (!row || expired() || !await deps.allowed(row.parentId) || expired()) return "unavailable";
-        return deps.clocks.record(request, calendar);
+        if (fatalClockError) throw clockError;
+        try {
+          const row = [...unseeded, ...due].find(r => r.workbookId === request.workbookId);
+          if (!row || expired() || !await deps.allowed(row.parentId) || expired()) return "unavailable";
+          return await deps.clocks.record(request, calendar);
+        } catch (error) {
+          // The reusable clock core records uncertain writes without throwing. This scheduler must also stop
+          // the invocation after a failed read/write, before any next family or maintenance phase.
+          fatalClockError = true;
+          clockError = error;
+          throw error;
+        }
       },
     };
     for (let offset = 0; offset < clockBooks.length; offset += 100) {
@@ -95,6 +108,7 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
     }
     if (expired()) return stop();
     result.clocks = await recoverWorkbookScanClocks(scoped, { clockVersion, limit });
+    if (fatalClockError) throw clockError;
     result.clocks.reconciledBooks = clockBooks.length;
   }
   if (expired()) return stop();

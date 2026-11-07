@@ -34,6 +34,7 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
 }) {
   const release = scanMaintenanceRelease(options.env);
   if (!release) return null;
+  let permissionReadFailed = false;
   async function testDeliveries(limit: number) {
     // This test-only sweep selects its allowed parents before the bound. Reusing a global due selector could
     // repeatedly return excluded real families and never reach a test book. SQL still decides all eligibility.
@@ -51,17 +52,24 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
       number: r.number, deliveryAuditId: r.audit_id }));
   }
   async function allowed(parent: string): Promise<boolean> {
+    if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
     if (!release!.parents.includes(parent)) return false;
-    const { data, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
-    if (error) throw new Error("scan_maintenance_test_gate_read");
-    return data?.parent_id === parent;
+    try {
+      const { data, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
+      if (error) throw error;
+      return data?.parent_id === parent;
+    } catch {
+      permissionReadFailed = true;
+      throw new Error("scan_maintenance_test_gate_read");
+    }
   }
-  const store = workbookScanReminderSendStore(db);
+  const store = workbookScanReminderSendStore(db, { beforeAdmit: handle => allowed(handle.parentId) });
   const sender = createWorkbookScanReminderSender({ gapMs: options.gapMs, transport: options.provider,
-    store: { ...store, admit: async handle => await allowed(handle.parentId) ? store.admit(handle) : { status: "unavailable" } } });
+    store });
   return {
     transport: sender.transport,
     async run(time: { now(): number; endAt: number }) {
+      if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
       let selectedBooks: string[] = [];
       const result = await runWorkbookScanMaintenance({
         books: async (_kind, limit) => {
@@ -85,6 +93,9 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
             message: { sender: { to: "parent" }, to: data.email, replyTo: SUPPORT_EMAIL, ...email } });
         } } : {}),
       }, { limit: 5, clockVersion: workbookScanClockVersion(), time, signal: options.signal });
+      // The sender must retain an uncertain admission. It can therefore consume a thrown gate error itself.
+      // Keep the invocation failed even when no further parent remains to call allowed again.
+      if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
       // The cron response and ordinary logs contain counts only, never workbook or family identities.
       const counts = (rows: readonly { status: string }[]) => rows.reduce<Record<string, number>>((out, row) => {
         out[row.status] = (out[row.status] ?? 0) + 1; return out;

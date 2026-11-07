@@ -134,7 +134,9 @@ function validHandle(h: ScanReminderHandle): boolean {
 }
 
 /** One store per bounded scheduler run. SQL owns all state changes and admits the complete sibling set. */
-export function workbookScanReminderSendStore(db: SupabaseClient<Database>): ScanReminderSendStore {
+export function workbookScanReminderSendStore(db: SupabaseClient<Database>, options: {
+  beforeAdmit?(handle: ScanReminderHandle): Promise<boolean>;
+} = {}): ScanReminderSendStore {
   async function current(h: ScanReminderHandle, state: "reserved" | "admitted"): Promise<boolean> {
     if (!validHandle(h) || (state !== "reserved" && state !== "admitted")) return false;
     try {
@@ -182,6 +184,8 @@ export function workbookScanReminderSendStore(db: SupabaseClient<Database>): Sca
     },
     async admit(h) {
       if (!await current(h, "reserved")) return { status: "stale" };
+      // This is the last application gate, after all asynchronous identity reads. SQL owns committed admission.
+      if (options.beforeAdmit && !await options.beforeAdmit(h)) return { status: "unavailable" };
       const { data, error } = await db.rpc("admit_workbook_scan_reminder", { p_message: h.messageId, p_attempt: h.attemptToken });
       if (error) throw new Error("scan_reminder_admit");
       const v = answer(data);

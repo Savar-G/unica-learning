@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/admin/workbooks/[id]/delivery/route";
+import { AfterContext } from "next/dist/server/after/after-context";
 vi.mock("server-only",()=>({}));
 const h=vi.hoisted(()=>({admin:true,bookExists:true,after:[] as (()=>void|Promise<void>)[],
-  confirm:vi.fn(),correct:vi.fn(),refresh:vi.fn()}));
+  registrationFailure:null as (()=>void)|null,confirm:vi.fn(),correct:vi.fn(),refresh:vi.fn()}));
 const book="00000000-0000-4000-8000-000000000001",child="00000000-0000-4000-8000-000000000002";
-vi.mock("next/server",()=>({after:(fn:()=>void|Promise<void>)=>{h.after.push(fn);}}));
+vi.mock("next/server",()=>({after:(fn:()=>void|Promise<void>)=>{h.registrationFailure?.();h.after.push(fn);}}));
 vi.mock("@/lib/workbook-scan-recovery-server",()=>({refreshWorkbookScanClock:(id:string)=>h.refresh(id)}));
 vi.mock("@/lib/workbook-delivery",()=>({confirmDelivery:(...args:unknown[])=>h.confirm(...args),correctDelivery:(...args:unknown[])=>h.correct(...args)}));
 vi.mock("@/lib/workbook-delivery-store",()=>({workbookDeliveryStore:()=>({receipt:async()=>null})}));
@@ -19,9 +20,21 @@ const request=(extra:Record<string,unknown>={})=>new Request(`https://unica.test
   method:"POST",headers:{"Content-Type":"application/json",origin:"https://unica.test"},
   body:JSON.stringify({localTime:"2026-11-01T12:00",timeZone:"UTC",childId:child,number:1,...extra}),
 });
-beforeEach(()=>{h.admin=true;h.bookExists=true;h.after=[];h.confirm.mockReset().mockResolvedValue({status:"confirmed",receipt:{workbookId:book}});h.correct.mockReset().mockResolvedValue({status:"confirmed",receipt:{workbookId:book}});h.refresh.mockReset().mockResolvedValue(undefined);});
+beforeEach(()=>{vi.restoreAllMocks();vi.spyOn(console,"warn").mockImplementation(()=>{});h.admin=true;h.bookExists=true;h.after=[];h.registrationFailure=null;h.confirm.mockReset().mockResolvedValue({status:"confirmed",receipt:{workbookId:book}});h.correct.mockReset().mockResolvedValue({status:"confirmed",receipt:{workbookId:book}});h.refresh.mockReset().mockResolvedValue(undefined);});
 
 describe("delivery response and durable scan clock recovery",()=>{
+  it.each(["waitUntil","onClose"])("keeps the committed confirmation after a real Next %s registration error",async failure=>{
+    const broken = new AfterContext({waitUntil:undefined,onTaskError:undefined,onClose:()=>{
+      if(failure==="onClose")throw new Error("synthetic lifecycle failure");
+    }});
+    h.registrationFailure=()=>Reflect.apply(broken.after,broken,[()=>{},undefined]);
+    const response=await POST(request(),ctx);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({status:"confirmed"});
+    expect(h.confirm).toHaveBeenCalledTimes(1);
+    expect(h.after).toEqual([]);expect(h.refresh).not.toHaveBeenCalled();
+    expect(console.warn).toHaveBeenCalledWith("[scan progress] delivery callback registration deferred");
+  });
   it("answers confirmed before running bounded recovery and forwards no browser calendar",async()=>{
     const response=await POST(request({backstopAt:"1900-01-01Z",clockVersion:"forged",p_at:"2099-01-01Z"}),ctx);
     expect(response.status).toBe(200);expect(await response.json()).toMatchObject({status:"confirmed"});

@@ -34,7 +34,13 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/workb
     const result = body.action === "correct"
       ? await correctDelivery(store, { ...input, reason: body.reason, requestId: body.requestId, expectedAuditId: body.expectedAuditId }, Date.now())
       : await confirmDelivery(store, input, Date.now());
-    if (result.status === "confirmed") after(() => refreshWorkbookScanClock(id));
+    if (result.status === "confirmed") {
+      try { after(() => refreshWorkbookScanClock(id)); }
+      catch {
+        // Delivery already committed. Its durable request survives a failed callback registration.
+        console.warn("[scan progress] delivery callback registration deferred");
+      }
+    }
     return Response.json(result, { status: result.status === "confirmed" ? 200 : 409, headers: { "Cache-Control": "private, no-store" } });
   } catch {
     return Response.json({ status: "refused", reason: "unavailable" }, { status: 503 });

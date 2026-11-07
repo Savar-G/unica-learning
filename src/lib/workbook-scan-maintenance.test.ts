@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runWorkbookScanMaintenance, type ScanMaintenanceDependencies } from "@/lib/workbook-scan-maintenance";
-import type { ScanRecoveryBook } from "@/lib/workbook-scan-reminder-store";
+import type { ScanRecoveryBook, ScanRecoveryKind } from "@/lib/workbook-scan-reminder-store";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const book = (n: number, parent = 1): ScanRecoveryBook => ({ workbookId: id(100 + n), parentId: id(parent),
@@ -8,7 +8,8 @@ const book = (n: number, parent = 1): ScanRecoveryBook => ({ workbookId: id(100 
 function setup() {
   const events: string[] = [], sends: { parent: string; episodes: readonly string[] }[] = [];
   const recorded: string[] = [];
-  const batches = { unseeded: [book(1)], due: [], inactivity: [book(1)], "reminder-due": [book(1), book(2)] };
+  const batches: Record<ScanRecoveryKind, ScanRecoveryBook[]> = {
+    unseeded: [book(1)], due: [], inactivity: [book(1)], "reminder-due": [book(1), book(2)] };
   let now = 0, permit = true;
   const clockBatches: string[][] = [];
   const deps: ScanMaintenanceDependencies = {
@@ -97,6 +98,33 @@ describe("bounded workbook scan maintenance", () => {
     f.deps.books = async kind => { f.events.push(kind); throw new Error("synthetic unavailable"); };
     await expect(runWorkbookScanMaintenance(f.deps, f.options)).rejects.toThrow("synthetic unavailable");
     expect(f.events).toEqual(["unseeded"]);
+    expect(f.sends).toEqual([]);
+  });
+
+  it("does not let tolerant clock recovery hide a failed permission read", async () => {
+    const f = setup();
+    f.batches.due = [book(1)];
+    let reads = 0;
+    f.deps.allowed = async () => {
+      if (++reads === 3) throw new Error("synthetic permission read failure");
+      return true;
+    };
+    await expect(runWorkbookScanMaintenance(f.deps, f.options)).rejects.toThrow("synthetic permission read failure");
+    expect(f.events).toEqual(["unseeded", "due", "reconcile"]);
+    expect(f.recorded).toEqual([]);
+    expect(f.sends).toEqual([]);
+  });
+
+  it("stops later records and phases after an uncertain clock write", async () => {
+    const f = setup();
+    f.batches.unseeded = [book(1), book(2)];
+    f.deps.clocks.requests = async () => [book(1), book(2)].map(b => ({ workbookId: b.workbookId,
+      deliveryAuditId: b.deliveryAuditId, deliveredAt: "2026-10-30T13:00:00Z", timeZone: "UTC", zoneOverride: true }));
+    const attempted: string[] = [];
+    f.deps.clocks.record = async request => { attempted.push(request.workbookId); throw new Error("synthetic lost write"); };
+    await expect(runWorkbookScanMaintenance(f.deps, f.options)).rejects.toThrow("synthetic lost write");
+    expect(attempted).toEqual([book(1).workbookId]);
+    expect(f.events).toEqual(["unseeded", "due", "reconcile"]);
     expect(f.sends).toEqual([]);
   });
 

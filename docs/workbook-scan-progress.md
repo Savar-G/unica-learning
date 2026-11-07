@@ -15,9 +15,11 @@ Both gates default off. This candidate contains no real-family mode. No switch i
 - WORKBOOK_SCAN_PROGRESS_ENABLED must equal test-only.
 - WORKBOOK_SCAN_TEST_PARENT_IDS must contain1to20distinct UUIDs separated by commas.
 - WORKBOOK_SCAN_REMINDERS_ENABLED is off or unset by default. Its only enabled value is test-only. Invalid values disable the factory.
-- An included parent must retain its test_accounts marker. The server rechecks it before phases and immediately before its SQL admission call.
+- An included parent must retain its test_accounts marker. The server rechecks it before phases and after all asynchronous handle reads, directly before its SQL admission call. A failed permission read stops the invocation. A later change cannot recall an already committed provider admission.
 
 The test-only sweep selects configured parent deliveries before its bound, so unrelated real-family rows cannot occupy its queue. It requires an exact complete set of at most5deliveries. Clock requests are selected for those books before their bound. Old or recorded test-book requests still pass through SQL's current-identity write guard. A missing count, truncated answer or set above the bound stops the turn. It never becomes zero progress. Reduce the explicit QA scope or extend the reviewed paging path before a larger test sweep.
+
+The post-delivery recovery callback uses the same release and live test-owner checks. It reads only the delivered book's requests and rechecks permission before its writes. It never drains the global request queue. A callback registration or recovery failure cannot change a committed confirmation response.
 
 The existing /api/reminders cron invokes this work after its existing email phases and before55seconds from its start. The maintenance database client has a55-second abort. The dry path invokes no maintenance write. The existing global cron authentication and email-configuration prerequisite remain. Receipts and delivery requests remain durable while scheduled recovery is unavailable. No new cron job or configuration value is installed by this code.
 
