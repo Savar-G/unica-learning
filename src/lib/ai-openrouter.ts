@@ -4,6 +4,7 @@
 // provider.require_parameters: only providers that support every parameter sent (the JSON schema above all) get the
 // request. Which providers may train on inputs is an account setting on OpenRouter (#182), not a request field.
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
+import { openRouterJsonOutput } from "@/lib/ai-openrouter-schema";
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 /** One request stops after this long. A time-out, a lost connection, a 408, a 429 or a 5xx gets one more try. */
@@ -26,16 +27,17 @@ export interface OpenRouterProvider {
 }
 
 function body(model: string, request: AiJsonRequest, provider?: OpenRouterProvider) {
+  const output = openRouterJsonOutput(model, request);
   return {
     model,
     stream: false,
     max_tokens: request.maxTokens ?? MAX_TOKENS,
     messages: [
-      { role: "system", content: request.system },
+      { role: "system", content: output.system },
       // OpenRouter parses the text first, then the images (its image guide).
       { role: "user", content: request.content.map(part) },
     ],
-    response_format: { type: "json_schema", json_schema: { name: request.name, strict: true, schema: request.schema } },
+    ...(output.response_format ? { response_format: output.response_format } : {}),
     provider: provider ?? { require_parameters: true },
     // Usage accounting: the answer reports its tokens and cost (the AI usage ledger, src/lib/ai-usage.ts).
     usage: { include: true },
