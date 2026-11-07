@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/account/workbooks/child
 vi.mock("@/lib/supabase-auth", () => ({ sessionClient: async () => ({}), parentId: async () => fake.parent, adminClient: () => ({}) }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => fake.dashboard }));
 vi.mock("@/lib/parent-view-server", () => ({ parentViewReader: () => fake.reader }));
-vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => fake.scans }));
+vi.mock("@/lib/scan-pages-access", () => ({ scanChildAccess: async () => fake.scans }));
 vi.mock("@/lib/scan-marking-server", () => ({ markingAccess: async () => { fake.access(); return fake.marking; } }));
 vi.mock("@/components/scan-history", async importOriginal => {
   const actual = await importOriginal<typeof import("@/components/scan-history")>();

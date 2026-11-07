@@ -12,6 +12,7 @@ export async function GET(request: Request) {
   const query = new URL(request.url).searchParams;
   const childId = query.get("child"), workbookId = query.get("workbook");
   if (!isUuid(childId) || !isUuid(workbookId)) return scanJson({ error: "invalid" }, 400);
+  if (!await session.childOpen(childId)) return scanJson({ error: "refused" }, 404);
   try {
     const now = Date.now();
     // Accepted scans remain readable independently of automatic marking. Its separate release gate stays intact.

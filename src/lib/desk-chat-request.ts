@@ -25,6 +25,6 @@ export async function deskChatContext(request: Request, options: { sameSite?: bo
   ]);
   const db = adminClient();
   // Family (test, or listed with the switch and a plan), then Grade 3 and up (#530).
-  if (!child || !family || !db || await chatGate(db, parent, child.grade) !== "open") return { ok: false, error: "unavailable", status: 403 };
+  if (!child || !family || !db || await chatGate(db, parent, child.grade, lock.childId) !== "open") return { ok: false, error: "unavailable", status: 403 };
   return { ok: true, ctx: { db, parent, child: lock.childId, name: child.first_name, grade: child.grade, zone: familyZone({ timeZone: family.time_zone, postal: family.postal, province }) } };
 }

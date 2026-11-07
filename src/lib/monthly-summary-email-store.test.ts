@@ -186,6 +186,11 @@ describe("the dashboard switch decides who gets the email", () => {
     expect(dueMonthlyEmails(await monthlySummaryEmailStore(db, { ...OFF, PARENT_DASHBOARD_ENABLED: value }).load(NOV_1), NOV_1).map((d) => d.parentId)).toEqual(["marked"]);
   });
 
+  it("an open plan makes no family due: the plan gate opens the dashboard, not this email", async () => {
+    const { db } = fakeDb({ ...twoFamilies(), child_plan_states: [{ parent_id: "normal", child_id: "c1", kind: "paying", ends_at: null, next_charge_at: null, monthly_cents: 7999, ending_free: false }] });
+    expect(dueMonthlyEmails(await monthlySummaryEmailStore(db, OFF).load(NOV_1), NOV_1).map((d) => d.parentId)).toEqual(["marked"]);
+  });
+
   it("a failed read of the marks sends to no one", async () => {
     const { db } = fakeDb(twoFamilies(), { failTable: "test_accounts" });
     expect(dueMonthlyEmails(await monthlySummaryEmailStore(db, OFF).load(NOV_1), NOV_1)).toEqual([]);

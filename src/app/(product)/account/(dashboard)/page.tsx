@@ -17,7 +17,8 @@ import { workbookStore } from "@/lib/workbook-store";
 import type { WorkbookSummary } from "@/lib/workbook-content";
 import { AddChild, SaveTimeZone, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
 import { parentChatUsage } from "@/lib/maya-chat-server";
-import { mayaNoticeDue } from "@/lib/maya-notice-server";
+import { mayaNoticeDueForFamily } from "@/lib/maya-notice-server";
+import { PlanClosedNote, planClosedFamily } from "@/components/plan-closed-note";
 import { DeskRow, MayaNoticeCard, MayaChatRow } from "@/components/parent-home-rows";
 import { ParentDashboardHome } from "@/components/parent-dashboard-home";
 import { dashboardOverview, parentDashboard } from "@/lib/parent-dashboard-server";
@@ -73,9 +74,9 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: familyProvince(children) });
   // Parent home (#301): each child's current workbook (the newest shipped one) and the desk, which needs the PIN.
   // D-293: show only existing gated chat usage and saved notes. Voice follows later.
-  const [current, pinSet, chats, scansEnabled, notes, noticeDue] = await Promise.all([
+  const [current, pinSet, chats, scansEnabled, notes, noticeDue, planClosed] = await Promise.all([
     currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser),
-    parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser), latestParentMayaNotes(db, parentUser, children.map((c) => c.id)), mayaNoticeDue(parentUser, children.length ? Math.max(...children.map((c) => c.grade)) : null),
+    parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser), latestParentMayaNotes(db, parentUser, children.map((c) => c.id)), mayaNoticeDueForFamily(parentUser, children), dashboard ? null : planClosedFamily(parentUser),
   ]);
   // Everyone else gets today's Parent home below.
   if (dashboard) {
@@ -85,6 +86,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   }
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
+      {planClosed && <PlanClosedNote closed={planClosed} on="home" />}
       {password === "1" && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
       {pin === "1" && <p role="status" className="acct-alert acct-saved">Your PIN is saved.</p>}
       {desk === "error" && <p role="status" className="acct-alert">We cannot open the desk right now. Try again in a moment.</p>}

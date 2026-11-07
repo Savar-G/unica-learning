@@ -142,6 +142,14 @@ describe("family days and release switch", () => {
     expect(chatFamilyGate({ test: false, listed: true }, { MAYA_CHAT_ENABLED: "on" })).toBe("plan");
     expect(chatFamilyGate({ test: true, listed: false }, {})).toBe("test");
   });
+  it("opens a child with an open plan with no list row and no switch, and only an explicit off stops it", () => {
+    for (const value of [undefined, "", "true", "on"]) expect(chatFamilyGate({ test: false, listed: false, planOpen: true }, { MAYA_CHAT_ENABLED: value })).toBe("open_plan");
+    expect(chatFamilyGate({ test: false, listed: false, planOpen: true }, { MAYA_CHAT_ENABLED: "off" })).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: true, planOpen: true }, { MAYA_CHAT_ENABLED: "off" })).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: true, planOpen: false }, { MAYA_CHAT_ENABLED: "off" })).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: false, planOpen: false }, { MAYA_CHAT_ENABLED: "on" })).toBe("closed");
+    expect(chatFamilyGate({ test: true, listed: false, planOpen: false }, { MAYA_CHAT_ENABLED: "off" })).toBe("test");
+  });
   it("labels the chat limit in the desk header: left today, Grade 3 and up for a younger child, else the daily limit", () => {
     const zone = "America/Vancouver", now = Date.parse("2026-11-05T17:00:00Z");
     expect(chatLimitLabel(chatUsage(12, now, zone), null)).toBe("48 left today");

@@ -2,6 +2,8 @@
 
 `SCAN_PAGES_ENABLED` is a server release switch. Leave it unset to keep scanning closed to ordinary families in every environment, including production. While it is off, only families marked in `public.test_accounts` and users listed in `public.admin_users` have access. The server reads those marks on each request. A browser cannot supply its own mark.
 
+A child with an open plan also has scanning, with no switch (`src/lib/plan-access.ts`). `scanPagesAccess` is the family's way in; each route or page that names a child or a photo also asks `scanChildAccess`, so one child's plan does not open a sibling. The switch and a mark go on opening every child. A closed plan reads as the usual not found. The per-child routes are the stack, admission, reading and saving a photo, the image, progress and "Email me the link". Delete and release of a photo ask only the family's way in. A plan grants no marking: marking, Send, the photo checks, crops and recovery follow `src/lib/scan-marking-access.ts` alone (`markingAccess`, `scanChecksAccess`; "Families mode" below). Explain follows marking admission or the open plan of the photo's child (`explanationPlanOpen`).
+
 To open scanning to signed-in families, set `SCAN_PAGES_ENABLED` to `on` in the server environment for the deployment, then redeploy. Only the exact value `on` enables it. Remove the value and redeploy to close access again. This PR does not set the variable.
 
 Parent home shows the link only when the server permits access. `/account/scan` and every scan API handler independently check the live signed-in session and release before they read a photo, parse an upload or change data. Blocked requests use the normal not-found response. The image route checks access again after the Storage read. The desk lock still applies to permitted users.
@@ -26,11 +28,11 @@ To reverse this restriction, remove `SCAN_MARKING_TEST_PARENT_IDS` from the serv
 
 The same check runs again before recovery marks a previously sent photo, so a plan that ends stops new marking at once. Marks already saved for that photo still go to the child's learning events and profile (no image read, no model call). In families mode one recovery run moves past up to 10 refused photos on the same cursor, so closed plans do not hold up other families. `markingDecision` returns the reason for server code and logs; parents see only the usual not-found or "unavailable" screen, never the reason. `familyReady` still reports only the evidence record below; it is not the switch.
 
-The plan gate is the parent dashboard's `childPlanAccess` (`src/lib/plan-access.ts`). Until that module is on `main`, the stand-in `childPlanAccess` in `scan-marking-access.ts` answers `unknown` for every child, so families mode admits only test families and admins (TODO in that file: replace the stand-in with the import).
+The plan gate is the parent dashboard's `childPlanAccess` (`src/lib/plan-access.ts`). Until the stand-in `childPlanAccess` in `scan-marking-access.ts` is replaced with that import (TODO in that file), it answers `unknown` for every child, so families mode admits only test families and admins.
 
 Send, the photo checks (preview and calibration, with their crops) and the stack's `checks` follow the same rule through `scanChecksAccess` in `src/lib/scan-marking-access.ts`, the one module that holds it: in families mode a real family can check and send a child's pages while that child's plan is running, and not otherwise. In `test-only` and off they stay with test families and admins, and the parent list does not limit them, as before. In families mode a malformed list closes them as it closes marking.
 
-Families mode does not open the Scan pages tab: a real family reaches `/account/scan` only when `SCAN_PAGES_ENABLED` is `on` (see the top of this page).
+Families mode does not open the Scan pages tab: a real family reaches `/account/scan` when `SCAN_PAGES_ENABLED` is `on` or a child's plan is open (see the top of this page), and an open plan alone grants none of the steps above.
 
 To switch: Savar picks the marking model first. Then set `SCAN_MARKING_ENABLED` to `families` in the Vercel Production environment (`npx vercel@latest env` with `--scope unica-learning`) and redeploy. To go back, set it to `test-only` (or remove it to turn marking off) and redeploy. The switch changes no price row, spending cap, model or parent list.
 

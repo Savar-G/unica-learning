@@ -5,12 +5,12 @@ import { saveEmailCopy } from "@/lib/email-copies";
 import type { ReleasableLedger } from "@/lib/email-delivery";
 import { loadFamilyChildren } from "@/lib/family-time-server";
 import { CLAIM_LIMIT_MS, type DueMonthly, type MonthlyLogEntry, type MonthlyState, type MonthlyStore } from "@/lib/monthly-summary-email";
-import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
+import { dashboardSwitchOpen } from "@/lib/parent-dashboard-access";
 import { MAX_SEND_ATTEMPTS } from "@/lib/reminders";
 
 // The monthly summary email's store (#563): reads and writes with the secret key. The rules are in
 // src/lib/monthly-summary-email.ts; this loads the confirmed deliveries and their corrections, the families of those
-// children, whether the dashboard switch opens to each (parentDashboardAccess, as the dashboard reads it: a failed read of
+// children, whether the dashboard switch opens to each (dashboardSwitchOpen, never the plan gate, so opening a plan makes no email due: a failed read of
 // a mark counts as not marked), and the parents' rows of this email, and keeps the claims in public.email_log (migration
 // monthly_summary_email). A failed read throws, so no run emails from a partial picture; so does an aborted load.
 // Tests use src/lib/monthly-summary-email-memory.ts.
@@ -98,7 +98,7 @@ export function monthlySummaryEmailStore(
       const open = new Set<string>();
       for (let i = 0; i < parents.length; i += ACCESS_AT_ONCE) {
         await Promise.all(parents.slice(i, i + ACCESS_AT_ONCE).map(async (p) => {
-          if (await parentDashboardAccess(p.id, admin, env, signal)) open.add(p.id);
+          if (await dashboardSwitchOpen(p.id, admin, env, signal)) open.add(p.id);
         }));
       }
       // A failed read of a mark counts as not marked, so an aborted one must not reach the state as an answer.

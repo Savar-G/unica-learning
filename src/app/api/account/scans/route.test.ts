@@ -20,7 +20,7 @@ const children = { from: (table: string) => ({ select: () => ({ eq: (_c: string,
 }) }) }) }) };
 vi.mock("@/lib/scan-photo-server", () => ({
   scanJson: (data: unknown, status = 200) => Response.json(data, { status }),
-  scanSession: async () => ({ parent: "family", admin: children }),
+  scanSession: async () => ({ childOpen: async () => true, parent: "family", admin: children }),
 }));
 import { GET } from "./route";
 

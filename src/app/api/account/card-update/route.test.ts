@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const f = vi.hoisted(() => ({ parent: vi.fn(), access: vi.fn(), start: vi.fn(), finish: vi.fn(), seams: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ sessionClient: async () => ({}), parentId: f.parent }));
-vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access }));
+vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access, planManagementAccess: f.access }));
 vi.mock("@/lib/billing", () => ({ startCardUpdate: f.start, finishCardUpdate: f.finish }));
 vi.mock("@/lib/billing-server", () => ({ liveCardUpdates: f.seams }));
 import { POST } from "./route";

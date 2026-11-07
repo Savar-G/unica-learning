@@ -7,7 +7,8 @@ import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { childPauseMailing } from "@/lib/plan-controls-server";
 import type { ParentViewReader } from "@/lib/parent-view";
 import { pinIsSet } from "@/lib/parent-pin-server";
-import { scanPagesAccess } from "@/lib/scan-pages-access";
+import { familyOpenPlanChildren } from "@/lib/plan-access";
+import { scanReleased } from "@/lib/scan-pages-access";
 import { withAnswers } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
@@ -174,8 +175,9 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       return [...new Set(data.flatMap((q) => q.standard ?? []))];
     },
     async switches() {
-      const [scanPages, testFamily] = await Promise.all([
-        scanPagesAccess(parent, admin, env),
+      const [scanPages, scanPlanChildren, testFamily] = await Promise.all([
+        scanReleased(parent, admin, env),
+        familyOpenPlanChildren({ parentId: parent }, { db: admin }),
         admin?.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle(),
       ]);
       return {
@@ -183,6 +185,7 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         // Test families only until a child can call Maya (#337), as Parent home shows the minutes today.
         maya: !testFamily?.error && testFamily?.data?.parent_id === parent,
         scanPages,
+        scanPlanChildren,
       };
     },
   };

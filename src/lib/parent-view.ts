@@ -86,7 +86,8 @@ export interface ParentViewReader {
   /** Stored weeks that apply to this next workbook, from the private billing ledger. */
   pauseWeeks?(childId: string, number: number): Promise<number>;
   plans(): Promise<PlanRecord[]>;
-  switches(): Promise<TabSwitches>;
+  /** `scanPlanChildren`: the children whose own open plan opens Scan pages, when the release does not (src/lib/plan-access.ts). */
+  switches(): Promise<TabSwitches & { scanPlanChildren?: ReadonlySet<string> }>;
   /** The family's saved time zone and postal code, for family time. */
   family(): Promise<{ timeZone: string | null; postal: string | null }>;
   /** One of the family's finished tests with a report, scored; null for a test the family does not have or with no report. */
@@ -192,7 +193,7 @@ export async function listChildren(reader: ParentViewReader, now: number): Promi
       cardSaved: cards.some((c) => c.childId === child.id),
       delivered: deliveries.some((d) => d.childId === child.id),
       plan: plans.find((p) => p.childId === child.id)?.kind ?? "unknown",
-    }, switches);
+    }, { ...switches, scanPages: switches.scanPages || !!switches.scanPlanChildren?.has(child.id) });
     const finished = reportsByTime(own.tests, own.reports);
     return { id: child.id, firstName: child.firstName, schoolGrade: child.grade, ...view, currentWorkbook: newest > 0 ? { number: newest } : null, reportIds: finished.map((f) => f.reportId), finishedTests: finished.filter((f) => f.finishedAt > 0) };
   });

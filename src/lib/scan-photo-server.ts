@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { sessionClient, adminClient } from "@/lib/supabase-auth";
 import { notFound } from "next/navigation";
-import { scanPagesAccess } from "@/lib/scan-pages-access";
+import { scanChildAccess, scanPagesAccess } from "@/lib/scan-pages-access";
 
 export const SCAN_BUCKET = "scan-photos";
 export const scanPath = (parent: string, id: string) => `${parent}/${id}/photo.jpg`;
@@ -26,7 +26,15 @@ export async function scanSession() {
     return !result.error && result.data === true && released;
   };
   if (!await active()) notFound();
-  return { db, admin, parent, active };
+  // The family's way in is `active`. A plan opens only its own child, so a route that names a child, or a photo of one, asks here too.
+  const childOpen = (child: string) => scanChildAccess(parent, child, admin);
+  /** An unknown photo answers true: the route's own read then gives its usual refusal. A failed read is closed. */
+  const photoOpen = async (id: string) => {
+    const { data, error } = await admin.from("scan_photos").select("child_id").eq("id", id).eq("parent_id", parent).maybeSingle();
+    if (error) return false;
+    return !data || childOpen(data.child_id);
+  };
+  return { db, admin, parent, active, childOpen, photoOpen };
 }
 
 export function scanJson(data: unknown, status = 200) { return Response.json(data, { status, headers: SCAN_HEADERS }); }
