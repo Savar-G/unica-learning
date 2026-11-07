@@ -39,6 +39,7 @@ export const isFractionQuestion = (pkg: OperationPackage) => FRACTION_KINDS.incl
 export const readOptionsFor = (pkg: OperationPackage | null): ReadOptions => ({
   fractions: pkg !== null && isFractionQuestion(pkg),
   known: pkg === null ? [] : knownNumbers(pkg),
+  carries: pkg === null ? [] : pkg.steps.flatMap((st) => ("carryOut" in st && st.carryOut > 0 ? [st.carryOut] : [])),
 });
 
 /** The question's own numbers: its printed operands and every number in its worked steps (PR #624 review). */

@@ -44,7 +44,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { committedText, falseEquationResults, numberSentences, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
+import { committedText, exactSums, falseEquationResults, hedgesStep, plainWords, numberSentences, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -1702,12 +1702,21 @@ function checkColumnClaims(pkg: OperationPackage, step: WorkedStep, steps: Worke
  * a choice, or it holds a final answer the child is not sure of (doubt, or more than one sentence with numbers). A clear
  * step or a digit the child points at ("I carry the 1 to the tens") is none of these: Maya goes on.
  */
+/** How this call reads a turn: the question's options, and what "I already said" may point back at (pointsBack). */
+function readOptionsIn(s: Session): ReadOptions {
+  const opts = readOptionsFor(s.package);
+  const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
+  const earlier = s.turns.slice(0, Math.max(0, last)).filter((t) => t.speaker === "child").flatMap((t) => valuesIn(t.text, opts));
+  const done = s.package ? workSteps(s.package).filter((st) => s.done.includes(st.id)).flatMap(stepAnswers) : [];
+  return { ...opts, saidBefore: [...earlier, ...done].flatMap((v) => (v.type === "number" ? [v.value] : [])) };
+}
+
 function notClear(s: Session, reading: Reading): boolean {
   if (!s.turn) return false;
   if (s.turn.uncertain || reading.unclear) return true;
   const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
   if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return true;
-  const read = readAnswer(s.turn.text, readOptionsFor(s.package));
+  const read = readAnswer(s.turn.text, readOptionsIn(s));
   // A hedge ("I think it's 66", "maybe", a question) is not clear either, though the reader may find it sure.
   const hedged = showsDoubt(s.turn.text, readOptionsFor(s.package)) || /\b(?:i think|i guess|i believe|probably|maybe|might be)\b/i.test(s.turn.text);
   return read.choice || (read.final !== null && (!read.sure || hedged));
@@ -1722,7 +1731,7 @@ function sameFinal(s: Session, value: AnswerValue): boolean {
 /** The child's final answer in this turn is right, but they are not sure of it (doubt, a guess, a question). */
 function doubtfulRight(s: Session): boolean {
   if (!s.turn || !s.package) return false;
-  const opts = readOptionsFor(s.package);
+  const opts = readOptionsIn(s);
   const read = readAnswer(s.turn.text, opts);
   return read.final !== null && !read.sure && (showsDoubt(s.turn.text, opts) || saysGuess(s.turn.text)) && rightForQuestion(s.package, read.final);
 }
@@ -1730,7 +1739,7 @@ function doubtfulRight(s: Session): boolean {
 /** What the child kept in this turn: their words as read, or the number their plain yes gives, which they then committed to. */
 function turnRead(s: Session): AnswerRead {
   const yes = yesValue(s);
-  return yes ? { kept: [yes], final: yes, choice: false, outside: [yes], sure: true } : readAnswer(s.turn!.text, readOptionsFor(s.package!));
+  return yes ? { kept: [yes], final: yes, choice: false, outside: [yes], sure: true } : readAnswer(s.turn!.text, readOptionsIn(s));
 }
 
 /**
@@ -1771,7 +1780,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     const active = problem === "target" ? steps.find((st) => !s.done.includes(st.id)) ?? at : at;
     const claims = a.step === "result" ? "right" : checkColumnClaims(pkg, at, steps, active, s.turn.text);
     if (claims === "unclear") return { code: "answer_not_committed", reason: "The written digit or carry is unclear: ask what the child wrote before judging this step." };
-    const stepRight = a.step !== "result" && falseResults.length === 0 && claims === "right" && ownSentences(pkg, at, a.value, s.turn.text) && answersStep(at, a.value);
+    const stepRight = a.step !== "result" && falseResults.length === 0 && claims === "right" && ownSentences(pkg, at, a.value, s.turn.text) && answersStep(at, a.value) && modelStepHeard(pkg, at, a.value, s.turn.text);
     const right = !falseResult && (a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : stepRight);
     // A doubtful final answer cannot establish correct work, including an equal
     // fraction that still needs simplest form and therefore carries a "wrong" verdict.
@@ -2000,11 +2009,49 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
 }
 
 /**
+ * This turn holds a sentence that is exactly this step's own sum (exactSums): every operand of the column, the two digits in
+ * either order, then its carry when it has one, and its total. An allow-list, because five review rounds of refining the
+ * reader left another gap each time ("7 is 16.", "My mom said 7 plus 9 is 16."). A step of any other kind has no such form.
+ */
+function saysStepSum(step: WorkedStep, text: string): boolean {
+  if (step.kind !== "add-column") return false;
+  const sorted = (xs: readonly number[]) => [...xs].sort((a, b) => a - b).join(",");
+  return exactSums(text).some(({ operands, sum }) => {
+    const digits = step.carryIn > 0 ? operands.slice(0, -1) : operands;
+    return sum === step.total && (step.carryIn === 0 || operands.at(-1) === step.carryIn) && sorted(digits) === sorted(step.digits);
+  });
+}
+
+/**
+ * A column step a model's reading names, in the child's words. One sentence is the step's own sum, or each sentence that
+ * holds the value has no hedge and is a written digit or carry (checkColumnClaims read it), or has only plain math words
+ * (plainWords: no other speaker) and holds no other number ("16."), or the question's whole answer beside it ("Six, so 66."), or every
+ * digit of the column ("seven and nine make sixteen"). So "7 is 16.", "2 and 6." and "My mom said 7 plus 9 is 16." are not
+ * credited, whatever the model read. The exact sum alone would refuse a child's plain "16" to "What is 7 + 9?": here the
+ * model's reading is a second proof that the fallback does not have.
+ */
+function modelStepHeard(pkg: OperationPackage, step: WorkedStep, value: AnswerValue, text: string): boolean {
+  if (step.kind !== "add-column") return true;
+  const opts = readOptionsFor(pkg);
+  if (saysStepSum(step, text)) return true;
+  return numberSentences(text, opts).every((sentence) => {
+    const r = readNumbers(sentence);
+    if (!r.values.some((v) => saidAs(v, value))) return true;
+    if (hedgesStep(sentence, opts)) return false;
+    if (columnClaims(sentence).length > 0) return true;
+    if (!plainWords(sentence)) return false;
+    // "Plus the extra one": the carry this column takes, named as the carry.
+    const carry = (v: AnswerValue) => v.type === "number" && v.value === step.carryIn && /\b(?:extra|carr\w*)\b/i.test(sentence);
+    return r.values.every((v) => saidAs(v, value) || rightForQuestion(pkg, v) || carry(v)) || step.digits.every((d) => r.values.some((v) => v.type === "number" && v.value === d));
+  });
+}
+
+/**
  * The answers code reads in the child's own words, for a turn the model did not read (its call failed, or its reading named
  * none): first-ship practice, C28-r1 and C29-r1, where "7 plus 9 is 16." got "Find the ones." and "Yes, it's 66." got the
  * ones again. Only right answers, never a judgement of wrong work, and each is checked by `checkAnswers` like a model's.
- * Strict, so a number about something else marks nothing: a final answer the child is sure of; a step said as its own sum
- * ("7 plus 9 is 16"), in order from the first step not done; or one sure number that answers the step Maya is on.
+ * Only a final answer the child is sure of, or a step's own sum (saysStepSum), in order from the first step not done. A
+ * step Maya has shown (H3) is not heard: saying it back only copies her. Any other turn gets the help it would get anyway.
  */
 function heardAnswers(session: Session): ChildAnswer[] {
   const pkg = session.package;
@@ -2012,22 +2059,15 @@ function heardAnswers(session: Session): ChildAnswer[] {
   const read = turnRead(session);
   if (read.choice) return [];
   const text = session.turn.text;
-  const opts = readOptionsFor(pkg);
+  const opts = readOptionsIn(session);
   const found: ChildAnswer[] = [];
-  const sums = numberSentences(text, opts);
-  for (const st of workSteps(pkg)) {
-    if (session.done.includes(st.id)) continue;
-    const own = valuesIn(stepText(st, pkg.operation), { ...opts, operands: true });
-    const asSum = (v: AnswerValue) => !showsDoubt(text, opts) && sums.some((sentence) => {
-      const said = valuesIn(sentence, opts);
-      return said.length >= 2 && saidAs(said.at(-1), v) && said.slice(0, -1).every((x) => own.some((o) => saidAs(o, x)));
-    });
-    // Once Maya showed this step (H3), a lone number only copies what she said.
-    const onThisStep = session.ladder.step === st.id && session.ladder.hint >= 0 && session.ladder.hint < 3;
-    const alone = (v: AnswerValue) => onThisStep && read.sure && read.kept.length === 1 && saidAs(read.final ?? undefined, v);
-    const value = stepAnswers(st).find((v) => asSum(v) || alone(v));
-    if (!value) break;
-    found.push({ value, step: st.id, verdict: "right" });
+  if (!hedgesStep(text, opts)) {
+    for (const st of workSteps(pkg)) {
+      if (session.done.includes(st.id)) continue;
+      const copy = session.ladder.step === st.id && session.ladder.hint >= 3;
+      if (copy || !saysStepSum(st, text) || st.kind !== "add-column") break;
+      found.push({ value: number(st.total), step: st.id, verdict: "right" });
+    }
   }
   // A hedge ("I think it's 66") or a guess gets its own path (notClear, check.guess), not an accepted answer (#605).
   if (session.solved === null && read.final && read.sure && !notClear(session, {}) && !saysGuess(text) && rightForQuestion(pkg, read.final)) found.push({ value: read.final, step: "result", verdict: "right" });

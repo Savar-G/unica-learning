@@ -60,7 +60,7 @@ import type { Database } from "@/lib/database";
 import { createSpendLedger, recordLocalSpend, spendConfig } from "@/lib/maya-spend";
 import { mayaSpendStore } from "@/lib/maya-spend-store";
 import {
-  generatedPracticeSet, practiceExecution, aiChildSimulator, aiJudge, aiValidityJudge, buildReport, checkCredits, fakeValidityJudge, fileHash, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, inFlightNeed, meteredFetch, planSuite, practiceConcurrency, PRACTICE_CASES, reportMarkdown,
+  generatedPracticeSet, practiceExecution, aiChildSimulator, aiJudge, aiValidityJudge, buildReport, capProblem, checkCredits, fakeValidityJudge, fileHash, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, inFlightNeed, meteredFetch, planSuite, practiceConcurrency, PRACTICE_CASES, reportMarkdown,
   RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending, timedTurns, turnTimeMarkdown, worstReviewUsd,
   type ExecutionOptions, type AiJudge, type ByRole, type ChildSimulator, type ValidityJudge, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
 } from "@/lib/maya-practice";
@@ -434,7 +434,8 @@ async function main() {
       console.log(`-- in flight: ${concurrency} at once × the largest request (${estimate.largestRequest.role}, ${usd(estimate.largestRequest.usd)} at worst) = ${usd(need.inFlightUsd)}`);
       if (o.estimate) return;
       const cap = o.maxUsd ?? Math.ceil(estimate.usd * 2);
-      if (estimate.usd > cap) throw new Error(`The estimate (${usd(estimate.usd)}) is above the cap (${usd(cap)}). Raise --max-usd or run fewer cases.`);
+      const overCap = capProblem(estimate.usd, cap);
+      if (overCap) throw new Error(overCap);
       console.log(`-- spending cap: ${usd(cap)} (--max-usd). Runs the cap cuts are reported missing.`);
       spending = new Spending(cap);
     }

@@ -47,10 +47,65 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     expect(told.map((t) => t.act)).toEqual(["open", "confirm", "accept_answer"]);
   });
 
-  it("takes a bare number as the answer to the step Maya just asked, and only then", async () => {
-    const first = await play("A", [down("16."), down("16.")]);
-    expect(first.told[1]).toMatchObject({ act: "guide", step: "ones", level: 0 });
-    expect(first.told[2]).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
+  // Review round 1 of 29e2b327: the fallback credits only one exact sentence. Words it cannot prove get the same help as on
+  // 68eb43d4, with no "That's it" for them.
+  it.each([
+    "7 plus 9 is 16.", "9 plus 7 is 16.", "So 7 plus 9 is 16.", "Okay, 7 plus 9 is 16.", "Okay. 7 plus 9 is 16.", "7 plus 9 equals 16.", "7 plus 9 makes 16.", "seven plus nine is sixteen.",
+  ])("hears the step's own sum: %s", async (text) => {
+    const { told } = await play("A", [down(text)]);
+    expect(told[1]).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
+  });
+
+  it.each([
+    "7 is 16.", "9 and 16.", "My mom said 7 plus 9 is 16.", "I think 7 plus 9 is 16.", "Maybe 7 plus 9 is 16.", "I guess 7 plus 9 is 16.", "7 plus 9 is 16?", "16.", "It's 16.",
+    "7 and 9 is 16.", "7 plus 9 plus 1 is 16.", "7 plus 7 is 16.", "7 plus 9 is not 16.", "7 plus 9 is 6.", "Mia says 7 plus 9 is 16.", "9 is 16.", "Then 7 plus 9 is 16.", "I know 7 plus 9 is 16.",
+  ])("does not hear the ones in: %s", async (text) => {
+    const { told } = await play("A", [down(text)]);
+    expect(told[1].lines).not.toContain("check.right_step");
+    expect(told[1].step ?? "ones").toBe("ones");
+    expect(told[1].say).not.toMatch(/7 \+ 9 = 16/);
+  });
+
+  const afterOnes = (text: string) => play("A", [{ child: "7 plus 9 is 16.", read: { answers: [[16, "ones", "right"]] } }, down(text)]);
+  it.each(["So 2 plus 3 plus 1 is 6.", "2 plus 3 plus 1 is 6.", "3 plus 2 plus 1 is 6."])("hears the tens with its carry: %s", async (text) => {
+    const { told } = await afterOnes(text);
+    expect(told[2]).toMatchObject({ act: "guide", step: "result", lines: ["check.right_step", "step.invite"] });
+  });
+  it.each(["3 is 6.", "2 and 6.", "1 and 6.", "2 plus 3 is 6.", "2 plus 3 is 5.", "1 plus 2 plus 3 is 6.", "2 plus 1 is 6.", "My mom said 2 plus 3 plus 1 is 6."])("does not hear the tens in: %s", async (text) => {
+    const { told } = await afterOnes(text);
+    expect(told[2].lines).not.toContain("check.right_step");
+    expect(told[2].step).toBe("tens");
+    expect(told[2].say).not.toMatch(/That's it|Yes|right/i);
+  });
+
+  it("treats the sum Maya just showed as a copy, the same as a lone number (H3)", async () => {
+    const shown: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
+    for (const text of ["7 plus 9 is 16.", "16."]) {
+      const { told } = await play("A", [shown, down(text)]);
+      expect(told[2].lines).not.toContain("check.right_step");
+      expect(told[2]).toMatchObject({ step: "ones" });
+    }
+  });
+
+  // The same sentences when a model reading names them: code refuses the credit, whatever the model read.
+  const named = (text: string, value: number, step: string, before: Step[] = []) => play("A", [...before, {
+    child: text, read: { answers: [[value, step, "right"]] },
+    maya: [{ act: "guide", step: step === "ones" ? "tens" : "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }],
+  }]);
+  const ones: Step = { child: "7 plus 9 is 16.", read: { answers: [[16, "ones", "right"]] } };
+  it.each([["7 is 16.", 16, "ones"], ["9 and 16.", 16, "ones"], ["My mom said 7 plus 9 is 16.", 16, "ones"], ["I think 7 plus 9 is 16.", 16, "ones"]] as const)("refuses a model's credit for: %s", async (text, value, step) => {
+    const { told } = await named(text, value, step);
+    expect(told[1].lines).not.toContain("check.right_step");
+    expect(told[1].step ?? "ones").toBe("ones");
+  });
+  it.each([["3 is 6.", 6, "tens"], ["2 and 6.", 6, "tens"], ["1 and 6.", 6, "tens"], ["The 1 and 6.", 6, "tens"]] as const)("refuses a model's credit after the ones for: %s", async (text, value, step) => {
+    const { told } = await named(text, value, step, [ones]);
+    expect(told[2].lines).not.toContain("check.right_step");
+    expect(told[2].step).toBe("tens");
+  });
+  it.each([["7 plus 9 is 16.", 16], ["9 plus 7 is 16.", 16], ["16.", 16], ["It's 16.", 16], ["6.", 6]] as const)("keeps a model's credit for: %s", async (text, value) => {
+    const { told } = await named(text, value, "ones");
+    expect(told[1]).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
   });
 
   it.each([
@@ -66,14 +121,34 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     expect(told[1].step ?? "ones").toBe("ones");
   });
 
-  it("reads a sentence that only points back at done work as no second answer", () => {
+  it("reads a carry sentence as no second answer only with the point-at forms or the step's real carry", () => {
     const opts = readOptionsFor(FIXTURES.A as OperationPackage);
-    expect(readAnswer("I carry the ten. It's 66.", opts).sure).toBe(true);
-    expect(readAnswer("I already said 16. So I carry the ten, and I get 66.", opts).sure).toBe(true);
-    // Any other number beside it still gets the confirmation (PR #624 review round 3).
-    for (const text of ["I got 5. It's 66.", "I already said 5. It's 66.", "I carried 5. It's 66.", "It's 16. It's 66.", "It's 66. I carry the ten."]) {
+    for (const text of ["I carry the ten. It's 66.", "I carried the one. It's 66.", "I carry 1. It's 66.", "So I carry the ten. It's 66."]) {
+      expect([text, readAnswer(text, opts).sure]).toEqual([text, true]);
+    }
+    for (const text of ["I carry 6. It's 66.", "I carried 7. It's 66.", "I carry the 6. It's 66.", "I carry 10. It's 66.", "I got 5. It's 66.", "I carried 5. It's 66.", "It's 16. It's 66.", "It's 66. I carry the ten."]) {
       expect([text, readAnswer(text, opts).sure]).toEqual([text, false]);
     }
+  });
+
+  it("confirms a turn whose carry is not the question's, with no 'Yes' for it", async () => {
+    for (const text of ["I carry 6. It's 66.", "I carried 7. It's 66."]) {
+      const { told } = await play("A", [down(text)]);
+      expect(told[1]).toMatchObject({ act: "confirm", lines: ["confirm.heard"] });
+    }
+  });
+
+  it("lets 'already said' point back only at the child's earlier turns or done steps", async () => {
+    const opts = readOptionsFor(FIXTURES.A as OperationPackage);
+    expect(readAnswer("I already said 16. It's 66.", opts).sure).toBe(false);
+    expect(readAnswer("I already said 16. It's 66.", { ...opts, saidBefore: [16] }).sure).toBe(true);
+    expect(readAnswer("I already said 5. It's 66.", { ...opts, saidBefore: [16] }).sure).toBe(false);
+    const never = await play("A", [down("I already said 16. It's 66.")]);
+    expect(never.told[1]).toMatchObject({ act: "confirm" });
+    const said = await play("A", [down("Is it 16?"), down("I already said 16. It's 66.")]);
+    expect(said.told.at(-1)).toMatchObject({ act: "accept_answer" });
+    const other = await play("A", [down("Is it 16?"), down("I already said 7. It's 66.")]);
+    expect(other.told.at(-1)).toMatchObject({ act: "confirm" });
   });
 });
 

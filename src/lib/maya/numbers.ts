@@ -323,6 +323,10 @@ export interface ReadOptions {
   known?: number[];
   /** Scope reads complete operands too. Answer reading still rejects unfinished fraction calculations. */
   operands?: boolean;
+  /** The carries of the question's worked steps: the only numbers a carry sentence may point back at ("I carry 1."). */
+  carries?: number[];
+  /** Numbers from the child's earlier turns and done steps: the only ones "I already said" may point back at. */
+  saidBefore?: number[];
 }
 
 /** The text as the readers take it: in a fraction call, with its spoken fractions written (writtenFractions). */
@@ -925,6 +929,9 @@ function plainClause(clause: string): boolean {
   });
 }
 
+/** Every word of the sentence is a plain answer word, math talk, a number, a place, an operation, a filler or a unit. */
+export const plainWords = (sentence: string) => sentence.split(/[.!?,;:]+/).every((clause) => plainClause(clause.replace(EXPLANATION_ALL, " ")));
+
 /**
  * Every clause of the final number's sentence (with a line before that runs on into it) and of every sentence after it
  * is plain (plainClause: answer words, math talk, numbers, units): the child committed to it (R391-6). Any other word anywhere there ("66, I doubt it", "Maybe" then
@@ -1004,23 +1011,59 @@ function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRea
   // words the child kept. Any other turn with numbers is confirmed in code's words, or Maya asks which one they mean.
   // A sentence before the last that only points back at work done is no second answer (first-ship practice, C28-r1, C29-r1).
   const numeric = stated.split(SENTENCE_END).filter((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; });
-  const sure = sureApart && numeric.filter((x, i) => i === numeric.length - 1 || !pointsBack(x, options?.known ?? [])).length === 1;
+  const sure = sureApart && numeric.filter((x, i) => i === numeric.length - 1 || !pointsBack(x, options)).length === 1;
   return { read: { kept, final, choice: false, sure, outside: unclear ? [] : answer.values }, sureApart };
 }
 
 /**
- * The sentence only says what the child did or said before: "I carry the ten.", "I already said 16." Every number in it is a
- * digit they point at or one of the question's own numbers (`known`), so "I already said 5." still gets the confirmation.
+ * The sentence only says what the child did or said before, as an exact allow-list. "I carry the one", "I carried the ten",
+ * or a carry of the question's own worked steps ("I carry 1."): never another number ("I carry 6."). "I already said 16.":
+ * only numbers from the child's earlier turns or done steps. Any other sentence with a number is a second answer.
  */
-function pointsBack(sentence: string, known: number[]): boolean {
-  if (!/^\s*(?:(?:so|and|okay|ok|well)\b[,\s]*)*(?:i|we)\s+(?:carry|carried|already\s+(?:said|did|got|told\s+you))\b/i.test(sentence)) return false;
-  const r = readNumbers(sentence);
-  return !r.unreadable && r.values.every((v, i) => r.notAnswer[i] || (v.type === "number" && known.includes(v.value)));
+function pointsBack(sentence: string, options?: ReadOptions): boolean {
+  const s = sentence.trim().replace(/’/g, "'").replace(/[.!]+$/, "").toLowerCase();
+  const start = "^(?:(?:so|and|okay|ok|well)\\b[,\\s]*)*(?:i|we)\\s+";
+  const carried = new RegExp(`${start}(?:carry|carried)\\s+(.+)$`).exec(s);
+  if (carried) {
+    if (/^the\s+(?:one|ten)$/.test(carried[1])) return true;
+    const n = plainNumber(carried[1]);
+    return n !== null && (options?.carries ?? []).includes(n);
+  }
+  const said = new RegExp(`${start}already\\s+(?:said|got|told\\s+you)\\s+(.+)$`).exec(s);
+  if (!said) return false;
+  const n = plainNumber(said[1]);
+  return n !== null && (options?.saidBefore ?? []).includes(n);
+}
+
+/** The whole text is one plain whole number, in digits or words ("16", "sixteen", "twenty-six"), or null. */
+function plainNumber(text: string): number | null {
+  const words = text.trim().toLowerCase().split(/[\s-]+/);
+  if (!(words.length === 1 && /^\d+$/.test(words[0])) && !words.every((w) => kindOf(w) !== null)) return null;
+  const r = readNumbers(text);
+  const v = r.values[0];
+  return !r.unreadable && r.values.length === 1 && v.type === "number" ? v.value : null;
+}
+
+/**
+ * Each sentence of the text that is exactly a sum, as an allow-list: "a plus b [plus c] is|equals|makes d", or the same
+ * with + and =, after at most "so" or "okay". Nothing else may be in the sentence: no other speaker, hedge, question or
+ * negation. Whether it is a step's own sum is the caller's to say. Every other sentence holds no sum.
+ */
+export function exactSums(text: string): { operands: number[]; sum: number }[] {
+  return text.replace(/’/g, "'").split(/(?<=[.!?;])\s+|\n+/).flatMap((raw) => {
+    const m = /^(?:(?:so|okay|ok)\b[,\s]*)?(.+?)\s*(?:\s(?:is|equals|makes)\s|=)\s*(.+?)\s*[.!]*$/i.exec(raw.trim());
+    if (!m) return [];
+    const operands = m[1].split(/\s*\+\s*|\s+plus\s+/i).map(plainNumber);
+    const sum = plainNumber(m[2]);
+    return sum !== null && operands.length >= 2 && operands.every((n) => n !== null) ? [{ operands: operands as number[], sum }] : [];
+  });
 }
 
 /** The child's turn shows doubt about its answer: a doubt word or a question mark from its first number on (R391-5). */
 export const showsDoubt = (said: string, options?: ReadOptions) =>
   doubtNearAnswer(prepared(said, options)) || /\b(?:not (?:so |really |very )?sure|no (?:idea|clue)|don'?t know if)\b/i.test(said.replace(/’/g, "'"));
+/** A step said with a hedge is not heard as done: showsDoubt, or "I think" (the final answer's own path, notClear, reads "I think" itself). */
+export const hedgesStep = (said: string, options?: ReadOptions) => showsDoubt(said, options) || /\bi think\b/i.test(said.replace(/’/g, "'"));
 
 /**
  * The final answer among the numbers read: the last one that can be an answer (not a column's digits, "6 tens", and

@@ -113,9 +113,12 @@ export async function estimateCost(cases: readonly PracticeCase[], runs: number,
     const outputTokens = calls * OUTPUT_TOKENS[role];
     const cost = inputTokens * price.input + outputTokens * price.output;
     roles[role] = { model, calls, inputTokens, outputTokens, usd: cost };
-    usd += cost;
+    // A price that is missing (NaN) or variable (-1) makes the whole estimate no amount, so the checks refuse it: a negative
+    // role must not hide inside a total that still looks right.
+    usd = cost >= 0 ? usd + cost : NaN;
     const worst = worstRequestUsd(role, m[role].largestChars, price);
-    if (worst > largestRequest.usd) largestRequest = { role, usd: worst };
+    if (!(worst >= 0)) largestRequest = { role, usd: NaN };
+    else if (worst > largestRequest.usd) largestRequest = { role, usd: worst };
   }
   return { roles, usd, largestRequest };
 }

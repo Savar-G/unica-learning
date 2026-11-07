@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { aiMayaModel } from "@/lib/maya-model";
 import { aiTalkReviewer } from "@/lib/maya-talk-review";
 import type { AiClient } from "@/lib/ai-client";
-import { aiChildSimulator, aiJudge, aiValidityJudge, MAX_OUTPUT_TOKENS } from ".";
-import { checkCredits, CREDITS_URL, DEFAULT_CONCURRENCY, inFlightNeed, OPENROUTER_CONCURRENCY, practiceConcurrency } from "./credits";
+import { aiChildSimulator, aiJudge, aiValidityJudge, estimateCost, MAX_OUTPUT_TOKENS, PRACTICE_CASES } from ".";
+import { capProblem, checkCredits, CREDITS_URL, DEFAULT_CONCURRENCY, inFlightNeed, OPENROUTER_CONCURRENCY, practiceConcurrency } from "./credits";
 
 const KEY = "sk-or-secret-key-value";
 const credits = (total: unknown, used: unknown, status = 200) => async () => new Response(JSON.stringify({ data: { total_credits: total, total_usage: used } }), { status });
@@ -53,6 +53,22 @@ describe("the credit check before a paid run", () => {
     for (const amount of ["USD 12.48", "USD 0.26", "USD 5.45"]) expect(r.message).toContain(amount);
   });
 
+  it.each([
+    ["a missing price: the estimate is not a number", NaN, 1],
+    ["a missing price: the in-flight need is not a number", 10, NaN],
+    ["a variable price of -1: a negative estimate", -5, 1],
+    ["a variable price of -1: a negative in-flight need", 10, -1],
+    ["an endless estimate", Infinity, 1],
+  ])("refuses %s", async (_name, estimate, inFlight) => {
+    const r = await check(credits(1000, 0), estimate, inFlight);
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("refused");
+  });
+
+  it.each([["negative credits", -1, 0], ["negative usage", 100, -5], ["endless credits", Infinity, 0]])("refuses %s from OpenRouter", async (_name, total, used) => {
+    expect(await check(async () => new Response(JSON.stringify({ data: { total_credits: total, total_usage: used } }).replace("null", "1e999")))).toMatchObject({ ok: false, remainingUsd: null });
+  });
+
   it("never prints the key", async () => {
     const answers = [credits(15, 0), credits(1, 0), credits(1, 0, 403), async () => { throw new Error(`boom ${KEY}`); }];
     for (const fetch of answers) expect((await check(fetch)).message).not.toContain(KEY);
@@ -60,6 +76,34 @@ describe("the credit check before a paid run", () => {
 
   it("needs one largest request for each run in flight", () => {
     expect(inFlightNeed(2, 0.25)).toBe(0.5);
+  });
+});
+
+describe("the spending cap's check", () => {
+  it("refuses an estimate above the cap, and one that is not a real amount", () => {
+    expect(capProblem(12, 20)).toBeNull();
+    expect(capProblem(20, 20)).toBeNull();
+    expect(capProblem(21, 20)).toContain("above the cap");
+    for (const estimate of [NaN, Infinity, -1]) expect(capProblem(estimate, 20)).toContain("not a real amount");
+    expect(capProblem(1, NaN)).toContain("not a real amount");
+  });
+});
+
+describe("an estimate with a price that is no amount", () => {
+  const good = { input: 1e-6, output: 1e-6 };
+  const models = { maya: "m", simulator: "s", validity: "v", judge: "j" };
+  const one = PRACTICE_CASES.slice(0, 1);
+  it.each([["a variable price of -1", -1], ["a missing price", NaN]])("is no amount at all with %s on one role, so both checks refuse it", async (_name, bad) => {
+    const e = await estimateCost(one, 1, models, { maya: good, simulator: good, validity: good, judge: { input: bad, output: bad } });
+    expect(e.usd).toBeNaN();
+    expect(e.largestRequest.usd).toBeNaN();
+    expect(capProblem(e.usd, 100)).toContain("not a real amount");
+    expect((await check(credits(1000, 0), e.usd, inFlightNeed(2, e.largestRequest.usd))).ok).toBe(false);
+  });
+  it("stays a real amount with real prices", async () => {
+    const e = await estimateCost(one, 1, models, { maya: good, simulator: good, validity: good, judge: good });
+    expect(e.usd).toBeGreaterThan(0);
+    expect(e.largestRequest.usd).toBeGreaterThan(0);
   });
 });
 

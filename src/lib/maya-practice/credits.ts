@@ -37,6 +37,14 @@ export interface CreditCheck {
 }
 
 const usd = (x: number) => `USD ${x.toFixed(2)}`;
+/** A real amount of money: a finite number, not negative. A missing price gives NaN, and OpenRouter's variable price is -1. */
+const isAmount = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x) && x >= 0;
+
+/** Why the estimate does not fit the spending cap, or null. An estimate that is not a real amount never fits. */
+export function capProblem(estimateUsd: number, capUsd: number): string | null {
+  if (!isAmount(estimateUsd) || !isAmount(capUsd)) return `The run is refused: the estimate (${usd(estimateUsd)}) or the cap (${usd(capUsd)}) is not a real amount. Check each model's price.`;
+  return estimateUsd > capUsd ? `The estimate (${usd(estimateUsd)}) is above the cap (${usd(capUsd)}). Raise --max-usd or run fewer cases.` : null;
+}
 
 /** The credits left, or why they could not be read. The reason holds a status or a kind of failure, never a key or a body. */
 async function readRemaining(fetch: typeof globalThis.fetch, key: string): Promise<{ remaining: number } | { why: string }> {
@@ -55,7 +63,7 @@ async function readRemaining(fetch: typeof globalThis.fetch, key: string): Promi
   }
   const total = data?.data?.total_credits;
   const used = data?.data?.total_usage;
-  if (typeof total !== "number" || typeof used !== "number" || !Number.isFinite(total) || !Number.isFinite(used)) return { why: "OpenRouter's answer had no credit amounts" };
+  if (!isAmount(total) || !isAmount(used)) return { why: "OpenRouter's answer had no credit amounts" };
   return { remaining: total - used };
 }
 
@@ -63,6 +71,9 @@ async function readRemaining(fetch: typeof globalThis.fetch, key: string): Promi
 export async function checkCredits(input: { fetch: typeof globalThis.fetch; key: string; estimateUsd: number; inFlightUsd: number }): Promise<CreditCheck> {
   const { estimateUsd, inFlightUsd } = input;
   const amounts = `estimate ${usd(estimateUsd)} (with its ${MARGIN} margin), in-flight need ${usd(inFlightUsd)}`;
+  if (!isAmount(estimateUsd) || !isAmount(inFlightUsd)) {
+    return { ok: false, estimateUsd, inFlightUsd, remainingUsd: null, message: `The run is refused: ${amounts} is not a real amount. Check each model's price.` };
+  }
   const read = await readRemaining(input.fetch, input.key);
   if ("why" in read) {
     return { ok: false, estimateUsd, inFlightUsd, remainingUsd: null, message: `The run is refused: the credits could not be read (${read.why}). ${amounts}, remaining unknown.` };
