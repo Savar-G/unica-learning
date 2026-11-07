@@ -61,6 +61,7 @@ import type { QuestionRef } from "@/lib/question-package";
 import type { Curriculum, CurriculumLevel, Delivery, Range } from "@/lib/workbook-curriculum";
 import { sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 import type { BookSignals } from "@/lib/workbook-signals";
+import type { WorkbookProgressDecision } from "./workbook-progress";
 
 /** Shared ten-day schedule (#479). Apply the range inside each skill's curriculum bound.
  * Fixed benchmarks, measures and fractions keep their values; support and complexity still change.
@@ -332,7 +333,17 @@ export interface ReviewFallback {
   reason: "no eligible review steps";
 }
 
+/** Explicit preview-only policy. This does not authorize generation or select a new representation. */
+export interface ProgressPlanInput {
+  version: 1;
+  priorPassedSteps: number;
+  decision: Pick<WorkbookProgressDecision, "version" | "snapshotId" | "cutoff" | "curriculum" | "selection" | "target"
+    | "status" | "action" | "reason" | "passed" | "representation" | "parentFollowUp" | "focusedPractice" | "repeatIncrement">;
+}
+
 export interface WorkbookPlan {
+  /** Present only when the caller explicitly supplies a versioned progress decision. Intent, not rendered behavior. */
+  progress?: ProgressPlanInput & { checkWork: boolean; teachingDays: number[] };
   personal?: BookSignals & {
     start?: import("./workbook-placement").PlacementTrace;
     why?: import("./workbook-why").WorkbookWhy;
@@ -379,6 +390,8 @@ export type PlanProfile = {
 };
 
 export interface PlanInput {
+  /** Opt-in pure preview policy. Omit this property for the unchanged production plan. */
+  progress?: ProgressPlanInput;
   /** Absent, or without assessment evidence: preserve the previous plan byte for byte. */
   personal?: BookSignals;
   profile: PlanProfile;
@@ -515,8 +528,53 @@ const tracksOf = (day: readonly Shape[]) => {
 const evenSteps = (pages: number, count: number) =>
   Array.from({ length: count }, (_, i) => Math.max(1, Math.floor(pages / count) + (i < pages % count ? 1 : 0)));
 
+function progressProblem(input: PlanInput): string | null {
+  try {
+    const p = input.progress!, d = p.decision;
+    const s = input.level.units.find(u => u.code === d.selection.unit)?.skills.find(s => s.id === d.selection.skill);
+    const count = s?.steps.length ?? 0;
+    if (p.version !== 1 || d.version !== 1 || !s || s.delivery !== "new-step" || !count
+      || !Number.isSafeInteger(p.priorPassedSteps) || p.priorPassedSteps < 0 || p.priorPassedSteps > count
+      || !Number.isInteger(d.selection.step) || d.selection.step < 1 || d.selection.step > count
+      || d.target.unit !== d.selection.unit || d.target.skill !== d.selection.skill
+      || !Number.isInteger(d.target.step) || d.target.step < 1 || d.target.step > count
+      || !d.snapshotId?.trim() || !Number.isSafeInteger(d.cutoff) || d.cutoff < 0
+      || d.curriculum.key !== "bc" || !d.curriculum.version?.trim()
+      || Object.keys(d.passed).length !== 1 || !Object.hasOwn(d.passed, s.id)
+      || d.passed[s.id] !== (input.passed[s.id] ?? 0)
+      || !["complete", "insufficient-evidence"].includes(d.status)) return "invalid progress planning input";
+    if ((input.progression ?? "steps") !== "steps") return "unsupported progress unit progression";
+    const mastered = d.action === "advance" || d.action === "skill-complete";
+    const expectedReason = { "advance": "mastered", "skill-complete": "mastered", "repeat-new-numbers": "practice",
+      "repeat-check-work": "careless", "regress-represent": "conceptual", "retain-review": "unknown-cause",
+      "retain-unfinished": "incomplete-sample", "change-approach": "repeat-cap" }[d.action];
+    if (!expectedReason || d.reason !== expectedReason
+      || (d.status === "insufficient-evidence") !== (d.action === "retain-unfinished")
+      || d.passed[s.id] !== (mastered ? Math.max(p.priorPassedSteps, d.selection.step) : p.priorPassedSteps)
+      || (mastered && d.selection.step > p.priorPassedSteps + 1)
+      || d.target.step !== (d.action === "advance" ? d.selection.step + 1 : d.action === "regress-represent" ? Math.max(1, d.selection.step - 1) : d.selection.step)
+      || (d.action === "skill-complete" && (d.selection.step !== count || d.passed[s.id] !== count))
+      || (d.action === "advance" && (d.selection.step >= count || d.target.step !== d.passed[s.id] + 1))) return "inconsistent progress target or mastery";
+    const another = d.action === "regress-represent" || d.action === "change-approach";
+    if (!d.representation.current?.trim() || d.representation.request !== (another ? "another" : "keep")
+      || d.representation.maya !== (d.action === "change-approach") || d.parentFollowUp !== (d.action === "change-approach")
+      || d.repeatIncrement !== (d.action === "repeat-new-numbers" || d.action === "repeat-check-work" ? 1 : 0)
+      || !Array.isArray(d.focusedPractice)) return "inconsistent progress intent";
+    const standard = MAP_SKILLS.get(s.id)?.standard;
+    if (standard?.code !== d.selection.unit || (standard.grade > input.grade
+      && !input.profile.standards.some(s => s.code === standard.code && s.status === "secure"))) return "unsupported progress school scope";
+    return null;
+  } catch { return "invalid progress planning input"; }
+}
+
 /** The child's next two weeks (see the header for the rules), or why it cannot be planned. */
 export function planWorkbook(input: PlanInput): PlanResult {
+  if (input.progress !== undefined) {
+    const problem = progressProblem(input);
+    if (problem) return { ok: false, reason: problem };
+  }
+  const progress = input.progress?.decision;
+  const held = progress && progress.action !== "advance" && progress.action !== "skill-complete" ? progress.target : null;
   const { level } = input;
   if (!Number.isInteger(level.number) || level.number < 1 || level.number > LEVELS) return { ok: false, reason: "the level is not U1 to U30" };
   const levelSkills = level.units.flatMap((u) => u.skills.map((s) => ({ ...s, unit: u.code })));
@@ -585,6 +643,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
   /** How many steps a skill has: its drafted ones, else DEFAULT_STEPS; an activity skill is one page. */
   const stepCount = (s: (typeof levelSkills)[number]) => s.steps.length > 0 ? s.steps.length : s.delivery === "activity" ? 1 : DEFAULT_STEPS;
   for (const s of taught) {
+    if (held?.skill === s.id) {
+      remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { ...held, pages: s.steps[held.step - 1].pages }]);
+      continue;
+    }
     if (secureUnits.includes(s.unit)) continue;
     // An activity skill's one page is on its last step (the skeleton puts it there).
     if (s.delivery === "activity" && steps) {
@@ -607,7 +669,8 @@ export function planWorkbook(input: PlanInput): PlanResult {
       unitsLeft.push(pending.splice(at, 1)[0]);
     }
   }
-  const testWorkbook = unitsLeft.length === 0 || input.workbook.inLevel >= level.workbooks + 2;
+  const testWorkbook = progress && progress.action !== "skill-complete" ? false
+    : unitsLeft.length === 0 || input.workbook.inLevel >= level.workbooks + 2;
   const support = input.support !== null && input.workbook.inLevel < SUPPORT_WORKBOOKS ? input.support : null;
 
   // Unit A, then unit B: the next unit left that needs no skill of A; A goes on to later units B does not need. No B in
@@ -779,16 +842,18 @@ export function planWorkbook(input: PlanInput): PlanResult {
     const taken = new Map<string, number>();
     const lastDay = new Map<string, number>();
     const done = (skill: string, day: number) => {
+      // A retained target is unfinished. Teaching it once does not unlock its dependants.
+      if (held?.skill === skill) return false;
       const list = bySkill.get(skill);
       if (!list) return true;
       return (taken.get(skill) ?? 0) >= list.length && (lastDay.get(skill) ?? 0) < day;
     };
     const ready = (skill: string, day: number) => (MAP_SKILLS.get(skill)?.skill.requires ?? []).every((r) => !levelIds.has(r) || done(r, day));
     const nextStep = (day: number): QueuedStep | null => {
-      const window = order.filter((k) => (taken.get(k) ?? 0) < bySkill.get(k)!.length && ready(k, day)).slice(0, STEP_WINDOW);
+      const window = order.filter((k) => (held?.skill === k || (taken.get(k) ?? 0) < bySkill.get(k)!.length) && ready(k, day)).slice(0, STEP_WINDOW);
       const pick = [...window].sort((a, b) => (lastDay.get(a) ?? 0) - (lastDay.get(b) ?? 0) || order.indexOf(a) - order.indexOf(b))[0];
       if (!pick) return null;
-      const step = bySkill.get(pick)![taken.get(pick) ?? 0];
+      const step = bySkill.get(pick)![held?.skill === pick ? 0 : taken.get(pick) ?? 0];
       taken.set(pick, (taken.get(pick) ?? 0) + 1);
       lastDay.set(pick, day);
       return step;
@@ -799,8 +864,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
         const step = teaching && day <= lastStart ? nextStep(day) : null;
         if (step) {
           current.A = { step, left: step.pages };
-          starts.push({ ...stepRef(step), day, track: "A" });
-          startDays.A.add(day);
+          if (held?.skill !== step.skill || !starts.some(s => s.skill === held.skill)) {
+            starts.push({ ...stepRef(step), day, track: "A" });
+            startDays.A.add(day);
+          }
         } else if (teaching && starts.length) {
           // A day with no new step (Day 10) works on the deepest step the book reached, the latest of them.
           const deepest = [...starts].sort((x, y) => y.step - x.step || y.day - x.day)[0];
@@ -926,6 +993,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   const stepsBefore = (day: number) => sim.starts.filter((s) => s.day < day).map((s) => s.skill);
   const supportSkills = support ? STANDARDS.get(support)!.skills.map((k) => k.id) : [];
   const taughtStep = (skill: string, day: number) => Math.max(input.passed[skill] ?? 0,
+    ...(progress?.selection.skill === skill ? [progress.selection.step] : []),
     ...sim.starts.filter(s => s.skill === skill && s.day < day).map(s => s.step),
     ...[...input.reviews, ...input.missedReviews].filter(r => r.skill === skill).map(r => r.step));
   const personalReviewStep = (skill: string, day: number): number | undefined => {
@@ -1209,9 +1277,16 @@ export function planWorkbook(input: PlanInput): PlanResult {
     }
   }
 
+  const teachingDays = progress ? days.filter(d => d.pages.some(p => p.parts.some(p => p.step?.skill === progress.selection.skill))).map(d => d.day) : [];
+  if (progress && progress.action !== "skill-complete" && (!teachingDays.length
+    || !days.some(d => d.pages.some(p => p.parts.some(p => p.step?.skill === progress.target.skill && p.step.step === progress.target.step))))) {
+    return { ok: false, reason: "unsupported progress target: no teaching room or unmet prerequisites" };
+  }
+
   return {
     ok: true,
     plan: {
+      ...(input.progress ? { progress: { ...structuredClone(input.progress), checkWork: progress!.action === "repeat-check-work", teachingDays } } : {}),
       ...(personal ? { personal: { ...personal, ...(timeShortfalls.length ? { timeShortfalls } : {}), ...(notReviewed.length ? { notReviewed } : {}), ...(reviewFallbacks.length ? { reviewFallbacks } : {}) } } : {}),
       level: n,
       lead: level.lead,
