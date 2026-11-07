@@ -7,10 +7,32 @@
   "constraint_mode": "existing-system",
   "contract": ".design/experiments/r679/contract.md",
   "preview": "/admin/dashboard?view=schedule&scenario=printed&size=desktop",
-  "states": ["printed", "accepted", "partial", "expired", "unknown", "waiting", "unavailable", "ended"],
-  "sizes": ["desktop", "phone"],
-  "status": "local implementation; root browser and stored-book proof pending",
-  "screenshots": [],
+  "states": [
+    "printed",
+    "accepted",
+    "partial",
+    "expired",
+    "unknown",
+    "waiting",
+    "unavailable",
+    "ended"
+  ],
+  "sizes": [
+    "desktop",
+    "phone"
+  ],
+  "status": "local gates and independent code recheck passed; current-main integration and live verification pending",
+  "screenshots": [
+    "admin-desktop.png",
+    "admin-phone.png",
+    "kai-desktop.png",
+    "kai-phone.png",
+    "leah-desktop.png",
+    "leah-phone.png",
+    "waiting-desktop.png",
+    "waiting-phone.png"
+  ],
   "release_flags": "unchanged",
-  "decision_row": "root-owned"
+  "decision_row": "D-297",
+  "ui_approval": "Pending the full parent dashboard review page; family switches remain off"
 }
