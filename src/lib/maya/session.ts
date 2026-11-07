@@ -1308,6 +1308,17 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
         spoken.segments = [{ kind: "math", text: areaOffers(pkg)[0].texts[0] }];
       }
       if (!rightResult) return no("accepts_wrong_answer", "Only a right final answer the child said and kept can be accepted.", allowedNow);
+      // The answer alone says nothing of how the child got it, and "I'm done" next closes the call (first-ship practice,
+      // C38-r1: "Well done!", then goodbye). So this turn asks, with code's own line, whatever the proposal's lines were.
+      if (pkg && methodUnseen(s, done, spoken)) {
+        const ask = packageLines(pkg).thinking()[0];
+        const room = turnWordLimit(s) - speechWords(spoken.segments.map((o) => o.text).join(" "));
+        const pool = ask.texts.map((_, i) => i).filter((i) => speechWords(ask.texts[i]) <= room);
+        if (pool.length > 0) {
+          const pick = pool[chooseWording(s.variety, pool.map((i) => ask.wordingIds?.[i] ?? `${ask.key}#${i}`), s.now!)];
+          spoken.segments.push({ kind: "math", text: ask.texts[pick] });
+        }
+      }
       s.solved ??= "child";
       if (s.state !== "TIME_CLOSE") moveTo(s, "CHECK");
       break;
@@ -1510,6 +1521,25 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     waitForChild(s);
   }
   return { session: s, effects, refusal: null };
+}
+
+/** Words that show how the child got an answer, though they hold no number ("I used eighths"). */
+const SHOWS_METHOD = /\b(?:because|since|cause|cuz|coz|used|using|carr(?:y|ied|ying)|regroup\w*|borrow\w*|trad(?:e|ed|ing)|add(?:ed|ing)|subtract\w*|multipl\w*|divid\w*|common|changed|counted|first|then)\b/i;
+
+/**
+ * The accept turn should ask how the child got the answer: no work step is done, the child's turn shows no working, the
+ * lines chosen ask nothing, and the child is not done and time is not up (#605: "I'm done" gets a warm close).
+ */
+function methodUnseen(s: Session, done: readonly string[], spoken: Spoken): boolean {
+  if (!s.turn || !s.package || done.length > 0 || s.state === "TIME_CLOSE") return false;
+  // The area's reply is one fixed sentence with its square unit (C40); a turn of the model's own words holds no math line,
+  // and adding one would refuse the turn.
+  if (areaOffers(s.package).length > 0 || !spoken.chosen.some((o) => o.line === "answer.right")) return false;
+  if (spoken.chosen.some((o) => o.line === "check.explain" || o.line === "check.thinking")) return false;
+  const opts = readOptionsFor(s.package);
+  if (saysDone(s.turn.text, opts, s.package.answer.value) || SHOWS_METHOD.test(s.turn.text)) return false;
+  const read = turnRead(s);
+  return read.final !== null && read.kept.every((v) => sameValue(v, read.final!));
 }
 
 /** The number a plain yes gives in this turn ("Did you say 66?", "Yes."), or null (#605). */
@@ -1970,6 +2000,41 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
 }
 
 /**
+ * The answers code reads in the child's own words, for a turn the model did not read (its call failed, or its reading named
+ * none): first-ship practice, C28-r1 and C29-r1, where "7 plus 9 is 16." got "Find the ones." and "Yes, it's 66." got the
+ * ones again. Only right answers, never a judgement of wrong work, and each is checked by `checkAnswers` like a model's.
+ * Strict, so a number about something else marks nothing: a final answer the child is sure of; a step said as its own sum
+ * ("7 plus 9 is 16"), in order from the first step not done; or one sure number that answers the step Maya is on.
+ */
+function heardAnswers(session: Session): ChildAnswer[] {
+  const pkg = session.package;
+  if (!pkg || !session.turn || session.scopeDue) return [];
+  const read = turnRead(session);
+  if (read.choice) return [];
+  const text = session.turn.text;
+  const opts = readOptionsFor(pkg);
+  const found: ChildAnswer[] = [];
+  const sums = numberSentences(text, opts);
+  for (const st of workSteps(pkg)) {
+    if (session.done.includes(st.id)) continue;
+    const own = valuesIn(stepText(st, pkg.operation), { ...opts, operands: true });
+    const asSum = (v: AnswerValue) => !showsDoubt(text, opts) && sums.some((sentence) => {
+      const said = valuesIn(sentence, opts);
+      return said.length >= 2 && saidAs(said.at(-1), v) && said.slice(0, -1).every((x) => own.some((o) => saidAs(o, x)));
+    });
+    // Once Maya showed this step (H3), a lone number only copies what she said.
+    const onThisStep = session.ladder.step === st.id && session.ladder.hint >= 0 && session.ladder.hint < 3;
+    const alone = (v: AnswerValue) => onThisStep && read.sure && read.kept.length === 1 && saidAs(read.final ?? undefined, v);
+    const value = stepAnswers(st).find((v) => asSum(v) || alone(v));
+    if (!value) break;
+    found.push({ value, step: st.id, verdict: "right" });
+  }
+  // A hedge ("I think it's 66") or a guess gets its own path (notClear, check.guess), not an accepted answer (#605).
+  if (session.solved === null && read.final && read.sure && !notClear(session, {}) && !saysGuess(text) && rightForQuestion(pkg, read.final)) found.push({ value: read.final, step: "result", verdict: "right" });
+  return found.filter((a) => checkAnswers(session, [a], []) === null);
+}
+
+/**
  * What code keeps of the refused proposals' readings beside the answers (#605, F03: "Can you promise I will get an A?" lost
  * its off-topic reading and got a teaching step). Read field by field, the last reading that names a field wins. None of
  * these adds math or changes an answer: off topic and writing say less, a request for harmful content gets code's decline,
@@ -2001,7 +2066,8 @@ function keptReading(session: Session, refused: readonly unknown[], answers: rea
  * lines or a bank phrase, with no free talk and no board. Each carries what code keeps of the refused proposals'
  * readings (#389): the answers code checks alone. So a right step the child said is recorded and acknowledged, and
  * the help goes on from the first step still not done; Maya does not ask again for a step already done, start the
- * easier example after the child has made progress, or ask for a written answer the child already wrote. The rest of the
+ * easier example after the child has made progress, or ask for a written answer the child already wrote. A turn the
+ * model did not read gets code's own strict reading (heardAnswers). The rest of the
  * turn's reading is kept too (keptReading, #605), and help rises one level per child turn on a step still not done. Only
  * the model's words are replaced.
  */
@@ -2009,7 +2075,12 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   if (session.outcome || session.expect !== "maya") return [];
   const pkg = session.package;
   const yes = yesAnswer(session);
-  const answers = yes ? [yes] : keptAnswers(session, refused);
+  const kept = yes ? [yes] : keptAnswers(session, refused);
+  // A reading that named the turn off topic or harmful stands: code's own reading adds no answer to it.
+  const named = keptReading(session, refused, kept);
+  const heard = yes || named.offTopic || named.unsafeRequest ? [] : heardAnswers(session)
+    .filter((a) => !kept.some((k) => k.step === a.step && (k.problem ?? "target") === "target"));
+  const answers = [...kept, ...heard];
   const keptFields = keptReading(session, refused, answers);
   const reading: Reading | undefined = answers.length > 0 || Object.keys(keptFields).length > 0 ? { ...keptFields, ...(answers.length > 0 ? { answers } : {}) } : undefined;
   const checked: Checked[] = answers.map((answer) => ({ answer, problem: answer.problem ?? "target" }));
@@ -2081,6 +2152,11 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         // saying it is right again comes last (after the request to write it, or a question about the child's work).
         lineSets = [...offers.filter((o) => o.line !== "answer.right"), ...offers.filter((o) => o.line === "answer.right")]
           .map((o) => make(act, [o], { understanding: "uncertain" }));
+        break;
+      case "give_answer":
+        // Code adds how the parts make the answer and the answer itself. A line of the step here would ask a question that
+        // the same turn answers (C04-r1: "What can you do there? That makes 66.").
+        lineSets = [];
         break;
       case "close":
         // A content hold (#527): the held lines together, in order.
@@ -2468,7 +2544,10 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       const simplify = view.steps.includes("result") ? view.equal ?? s.equalForm ?? null : null;
       const own = [...candidates.flatMap((v) => l.equal(v, simplestWords(pkg))), ...(simplify ? l.simplifyOwn(simplify) : [])];
       // A right final answer said with doubt or as a guess: a lead-in to check it together, before the step's line (#605).
-      const check = s.solved === null && s.turn ? (saysGuess(s.turn.text) ? l.guess() : doubtfulRight(s) ? l.together() : []) : [];
+      // Never once this step was shown at H3: that check asks the step's question at H2 or below, a step back from what the
+      // child saw, and the given answer must follow H3 (first-ship practice, C04-r1, hint_skipped). The help goes on instead.
+      const shownHere = view.steps[0] === s.ladder.step && s.ladder.hint >= 3;
+      const check = s.solved === null && s.turn && !shownHere ? (saysGuess(s.turn.text) ? l.guess() : doubtfulRight(s) ? l.together() : []) : [];
       return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...l.thinking()];
     }
     case "accept_answer": {

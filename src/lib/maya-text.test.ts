@@ -298,7 +298,7 @@ describe("a twice-refused proposal keeps what code can check of its reading (#38
     const b = scripted([OPEN, accept, writeAgain]);
     await b.session.start();
     await b.session.child("I got 66!");
-    expect(said(await b.session.child("Yay."))).toMatch(/write 66/i);
+    expect(said(await b.session.child("Yay."))).toMatch(/\b(?:write|put) 66\b/i);
   });
 
   it("uses the final-step help line once every column is done: no workaround with the question line", async () => {

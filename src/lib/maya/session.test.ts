@@ -957,7 +957,7 @@ describe("code's fallback keeps what code can check of a refused reading (#389)"
 
   it("builds no fallback reading from a proposal that is not an object, and none when it is not Maya's turn", () => {
     const c = opened();
-    c.child("Seven plus nine is sixteen.");
+    c.child("I am not sure about the ones.");
     for (const p of fallbacks(c.session, ["junk", null, { reading: "x" }, { reading: { answers: "16" } }])) expect(p).not.toHaveProperty("reading");
     const waiting = call();
     expect(fallbacks(waiting.session, [])).toEqual([]);

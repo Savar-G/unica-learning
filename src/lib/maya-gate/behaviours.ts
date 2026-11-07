@@ -1127,7 +1127,8 @@ export const BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
       outputs: [
-        { mayaTurn: 1, lines: [variants(fractionLines.answerRight(frac(14, 16)), "answer.right")] },
+        // The child gave only the answer, so the turn asks how they got it (first-ship practice, C38-r1).
+        { mayaTurn: 1, lines: [variants(fractionLines.answerRight(frac(14, 16)), "answer.right"), variants(fractionLines.thinking(), "check.thinking")] },
         { mayaTurn: 2, lines: [variants(fractionLines.writeAnswer(frac(14, 16)), "write.answer")] },
       ],
       never: ["guide", "give_answer"],

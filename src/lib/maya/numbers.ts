@@ -326,7 +326,13 @@ export interface ReadOptions {
 }
 
 /** The text as the readers take it: in a fraction call, with its spoken fractions written (writtenFractions). */
-const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text, options).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
+const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text.replace(POINTING_ONE, "$1"), options).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
+/**
+ * "that one" or "this one" at the end of a clause is the question, not a number ("I got 7/8 for that one."). In a fraction
+ * call the stray "one" made the turn unreadable, so Maya asked for an answer the child had just given (first-ship practice,
+ * C38-r1). "that one third" goes on to a fraction and stays as it is.
+ */
+const POINTING_ONE = /\b(that|this)\s+one\b(?=\s*(?:[.,;:!?\n]|$))/gi;
 
 /** The denominator words code reads, one word each, singular and plural: "half" and "halves" are 2. */
 const DENOMINATORS = new Map<string, { value: number; plural: boolean }>();
@@ -996,8 +1002,20 @@ function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRea
   const sureApart = !unclear && !workingHidesAnswer(working.dropped, final, options?.known ?? []) && !negativeNearAnswer(text) && (!options?.fractions || !answer.unreadable) && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
   // PR #624 review round 3: a turn commits a final answer only with exactly one sentence that holds a number, in the
   // words the child kept. Any other turn with numbers is confirmed in code's words, or Maya asks which one they mean.
-  const sure = sureApart && stated.split(SENTENCE_END).filter((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; }).length === 1;
+  // A sentence before the last that only points back at work done is no second answer (first-ship practice, C28-r1, C29-r1).
+  const numeric = stated.split(SENTENCE_END).filter((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; });
+  const sure = sureApart && numeric.filter((x, i) => i === numeric.length - 1 || !pointsBack(x, options?.known ?? [])).length === 1;
   return { read: { kept, final, choice: false, sure, outside: unclear ? [] : answer.values }, sureApart };
+}
+
+/**
+ * The sentence only says what the child did or said before: "I carry the ten.", "I already said 16." Every number in it is a
+ * digit they point at or one of the question's own numbers (`known`), so "I already said 5." still gets the confirmation.
+ */
+function pointsBack(sentence: string, known: number[]): boolean {
+  if (!/^\s*(?:(?:so|and|okay|ok|well)\b[,\s]*)*(?:i|we)\s+(?:carry|carried|already\s+(?:said|did|got|told\s+you))\b/i.test(sentence)) return false;
+  const r = readNumbers(sentence);
+  return !r.unreadable && r.values.every((v, i) => r.notAnswer[i] || (v.type === "number" && known.includes(v.value)));
 }
 
 /** The child's turn shows doubt about its answer: a doubt word or a question mark from its first number on (R391-5). */

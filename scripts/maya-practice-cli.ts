@@ -11,7 +11,7 @@
 //   --cases <ids>            only these cases, comma-separated (default: every required case). A part of the suite
 //                            is never a gate result: the exit code is 1.
 //   --runs <n>               runs per case (default 3; anything else is not a gate result either)
-//   --concurrency <n>        runs at the same time (default 3)
+//   --concurrency <n>        runs at the same time (default 2 on paid OpenRouter calls, else 3)
 //   --out <dir>              where to save the run (default traces/maya-practice/<time>)
 //   --report <dir>           rebuild report.md and report.json from a saved run, and stop
 //   --maya-model <id>        Maya's model, the turn model (default AI_MODEL, else the AI client's default; with
@@ -38,6 +38,10 @@
 //
 // The key: OPENROUTER_API_KEY in the environment, or OPENROUTER_API_KEY_FILE (a file that holds only the key), or
 // .env.local. The exit code is 0 only when every planned run passed.
+//
+// Before a paid OpenRouter run, the credit check (src/lib/maya-practice/credits.ts) reads what is left on the account and
+// refuses the run when it is below the estimate plus the need of the runs in flight, or when it cannot be read. OpenRouter's
+// credits route needs a management key: OPENROUTER_MANAGEMENT_KEY or OPENROUTER_MANAGEMENT_KEY_FILE, else the same key.
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -56,8 +60,8 @@ import type { Database } from "@/lib/database";
 import { createSpendLedger, recordLocalSpend, spendConfig } from "@/lib/maya-spend";
 import { mayaSpendStore } from "@/lib/maya-spend-store";
 import {
-  generatedPracticeSet, practiceExecution, aiChildSimulator, aiJudge, aiValidityJudge, buildReport, fakeValidityJudge, fileHash, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, meteredFetch, planSuite, PRACTICE_CASES, reportMarkdown,
-  RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending, timedTurns, turnTimeMarkdown,
+  generatedPracticeSet, practiceExecution, aiChildSimulator, aiJudge, aiValidityJudge, buildReport, checkCredits, fakeValidityJudge, fileHash, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, inFlightNeed, meteredFetch, planSuite, practiceConcurrency, PRACTICE_CASES, reportMarkdown,
+  RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending, timedTurns, turnTimeMarkdown, worstReviewUsd,
   type ExecutionOptions, type AiJudge, type ByRole, type ChildSimulator, type ValidityJudge, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
 } from "@/lib/maya-practice";
 
@@ -95,14 +99,15 @@ interface Options {
   maxUsd: number | null;
   cases: string[] | null;
   runs: number;
-  concurrency: number;
+  /** Null: the default for the provider (practiceConcurrency). */
+  concurrency: number | null;
   out: string | null;
   report: string | null;
   models: Partial<Record<Role, string>>;
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { fake: false, channel: "voice", generated: false, provider: "openrouter", freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: 3, out: null, report: null, models: {} };
+  const o: Options = { fake: false, channel: "voice", generated: false, provider: "openrouter", freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: null, out: null, report: null, models: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -169,6 +174,20 @@ function apiKey(root: string): string {
   // vercel env pull writes an empty value for a Secret variable.
   if (!key) throw new Error("No OpenRouter key. Set OPENROUTER_API_KEY, or OPENROUTER_API_KEY_FILE=<file with the key>. Or run with --fake.");
   process.env.OPENROUTER_API_KEY = key;
+  return key;
+}
+
+/**
+ * The key for OpenRouter's credits route, which needs a management key: OPENROUTER_MANAGEMENT_KEY, or
+ * OPENROUTER_MANAGEMENT_KEY_FILE (a file that holds only the key), else the run's own key. Put in process.env so every saved
+ * file and log line redacts it. Never printed.
+ */
+function creditsKey(runKey: string): string {
+  let key = process.env.OPENROUTER_MANAGEMENT_KEY?.trim();
+  const file = process.env.OPENROUTER_MANAGEMENT_KEY_FILE;
+  if (!key && file) key = readFileSync(resolve(file), "utf8").trim();
+  if (!key) return runKey;
+  process.env.OPENROUTER_MANAGEMENT_KEY = key;
   return key;
 }
 
@@ -348,6 +367,7 @@ async function main() {
   const generated = o.generated ? await generatedPracticeSet() : null;
   const required = [...PRACTICE_CASES, ...(generated?.cases ?? [])];
   const execution = practiceExecution(o);
+  const concurrency = o.concurrency ?? practiceConcurrency(o.provider, o.fake);
   const cases = o.cases ? o.cases.map((id) => required.find((c) => c.id === id) ?? (() => { throw new Error(`no case ${id}`); })()) : required;
   if (o.report) process.exit(writeReport(cases, o.runs, resolve(o.report), execution) ? 0 : 1);
   // The fake rule player is always Maya with --fake: a model named here would be ignored without a word.
@@ -415,12 +435,16 @@ async function main() {
   } else {
     const anthropic = o.provider === "anthropic";
     const price = anthropic ? anthropicPrices(models) : await prices(models);
+    let need: { estimateUsd: number; inFlightUsd: number };
     if (o.reviewCheck) {
       // About 70 short review calls: a cap of USD 2 is far above them.
       spending = new Spending(o.maxUsd ?? 2);
+      need = { estimateUsd: spending.maxUsd!, inFlightUsd: inFlightNeed(concurrency, worstReviewUsd(price.reviewer)) };
     } else {
       const estimate = await estimateCost(cases, o.runs, paid, price, execution);
       printEstimate(estimate, cases.length, o.runs);
+      need = { estimateUsd: estimate.usd, inFlightUsd: inFlightNeed(concurrency, estimate.largestRequest.usd) };
+      console.log(`-- in flight: ${concurrency} at once × the largest request (${estimate.largestRequest.role}, ${usd(estimate.largestRequest.usd)} at worst) = ${usd(need.inFlightUsd)}`);
       if (o.estimate) return;
       const cap = o.maxUsd ?? Math.ceil(estimate.usd * 2);
       if (estimate.usd > cap) throw new Error(`The estimate (${usd(estimate.usd)}) is above the cap (${usd(cap)}). Raise --max-usd or run fewer cases.`);
@@ -433,6 +457,10 @@ async function main() {
       client = (role) => anthropicRole(key, models[role], spending, price[role]);
     } else {
       const key = apiKey(root);
+      // Before any model call: a run the account cannot pay for ends in 402s and tells nothing about Maya (PR #698).
+      const credit = await checkCredits({ fetch: globalThis.fetch, key: creditsKey(key), ...need });
+      if (!credit.ok) throw new Error(credit.message);
+      console.log(`-- ${credit.message}`);
       client = (role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);
     }
     maya = aiMayaModel(client("maya"));
@@ -444,7 +472,7 @@ async function main() {
 
   if (o.reviewCheck) {
     const dir = resolve(o.out ?? join(root, "traces/maya-practice", `review-check-${new Date().toISOString().replace(/[:.]/g, "-")}`));
-    const ok = await reviewCheck(reviewer!, dir, o.concurrency, o.provider === "subscription" ? SUBSCRIPTION_REVIEW_MS : 30_000);
+    const ok = await reviewCheck(reviewer!, dir, concurrency, o.provider === "subscription" ? SUBSCRIPTION_REVIEW_MS : 30_000);
     console.log(`-- provider: ${o.provider}; ${spent(o, spending)}`);
     await countMonthly(o, spending);
     if (usageLimit !== null) console.log("-- the Claude subscription's usage limit was reached: the check is incomplete. Run it again after the limit resets.");
@@ -473,7 +501,7 @@ async function main() {
   console.log(`-- ${plan.runs.length} runs into ${dir}`);
   let done = 0;
   await runSuite(cases, plan, {
-    maya, simulator, validity, judge, store, concurrency: o.concurrency, freeTalk: o.freeTalk, reviewer,
+    maya, simulator, validity, judge, store, concurrency, freeTalk: o.freeTalk, reviewer,
     ...(o.provider === "subscription" && !o.fake ? { reviewTimeLimitMs: SUBSCRIPTION_REVIEW_MS } : {}),
     capped: stopped,
     onRun: (id) => console.log(`   ${++done}/${plan.runs.length} ${id}${o.fake || o.provider === "subscription" ? "" : ` (spent ${usd(spending.spent)})`}`),

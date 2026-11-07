@@ -186,7 +186,8 @@ describe("every C38 text check uses complete approved variants (R439-1, R439-2)"
     ["C38", 1, fill("point.common", { a: "4", b: "8" })],
     ["C38", 2, fill("check.right_step", { eq: "3/4 = 6/8" }).flatMap((check) =>
       fill("step.invite", { where: "the numerators" }).map((invite) => `${check} ${invite}`))],
-    ["C38b", 1, fill("answer.right", { expr: "3/4 + 1/8", answer: "14/16" })],
+    ["C38b", 1, fill("answer.right", { expr: "3/4 + 1/8", answer: "14/16" }).flatMap((right) =>
+      fill("check.thinking", {}).map((ask) => `${right} ${ask}`))],
     ["C38b", 2, fill("write.answer", { answer: "14/16" })],
     ["C38c", 1, fill("check.equal", { heard: "14/16", form: "simplest form" })],
     ["C38c", 2, fill("point.simplify", { n: "14", d: "16" })],

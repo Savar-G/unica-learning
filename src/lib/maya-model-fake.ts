@@ -101,7 +101,8 @@ function rulePropose(input: ModelInput): unknown {
     ...(line ? [{ line: line.line, slots: fullSlots(line.slots) }] : []),
   ];
   // A line's own board offer only with that line; other offers draw the problem.
-  const draw = pick.draw.find((d) => !d.id.startsWith("line.") || (line && d.id === `line.${line.line}`));
+  // Never a written digit: this player does not track the board, and a digit written twice is refused.
+  const draw = pick.draw.find((d) => !d.id.startsWith("question.write.") && (!d.id.startsWith("line.") || (line && d.id === `line.${line.line}`)));
   return {
     version: PROPOSAL_VERSION,
     act: pick.act,

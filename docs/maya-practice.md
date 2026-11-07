@@ -25,7 +25,7 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 | `--max-usd <n>` | The spending cap. Default: twice the estimate, rounded up to a dollar. The run stops if the estimate is above the cap. |
 | `--cases C01,C07` | Only these cases. Part of the suite is never a gate result: the report says so and the exit code is 1. |
 | `--runs <n>` | Runs per case (default 3; any other number is not a gate result either). |
-| `--concurrency <n>` | Runs at the same time (default 3). |
+| `--concurrency <n>` | Runs at the same time. Default 2 on paid OpenRouter calls, 3 on anything else; see "Cost". |
 | `--out <dir>` | Where to save the run. Default `traces/maya-practice/<time>` (not committed). |
 | `--report <dir>` | Rebuild `report.md` and `report.json` from a saved run. |
 | `--anthropic` | Every model through the Claude API (`src/lib/ai-anthropic.ts`): Maya `claude-sonnet-5-5`, the child and the validity judge `claude-haiku-5-5`, the judge `claude-opus-5-5`, the review `claude-haiku-5-5`. The key is `ANTHROPIC_API_KEY` or the macOS Keychain item `anthropic-unica-tools`. Prices come from a table in the command line (Claude API list prices). A local tool only: the live site stays on OpenRouter. The judges are then the same model family as Maya, so the report says less than one with judges from another family. |
@@ -37,6 +37,8 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 | `--maya-model`, `--sim-model`, `--validity-model`, `--judge-model` | The models. Defaults: `AI_MODEL` (else `anthropic/claude-sonnet-5.5`), `MAYA_SIM_MODEL` (else `anthropic/claude-haiku-5.5`), `MAYA_VALIDITY_MODEL` (else `openai/gpt-5.4-mini`), `MAYA_JUDGE_MODEL` (else `openai/gpt-5.4`). Both judges are from another model family than the child and Maya (research, section 8), so the validity judge does not share the child's blind spots. |
 
 **The key.** `OPENROUTER_API_KEY` in the environment, or `OPENROUTER_API_KEY_FILE` (a file that holds only the key), or `.env.local`. It is a Vercel Secret variable, so `vercel env pull` gives an empty value. Use the Unica OpenRouter key only. The exit code is 0 only when every planned run passed.
+
+**The credit check's key.** `OPENROUTER_MANAGEMENT_KEY` or `OPENROUTER_MANAGEMENT_KEY_FILE`, else the same key. OpenRouter's documentation says its credits route needs a management key, so with an ordinary key the check can refuse every paid run until one of these is set. See "Cost".
 
 ## Compare two turn models
 
@@ -57,6 +59,10 @@ Read two files from each run. `report.md` names Maya's model and says what passe
 
 Before a real run, the command runs the whole suite once with the fakes (no network), measures each request each model would get, and prices it with OpenRouter's public model list (with `--anthropic`, the Claude API price table). The free-talk review is counted at its upper bound: one review for every Maya call. It adds a 1.5 margin and counts each call's output at the assumed worst case (Maya 1,500 tokens, the child 150, the validity judge 400, the judge 4,000, thinking included). On 2026-10-31, the 13 cases × 3 runs came to about **$17.16** (Maya on Sonnet 5.5 $13.14, the judge on GPT-5.4 $3.85, the validity judge on GPT-5.4 mini $0.13, the child on Haiku 5.5 $0.05).
 
+Before a paid OpenRouter run makes any model call, the credit check (`src/lib/maya-practice/credits.ts`) reads `GET /api/v1/credits`: `total_credits` minus `total_usage` is what remains. The run needs the estimate plus its in-flight need: the runs at the same time, times the largest single request at its worst case (its biggest input with the margin, and all its output limit). It prints all three, never a key. It refuses the run when the remaining amount is below that, and when the read fails. It does not run for `--estimate`, `--fake`, `--anthropic` or `--subscription`. With `--review-check`, the estimate is the cap. Why: the first-ship run (D-298) met OpenRouter's 402 part way, so Maya fell back to code's lines and most runs said nothing about her.
+
+Paid OpenRouter runs default to 2 at the same time. On the 26-case first-ship suite the largest request is one judge call, USD 0.13 at worst, so the in-flight need is USD 0.26, against USD 0.39 at 3 and USD 0.13 at 1. One at a time saves USD 0.13 and doubles the run's time. `--concurrency` overrides it.
+
 While it runs, each call first reserves its worst case against the cap, and is refused when that would pass the cap. OpenRouter's answer reports what each call cost (`usage.cost`; else its tokens at the list price; else the worst case). Calls already running when the cap is met may finish, so the cap can be passed by up to one call per run in flight. A run the cap cuts is not saved: the report counts it missing, and the suite fails.
 
 ## Subscription runs
@@ -75,6 +81,7 @@ When the subscription's usage limit is met, the run stops: the calls in flight e
 | `src/lib/maya-practice/judge.ts` | The judge: its prompt (`JUDGE_PROMPT_VERSION`), strict JSON schema, `readJudgement` (the check), the OpenRouter judge and a fake. |
 | `src/lib/maya-practice/practice.ts` | `runPractice`, `runSuite`, `judgeRun` (one run from its saved files), `buildReport` and `reportMarkdown`. |
 | `src/lib/maya-practice/cost.ts` | The estimate (`estimateCost`) and the cap (`Spending`, `cappedClient`, `meteredFetch`). |
+| `src/lib/maya-practice/credits.ts` | The credit check before a paid run (`checkCredits`) and the default for `--concurrency`. |
 | `src/lib/ai-claude-cli-practice.ts` | The subscription client (`--subscription`): one `claude -p` call per request, behind a process seam its tests replace. |
 | `scripts/maya-practice-cli.ts` | The command line. |
 
