@@ -35,7 +35,7 @@ export type MarkResult = "right" | "wrong" | "blank";
  * - pending: no result yet, including when the reading is uncertain;
  * - scored: code checked it, with a result;
  * - parent-pending: it waits for a parent's check;
- * - parent-checked: a parent gave a result;
+ * - parent-checked: a person gave a result: the parent's correction (actor parent) or our team's mark (actor admin);
  * - unscored: nobody scores it, so it has no result.
  */
 export type ObservationState = "pending" | "scored" | "parent-pending" | "parent-checked" | "unscored";
@@ -49,11 +49,13 @@ export type ReadingIssue = (typeof READING_ISSUES)[number];
 const READING_REASONS: Record<ReadingIssue, string> = {
   unreadable: "We cannot read this answer.", "crossed-out": "This answer is crossed out.",
   "multiple-marks": "More than one choice is marked.", missing: "Part of this answer was not read.",
-  blurry: "The photo is blurry here.", "cut-off": "Part of this answer is cut off.", incomplete: "Part of this answer is empty.", "answer-form": "Please check this answer.",
+  blurry: "The photo is blurry here.", "cut-off": "Part of this answer is cut off.", incomplete: "Part of this answer is empty.", "answer-form": "We could not mark this answer automatically.",
   "method-form": "We cannot check this method.", "answer-check": "We cannot check this answer.",
   "method-wrong": "One way does not solve the question.", "method-missing": "One way is missing.",
 };
 export const readingIssueText = (issue: ReadingIssue) => READING_REASONS[issue];
+/** Reasons a new photo can fix. Every other unsure reading goes to our team; no reason asks a parent to judge (#715). */
+export const PHOTO_ISSUES: readonly ReadingIssue[] = ["blurry", "cut-off"];
 
 /** Why a result does not count toward mastery, or null when it does. */
 export type MasteryExclusion =
@@ -270,7 +272,7 @@ const readsWholeItem = (e: ExpectedItem, o: Observation) => {
 };
 
 const isTerminal = (e: ExpectedItem, o: Observation) =>
-  (e.method === "code" && ((o.state === "scored" && readsWholeItem(e, o)) || (o.state === "parent-checked" && o.actor === "parent")) && o.result !== null)
+  (e.method === "code" && ((o.state === "scored" && readsWholeItem(e, o)) || (o.state === "parent-checked" && (o.actor === "parent" || o.actor === "admin"))) && o.result !== null)
   || (e.method === "parent" && o.state === "parent-checked" && o.result !== null)
   || (e.method === "unscored" && o.state === "unscored");
 

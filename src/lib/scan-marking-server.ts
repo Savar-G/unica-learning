@@ -96,22 +96,45 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
   return { status: "processed", results };
 }
 
-/** Recover the durable event/profile intent without invoking automatic marking or image work. */
+/**
+ * After a person's mark (a parent's correction or our team's mark): publish the effective event and rebuild the child's
+ * profile from the same canonical set. True when that work is still pending; the recovery cursor retries it.
+ */
+export async function publishMarkChange(db: SupabaseClient<Database>, parent: string, child: string): Promise<boolean> {
+  try {
+    await scanMarkingStore(db).publish(parent, child);
+    const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
+    return (!rebuilt.built && rebuilt.reason !== "nothing_to_build") || (rebuilt.built && rebuilt.skillStates.outcome === "failed");
+  } catch {
+    // The transaction advanced the durable revision. The existing recovery cursor retries after image expiry.
+    return true;
+  }
+}
+/**
+ * A parent corrects a finished mark (#715): an answer with no mark yet is the AI's and our team's, so its change is
+ * refused. A version's mark never changes, so checking the version the parent sent is race free; a newer version
+ * answers conflict from the store as before.
+ */
 export async function changeScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, choice: ParentMarkChoice) {
+  if (await unmarkedVersion(db, parent, photo, choice)) return { status: "refused" as const };
   const changed = await changeScanMark(markingCommand(db), parent, photo, choice);
   if (changed.status === "refused") return changed;
   if (changed.status === "saved") {
-    try {
-      const child = await childForPhoto(db, parent, photo);
-      await scanMarkingStore(db).publish(parent, child);
-      const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
-      if ((!rebuilt.built && rebuilt.reason !== "nothing_to_build") || (rebuilt.built && rebuilt.skillStates.outcome === "failed")) throw new Error("mark_change_profile_pending");
-    } catch {
-      // The transaction advanced the durable revision. The existing recovery cursor retries after image expiry.
-      return { status: "saved" as const, recoveryPending: true };
-    }
+    let child: string;
+    try { child = await childForPhoto(db, parent, photo); } catch { return { status: "saved" as const, recoveryPending: true }; }
+    if (await publishMarkChange(db, parent, child)) return { status: "saved" as const, recoveryPending: true };
   }
   return { status: changed.status, recoveryPending: false };
+}
+async function unmarkedVersion(db: SupabaseClient<Database>, parent: string, photo: string, choice: ParentMarkChoice) {
+  const p = await db.from("scan_photos").select("child_id,workbook_id,page_id,printed_revision").eq("id", photo).eq("parent_id", parent).maybeSingle();
+  if (p.error) throw new Error("mark_change_read");
+  if (!p.data || !p.data.workbook_id || !p.data.page_id || !p.data.printed_revision) return false;
+  const m = await db.from("scan_marking_items").select("result_version,observation").eq("parent_id", parent).eq("child_id", p.data.child_id)
+    .eq("workbook_id", p.data.workbook_id).eq("page_id", p.data.page_id).eq("printed_revision", p.data.printed_revision).eq("item_id", choice.itemId).maybeSingle();
+  if (m.error) throw new Error("mark_change_read");
+  const o = m.data?.observation;
+  return !!m.data && m.data.result_version === choice.version && !!o && typeof o === "object" && !Array.isArray(o) && (o.result === null || o.result === undefined);
 }
 async function childForPhoto(db: SupabaseClient<Database>, parent: string, photo: string) {
   const r = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).single();

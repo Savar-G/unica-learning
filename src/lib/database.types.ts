@@ -649,6 +649,7 @@ export type Database = {
           parent_id: string
           read_at: string
           read_order: number | null
+          read_tried_at: string | null
           updated_at: string
         }
         Insert: {
@@ -663,6 +664,7 @@ export type Database = {
           parent_id: string
           read_at: string
           read_order?: number | null
+          read_tried_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -677,6 +679,7 @@ export type Database = {
           parent_id?: string
           read_at?: string
           read_order?: number | null
+          read_tried_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3028,6 +3031,7 @@ export type Database = {
       scan_mark_changes: {
         Row: {
           actor: string
+          admin_id: string | null
           changed_at: string
           child_id: string
           current: Json
@@ -3040,6 +3044,7 @@ export type Database = {
         }
         Insert: {
           actor?: string
+          admin_id?: string | null
           changed_at?: string
           child_id: string
           current: Json
@@ -3052,6 +3057,7 @@ export type Database = {
         }
         Update: {
           actor?: string
+          admin_id?: string | null
           changed_at?: string
           child_id?: string
           current?: Json
@@ -6834,9 +6840,32 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_scan_team_queue: {
+        Args: { p_limit?: number }
+        Returns: {
+          book: number
+          child_id: string
+          child_name: string
+          issue: string
+          item_id: string
+          page_number: number
+          parent_id: string
+          photo_id: string
+          question_number: number
+          read_text: string
+          test_family: boolean
+          total: number
+          waiting_since: string
+          workbook_id: string
+        }[]
+      }
       admin_set_maya_chat_family: {
         Args: { p_change: string; p_enabled: boolean; p_parent: string }
         Returns: string
+      }
+      admin_set_scan_mark: {
+        Args: { p_item: string; p_result: string; p_version: number }
+        Returns: Json
       }
       admin_set_test_account: {
         Args: { p_parent: string; p_test: boolean }
@@ -7515,6 +7544,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      due_plan_reads: {
+        Args: { p_limit?: number }
+        Returns: {
+          child_id: string
+          customer: string
+          event_at: string
+          kind: string
+          parent_id: string
+        }[]
+      }
       email_copy_child_scope: {
         Args: { l: Database["public"]["Tables"]["email_log"]["Row"] }
         Returns: string[]
@@ -7796,6 +7835,7 @@ export type Database = {
       }
       my_family_deletion_state: { Args: never; Returns: string }
       note_card_checked: { Args: { p_card: string }; Returns: undefined }
+      note_plan_read_tried: { Args: { p_child: string }; Returns: undefined }
       note_plan_start_alert: {
         Args: {
           p_card: string

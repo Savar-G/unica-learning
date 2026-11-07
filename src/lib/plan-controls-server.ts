@@ -9,6 +9,8 @@ import type { ParentPlan } from "@/lib/parent-plan";
 import { planPrice } from "@/lib/subscription-plan";
 import { customerSubscriptions, CARD_READ } from "@/lib/stripe-subscriptions";
 import { planNotOver } from "@/lib/card-reconcile";
+import { applyPlanStart } from "@/lib/plan-state";
+import { stripePlanProvider, supabasePlanStore } from "@/lib/plan-state-server";
 import { endCardOperation, holdPlanStart } from "@/lib/family-deletion-store";
 import { supabaseCardRows } from "@/lib/card-reconcile-server";
 import { startPlan, stripe } from "@/lib/stripe";
@@ -114,12 +116,29 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
   if (token !== expected) return { ok: false as const, error: "stale" };
   if (context.blocked && !recovering) return { ok: false as const, error: "pending" };
   if (await holdPlanStart(db, parent, card) === "fenced") return { ok: false as const, error: "pending" };
+  const startedAt = Date.now();
   const result = await startPlan(client, { cardSetup: card, customer: data.stripe_customer_id, price, deliveryConfirmed: false, purpose: "restart", restartRevision: revision }, undefined, rows);
+  // Before anything else that can throw: the plan is running, so access reopens now, with no webhook wait.
+  const access = result.ok ? await openRestartedPlan(db, client, { customer: data.stripe_customer_id, cardSetup: card, generation: result.generation, startedAt }) : null;
   // Unknown provider outcomes retain both the start record and its route hold.
   // A confirmed refusal can release the hold only after the durable record is closed.
   if ((result.ok || (result.error !== "unconfirmed" && result.error !== "needs_team"))
     && (await rows.cardRow(card))?.planStart?.state !== "open") await endCardOperation(db, card);
-  return result.ok ? { ok: true as const, state: "started" as const, price } : result;
+  return result.ok ? { ok: true as const, state: "started" as const, price, access: access ?? "pending" } : result;
+}
+
+/**
+ * As the admin start route does. The plan has started, so a failed write must not read as a failed restart. After a failed write the webhook is
+ * the only fallback: the re-read does not take `ended` rows, and the card sweep writes plan state only when it closes an open start itself.
+ * With that webhook lost too, an `ended` row stays closed on a paying plan (#713). A family with no row is filled on its next Account tab load.
+ */
+async function openRestartedPlan(db: SupabaseClient<Database>, client: NonNullable<ReturnType<typeof stripe>>, start: Parameters<typeof applyPlanStart>[0]): Promise<"open" | "pending"> {
+  try {
+    return await applyPlanStart(start, { store: supabasePlanStore(db), provider: stripePlanProvider(client) }) === "no_match" ? "pending" : "open";
+  } catch (e) {
+    console.error("[plan] plan state after a restart failed", e instanceof Error ? e.message : "failed");
+    return "pending";
+  }
 }
 
 /** Safe parent-visible facts from the private pause ledger. Never return a provider id or child profile. */
