@@ -9,6 +9,8 @@ Offer: 30% off the first month (CAD 69.30), then CAD 99 a month. Replaced on 202
 
 Campaign "Unica BC - Round 3 (Nov 2026)". Savar chose B2, B3 and C1, with CA$33.33 lifetime on each ad set (CA$99.99 total, not shared). Round: `.design/experiments/r510/`; final images: `.design/experiments/r510/final/`.
 
+Correction (2026-11-07): the planned B3 did not run. On 2026-11-05 at 3:56 PM, Cedric Tanafranca deleted it and made "B3 - struggling (lead form)" (ad set 120252412992130623). That ad set had a CA$33.33 daily budget, an Instant form, and Advantage+ audience and placements. It started on Nov 6 at 3:37 PM. It was turned off with Savar's approval on 2026-11-07 at about 9:00 AM. It spent CA$36.01 for 1,080 impressions and 0 leads. B2 and C1 stay on, so the test now compares only those two ads. The settings below describe the plan and stay correct for B2 and C1.
+
 Round 2 result: Meta 0 of 101 visits opened `/start`, and Reels took CA$33.97 of CA$36.81. Google 3 of 20 visits opened `/start`, at about CA$8.79 per open.
 
 Test question: which message gets a parent to open the free assessment? Decision rule: an ad wins only with at least 3 opens and at least twice the opens of the next ad. Otherwise it is a tie, and the next step is a test of the home page. CA$100 is a screen, not proof: about 245 visits per ad are necessary to separate 3% from 9%.
@@ -28,7 +30,7 @@ Meta B2, "B2 - right level (static)", tag `right-level`
 - Primary text: In the same grade, one child is still catching up on borrowing while another is ready for multiplication. Most practice is made for the middle of the class. / Unica is a personalized math learning program. It starts with a free online math assessment, then builds practice at your child's level, whether that means closing a gap or getting a challenge, and mails it home. / Ages 5-14, BC curriculum. First month free, then CAD 79.99 a month. Cancel anytime.
 - Headline: Math practice at your child's level
 
-Meta B3, "B3 - struggling (static)", tag `struggling`
+Meta B3, "B3 - struggling (static)", tag `struggling` (deleted before it ran; see the correction above. The lead form ad used different text and no site link.)
 - Primary text: When your child is struggling in math, it's hard to tell where the gap actually is. Is it this year's work, or a skill from a grade or two back? / Unica's free online assessment helps you find out. Your child takes a short test on a laptop or tablet, and you get a report with the level they're working at and the skills to work on next. / If you like it, your child's personalized math learning program is built from that report and mailed home. Ages 5-14, BC curriculum. First month free, then CAD 79.99 a month. Cancel anytime.
 - Headline: Find out where your child is stuck in math
 
