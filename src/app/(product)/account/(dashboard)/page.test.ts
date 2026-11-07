@@ -17,7 +17,9 @@ vi.mock("@/lib/maya-chat-server", () => ({ parentChatUsage: async () => chats.va
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
 const mayaNotice = vi.hoisted(() => ({ due: false, books: [] as { id: string; childId: string; number: number; status: string }[] }));
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async (child: string) => mayaNotice.books.filter((b) => b.childId === child) }) }));
-vi.mock("@/lib/maya-notice-server", () => ({ mayaNoticeDue: async () => mayaNotice.due }));
+vi.mock("@/lib/maya-notice-server", () => ({ mayaNoticeDueForFamily: async () => mayaNotice.due }));
+const planNote = vi.hoisted(() => ({ closed: null as null | { reason: string; child: string | null } }));
+vi.mock("@/components/plan-closed-note", () => ({ planClosedFamily: async () => planNote.closed, PlanClosedNote: ({ on }: { on: string }) => `Your plan is closed, on ${on}` }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
@@ -456,4 +458,11 @@ describe("a family the switch opens to", () => {
       expect(await render({ ...full(), child: { ...asha(), id: "z-old" } })).not.toContain("po-");
     });
   });
+});
+
+it("tells a closed family why the product is closed; a family with no plan reads the page as before, in the golden file above", async () => {
+  planNote.closed = { reason: "ended", child: "Leah" };
+  const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+  planNote.closed = null;
+  expect(out).toContain("Your plan is closed, on home");
 });

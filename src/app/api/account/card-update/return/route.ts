@@ -1,6 +1,6 @@
 import { finishCardUpdate, type CardUpdateFinish } from "@/lib/billing";
 import { liveCardUpdates } from "@/lib/billing-server";
-import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
+import { planManagementAccess } from "@/lib/parent-dashboard-access";
 import { ACCOUNT_PATH, type CardNotice } from "@/lib/parent-shell";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   const to = (path: string) => Response.redirect(new URL(path, url.origin), 303);
   const parent = await parentId(await sessionClient());
   if (!parent) return to(`/sign-in?next=${encodeURIComponent(url.pathname + url.search)}`);
-  if (!(await parentDashboardAccess(parent))) return to("/account");
+  if (!(await planManagementAccess(parent))) return to("/account");
   const session = url.searchParams.get("session_id");
   const seams = liveCardUpdates();
   const result: CardUpdateFinish = session && SESSION.test(session) && seams ? await finishCardUpdate(parent, session, seams) : "failed";

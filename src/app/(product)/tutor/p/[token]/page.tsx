@@ -6,7 +6,7 @@ import { DESK_COOKIE, DESK_HOME, openPageToken, readLock, type PageTokenResult }
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { workbookStore } from "@/lib/workbook-store";
-import { scanPagesAccess } from "@/lib/scan-pages-access";
+import { scanChildAccess } from "@/lib/scan-pages-access";
 import { pageCodeTarget, scanPagePath, SCANNING_COOKIE } from "@/lib/scan-tab";
 import { DeskShell } from "@/components/desk-shell";
 
@@ -59,7 +59,7 @@ export default async function PageCode(props: PageProps<"/tutor/p/[token]">) {
   const target = `${DESK_HOME}?w=${found.workbookId}&p=${found.page}&from=qr`;
   if (open?.childId === found.childId) redirect(target);
 
-  const scanAccess = !open && await scanPagesAccess(parent).catch(() => false);
+  const scanAccess = !open && await scanChildAccess(parent, found.childId).catch(() => false);
   const scanThisPage = scanPagePath(found.workbookId, found.page);
   if (!open && pageCodeTarget({ scanning: jar.get(SCANNING_COOKIE)?.value === "1", scanAccess }) === "scan") redirect(scanThisPage);
 

@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/scan-marking",
-      "schedule": "*/5 * * * *"
+      "schedule": "30 15 * * *"
     }
   ],
   "ignoreCommand": "bash scripts/vercel-ignore-build.sh"

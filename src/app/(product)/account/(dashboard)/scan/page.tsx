@@ -50,7 +50,7 @@ async function focusedPage(db: Db, workbook: unknown, page: unknown): Promise<{ 
 
 export default async function ScanPage({ searchParams }: PageProps<"/account/scan">) {
   if (!(await parentId(await sessionClient()))) redirect(scanSignInPath);
-  const { db, parent } = await scanSession();
+  const { db, parent, childOpen } = await scanSession();
   const [kids, notice, dashboard, h, query] = await Promise.all([
     db.from("children").select("id,first_name").eq("parent_id", parent).order("created_at"),
     db.from("scan_photo_notices").select("parent_id").eq("parent_id", parent).maybeSingle(),
@@ -58,8 +58,12 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
     headers(),
     searchParams,
   ]);
-  const list = kids.data ?? [];
-  const focus = query.w || query.p ? await focusedPage(db, query.w, query.p).catch(() => null) : null;
+  // A plan opens only its own child (src/lib/plan-access.ts), so a sibling is not offered here.
+  const family = kids.data ?? [];
+  const opens = await Promise.all(family.map((k) => childOpen(k.id)));
+  const list = family.filter((_, i) => opens[i]);
+  const found = query.w || query.p ? await focusedPage(db, query.w, query.p).catch(() => null) : null;
+  const focus = list.some((k) => k.id === found?.childId) ? found : null;
   // The page's child when a QR code opened it, else the child in view in the dashboard (the last child viewed), else the oldest.
   const inView = list.find((k) => k.id === focus?.childId) ?? pickChild(list, null, dashboard?.remembered ?? null);
   const ordered = inView ? [inView, ...list.filter((k) => k.id !== inView.id)] : list;

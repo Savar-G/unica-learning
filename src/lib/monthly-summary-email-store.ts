@@ -5,12 +5,12 @@ import { saveEmailCopy } from "@/lib/email-copies";
 import type { ReleasableLedger } from "@/lib/email-delivery";
 import { loadFamilyChildren } from "@/lib/family-time-server";
 import { CLAIM_LIMIT_MS, type DueMonthly, type MonthlyLogEntry, type MonthlyState, type MonthlyStore } from "@/lib/monthly-summary-email";
-import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
+import { dashboardSwitchOpen } from "@/lib/parent-dashboard-access";
 import { MAX_SEND_ATTEMPTS } from "@/lib/reminders";
 
 // The monthly summary email's store (#563): reads and writes with the secret key. The rules are in
 // src/lib/monthly-summary-email.ts; this loads the confirmed deliveries and their corrections, the families of those
-// children, whether the dashboard switch opens to each (parentDashboardAccess, as the dashboard reads it: a failed read of
+// children, whether the dashboard switch opens to each (dashboardSwitchOpen, never the plan gate, so opening a plan makes no email due: a failed read of
 // a mark counts as not marked), and the parents' rows of this email, and keeps the claims in public.email_log (migration
 // monthly_summary_email). A failed read throws, so no run emails from a partial picture; so does an aborted load.
 // Tests use src/lib/monthly-summary-email-memory.ts.
@@ -69,7 +69,7 @@ export function monthlySummaryEmailStore(
 ): MonthlyStore {
   return {
     async load(now, given) {
-      if (outsideEveryWindow(now)) return EMPTY;
+      if (env.MONTHLY_SUMMARY_EMAIL_ENABLED !== "on" || outsideEveryWindow(now)) return EMPTY;
       const signal = given ?? new AbortController().signal;
       const receipts = await allPages<ReceiptRow>((after) => {
         const query = admin.from("workbook_delivery_receipts").select("workbook_id, child_id, parent_id, delivered_at").order("workbook_id").limit(PAGE).abortSignal(signal);
@@ -98,7 +98,7 @@ export function monthlySummaryEmailStore(
       const open = new Set<string>();
       for (let i = 0; i < parents.length; i += ACCESS_AT_ONCE) {
         await Promise.all(parents.slice(i, i + ACCESS_AT_ONCE).map(async (p) => {
-          if (await parentDashboardAccess(p.id, admin, env, signal)) open.add(p.id);
+          if (await dashboardSwitchOpen(p.id, admin, env, signal)) open.add(p.id);
         }));
       }
       // A failed read of a mark counts as not marked, so an aborted one must not reach the state as an answer.
@@ -111,7 +111,7 @@ export function monthlySummaryEmailStore(
         log: log.map((e) => ({ id: e.id, kind: e.kind as MonthlyLogEntry["kind"], parentId: e.parent_id, month: e.summary_month?.slice(0, 7) ?? null, status: e.status, attempts: e.attempts })),
       };
     },
-    ledger: monthlyLedger(admin, claimLimitMs),
+    ledger: monthlyLedger(admin, claimLimitMs, env),
   };
 }
 
@@ -124,7 +124,7 @@ export function monthlySummaryEmailStore(
  * hash, which no other claim has. One limit remains: if the database applies the write after that release looked, the row
  * stays claimed and nothing sends that month's email (one lost email, never two).
  */
-function monthlyLedger(admin: SupabaseClient<Database>, claimLimitMs: number): ReleasableLedger<DueMonthly, string> {
+function monthlyLedger(admin: SupabaseClient<Database>, claimLimitMs: number, env: Readonly<Record<string, string | undefined>>): ReleasableLedger<DueMonthly, string> {
   /** Puts a claimed row back: a retry is failed again at its old count, a first claim is gone, as if neither was taken. */
   const giveBack = async (d: DueMonthly, own: { column: "id" | "unsubscribe_hash"; value: string }): Promise<number | null> => {
     const signal = AbortSignal.timeout(RELEASE_LIMIT_MS);
@@ -143,6 +143,8 @@ function monthlyLedger(admin: SupabaseClient<Database>, claimLimitMs: number): R
   };
   return {
     async claim(d, { unsubscribe_hash }) {
+      // Check again for direct claims and candidates loaded before the monthly email switch was disabled.
+      if (env.MONTHLY_SUMMARY_EMAIL_ENABLED !== "on") return null;
       const limit = AbortSignal.timeout(claimLimitMs);
       const timedOut = async () => {
         if (limit.aborted) await giveBack(d, { column: "unsubscribe_hash", value: unsubscribe_hash });

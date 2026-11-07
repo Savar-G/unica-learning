@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { adminClient } from "@/lib/supabase-auth";
 import { scanJson } from "@/lib/scan-photo-server";
-import { recoverScanMarking } from "@/lib/scan-marking-server";
+import { recoverScanMarking, scanMarkingServerReadiness } from "@/lib/scan-marking-server";
 
 export const maxDuration = 180;
 export async function POST(request: Request) {
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   if (!secret) return scanJson({ error: "unavailable" }, 503);
   const supplied = Buffer.from(request.headers.get("authorization") ?? ""), expected = Buffer.from(`Bearer ${secret}`);
   if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return scanJson({ error: "refused" }, 401);
-  if (process.env.SCAN_MARKING_ENABLED !== "test-only") return scanJson({ status: "off" });
+  if (scanMarkingServerReadiness().mode === "off") return scanJson({ status: "off" });
   const db = adminClient(AbortSignal.timeout(170_000));
   if (!db) return scanJson({ error: "unavailable" }, 503);
   try { return scanJson(await recoverScanMarking(db)); }

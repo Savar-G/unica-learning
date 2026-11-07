@@ -14,7 +14,7 @@ const PARENT = "11111111-1111-4111-8111-111111111111";
 const db = (test = true) => createClient<Database>("https://test.invalid", "test", { global: { fetch: async (input) => {
   const table = new URL(String(input)).pathname.split("/").pop();
   if (table === "test_accounts") return Response.json(test ? [{ parent_id: PARENT }] : []);
-  if (table === "maya_chat_families") return Response.json([]);
+  if (table === "maya_chat_families" || table === "child_plan_states") return Response.json([]);
   if (table === "maya_notice_acceptances") return Response.json(state.agreed ? [{ parent_id: PARENT, notice_version: "v", accepted_by: PARENT, accepted_at: "2026-11-05T12:00:00Z" }] : []);
   throw new Error(`Unexpected read of ${table}`);
 } } });

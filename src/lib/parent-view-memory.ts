@@ -128,7 +128,7 @@ export interface MemoryParentViewTables {
   /** One value for every parent; no saved zone or postal code when left out. */
   family?: { timeZone: string | null; postal: string | null };
   /** One value for every parent; every switch is off when left out. */
-  switches?: TabSwitches;
+  switches?: TabSwitches & { scanPlanChildren?: ReadonlySet<string> };
   results?: MemoryResult[];
   scans?: MemoryScan[];
   pages?: MemoryPage[];

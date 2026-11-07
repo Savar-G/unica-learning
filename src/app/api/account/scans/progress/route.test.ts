@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScanProgressSnapshot, ScanProgressStore } from "@/lib/workbook-scan-progress-reader";
 import type { HistoryRecord, HistoryStore } from "@/lib/scan-history";
 vi.mock("server-only", () => ({}));
-const h = vi.hoisted(() => ({ signedIn: true, active: true, marking: true,
+const h = vi.hoisted(() => ({ signedIn: true, active: true, childOpen: true, marking: true,
   parent: "00000000-0000-4000-8000-000000000001", progress: null as unknown, history: null as unknown,
   progressFactory: vi.fn(), historyFactory: vi.fn() }));
 vi.mock("@/lib/scan-photo-server", () => ({
-  scanSession: async () => { if (!h.signedIn) throw Error("signed_out"); return { admin: {}, parent: h.parent, active: async () => h.active }; },
+  scanSession: async () => { if (!h.signedIn) throw Error("signed_out"); return { admin: {}, parent: h.parent, active: async () => h.active, childOpen: async () => h.childOpen }; },
   scanJson: (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "private, no-store" } }),
 }));
 vi.mock("@/lib/scan-marking-server", () => ({ markingAccess: async () => h.marking }));
@@ -20,7 +20,7 @@ const revision = "a".repeat(28);
 let snapshot: ScanProgressSnapshot, store: ScanProgressStore, records: HistoryRecord[];
 const request = (query = `child=${scope.childId}&workbook=${scope.workbookId}`) => new Request(`https://synthetic.invalid/api/account/scans/progress?${query}`);
 beforeEach(() => {
-  Object.assign(h, { signedIn: true, active: true, marking: true, parent: scope.parentId });
+  Object.assign(h, { signedIn: true, active: true, childOpen: true, marking: true, parent: scope.parentId });
   h.progressFactory.mockReset(); h.historyFactory.mockReset();
   const pages = [1,2,3].map(number => ({ id: id(100+number), number, type: "practice", dayLabel: number === 3 ? "Extra practice" : "Day 7", questions: [{}] }));
   snapshot = { book: { ...scope, number: 1, printedRevision: revision, pages,

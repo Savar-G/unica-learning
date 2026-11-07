@@ -7,7 +7,7 @@ import { parentMarkChoice } from "@/lib/scan-marking-store";
 export const maxDuration = 180;
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await scanSession(), { id } = await params;
-  if (!isUuid(id) || !await markingAccess(session.admin, session.parent)) return scanJson({ error: "refused" }, 404);
+  if (!isUuid(id) || !await markingAccess(session.admin, session.parent, process.env, { photo: id })) return scanJson({ error: "refused" }, 404);
   const result = await readScanMarking(session.admin, session.parent, id);
   if (!result || !await session.active()) return scanJson({ error: "refused" }, 404);
   // Parent projection contains no raw events, job internals, keys, answers or solutions.
@@ -16,7 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await scanSession(), { id } = await params;
   if (request.headers.get("origin") !== new URL(request.url).origin) return scanJson({ error: "refused" }, 403);
-  if (!isUuid(id) || !await markingAccess(session.admin, session.parent)) return scanJson({ error: "refused" }, 404);
+  if (!isUuid(id) || !await markingAccess(session.admin, session.parent, process.env, { photo: id })) return scanJson({ error: "refused" }, 404);
   try { return scanJson({ status: await processScanMarking(session.admin, session.parent, id) }); }
   catch { return scanJson({ error: "unavailable" }, 503); }
 }
@@ -25,7 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await scanSession(), { id } = await params;
   if (request.headers.get("origin") !== new URL(request.url).origin) return scanJson({ error: "refused" }, 403);
-  if (!isUuid(id) || !await markingAccess(session.admin, session.parent) || !await session.active()) return scanJson({ error: "refused" }, 404);
+  if (!isUuid(id) || !await markingAccess(session.admin, session.parent, process.env, { photo: id }) || !await session.active()) return scanJson({ error: "refused" }, 404);
   const text = await request.text();
   if (text.length > 2048) return scanJson({ error: "invalid" }, 400);
   let choice;

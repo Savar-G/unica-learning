@@ -108,7 +108,8 @@ describe("canonical retained history through public reading and preview", () => 
     const f = historyFixture(10, 10);
     f.input.snapshot.priorMastery.passedSteps = 0;
     f.planning.passed = { ...f.planning.passed, [f.input.curriculum.skill.id]: 0 };
-    expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, availability: "unavailable", reason: "invalid-record" });
+    // #472 names this refusal: a printed later step proves no earlier mastery. It was reported as invalid-record before.
+    expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, availability: "unavailable", reason: "mastery-gap" });
   });
   it.each((["outside-days", "outside-sample"] as const).flatMap(reason =>
     (["right", "wrong"] as const).flatMap(result => [0, 1, 2].map(version => ({ reason, result, version }))),

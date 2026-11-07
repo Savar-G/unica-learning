@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     return scanJson({ error: "refused" }, 400);
   }
   if (!isUuid(child)) return scanJson({ error: "refused" }, 400);
+  if (!await session.childOpen(child)) return scanJson({ error: "refused" }, 404);
   try {
     const result = await sendScanLink(scanLinkStore(session.admin), { parent: session.parent, child, origin: linkOrigin(request) });
     return scanJson(result === "sent" ? { ok: true } : { error: result }, STATUS[result]);

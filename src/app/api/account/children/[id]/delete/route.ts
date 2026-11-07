@@ -4,7 +4,7 @@ import { codeProof } from "@/lib/family-delete-code";
 import { requestFamilyDelete } from "@/lib/family-delete";
 import { supabaseDeleteCodes } from "@/lib/family-delete-server";
 import { familyRetryTime } from "@/lib/family-time-server";
-import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
+import { planManagementAccess } from "@/lib/parent-dashboard-access";
 import { stripe } from "@/lib/stripe";
 import { adminClient, sessionClient } from "@/lib/supabase-auth";
 
@@ -19,7 +19,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const user = data.user;
   if (!user?.email || !user.email_confirmed_at) return reply(401, { ok: false, error: "signed_out" });
   const { id } = await ctx.params;
-  if (!isUuid(id) || !(await parentDashboardAccess(user.id))) return reply(404, { ok: false, error: "not_found" });
+  if (!isUuid(id) || !(await planManagementAccess(user.id))) return reply(404, { ok: false, error: "not_found" });
   let body: unknown;
   try { body = await request.json(); } catch { return reply(400, { ok: false, error: "invalid" }); }
   const service = adminClient(AbortSignal.timeout(45_000));

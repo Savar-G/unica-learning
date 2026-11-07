@@ -61,7 +61,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province });
 
   // Without a parent's agreement (#529), the desk shows chat as off and says who can turn it on.
-  const noticeDue = child ? await mayaNoticeDue(parent, child.grade) : false;
+  const noticeDue = child ? await mayaNoticeDue(parent, child.grade, child.id) : false;
   const chat = child && !noticeDue ? await deskChat(db, parent, child, timeZone) : { usage: null, note: null };
 
   if (!child || !view || view.status !== "ready") {
