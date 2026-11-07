@@ -9,7 +9,7 @@ import { HISTORY_LABELS } from "@/lib/scan-history";
 import { expectedItems, firstObservation, READING_ISSUES, readingIssueText, type Observation } from "@/lib/scan-observation";
 
 /** Words that ask a parent to judge an answer. "Change this mark" (a correction of a finished mark) is allowed. */
-export const ASKS_PARENT_TO_JUDGE = /please check|check (this|the|your|each|every|both) (answer|answers|method|methods|work|mark|marks)\b|check both|answers? to check|parent check|continue checking|needs? (a|your) check|waiting for (a|your) check|is (it|this) right\?|(judge|grade|review) (this|the|each) answer|please mark/i;
+export const ASKS_PARENT_TO_JUDGE = /please check|(?<!(?:cannot|could not|can't) )check (this|the|your|each|every|both) (answer|answers|method|methods|work|mark|marks)\b|check both|answers? to check|parent check|continue checking|needs? (a|your) check|waiting for (a|your) check|is (it|this) right\?|(judge|grade|review) (this|the|each) answer|please mark/i;
 
 const ROOT = join(__dirname, "..", "..");
 /** Every source of text on the parent's scan screens and the admin preview of them. */
@@ -34,7 +34,7 @@ describe("no parent-facing scan text asks a parent to judge an answer (#715)", (
     for (const old of ["Please check this answer", "Check this answer", "Please check both methods and the answer.", "Please check", "Waiting for a check",
       "Answers to check", "1 needs a parent check.", "Continue checking", "Is it right?"]) expect(old).toMatch(ASKS_PARENT_TO_JUDGE);
     for (const ok of ["Change this mark", "Our team is checking this answer.", "Not marked yet", "We check each photo, then you send the pages for marking.",
-      "To check it, take another photo with the page upright."]) expect(ok).not.toMatch(ASKS_PARENT_TO_JUDGE);
+      "To check it, take another photo with the page upright.", "We cannot check this answer. Our team is checking it."]) expect(ok).not.toMatch(ASKS_PARENT_TO_JUDGE);
   });
   it.each(SOURCES)("%s holds no text that asks a parent to judge an answer", (path) => {
     const found = texts(readFileSync(join(ROOT, path), "utf8")).filter(t => ASKS_PARENT_TO_JUDGE.test(t));

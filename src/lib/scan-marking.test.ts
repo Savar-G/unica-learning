@@ -325,6 +325,9 @@ describe("#715: no screen asks a parent to judge an answer", () => {
     const f = frame(), e = expectedItems(f)[0];
     const item = view(f, firstObservation(e, f.photo), null).items[0];
     expect(item).toMatchObject({ label: "Not marked yet", canChange: false, result: null });
+    // A reading in hand is the team's even before the row records its model.
+    const read = readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text: null, issue: "unreadable" }] })[0];
+    expect(view(f, read, null).items[0].label).toBe("We cannot read this answer. Our team is checking it.");
   });
   it.each(["unreadable", "crossed-out", "multiple-marks", "missing", "incomplete", "answer-form"] as const)(
     "an unsure reading (%s) says our team is checking it", (issue) => {

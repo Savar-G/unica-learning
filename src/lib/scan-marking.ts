@@ -239,10 +239,12 @@ export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[
 }
 /**
  * An item with no result that waits for our team (#715): an old format a person marks, or anything the AI read (or
- * tried to read) without a sure result. Same rule as admin_scan_team_queue. An item not read yet is not the team's.
+ * tried to read) without a sure result. An item not read yet is not the team's. A stored row that apply wrote always has
+ * a model, which is the rule admin_scan_team_queue uses; a reading in hand counts too.
  */
 export const waitsForTeam = (m: Pick<EffectiveMark, "observation" | "model">) =>
-  m.observation.result === null && (m.observation.state === "parent-pending" || (m.observation.state === "pending" && m.model !== null));
+  m.observation.result === null && (m.observation.state === "parent-pending"
+    || (m.observation.state === "pending" && (m.model !== null || m.observation.certainty !== "not-read")));
 /** What a parent sees for one item. It never asks the parent to judge an answer: the AI and our team mark. */
 function itemLabel(m: EffectiveMark): string {
   const o = m.observation;
