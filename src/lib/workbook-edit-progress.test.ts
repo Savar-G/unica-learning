@@ -10,6 +10,13 @@ const reply = () => ({ batch: workbookEditProgress(row(), comments, now) });
 afterEach(() => vi.useRealTimers());
 
 describe("saved edit checkpoint progress", () => {
+  it("counts the reviewed layout pages without requiring rewritten page content", () => {
+    const result = workbookEditProgress(row({ frame: { layoutPages: Array.from({ length: 84 }, (_, n) => n + 1) },
+      checkpoints: { 1: { number: 1, image: { number: 1 } }, 2: { number: 2, error: "refused" }, 3: { number: 3, responses: [] } } }), comments, now);
+    expect(result).toMatchObject({ total: 84, checked: 2, ready: 1, failed: 1, phase: "working" });
+    expect(() => workbookEditProgress(row({ frame: { layoutPages: [1, 1] } }), comments, now)).toThrow("edit_progress_pages");
+    expect(() => workbookEditProgress(row({ frame: { layoutPages: [0] } }), comments, now)).toThrow("edit_progress_pages");
+  });
   it("counts 12 distinct pages from 14 comments and distinguishes three failures from one ready page", () => {
     const result = workbookEditProgress(row({ checkpoints: {
       1: { number: 1, error: "cover unsupported" }, 2: { number: 2, error: "instructions unsupported" },

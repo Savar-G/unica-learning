@@ -2336,6 +2336,182 @@ export type Database = {
           },
         ]
       }
+      parent_explanation_dispatches: {
+        Row: {
+          child_id: string
+          context: string
+          id: string
+          item_id: string
+          parent_id: string
+        }
+        Insert: {
+          child_id: string
+          context: string
+          id: string
+          item_id: string
+          parent_id: string
+        }
+        Update: {
+          child_id?: string
+          context?: string
+          id?: string
+          item_id?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_explanation_dispatches_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "parent_explanation_dispatches_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "parent_explanation_spend"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parent_explanation_dispatches_item_id_context_fkey"
+            columns: ["item_id", "context"]
+            isOneToOne: false
+            referencedRelation: "parent_explanations"
+            referencedColumns: ["item_id", "context"]
+          },
+          {
+            foreignKeyName: "parent_explanation_dispatches_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parent_explanation_prices: {
+        Row: {
+          enabled: boolean
+          evidence: string | null
+          max_input_bytes: number
+          max_tokens: number
+          maximum_micros: number | null
+          model: string
+          protocol: string
+          verified_at: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          evidence?: string | null
+          max_input_bytes?: number
+          max_tokens?: number
+          maximum_micros?: number | null
+          model: string
+          protocol?: string
+          verified_at?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          evidence?: string | null
+          max_input_bytes?: number
+          max_tokens?: number
+          maximum_micros?: number | null
+          model?: string
+          protocol?: string
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
+      parent_explanation_spend: {
+        Row: {
+          charged_micros: number | null
+          created_at: string
+          id: string
+          model: string
+          period: string
+          reserved_micros: number
+          settled_at: string | null
+        }
+        Insert: {
+          charged_micros?: number | null
+          created_at?: string
+          id?: string
+          model: string
+          period: string
+          reserved_micros: number
+          settled_at?: string | null
+        }
+        Update: {
+          charged_micros?: number | null
+          created_at?: string
+          id?: string
+          model?: string
+          period?: string
+          reserved_micros?: number
+          settled_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_explanation_spend_model_fkey"
+            columns: ["model"]
+            isOneToOne: false
+            referencedRelation: "parent_explanation_prices"
+            referencedColumns: ["model"]
+          },
+        ]
+      }
+      parent_explanations: {
+        Row: {
+          child_id: string
+          context: string
+          explanation: Json | null
+          item_id: string
+          lease_token: string
+          lease_until: string
+          parent_id: string
+        }
+        Insert: {
+          child_id: string
+          context: string
+          explanation?: Json | null
+          item_id: string
+          lease_token: string
+          lease_until: string
+          parent_id: string
+        }
+        Update: {
+          child_id?: string
+          context?: string
+          explanation?: Json | null
+          item_id?: string
+          lease_token?: string
+          lease_until?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_explanations_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "parent_explanations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parent_explanations_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_pins: {
         Row: {
           created_at: string
@@ -3020,6 +3196,58 @@ export type Database = {
           },
         ]
       }
+      scan_marking_evaluation_deferrals: {
+        Row: {
+          attempt_hash: string
+          dispatch_id: string
+          policy: string
+          received_at_ms: number
+          recorded_at: string
+          response: Json
+          run_hash: string
+        }
+        Insert: {
+          attempt_hash: string
+          dispatch_id: string
+          policy: string
+          received_at_ms: number
+          recorded_at?: string
+          response: Json
+          run_hash: string
+        }
+        Update: {
+          attempt_hash?: string
+          dispatch_id?: string
+          policy?: string
+          received_at_ms?: number
+          recorded_at?: string
+          response?: Json
+          run_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_marking_evaluation_deferrals_attempt_hash_fkey"
+            columns: ["attempt_hash"]
+            isOneToOne: true
+            referencedRelation: "scan_marking_evaluation_attempts"
+            referencedColumns: ["attempt_hash"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_deferrals_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: true
+            referencedRelation: "scan_marking_evaluation_attempts"
+            referencedColumns: ["dispatch_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_deferrals_run_hash_fkey"
+            columns: ["run_hash"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_evaluations"
+            referencedColumns: ["run_hash"]
+          },
+        ]
+      }
       scan_marking_evaluation_prices: {
         Row: {
           enabled: boolean
@@ -3058,6 +3286,92 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "scan_marking_prices"
             referencedColumns: ["model"]
+          },
+        ]
+      }
+      scan_marking_evaluation_resolutions: {
+        Row: {
+          actor: string
+          amount_micros: number
+          attempt_hash: string
+          dispatch_id: string
+          endpoint: string
+          evidence: Json
+          evidence_hash: string
+          maximum_micros: number
+          model: string
+          outcome: string
+          period: string
+          pixels: number
+          recorded_at: string
+          reserved_micros: number
+          run_hash: string
+          run_maximum_micros: number
+        }
+        Insert: {
+          actor: string
+          amount_micros: number
+          attempt_hash: string
+          dispatch_id: string
+          endpoint: string
+          evidence: Json
+          evidence_hash: string
+          maximum_micros: number
+          model: string
+          outcome: string
+          period: string
+          pixels: number
+          recorded_at?: string
+          reserved_micros: number
+          run_hash: string
+          run_maximum_micros: number
+        }
+        Update: {
+          actor?: string
+          amount_micros?: number
+          attempt_hash?: string
+          dispatch_id?: string
+          endpoint?: string
+          evidence?: Json
+          evidence_hash?: string
+          maximum_micros?: number
+          model?: string
+          outcome?: string
+          period?: string
+          pixels?: number
+          recorded_at?: string
+          reserved_micros?: number
+          run_hash?: string
+          run_maximum_micros?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_marking_evaluation_resol_model_endpoint_evidence_hash_fkey"
+            columns: ["model", "endpoint", "evidence_hash"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_evaluation_prices"
+            referencedColumns: ["model", "endpoint", "evidence_hash"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_resolutions_attempt_hash_fkey"
+            columns: ["attempt_hash"]
+            isOneToOne: true
+            referencedRelation: "scan_marking_evaluation_attempts"
+            referencedColumns: ["attempt_hash"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_resolutions_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: true
+            referencedRelation: "scan_marking_evaluation_attempts"
+            referencedColumns: ["dispatch_id"]
+          },
+          {
+            foreignKeyName: "scan_marking_evaluation_resolutions_run_hash_fkey"
+            columns: ["run_hash"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_evaluations"
+            referencedColumns: ["run_hash"]
           },
         ]
       }
@@ -3871,7 +4185,9 @@ export type Database = {
           parent_id: string
           question_number: number | null
           request_key: string | null
+          result_note: string | null
           revision: number
+          route: string
           status: string
           x: number
           y: number
@@ -3894,7 +4210,9 @@ export type Database = {
           parent_id: string
           question_number?: number | null
           request_key?: string | null
+          result_note?: string | null
           revision: number
+          route?: string
           status?: string
           x: number
           y: number
@@ -3917,7 +4235,9 @@ export type Database = {
           parent_id?: string
           question_number?: number | null
           request_key?: string | null
+          result_note?: string | null
           revision?: number
+          route?: string
           status?: string
           x?: number
           y?: number
@@ -4310,12 +4630,14 @@ export type Database = {
           child_id: string
           created_at: string
           draft_id: string
+          edit_kind: string
           error: string | null
           finished_at: string | null
           frame: Json | null
           heartbeat_at: string
           id: string
           item: Json | null
+          layout_plan: Json | null
           lease: string | null
           note: string
           page_number: number
@@ -4336,12 +4658,14 @@ export type Database = {
           child_id: string
           created_at?: string
           draft_id: string
+          edit_kind?: string
           error?: string | null
           finished_at?: string | null
           frame?: Json | null
           heartbeat_at?: string
           id?: string
           item?: Json | null
+          layout_plan?: Json | null
           lease?: string | null
           note: string
           page_number: number
@@ -4362,12 +4686,14 @@ export type Database = {
           child_id?: string
           created_at?: string
           draft_id?: string
+          edit_kind?: string
           error?: string | null
           finished_at?: string | null
           frame?: Json | null
           heartbeat_at?: string
           id?: string
           item?: Json | null
+          layout_plan?: Json | null
           lease?: string | null
           note?: string
           page_number?: number
@@ -6520,6 +6846,10 @@ export type Database = {
           id: string
         }[]
       }
+      claim_workbook_layout_edit: {
+        Args: { p_id: string; p_lease: string }
+        Returns: boolean
+      }
       claim_workbook_run:
         | { Args: { p_lease: string; p_run: string }; Returns: boolean }
         | {
@@ -6625,6 +6955,16 @@ export type Database = {
       }
       decide_family_deletion: {
         Args: { keep_family: boolean; p: string; token: string }
+        Returns: boolean
+      }
+      defer_scan_marking_evaluation: {
+        Args: {
+          p_attempt: string
+          p_id: string
+          p_received_at: number
+          p_response: Json
+          p_run: string
+        }
         Returns: boolean
       }
       email_copy_child_scope: {
@@ -6734,6 +7074,27 @@ export type Database = {
         Returns: string
       }
       finish_workbook_edit: {
+        Args: {
+          p_content: Json
+          p_error: string
+          p_id: string
+          p_lease: string
+          p_problems: Json
+          p_rendering: Json
+        }
+        Returns: Json
+      }
+      finish_workbook_layout_edit: {
+        Args: {
+          p_error: string
+          p_id: string
+          p_lease: string
+          p_rendering: Json
+          p_results: Json
+        }
+        Returns: Json
+      }
+      finish_workbook_question_edit_checked: {
         Args: {
           p_content: Json
           p_error: string
@@ -6899,6 +7260,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      parent_explanation_command: {
+        Args: {
+          p_action: string
+          p_data?: Json
+          p_parent: string
+          p_photo: string
+          p_token: string
+        }
+        Returns: Json
+      }
       parent_maya_note_sessions: {
         Args: { p_calls: string[] }
         Returns: {
@@ -6967,6 +7338,16 @@ export type Database = {
           p_question: number
           p_revision: number
           p_runner: string
+        }
+        Returns: Json
+      }
+      queue_workbook_layout_edit: {
+        Args: {
+          p_by: string
+          p_draft: string
+          p_email: string
+          p_plan: Json
+          p_revision: number
         }
         Returns: Json
       }
@@ -7046,6 +7427,17 @@ export type Database = {
       redact_child_email_logs: {
         Args: { c: string; p: string }
         Returns: undefined
+      }
+      refresh_scan_marking_evaluation_price: {
+        Args: {
+          p_details: string
+          p_endpoint: string
+          p_evidence: string
+          p_maximum: number
+          p_model: string
+          p_previous_evidence: string
+        }
+        Returns: Json
       }
       release_card_lock: {
         Args: { p_card: string; p_token: string }
@@ -7151,6 +7543,19 @@ export type Database = {
         }
         Returns: Json
       }
+      reserve_scan_marking_evaluation_checked: {
+        Args: {
+          p_attempt: string
+          p_endpoint: string
+          p_evidence: string
+          p_maximum: number
+          p_model: string
+          p_pixels: number
+          p_run: string
+          p_run_maximum: number
+        }
+        Returns: Json
+      }
       reserve_workbook_edit_call: {
         Args: {
           p_hash: string
@@ -7161,6 +7566,16 @@ export type Database = {
           p_question: string
         }
         Returns: Json
+      }
+      resolve_scan_marking_evaluation_full_reservation: {
+        Args: {
+          p_actor: string
+          p_attempt: string
+          p_evidence: Json
+          p_id: string
+          p_run: string
+        }
+        Returns: boolean
       }
       resume_workbook_run:
         | {
@@ -7360,6 +7775,11 @@ export type Database = {
         }
         Returns: Json
       }
+      scan_marking_evaluation_has_generation: {
+        Args: { p: Json }
+        Returns: boolean
+      }
+      scan_marking_evaluation_policy: { Args: { p: Json }; Returns: Json }
       scan_marking_saved_command: {
         Args: {
           p_action: string
@@ -7481,6 +7901,11 @@ export type Database = {
         }
         Returns: boolean
       }
+      workbook_comment_route: {
+        Args: { p_note: string; p_page: Json; p_route?: string }
+        Returns: string
+      }
+      workbook_edit_target_value: { Args: { p_value: Json }; Returns: Json }
       workbook_run_held: {
         Args: { p_lease: string; p_run: string }
         Returns: boolean

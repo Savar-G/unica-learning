@@ -84,6 +84,21 @@ describe("OpenRouter schema compatibility through public callers and fake HTTP",
     expect(PROMPT_VERSION).toBe("maya-text-chat-29");
   });
 
+  it("keeps feature routing and admission hooks when the shared schema adapter uses instructions", async () => {
+    const p = provider(), events: string[] = [];
+    const route = { only: ["google-vertex/global"], order: ["google-vertex/global"],
+      allow_fallbacks: false as const, require_parameters: true as const };
+    const client = openRouterClient({ apiKey: "fake-key", model: MODEL, fetch: p.fetch, provider: route,
+      onRequest: async () => { events.push("admitted"); }, onDispatch: () => { events.push("dispatched"); } });
+    await expect(aiMayaModel(client).propose(input(), signal())).resolves.toEqual(open);
+    expect(events).toEqual(["admitted", "dispatched"]);
+    expect(p.sent).toHaveLength(1);
+    expect(p.sent[0].body.provider).toEqual(route);
+    expect(p.sent[0].body).not.toHaveProperty("response_format");
+    const [actual] = await practiceRequests();
+    expect(p.sent[0].body.messages[0].content).toContain(JSON.stringify(actual.schema));
+  });
+
   it("inventories and dispatches every practice role, with supported roles still structured", async () => {
     const requests = await practiceRequests();
     const inventory = requests.map((r) => ({ name: r.name, ...audit(r.schema) }));

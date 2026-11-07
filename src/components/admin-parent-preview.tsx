@@ -15,10 +15,13 @@ import { workbookAnswerPages, type ParentWorkbookAnswers } from "@/lib/parent-wo
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { storedQuestion } from "@/lib/workbook-content";
 import { ParentWorkbooks } from "@/components/parent-workbooks";
+import { ScanHistoryView, type HistoryListing, type HistoryState } from "@/components/scan-history";
+import { HISTORY_LABELS, type HistoryStatus } from "@/lib/scan-history";
+import { ParentSchedule } from "@/components/parent-schedule";
 import { ParentProgress } from "@/components/parent-progress";
 import { SkillPanel } from "@/components/parent-skill-map";
 import { NoteCard, ParentSessionView } from "@/components/parent-maya-notes";
-import { MinutesRow } from "@/components/parent-home-rows";
+import { MayaChatRow } from "@/components/parent-home-rows";
 import { AccountBilling } from "@/components/account-billing";
 import { ChildDetailsView } from "@/components/account-child-details";
 import { ParentAccountSettings } from "@/components/parent-account-settings";
@@ -26,6 +29,7 @@ import { ParentPlanView } from "@/components/parent-plan-view";
 import { CancelPlanView, PlanControlView, type PlanControlViewProps } from "@/components/account-plan";
 import { ReportNextView, type CardState } from "@/components/report-next";
 import { ScanPages, type ScanListing } from "@/components/scan-pages";
+import { ScanProblemExplanationView, type ExplanationState } from "@/components/scan-problem-explanation";
 import { ScanMarkingResults } from "@/components/scan-marking-results";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
@@ -40,7 +44,6 @@ import type { ChildView, OverviewView, WorkbooksView } from "@/lib/parent-view";
 import { freeMonthWords } from "@/lib/parent-assessment";
 import { tabLinks } from "@/lib/parent-shell";
 import { nextStep } from "@/lib/report-view";
-import { WEEK_SECONDS } from "@/lib/maya-minutes";
 import { PLANS } from "@/lib/site";
 import { sampleReportView } from "@/lib/sample-children";
 import { skillMapView } from "@/lib/skill-map-view";
@@ -55,7 +58,7 @@ const noAction = () => { throw new Error("Static preview cannot run an action");
 const staticRouter: AppRouterInstance = { bfcacheId: "static-parent-preview", back: noAction, forward: noAction, refresh: noAction, push: noAction, replace: noAction, prefetch: noAction };
 const learning: LearningRow = { learning_styles: null, interests: null, learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null };
 const alerts = { password: false, pin: false, deskError: false, existing: false };
-const minutes = { used: 12, left: WEEK_SECONDS / 60 - 12, backOn: "Monday, November 9" };
+const chatUsage = { used: 12, left: 48, backAt: "12:00 a.m. on Friday, November 6", resetsAt: Date.parse("2026-11-06T07:00:00Z") };
 let report: ReturnType<typeof sampleReportView> | undefined;
 const baseReport = () => report ??= sampleReportView();
 
@@ -85,6 +88,25 @@ function workbooks(child: ChildView, state: string): WorkbooksView {
   return { child, current: state === "first_book_coming" ? null : { id: "sample-book", number: 3, shippedOn: "2026-10-28", deliveredOn: mailed ? null : "2026-11-01", delivery: state === "hand" ? { method: "hand" } : { method: "mail", carrier: "Canada Post", trackingNumber: "SAMPLE 000 000", trackingUrl: "https://example.invalid/track" } },
     next: child.readOnly || state === "first_book_coming" ? { kind: "none" } : state === "late" ? { kind: "past_estimate" } : { kind: "range", earliest: state === "paused" ? "2026-12-10" : "2026-11-26", latest: state === "paused" ? "2026-12-15" : "2026-12-01" },
     books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", deliveredOn: number === 3 && mailed ? null : "2026-11-01" })) };
+}
+
+/** Inert canonical history for the selected child's current book. More pages keeps past books behind this book. */
+function workbookHistory(child: ChildView, state: string) {
+  const status: HistoryState = state === "history_loading" ? "loading" : state === "history_error" ? "failed" : state === "history_unavailable" ? "unavailable" : "ready";
+  const states: HistoryStatus[] = state === "history_empty" || state === "first_book_coming" ? []
+    : state === "history_review" ? ["review"] : state === "history_pending" ? ["pending"] : state === "history_failed" ? ["failed"]
+      : state === "history_expired" || state === "history_missing_photo" ? ["ready"] : ["ready", "review", "pending", "failed", "blank", "unscored", "never-scanned"];
+  const pages: HistoryListing["pages"] = states.map((pageStatus, index) => ({
+    id: `${child.id}-page-${index}`, childId: child.id, childName: child.firstName, workbookId: "sample-book-3",
+    book: 3, revision: "synthetic-frozen", day: child.id === "sample-child-2" ? "Day 2" : "Day 1", pageNumber: index + 4,
+    status: pageStatus, label: HISTORY_LABELS[pageStatus], photo: pageStatus === "never-scanned" || state === "history_missing_photo" ? null : `${child.id}-photo-${index}`,
+    photoAvailable: state !== "history_expired", failedJob: pageStatus === "failed",
+    counts: { scored: pageStatus === "ready" ? 3 : pageStatus === "blank" ? 1 : 0, unscored: pageStatus === "unscored" ? 1 : 0, parentChecks: pageStatus === "review" ? 1 : 0, pending: pageStatus === "pending" ? 1 : 0 },
+    right: pageStatus === "ready" ? 2 : 0, wrong: pageStatus === "ready" ? 1 : 0, blank: pageStatus === "blank" ? 1 : 0,
+  }));
+  const listing = { pages, counts: Object.fromEntries(states.map(value => [value, pages.filter(page => page.status === value).length])), after: null };
+  return <ScanHistoryView state={status} listing={listing} workbookScoped={state !== "first_book_coming"}
+    hasMore={status === "ready" && state !== "first_book_coming"} />;
 }
 
 function answerKey(child: ChildView, state: string): ParentWorkbookAnswers {
@@ -132,9 +154,9 @@ function scanResult(state: string): Parameters<typeof ScanMarkingResults>[0]["re
   return { photoAvailable: state !== "expired", budgetHeld: state === "budget", solutionsAvailable: !pending && !uncertain && !unscored,
     completion: { total: pending ? 0 : 1, status: pending ? "no-items" : uncertain ? "incomplete" : "complete", finished: pending || uncertain ? 0 : 1, items: pending ? [] : [{ itemId: "sample-question", number: 1, progress: uncertain ? "pending" : "finished" }] },
     counts: { scored: pending || uncertain || unscored ? 0 : 1, unscored: unscored ? 1 : 0, parentChecks: 0, pending: pending || uncertain ? 1 : 0 },
-    items: pending ? [] : [{ number: 1, itemId: "sample-question", version: 1, state: uncertain ? "pending" : unscored ? "unscored" : "scored", result: uncertain || unscored ? null : "right", readAnswerText: uncertain ? "4?" : "42",
+    items: pending ? [] : [{ number: 1, itemId: "sample-question", version: 1, state: uncertain ? "pending" : unscored ? "unscored" : "scored", result: uncertain || unscored ? null : state.startsWith("explain_") ? "wrong" : "right", readAnswerText: uncertain ? "4?" : state.startsWith("explain_") ? "41" : "42",
       canChange: !unscored, actor: "system", at: "2026-11-05T20:00:00Z", evidencePhoto: "sample-photo", photoAvailable: state !== "expired",
-      label: uncertain ? "Please check this answer" : unscored ? "Not scored" : "Right" }] };
+      label: uncertain ? "Please check this answer" : unscored ? "Not scored" : state.startsWith("explain_") ? "Wrong" : "Right" }] };
 }
 
 function previewContent(selection: PreviewSelection, child: ChildView | undefined, kids: ChildView[]) {
@@ -171,9 +193,16 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
       return <ParentReport view={view} child={child} next={next} newTest={state === "unreliable" ? { state: { kind: "open" }, href: `/account/start/${child.id}`, label: "Start a new test" } : null} learning={null} alerts={alerts} tracked={false} src="account"
         nextActions={<ReportNextView reportId={view.id} step={nextStep(view)} words={view.model.callToAction === "card" ? freeMonthWords(child.firstName) : undefined} childName={child.firstName} province={view.province} {...next} card={card} wait={state === "joined" ? "joined" : state === "waitlist_error" ? "error" : "join"} busy={state === "busy_card" ? "one" : state === "busy_waitlist" ? "waitlist" : null} announce="" savedPlan={start.saved} choose={noAction} join={noAction} checkAgain={noAction} pinned />} />;
     }
-    case "overview": return <SupportPage label="Overview" title={child.firstName}><ParentOverview overview={overview(child, state)} maya={child.stage === "active" ? minutes : null} /></SupportPage>;
+    case "overview": return <SupportPage label="Overview" title={child.firstName}><ParentOverview overview={overview(child, state)} /></SupportPage>;
     case "workbook_answers": return <ParentWorkbookAnswerKey answerKey={answerKey(child, state)} />;
-    case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} />;
+    case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} history={workbookHistory(child, state)} />;
+    case "schedule": return <ParentSchedule schedule={state === "waiting" || state === "unavailable" ? { kind: state, child: { ...child, parentId: "sample-parent" } } : {
+      kind: "ready", child: { ...child, parentId: "sample-parent" }, book: { id: "sample-printed-book", number: child.id === "sample-child-2" ? 2 : 1 }, dailyTime: "about 20 minutes, plus Extra if there's time",
+      rows: Array.from({ length: 10 }, (_, i) => ({ day: i + 1, topic: child.id === "sample-child-2" ? "Multiplication" : "Addition", second: i === 6 ? "Level check" : "Number practice",
+        pages: [3 + i * 8, 10 + i * 8], requiredMinutes: 20, extra: true,
+        scan: state === "accepted" || state === "expired" ? { kind: "known", accepted: 8, required: 8 } : state === "partial" && i === 0 ? { kind: "known", accepted: 3, required: 8 } : { kind: "unknown" },
+      })),
+    }} />;
     case "progress": {
       const areas = state === "empty" ? [] : skillMapView({ firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: 2, tests: [{ standard: "2.1", correct: 4, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }, { standard: "2.3", correct: 0, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }], workbookStandards: ["2.1", "2.2"], workbookNumber: 3, day: at => at.slice(0, 10) });
       return <ParentProgress child={child} level={state === "empty" ? null : { working: 2, earlySign: false, testedOn: "2026-11-04", unreliable: state === "unreliable" }} workbookNumber={3} areas={areas}
@@ -182,7 +211,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
     case "maya": {
       const note = sampleNote(child, state === "chat", state === "missing");
       if (["session", "chat", "missing"].includes(state)) return <ParentSessionView note={note} name={child.firstName} zone={zone} back={{ href: `/account/notes/${child.id}`, label: "← Back to Maya" }} />;
-      return <SupportPage label="Maya" title={child.firstName}><div className="maya-tab-week"><MinutesRow name={child.firstName} minutes={state === "used" ? { ...minutes, used: WEEK_SECONDS / 60, left: 0 } : minutes} /></div><h2 className="maya-tab-notes">Notes from Maya</h2>
+      return <SupportPage label="Maya" title={child.firstName}>{child.stage !== "ended" && state !== "closed" && <div className="maya-tab-week"><MayaChatRow name={child.firstName} chat={state === "used" ? { ...chatUsage, used: 60, left: 0 } : chatUsage} /></div>}<h2 className="maya-tab-notes">Notes from Maya</h2>
         {state === "empty" ? <p>There are no notes from Maya yet.</p> : <ul className="maya-notes-list">{[note, sampleNote(child, true)].map(n => <li key={n.channel}><NoteCard note={n} name={child.firstName} zone={zone} /></li>)}</ul>}</SupportPage>;
     }
     case "account": return <ParentAccountSettings card={state} hasCard={state !== "empty"} province="BC" billing={state === "loading" ? <p role="status">Loading billing...</p> : <AccountBilling billing={billing(kids, state)} zone={zone} />} details={<ChildDetailsView kids={kids.map(k => ({ id: k.id, first_name: k.firstName, grade: k.schoolGrade, ...learning }))} />} />;
@@ -193,7 +222,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
         cancellation={state.startsWith("cancel_") ? row => <CancelPlanView name={row.childName} consequence="The plan ends on November 26, 2026. We will not charge your card again." asking busy={false} failed={state === "cancel_pending"} cancel={noAction} keep={noAction} ask={noAction} /> : undefined} />;
     }
     case "scan": return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[child, ...kids.filter(k => k.id !== child.id)].map(k => ({ id: k.id, first_name: k.firstName }))} parent="sample-parent" noticeAcknowledged mode={selection.size === "desktop" ? "desktop" : "phone"} initial={{ listing: scanListing(state), loadFailed: state === "unavailable" }} /></SupportPage>;
-    case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><a href="/account/scan">Back to Scan pages</a><ScanMarkingResults result={scanResult(state)} showHeading={false} /></div></SupportPage>;
+    case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><a href="/account/scan">Back to Scan pages</a><ScanMarkingResults result={scanResult(state)} showHeading={false} itemExplanation={state.startsWith("explain_") ? item => <ScanProblemExplanationView number={item.number} state={state.slice(8) as ExplanationState} result={state === "explain_ready" ? { status: "ready", context: "synthetic", correctAnswer: "42", explanation: { steps: ["Add the ones: 4 plus 8 is 12. Write 2 and carry 1 ten.", "Add the tens and the carried ten: 2 plus 1 plus 1 is 4."], say: "Let us add one column at a time." } } : undefined} /> : undefined} /></div></SupportPage>;
   }
 }
 
