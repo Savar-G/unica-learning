@@ -4,6 +4,20 @@ import { MARKING_MODEL } from "@/lib/scan-marking";
 import { OPENROUTER_URL } from "@/lib/ai-openrouter";
 
 const request = { name: "readings", system: "Read only", content: [{ type: "text" as const, text: "local aliases" }, { type: "image" as const, mediaType: "image/jpeg" as const, data: new Uint8Array([1]) }], schema: {}, effort: "low" as const, maxTokens: 4096 };
+it("uses Terra only through an explicit evaluation route with the common low-effort request", async () => {
+  const env = { SCAN_MARKING_OPENROUTER_API_KEY: "synthetic", SCAN_MARKING_MODEL: "openai/gpt-6.1-terra" };
+  let body: Record<string, unknown> | null = null;
+  const fake: typeof fetch = async (_url, init) => {
+    body = JSON.parse(String(init?.body));
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: "{}" } }] });
+  };
+  expect(markingAiClient(env, fake)(async () => {})).toBeNull();
+  const provider = { only: ["azure"], order: ["azure"], allow_fallbacks: false as const, require_parameters: true as const, zdr: true as const };
+  const ai = markingAiClient(env, fake, { model: "openai/gpt-6.1-terra", provider, maxRetries: 0 })(async () => {});
+  expect(ai).not.toBeNull();
+  await ai!.client.json(request, new AbortController().signal);
+  expect(body).toMatchObject({ model: "openai/gpt-6.1-terra", provider, max_tokens: 4096, reasoning: { effort: "low", exclude: true } });
+});
 it("the real AiClient adapter reserves before each fetch, uses the marking override and records transport cost", async () => {
   const order: string[] = [], bodies: Record<string, unknown>[] = [], costs: (number | null)[] = [];
   let count = 0;

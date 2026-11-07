@@ -63,7 +63,7 @@ async function validatedDelivery(input: DeliveryInput, now: number, write: (inpu
 }
 
 /** Use the effective time after corrections. S11b owns activity, re-evaluation, and send-once claims. */
-export function deliveryDeadlines(receipt: DeliveryReceipt): { reminderAt: string; backstopAt: string } {
+export function deliveryDeadlines(receipt: Pick<DeliveryReceipt, "deliveredAt" | "timeZone">): { reminderAt: string; backstopAt: string } {
   const zone = receipt.timeZone;
   const p = partsInZone(receipt.deliveredAt, zone, { hour: "numeric", minute: "numeric", hourCycle: "h23" });
   const day = localDay(receipt.deliveredAt, zone);

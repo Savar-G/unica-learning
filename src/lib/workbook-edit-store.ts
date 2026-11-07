@@ -16,6 +16,7 @@ export const commentFromRow = (r: Database["public"]["Tables"]["workbook_comment
   id: r.id, draftId: r.draft_id, revision: r.revision, page: r.page_number, question: r.question_number,
   x: r.x, y: r.y, note: r.note, item: r.item, actor: { id: r.actor_id, email: r.actor_email }, createdAt: r.created_at,
   status: r.status as ReviewComment["status"], error: r.error, batchId: r.batch_id, before: r.before_value, after: r.after_value,
+  route: r.route, resultNote: r.result_note,
 });
 const checked = <T>(r: { data: T; error: { message: string } | null }): T => { if (r.error) throw new Error(r.error.message); return r.data; };
 

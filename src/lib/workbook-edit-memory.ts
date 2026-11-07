@@ -3,6 +3,7 @@ import type { Json } from "@/lib/database.types";
 import type { EditSnapshot, ReviewComment, WorkbookEdit, WorkbookEditStore, EditResult, EditCheckpoint, EditFrame } from "@/lib/workbook-edit";
 import { EDIT_LEASE_MS } from "@/lib/workbook-edit";
 import type { RunRunner } from "@/lib/workbook-job";
+import { LAYOUT_REVIEW_MESSAGE, UNCHANGED_COMMENT_MESSAGE, workbookCommentChanged, workbookCommentRoute } from "@/lib/workbook-comment-route";
 
 /** In-memory review store. All mutations use the same revision and active-batch checks as the database. */
 export function memoryWorkbookReview(snapshot: EditSnapshot, options: { now?: () => number; status?: "draft" | "approved" | "printed" | "shipped" } = {}) {
@@ -70,6 +71,9 @@ export function memoryWorkbookReview(snapshot: EditSnapshot, options: { now?: ()
         const bpage = before.draft.pages.find((p) => p.number === c.page), apage = current.draft.pages.find((p) => p.number === c.page);
         c.before = c.question === null ? bpage : bpage?.questions.find((q) => q.number === c.question);
         c.after = c.question === null ? apage : apage?.questions.find((q) => q.number === c.question);
+        if (c.status === "done" && bpage && apage && !workbookCommentChanged(bpage, apage, c.question)) {
+          c.status = "failed"; c.error = UNCHANGED_COMMENT_MESSAGE;
+        }
       }
       for (const c of comments.filter((c) => ["pending", "failed", "stale"].includes(c.status))) {
         c.revision = current.revision;
@@ -92,7 +96,13 @@ export function memoryWorkbookReview(snapshot: EditSnapshot, options: { now?: ()
       const stalled = [...batches.values()].find(b => (b.status === "queued" || b.status === "running") && Date.parse(b.expiresAt!) <= now());
       if (stalled && revision === current.revision) return { status: "queued", id: stalled.id };
       if (revision !== current.revision || active()) return refused("This workbook changed or has an edit in progress. Reload the page.");
-      const pending = comments.filter((c) => c.status === "pending" || c.status === "failed");
+      const open = comments.filter((c) => c.status === "pending" || c.status === "failed");
+      for (const c of open) {
+        c.route = workbookCommentRoute(current.draft.pages.find(p => p.number === c.page), c.note, c.route);
+        if (c.route === "layout") { c.status = "pending"; c.error = LAYOUT_REVIEW_MESSAGE; c.batchId = null; }
+      }
+      const pending = open.filter(c => c.route === "question");
+      if (!pending.length && open.length) return { status: "layout-review", reason: LAYOUT_REVIEW_MESSAGE };
       if (!pending.length) return refused("Add a comment first.");
       const id = `batch-${++serial}`;
       batches.set(id, { id, draftId: current.draft.id, revision, runner, status: "queued", error: null, createdAt: "2026-11-01T20:00:00Z", lease: null });
