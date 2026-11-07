@@ -10,6 +10,8 @@ import { GENERATED_FORMATS, buildQuestion } from "@/lib/workbook-generator-items
 import { valueText } from "@/lib/question-package";
 import { commentPosition } from "@/lib/workbook-comment-position";
 import { plainReason, NEEDS_A_LOOK } from "@/lib/workbook-reason";
+import { LAYOUT_REVIEW_MESSAGE, UNCHANGED_COMMENT_MESSAGE, workbookCommentRoute, workbookCommentStatus, type CommentRoute } from "@/lib/workbook-comment-route";
+import { WorkbookLayoutReview } from "./workbook-layout-review";
 import "./workbook-comment-reviewer.css";
 
 type Anchor = { page: number; question: number | null; x: number; y: number; id?: string; requestKey?: string };
@@ -38,6 +40,7 @@ function Fields({ data, change, label }: { data: unknown; change(v: unknown): vo
     : <input value={String(data ?? "")} onChange={(e) => change(e.target.value)} />}</label>;
 }
 function commentReason(reason: string) {
+  if (reason === LAYOUT_REVIEW_MESSAGE || reason === UNCHANGED_COMMENT_MESSAGE || reason.startsWith("Partly applied.") || reason.startsWith("This request did not change") || reason.startsWith("The page did not change")) return reason;
   if (/story|person with a first name|counted thing/.test(reason)) return "Use a person's first name. Name the counted things in the question.";
   const plain = plainReason(reason);
   if (plain !== NEEDS_A_LOOK) return plain;
@@ -57,6 +60,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const [anchor, setAnchor] = useState<Anchor | null>(null), [note, setNote] = useState("");
   const [item, setItem] = useState<unknown>(null), [exact, setExact] = useState(false);
   const [saving, setSaving] = useState(false), [error, setError] = useState("");
+  const [notice, setNotice] = useState(""), [requestedRoute, setRequestedRoute] = useState<CommentRoute | "auto">("auto");
   const [progress, setProgress] = useState<EditProgress | null>(null), [progressErrors, setProgressErrors] = useState(0);
   const input = useRef<HTMLTextAreaElement>(null);
   const locked = detail.approved?.status === "printed" || detail.approved?.status === "shipped";
@@ -67,6 +71,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const working = active && !stalled;
   const resultMessage = workbookEditMessage(detail.editBatch, detail.comments);
   const pending = detail.comments.filter((c) => c.status === "pending" || c.status === "failed");
+  const layoutComments = pending.filter(c => workbookCommentRoute(pages.find(p => p.number === c.page), c.note, c.route) === "layout");
   const page = pages.find((p) => p.number === selected)!;
   const rendered = draft.rendering?.pages.find((p) => p.number === selected);
   const comments = detail.comments.filter((c) => c.page === selected);
@@ -92,21 +97,24 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   function select(a: Anchor, comment?: ReviewComment) {
     if (locked || working) return;
     setSelected(a.page); setAnchor({ ...a, requestKey: a.requestKey ?? crypto.randomUUID() }); setNote(comment?.note ?? ""); setExact(!!comment?.item); setItem(comment?.item ?? null); setError("");
+    setRequestedRoute(comment?.route ?? "auto");
   }
   async function post(body: object) {
-    setSaving(true); setError("");
+    setSaving(true); setError(""); setNotice("");
     try {
       const r = await fetch(`/api/admin/workbooks/runs/${detail.run.id}/edit`, { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ revision: draft.revision, ...body }) });
       const result = await r.json();
       if (!r.ok) throw new Error(result.reason ?? "The comment could not be saved.");
+      if (result.status === "layout-review") setNotice(result.reason);
       router.refresh(); return true;
     } catch (e) { setError(e instanceof Error ? e.message : "Reload to check whether the comment was saved."); return false; }
     finally { setSaving(false); }
   }
   async function add() {
     if (!anchor || !note.trim() || saving) return;
-    if (await post({ comment: { ...anchor, note, item: exact ? item : null } })) { setAnchor(null); setNote(""); setExact(false); }
+    const route = workbookCommentRoute(pages.find(p => p.number === anchor.page), note, requestedRoute === "auto" ? undefined : requestedRoute);
+    if (await post({ comment: { ...anchor, note, route, item: exact && route === "question" ? item : null } })) { setAnchor(null); setNote(""); setExact(false); }
   }
   const question = anchor?.question ? pages.find((p) => p.number === anchor.page)?.questions.find((q) => q.number === anchor.question) : null;
   const built = exact && question?.package && item ? buildQuestion(item, { id: question.package.id, workbookId: draft.workbook.id,
@@ -133,6 +141,8 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     {working && <p className="wbr-message" role="status">{state} Your current workbook stays in place until the checked changes are ready.</p>}
     {active && progressErrors > 0 && <p className="wbr-message" role="alert">Progress is unavailable. Retrying shortly.{currentProgress ? " The last saved counts stay above." : " No saved count is available yet."}</p>}
     {resultMessage && <p role="alert" className="wbr-message">{resultMessage}</p>}
+    {notice && <p role="status" className="wbr-message">{notice}</p>}
+    {layoutComments.length > 0 && <p className="wbr-message" role="note">{layoutComments.length} page-layout {layoutComments.length === 1 ? "comment needs" : "comments need"} review. Send all comments applies supported question text. Layout requests stay open in the review path below.</p>}
     <div className="wbr-body">
       <nav className="wbr-thumbs" aria-label="Workbook pages">{pages.map((p) => {
         const count = detail.comments.filter((c) => c.page === p.number).length;
@@ -165,8 +175,13 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
         {anchor && <form className="wbr-compose" onSubmit={(e) => { e.preventDefault(); void add(); }}>
           <strong>{location(anchor)}</strong><label>What needs to change?<textarea ref={input} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setAnchor(null); } if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void add(); } }} /></label>
-          {question && <button type="button" className="wbr-link" onClick={() => { setExact(!exact); if (!item) setItem(workbookEditItem(question)); }}>Edit myself</button>}
-          {exact && <div className="wbr-exact"><p>The code calculates the answer and worked steps. The solve check checks your words when you send the comments.</p>
+          <label>Change type<select value={requestedRoute} onChange={e => setRequestedRoute(e.target.value as CommentRoute | "auto")}>
+            <option value="auto">Choose automatically</option><option value="question">Question text</option><option value="layout">Page layout, cover or instructions</option>
+          </select></label>
+          {workbookCommentRoute(pages.find(p => p.number === anchor.page), note, requestedRoute === "auto" ? undefined : requestedRoute) === "layout"
+            ? <p role="note">{LAYOUT_REVIEW_MESSAGE}</p>
+            : question && <button type="button" className="wbr-link" onClick={() => { setExact(!exact); if (!item) setItem(workbookEditItem(question)); }}>Edit myself</button>}
+          {exact && workbookCommentRoute(pages.find(p => p.number === anchor.page), note, requestedRoute === "auto" ? undefined : requestedRoute) === "question" && <div className="wbr-exact"><p>The code calculates the answer and worked steps. The solve check checks your words when you send the comments.</p>
             <Fields label="Question fields" data={item} change={setItem} />
             <label>Answer, calculated by code<output>{built?.package?.answer ? valueText(built.package.answer.value) : "Calculated from the question fields"}</output></label>
             {built?.check.status === "failed" && <p role="alert">{commentReason(built.check.reason)}</p>}</div>}
@@ -174,13 +189,15 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
           <small>Enter to save · Esc to cancel · Shift+Enter for a new line</small>
         </form>}
         {error && <p role="alert">{error}</p>}
+        <WorkbookLayoutReview comments={layoutComments} pages={pages.map(p => p.number)} busy={locked || active || saving} apply={layout => post({ layout })} />
         {!detail.comments.length && <p className="wbr-empty">No comments yet.</p>}
         {detail.comments.map((c, i) => <article id={`comment-${c.id}`} key={c.id} className={`wbr-comment ${c.status}`}>
-          <button className="wbr-location" onClick={() => setSelected(c.page)}>{i + 1}. {location(c)}</button><span className="wbr-result">{c.status === "done" ? "Done" : c.status === "sent" ? "Working" : c.status === "stale" ? "Location changed" : c.status === "failed" ? "Needs another try" : "Pending"}</span>
+          <button className="wbr-location" onClick={() => setSelected(c.page)}>{i + 1}. {location(c)}</button><span className="wbr-result">{workbookCommentStatus(c, workbookCommentRoute(pages.find(p => p.number === c.page), c.note, c.route))}</span>
           <p>{c.note}</p>{c.item ? <small>Exact fields saved</small> : null}
+          {c.resultNote && <p className="wbr-reason">{c.resultNote}</p>}
           {c.error && <p className="wbr-reason">{commentReason(c.error)}</p>}
           {c.status === "stale" && <p>Select a new location to add this comment again.</p>}
-          {c.status === "done" && <details><summary>Before and after</summary><p><b>Before</b><br />{preview(c.before)}</p><p><b>After</b><br />{preview(c.after)}</p></details>}
+          {c.status === "done" && c.route !== "layout" && <details><summary>Before and after</summary><p><b>Before</b><br />{preview(c.before)}</p><p><b>After</b><br />{preview(c.after)}</p></details>}
           {!locked && !working && ["pending", "failed", "stale"].includes(c.status) && <div className="wbr-buttons"><button className="wbr-link" onClick={() => select({ page: c.page, question: c.question, x: c.x, y: c.y, id: c.id }, c)}>Edit comment</button><button className="wbr-link" disabled={saving} onClick={() => post({ delete: true, comment: { id: c.id } })}>Delete</button></div>}
         </article>)}
       </aside>
