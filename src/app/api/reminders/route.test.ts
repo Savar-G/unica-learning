@@ -22,10 +22,25 @@ const h = vi.hoisted(() => ({
   cardSends: 0,
   maySends: 0,
   transports: new Set<unknown>(),
+  scanEnabled: false,
+  scanRuns: 0,
+  scanFails: false,
 }));
 
 vi.mock("@/lib/account-server", () => ({ linkOrigin: () => "https://unicalearning.com" }));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => ({}) }));
+vi.mock("@/lib/workbook-scan-maintenance-server", () => ({
+  scanMaintenanceRelease: () => h.scanEnabled ? { parents: ["synthetic"], delivery: false } : null,
+  createWorkbookScanMaintenanceServer: (_db: unknown, { provider }: { provider: unknown }) => ({
+    transport: provider,
+    run: async () => {
+      h.scanRuns++;
+      h.transports.add(provider);
+      if (h.scanFails) throw new Error("private family diagnostic");
+      return { selectedBooks: 1, clocks: {}, calendars: {}, reminders: { "delivery-off": 1 }, outOfTime: false, moreMayRemain: false };
+    },
+  }),
+}));
 vi.mock("@/lib/email-resend", () => ({
   TIME_LIMIT_MS: 15_000,
   resendConfigProblem: () => null,
@@ -115,6 +130,28 @@ beforeEach(() => {
   h.cardSends = 0;
   h.maySends = 0;
   h.transports = new Set();
+  h.scanEnabled = false;
+  h.scanRuns = 0;
+  h.scanFails = false;
+});
+
+it("runs enabled scan maintenance on the shared invocation transport and keeps the dry path read-only", async () => {
+  h.scanEnabled = true;
+  expect(await (await call("?dry=1")).json()).toMatchObject({ ok: true, dry: true });
+  expect(h.scanRuns).toBe(0);
+  expect(await (await call()).json()).toMatchObject({ ok: true, scans: { selectedBooks: 1, reminders: { "delivery-off": 1 } } });
+  expect(h.scanRuns).toBe(1);
+  expect(h.transports.size).toBe(1);
+});
+
+it("reports a stopped scan turn without replaying prior emails or exposing private diagnostics", async () => {
+  h.scanEnabled = true;
+  h.scanFails = true;
+  const result = await (await call()).json();
+  expect(result).toMatchObject({ ok: true, monthly: { sent: 1 }, scans: { error: "run_failed" } });
+  expect(JSON.stringify(result)).not.toContain("private family diagnostic");
+  expect(h.scanRuns).toBe(1);
+  expect(h.mail.delivered).toHaveLength(1);
 });
 
 it("the dry path counts the email, sends nothing and claims nothing", async () => {

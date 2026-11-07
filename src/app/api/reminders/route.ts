@@ -12,6 +12,7 @@ import { reminderMessage, reminderStore } from "@/lib/reminder-store";
 import { REMINDER_KINDS, dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
 import { newToken } from "@/lib/sign-in-link";
 import { adminClient } from "@/lib/supabase-auth";
+import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/lib/workbook-scan-maintenance-server";
 
 // The reminder job (#73, D-085). Supabase pg_cron calls it every 15 minutes through pg_net, with
 // "Authorization: Bearer <CRON_SECRET>" (the URL and the secret live in Supabase Vault; see
@@ -68,7 +69,18 @@ export async function POST(request: Request) {
       const abandoned = (await sweepAbandonedCallsNow(admin, { dry: true })).due;
       return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, monthly, sweep: abandoned, cards: await dueCardCount(now) });
     }
-    const transport = pacedTransport(resendTransport(), SEND_GAP_MS);
+    const scanEnv = {
+      WORKBOOK_SCAN_PROGRESS_ENABLED: process.env.WORKBOOK_SCAN_PROGRESS_ENABLED,
+      WORKBOOK_SCAN_REMINDERS_ENABLED: process.env.WORKBOOK_SCAN_REMINDERS_ENABLED,
+      WORKBOOK_SCAN_TEST_PARENT_IDS: process.env.WORKBOOK_SCAN_TEST_PARENT_IDS,
+    };
+    const scanSignal = scanMaintenanceRelease(scanEnv) ? AbortSignal.timeout(55_000) : undefined;
+    const scanDb = scanSignal ? adminClient(scanSignal) : null;
+    const provider = resendTransport();
+    const scan = scanDb ? createWorkbookScanMaintenanceServer(scanDb, {
+      env: scanEnv, origin, provider, gapMs: SEND_GAP_MS, signal: scanSignal,
+    }) : null;
+    const transport = scan?.transport ?? pacedTransport(provider, SEND_GAP_MS);
     // The sweep runs beside the emails and never fails the run.
     sweep = sweepAbandonedCallsNow(admin, { origin, startedAt: now, transport }).then(
       (r) => {
@@ -105,7 +117,16 @@ export async function POST(request: Request) {
       console.error("[monthly summary] run failed", e instanceof Error ? e.message : e);
       monthly = { error: "run_failed" };
     }
-    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards });
+    let scans: Awaited<ReturnType<NonNullable<typeof scan>["run"]>> | { error: "run_failed" } | undefined;
+    if (scan) {
+      try { scans = await scan.run({ now: () => Date.now(), endAt: now + 55_000 }); }
+      catch {
+        console.error("[scan progress] scheduled turn stopped");
+        scans = { error: "run_failed" };
+      }
+    }
+    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards,
+      ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
     // The sweep finishes before the answer, so the function is not stopped in the middle of a call's end.
