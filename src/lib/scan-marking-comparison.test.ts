@@ -775,7 +775,7 @@ describe("durable clean HTTP 429 deferral", () => {
     const prior = { manifestHash: hashValue(manifest()), models: COMPARISON_MODELS, settings: COMPARISON_SETTINGS, maxAttempts: 1, approved: COMPARISON_MODELS.map(model => assessComparisonEndpoint(model, snapshot(model), publicEvidence.zdr)) };
     expect(hashValue({ ...prior, deferralPolicy: COMPARISON_DEFERRAL_POLICY })).not.toBe(hashValue(prior));
     expect(COMPARISON_DEFERRAL_POLICY).toEqual({ version: "clean429-v1", delayMs: 900_000, finalBatches: 1, globalConcurrency: 1, modelConcurrency: 1 });
-    expect(COMPARISON_SETTINGS.promptVersion).toBe("whole-page-scalar-readings-v6");
+    expect(COMPARISON_SETTINGS.promptVersion).toBe("whole-page-scalar-readings-v7");
     expect(hashValue(COMPARISON_MODELS)).toBe("1c61503c7d953b7c6427312dc88b9651a0a0647d2313a30425c81f4b886de5a2");
   });
 });
