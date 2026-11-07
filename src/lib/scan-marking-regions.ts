@@ -4,7 +4,7 @@ import { checkQuestionPackage, packageItem, type QuestionPackage } from "@/lib/q
 import type { Box, PrintedRegion } from "@/lib/workbook-print-contract";
 import { MAX_READ_TEXT } from "@/lib/scan-observation";
 import type { FractionRule } from "@/lib/scan-marking-fractions";
-import type { MethodRule } from "@/lib/scan-marking-methods";
+import { questionOps, type MethodRule } from "@/lib/scan-marking-methods";
 
 export interface RegionQuestion {
   package: QuestionPackage | null;
@@ -42,7 +42,7 @@ export function markingRegions(q: RegionQuestion): MarkingRegion[] {
   const twoWays = item.format === "two-ways";
   const scored = item.regions.filter(r => r.kind === "box" || r.kind === "choice" || (twoWays && r.kind === "work"));
   const finalBox = twoWays ? item.regions.find(r => r.kind === "box") : undefined;
-  const methodRule = (): MethodRule => ({ answer: (finalBox?.kind === "box" ? methodAnswer(finalBox.answer) : null) ?? "", given: q.package!.text.match(/\d[\d,]*(?:\.\d+)?/g) ?? [], question: q.package!.text });
+  const methodRule = (): MethodRule => ({ answer: (finalBox?.kind === "box" ? methodAnswer(finalBox.answer) : null) ?? "", given: q.package!.text.match(/\d[\d,]*(?:\.\d+)?/g) ?? [], question: q.package!.text, ops: questionOps(q.package!.text, q.package!.operation?.kind) });
   const out: MarkingRegion[] = [];
   for (const r of scored) {
     const printed = q.regions.filter(p => p.id === r.id);

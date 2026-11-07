@@ -3,9 +3,12 @@
 // Exact rational arithmetic. Pure TypeScript: no network, database, clock or Math.random.
 //
 // invalid: a written step is false, or the AI says does-not-solve.
-// valid: the AI says solves, every step is true arithmetic, the work has working numbers of its own (it is not the
-//   question with the answer filled in, nor its reverse or check), and it ends at the answer or a number in the question.
-// unknown: anything else. It stays unsure, with a plain reason.
+// valid: the AI says solves, every step is true arithmetic, and the work meets all of these:
+//   (a) its final result is the answer;
+//   (b) the answer is never an operand in it, unless the question prints the same number;
+//   (c) it is not the question's own operation on the question's own printed numbers.
+//   So an inverse operation on the question's numbers is valid, and a check that uses the answer is not.
+// unknown: anything else. It stays unsure, with a plain reason. A missing method is decided by the item, not here.
 
 export type MethodVerdict = "valid" | "invalid" | "unknown";
 export const METHOD_JUDGMENTS = ["solves", "does-not-solve", "unsure"] as const;
@@ -17,6 +20,16 @@ export interface MethodRule {
   given: readonly string[];
   /** The printed question, sent with the method region. Never the answer. */
   question: string;
+  /** The question's own operations. Empty when neither its text nor its package says. */
+  ops: readonly string[];
+}
+const OPERATION_SIGNS: Record<string, string> = { add: "+", subtract: "-", multiply: "×", divide: "÷" };
+/** The operation the question prints. The stored operation is used only when the text shows none: 8 × ? = 800 is stored as a division. */
+export function questionOps(text: string, operationKind: string | null | undefined): string[] {
+  const printed = [...text.matchAll(/(?:\d|\?)\s*([+\-−–×xX*·÷/])\s*(?=\d|\?)/g)].map(m => OPS[m[1]]);
+  if (printed.length) return [...new Set(printed)];
+  const stored = operationKind ? OPERATION_SIGNS[operationKind] : undefined;
+  return stored ? [stored] : [];
 }
 
 type Value = { n: bigint; d: bigint };
@@ -28,7 +41,6 @@ function value(n: bigint, d: bigint): Value | null {
   return { n: sign * n / g, d: sign * d / g };
 }
 const same = (a: Value, b: Value) => a.n === b.n && a.d === b.d;
-const key = (v: Value) => `${v.n}/${v.d}`;
 
 type Token = { kind: "number"; value: Value } | { kind: "op"; op: "+" | "-" | "×" | "÷" } | { kind: "=" } | { kind: "(" } | { kind: ")" } | { kind: "?" } | { kind: "arrow" };
 const NUMBER = /^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?/;
@@ -100,7 +112,8 @@ function ruleValue(text: string): Value | null {
   return parts && parts.length ? evaluate(parts) : null;
 }
 
-interface Step { tokens: Token[]; sides: Value[]; holds: boolean }
+/** One line of work. Each side is what stands between "=" signs or arrows. */
+interface Step { sides: { tokens: Token[]; value: Value }[]; holds: boolean; counted?: boolean }
 const hasOp = (parts: readonly Token[]) => parts.some(t => t.kind === "op");
 /** A jump line: "36 +40 → 76 +7 → 83". Each jump must land on the number the next part starts from. */
 function jumpSteps(line: readonly Token[]): Step[] | null {
@@ -110,21 +123,34 @@ function jumpSteps(line: readonly Token[]): Step[] | null {
   for (const [n, part] of parts.entries()) {
     const own = evaluate(part);
     if (!own) return null;
-    if (n === parts.length - 1) { out.push({ tokens: part, sides: [own], holds: true }); continue; }
+    if (n === parts.length - 1) { out.push({ sides: [{ tokens: part, value: own }], holds: true }); continue; }
     // A bare number has no operation to check, so the arrow says nothing code can test.
     const next = parts[n + 1][0];
     if (!hasOp(part) || next?.kind !== "number") return null;
-    out.push({ tokens: part, sides: [own, next.value], holds: same(own, next.value) });
+    out.push({ sides: [{ tokens: part, value: own }, { tokens: [next], value: next.value }], holds: same(own, next.value) });
   }
   return out;
+}
+/** A skip count: "8, 16, 24, 32, 40". It holds only when it goes up by one number, and it reads as counted groups. */
+function skipCount(line: string): Step | null {
+  if (!/^\d+(?:\s*,\s*\d+){2,}$/.test(line)) return null;
+  const values = line.split(",").map(n => numberValue(n.trim()));
+  if (values.some(v => !v)) return null;
+  const known = values as Value[], gap = known[1].n - known[0].n;
+  if (known.some((v, i) => i > 0 && (v.d !== ONE || known[i - 1].d !== ONE || v.n - known[i - 1].n !== gap))) return null;
+  return { sides: [{ tokens: known.map(value => ({ kind: "number", value })), value: known.at(-1)! }], holds: true, counted: true };
 }
 /** One equation chain per line. A line that starts with "=" goes on from the line before it. */
 function steps(text: string): { read: Step[]; unread: boolean } {
   const read: Step[] = [];
   let unread = false, carry: Token[] | null = null;
   const lines = text.split(/[\n;]/).map(l => l.trim()).filter(Boolean);
-  const chains: Token[][] = [];
-  for (const line of lines) {
+  const chains: (Token[] | Step)[] = [];
+  for (const [n, raw] of lines.entries()) {
+    // Only the last line may state the result in words: "5 times".
+    const line = n === lines.length - 1 ? raw.replace(/^(\d[\d,]*(?:\.\d+)?)\s+[a-z ]+$/i, "$1") : raw;
+    const count = skipCount(line);
+    if (count) { chains.push(count); carry = null; continue; }
     const parts = tokens(line);
     if (!parts) { unread = true; carry = null; continue; }
     // The child copied the question: "8 × ? = 800". It claims nothing about the answer.
@@ -133,33 +159,40 @@ function steps(text: string): { read: Step[]; unread: boolean } {
     carry = parts; chains.push(parts);
   }
   for (const chain of chains) {
+    if (!Array.isArray(chain)) { read.push(chain); continue; }
     if (chain.some(t => t.kind === "arrow")) {
       const jumps = jumpSteps(chain);
       if (jumps) read.push(...jumps); else unread = true;
       continue;
     }
-    const sides: Token[][] = [[]];
-    for (const t of chain) if (t.kind === "=") sides.push([]); else sides.at(-1)!.push(t);
-    const values = sides.map(evaluate);
+    const groups: Token[][] = [[]];
+    for (const t of chain) if (t.kind === "=") groups.push([]); else groups.at(-1)!.push(t);
+    const values = groups.map(evaluate);
     if (values.some(v => !v)) { unread = true; continue; }
     const known = values as Value[];
-    read.push({ tokens: chain, sides: known, holds: known.every(v => same(v, known[0])) });
+    read.push({ sides: groups.map((tokens, n) => ({ tokens, value: known[n] })), holds: known.every(v => same(v, known[0])) });
   }
   return { read, unread };
 }
+const numbersIn = (side: readonly Token[]) => side.flatMap(t => t.kind === "number" ? [t.value] : []);
 
 /** The verdict on one method's transcribed work and the AI's judgment of it. A missing judgment is never valid. */
 export function checkMethodReading(text: string, rule: MethodRule, judgment: MethodJudgment | null): MethodVerdict {
   const { read, unread } = steps(text);
   if (read.some(s => !s.holds) || judgment === "does-not-solve") return "invalid";
   const answer = ruleValue(rule.answer), given = rule.given.flatMap(g => { const v = ruleValue(g); return v ? [v] : []; });
-  if (judgment !== "solves" || unread || !read.length || !answer || !read.some(s => hasOp(s.tokens))) return "unknown";
-  // Every number is the question's, the answer, or padding (0 and 1): the question filled in, its reverse or its check.
-  const own = [answer, ...given, value(ZERO, ONE)!, value(ONE, ONE)!].map(key);
-  const literals = read.flatMap(s => s.tokens.flatMap(t => t.kind === "number" ? [key(t.value)] : []));
-  if (literals.every(l => own.includes(l))) return "unknown";
-  const last = read.at(-1)!.sides.at(-1)!;
-  return same(last, answer) || given.some(g => same(g, last)) ? "valid" : "unknown";
+  if (judgment !== "solves" || unread || !read.length || !answer || !read.some(s => s.counted || s.sides.some(side => hasOp(side.tokens)))) return "unknown";
+  // (a) The final result is the answer.
+  if (!same(read.at(-1)!.sides.at(-1)!.value, answer)) return "unknown";
+  const opSides = read.flatMap(s => s.sides.map(side => side.tokens).filter(hasOp));
+  // (b) The answer is never an operand, unless the question prints the same number.
+  if (!given.some(g => same(g, answer)) && opSides.some(side => numbersIn(side).some(n => same(n, answer)))) return "unknown";
+  // (c) Not the question's own operation on its own numbers. 0 and 1 are padding, so they do not count as working numbers.
+  const padding = [value(ZERO, ONE)!, value(ONE, ONE)!];
+  const ownNumbers = opSides.length > 0 && opSides.every(side => numbersIn(side).every(n => [...given, ...padding].some(g => same(g, n))));
+  const used = opSides.flatMap(side => side.flatMap(t => t.kind === "op" ? [t.op as string] : []));
+  if (ownNumbers && (!rule.ops.length || used.every(op => rule.ops.includes(op)))) return "unknown";
+  return "valid";
 }
 
 const canonical = (text: string) => text.replace(/\s+/g, "").replace(/[xX*·]/g, "×").replace(/[−–\u2014]/g, "-").replace(/\//g, "÷");
@@ -174,9 +207,13 @@ export function compareMethods(one: string, two: string): "same" | "reordered" |
 /** A made-up reading for offline route checks and synthetic photos. Never a mark and never sent to a model. */
 export function suppliedMethodText(rule: MethodRule, index: number, wrong = false): string {
   if (wrong) return index === 0 ? `${rule.answer} + 1 = ${rule.answer}` : `${rule.answer} + 2 = ${rule.answer}`;
-  return index === 0 ? `${rule.answer} + 97 - 97 = ${rule.answer}` : `${rule.answer} × 89 ÷ 89 = ${rule.answer}`;
+  // Working numbers of its own, with a final result that is the answer and is never an operand.
+  const answer = ruleValue(rule.answer), add = BigInt(index === 0 ? 97 : 89);
+  if (!answer) return `${add} - ${add} = ${rule.answer}`;
+  const start = answer.n + add * answer.d;
+  return `${answer.d === ONE ? String(start) : `${start} / ${answer.d}`} - ${add} = ${rule.answer}`;
 }
-/** The filled-in question, for offline route checks. */
+/** A check that uses the answer, for offline route checks. */
 export function suppliedFilledInText(rule: MethodRule): string {
   return rule.given.length ? `${rule.given[0]} + ${rule.answer} - ${rule.given[0]} = ${rule.answer}` : `${rule.answer} + 0 = ${rule.answer}`;
 }

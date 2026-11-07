@@ -205,8 +205,8 @@ function sumFrame(text = "36 + 47 = ?", operation: Operation = { kind: "add", op
   const f = twoWaysFrame(), q = f.questions[0], pkg = q.package!;
   pkg.text = text; pkg.operation = operation; pkg.answer = { value: { type: "number", value: answer }, accepted: [], unit: null }; pkg.steps = workedSteps(operation);
   pkg.wrongAnswers = [{ value: { type: "number", value: answer + 10 }, cause: "O3", description: "Made-up slip", step: (pkg.steps[0] as unknown as { id: string }).id }];
-  const easier: Operation = operation.kind === "add" ? { kind: "add", operands: [18, 5] } : { kind: "divide", operands: [80, 8] };
-  pkg.easierExample = { text: "Made-up easier question", operation: easier, steps: workedSteps(easier), answer: { type: "number", value: operation.kind === "add" ? 23 : 10 } };
+  const easier: Operation = operation.kind === "add" ? { kind: "add", operands: [18, 5] } : { kind: "divide", operands: [6, 3] };
+  pkg.easierExample = { text: "Made-up easier question", operation: easier, steps: workedSteps(easier), answer: { type: "number", value: operation.kind === "add" ? 23 : 2 } };
   const box = pkg.item!.regions.find(r => r.kind === "box")!; if (box.kind === "box") box.answer = { type: "number", value: answer };
   const check = checkQuestionPackage(pkg);
   expect(check.ok ? "" : JSON.stringify(check)).toBe("");
@@ -245,6 +245,8 @@ describe("two-ways AI marking", () => {
     const system = markingRequest(twoWaysFrame(), new Uint8Array([1])).system!;
     expect(system).toMatch(/any step cannot be read exactly, report uncertain with issue unreadable/);
     expect(system).toMatch(/never leave out or tidy a step/);
+    expect(system).toMatch(/An inverse operation on the question's numbers is a way to solve it/);
+    expect(system).toMatch(/final line/);
   });
   it("accepts a verdict only on a method region in strict output", () => {
     const f = twoWaysFrame(), good = twoWaysOutput(GOOD_ONE, GOOD_TWO, "66");
@@ -293,6 +295,49 @@ describe("two-ways AI marking", () => {
     const { o, label } = markSum(one, two);
     expect(o).toMatchObject({ state: "scored", result: "right", issue: null });
     expect(label).toBe("Right");
+  });
+  // The refined rule: the final result is the answer, the answer is never an operand, and it is not the question copied.
+  const missing800 = () => sumFrame("8 × ? = 800", { kind: "divide", operands: [800, 8] }, 100), missing40 = () => sumFrame("8 × ? = 40", { kind: "divide", operands: [40, 8] }, 5);
+  it.each([
+    ["the inverse operation with tens", "800 ÷ 8 = 100", "8 × 10 = 80\n80 × 10 = 800\n10 × 10 = 100", missing800, "100"],
+    ["the inverse operation and repeated subtraction", "40 ÷ 8 = 5", "40 - 8 = 32\n32 - 8 = 24\n24 - 8 = 16\n16 - 8 = 8\n8 - 8 = 0\n5 times", missing40, "5"],
+    ["the inverse operation and a skip count", "40 ÷ 8 = 5", "8, 16, 24, 32, 40\n5 times", missing40, "5"],
+    ["repeated addition with a count of its groups", "8 + 8 + 8 + 8 + 8 = 40\n1 + 1 + 1 + 1 + 1 = 5", "8, 16, 24, 32, 40\n5", missing40, "5"],
+  ])("marks a missing factor Right when the AI says solves: %s", (_name, one, two, frame, answer) => {
+    const { o, label } = markSum(one, two, ["solves", "solves"], answer, frame());
+    expect(o).toMatchObject({ state: "scored", result: "right", issue: null });
+    expect(label).toBe("Right");
+  });
+  it.each([
+    ["the question copied with the answer", "8 × 100 = 800", missing800, "100"],
+    ["the question turned around", "100 × 8 = 800", missing800, "100"],
+    ["a sum that uses the answer", "100 + 700 = 800", missing800, "100"],
+    ["true steps that stop at the question's number", "8 × 50 = 400\n400 + 400 = 800", missing800, "100"],
+    ["a skip count with no final result", "8, 16, 24, 32, 40", missing40, "5"],
+    ["subtraction with no final result", "40 - 8 = 32\n32 - 8 = 24\n24 - 8 = 16\n16 - 8 = 8\n8 - 8 = 0", missing40, "5"],
+    ["a list that does not count by one number", "8, 16, 25, 32, 40\n5 times", missing40, "5"],
+  ])("is not Right when the AI says solves: %s", (_name, one, frame, answer) => {
+    const good = answer === "100" ? "800 ÷ 8 = 100" : "40 ÷ 8 = 5";
+    const { o, label } = markSum(one, good, ["solves", "solves"], answer, frame());
+    expect(o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
+    expect(label).toBe("We cannot check this method.");
+  });
+  it.each([
+    ["the reverse that uses the answer", "83 - 47 = 36"],
+    ["the other reverse", "83 - 36 = 47"],
+    ["the question turned around", "47 + 36 = 83"],
+    ["the question with padding", "36 + 47 + 0 = 83"],
+    ["a sum whose final result is not the answer", "27 + 3 = 30\n30 + 6 = 36"],
+  ])("is not Right when the AI says solves on 36 + 47: %s", (_name, one) => {
+    expect(markSum(one, "36 + 40 = 76\n76 + 7 = 83").o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
+  });
+  it("lets the answer be an operand only when the question prints the same number", () => {
+    const f = sumFrame("5 × ? = 25", { kind: "divide", operands: [25, 5] }, 5);
+    expect(markSum("25 ÷ 5 = 5", "25 - 5 = 20\n20 - 5 = 15\n15 - 5 = 10\n10 - 5 = 5\n5 - 5 = 0\n5 times", ["solves", "solves"], "5", f).o).toMatchObject({ state: "scored", result: "right" });
+  });
+  it("keeps a missing method Wrong and the same method twice unsure", () => {
+    expect(markSum("", "36 + 40 = 76\n76 + 7 = 83").o).toMatchObject({ state: "scored", result: "wrong", issue: "method-missing" });
+    expect(markSum("36 + 40 = 76\n76 + 7 = 83", "36 + 40 = 76\n76 + 7 = 83").o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
   });
   it("keeps a valid pair unsure when the AI is unsure, and when it gives no verdict", () => {
     for (const verdicts of [["unsure", "solves"], [null, "solves"]] as const) {

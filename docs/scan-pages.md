@@ -178,23 +178,26 @@ The printed item has two work areas and one final-answer box. The model reads al
 A method is valid only when all of these are true (D-302):
 
 - The AI says `solves`.
-- Every written step is true arithmetic. Code checks each step, including number line jumps such as `36 +40 → 76 +7 → 83`.
-- The method is not the question with the answer filled in, nor its reverse or check. Code refuses work whose numbers are all from the question and the answer (0 and 1 do not count as working numbers).
-- The work ends at the answer or at a number in the question.
+- Every written step is true arithmetic. Code checks each step, including number line jumps such as `36 +40 → 76 +7 → 83` and skip counts such as `8, 16, 24, 32, 40`.
+- Its final result is the answer. A last line such as `5 times` states that result.
+- The answer is never an operand in it, unless the question prints the same number.
+- It is not the question's own operation on the question's own printed numbers, which is the question copied. 0 and 1 do not count as working numbers.
+
+So `800 ÷ 8 = 100` is valid for `8 × ? = 800`, because a child's inverse operation counts. `83 - 47 = 36` for `36 + 47` is not (the answer is an operand), and `8 × 100 = 800` is not (the answer is an operand and it is the question).
 
 | Reading | Item result | Label |
 | --- | --- | --- |
 | The answer is right, and both methods are valid and different | Right | `Right` |
 | The answer is wrong | Wrong | `Wrong` |
 | The answer is right, and a method has a false step or the AI says `does-not-solve` | Wrong | `Wrong. One way does not solve the question.` |
-| The answer is right, and a method is empty | Wrong | `Wrong. One way is missing.` |
+| The answer is right, and a method is empty (the child did not do two ways) | Wrong | `Wrong. One way is missing.` |
 | The answer is empty, and the methods are read | Wrong | `Wrong` |
 | All three regions are empty | Blank | `Blank` |
 | A region is blurry, cut off or unreadable, and no region is definitely wrong | Unsure | The plain reason of that region |
-| Anything else about a method: the AI is unsure, words or a drawing, a filled-in question, the same work twice | Unsure | `We cannot check this method.` |
+| Anything else about a method: the AI is unsure, words or a drawing, the question copied, a check that uses the answer, a final result that is not the answer, the same work twice | Unsure | `We cannot check this method.` |
 | The answer box has a form code cannot check | Unsure | `We cannot check this answer.` |
 
-The AI's verdict is one model's judgment. A sum the AI wrongly calls `solves` becomes Right when its arithmetic is true and it has working numbers of its own. The Robin phone test measures this against human truth. The Robin truth follows the same rule: an item is right only when the answer is right and both methods are valid and different.
+The AI's verdict is one model's judgment. A sum the AI wrongly calls `solves` becomes Right when it meets the code rules, for example `60 + 6 = 66` for `27 + 39`. The Robin phone test measures this against human truth. The Robin truth follows the same rule: an item is right only when the answer is right and both methods are valid and different.
 
 The explanation feature handles a right answer with a wrong method: it tells the model the final answer is right and asks for a way to solve the question.
 
@@ -216,7 +219,7 @@ A parent marks no question through a parent path. But some labels still ask a pa
 | `Check this answer` (button) | Any item with no result | 582 |
 | `Please check` (page history) | A page with an unsure item | every page with questions |
 
-So "0 parent" means no parent marking path. It does not mean that no text asks a parent to judge. The 7 two-ways items show none of the three labels. They can still show the button and the page history text. The dashboard thread owns those screens.
+So "0 parent" means no parent marking path. It does not mean that no text asks a parent to judge. The 7 two-ways items show none of the three labels. They can still show the button and the page history text. #715 owns this wording and the 6 write-words items, and it must land before print or marking opens for this family.
 
 ### Database
 
