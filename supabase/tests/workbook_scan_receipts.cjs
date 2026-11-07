@@ -72,7 +72,7 @@ const clockVersion = 'family-time/deliveryDeadlines:542e4a5b;node=' + process.ve
   await db.query('create trigger fixture_scan_delivery_barrier before insert on public.workbook_delivery_receipts for each row execute function public.fixture_scan_delivery_barrier()');
   const before = (await db.query(`select oid::regprocedure::text name, pg_get_functiondef(oid) definition,proacl from pg_proc
     where pronamespace='public'::regnamespace order by 1`)).rows;
-  await db.query(sql('20261106224500_workbook_scan_receipts.sql'));
+  await db.query(sql('20261106213840_workbook_scan_receipts.sql'));
   const adminId = randomUUID();
   await db.query('insert into admin_users values($1,$2)', [adminId, 'admin@example.invalid']);
   const service = await open('service_role'), admin = await open('authenticated');

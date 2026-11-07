@@ -1,6 +1,6 @@
 # Workbook scan reminder send coordinator, #475
 
-HANDOFF_READY
+SENDER_INTEGRATED_REVIEW_PENDING
 
 The pure send coordinator is complete. Production integration and release remain held.
 

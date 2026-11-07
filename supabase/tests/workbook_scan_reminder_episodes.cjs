@@ -8,7 +8,7 @@ const { buildSync } = require('esbuild');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..');
-const migration = '20261106230000_workbook_scan_reminder_episodes.sql';
+const migration = '20261107073840_workbook_scan_reminder_episodes.sql';
 const sql = name => readFileSync(path.join(root, 'supabase/migrations', name), 'utf8');
 const command = (name, args) => execFileSync('/opt/homebrew/bin/' + name, args, { encoding: 'utf8' });
 const clients = new Set(), distribution = new Map();
@@ -92,7 +92,7 @@ const { scanInactivityCandidate, familyZone, deliveryDeadlines, deliveryLocalTim
   await db.query('create trigger zz_unsubscribe_barrier before insert on public.email_log for each row execute function public.fixture_scan_unsubscribe_barrier()');
   await db.query('create trigger fixture_scan_delivery_barrier before insert on public.workbook_delivery_receipts for each row execute function public.fixture_scan_delivery_barrier()');
   await db.query('grant all on public.email_log,public.email_copies to service_role');
-  await db.query(sql('20261106224500_workbook_scan_receipts.sql'));
+  await db.query(sql('20261106213840_workbook_scan_receipts.sql'));
   const before = (await db.query(`select oid::regprocedure::text name,pg_get_functiondef(oid) definition,proacl
     from pg_proc where pronamespace='public'::regnamespace order by 1`)).rows;
   const oldConstraints = (await db.query("select conname,pg_get_constraintdef(oid) definition from pg_constraint where conrelid='public.email_log'::regclass order by conname")).rows;
