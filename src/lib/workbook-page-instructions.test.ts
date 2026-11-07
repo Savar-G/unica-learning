@@ -39,7 +39,19 @@ describe("truthful printed U16 instructions",()=>{
   const p=page([question(1,"500 + 245 = ?",[box]),question(2,"700 - 245 = ?",[box])]);
   p.content.blocks=[{slot:"warm-up",items:[1]},{slot:"spot-the-error",items:[2]}];
   expect(workQuestionNumbers(p)).toEqual([]);
-  expect(workbookPageInstruction(p)).toBe("Write in boxes.");
+  expect(workbookPageInstruction(p)).toBe("Write in boxes. Beat your own count from last time.");
+ });
+ it("retains the warm-up count task in every day's printed instruction without changing stored text",()=>{
+  for(let day=1;day<=10;day++) {
+   const p=page([question(1,"500 + 245 = ?",[box])]);
+   p.content.day=day;
+   p.content.blocks=[{slot:"warm-up",items:[1]}];
+   p.content.subtitle="Facts you know. Beat your own count from last time.";
+   const before=structuredClone(p),root=new Window().document.createElement("div");
+   root.innerHTML=workbookTemplate().page(p,{qr:"",qrUrl:""},sample())!;
+   expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe("Write in boxes. Beat your own count from last time.");
+   expect(p).toEqual(before);
+  }
  });
  it("still requires space for a money comparison when it uses a circled answer",()=>{
   const p=page([question(7,"True or false: 2 bills and 3 quarters make 40 dollars.",[circle],"circle")]);

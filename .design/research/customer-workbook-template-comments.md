@@ -16,7 +16,9 @@ Work-area borders and padding are removed while measured regions and minimum wri
 
 The additional spacing trial failed checks. At the roadmap instruction, it is removed. Pages6,30and62 retain the exact previously passing row layout. The original page6spacing comment remains partial: earlier row spacing improved, but the remaining space before Spot the error is retained. It includes required calculation space and must not be described as resolved. Footer IDs remain unchanged. Changing their displayed case can preserve QR tokens, but changes image hashes and requires a new print contract and printed revision. That choice remains with Savar.
 
-Current local print proof: full-round-8 renders all84stored pages with strict template and layout checks passing. It retains582questions. Actual geometry gives575code paths and7parent method-review paths with0unsupported. This is geometry and code-path proof, not handwriting recognition or family release proof. The independent Marking lane has not yet repeated this new contract.
+The round8 Sol review found two P2 defects. Its warm-up projection lost the required count instruction on ten pages. Its quality check still required the old generic work sentence before the display projection. Both corrections are now implemented. The display retains "Beat your own count from last time." on every warm-up. Quality applies the same display projection before every instruction check. A public whole-book check returns ready=true with zero issues for both the original and already-projected subtitles, with identical printed HTML and unchanged input. New regression tests fail against source03400ccd and pass after the correction.
+
+Previous local print proof: full-round-8 renders all84stored pages with strict template and layout checks passing. It retains582questions. Actual geometry gives575code paths and7parent method-review paths with0unsupported. The independent Marking lane repeated its contract at1da5dfaf, promptv6. This is geometry and code-path proof, not handwriting recognition or family release proof. These earlier images do not prove the corrected warm-up line fits. A new stored-book render remains required.
 
 All84page images differ from R1 because the shared instructions change every day-page header, in addition to the cover and How it works corrections. All84QR crops are pixel-identical. The page2schedule crop and all10measured rows remain identical. Stored packages, answers, identities and teaching context stay unchanged.
 
@@ -24,6 +26,6 @@ Formats: write-number388;circle86;show-work60;spot-the-error19;tick-and-number16
 
 Private evidence: /Users/savargupta/unica-workbook-samples/customer-first-book-20261106/layout-correction/full-round-8. It contains the PDF,84PNGs, measured geometry, render result, marking coverage, pixel comparison and source hashes. Before/after images cover1,2,6,7,8,9,10,21,22,25,30,37,41,62. Do not copy private customer data into Git or a PR.
 
-The earlier Sol review and full gate cover source23000521 only. They do not approve this new correction. Current focused non-Chromium tests:135passed. Fresh Sol review and the full gate remain open.
+The earlier Sol review and full gate cover source23000521 only. They do not approve this new correction. The source03400ccd full gate was stopped after the two review findings and before source edits. No pass is claimed. Current focused non-Chromium tests:137passed. Scoped ESLint passed. Fresh Sol review and the corrected-source full gate remain open.
 
 The saved book remains R1. All14comments remain open. A local PDF is not a saved or applied comment result. The supported template revision-save path and complete comment routing remain separate work. Print approval stays with Savar.

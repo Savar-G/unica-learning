@@ -43,6 +43,7 @@ function numberedList(numbers: readonly number[]): string {
 export function workbookPageInstruction(page: InstructionPage): string | null {
   if (page.content?.kind !== "day" || page.content.level !== 16 || !page.content.consistentLayout) return null;
   const numbers = workQuestionNumbers(page);
-  return [answerInstruction(page.questions), numbers.length
+  return [answerInstruction(page.questions), page.content.blocks.some(b => b.slot === "warm-up")
+    ? "Beat your own count from last time." : null, numbers.length
     ? `Show your work for question${numbers.length === 1 ? "" : "s"} ${numberedList(numbers)}.` : null].filter(Boolean).join(" ");
 }
