@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import sharp from "sharp";
 import type { WorkbookInput } from "../src/lib/workbook-content";
-import { COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, comparisonReports, hashBytes, hashValue, selectComparisonModels, assertSelectedComparisonResults, syntheticPrintRevision, validateComparisonManifest, type AttemptRecord, type ComparisonManifest, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type Endpoint, type EndpointEvidence, type EndpointSnapshot } from "../src/lib/scan-marking-comparison";
+import { COMPARISON_DEFERRAL_POLICY, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, comparisonReports, deferredAttempt, hashBytes, hashValue, recoverComparisonResults, selectComparisonModels, assertSelectedComparisonResults, syntheticPrintRevision, validateComparisonManifest, type AttemptRecord, type ComparisonManifest, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type Endpoint, type EndpointEvidence, type EndpointSnapshot } from "../src/lib/scan-marking-comparison";
 import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "../src/lib/scan-marking-comparison-run";
 
 const json = async <T>(path: string): Promise<T> => JSON.parse(await readFile(path, "utf8")) as T;
@@ -25,7 +25,7 @@ export async function durableJson(path: string, value: unknown, exclusive = fals
 export function fileJournal(folder: string): EvaluationJournal {
   return {
     begin: async key => {
-      try { await durableJson(resolve(folder, `${key}.json`), { state: "starting" }, true); return true; }
+      try { await durableJson(resolve(folder, `${key}.json`), { state: "starting", key }, true); return true; }
       catch (e) { if ((e as NodeJS.ErrnoException).code === "EEXIST") return false; throw e; }
     },
     save: (key, value) => durableJson(resolve(folder, `${key}.json`), value),
@@ -105,6 +105,10 @@ export function rpcEvaluationBudget(url: string, serviceKey: string, base: typeo
       throw new Error("ledger-admission-shape");
     },
     settle: async (id, cost) => { if (await rpc("settle_scan_marking_evaluation", { p_id: id, p_cost: cost }) !== true) throw new Error("ledger-settlement-refused"); },
+    defer: async ({ run, key, attempt }) => {
+      if (!deferredAttempt(attempt) || attempt.deferral!.run !== run || attempt.deferral!.key !== key) throw new Error("invalid-deferral-evidence");
+      if (await rpc("defer_scan_marking_evaluation", { p_run: run, p_attempt: key, p_id: attempt.id, p_response: attempt.response, p_received_at: attempt.deferral!.receivedAt }) !== true) throw new Error("ledger-deferral-refused");
+    },
   };
 }
 
@@ -160,7 +164,7 @@ export async function main() {
   const selectedIds = selected.map(m => m.model);
   const { manifest, images } = await loadComparisonAssets(values.manifest);
   const approved = await comparisonSnapshots(values.snapshots, selectedIds), evidence = readyEvidence(approved);
-  const plan = { manifestHash: hashValue(manifest), models: selected, settings: COMPARISON_SETTINGS, maxAttempts, approved };
+  const plan = { manifestHash: hashValue(manifest), models: selected, settings: COMPARISON_SETTINGS, deferralPolicy: COMPARISON_DEFERRAL_POLICY, maxAttempts, approved };
   const run = hashValue(plan), out = resolve(values.out, run);
   if (values.estimate) {
     console.log(JSON.stringify({ run, dispatchReady: false, reason: "Live preflight, reviewed SQL price bounds and first-photo usage projection are required before the full matrix.", photos: 40, models: selected.length, requests: 40 * selected.length * maxAttempts, blocked: approved.filter(s => s.status === "blocked"), bounds: approved.flatMap(s => s.status === "ready" ? [{ model: s.model, endpoint: s.evidence.endpoint.tag, policy: s.evidence.policy, evidenceHash: hashValue(s.evidence), maximumReservationMicros: s.maximumMicros, maxPixels: Math.max(...manifest.photos.map(p => p.image.width * p.image.height)), evidence: s.evidence }] : []), firstProbeUpperBoundUsd: approved.reduce((sum, s) => sum + (s.status === "ready" ? s.maximumMicros : 0), 0) / 1e6,
@@ -177,6 +181,11 @@ export async function main() {
     assertSelectedComparisonResults(results, selectedIds);
     return results;
   };
+  const readRecords = async () => Promise.all((await readdir(journalDir)).filter(p => p.endsWith(".json")).map(async p => {
+    const record = await json<AttemptRecord>(resolve(journalDir, p));
+    if (p !== `${record.key}.json`) throw new Error("journal-filename-identity-mismatch");
+    return record;
+  }));
   const historyPath = resolve(out, "evidence-history.json"), statePath = resolve(out, "model-states.json");
   let history = [...evidence], states = approved;
   const blocks = new Map<string, string>();
@@ -189,14 +198,14 @@ export async function main() {
     const results = await readResults();
     assertComparisonResultIdentity(manifest, results, history, run);
     const reports = comparisonReports(manifest, states, results, history, blocks).filter(r => selectedIds.includes(r.model));
-    await durableJson(resolve(out, "report.json"), { run, syntheticOnly: true, realHandwritingProven: false, settings: COMPARISON_SETTINGS, reports, blockedOrIncomplete: reports.filter(r => r.status !== "tested"), cheapestMeasuredPassing: cheapestPassing(reports), selectionScope: "fully-tested-passing-available-pairs-only", productionSwitch: "blocked-until-explicit-host-policy-choice", evidence: history });
+    await durableJson(resolve(out, "report.json"), { run, syntheticOnly: true, realHandwritingProven: false, settings: COMPARISON_SETTINGS, deferralPolicy: COMPARISON_DEFERRAL_POLICY, measuredMicros: reports.reduce((sum, r) => sum + (r.measuredMicros ?? 0), 0), heldMicros: reports.reduce((sum, r) => sum + r.heldMicros, 0), reports, blockedOrIncomplete: reports.filter(r => r.status !== "tested"), cheapestMeasuredPassing: cheapestPassing(reports), selectionScope: "fully-tested-passing-available-pairs-with-fully-measured-cost-only", productionSwitch: "blocked-until-explicit-host-policy-choice", evidence: history });
   };
   if (values.report) { await writeReport(); console.log(resolve(out, "report.json")); return; }
   // Check unresolved local liability before any configuration or paid dispatch.
-  const priorResults = await readResults();
-  const records = await Promise.all((await readdir(journalDir)).filter(p => p.endsWith(".json")).map(p => json<AttemptRecord>(resolve(journalDir, p))));
-  assertComparisonResume(records, priorResults);
-  assertComparisonResultIdentity(manifest, priorResults, history, run);
+  const records = await readRecords();
+  const priorResults = recoverComparisonResults(records, await readResults(), manifest, history, run);
+  assertSelectedComparisonResults(priorResults, selectedIds);
+  for (const result of priorResults) await durableJson(resultPath(result.model, result.photo), result);
   states = await refreshEvidence(out, approved, fetch, selectedIds);
   for (const e of readyEvidence(states)) if (!history.some(prior => hashValue(prior) === hashValue(e))) history.push(e);
   await durableJson(historyPath, history);
@@ -221,11 +230,11 @@ export async function main() {
   // A saved model block is persistent for this run. It never authorizes retry of an omitted or refused attempt.
   states = states.map(s => blocks.has(s.model) ? { model: s.model, status: "blocked", reason: blocks.get(s.model)! } : s);
   try {
-    await runComparisonMatrix({ run, manifest, preflight: states, history, results: priorResults, records, maxRunMicros: Math.floor(maxUsd * 1e6), maxAttempts, save,
-      dispatch: async (model, photo, current, maximumMicros) => {
-        const result = await runComparisonPhoto({ run, photo, image: images.get(photo.id)!, model, evidence: current, maximumMicros, maxRunMicros: Math.floor(maxUsd * 1e6), budget, journal, env: process.env, maxAttempts });
-        await durableJson(resultPath(model.model, photo.id), result, true);
-        assertComparisonResume(await Promise.all((await readdir(journalDir)).filter(p => p.endsWith(".json")).map(p => json<AttemptRecord>(resolve(journalDir, p)))), await readResults());
+    await runComparisonMatrix({ run, manifest, preflight: states, history, results: priorResults, records, maxRunMicros: Math.floor(maxUsd * 1e6), maxAttempts, save, wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
+      dispatch: async (model, photo, current, maximumMicros, batch, prior) => {
+        const result = await runComparisonPhoto({ run, photo, image: images.get(photo.id)!, model, evidence: current, maximumMicros, maxRunMicros: Math.floor(maxUsd * 1e6), budget, journal, env: process.env, maxAttempts, batch, prior });
+        await durableJson(resultPath(model.model, photo.id), result, !prior);
+        assertComparisonResume(await readRecords(), await readResults());
         await writeReport();
         return result;
       },

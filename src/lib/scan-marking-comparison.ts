@@ -175,12 +175,64 @@ export function transportUsage(value: unknown): TransportUsage {
     costMicros: typeof cost === "number" && Number.isFinite(cost) && cost >= 0 && Number.isSafeInteger(Math.ceil(cost * 1e6)) ? Math.ceil(cost * 1e6) : null,
     inputTokens: natural(usage.prompt_tokens), outputTokens: natural(usage.completion_tokens), reasoningTokens: natural(details.reasoning_tokens), imageTokens: natural(inputs.image_tokens) };
 }
-export interface ComparisonAttempt { id: string; usage: TransportUsage; latencyMs: number; error: string | null }
+/** Evaluation scheduling only. This is separate from the production prompt and schema. */
+export const COMPARISON_DEFERRAL_POLICY = Object.freeze({ version: "clean429-v1", delayMs: 900_000, finalBatches: 1, globalConcurrency: 1, modelConcurrency: 1 });
+export interface CapturedResponse { status: number; body: string | null; openrouter_metadata: unknown; envelope: unknown }
+/** A transport error envelope, never a label or the model's answer, authorizes a hold. */
+export function clean429(value: CapturedResponse | undefined): boolean {
+  if (!value || value.status !== 429 || typeof value.body !== "string" || !value.body.length) return false;
+  try {
+    const data = record(JSON.parse(value.body)), error = record(data.error);
+    const forbidden = (v: unknown): boolean => {
+      if (typeof v === "string") { try { return forbidden(JSON.parse(v)); } catch { return false; } }
+      return v !== null && typeof v === "object" && Object.entries(v).some(([k, x]) => ["id", "generation_id", "generationId", "usage", "choices"].includes(k) || forbidden(x));
+    };
+    return hashValue(data) === hashValue(value.envelope) && error.code === 429 && typeof error.message === "string" && error.message.length > 0
+      && !forbidden(data) && hashValue(value.openrouter_metadata ?? null) === hashValue(data.openrouter_metadata ?? error.metadata ?? null);
+  } catch { return false; }
+}
+export interface ComparisonAttempt {
+  id: string; usage: TransportUsage; latencyMs: number; error: string | null;
+  reservedMicros?: number;
+  response?: CapturedResponse;
+  deferral?: { policy: "clean429-v1"; receivedAt: number; retryAt: number; reservedMicros: number; batch: 0 | 1; key: string; run: string; model: string; photo: string };
+}
+export function deferredAttempt(a: ComparisonAttempt | undefined): boolean {
+  const d = a?.deferral;
+  return !!a && !!d && d.policy === COMPARISON_DEFERRAL_POLICY.version && clean429(a.response) && a.error === "http-429"
+    && [a.usage.generationId, a.usage.costMicros, a.usage.inputTokens, a.usage.outputTokens, a.usage.reasoningTokens, a.usage.imageTokens].every(v => v === null) && natural(d.receivedAt) !== null && d.retryAt === d.receivedAt + COMPARISON_DEFERRAL_POLICY.delayMs
+    && natural(d.reservedMicros) !== null && d.reservedMicros > 0 && d.reservedMicros <= 15_000_000 && a.reservedMicros === d.reservedMicros && [0, 1].includes(d.batch) && hash(d.key) && hash(d.run);
+}
 export interface ComparisonResult {
-  run: string; model: string; photo: string; status: "complete" | "failed"; failure: string | null; attempts: ComparisonAttempt[];
+  run: string; model: string; photo: string; status: "complete" | "failed" | "deferred"; failure: string | null; attempts: ComparisonAttempt[];
+  batch?: 0 | 1;
   observations: Observation[]; schemaValid: boolean; requestHash: string; photoHash: string; evidenceHash: string;
 }
-export interface AttemptRecord { state: string; attempt?: { id: string; usage: { costMicros: number | null } } }
+export interface AttemptRecord { state: string; attempt?: { id: string; usage: { costMicros: number | null } }; result?: ComparisonResult; run?: string; key?: string; response?: CapturedResponse }
+/** Recover only terminal snapshots from this run. Partial transport/accounting writes remain a stop. */
+export function recoverComparisonResults(records: readonly AttemptRecord[], results: readonly ComparisonResult[], manifest: ComparisonManifest, history: readonly EndpointEvidence[], run: string): ComparisonResult[] {
+  const recovered = [...results];
+  if (new Set(records.map(r => r.key)).size !== records.length) fail("duplicate-journal-key");
+  assertComparisonResultIdentity(manifest, recovered, history, run);
+  for (const record of records) {
+    if (record.run !== run || !record.key || !hash(record.key)) fail("journal-run-identity-mismatch");
+    if (!record.result) continue;
+    const next = record.result;
+    assertComparisonResultIdentity(manifest, [next], history, run);
+    if (!next.attempts.some(a => a.id === record.attempt?.id)) fail("journal-result-attempt-mismatch");
+    const old = recovered.find(r => r.model === next.model && r.photo === next.photo);
+    if (!old) recovered.push(next);
+    else {
+      const subset = (a: ComparisonResult, b: ComparisonResult) => a.attempts.every(x => b.attempts.some(y => hashValue(x) === hashValue(y)));
+      if (!subset(old, next) && !subset(next, old)) fail("journal-result-conflict");
+      if (next.attempts.length > old.attempts.length) recovered.splice(recovered.indexOf(old), 1, next);
+      else if (next.attempts.length === old.attempts.length && hashValue(old) !== hashValue(next)) fail("journal-result-conflict");
+    }
+  }
+  if (recovered.some(r => r.attempts.some(a => !records.some(v => v.attempt?.id === a.id)))) fail("result-without-journal");
+  assertComparisonResume(records, recovered);
+  return recovered;
+}
 /** A subset run must not import a result from an excluded pair. */
 export function assertSelectedComparisonResults(results: readonly ComparisonResult[], modelIds: readonly string[]): void {
   const selected = selectComparisonModels(modelIds);
@@ -191,9 +243,15 @@ export function assertComparisonResume(records: readonly AttemptRecord[], result
   if (results.some(r => r.failure === "journal-failure" || r.failure === "reservation-or-settlement-failed" || r.attempts.some(a => a.error === "journal-failure" || a.error === "transport-or-journal-failure"))) fail("journal-or-budget-failure-stopped-run");
   const ids = results.flatMap(r => r.attempts.map(a => a.id)), saved = new Set(ids);
   if (ids.length !== saved.size) fail("duplicate-dispatch-in-results");
-  if (results.some(r => r.attempts.some(a => [a.usage.costMicros, a.usage.inputTokens, a.usage.outputTokens, a.usage.reasoningTokens].some(v => natural(v) === null)))) fail("unknown-usage-stopped-run-no-blind-retry");
+  if (results.some(r => r.attempts.some(a => !deferredAttempt(a) && [a.usage.costMicros, a.usage.inputTokens, a.usage.outputTokens, a.usage.reasoningTokens].some(v => natural(v) === null)))) fail("unknown-usage-stopped-run-no-blind-retry");
   for (const record of records) {
     if (record.state === "refused" && !record.attempt) continue; // No reservation or HTTP dispatch occurred.
+    const result = results.find(r => r.attempts.some(a => a.id === record.attempt?.id));
+    if (record.run && record.run !== result?.run) fail("journal-run-identity-mismatch");
+    const attempt = result?.attempts.find(a => a.id === record.attempt?.id);
+    if (record.run && attempt && (hashValue(record.attempt) !== hashValue(attempt) || hashValue(record.response) !== hashValue(attempt.response))) fail("journal-attempt-evidence-mismatch");
+    if (record.state === "deferred" && attempt && deferredAttempt(attempt) && hashValue(record.attempt) === hashValue(attempt)
+      && record.run === result!.run && record.key === attempt.deferral!.key && hashValue(record.response) === hashValue(attempt.response)) continue;
     if (record.state !== "settled" || !record.attempt || natural(record.attempt.usage.costMicros) === null || !saved.has(record.attempt.id)) fail("unresolved-attempt-stopped-resume");
   }
 }
@@ -204,35 +262,47 @@ export function assertComparisonResultIdentity(manifest: ComparisonManifest, res
     const photo = manifest.photos.find(p => p.id === result.photo), model = COMPARISON_MODELS.find(m => m.model === result.model);
     const evidence = history.find(e => e.model === result.model && hashValue(e) === result.evidenceHash);
     const key = `${result.model}:${result.photo}`;
-    if (result.run !== run || !photo || !model || !evidence || seen.has(key) || result.photoHash !== photo.image.sha256 || result.requestHash !== hashValue(markingRequest(photo.frame, new Uint8Array())) || evidence.endpoint.tag !== model.endpoint || evidence.endpoint.provider_name !== model.providerName) fail("resume-result-identity-mismatch");
+    if (result.run !== run || !photo || !model || !evidence || seen.has(key) || result.photoHash !== photo.image.sha256 || result.requestHash !== hashValue(markingRequest(photo.frame, new Uint8Array())) || evidence.endpoint.tag !== model.endpoint || evidence.endpoint.provider_name !== model.providerName
+      || result.attempts.some(a => a.deferral && (!deferredAttempt(a) || a.deferral.run !== run || a.deferral.model !== result.model || a.deferral.photo !== result.photo
+        || a.deferral.key !== hashValue({ run, model, photo: result.photo, attempt: a.deferral.batch === 1 ? 1 : result.attempts.indexOf(a) + 1, ...(a.deferral.batch === 1 ? { batch: 1 } : {}) })))) fail("resume-result-identity-mismatch");
     seen.add(key);
   }
 }
 const percentile = (values: number[], p: number) => values.length ? [...values].sort((a, b) => a - b)[Math.max(0, Math.ceil(values.length * p) - 1)] : null;
 export function scoreComparison(manifest: ComparisonManifest, model: ComparisonModel, results: readonly ComparisonResult[], evidence: EndpointEvidence, history: readonly EndpointEvidence[] = []) {
   let wrongMarks = 0, wrongAsRight = 0, unsure = 0, clearUnsure = 0, denominator = 0, wrongMarkDenominator = 0, clearDenominator = 0, parentMethods = 0;
-  let failures = 0, schemaFailures = 0, schemaUnvalidated = 0, missingRuns = 0, invalidRuns = 0, missingCosts = 0, measuredMicros = 0, retries = 0, completedPhotos = 0;
+  let failures = 0, schemaFailures = 0, schemaUnvalidated = 0, missingRuns = 0, invalidRuns = 0, missingCosts = 0, measuredMicros = 0, heldMicros = 0, missingHoldBounds = 0, deferredAttempts = 0, retries = 0, completedPhotos = 0;
   const failureReasons: Record<string, number> = {};
   const latencies: number[] = [], providers = new Set<string>();
   const acceptedHashes = [evidence, ...history].filter(e => e.model === model.model && hashValue(endpointPolicy(e)) === hashValue(endpointPolicy(evidence))).map(hashValue);
   for (const photo of manifest.photos) {
+    for (const truth of photo.truth) {
+      if (truth.result === "parent") parentMethods++;
+      else { denominator++; if (photo.clear) clearDenominator++; }
+    }
     const found = results.filter(r => r.model === model.model && r.photo === photo.id), result = found.length === 1 ? found[0] : null;
-    const usable = result?.status === "complete" && result.schemaValid && result.attempts.length > 0 && result.attempts.every(a => a.usage.provider === model.providerName && a.usage.model === model.model && a.usage.generationId !== null && a.usage.costMicros !== null && a.usage.inputTokens !== null && a.usage.outputTokens !== null && a.usage.reasoningTokens !== null) && result.photoHash === photo.image.sha256 && acceptedHashes.includes(result.evidenceHash) && result.requestHash === hashValue(markingRequest(photo.frame, new Uint8Array()));
-    if (result && result.attempts.length > 0) completedPhotos++;
-    if (!usable) failures++;
-    if (!result) missingRuns++; else if (!usable) invalidRuns++;
-    if (!usable) { const reason = result?.failure ?? "missing-or-invalid-result"; failureReasons[reason] = (failureReasons[reason] ?? 0) + 1; }
-    if (result && !result.schemaValid) schemaUnvalidated++;
-    if (result?.failure === "schema-invalid" || result?.failure === "invalid-json") schemaFailures++;
+    const actual = result?.attempts.filter(a => !deferredAttempt(a)) ?? [];
+    const usable = result?.status === "complete" && result.schemaValid && actual.length > 0 && actual.every(a => a.usage.provider === model.providerName && a.usage.model === model.model && a.usage.generationId !== null && a.usage.costMicros !== null && a.usage.inputTokens !== null && a.usage.outputTokens !== null && a.usage.reasoningTokens !== null) && result.photoHash === photo.image.sha256 && acceptedHashes.includes(result.evidenceHash) && result.requestHash === hashValue(markingRequest(photo.frame, new Uint8Array()));
     for (const attempt of result?.attempts ?? []) {
-      if (attempt.usage.costMicros === null) missingCosts++; else measuredMicros += attempt.usage.costMicros;
+      if (deferredAttempt(attempt)) deferredAttempts++;
+      if (attempt.usage.costMicros === null) {
+        missingCosts++;
+        if (attempt.reservedMicros === undefined) missingHoldBounds++; else heldMicros += attempt.reservedMicros;
+      } else measuredMicros += attempt.usage.costMicros;
       if (attempt.usage.provider) providers.add(attempt.usage.provider);
     }
     retries += Math.max(0, (result?.attempts.length ?? 0) - 1);
+    // Deferred and absent photos have no answer to score. Completeness remains a separate hard gate.
+    if (!result || result.status === "deferred") { missingRuns++; continue; }
+    if (actual.length > 0) completedPhotos++;
+    if (!usable) failures++;
+    if (!usable) invalidRuns++;
+    if (!usable) { const reason = result?.failure ?? "missing-or-invalid-result"; failureReasons[reason] = (failureReasons[reason] ?? 0) + 1; }
+    if (result && !result.schemaValid) schemaUnvalidated++;
+    if (result?.failure === "schema-invalid" || result?.failure === "invalid-json") schemaFailures++;
     if (result?.attempts.length) latencies.push(result.attempts.reduce((n, a) => n + a.latencyMs, 0));
     for (const truth of photo.truth) {
-      if (truth.result === "parent") { parentMethods++; continue; }
-      denominator++; if (photo.clear) clearDenominator++;
+      if (truth.result === "parent") continue;
       const observations = usable ? result!.observations.filter(o => o.identity.itemId === truth.itemId && o.identity.workbookId === photo.frame.workbookId && o.identity.printedRevision === photo.frame.printedRevision && o.identity.pageId === photo.frame.pageId) : [];
       const o = observations.length === 1 ? observations[0] : null;
       if (usable && (!o || !["right", "wrong", "blank", null].includes(o.result))) failures++;
@@ -245,7 +315,7 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
   const complete = completedPhotos === manifest.photos.length && results.filter(r => r.model === model.model).length === manifest.photos.length;
   const passed = complete && failures === 0 && wrongMarkDenominator > 0 && clearDenominator > 0 && wrongMarks * 100 <= wrongMarkDenominator && wrongAsRight === 0 && clearUnsure * 20 <= clearDenominator && missingCosts === 0 && providers.size === 1 && providers.has(model.providerName);
   return { model: model.model, host: model.host, endpoint: model.endpoint, policy: evidence.policy, passed, complete, wrongMarks, wrongMarkDenominator, denominator, wrongAsRight, unsure, clearUnsure, clearDenominator, parentMethods, failures, missingRuns, invalidRuns, schemaFailures, schemaUnvalidated, refusals: failureReasons.refusal ?? 0, failureReasons, missingCosts,
-    measuredMicros, costPerPageUsd: missingCosts || !complete ? null : measuredMicros / manifest.photos.length / 1e6,
+    measuredMicros, heldMicros, missingHoldBounds, deferredAttempts, spentOrHeldMicros: missingHoldBounds ? null : measuredMicros + heldMicros, costPerPageUsd: missingCosts || !complete ? null : measuredMicros / manifest.photos.length / 1e6,
     latencyP50Ms: percentile(latencies, 0.5), latencyP95Ms: percentile(latencies, 0.95), retries, providers: [...providers] };
 }
 export function cheapestPassing<T extends { model: string; complete: boolean; passed: boolean; costPerPageUsd: number | null }>(reports: T[]) {
@@ -255,11 +325,13 @@ export function cheapestPassing<T extends { model: string; complete: boolean; pa
 export function comparisonReports(manifest: ComparisonManifest, states: readonly ComparisonPreflight[], results: readonly ComparisonResult[], history: readonly EndpointEvidence[], blocks: ReadonlyMap<string, string>) {
   return COMPARISON_MODELS.map(model => {
     const state = states.find(s => s.model === model.model), reason = blocks.get(model.model) ?? (state?.status === "blocked" ? state.reason : null);
-    const testedPhotos = results.filter(r => r.model === model.model && r.attempts.length).length;
+    const testedPhotos = results.filter(r => r.model === model.model && r.status !== "deferred" && r.attempts.some(a => !deferredAttempt(a))).length;
     if (reason || state?.status !== "ready") {
       const attempts = results.filter(r => r.model === model.model).flatMap(r => r.attempts), missingCosts = attempts.filter(a => a.usage.costMicros === null).length;
-      return { model: model.model, host: model.host, endpoint: model.endpoint, status: "blocked", reason: reason ?? "missing-evidence", testedPhotos, complete: false, passed: false, costPerPageUsd: null,
-        measuredMicros: attempts.length && !missingCosts ? attempts.reduce((sum, a) => sum + a.usage.costMicros!, 0) : null, missingCosts };
+      const measuredMicros = attempts.reduce((sum, a) => sum + (a.usage.costMicros ?? 0), 0), heldMicros = attempts.reduce((sum, a) => sum + (a.usage.costMicros === null ? a.reservedMicros ?? 0 : 0), 0);
+      const missingHoldBounds = attempts.filter(a => a.usage.costMicros === null && a.reservedMicros === undefined).length;
+      return { ...(state?.status === "ready" && testedPhotos > 0 ? scoreComparison(manifest, model, results, state.evidence, history) : {}), model: model.model, host: model.host, endpoint: model.endpoint, status: "blocked", reason: reason ?? "missing-evidence", testedPhotos, complete: false, passed: false, costPerPageUsd: null,
+        measuredMicros: attempts.length ? measuredMicros : null, heldMicros, missingHoldBounds, spentOrHeldMicros: missingHoldBounds ? null : measuredMicros + heldMicros, missingCosts };
     }
     return { ...scoreComparison(manifest, model, results, state.evidence, history), status: testedPhotos === 40 ? "tested" : "incomplete", testedPhotos };
   });

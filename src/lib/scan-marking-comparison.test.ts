@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import publicEvidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
-import { COMPARISON_FORMATS, COMPARISON_MODELS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, comparisonProvider, comparisonReports, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, reserveMaximum, scoreComparison, transportUsage, validateComparisonManifest, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
+import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, transportUsage, validateComparisonManifest, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
 import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "@/lib/scan-marking-comparison-run";
 import { markingRequest, readMarkingOutput, validMarkingOutput } from "@/lib/scan-marking";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
@@ -612,4 +612,238 @@ it("persists the current run on a new public photo result", async () => {
   const p=photo(), mem=memory(), options=runOptions(p,mem);
   const r=await runComparisonPhoto({...options,fetch:async()=>response(p)});
   expect(r.run).toBe(options.run); expect(r.status).toBe("complete");
+});
+
+const rateEnvelope = () => ({ error: { code: 429, message: "Rate limit exceeded", metadata: { provider_name: "fixture host", raw: '{"error":{"message":"rate limit"}}' } } });
+const rateResponse = () => Response.json(rateEnvelope(), { status: 429 });
+function rateHarness(modelCount = 2) {
+  const data = manifest(), files = new Map<string, AttemptRecord>(), rows = new Map<string, { maximum: number; cost: number | null; deferred: boolean }>();
+  const images = new Uint8Array([1, 2, 3]), results: ComparisonResult[] = [], modelSet = COMPARISON_MODELS.slice(0, modelCount);
+  for (const p of data.photos) p.image.sha256 = hashBytes(images);
+  const history = modelSet.map(m => evidence(m)), states = history.map(e => ({ model: e.model, status: "ready" as const, evidence: e, maximumMicros: reserveMaximum(e) }));
+  let time = 1_000_000, serial = 0, active = 0, peak = 0;
+  const requests: { model: string; photo: string; batch: number; at: number }[] = [], saves: unknown[] = [];
+  const liability = () => [...rows.values()].reduce((sum, row) => sum + (row.cost ?? row.maximum), 0);
+  const budget: EvaluationBudget = {
+    refresh: async () => ({ verified: true }),
+    reserve: async input => {
+      if ([...rows.values()].some(r => r.cost === null && !r.deferred)) return { refused: "unresolved-evaluation-cost" };
+      if (liability() + input.maximumMicros > input.maxRunMicros) return { refused: "run-budget" };
+      const id = `fixture-${++serial}`; rows.set(id, { maximum: input.maximumMicros, cost: null, deferred: false }); return { id };
+    },
+    settle: async (id, cost) => { rows.get(id)!.cost = cost; },
+    defer: async ({ attempt }) => { if (!deferredAttempt(attempt)) throw Error("not clean"); rows.get(attempt.id)!.deferred = true; },
+  };
+  const journal: EvaluationJournal = { begin: async key => { if (files.has(key)) return false; files.set(key, { state: "starting" }); return true; }, save: async (key, value) => { files.set(key, copy(value as AttemptRecord)); } };
+  const dispatch = (respond: (m: ComparisonModel, p: ComparisonPhoto, batch: number) => Response) => async (m: ComparisonModel, p: ComparisonPhoto, e: ReturnType<typeof evidence>, maximum: number, batch: 0 | 1 = 0, prior?: ComparisonResult) => {
+    const r = await runComparisonPhoto({ run: hashBytes("fixed-run"), photo: p, image: images, model: m, evidence: e, maximumMicros: maximum, maxRunMicros: 15_000_000, budget, journal,
+      env: { SCAN_MARKING_OPENROUTER_API_KEY: "synthetic" }, maxAttempts: 2, now: () => time, batch, prior,
+      fetch: async () => { active++; peak = Math.max(peak, active); requests.push({ model: m.model, photo: p.id, batch, at: time }); try { return respond(m, p, batch); } finally { active--; } },
+    });
+    return r;
+  };
+  const options = { run: hashBytes("fixed-run"), manifest: data, preflight: states, history, results, records: [] as AttemptRecord[], maxRunMicros: 15_000_000, maxAttempts: 2 as const,
+    now: () => time, wait: async (ms: number) => { expect(ms).toBeGreaterThan(0); expect(ms).toBeLessThanOrEqual(30_000); time += ms; }, save: async (_blocks: ReadonlyMap<string, string>, projection: unknown) => { saves.push(copy(projection)); } };
+  return { data, files, rows, results, history, states, budget, journal, requests, saves, liability, options, dispatch, get peak() { return peak; }, setTime: (v: number) => { time = v; } };
+}
+
+describe("durable clean HTTP 429 deferral", () => {
+  it.each(["usage", "id", "nested-usage", "raw-generation", "code", "status", "body", "metadata", "content"])("refuses %s as a clean hold", async kind => {
+    const envelope: Record<string, unknown> = rateEnvelope();
+    const captured: CapturedResponse = { status: 429, body: "", envelope, openrouter_metadata: rateEnvelope().error.metadata };
+    if (kind === "usage") envelope.usage = {};
+    if (kind === "id") envelope.id = null;
+    if (kind === "nested-usage") (envelope.error as Record<string, unknown>).usage = null;
+    if (kind === "raw-generation") (envelope.error as ReturnType<typeof rateEnvelope>["error"]).metadata.raw = '{"id":"gen-secret"}';
+    if (kind === "code") (envelope.error as Record<string, unknown>).code = 503;
+    if (kind === "status") captured.status = 503;
+    if (kind === "content") { delete envelope.error; envelope.choices = [{ message: { content: JSON.stringify(rateEnvelope()) } }]; }
+    captured.body = kind === "body" ? "unreadable" : JSON.stringify(envelope);
+    if (kind === "metadata") captured.openrouter_metadata = { different: true };
+    expect(clean429(captured)).toBe(false);
+  });
+  it("defers only its model, counts the hold, waits exactly 15 minutes, and keeps both raw attempts", async () => {
+    const h = rateHarness();
+    await runComparisonMatrix({ ...h.options, dispatch: h.dispatch((m, p, batch) => m.model === COMPARISON_MODELS[0].model && batch === 0 ? rateResponse() : response(p, m)) });
+    const first = h.requests.filter(r => r.model === COMPARISON_MODELS[0].model), other = h.requests.filter(r => r.model === COMPARISON_MODELS[1].model);
+    expect(first).toHaveLength(41); expect(other).toHaveLength(40); expect(first.filter(r => r.batch === 0)).toHaveLength(1);
+    expect(other.every(r => r.at < first[1].at)).toBe(true); expect(first[1].at - first[0].at).toBe(900_000); expect(h.peak).toBe(1);
+    const retried = h.results.find(r => r.model === first[0].model && r.photo === first[0].photo)!;
+    expect(retried.status).toBe("complete"); expect(retried.attempts).toHaveLength(2);
+    expect(new Set(retried.attempts.map(a => a.id)).size).toBe(2);
+    expect(retried.attempts[0].usage).toEqual(transportUsage(null)); expect(retried.attempts[0].response?.envelope).toEqual(rateEnvelope());
+    expect(retried.attempts[0].response?.openrouter_metadata).toEqual(rateEnvelope().error.metadata);
+    const score = scoreComparison(h.data, COMPARISON_MODELS[0], h.results, h.history[0]);
+    expect(score).toMatchObject({ complete: true, schemaFailures: 0, failures: 0, measuredMicros: 40_000, heldMicros: h.states[0].maximumMicros, costPerPageUsd: null });
+    expect(cheapestPassing([score])).toBeNull(); expect(h.liability()).toBe(80_000 + score.heldMicros);
+    expect(() => assertComparisonResume([...h.files.values()], h.results)).not.toThrow();
+    const projections = h.saves.filter((p): p is { spentOrHeldMicros: number } => !!p && typeof p === "object" && "spentOrHeldMicros" in p);
+    expect(projections.every(p => p.spentOrHeldMicros >= score.heldMicros)).toBe(true);
+  });
+  it("stops the model on its second 429 and cold resume cannot create a third batch", async () => {
+    const h = rateHarness();
+    const dispatch = h.dispatch((m, p) => m.model === COMPARISON_MODELS[0].model ? rateResponse() : response(p, m));
+    const blocks = await runComparisonMatrix({ ...h.options, dispatch });
+    expect(blocks.get(COMPARISON_MODELS[0].model)).toBe("second-429-not-fully-tested");
+    expect(h.requests.filter(r => r.model === COMPARISON_MODELS[0].model)).toHaveLength(2);
+    const reports = comparisonReports(h.data, h.states, h.results, h.history, blocks);
+    expect(reports[0]).toMatchObject({ testedPhotos: 0, complete: false, heldMicros: h.states[0].maximumMicros * 2, measuredMicros: 0, costPerPageUsd: null });
+    const score = scoreComparison(h.data, COMPARISON_MODELS[0], h.results, h.history[0]);
+    expect(score).toMatchObject({ schemaFailures: 0, schemaUnvalidated: 0, failures: 0, unsure: 0, missingRuns: 40 });
+    const before = h.requests.length;
+    await runComparisonMatrix({ ...h.options, results: recoverComparisonResults([...h.files.values()], [], h.data, h.history, h.options.run), records: [...h.files.values()], dispatch });
+    expect(h.requests).toHaveLength(before);
+  });
+  it("keeps schema-invalid known-usage photos as results and never retries them", async () => {
+    const h = rateHarness(1);
+    await runComparisonMatrix({ ...h.options, dispatch: h.dispatch((m, p, batch) => p.id === h.data.photos[0].id ? response(p, m, { choices: [{ finish_reason: 'stop', message: { content: '{"readings":[]}' } }] }) : batch === 0 ? rateResponse() : response(p, m)) });
+    expect(h.requests.filter(r => r.photo === h.data.photos[0].id)).toHaveLength(1);
+    expect(h.requests.filter(r => r.batch === 0)).toHaveLength(2);
+    expect(scoreComparison(h.data, COMPARISON_MODELS[0], h.results, h.history[0])).toMatchObject({ complete: true, schemaFailures: 1, passed: false, failures: 1 });
+  });
+  it("queues multiple deferred models with separate timers and retained holds", async () => {
+    const h = rateHarness(3);
+    await runComparisonMatrix({ ...h.options, dispatch: h.dispatch((m, p, batch) => batch === 0 ? rateResponse() : response(p, m)) });
+    expect(h.requests.filter(r => r.batch === 0)).toHaveLength(3); expect(h.requests.filter(r => r.batch === 1)).toHaveLength(120);
+    expect(h.liability()).toBe(h.states.reduce((sum, s) => sum + s.maximumMicros, 120_000)); expect(h.peak).toBe(1);
+    const reports = comparisonReports(h.data, h.states, h.results, h.history, new Map());
+    expect(reports.slice(0, 3).every(r => r.testedPhotos === 40 && r.costPerPageUsd === null && r.heldMicros > 0)).toBe(true);
+  });
+  it("binds the aggregate cap to multiple holds rather than treating them as zero", async () => {
+    const h = rateHarness(2), cap = h.states[0].maximumMicros + h.states[1].maximumMicros;
+    const blocks = await runComparisonMatrix({ ...h.options, maxRunMicros: cap, dispatch: h.dispatch(() => rateResponse()) });
+    expect(h.requests).toHaveLength(2); expect(h.liability()).toBe(cap);
+    expect([...blocks.values()]).toEqual(["next-reservation-over-run-cap", "next-reservation-over-run-cap"]);
+  });
+  it("cold resume retains the first timer at its exact boundary and recovers a missing result file", async () => {
+    const h = rateHarness(1), dispatch = h.dispatch((m, p, batch) => batch === 0 ? rateResponse() : response(p, m));
+    const initial = await dispatch(COMPARISON_MODELS[0], h.data.photos[0], h.history[0], h.states[0].maximumMicros, 0);
+    const retryAt = initial.attempts[0].deferral!.retryAt;
+    h.setTime(retryAt - 1);
+    await expect(dispatch(COMPARISON_MODELS[0], h.data.photos[0], h.history[0], h.states[0].maximumMicros, 1, initial)).rejects.toThrow("too-early");
+    expect(h.requests).toHaveLength(1);
+    const recovered = recoverComparisonResults([...h.files.values()], [], h.data, h.history, h.options.run);
+    await runComparisonMatrix({ ...h.options, results: recovered, records: [...h.files.values()], dispatch });
+    expect(h.requests[1].at).toBe(retryAt); expect(h.requests).toHaveLength(41);
+    expect(h.requests.filter(r => r.batch === 0)).toHaveLength(1);
+  });
+  it.each(["starting", "reserved", "response", "deferred", "terminal", "result", "waiting"])("a cold resume after %s never duplicates a request or omits a hold", async boundary => {
+    const h = rateHarness(1), snapshots: { files: AttemptRecord[]; result?: ComparisonResult }[] = [];
+    const journal: EvaluationJournal = { begin: async key => { const yes = await h.journal.begin(key); if (boundary === "starting") snapshots.push({ files: copy([...h.files.values()]) }); return yes; }, save: async (key, value) => {
+      await h.journal.save(key, value);
+      const v = value as AttemptRecord;
+      if (v.state === boundary && !v.result || boundary === "terminal" && v.result) snapshots.push({ files: copy([...h.files.values()]) });
+    } };
+    const last = await runComparisonPhoto({ run: h.options.run, photo: h.data.photos[0], image: new Uint8Array([1, 2, 3]), model: COMPARISON_MODELS[0], evidence: h.history[0], maximumMicros: h.states[0].maximumMicros, maxRunMicros: 15_000_000, budget: h.budget, journal, env: { SCAN_MARKING_OPENROUTER_API_KEY: "synthetic" }, now: h.options.now, fetch: async () => rateResponse() });
+    if (["result", "waiting"].includes(boundary)) snapshots.push({ files: copy([...h.files.values()]), result: copy(last) });
+    expect(snapshots.length).toBeGreaterThan(0);
+    const snapshot = snapshots.at(-1)!;
+    if (["starting", "reserved", "response", "deferred"].includes(boundary)) {
+      expect(() => recoverComparisonResults(snapshot.files, [], h.data, h.history, h.options.run)).toThrow();
+    } else {
+      const recovered = recoverComparisonResults(snapshot.files, snapshot.result ? [snapshot.result] : [], h.data, h.history, h.options.run);
+      expect(recovered[0].attempts[0].deferral!.retryAt).toBe(1_900_000);
+      expect(recovered[0].attempts[0].deferral!.reservedMicros).toBe(h.liability());
+    }
+    expect([...h.rows.values()]).toHaveLength(1); expect(last.attempts[0].usage.costMicros).toBeNull();
+  });
+  it.each(["settle", "defer", "response", "deferred"])("keeps a %s failure fatal even after later cleanup succeeds", async stage => {
+    const h = rateHarness(1); let failed = false, fetched = 0;
+    const failOnce = () => { if (!failed) { failed = true; throw Error("fixture fault"); } };
+    const budget = { ...h.budget, settle: async (id: string, cost: number | null) => { if (stage === "settle") failOnce(); await h.budget.settle(id, cost); }, defer: async (input: Parameters<NonNullable<EvaluationBudget["defer"]>>[0]) => { if (stage === "defer") failOnce(); await h.budget.defer!(input); } };
+    const r = await runComparisonPhoto({ run: h.options.run, photo: h.data.photos[0], image: new Uint8Array([1, 2, 3]), model: COMPARISON_MODELS[0], evidence: h.history[0], maximumMicros: h.states[0].maximumMicros, maxRunMicros: 15_000_000, budget,
+      journal: { ...h.journal, save: async (key, value) => { if ((value as AttemptRecord).state === stage) failOnce(); await h.journal.save(key, value); } },
+      env: { SCAN_MARKING_OPENROUTER_API_KEY: "synthetic" }, maxAttempts: 2, now: h.options.now, fetch: async () => { fetched++; return rateResponse(); } });
+    expect(fetched).toBe(1); expect(r.status).toBe("failed"); expect(() => assertComparisonResume([...h.files.values()], [r])).toThrow();
+    expect(h.liability()).toBe(h.states[0].maximumMicros);
+    expect(r.attempts[0].response?.status).toBe(429); expect(r.attempts[0].response?.body).toBe(JSON.stringify(rateEnvelope()));
+  });
+  it("rejects copied raw holds, orphan journals, bare labels and cross-run records", async () => {
+    const h = rateHarness(1), dispatch = h.dispatch(() => rateResponse());
+    const r = await dispatch(COMPARISON_MODELS[0], h.data.photos[0], h.history[0], h.states[0].maximumMicros, 0);
+    const bad = copy(r); bad.run = hashBytes("prior run");
+    expect(() => assertComparisonResultIdentity(h.data, [bad], h.history, h.options.run)).toThrow("identity");
+    const forged = copy(r); forged.attempts[0].response!.body = '{"error":{"code":500,"message":"failure"}}';
+    expect(() => assertComparisonResume([], [forged])).toThrow("unknown-usage");
+    const records = copy([...h.files.values()]); records[0].run = hashBytes("other run");
+    expect(() => recoverComparisonResults(records, [r], h.data, h.history, h.options.run)).toThrow("identity");
+    expect(() => assertComparisonResume([...h.files.values()].map(v => ({ ...v, result: undefined })), [])).toThrow();
+    const label = copy(r); delete label.attempts[0].deferral; label.failure = "clean429";
+    expect(() => assertComparisonResume([], [label])).toThrow("unknown-usage");
+  });
+  it("changes the plan identity without changing the 13 pins or prompt/schema settings", () => {
+    const prior = { manifestHash: hashValue(manifest()), models: COMPARISON_MODELS, settings: COMPARISON_SETTINGS, maxAttempts: 1, approved: COMPARISON_MODELS.map(model => assessComparisonEndpoint(model, snapshot(model), publicEvidence.zdr)) };
+    expect(hashValue({ ...prior, deferralPolicy: COMPARISON_DEFERRAL_POLICY })).not.toBe(hashValue(prior));
+    expect(COMPARISON_DEFERRAL_POLICY).toEqual({ version: "clean429-v1", delayMs: 900_000, finalBatches: 1, globalConcurrency: 1, modelConcurrency: 1 });
+    expect(COMPARISON_SETTINGS.promptVersion).toBe("whole-page-scalar-readings-v6");
+    expect(hashValue(COMPARISON_MODELS)).toBe("1c61503c7d953b7c6427312dc88b9651a0a0647d2313a30425c81f4b886de5a2");
+  });
+});
+
+it("keeps distinct deferred model deadlines across a cold resume", async () => {
+  const h = rateHarness(2), dispatch = h.dispatch((m, p, batch) => batch === 0 ? rateResponse() : response(p, m));
+  for (let n = 0; n < 2; n++) {
+    h.setTime(1_000_000 + n * 10_000);
+    h.results.push(await dispatch(COMPARISON_MODELS[n], h.data.photos[0], h.history[n], h.states[n].maximumMicros, 0));
+  }
+  h.setTime(1_900_000);
+  const results = recoverComparisonResults([...h.files.values()], [], h.data, h.history, h.options.run);
+  await runComparisonMatrix({ ...h.options, results, records: [...h.files.values()], dispatch });
+  expect(h.requests.find(r => r.batch === 1 && r.model === COMPARISON_MODELS[0].model)?.at).toBe(1_900_000);
+  expect(h.requests.find(r => r.batch === 1 && r.model === COMPARISON_MODELS[1].model)?.at).toBe(1_910_000);
+  expect(h.requests.filter(r => r.batch === 0)).toHaveLength(2);
+});
+
+it("passes exact raw evidence to the deferral RPC and treats a refusal as fatal", async () => {
+  const h = rateHarness(1);
+  const r = await h.dispatch(() => rateResponse())(COMPARISON_MODELS[0], h.data.photos[0], h.history[0], h.states[0].maximumMicros, 0);
+  const attempt = r.attempts[0], calls: { url: string; body: unknown }[] = [];
+  const budget = rpcEvaluationBudget("https://cdjobwsyzndtltzfpyqa.supabase.co", "synthetic-service", async (url, init) => { calls.push({ url: String(url), body: JSON.parse(String(init?.body)) }); return Response.json(calls.length === 1); });
+  const input = { run: r.run, key: attempt.deferral!.key, attempt };
+  await budget.defer!(input);
+  expect(calls[0]).toEqual({ url: "https://cdjobwsyzndtltzfpyqa.supabase.co/rest/v1/rpc/defer_scan_marking_evaluation", body: { p_run: r.run, p_attempt: input.key, p_id: attempt.id, p_response: attempt.response, p_received_at: attempt.deferral!.receivedAt } });
+  await expect(budget.defer!(input)).rejects.toThrow("ledger-deferral-refused");
+  await expect(budget.defer!({ ...input, key: hashBytes("copied key") })).rejects.toThrow("invalid-deferral-evidence");
+  expect(calls).toHaveLength(2);
+});
+
+it("keeps a known-cost failed request before a clean 429 and defers only the missing answer", async () => {
+  const h = rateHarness(1); let count = 0;
+  const initial = await runComparisonPhoto({ run: h.options.run, photo: h.data.photos[0], image: new Uint8Array([1, 2, 3]), model: COMPARISON_MODELS[0], evidence: h.history[0], maximumMicros: h.states[0].maximumMicros, maxRunMicros: 15_000_000, budget: h.budget, journal: h.journal, env: { SCAN_MARKING_OPENROUTER_API_KEY: "synthetic" }, now: h.options.now, maxAttempts: 2,
+    fetch: async () => { count++; return count === 1 ? Response.json({ id: "gen-failed", provider: COMPARISON_MODELS[0].providerName, model: COMPARISON_MODELS[0].model, usage: { cost: 0.002, prompt_tokens: 4000, completion_tokens: 1, completion_tokens_details: { reasoning_tokens: 0 } }, error: { code: 503, message: "Temporary" } }, { status: 503 }) : rateResponse(); } });
+  expect(initial.status).toBe("deferred"); expect(initial.attempts).toHaveLength(2); expect(count).toBe(2);
+  expect(scoreComparison(h.data, COMPARISON_MODELS[0], [initial], h.history[0])).toMatchObject({ failures: 0, schemaFailures: 0, measuredMicros: 2000, heldMicros: h.states[0].maximumMicros });
+  h.setTime(initial.attempts[1].deferral!.retryAt);
+  const final = await h.dispatch((m, p) => response(p, m))(COMPARISON_MODELS[0], h.data.photos[0], h.history[0], h.states[0].maximumMicros, 1, initial);
+  expect(final.status).toBe("complete"); expect(final.attempts.map(a => a.usage.costMicros)).toEqual([2000, null, 1000]);
+  expect(() => assertComparisonResume([...h.files.values()], [final])).not.toThrow();
+});
+
+it("reports an unclassified unknown reservation separately from measured cost", async () => {
+  const h = rateHarness(1);
+  const r = await h.dispatch(() => new Response("unreadable", { status: 503 }))(COMPARISON_MODELS[0], h.data.photos[0], h.history[0], h.states[0].maximumMicros, 0);
+  expect(r.status).toBe("failed");
+  expect(scoreComparison(h.data, COMPARISON_MODELS[0], [r], h.history[0])).toMatchObject({ measuredMicros: 0, heldMicros: h.states[0].maximumMicros, spentOrHeldMicros: h.states[0].maximumMicros, costPerPageUsd: null });
+  expect(() => assertComparisonResume([...h.files.values()], [r])).toThrow("unknown-usage");
+});
+
+it.each(["successful-result", "second-429"])("recovers an interrupted final batch after %s without repeating it", async kind => {
+  const h = rateHarness(1);
+  const base = h.dispatch((m, p, batch) => batch === 0 || kind === "second-429" ? rateResponse() : response(p, m));
+  let interrupted = false;
+  await expect(runComparisonMatrix({ ...h.options, dispatch: async (...args) => {
+    const r = await base(...args);
+    if (args[4] === 1 && !interrupted && (kind === "second-429" || args[1].id === h.data.photos[3].id)) { interrupted = true; throw Error("process interrupted before result write"); }
+    return r;
+  } })).rejects.toThrow("process interrupted");
+  const recovered = recoverComparisonResults([...h.files.values()], h.results, h.data, h.history, h.options.run);
+  const blocks = await runComparisonMatrix({ ...h.options, results: recovered, records: [...h.files.values()], dispatch: base });
+  expect(h.requests.filter(r => r.batch === 0)).toHaveLength(1);
+  if (kind === "second-429") {
+    expect(h.requests).toHaveLength(2); expect(blocks.get(COMPARISON_MODELS[0].model)).toBe("second-429-not-fully-tested");
+  } else {
+    expect(h.requests).toHaveLength(41);
+    expect(new Set(h.requests.filter(r => r.batch === 1).map(r => r.photo)).size).toBe(40);
+    expect(scoreComparison(h.data, COMPARISON_MODELS[0], recovered, h.history[0])).toMatchObject({ complete: true, measuredMicros: 40000, heldMicros: h.states[0].maximumMicros });
+  }
 });
