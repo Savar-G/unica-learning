@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import {
-  markSentPhotos, sendMarkingStart, SEND_MARKING_LIMIT_MS, SEND_MARKING_MARGIN_MS, SEND_MARKING_MAX_PHOTOS, SEND_MARKING_PHOTO_WORST_MS,
+  markSentPhotos, sendMarkingStart, SEND_MARKING_LIMIT_MS, SEND_MARKING_MARGIN_MS, SEND_MARKING_MAX_PHOTOS, SEND_MARKING_LEASE_MS,
 } from "./scan-send-marking";
 
 vi.mock("server-only", () => ({}));
@@ -112,15 +112,16 @@ it("runs photos one at a time; one photo's error does not stop the others", asyn
   expect(most).toBe(1);
 });
 
-it("starts a photo only while one more worst-case photo fits in the time limit; the rest wait for the cron", async () => {
+it("starts a photo only while a whole lease plus the margin fits before the time limit; the rest wait for the cron", async () => {
+  // The last start is 300 - 15 - 180 = 105 s after the request started.
+  expect(SEND_MARKING_LIMIT_MS - SEND_MARKING_MARGIN_MS - SEND_MARKING_LEASE_MS).toBe(105_000);
   const t = clock(1_000);
-  // Each photo takes the planned worst case.
-  const mark = vi.fn(async () => { t.advance(SEND_MARKING_PHOTO_WORST_MS); return "finished" as const; });
+  // Photo 1 ends at 105 s: photo 2 still starts. Photo 2 ends at 105.001 s: photo 3 does not.
+  const lengths = [104_000, 1, 1];
+  const mark = vi.fn(async () => { t.advance(lengths.shift()!); return "finished" as const; });
   const results = await markSentPhotos(parent, [photo(1), photo(2), photo(3)], 0, { db: () => db, mark, now: t.now });
-  // Two worst-case photos fit in 300 s with the margin; a third would not, so it is left to the cron.
   expect(results).toEqual({ [photo(1)]: "finished", [photo(2)]: "finished", [photo(3)]: "not-started" });
-  expect(1_000 + SEND_MARKING_PHOTO_WORST_MS * 2).toBeLessThanOrEqual(SEND_MARKING_LIMIT_MS - SEND_MARKING_MARGIN_MS);
-  expect(SEND_MARKING_PHOTO_WORST_MS + SEND_MARKING_MARGIN_MS).toBeLessThan(SEND_MARKING_LIMIT_MS);
+  expect(mark).toHaveBeenCalledTimes(2);
 });
 
 it("the database client stops at the deadline; with no time left nothing starts", async () => {

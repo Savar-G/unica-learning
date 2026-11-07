@@ -14,11 +14,13 @@ type Env = Readonly<Record<string, string | undefined>>;
  *
  * Numbers (2026-11-07):
  * - Vercel Hobby with Fluid compute: 300 s default and maximum. The team is on Hobby, so the route uses 300.
- * - One photo: at most 120 s for the AI (one `AbortSignal.timeout(120_000)` over both attempts in `runScanMarking`,
- *   each attempt at most 60 s), plus the image read and the database work. 140 s is the worst case we plan for.
+ * - A claim holds its lease for 180 s (`scan_marking_command` claim). A photo starts only while a whole lease plus a
+ *   15 s margin still fits before the limit, so no lease the run takes outlives the function call: with 300 s the last
+ *   start is 105 s after the request started. The work of one photo is shorter than its lease: at most 120 s of AI
+ *   (one `AbortSignal.timeout(120_000)` over both attempts in `runScanMarking`) plus the image read and the database.
  *   Measured Sonnet calls in the marking ledger: median 2.7 s, 90th percentile 3.3 s.
- * - A new photo starts only while one more worst-case photo still fits before the limit, with a margin.
- *
+ * - At most 6 photos start per Send, so the Send answer can say how many. At about 8 s a photo, 6 photos start well
+ *   before 105 s; on a slow run the time rule stops first and the cron marks the rest.
  * Photos run one at a time. The database admits one active job per family (`scan_limits.active_jobs = 1`, counted by
  * `scan_active_jobs`), so a second photo of the same family at the same time would only answer "busy".
  *
@@ -27,7 +29,8 @@ type Env = Readonly<Record<string, string | undefined>>;
  */
 export const SEND_MARKING_LIMIT_MS = 300_000;
 export const SEND_MARKING_MAX_PHOTOS = 6;
-export const SEND_MARKING_PHOTO_WORST_MS = 140_000;
+/** The marking lane's lease: `lease_until = now + 180 seconds` in the claim. */
+export const SEND_MARKING_LEASE_MS = 180_000;
 export const SEND_MARKING_MARGIN_MS = 15_000;
 /** A "busy" photo (another scan job of the family holds the one slot) is tried again after this wait, while time remains. */
 export const SEND_MARKING_BUSY_WAIT_MS = 10_000;
@@ -66,7 +69,7 @@ export async function markSentPhotos(parent: string, photos: readonly string[], 
   const now = deps.now ?? Date.now, sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const results: Record<string, SendMarkingResult> = Object.fromEntries(photos.map((p) => [p, "not-started" as const]));
   const end = startedAt + SEND_MARKING_LIMIT_MS - SEND_MARKING_MARGIN_MS;
-  const fits = () => now() + SEND_MARKING_PHOTO_WORST_MS <= end;
+  const fits = () => now() + SEND_MARKING_LEASE_MS <= end;
   const left = end - now();
   if (!photos.length || left <= 0) return results;
   const db = (deps.db ?? adminClient)(AbortSignal.timeout(left));
@@ -74,7 +77,7 @@ export async function markSentPhotos(parent: string, photos: readonly string[], 
   let queue = [...photos];
   for (let pass = 0; queue.length && pass <= SEND_MARKING_BUSY_PASSES; pass++) {
     if (pass > 0) {
-      if (now() + SEND_MARKING_BUSY_WAIT_MS + SEND_MARKING_PHOTO_WORST_MS > end) break;
+      if (now() + SEND_MARKING_BUSY_WAIT_MS + SEND_MARKING_LEASE_MS > end) break;
       await sleep(SEND_MARKING_BUSY_WAIT_MS);
     }
     const busy: string[] = [];
