@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { Window } from "happy-dom";
 import { bcStepProgressions } from "./workbook-curriculum";
 import { buildStepItem, stepTemplateItem, stepAiItem } from "./workbook-step-items";
 import { fullnessProblem, pagePlan, workbookTemplate } from "./workbook-template";
@@ -86,8 +87,22 @@ it("adds white calculation space but gives no work area to a place-value recall"
   const space: MeasuredElement = { name: "workspace-1", sheet: 0, x: 64, y: 300, width: 300, height: 64, clientWidth: 300, clientHeight: 64, scrollWidth: 300, scrollHeight: 64, visible: true, textPrinted: false, text: "" };
   expect(layoutProblems(draft(p), new Map([[space.name, space]]), pagePlan(draft(p))).filter(i => /white work space/.test(i.reason))).toEqual([]);
   if (p.content?.kind !== "day") throw new Error("Expected day");
+  const quality = workbookQuality([p]);
   p.content.subtitle = "Circle your answers.";
-  expect(workbookQuality([p]).issues.some(i => /lacks its work instruction/.test(i.reason))).toBe(true);
+  const template = workbookTemplate();
+  expect(template.page(draft(p), { qr: "", qrUrl: "" }, book)).toBe(html);
+  expect(html).toContain("Show your work for question 1.");
+  expect(workbookQuality([p])).toEqual(quality);
+  const root = new Window().document.createElement("div");
+  root.innerHTML = html;
+  const header = { ...space, name: "slot-subtitle", text: root.querySelector('[data-measure="slot-subtitle"]')!.textContent, textPrinted: true };
+  const instructionProblems = (measured: Map<string, MeasuredElement>) => template.fit!(draft(p), measured, book)
+    .filter(problem => problem.slot === "subtitle" && /printed instruction does not match/.test(problem.reason));
+  expect(instructionProblems(new Map([[header.name, header]]))).toEqual([]);
+  expect.soft(instructionProblems(new Map([[header.name, { ...header, text: "Circle your answers." }]]))).toHaveLength(1);
+  expect.soft(instructionProblems(new Map())).toHaveLength(1);
+  const legacy = { ...p, content: { ...p.content, level: 15 } };
+  expect(workbookQuality([legacy]).issues.some(i => /lacks its work instruction/.test(i.reason))).toBe(true);
 });
 
 it("makes the final bag step compare an event with the combined alternatives", () => {
