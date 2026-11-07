@@ -15,6 +15,8 @@ vi.mock("@/lib/child-profile", () => ({ rebuildChildProfile: async () => {
 } }));
 
 const parent = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-4222-8222-222222222222";
+const otherParent = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const scopedEnv = (ids: string) => ({ SCAN_MARKING_ENABLED: "test-only", SCAN_MARKING_TEST_PARENT_IDS: ids });
 const expected = { ...expectedItems({ workbookId: "book", printedRevision: "print", pageId: "page", questions: [{ number: 1, package: null, teaching: null }] })[0], method: "parent" as const };
 const original = { ...firstObservation(expected, "expired-photo"), state: "parent-checked", method: "parent", result: "wrong", actor: "parent", resultVersion: 2 };
 const state = { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [] as URL[], commands: [] as string[], mark: original };
@@ -90,6 +92,83 @@ it("rejects failed or mismatched family lookups", async () => {
   expect(await markingAccess(db, parent, { SCAN_MARKING_ENABLED: "test-only" })).toBe(false);
   state.failed = false; state.wrongParent = true;
   expect(await markingAccess(db, parent, { SCAN_MARKING_ENABLED: "test-only" })).toBe(false);
+});
+
+it.each(["test", "admin"] as const)("requires a listed parent and a current %s mark", async (role) => {
+  const env = scopedEnv(`${otherParent.toUpperCase()},${parent}`);
+  expect(await markingAccess(db, parent, env)).toBe(false);
+  state[role] = true;
+  expect(await markingAccess(db, parent, env)).toBe(true);
+  expect(await processScanMarking(db, parent, "missing-photo", env)).toBe("terminal");
+  state[role] = false;
+  expect(await markingAccess(db, parent, env)).toBe(false);
+  expect(state.queries).toHaveLength(9);
+});
+
+it("refuses an unlisted marked parent before database access", async () => {
+  state.test = true; state.admin = true;
+  expect(await markingAccess(db, parent, scopedEnv(otherParent))).toBe(false);
+  expect(state.queries).toHaveLength(0);
+});
+
+it("refuses unlisted direct work and already-sent recovery work without dispatch", async () => {
+  state.test = true; state.admin = true; state.photo = true;
+  const env = scopedEnv(otherParent);
+  const [direct, recovery] = await Promise.all([
+    processScanMarking(db, parent, "expired-photo", env), recoverScanMarking(db, env),
+  ]);
+  expect(direct).toBe("off");
+  expect(recovery).toEqual({ status: "processed", results: ["off"] });
+  expect(state.queries.map(q => q.pathname)).toEqual(["/rest/v1/rpc/recover_scan_marking"]);
+  expect(state.commands).toEqual([]); expect(profile.calls).toBe(0);
+});
+
+it.each([
+  "", " ", "not-a-uuid", `${parent},`, `,${parent}`, `${parent},,${otherParent}`,
+  `${parent},broken`, ` ${parent}`, `${parent}\n`, `${parent},${parent}`,
+  `${parent},${otherParent},${otherParent.toUpperCase()}`,
+  Array.from({ length: 101 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`).join(","),
+  "x".repeat(3700),
+])("rejects an invalid present list before database access (case %#)", async (ids) => {
+  state.test = true; state.admin = true;
+  expect(await markingAccess(db, parent, scopedEnv(ids))).toBe(false);
+  expect(await processScanMarking(db, parent, "expired-photo", scopedEnv(ids))).toBe("off");
+  expect(state.queries).toHaveLength(0);
+});
+
+it("accepts the full 100-entry bound and reads the list again on each call", async () => {
+  const ids = [parent, ...Array.from({ length: 99 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`)].join(",");
+  expect(ids).toHaveLength(3699);
+  state.test = true;
+  const env = scopedEnv(ids);
+  expect(await markingAccess(db, parent, env)).toBe(true);
+  env.SCAN_MARKING_TEST_PARENT_IDS = otherParent;
+  expect(await markingAccess(db, parent, env)).toBe(false);
+  expect(state.queries).toHaveLength(2);
+});
+
+it.each([undefined, "", "off", "on"])("a valid list cannot enable marking with mode %s", async (flag) => {
+  state.test = true; state.admin = true;
+  const env = { ...scopedEnv(parent), SCAN_MARKING_ENABLED: flag, SCAN_PAGES_ENABLED: "on" };
+  expect(await markingAccess(db, parent, env)).toBe(false);
+  expect(await processScanMarking(db, parent, "expired-photo", env)).toBe("off");
+  expect(await recoverScanMarking(db, env)).toEqual({ status: "off" });
+  expect(state.queries).toHaveLength(0);
+});
+
+it("a listed parent cannot bypass failed or mismatched database reads", async () => {
+  state.test = true; state.admin = true; state.failed = true;
+  expect(await markingAccess(db, parent, scopedEnv(parent))).toBe(false);
+  state.failed = false; state.wrongParent = true;
+  expect(await markingAccess(db, parent, scopedEnv(parent))).toBe(false);
+});
+
+it("keeps readiness unchanged and returns no parent list", () => {
+  const now = "2026-11-06T20:00:00.000Z";
+  const release = scanMarkingServerReadiness(scopedEnv(parent), now);
+  expect(release).toEqual(scanMarkingServerReadiness({ SCAN_MARKING_ENABLED: "test-only" }, now));
+  expect(release.familyReady).toBe(false);
+  expect(JSON.stringify(release)).not.toContain(parent);
 });
 
 it("reports the source-controlled hold without treating test access as family approval", () => {
