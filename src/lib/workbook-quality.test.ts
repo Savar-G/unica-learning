@@ -5,6 +5,7 @@ import { buildPlannedItem, planItem } from "./workbook-item-plan";
 import type { GeneratedPage } from "./workbook-generator";
 import { curriculumFor } from "./workbook-curriculum";
 import { buildStepItem, stepTemplateItem } from "./workbook-step-items";
+import { workbookPageInstruction } from "./workbook-page-instructions";
 
 function page(number: number, day: number, count = 2): GeneratedPage {
   return { number, day, pageOfDay: 1, dayLabel: `Day ${day}`, type: "practice", qrToken: "token-000000000001", attempts: 0, fit: { status: "fits" }, questions: Array.from({ length: count }, (_, i) => {
@@ -13,6 +14,27 @@ function page(number: number, day: number, count = 2): GeneratedPage {
     return { number: i + 1, slot: p.item.slot, part: "practice", place: "on-your-own", attempts: 1, check: b.check, package: b.package };
   }) };
 }
+
+it("checks the displayed numbered work instruction before every U16 instruction rule", () => {
+  const p = page(3, 1);
+  p.content = { kind: "day", id: "numbered-work", level: 16, day: 1, page: 1, pages: 8,
+    topic: "Numbers", title: "Numbers", consistentLayout: true,
+    subtitle: "Show your work in the white space under a question.", grownUp: null,
+    blocks: [{ slot: "on-your-own", items: [1, 2] }] };
+  p.questions = p.questions.map(q => ({ ...q, package: { ...q.package!, text: "245 + 126 = ?" } }));
+  const before = structuredClone(p);
+  const projected = workbookPageInstruction(p)!;
+  expect(projected).toBe("Write in boxes. Show your work for questions 1 and 2.");
+  const quality = workbookQuality([p]);
+  const shown = { ...p, content: { ...p.content, subtitle: projected } };
+  expect(workbookQuality([shown])).toEqual(quality);
+  expect(quality.issues.filter(issue => /instruction/.test(issue.reason))).toEqual([]);
+  expect(p).toEqual(before);
+  const legacy = { ...shown, content: { ...shown.content, level: 15 } };
+  expect(workbookQuality([legacy]).issues).toContainEqual(expect.objectContaining({
+    reason: "the page with work space lacks its work instruction",
+  }));
+});
 
 it("rejects an ordinary step template in a Mixed set even when its answer is checked", () => {
   const p = page(3, 1, 1);
