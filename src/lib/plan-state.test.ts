@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { KnownPlan, PlanSubscription } from "@/lib/parent-plan";
-import { applyPlanEvent, fillChildPlan, planColumns, planFromColumns, readChildPlan, type PlanEvent } from "@/lib/plan-state";
+import { applyPlanEvent, applyPlanStart, fillChildPlan, planColumns, planFromColumns, readChildPlan, type PlanEvent } from "@/lib/plan-state";
 import { memoryPlanStates } from "@/lib/plan-state-memory";
 
 const key = { parentId: "parent-1", childId: "child-1" };
@@ -313,5 +313,56 @@ describe("the row's columns", () => {
 
   it("read a free month with no first charge as unknown", () => {
     expect(planFromColumns({ kind: "free_month", next_charge_at: null, ends_at: null, monthly_cents: 7999, ending_free: false })).toEqual({ kind: "unknown" });
+  });
+});
+
+describe("a plan start stores the plan with no webhook", () => {
+  const start = { customer: "cus_1", cardSetup: "card-1", generation: 1, startedAt: 1_799_000_000_000 };
+
+  it("fills a child with no row, from what Stripe says now", async () => {
+    const states = family([sub()]);
+    expect(await applyPlanStart(start, states)).toBe("stored");
+    expect((await readChildPlan(key, states.store)).kind).toBe("free_month");
+  });
+
+  it("replaces a not_started row, which a fill would leave as it is", async () => {
+    const states = family([]);
+    await fillChildPlan(key, states);
+    expect((await readChildPlan(key, states.store)).kind).toBe("not_started");
+    states.subscriptions.cus_1 = [sub()];
+    await fillChildPlan(key, states);
+    expect((await readChildPlan(key, states.store)).kind).toBe("not_started");
+    expect(await applyPlanStart(start, states)).toBe("stored");
+    expect((await readChildPlan(key, states.store)).kind).toBe("free_month");
+  });
+
+  it("a second write of the same start changes nothing and reads no plan", async () => {
+    const states = family([sub()]);
+    await applyPlanStart(start, states);
+    const reads = states.calls.plan;
+    expect(await applyPlanStart(start, states)).toBe("duplicate");
+    expect(states.calls.plan).toBe(reads);
+  });
+
+  it("every later Stripe event still replaces it, also one a moment after the start", async () => {
+    const states = family([sub()]);
+    await applyPlanStart(start, states);
+    states.subscriptions.cus_1 = [sub({ cancelAtPeriodEnd: true })];
+    expect(await applyPlanEvent(event({ id: "evt_late", created: Math.floor(start.startedAt / 1000) }), states)).toBe("stored");
+    expect((await readChildPlan(key, states.store)).kind).toBe("ending");
+  });
+
+  it("does not replace a newer event's row", async () => {
+    const states = family([sub({ cancelAtPeriodEnd: true })]);
+    await applyPlanEvent(event({ id: "evt_new", created: 1_799_000_100 }), states);
+    expect(await applyPlanStart(start, states)).toBe("older");
+    expect((await readChildPlan(key, states.store)).kind).toBe("ending");
+  });
+
+  it("answers no_match when no card setup has the customer, and throws when Stripe fails", async () => {
+    expect(await applyPlanStart({ ...start, customer: "cus_other" }, family())).toBe("no_match");
+    const states = family();
+    states.fail.plan = new Error("Stripe down");
+    await expect(applyPlanStart(start, states)).rejects.toThrow("Stripe down");
   });
 });

@@ -11,14 +11,16 @@ import type { familyPlans } from "@/lib/parent-plan-server";
 const Email = () => <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>;
 type PlanRow = NonNullable<Awaited<ReturnType<typeof familyPlans>>>[number];
 
-export function ParentPlanView({ plans, zone, controls, pending, control, cancellation }: {
+export function ParentPlanView({ plans, zone, controls, pending, control, cancellation, note }: {
   plans: Awaited<ReturnType<typeof familyPlans>>; zone: FamilyZone; controls: boolean;
+  note?: ReactNode;
   control?: (row: PlanRow) => ReactNode;
   cancellation?: (row: PlanRow) => ReactNode;
   pending?: ReadonlyMap<string, "pause" | "restart" | "cancel">;
 }) {
   return (
     <SupportPage label="Your account" title="Your plan">
+      {note}
       {plans === null && <p role="alert" className="acct-alert">We cannot show your plan right now. To cancel, email <Email />.</p>}
       {plans?.length === 0 && <p>You do not have a saved card or a plan. Nothing will be charged.</p>}
       {plans && plans.length > 0 && <ul className="acct-kids">

@@ -53,11 +53,15 @@ export function chatLimitLabel(usage: ChatUsage | null, note: string | null): st
 export const chatGradeLine = () => "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.";
 
 /**
- * Who may chat before the plan check (#530). A test family always may, on the fake path. Any other family needs the
- * switch on and a place on the admin list (public.maya_chat_families), then a running plan ("plan").
+ * Who may chat. A test family always may, on the fake path (#530). `MAYA_CHAT_ENABLED=off` is the emergency stop for
+ * every other family. A child with an open plan (src/lib/plan-access.ts) may, with no list row and no switch ("open_plan").
+ * Any other family needs the switch on and a place on the admin list (public.maya_chat_families), then a running plan
+ * read from Stripe ("plan"). The grade and the parent's notice agreement are separate checks, and every path needs them.
  */
-export function chatFamilyGate(family: { test: boolean; listed: boolean }, env: Record<string, string | undefined>): "test" | "plan" | "closed" {
+export function chatFamilyGate(family: { test: boolean; listed: boolean; planOpen?: boolean }, env: Record<string, string | undefined>): "test" | "open_plan" | "plan" | "closed" {
   if (family.test) return "test";
+  if (env.MAYA_CHAT_ENABLED === "off") return "closed";
+  if (family.planOpen) return "open_plan";
   return family.listed && env.MAYA_CHAT_ENABLED === "on" ? "plan" : "closed";
 }
 

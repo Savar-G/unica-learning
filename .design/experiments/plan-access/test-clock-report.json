@@ -1,0 +1,240 @@
+{
+  "run": "1732e7e6-9b3c-4871-8880-8548f1d68160",
+  "mode": "test",
+  "checks": [
+    {
+      "case": "paid: before start",
+      "day": 0,
+      "kind": "not_started",
+      "stored": "not_started",
+      "fromStripe": {
+        "open": false,
+        "reason": "no_plan"
+      },
+      "fromRow": {
+        "open": false,
+        "reason": "no_plan"
+      }
+    },
+    {
+      "case": "paid: after start",
+      "day": 0,
+      "kind": "free_month",
+      "stored": "free_month",
+      "fromStripe": {
+        "open": true,
+        "reason": "open"
+      },
+      "fromRow": {
+        "open": true,
+        "reason": "open"
+      }
+    },
+    {
+      "case": "paid: day 29",
+      "day": 29,
+      "kind": "free_month",
+      "stored": "free_month",
+      "fromStripe": {
+        "open": true,
+        "reason": "open"
+      },
+      "fromRow": {
+        "open": true,
+        "reason": "open"
+      }
+    },
+    {
+      "case": "paid: day 30 after payment",
+      "day": 30.1,
+      "kind": "paying",
+      "stored": "paying",
+      "fromStripe": {
+        "open": true,
+        "reason": "open"
+      },
+      "fromRow": {
+        "open": true,
+        "reason": "open"
+      }
+    },
+    {
+      "case": "paid: invoices",
+      "invoices": [
+        {
+          "status": "paid",
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_cycle"
+        },
+        {
+          "status": "paid",
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create"
+        }
+      ]
+    },
+    {
+      "case": "cancel: just cancelled",
+      "day": 0,
+      "kind": "ending",
+      "stored": "ending",
+      "fromStripe": {
+        "open": true,
+        "reason": "ending_until_end"
+      },
+      "fromRow": {
+        "open": true,
+        "reason": "ending_until_end"
+      }
+    },
+    {
+      "case": "cancel: a minute before the end",
+      "day": 30,
+      "kind": "ending",
+      "stored": "ending",
+      "fromStripe": {
+        "open": true,
+        "reason": "ending_until_end"
+      },
+      "fromRow": {
+        "open": true,
+        "reason": "ending_until_end"
+      }
+    },
+    {
+      "case": "cancel: after the end",
+      "day": 30,
+      "kind": "ended",
+      "stored": "ended",
+      "fromStripe": {
+        "open": false,
+        "reason": "ended"
+      },
+      "fromRow": {
+        "open": false,
+        "reason": "ended"
+      }
+    },
+    {
+      "case": "cancel: invoices",
+      "invoices": [
+        {
+          "status": "paid",
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create"
+        }
+      ]
+    },
+    {
+      "case": "failed: free month",
+      "day": 0,
+      "kind": "free_month",
+      "stored": "free_month",
+      "fromStripe": {
+        "open": true,
+        "reason": "open"
+      },
+      "fromRow": {
+        "open": true,
+        "reason": "open"
+      }
+    },
+    {
+      "case": "failed: day 30, payment failed",
+      "day": 30.1,
+      "kind": "payment_failed",
+      "stored": "payment_failed",
+      "fromStripe": {
+        "open": false,
+        "reason": "payment_failed"
+      },
+      "fromRow": {
+        "open": false,
+        "reason": "payment_failed"
+      }
+    },
+    {
+      "case": "failed: after a good payment",
+      "day": 30.1,
+      "kind": "paying",
+      "stored": "paying",
+      "fromStripe": {
+        "open": true,
+        "reason": "open"
+      },
+      "fromRow": {
+        "open": true,
+        "reason": "open"
+      }
+    },
+    {
+      "case": "failed: invoices",
+      "invoices": [
+        {
+          "status": "paid",
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_cycle"
+        },
+        {
+          "status": "paid",
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create"
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "resources": [
+    {
+      "clock": "clock_1UZCfqGea4vTm7UScoSetCko",
+      "customer": "cus_VaNQXyIexvnuUP",
+      "label": "paid"
+    },
+    {
+      "clock": "clock_1UZCgCGea4vTm7US7xawKDcl",
+      "customer": "cus_VaNRUO7tQa3NS5",
+      "label": "cancel"
+    },
+    {
+      "clock": "clock_1UZCgTGea4vTm7USLSZSQKKG",
+      "customer": "cus_VaNRtMi0Tz0Qy1",
+      "label": "failed"
+    }
+  ],
+  "cleanup": [
+    {
+      "clock": "clock_1UZCfqGea4vTm7UScoSetCko",
+      "deleted": true
+    },
+    {
+      "clock": "clock_1UZCgCGea4vTm7US7xawKDcl",
+      "deleted": true
+    },
+    {
+      "clock": "clock_1UZCgTGea4vTm7USLSZSQKKG",
+      "deleted": true
+    }
+  ],
+  "verified_after_cleanup": [
+    {
+      "label": "paid",
+      "clock": "absent",
+      "customer": "deleted"
+    },
+    {
+      "label": "cancel",
+      "clock": "absent",
+      "customer": "deleted"
+    },
+    {
+      "label": "failed",
+      "clock": "absent",
+      "customer": "deleted"
+    }
+  ]
+}

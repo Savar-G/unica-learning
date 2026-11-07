@@ -15,6 +15,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
     return {
       parent: "family",
       active: async () => fake.signedIn,
+      photoOpen: async () => true,
       db: { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: photo() }) }) }) }), auth: { getUser: async () => ({ data: { user: { id: "family" } } }) } },
       admin: {
         from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { deletion_requested_at: fake.frozen ? new Date().toISOString() : null } }) }) }) }),

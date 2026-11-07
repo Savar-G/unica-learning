@@ -1,14 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const ID = "00000000-0000-4000-8000-000000000001";
 const LEASE = "00000000-0000-4000-8000-000000000002";
 const f = vi.hoisted(() => ({
   marked: true, photo: true, downloads: [] as string[], calibration: null as null | { state: string; lease_token: string; result: { parts: string[]; sheetCheck?: number } | null },
   run: 0, read: 0, signedOutDuringRead: false, active: true,
+  photoChild: null as string | null, plan: { open: true, reason: "open" } as { open: boolean; reason: string }, asked: [] as unknown[],
 }));
 const ai = vi.hoisted(() => vi.fn(() => { throw new Error("S2b must not dispatch AI"); }));
 vi.mock("@/lib/ai-client", () => ({ aiClient: ai }));
 vi.mock("@/lib/scan-pages-access", () => ({ markedFamily: async () => f.marked }));
+// The real admission rule, with the plan gate answered by the test (the dashboard's gate is not on main yet).
+vi.mock("@/lib/scan-marking-access", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/scan-marking-access")>();
+  const gate = async (input: { parentId: string; childId: string }) => { f.asked.push(input); return f.plan as never; };
+  return { ...actual, scanChecksAccess: (...args: Parameters<typeof actual.scanChecksAccess>) => actual.scanChecksAccess(args[0], args[1], args[2], args[3], gate) };
+});
 vi.mock("@/lib/scan-crops-store", () => ({ scanCropStore: () => ({}) }));
 vi.mock("@/lib/scan-crops", async (original) => ({
   ...await original<typeof import("@/lib/scan-crops")>(),
@@ -25,7 +32,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
       parent: "family", active: async () => f.active,
       db: { from: () => ({ select: () => one(row()) }), auth: { getUser: async () => ({ data: { user: { id: "family" } } }) } },
       admin: {
-        from: (table: string) => ({ select: () => one(table === "scan_calibrations" ? f.calibration : { deletion_requested_at: null }) }),
+        from: (table: string) => ({ select: () => one(table === "scan_calibrations" ? f.calibration : table === "scan_photos" ? (f.photoChild ? { child_id: f.photoChild } : null) : { deletion_requested_at: null }) }),
         storage: { from: () => ({ download: async (path: string) => { f.downloads.push(path); if (f.signedOutDuringRead) f.active = false; return { data: new Blob(["crop bytes"], { type: "image/jpeg" }) }; } }) },
       },
     };
@@ -40,7 +47,7 @@ const part = (name: string) => PART(new Request(`${url}/${name}`), { params: Pro
 const post = (origin = "https://unicalearning.com") => POST(new Request(url, { method: "POST", headers: { Origin: origin } }), { params });
 
 beforeEach(() => {
-  Object.assign(f, { marked: true, photo: true, downloads: [], run: 0, read: 0, signedOutDuringRead: false, active: true, calibration: { state: "ready", lease_token: LEASE, result: { parts: ["straight", "crop-3"], sheetCheck: 1 } } });
+  Object.assign(f, { photoChild: null, plan: { open: true, reason: "open" }, asked: [], marked: true, photo: true, downloads: [], run: 0, read: 0, signedOutDuringRead: false, active: true, calibration: { state: "ready", lease_token: LEASE, result: { parts: ["straight", "crop-3"], sheetCheck: 1 } } });
   ai.mockClear();
 });
 
@@ -116,5 +123,43 @@ describe("a crop's image route", () => {
     f.photo = false;
     expect((await part("straight")).status).toBe(404);
     expect(f.downloads).toEqual([]);
+  });
+});
+
+describe("the preview route in families mode", () => {
+  const CHILD = "22222222-2222-4222-8222-222222222222";
+  beforeEach(() => { f.marked = false; f.photoChild = CHILD; vi.stubEnv("SCAN_MARKING_ENABLED", "families"); });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["open", "ending_until_end"])("checks a real family's photo while the child's plan is %s", async (reason) => {
+    f.plan = { open: true, reason };
+    expect((await GET(new Request(url), { params })).status).toBe(200);
+    expect((await post()).status).toBe(200);
+    expect((await part("crop-3")).status).toBe(200);
+    expect([f.run, f.read]).toEqual([1, 1]);
+    expect(f.asked).toContainEqual({ parentId: "family", childId: CHILD });
+  });
+
+  it.each(["no_plan", "ended", "payment_failed", "paused", "unknown", "read_failed"])("runs no check when the plan answer is %s", async (reason) => {
+    f.plan = { open: false, reason };
+    expect((await GET(new Request(url), { params })).status).toBe(404);
+    expect((await post()).status).toBe(404);
+    expect((await part("crop-3")).status).toBe(404);
+    expect([f.run, f.read, f.downloads.length]).toEqual([0, 0, 0]);
+  });
+
+  it("runs no check for a photo that is not this family's, without asking the plan gate", async () => {
+    f.photoChild = null;
+    expect((await post()).status).toBe(404);
+    expect((await part("crop-3")).status).toBe(404);
+    expect([f.run, f.downloads.length, f.asked.length]).toEqual([0, 0, 0]);
+  });
+
+  it.each(["test-only", "off"])("with switch %s a running plan does not open the checks", async (flag) => {
+    vi.stubEnv("SCAN_MARKING_ENABLED", flag);
+    expect((await post()).status).toBe(404);
+    expect(f.asked).toEqual([]);
+    f.marked = true;
+    expect((await post()).status).toBe(200);
   });
 });

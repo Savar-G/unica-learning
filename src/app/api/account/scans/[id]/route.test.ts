@@ -15,7 +15,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
   scanPath: () => "family/photo/photo.jpg", SCAN_BUCKET: "scan-photos",
   scanView: async () => ({ id: "photo", state: "pending" }),
   cleanupScanPhoto: async () => true,
-  scanSession: async () => ({ parent: "family", admin: {
+  scanSession: async () => ({ parent: "family", photoOpen: async () => true, admin: {
     from: () => ({ select: () => ({ single: async () => ({ data: { input_bytes: 100, output_bytes: 100, decoded_pixels: 100 } }) }) }),
     rpc: async (name: string) => {
       f.calls.push(name);

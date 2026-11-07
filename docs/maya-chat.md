@@ -2,7 +2,9 @@
 
 Issue #358 adds the Chat tab to the child's desk at `/tutor`.
 
-Chat opens one family at a time (#530, D-241). A real family gets chat only when all of these hold: an admin added it to the chat list (`public.maya_chat_families`, at `/admin/maya-chat` and on the family's admin page), `MAYA_CHAT_ENABLED=on` is set on the server, and its Stripe plan is in `trialing` or `active` status. A family off the list is refused before Stripe is read. Families marked in `test_accounts` can use chat without the list or the switch. The server checks the family, the plan, the desk child and the child's grade on every request (`chatGate` in `src/lib/maya-chat-server.ts`). The desk reads only the child's shipped workbook questions.
+A child with an open plan (`src/lib/plan-access.ts`) has chat with no list row and no switch, per child, with no Stripe read. `MAYA_CHAT_ENABLED=off`, the exact value, is the emergency stop: it closes this path and the list path, and leaves test families as they were. The grade rule and the parent's notice agreement stay on every path.
+
+Without an open plan, chat opens one family at a time (#530, D-241). A real family gets chat only when all of these hold: an admin added it to the chat list (`public.maya_chat_families`, at `/admin/maya-chat` and on the family's admin page), `MAYA_CHAT_ENABLED=on` is set on the server, and its Stripe plan is in `trialing` or `active` status. A family off the list is refused before Stripe is read. Families marked in `test_accounts` can use chat without the list or the switch. The server checks the family, the plan, the desk child and the child's grade on every request (`chatGate` in `src/lib/maya-chat-server.ts`). The desk reads only the child's shipped workbook questions.
 
 Chat is for Grade 3 and up, because it needs typing. The server refuses a younger child's chat request, test families included. When the family has chat, a younger child's desk says: "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon." Parent home shows no chat count for a younger child. Other families still see "Chat and calls with Maya start soon."
 

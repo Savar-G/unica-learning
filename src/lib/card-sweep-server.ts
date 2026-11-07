@@ -3,6 +3,8 @@ import { sendPlanStartAlert } from "@/lib/card-plan-alert";
 import { CARD_WATCH_MS, sweepCards, writeWindow, type CardCheckSeams, type CardSweep } from "@/lib/card-reconcile";
 import { supabaseCardRows } from "@/lib/card-reconcile-server";
 import type { MailTransport } from "@/lib/email-delivery";
+import { applyPlanStart } from "@/lib/plan-state";
+import { stripePlanProvider, supabasePlanStore } from "@/lib/plan-state-server";
 import { stripe, stripeWithin } from "@/lib/stripe";
 import { stripeCards } from "@/lib/stripe-subscriptions";
 import { planPrice } from "@/lib/subscription-plan";
@@ -51,6 +53,9 @@ export function liveCardChecks(origin: string, { canWrite = writeWindow(), signa
       return sent;
     },
     planEmailClaim: (cardId, generation) => planStartEmailClaim(db, cardId, generation),
+    planStarted: async (row, start) => {
+      await applyPlanStart({ customer: row.customer, cardSetup: row.cardId, generation: start.generation, startedAt: start.at }, { store: supabasePlanStore(db), provider: stripePlanProvider(client) });
+    },
     alertTeam: (row, start) => sendPlanStartAlert(rows, row, start, { to: process.env.SIGNUP_NOTIFY_EMAIL || null, origin, transport: mail }),
   };
 }

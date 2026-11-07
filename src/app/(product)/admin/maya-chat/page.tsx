@@ -12,14 +12,15 @@ export const metadata = pageMetadata({ path: `${ADMIN_PATH}/maya-chat`, title: "
 export default async function MayaChatPage() {
   const admin = await requireAdmin();
   const rows = await chatFamilyList(admin);
-  const on = process.env.MAYA_CHAT_ENABLED === "on";
+  const chatSwitch = process.env.MAYA_CHAT_ENABLED;
   return (
     <AdminFrame email={admin.email} section="maya-chat" title="Maya chat">
       <p className="adm-lead">
-        Chat with Maya opens one family at a time. A family gets chat when it is on this list, the chat switch is on, and it
-        has a running plan. Only children in Grade 3 and up can chat. Test families have chat without the list.
+        A child with an open plan has chat with no row on this list. A family without one gets chat when it is on this list,
+        the chat switch is on, and it has a running plan. Only children in Grade 3 and up can chat, after a parent agrees to the
+        Maya notice. Test families have chat without the list.
       </p>
-      <p className="adm-note">Chat switch: {on ? "on" : "off, so no family on this list has chat yet"}.</p>
+      <p className="adm-note">Chat switch: {chatSwitch === "on" ? "on" : chatSwitch === "off" ? "off, the emergency stop: no family has chat except test families" : "not set, so only children with an open plan and test families have chat"}.</p>
       <p className="adm-note">
         One test family on the list can be the rehearsal family. It receives the parent notes and weekly recaps that test
         families never get, so the first ones go to the team.

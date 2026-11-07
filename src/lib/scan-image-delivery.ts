@@ -1,7 +1,7 @@
 import "server-only";
 import { SCAN_BUCKET, SCAN_HEADERS, scanJson, type scanSession } from "@/lib/scan-photo-server";
 
-type Session = Awaited<ReturnType<typeof scanSession>>;
+type Session = Pick<Awaited<ReturnType<typeof scanSession>>, "db" | "admin" | "parent" | "active">;
 type PhotoRow = { id: string; parent_id: string; state: string; created_at: string; expires_at: string } | null;
 
 const active = (p: PhotoRow) => p && ["saved", "pending"].includes(p.state) && Date.parse(p.expires_at) > Date.now()
