@@ -65,5 +65,29 @@ describe("frozen-book coverage CLI", () => {
     const b = book(); Reflect.deleteProperty(b, key);
     expect(run(b)).toEqual({ status: 1, output: null });
   });
+  it.each(["width", "height"] as const)("refuses a string %s that hides an outside-page region", axis => {
+    const b = book(), p = b.pages[0], value = String(p.image![axis]);
+    p.questions[0].regions![0].box![axis === "width" ? "x" : "y"] = p.image![axis] + 1;
+    Reflect.set(p.image!, axis, value);
+    Reflect.set(p.printContract!.coordinates.image, axis, value);
+    expect(run(b)).toEqual({ status: 1, output: null });
+  });
+  it("refuses two string dimensions without converting the geometry", () => {
+    const b = book(), p = b.pages[0];
+    for (const axis of ["width", "height"] as const) {
+      p.questions[0].regions![0].box![axis === "width" ? "x" : "y"] = p.image![axis] + 1;
+      Reflect.set(p.printContract!.coordinates.image, axis, String(p.image![axis]));
+      Reflect.set(p.image!, axis, String(p.image![axis]));
+    }
+    expect(run(b)).toEqual({ status: 1, output: null });
+  });
+  it.each([0, -1, 10001, 1000.5, null])("refuses invalid image dimensions %s", value => {
+    for (const axis of ["width", "height"] as const) {
+      const b = book(), p = b.pages[0];
+      Reflect.set(p.image!, axis, value);
+      Reflect.set(p.printContract!.coordinates.image, axis, value);
+      expect(run(b)).toEqual({ status: 1, output: null });
+    }
+  });
   it("refuses a changed source hash", () => expect(run(book(), true)).toEqual({ status: 1, output: null }));
 });

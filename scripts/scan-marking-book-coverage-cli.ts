@@ -20,7 +20,8 @@ if (!isUuid(book.id) || !isUuid(book.childId) || !isPrintedRevision(book.printed
   || book.pages.some(p => !Number.isSafeInteger(p.number) || p.number < 1 || !p.printContract || !Array.isArray(p.questions)
     || p.questions.some(q => !Number.isSafeInteger(q.number) || q.number < 1)
     || new Set(p.questions.map(q => q.number)).size !== p.questions.length)) throw new Error("frozen-measured-contract-required");
-if (book.pages.some(p => !p.image || !storedPrintContract(p.printContract, {
+if (book.pages.some(p => !p.image || ![p.image.width, p.image.height].every(n => Number.isSafeInteger(n) && n >= 1 && n <= 10000)
+  || !storedPrintContract(p.printContract, {
   workbookId: book.id, page: p.number, image: { width: p.image.width, height: p.image.height },
 }))) throw new Error("invalid-frozen-page-contract");
 const totals = { questions: 0, code: 0, parentMethods: 0, suppliedRight: 0, suppliedNullBlank: 0, suppliedUnclear: 0 };
