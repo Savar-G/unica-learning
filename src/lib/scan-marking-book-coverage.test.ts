@@ -53,8 +53,19 @@ describe("frozen-book coverage CLI", () => {
     q.package.ref = { source: "workbook", workbookId: b.id, page: 1, question: 1 };
     q.regions = q.package.item!.regions.map((r, k) => ({ id: r.id, kind: r.kind, box: { x: 10 + k * 210, y: 10, width: 200, height: 100 } }));
     expect(run(b)).toMatchObject({ status: 0, output: { complete: true, questions: 1, aiMarked: 1, parent: 0, unsupported: 0,
-      suppliedRight: 1, suppliedNullBlank: 1, suppliedUnclear: 1, suppliedWrongMethod: 1, suppliedMissingMethod: 1,
+      suppliedRight: 1, suppliedNullBlank: 1, suppliedUnclear: 1, suppliedWrongMethod: 1, suppliedMissingMethod: 1, suppliedDoesNotSolve: 1, suppliedFilledIn: 1,
       formats: { "two-ways": 1 }, readingFormats: { "two-ways": 1 } } });
+    expect(run(b).output.parentJudgingLabels).toMatchObject({ questions: 0, byPath: { "not-read-yet": { count: 0 }, "model-answer-form": { count: 0 }, "alternate-form": { count: 0 } } });
+  });
+  it("counts each question that can show a label asking the parent to judge, by path, format and id", () => {
+    const b = book();
+    expect(run(b).output.parentJudgingLabels).toMatchObject({ questions: 1,
+      byPath: { "not-read-yet": { count: 1, formats: { "write-number": 1 }, ids: ["p1q1"] }, "model-answer-form": { count: 1, ids: ["p1q1"] }, "alternate-form": { count: 0, ids: [] } } });
+    const words = book(), q = words.pages[0].questions[0];
+    q.package = structuredClone(fixtures.packages["write-words"]) as unknown as QuestionPackage;
+    q.package.ref = { source: "workbook", workbookId: words.id, page: 1, question: 1 };
+    q.regions = q.package.item!.regions.map(r => ({ id: r.id, kind: r.kind, box: { x: 10, y: 10, width: 200, height: 100 } }));
+    expect(run(words).output.parentJudgingLabels.byPath["alternate-form"]).toEqual({ count: 1, formats: { "write-words": 1 }, ids: ["p1q1"] });
   });
   it("reports a gap for a two-ways item with a missing method region", () => {
     const b = book(), q = b.pages[0].questions[0];

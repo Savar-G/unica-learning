@@ -169,30 +169,56 @@ Code checks the stored right-or-wrong choice and the corrected answer together. 
 
 The item keeps one review crop, canonical result and original event. Its local cases include right choice with wrong correction, wrong choice with right correction, ambiguous marks, missing parts and an extra unrequested printed-example reading. They prove the response contract, not image recognition.
 
-## Two-ways marking (D-301)
+## Two-ways marking (D-301, D-302)
 
 Savar decided on 7 November that AI does all marking and a parent marks no question. This replaces the parent review of 6 November (#461). A parent keeps "Change this mark".
 
-The printed item has two work areas and one final-answer box. The model reads all three regions on the whole page. It transcribes each method as digits and symbols, one step per line, without correcting or judging it. It receives no answer. Code then marks the item in `src/lib/scan-marking-methods.ts`:
+The printed item has two work areas and one final-answer box. The model reads all three regions on the whole page. It transcribes each method as written, one step per line, and it never leaves out or tidies a step. It receives the question with each method region and no answer. For each method it also gives a verdict: `solves`, `does-not-solve` or `unsure`, with a short reason. The reason is evidence for the team and is never shown to a parent. Code checks the answer and the arithmetic in `src/lib/scan-marking-methods.ts`.
 
-| Reading | Item result |
-| --- | --- |
-| The answer is right, both methods are valid and they differ | Right |
-| The answer is wrong | Wrong |
-| A method has a false step, stops at a number that is neither the answer nor a number in the question, or is only a number | Wrong |
-| A method or the answer is empty, and nothing else is unsure | Wrong |
-| The same method is written twice | Wrong |
-| All three regions are empty | Blank |
-| A region is blurry, cut off or unreadable, and no region is definitely wrong | Unsure, with the plain reason of that region |
-| A method is words or a drawing, or its true steps do not use a number in the question, or it has the same steps as the other method in another order | Unsure: "We cannot check this method." |
+A method is valid only when all of these are true (D-302):
 
-A method is valid when every step is true, it holds the right answer and it uses a number printed in the question. A limit: code checks that the arithmetic is true, not that the method is a sensible way to teach the question. A true method that does not use a printed number (5 × 8 = 40, 40 × 100 = 4000 for 50 × 80) stays unsure. The Robin phone test measures how often this occurs.
+- The AI says `solves`.
+- Every written step is true arithmetic. Code checks each step, including number line jumps such as `36 +40 → 76 +7 → 83`.
+- The method is not the question with the answer filled in, nor its reverse or check. Code refuses work whose numbers are all from the question and the answer (0 and 1 do not count as working numbers).
+- The work ends at the answer or at a number in the question.
+
+| Reading | Item result | Label |
+| --- | --- | --- |
+| The answer is right, and both methods are valid and different | Right | `Right` |
+| The answer is wrong | Wrong | `Wrong` |
+| The answer is right, and a method has a false step or the AI says `does-not-solve` | Wrong | `Wrong. One way does not solve the question.` |
+| The answer is right, and a method is empty | Wrong | `Wrong. One way is missing.` |
+| The answer is empty, and the methods are read | Wrong | `Wrong` |
+| All three regions are empty | Blank | `Blank` |
+| A region is blurry, cut off or unreadable, and no region is definitely wrong | Unsure | The plain reason of that region |
+| Anything else about a method: the AI is unsure, words or a drawing, a filled-in question, the same work twice | Unsure | `We cannot check this method.` |
+| The answer box has a form code cannot check | Unsure | `We cannot check this answer.` |
+
+The AI's verdict is one model's judgment. A sum the AI wrongly calls `solves` becomes Right when its arithmetic is true and it has working numbers of its own. The Robin phone test measures this against human truth. The Robin truth follows the same rule: an item is right only when the answer is right and both methods are valid and different.
+
+The explanation feature handles a right answer with a wrong method: it tells the model the final answer is right and asks for a way to solve the question.
 
 The item keeps one crop of both work areas and the answer box, one canonical result and one event key. It follows its frozen mastery decision, as other AI-marked formats do. The stored package and print contract stay unchanged. Missing or invalid measured regions make no crop and no reading.
 
-Prompt v8 adds the method rule. The accepted v7 evaluation does not cover v8, so `scanMarkingServerReadiness` now names the stale candidate and the evaluation items as blockers. This changes no admission: `SCAN_MARKING_ENABLED` and the test-parent list still decide access. The saved fixed-40 manifest holds parent rows, so the new code refuses it. A later run needs a new manifest.
+Prompt v8 adds the method rule. The accepted v7 evaluation does not cover v8, so `scanMarkingServerReadiness` now names the stale candidate and the evaluation items as blockers. This changes no admission: `SCAN_MARKING_ENABLED` and the test-parent list still decide access.
 
-The first-customer round 9 contract (`bfc5542e`) has 582 questions: 582 AI paths, 0 parent, 0 unsupported ([coverage record](scan-marking-first-book-coverage-ai-only-20261107.json)). This is supplied-reading route proof. It does not prove recognition.
+### Round 9 coverage
+
+The first-customer round 9 contract (`bfc5542e`) has 582 questions: 582 have an AI reading path, 0 have a parent marking path and 0 are unsupported ([coverage record](scan-marking-first-book-coverage-ai-only-20261107.json)). This is supplied-reading route proof. It does not prove recognition.
+
+A parent marks no question through a parent path. But some labels still ask a parent to judge, counted from the stored book:
+
+| Text | When | Questions |
+| --- | --- | ---: |
+| `Please check this answer` | Before a non-two-ways item is read | 575 |
+| `Please check this answer.` | The model reports `answer-form` on a non-two-ways item | 575 |
+| `Please check this answer.` | A clear write-words reading is not the literal key | 6 |
+| `Check this answer` (button) | Any item with no result | 582 |
+| `Please check` (page history) | A page with an unsure item | every page with questions |
+
+So "0 parent" means no parent marking path. It does not mean that no text asks a parent to judge. The 7 two-ways items show none of the three labels. They can still show the button and the page history text. The dashboard thread owns those screens.
+
+### Database
 
 Migration `scan_two_ways_ai_marking` makes the old trigger `scan_two_ways_review_policy` do nothing. A later cleanup can drop the trigger and its function. No hosted row held the old policy on 7 November. Code written before this PR writes the parent method itself until the PR merges. If a two-ways row with `expected.review` appears before the merge, it stays parent-pending. Check this count just before the merge: `select count(*) from scan_marking_items where expected->>'review'='two-ways'`.
 

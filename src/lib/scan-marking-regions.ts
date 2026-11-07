@@ -42,7 +42,7 @@ export function markingRegions(q: RegionQuestion): MarkingRegion[] {
   const twoWays = item.format === "two-ways";
   const scored = item.regions.filter(r => r.kind === "box" || r.kind === "choice" || (twoWays && r.kind === "work"));
   const finalBox = twoWays ? item.regions.find(r => r.kind === "box") : undefined;
-  const methodRule = (): MethodRule => ({ answer: (finalBox?.kind === "box" ? methodAnswer(finalBox.answer) : null) ?? "", given: q.package!.text.match(/\d[\d,]*(?:\.\d+)?/g) ?? [] });
+  const methodRule = (): MethodRule => ({ answer: (finalBox?.kind === "box" ? methodAnswer(finalBox.answer) : null) ?? "", given: q.package!.text.match(/\d[\d,]*(?:\.\d+)?/g) ?? [], question: q.package!.text });
   const out: MarkingRegion[] = [];
   for (const r of scored) {
     const printed = q.regions.filter(p => p.id === r.id);

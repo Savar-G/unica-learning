@@ -195,9 +195,28 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
 
 const GOOD_ONE = "27 + 30 = 57\n57 + 9 = 66", GOOD_TWO = "39 + 30 = 69\n69 - 3 = 66";
-const reading = (region: string, text: string | null, issue: string | null = null) => ({ item: "i1", region, text, state: text === "" ? "blank" : text === null ? "uncertain" : "written", issue });
-const twoWaysOutput = (one: string | null, two: string | null, answer: string | null, issue: string | null = null) => ({ readings: [reading("r1", one, one === null ? issue ?? "blurry" : null), reading("r1-2", two, two === null ? issue ?? "blurry" : null), reading("r1-3", answer, answer === null ? issue ?? "blurry" : null)] });
+type Verdict = "solves" | "does-not-solve" | "unsure" | null;
+const reading = (region: string, text: string | null, issue: string | null = null, verdict: Verdict = null) => ({ item: "i1", region, text, state: text === "" ? "blank" : text === null ? "uncertain" : "written", issue, verdict, reason: verdict ? "made-up model reason" : null });
+const twoWaysOutput = (one: string | null, two: string | null, answer: string | null, issue: string | null = null, verdicts: readonly [Verdict, Verdict] = ["solves", "solves"]) => ({ readings: [
+  reading("r1", one, one === null ? issue ?? "blurry" : null, one ? verdicts[0] : null), reading("r1-2", two, two === null ? issue ?? "blurry" : null, two ? verdicts[1] : null), reading("r1-3", answer, answer === null ? issue ?? "blurry" : null)] });
 const twoWaysMark = (f: MarkingFrame, o: Observation): EffectiveMark => ({ expected: expectedItems(f)[0], observation: o, originalEvent: null, eventId: null, at: "2026-11-07T12:00:00Z", model: null, prompt: null });
+/** The reviewer's question: 36 + 47 = ?, answer 83. */
+function sumFrame(text = "36 + 47 = ?", operation: Operation = { kind: "add", operands: [36, 47] }, answer = 83): MarkingFrame {
+  const f = twoWaysFrame(), q = f.questions[0], pkg = q.package!;
+  pkg.text = text; pkg.operation = operation; pkg.answer = { value: { type: "number", value: answer }, accepted: [], unit: null }; pkg.steps = workedSteps(operation);
+  pkg.wrongAnswers = [{ value: { type: "number", value: answer + 10 }, cause: "O3", description: "Made-up slip", step: (pkg.steps[0] as unknown as { id: string }).id }];
+  const easier: Operation = operation.kind === "add" ? { kind: "add", operands: [18, 5] } : { kind: "divide", operands: [80, 8] };
+  pkg.easierExample = { text: "Made-up easier question", operation: easier, steps: workedSteps(easier), answer: { type: "number", value: operation.kind === "add" ? 23 : 10 } };
+  const box = pkg.item!.regions.find(r => r.kind === "box")!; if (box.kind === "box") box.answer = { type: "number", value: answer };
+  const check = checkQuestionPackage(pkg);
+  expect(check.ok ? "" : JSON.stringify(check)).toBe("");
+  return f;
+}
+const markSum = (one: string, two: string, verdicts: readonly [Verdict, Verdict] = ["solves", "solves"], answer = "83", f = sumFrame()) => {
+  const o = readMarkingOutput(f, twoWaysOutput(one, two, answer, null, verdicts))[0];
+  expect(observationProblem(o)).toBeNull();
+  return { o, label: markingPageView([twoWaysMark(f, o)]).items[0].label };
+};
 
 describe("two-ways AI marking", () => {
   it("routes a two-ways item through the AI path, with no parent method or parent state", () => {
@@ -208,28 +227,100 @@ describe("two-ways AI marking", () => {
     expect(e.mastery).toEqual({ eligible: true, reason: null });
     expect(firstObservation(e, f.photo)).toMatchObject({ state: "pending", method: "code", result: null });
   });
-  it("asks the AI to read both methods and the answer, with no answer key in the request", () => {
+  it("asks the AI to read both methods and judge each one, with the question and no answer key in the request", () => {
     const f = twoWaysFrame(), request = markingRequest(f, new Uint8Array([1]));
     const part = request.content[0];
     expect(part.type).toBe("text");
     const items = JSON.parse((part as { text: string }).text).items;
     expect(items.map((i: { region: string; kind: string }) => [i.region, i.kind])).toEqual([["r1", "method"], ["r1-2", "method"], ["r1-3", "number"]]);
+    expect(items[0].question).toBe("27 + 39 = ?"); expect(items[2]).not.toHaveProperty("question");
     expect(JSON.stringify(items)).not.toContain("66");
     expect(request.system).toContain("method region");
+    expect(request.system).toMatch(/does-not-solve/);
     expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
+    const props = (request.schema as { properties: { readings: { items: { required: string[]; properties: { verdict: unknown; reason: unknown } } } } }).properties.readings.items;
+    expect(props.required).toEqual(expect.arrayContaining(["verdict", "reason"]));
+  });
+  it("tells the AI to report a step it cannot read and never to leave out or tidy a step", () => {
+    const system = markingRequest(twoWaysFrame(), new Uint8Array([1])).system!;
+    expect(system).toMatch(/any step cannot be read exactly, report uncertain with issue unreadable/);
+    expect(system).toMatch(/never leave out or tidy a step/);
+  });
+  it("accepts a verdict only on a method region in strict output", () => {
+    const f = twoWaysFrame(), good = twoWaysOutput(GOOD_ONE, GOOD_TWO, "66");
+    expect(validMarkingOutput(f, good)).toBe(true);
+    const onAnswer = structuredClone(good); onAnswer.readings[2].verdict = "solves";
+    expect(validMarkingOutput(f, onAnswer)).toBe(false);
+    const missing = structuredClone(good); missing.readings[0].verdict = null;
+    expect(validMarkingOutput(f, missing)).toBe(false);
+    const made = structuredClone(good); (made.readings[0] as { verdict: unknown }).verdict = "maybe";
+    expect(validMarkingOutput(f, made)).toBe(false);
+    const long = structuredClone(good); long.readings[0].reason = "x".repeat(121);
+    expect(validMarkingOutput(f, long)).toBe(false);
+  });
+
+  // The independent review's cases. None may be Right, whatever the AI says.
+  it.each([
+    ["the question with the answer filled in, and its check", "36 + 47 = 83", "83 - 47 = 36"],
+    ["the answer added and taken away again", "36 + 83 - 36 = 83", "47 + 36 = 83"],
+    ["identity lines with an unrelated sum", "83 = 83\n36 = 36\n1 + 1 = 2", "47 + 36 = 83"],
+    ["the check with a padded step", "83 - 36 = 47", "36 + 47 + 0 = 83"],
+  ])("is not Right when the AI says solves: %s", (_name, one, two) => {
+    const { o, label } = markSum(one, two);
+    expect(o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
+    expect(label).toBe("We cannot check this method.");
   });
   it.each([
-    ["both valid methods and the right answer", GOOD_ONE, GOOD_TWO, "66", "right", "Right"],
+    ["the question with the answer filled in", "36 + 47 = 83", "83 - 47 = 36"],
+    ["identity lines", "83 = 83\n36 = 36\n1 + 1 = 2", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83"],
+  ])("is Wrong when the AI says does-not-solve: %s", (_name, one, two) => {
+    const { o, label } = markSum(one, two, ["does-not-solve", "solves"]);
+    expect(o).toMatchObject({ state: "scored", result: "wrong", issue: "method-wrong" });
+    expect(label).toBe("Wrong. One way does not solve the question.");
+  });
+  it("is Wrong for 100 + 700 = 800 on 8 x ? = 800 when the AI says does-not-solve", () => {
+    const f = sumFrame("8 × ? = 800", { kind: "divide", operands: [800, 8] }, 100);
+    const { o } = markSum("100 + 700 = 800", "8 × 50 = 400\n400 + 400 = 800", ["does-not-solve", "solves"], "100", f);
+    expect(o).toMatchObject({ state: "scored", result: "wrong", issue: "method-wrong" });
+  });
+  it.each([
+    ["a tens-and-ones split", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83", "36 + 40 = 76\n76 + 7 = 83"],
+    ["a number line written as equations", "36 + 4 = 40\n40 + 40 = 80\n80 + 3 = 83", "47 + 3 = 50\n50 + 33 = 83"],
+    ["a number line written as jumps", "36 +40 → 76 +7 → 83", "47 +30 → 77 +6 → 83"],
+    ["jumps with a plain arrow", "36 +4 -> 40 +43 -> 83", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83"],
+    ["steps that run across lines", "36 + 47\n= 36 + 40 + 7\n= 76 + 7\n= 83", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83"],
+  ])("marks %s Right when the AI says solves", (_name, one, two) => {
+    const { o, label } = markSum(one, two);
+    expect(o).toMatchObject({ state: "scored", result: "right", issue: null });
+    expect(label).toBe("Right");
+  });
+  it("keeps a valid pair unsure when the AI is unsure, and when it gives no verdict", () => {
+    for (const verdicts of [["unsure", "solves"], [null, "solves"]] as const) {
+      const { o, label } = markSum("30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83", "36 + 40 = 76\n76 + 7 = 83", verdicts);
+      expect(o).toMatchObject({ state: "pending", result: null });
+      expect(label).toBe("We cannot check this method.");
+    }
+  });
+  it("makes a false step Wrong even when the AI says solves", () => {
+    const { o, label } = markSum("30 + 40 = 70\n6 + 7 = 14\n70 + 14 = 84", "36 + 40 = 76\n76 + 7 = 83");
+    expect(o).toMatchObject({ state: "scored", result: "wrong", issue: "method-wrong" });
+    expect(label).toBe("Wrong. One way does not solve the question.");
+  });
+  it("makes a false jump Wrong even when the AI says solves", () => {
+    expect(markSum("36 +40 → 77 +6 → 83", "47 +30 → 77 +6 → 83").o).toMatchObject({ state: "scored", result: "wrong" });
+  });
+  it("cannot check jumps with no operation, and keeps them unsure", () => {
+    expect(markSum("36 → 76 → 83", "47 +30 → 77 +6 → 83").o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
+  });
+  it.each([
     ["a wrong final answer", GOOD_ONE, GOOD_TWO, "56", "wrong", "Wrong"],
-    ["a method with a false step", "20 + 30 = 60\n60 + 16 = 66", GOOD_TWO, "66", "wrong", "Wrong"],
-    ["a method that stops at another number", "27 + 30 = 57", GOOD_TWO, "66", "wrong", "Wrong"],
-    ["only a number in a method", "66", GOOD_TWO, "66", "wrong", "Wrong"],
-    ["a missing first method", "", GOOD_TWO, "66", "wrong", "Wrong"],
-    ["a missing second method", GOOD_ONE, "", "66", "wrong", "Wrong"],
+    ["a false step", "20 + 30 = 60\n60 + 16 = 66", GOOD_TWO, "66", "wrong", "Wrong. One way does not solve the question."],
+    ["a missing first method", "", GOOD_TWO, "66", "wrong", "Wrong. One way is missing."],
+    ["a missing second method", GOOD_ONE, "", "66", "wrong", "Wrong. One way is missing."],
     ["a missing answer", GOOD_ONE, GOOD_TWO, "", "wrong", "Wrong"],
-    ["the same method twice", GOOD_ONE, GOOD_ONE, "66", "wrong", "Wrong"],
     ["a false method beside an unreadable answer", "20 + 30 = 60", GOOD_TWO, null, "wrong", "Wrong"],
     ["nothing written", "", "", "", "blank", "Blank"],
+    ["both valid methods and the right answer", GOOD_ONE, GOOD_TWO, "66", "right", "Right"],
   ] as const)("marks %s", (_name, one, two, answer, result, label) => {
     const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(one, two, answer))[0];
     expect(observationProblem(o)).toBeNull();
@@ -244,19 +335,27 @@ describe("two-ways AI marking", () => {
     ["a cut-off second method", GOOD_ONE, null, "66", "cut-off", "Part of this answer is cut off."],
     ["an unreadable answer", GOOD_ONE, GOOD_TWO, null, "unreadable", "We cannot read this answer."],
     ["a method the AI cannot write out", null, GOOD_TWO, "66", "method-form", "We cannot check this method."],
+    ["a method the model calls an answer form", null, GOOD_TWO, "66", "answer-form", "We cannot check this method."],
+    ["an answer the model calls an answer form", GOOD_ONE, GOOD_TWO, null, "answer-form", "We cannot check this answer."],
     ["a method in words", "I counted up in tens", GOOD_TWO, "66", undefined, "We cannot check this method."],
-    ["the same steps in another order", "27 + 39 = 66", "39 + 27 = 66", "66", undefined, "We cannot check this method."],
-    ["true steps that do not use the question", "60 + 6 = 66", GOOD_TWO, "66", undefined, "We cannot check this method."],
-    ["true steps that reach a question number but not the answer", "27 + 3 = 30\n30 + 9 = 39", GOOD_TWO, "66", undefined, "We cannot check this method."],
+    ["the same method twice", GOOD_ONE, GOOD_ONE, "66", undefined, "We cannot check this method."],
+    ["the same steps in another order", "27 + 30 = 57\n57 + 9 = 66", "57 + 9 = 66\n27 + 30 = 57", "66", undefined, "We cannot check this method."],
+    ["only a number", "66", GOOD_TWO, "66", undefined, "We cannot check this method."],
+    ["true steps that stop at another number", "27 + 30 = 57", GOOD_TWO, "66", undefined, "We cannot check this method."],
   ] as const)("keeps %s unsure with a plain reason and no parent prompt", (_name, one, two, answer, issue, label) => {
     const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(one, two, answer, issue ?? null))[0];
     expect(observationProblem(o)).toBeNull();
     expect(o).toMatchObject({ state: "pending", method: "code", result: null });
     const view = markingPageView([twoWaysMark(f, o)]);
     expect(view.items[0].label).toBe(label);
-    expect(view.items[0].label).not.toMatch(/both methods/i);
+    expect(view.items[0].label).not.toMatch(/please check|both methods/i);
     expect(view.completion.status).toBe("incomplete");
     expect(markingEvent(expectedItems(f)[0], o).publish).toBe(false);
+  });
+  it("keeps the AI's verdict and reason as evidence, and never in a label", () => {
+    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(GOOD_ONE, GOOD_TWO, "66", null, ["does-not-solve", "solves"]))[0];
+    expect(o.regions[0]).toMatchObject({ verdict: "does-not-solve", verdictReason: "made-up model reason" });
+    expect(markingPageView([twoWaysMark(f, o)]).items[0].label).not.toContain("made-up");
   });
   it("gives an unread two-ways item a plain label, never a request to check it", () => {
     const f = twoWaysFrame(), view = markingPageView([twoWaysMark(f, firstObservation(expectedItems(f)[0], f.photo))]);
@@ -279,7 +378,7 @@ describe("two-ways AI marking", () => {
     expect(markingPageView(marks).items[0]).toMatchObject({ label: "Right", canChange: true });
   });
   it("keeps the parent's correction of an AI mark", () => {
-    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(GOOD_ONE, GOOD_TWO, "66"))[0];
+    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(GOOD_ONE, GOOD_TWO, "66", null, ["does-not-solve", "solves"]))[0];
     const changed: Observation = { ...o, state: "parent-checked", method: "parent", actor: "parent", result: "wrong", resultVersion: 3 };
     expect(observationProblem(changed)).toBeNull();
     const view = markingPageView([twoWaysMark(f, changed)]);
@@ -500,7 +599,7 @@ describe("S4 whole-page readings", () => {
     const items = JSON.parse(part.text).items as { item: string; region: string }[];
     const normalized: Observation[] = [];
     for (const text of [null, ""]) {
-      const response = { readings: items.map(a => ({ item: a.item, region: a.region, state: "blank", text, issue: null })) };
+      const response = { readings: items.map(a => ({ item: a.item, region: a.region, state: "blank", text, issue: null, verdict: null, reason: null })) };
       expect(validMarkingOutput(f, response)).toBe(true);
       const [o] = readMarkingOutput(f, response);
       expect(o).toMatchObject({ state: "scored", result: "blank", certainty: "certain", issue: null, readAnswerText: "" });
@@ -555,7 +654,7 @@ describe("S4 whole-page readings", () => {
     { evidence: "readable written wrong answer", state: "written", text: "8", issue: null, result: "wrong", reason: "Wrong", rule: /Never solve a question/ },
   ] as const)("delivers the shared rule and preserves the returned reading for $evidence", async fixture => {
     const f = frame("photo-a", [7]), s = new Store(f), requests: AiJsonRequest[] = [];
-    const response = { readings: [{ item: "i1", region: "r1", state: fixture.state, text: fixture.text, issue: fixture.issue }] };
+    const response = { readings: [{ item: "i1", region: "r1", state: fixture.state, text: fixture.text, issue: fixture.issue, verdict: null, reason: null }] };
     expect(validMarkingOutput(f, response)).toBe(true);
     expect(await run(s, f.photo, client(response, requests))).toBe("finished");
     expect(requests).toHaveLength(1);

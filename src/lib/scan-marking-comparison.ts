@@ -6,6 +6,7 @@ import type { OpenRouterProvider } from "@/lib/ai-openrouter";
 import { markingRequest, MARKING_MAX_TOKENS, MARKING_PROMPT_VERSION, readMarkingOutput, type MarkingFrame } from "@/lib/scan-marking";
 import { expectedItems, READING_ISSUES, type Observation, type ReadingIssue } from "@/lib/scan-observation";
 import { markingRegions } from "@/lib/scan-marking-regions";
+import type { MethodJudgment } from "@/lib/scan-marking-methods";
 import { isPrintedRevision } from "@/lib/workbook-print-contract";
 import { canonical, digestOf } from "@/lib/workbook-digest";
 import type { WorkbookInput } from "@/lib/workbook-content";
@@ -80,7 +81,7 @@ export function comparisonProvider(model: ComparisonModel, evidence: EndpointEvi
     ...(evidence.zdrListed ? { zdr: true as const } : {}) };
 }
 
-export interface LabelledReading { regionId: string; state: "written" | "blank" | "uncertain"; text: string | null; issue: ReadingIssue | null }
+export interface LabelledReading { regionId: string; state: "written" | "blank" | "uncertain"; text: string | null; issue: ReadingIssue | null; verdict?: MethodJudgment | null }
 export interface TruthRow { itemId: string; format: ComparisonFormat; result: "right" | "wrong" | "blank" | "uncertain"; readings: LabelledReading[] }
 export interface ComparisonPhoto {
   id: string; clear: boolean; image: { path: string; sha256: string; width: number; height: number; metadataFree: true };
@@ -114,8 +115,25 @@ export function comparisonItemFormat(frame: MarkingFrame, itemId: string): Compa
 export function labelledOutput(photo: ComparisonPhoto) {
   const items = expectedItems(photo.frame);
   return { readings: items.flatMap((e, n) => photo.truth.find(t => t.itemId === e.identity.itemId)!.readings.map((r, k) => ({
-    item: `i${n + 1}`, region: `r${n + 1}${k === 0 ? "" : `-${k + 1}`}`, state: r.state, text: r.text, issue: r.issue,
+    item: `i${n + 1}`, region: `r${n + 1}${k === 0 ? "" : `-${k + 1}`}`, state: r.state, text: r.text, issue: r.issue, verdict: r.verdict ?? null, reason: null,
   }))) };
+}
+/** The saved v7 comparison set. Its photos leave every two-ways item empty, because v7 drew nothing for a parent-only item. */
+export const FIXED40_V7_MANIFEST_SHA256 = "c206c70d6ea3b8cb8efcd59691bf90289227c0c3e8955b0ccd9a93bf39627497";
+/**
+ * The same photos, frames and truth for prompt v8. Only the old parent rows change: they become blank AI-marked rows,
+ * which is what those photos show. Code writes no other truth.
+ */
+export function upgradeFixed40Manifest(saved: ComparisonManifest): ComparisonManifest {
+  const manifest = JSON.parse(JSON.stringify(saved)) as ComparisonManifest;
+  for (const photo of manifest.photos) for (const row of photo.truth as (Omit<TruthRow, "result"> & { result: string })[]) {
+    if (row.format !== "two-ways") continue;
+    if (row.result !== "parent" || row.readings.length) fail("fixed40-two-ways-row");
+    const q = photo.frame.questions.find(q => q.package?.id === row.itemId);
+    row.result = "blank";
+    row.readings = markingRegions(q ?? { package: null, regions: null }).map(r => ({ regionId: r.id, state: "blank", text: "", issue: null, verdict: null }));
+  }
+  return manifest;
 }
 /** Images and source artifacts are hashed by the file adapter, before any network or credential access. */
 export function validateComparisonManifest(manifest: ComparisonManifest): void {

@@ -7,9 +7,9 @@ import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import metadata from "../../data/scan-marking-endpoint-evidence-20261106.json";
 import terraMetadata from "../../data/scan-marking-terra-endpoint-evidence-20261107.json";
 import type { QuestionPackage } from "./question-package";
-import { COMPARISON_FORMATS, SYNTHETIC_IDS, hashBytes, hashValue, labelledOutput, preflightEndpoint, reserveMaximum, validateComparisonManifest, type ComparisonPhoto, type ComparisonResult, type EndpointSnapshot } from "./scan-marking-comparison";
-import { FROZEN_KIT, PHYSICAL_EXPECTED, PHYSICAL_MODELS, PHYSICAL_PARALLEL_REQUESTS, PHYSICAL_VERSION, parseTruthCsv, physicalCreditPreflight, physicalEstimate, physicalPhotoId, physicalReport, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalSet } from "./scan-marking-physical";
-import { calibratePhysicalPhoto, executePhysical, fakePhysicalHttp, physicalBudget, regularBytes, replayPhysical, sealPhysicalPlan } from "../../scripts/scan-marking-physical-cli";
+import { COMPARISON_FORMATS, SYNTHETIC_IDS, hashBytes, hashValue, labelledOutput, preflightEndpoint, reserveMaximum, validateComparisonManifest, type ComparisonManifest, type ComparisonPhoto, type ComparisonResult, type EndpointSnapshot } from "./scan-marking-comparison";
+import { FROZEN_KIT, PHYSICAL_EXPECTED, PHYSICAL_MODELS, PHYSICAL_PARALLEL_REQUESTS, PHYSICAL_VERSION, parseTruthCsv, physicalCreditPreflight, physicalEstimate, physicalEstimateLines, physicalFixedReport, physicalFixedSideBySide, physicalPhotoId, physicalReport, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalSet } from "./scan-marking-physical";
+import { calibratePhysicalPhoto, executePhysical, fakePhysicalHttp, openPreparedPhysical, physicalBudget, regularBytes, replayPhysical, sealPhysicalPlan } from "../../scripts/scan-marking-physical-cli";
 import { durableJson, fileJournal } from "../../scripts/scan-marking-comparison-cli";
 import type { EvaluationBudget, EvaluationJournal } from "./scan-marking-comparison-run";
 import { blankPage, drawMark, drawPrintedContent, drawQr, pagePng } from "./scan-synthetic";
@@ -346,6 +346,28 @@ describe("cost estimate and credit preflight", () => {
     expect(result).toMatchObject({ enough: false, reason: "credit-read-failed", remainingMicros: null });
     expect(JSON.stringify(result)).not.toContain(FAKE_KEY);
   });
+  it("leaves the prepared folder usable after a refused credit check", async () => {
+    const input = await setAndPlan(), mem = memoryBudget(), silent = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await expect(executePhysical({ ...execution(input, mem), preflight: async () => states(), creditFetch: credits(101.07, 100) })).rejects.toThrow("credit-preflight:insufficient-credits");
+      expect(await readdir(input.out)).not.toContain("execution.json");
+      expect(await readdir(input.out)).not.toContain("dispatch-plan.json");
+      const results = await executePhysical({ ...execution(input, mem), preflight: async () => states(), creditFetch: credits(40, 1) });
+      expect(results).toHaveLength(4);
+      expect(await readdir(input.out)).toContain("execution.json");
+      expect(JSON.parse(await readFile(resolve(input.out, "credit-preflight.json"), "utf8"))).toMatchObject({ enough: true });
+      await expect(executePhysical({ ...execution(input, mem), preflight: async () => states(), creditFetch: credits(40, 1) })).rejects.toThrow("stale-run");
+    } finally { silent.mockRestore(); }
+  });
+  it("reopens a prepared folder only before a run has started", async () => {
+    const input = await setAndPlan(), mem = memoryBudget(), silent = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const open = await openPreparedPhysical(input.out, root);
+      expect(open.run).toBe(input.run); expect(open.set).toEqual(JSON.parse(JSON.stringify(input.set))); expect(open.states.map(s => s.evidence.model)).toEqual([SONNET.model, TERRA.model]);
+      await executePhysical({ ...execution(input, mem), preflight: async () => states() });
+      await expect(openPreparedPhysical(input.out, root)).rejects.toThrow("already-started");
+    } finally { silent.mockRestore(); }
+  });
   it("refuses a paid run at USD 1.07 before any ledger access or model request, and prints the three amounts", async () => {
     const input = await setAndPlan(), mem = memoryBudget(); let budgets = 0, paid = 0;
     const printed: string[] = [], spy = vi.spyOn(console, "log").mockImplementation((...a) => { printed.push(a.join(" ")); });
@@ -386,6 +408,81 @@ describe("cost estimate and credit preflight", () => {
     } finally { printed.mockRestore(); }
     expect(read).toBe(0); expect(mem.holds.size).toBe(0);
   });
+});
+
+describe("fixed 40 set in the same paid step", () => {
+  const states = () => evidences().map(evidence => ({ evidence, maximumMicros: reserveMaximum(evidence) }));
+  /** Two photos stand in for the fixed set: the seal and the run do not depend on the count. */
+  async function withFixed(maxMicros = 15_000_000) {
+    const out = await temp(); await mkdir(resolve(out, "images"));
+    await durableJson(resolve(out, "owner.json"), { owner: "local-test-owner" }, true);
+    const bytes = await sharp({ create: { width: 1000, height: 1400, channels: 3, background: "white" } }).jpeg().toBuffer();
+    const truths = physicalTruth(mapping(), pages(), writeTruthCsv(blankTruth()));
+    const set: PhysicalSet = { version: PHYSICAL_VERSION, proofClass: "local-fake", kit: FROZEN_KIT, draftSha256: hashBytes("d"), revision: "a".repeat(28), truthSha256: hashBytes("t"), mappingSha256: hashValue(mapping()), missing: [], photos: [], inventory: mapping().photos.map(m => ({ file: m.file, rawSha256: hashBytes(bytes), reason: null })) };
+    for (const m of mapping().photos) {
+      const id = physicalPhotoId(m.file), photo: ComparisonPhoto = { id, clear: m.clarity === "clear", image: { path: `images/${id}.jpg`, sha256: hashBytes(bytes), width: 1000, height: 1400, metadataFree: true }, frame: { ...pages()[0].frame, photo: id }, truth: truths.get(m.file)! };
+      await writeFile(resolve(out, photo.image.path), bytes); await writeFile(resolve(out, `images/${id}-oriented.jpg`), bytes);
+      set.photos.push({ mapping: m, status: "ready", reason: null, rawSha256: hashBytes(bytes), normalizedSha256: hashBytes(bytes), calibration: {}, crops: [], photo });
+    }
+    await durableJson(resolve(out, "set.json"), set, true);
+    await mkdir(resolve(out, "fixed40/photos"), { recursive: true });
+    const fixedPhotos = ["synthetic-p3-right", "synthetic-p3-blank"].map(id => {
+      const photo: ComparisonPhoto = { id, clear: true, image: { path: `photos/${id}.jpg`, sha256: hashBytes(bytes), width: 1000, height: 1400, metadataFree: true }, frame: { ...pages()[0].frame, photo: id }, truth: truths.get("iphone.jpg")! };
+      return photo;
+    });
+    for (const p of fixedPhotos) await writeFile(resolve(out, "fixed40", p.image.path), bytes);
+    const fixed: ComparisonManifest = { version: 1, synthetic: true, identity: { name: "Robin", madeUp: true, containsRealData: false, profileSource: "sampleChild/samplePlanInput" }, source: { synthetic: true, draftSha256: hashBytes("d"), renderSha256: hashBytes("r"), fixtureSha256: hashBytes("f") }, photos: fixedPhotos };
+    await durableJson(resolve(out, "fixed40/manifest.json"), fixed, true);
+    const { plan, run } = await sealPhysicalPlan(out, set, root, maxMicros, fixed);
+    return { out, set, plan, run, fixed };
+  }
+  it("adds the fixed photos to the estimate, the in-flight need stays one request, and the credit check covers both sets", async () => {
+    const e = physicalEstimate(20, states(), 15_000_000, 40);
+    expect(e.models.map(m => [m.model, m.requests])).toEqual([[SONNET.model, 60], [TERRA.model, 60]]);
+    expect(e.estimateMicros).toBe(2_070_000); expect(e.fixedMicros).toBe(1_380_000); expect(e.robinMicros).toBe(690_000);
+    expect(e.inFlightMicros).toBe(physicalEstimate(20, states(), 15_000_000).inFlightMicros);
+    expect(physicalEstimateLines(e).join("\n")).toContain("Robin USD 0.69, fixed 40 USD 1.38");
+    const low = (async () => Response.json({ data: { total_credits: 5, total_usage: 0 } })) as typeof fetch;
+    expect(await physicalCreditPreflight("k", e, low)).toMatchObject({ enough: false, requiredMicros: e.estimateMicros + e.inFlightMicros });
+  });
+  it("fake-runs both sets on both models, with a v8 row next to the saved v7 row", async () => {
+    const input = await withFixed();
+    await fakePhysicalHttp(input.out, input.set, input.plan, input.run, undefined, input.fixed);
+    const saved = JSON.parse(await readFile(resolve(input.out, "fixed40-results.json"), "utf8")) as ComparisonResult[];
+    expect(saved).toHaveLength(4);
+    const report = physicalFixedReport(input.fixed, saved, evidences(), input.run);
+    expect(report.rows.map(r => r.model)).toEqual([SONNET.model, TERRA.model]);
+    expect(report.rows[0]).toMatchObject({ v8: { complete: false, wrongMarks: 0, wrongAsRight: 0, prompt: "whole-page-scalar-readings-v8" }, v7: { prompt: "whole-page-scalar-readings-v7", wrongMarks: 0, definite: 218, wrongAsRight: 0, clearUnsure: 1, clear: 219, costPerPageUsd: 0.01095165, latencyP50Ms: 2551, latencyP95Ms: 3164 } });
+    expect(report.rows[1].v7).toMatchObject({ costPerPageUsd: 0.005076625, latencyP50Ms: 2270, latencyP95Ms: 3264 });
+    const text = physicalFixedSideBySide(report);
+    for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219"]) expect(text).toContain(piece);
+  });
+  it("runs the fixed set after Robin in one serial queue, under one credit check, and replays both", async () => {
+    const input = await withFixed(), mem = memoryBudget(), printed = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const real = { ...input, set: { ...input.set, proofClass: "physical-input" as const } };
+      await durableJson(resolve(input.out, "set.json"), real.set);
+      const sealed = await reseal(input.out, real.set, input.fixed);
+      const calls: string[] = []; let credit = 0;
+      const results = await executePhysical({ out: input.out, set: real.set, plan: sealed.plan, root, budget: () => mem.budget, env: () => ({ SCAN_MARKING_OPENROUTER_API_KEY: FAKE_KEY }), preflight: async () => states(), fixed: input.fixed,
+        creditFetch: (async () => { credit++; return enough(); }) as typeof fetch,
+        fetch: async (_u, init) => { const m = modelOf(init); calls.push(m.model); return response(input.set.photos[0].photo, m); } });
+      expect(credit).toBe(1); expect(calls).toHaveLength(8); expect(results).toHaveLength(4);
+      const fixedResults = JSON.parse(await readFile(resolve(input.out, "fixed40-results.json"), "utf8")) as ComparisonResult[];
+      expect(fixedResults.map(r => r.photo)).toEqual(["synthetic-p3-right", "synthetic-p3-right", "synthetic-p3-blank", "synthetic-p3-blank"]);
+      expect(JSON.parse(await readFile(resolve(input.out, "fixed40-report.json"), "utf8")).rows).toHaveLength(2);
+    } finally { printed.mockRestore(); }
+  });
+  it("stops the run when the bound fixed set changes", async () => {
+    const input = await withFixed(), mem = memoryBudget();
+    const real = { ...input.set, proofClass: "physical-input" as const };
+    await durableJson(resolve(input.out, "set.json"), real);
+    const sealed = await reseal(input.out, real, input.fixed);
+    await writeFile(resolve(input.out, "fixed40", input.fixed.photos[0].image.path), "changed");
+    await expect(executePhysical({ out: input.out, set: real, plan: sealed.plan, root, budget: () => mem.budget, env: () => ({ SCAN_MARKING_OPENROUTER_API_KEY: FAKE_KEY }), preflight: async () => states(), fixed: input.fixed, creditFetch: enough as typeof fetch, fetch: async () => { throw Error("must not run"); } })).rejects.toThrow("fixed-set");
+    expect(mem.holds.size).toBe(0);
+  });
+  const reseal = async (out: string, set: PhysicalSet, fixed: ComparisonManifest) => { await rm(resolve(out, "plan.json")); await rm(resolve(out, "plan-hash.json")); return sealPhysicalPlan(out, set, root, 15_000_000, fixed); };
 });
 
 describe("public physical geometry", () => {

@@ -113,7 +113,9 @@ export function physicalTruth(mapping: PhysicalMapping, pages: readonly Physical
       const selected = wanted.filter(r => r.photo === m.file && r.item_id === e.identity.itemId).map(r => indexed.get(key(r))!);
       if (new Set(selected.map(r => r.intended_result)).size !== 1) fail("item-result-conflict");
       return { itemId: e.identity.itemId, format: comparisonItemFormat(page.frame, e.identity.itemId), result: selected[0].intended_result as TruthRow["result"],
-        readings: markingRegions(q).map((region, n) => ({ regionId: region.id, state: selected[n].reading_state as "written" | "blank" | "uncertain", text: selected[n].reading_state === "uncertain" && !selected[n].final_written_answer ? null : selected[n].final_written_answer, issue: selected[n].reading_issue ? selected[n].reading_issue as ReadingIssue : null })) };
+        readings: markingRegions(q).map((region, n) => ({ regionId: region.id, state: selected[n].reading_state as "written" | "blank" | "uncertain", text: selected[n].reading_state === "uncertain" && !selected[n].final_written_answer ? null : selected[n].final_written_answer, issue: selected[n].reading_issue ? selected[n].reading_issue as ReadingIssue : null,
+          // A human judges a method directly. The strict reader check needs a verdict on written work.
+          ...(region.kind === "method" && selected[n].reading_state === "written" ? { verdict: "solves" as const } : {}) })) };
     });
     const photo = { frame: page.frame, truth } as ComparisonPhoto;
     const labelled = labelledOutput(photo);
@@ -221,21 +223,21 @@ export const physicalSettings = (maxMicros: number) => {
 };
 export type PhysicalState = { evidence: EndpointEvidence; maximumMicros: number };
 export type PhysicalEstimate = ReturnType<typeof physicalEstimate>;
-/** Expected cost from the pinned base prices. The in-flight need is the most that requests running at one time can cost. */
-export function physicalEstimate(photos: number, states: readonly PhysicalState[], maxMicros: number) {
-  if (!Number.isSafeInteger(photos) || photos < 0 || PHYSICAL_MODELS.some(m => !states.some(s => s.evidence.model === m.model))) fail("physical-estimate-input");
+/** Expected cost from the pinned base prices, for Robin and the fixed set. The in-flight need is the most that requests running at one time can cost. */
+export function physicalEstimate(photos: number, states: readonly PhysicalState[], maxMicros: number, fixedPhotos = 0) {
+  if (!Number.isSafeInteger(photos) || photos < 0 || !Number.isSafeInteger(fixedPhotos) || fixedPhotos < 0 || PHYSICAL_MODELS.some(m => !states.some(s => s.evidence.model === m.model))) fail("physical-estimate-input");
   const models = PHYSICAL_MODELS.map(m => {
     const s = states.find(x => x.evidence.model === m.model)!, input = Number(s.evidence.endpoint.pricing.prompt), output = Number(s.evidence.endpoint.pricing.completion);
     if (!(input > 0) || !(output > 0) || !Number.isSafeInteger(s.maximumMicros) || s.maximumMicros < 1) fail("physical-estimate-price");
     const perRequestMicros = Math.ceil((PHYSICAL_EXPECTED_TOKENS.input * input + PHYSICAL_EXPECTED_TOKENS.output * output) * 1e6);
-    return { model: m.model, requests: photos, perRequestMicros, totalMicros: perRequestMicros * photos, worstRequestMicros: s.maximumMicros };
+    return { model: m.model, requests: photos + fixedPhotos, perRequestMicros, totalMicros: perRequestMicros * (photos + fixedPhotos), robinMicros: perRequestMicros * photos, fixedMicros: perRequestMicros * fixedPhotos, worstRequestMicros: s.maximumMicros };
   });
   const estimateMicros = models.reduce((n, m) => n + m.totalMicros, 0), inFlightMicros = PHYSICAL_PARALLEL_REQUESTS * Math.max(...models.map(m => m.worstRequestMicros));
-  return { paid: false, models, estimateMicros, inFlightMicros, parallelRequests: PHYSICAL_PARALLEL_REQUESTS, maxMicros, overStop: estimateMicros > maxMicros };
+  return { paid: false, models, estimateMicros, robinMicros: models.reduce((n, m) => n + m.robinMicros, 0), fixedMicros: models.reduce((n, m) => n + m.fixedMicros, 0), fixedPhotos, inFlightMicros, parallelRequests: PHYSICAL_PARALLEL_REQUESTS, maxMicros, overStop: estimateMicros > maxMicros };
 }
 export function physicalEstimateLines(e: PhysicalEstimate, remainingMicros?: number | null): string[] {
   return [
-    `Estimate: ${usd(e.estimateMicros)} (${e.models.map(m => `${MODEL_NAMES[m.model] ?? m.model}: ${m.requests} x ${usd(m.perRequestMicros, 4)}`).join("; ")}). Stop: ${usd(e.maxMicros)}.`,
+    `Estimate: ${usd(e.estimateMicros)} (${e.fixedPhotos ? `Robin ${usd(e.robinMicros)}, fixed ${e.fixedPhotos} ${usd(e.fixedMicros)}; ` : ""}${e.models.map(m => `${MODEL_NAMES[m.model] ?? m.model}: ${m.requests} x ${usd(m.perRequestMicros, 4)}`).join("; ")}). Stop: ${usd(e.maxMicros)}.`,
     `In-flight need: ${usd(e.inFlightMicros)} (${e.parallelRequests} request at a time x the largest request's worst case).`,
     ...(remainingMicros === undefined ? [] : [`Remaining: ${usd(remainingMicros)}`]),
   ];
@@ -257,6 +259,29 @@ export async function physicalCreditPreflight(key: string, estimate: PhysicalEst
   if (remainingMicros === null) return { ...base, remainingMicros, enough: false, reason: "credit-read-failed" as const };
   const enough = remainingMicros >= requiredMicros;
   return { ...base, remainingMicros, enough, reason: enough ? null : "insufficient-credits" as const };
+}
+/** The saved v7 rows of the fixed set (docs/scan-marking-v7-acceptance-20261107.md). Saved results, not new inference. */
+export const FIXED40_V7_ROWS: Record<string, { prompt: string; wrongMarks: number; definite: number; wrongAsRight: number; clearUnsure: number; clear: number; schemaFailures: number; costPerPageUsd: number; latencyP50Ms: number; latencyP95Ms: number }> = {
+  "anthropic/claude-sonnet-5.5": { prompt: "whole-page-scalar-readings-v7", wrongMarks: 0, definite: 218, wrongAsRight: 0, clearUnsure: 1, clear: 219, schemaFailures: 0, costPerPageUsd: 0.01095165, latencyP50Ms: 2551, latencyP95Ms: 3164 },
+  "openai/gpt-6.1-terra": { prompt: "whole-page-scalar-readings-v7", wrongMarks: 0, definite: 218, wrongAsRight: 0, clearUnsure: 1, clear: 219, schemaFailures: 0, costPerPageUsd: 0.005076625, latencyP50Ms: 2270, latencyP95Ms: 3264 },
+};
+export const FIXED40_PHOTOS = 40;
+/** The unchanged D-267 scorer on the fixed set, with the saved v7 row beside each v8 row. */
+export function physicalFixedReport(manifest: ComparisonManifest, results: readonly ComparisonResult[], evidences: readonly EndpointEvidence[], run: string, proofClass: "local-fake" | "provider" | "saved-reader-replay" = "provider") {
+  const rows = PHYSICAL_MODELS.map(model => {
+    const s = scoreComparison(manifest, model, results, evidences.find(e => e.model === model.model) ?? fail("physical-evidence-required"));
+    const complete = s.complete && manifest.photos.length === FIXED40_PHOTOS;
+    return { model: model.model, endpoint: model.endpoint, v7: FIXED40_V7_ROWS[model.model], v8: { prompt: COMPARISON_SETTINGS.promptVersion, complete, passed: complete && s.passed, wrongMarks: s.wrongMarks, definite: s.wrongMarkDenominator, wrongAsRight: s.wrongAsRight, clearUnsure: s.clearUnsure, clear: s.clearDenominator, schemaFailures: s.schemaFailures, costPerPageUsd: s.costPerPageUsd, latencyP50Ms: s.latencyP50Ms, latencyP95Ms: s.latencyP95Ms, missingRuns: s.missingRuns } };
+  });
+  return { version: PHYSICAL_VERSION, set: "fixed-40-synthetic", run, proofClass, realHandwritingProven: false, selectedModel: null, photos: manifest.photos.length, rows };
+}
+export function physicalFixedSideBySide(report: ReturnType<typeof physicalFixedReport>): string {
+  const cost = (v: number | null) => v === null ? "unknown" : `USD ${v.toFixed(6)}`, ms = (v: number | null) => v === null ? "unknown" : `${v}`;
+  const line = (name: string, p: string, r: { wrongMarks: number; definite: number; wrongAsRight: number; clearUnsure: number; clear: number; schemaFailures: number; costPerPageUsd: number | null; latencyP50Ms: number | null; latencyP95Ms: number | null }, pass: string) =>
+    `${name.padEnd(12)}${p.padEnd(5)}${`${r.wrongMarks}/${r.definite}`.padEnd(8)}${String(r.wrongAsRight).padEnd(7)}${`${r.clearUnsure}/${r.clear}`.padEnd(8)}${String(r.schemaFailures).padEnd(8)}${cost(r.costPerPageUsd).padEnd(14)}${`${ms(r.latencyP50Ms)}/${ms(r.latencyP95Ms)}`.padEnd(13)}${pass}`;
+  return [`Fixed ${report.photos} synthetic photos (${report.proofClass}): prompt v8 next to the saved v7 result. v7 scored 4 fewer rows: the two-ways rows were parent rows.`,
+    `${"".padEnd(12)}${"".padEnd(5)}${"Wrong".padEnd(8)}${"W->R".padEnd(7)}${"Unsure".padEnd(8)}${"Schema".padEnd(8)}${"Cost/page".padEnd(14)}${"p50/p95 ms".padEnd(13)}D-267`,
+    ...report.rows.flatMap(r => [line(MODEL_NAMES[r.model] ?? r.model, "v8", r.v8, r.v8.passed ? "pass" : r.v8.complete ? "fail" : "not complete"), line("", "v7", r.v7, "pass (saved)")])].join("\n");
 }
 export function physicalPhotoId(file: string) { return `synthetic-physical-${hashValue(file).slice(0, 24)}`; }
 export function assertPhysicalFrame(photo: ComparisonPhoto) {

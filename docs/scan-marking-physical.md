@@ -63,7 +63,7 @@ The generated template has one row per scored region in each photo. A tick-and-n
 
 For `written`, supply the visible final text in `final_written_answer`. For a choice, supply its printed choice label. Use `right` or `wrong` as the item result. For `blank`, leave the final text and issue empty and use result `blank`. For `uncertain`, use result `uncertain` and an issue from this list: `unreadable`, `crossed-out`, `multiple-marks`, `missing`, `blurry`, `cut-off`, `incomplete`, `answer-form`, `method-form`. The final text may be empty when it cannot be read. A visible partial transcription may be supplied with an uncertain reading.
 
-For a `method-1` or `method-2` row, write the work as it appears in `final_written_answer`, one step per line. Use `uncertain` with `method-form` when the work is a drawing or words. The item result is your own judgment: right only if the answer is right and both methods are present and valid. No row can use `parent`.
+For a `method-1` or `method-2` row, write the work as it appears in `final_written_answer`, one step per line. Use `uncertain` with `method-form` when the work is a drawing or words. The item result is your own judgment, under the same rule as marking: right only if the answer is right and both methods are valid and different. A method is valid when it is a way to solve the question, every step is true, and it is not the question with the answer filled in, nor its reverse or check. No row can use `parent`.
 
 The tool requires the full generated row set. It rejects duplicate, missing, extra, inconsistent, or incomplete rows. It rejects malformed CSV quoting. It checks human readings through the existing strict output validator and reader for consistency. On a two-ways item a human right or wrong stands, even when code's check differs: the report counts that difference. It never supplies a missing transcription or mark from a stored key. A different word answer can remain pending under the existing reader rule.
 
@@ -107,7 +107,7 @@ node scripts/scan-marking-physical.mjs \
   --out .workbook-sample/robin-phone-replay-proof
 ```
 
-Use new output names if those folders exist. Fake HTTP uses the production request, transport, journal, schema validator, and reader with a local in-memory ledger. It sends no HTTP request. It has one built-in control: Terra is unsure of the first method on each two-ways item, so the report shows a disagreement. A fake score proves local interpretation only. Saved replay reads the saved raw HTTP envelopes and terminal journals. It performs no inference. It validates result ownership and re-runs the same reader. Its proof class is `saved-reader-replay`.
+Use new output names if those folders exist. Fake HTTP uses the production request, transport, journal, schema validator, and reader with a local in-memory ledger. It sends no HTTP request. It has one built-in control: Terra is unsure of the first method on each two-ways item, so the report shows a disagreement. The labels give each written method a `solves` verdict. A fake score proves local interpretation only. Saved replay reads the saved raw HTTP envelopes and terminal journals. It performs no inference. It validates result ownership and re-runs the same reader. Its proof class is `saved-reader-replay`.
 
 ## Explicit paid path
 
@@ -133,15 +133,21 @@ The fixed test pairs are Sonnet 5.5 on `google-vertex/global` and Terra 6.1 on `
 
 Both models go through one serial queue, one request at a time. Each photo goes to both models before the next photo.
 
+## Fixed 40 synthetic photos in the same paid step
+
+Add `--fixed-set /Users/savargupta/unica-workbook-samples/first-customer-marking-20261106/comparison/robin-fixed40` to run the saved v7 comparison photos on prompt v8, in the same paid step and on the same two models. The tool requires the saved manifest hash (`c206c70d`). It copies the photos into the run folder and binds them to the plan. The D-267 scorer is unchanged.
+
+The photos, frames and truth do not change, except for one thing. v7 drew nothing on a two-ways item, because it was parent-only, so the 4 parent rows become blank AI-marked rows. An ink check found only the printed box frames in those regions on the right, wrong and blank photos; the blurry photo shows no dark pixels. So the v8 denominators are 4 rows higher than v7, and this set does not test written methods. The Robin photos test them.
+
+After Robin, the serial queue runs the 40 photos on both models. `fixed40-report.json` and the printed table show each v8 row next to the saved v7 row. The saved row comes from `docs/scan-marking-v7-acceptance-20261107.md`, and it is not new inference. A fake or replay run shows only the local reader on labels.
+
 ## Credit preflight
 
-The shared OpenRouter account funds the marking key, so a run can stop with 402 errors while the ledger still has room. Before any ledger access or provider request, the tool reads `GET https://openrouter.ai/api/v1/credits` with the marking key. Remaining is `total_credits - total_usage`. The tool refuses to start when remaining is less than the estimate plus the in-flight need. The in-flight need is the parallel requests (1) times the largest single request's worst case, which is the ledger's reservation bound (USD 4.04 for Sonnet in the saved evidence). So a run with 20 photos needs USD 4.73 remaining.
+The shared OpenRouter account funds the marking key, so a run can stop with 402 errors while the ledger still has room. Before any ledger access or provider request, and before the execution marker, the tool reads `GET https://openrouter.ai/api/v1/credits` with the marking key. Remaining is `total_credits - total_usage`. The tool refuses to start when remaining is less than the estimate plus the in-flight need. The in-flight need is the parallel requests (1) times the largest single request's worst case, which is the ledger's reservation bound (USD 4.04 for Sonnet in the saved evidence). So a run needs USD 4.73 for Robin alone, or USD 6.11 with the fixed set.
 
-It prints `Estimate`, `In-flight need` and `Remaining`, and saves them in `credit-preflight.json`. It never prints the key. A failed read refuses too, and prints `Remaining: unknown`. Use a new output folder for the next try.
+It prints `Estimate`, `In-flight need` and `Remaining`, and saves them in `credit-preflight.json`. It never prints the key. A failed read refuses too, and prints `Remaining: unknown`. A refusal leaves the prepared folder usable: run `--run --out` on the same folder after a top-up. A folder whose run has started cannot be reused.
 
-OpenRouter's reference says this route needs a management key. If the marking key is not one, the read fails and the tool refuses. It does not use a different key.
-
-Saved plan and output ownership checks occur before public preflight or credential access. An exclusive execution marker prevents a second paid execution. After fresh public preflight, a second immutable dispatch plan binds the live evidence and reservation maximum. A changed route policy stops the run. A verified price refresh for each model uses the existing evaluation RPC. Each admission saves the authoritative liability response. Each HTTP attempt saves its raw envelope before settlement.
+Saved plan and output ownership checks occur before public preflight or credential access. An exclusive execution marker, written after the credit check, prevents a second paid execution. A second immutable dispatch plan binds the live evidence and reservation maximum. A changed route policy stops the run. A verified price refresh for each model uses the existing evaluation RPC. Each admission saves the authoritative liability response. Each HTTP attempt saves its raw envelope before settlement.
 
 The runner dispatches serially. A clean 429 requires status and error code 429 with no generation, usage, or choices. It retains the hold and defers that pair. It waits at least 15 minutes. It permits one delayed retry. A second 429 stops the remaining work. An unknown outcome stops dispatch. Response, journal, and settlement failures stop dispatch. Existing holds remain for reconciliation. Known settled costs are not refunded. The tool cannot resume paid work after an exit or failure. Root must inspect the saved ledger and journal before any separate action.
 

@@ -38,7 +38,7 @@ export function syntheticReading(region: MarkingRegion, variant: number): Labell
   if (variant === 2) return { regionId: region.id, state: "blank", text: "", issue: null };
   if (variant === 3) return { regionId: region.id, state: "uncertain", text: null, issue: "blurry" };
   const wrong = variant === 1;
-  if (region.kind === "method") return { regionId: region.id, state: "written", text: suppliedMethodText(region, region.id === "method-2" ? 1 : 0, wrong), issue: null };
+  if (region.kind === "method") return { regionId: region.id, state: "written", text: suppliedMethodText(region, region.id === "method-2" ? 1 : 0, wrong), issue: null, verdict: "solves" };
   const text = region.kind === "number" ? String(region.answer + (wrong ? 1 : 0)) : region.kind === "text" ? wrong ? "odd" : region.answer : region.kind === "choice" ? wrong ? region.choices.find(c => c !== region.answer)! : region.answer :
     region.answer.type === "mixed" ? `${region.answer.whole + (wrong ? 1 : 0)} ${region.answer.numerator}/${region.answer.denominator}` : region.answer.type === "fraction" ? `${region.answer.numerator + (wrong ? 1 : 0)}/${region.answer.denominator}` : String(region.answer.value + (wrong ? 1 : 0));
   return { regionId: region.id, state: "written", text, issue: null };

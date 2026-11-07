@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import publicEvidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
-import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, selectComparisonModels, transportUsage, validateComparisonManifest, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
+import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, selectComparisonModels, transportUsage, upgradeFixed40Manifest, validateComparisonManifest, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
 import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "@/lib/scan-marking-comparison-run";
 import { markingRequest, readMarkingOutput, validMarkingOutput } from "@/lib/scan-marking";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
@@ -37,7 +37,7 @@ function photo(n = 0): ComparisonPhoto {
   return { id, clear: state !== "uncertain", image: { path: `${id}.jpg`, sha256: hashBytes(id), width: 1000, height: 1400, metadataFree: true }, frame,
     truth: frame.questions.map((q, i) => ({ itemId: q.package!.id, format: COMPARISON_FORMATS[i] as ComparisonFormat,
       result: state as "right" | "wrong" | "blank" | "uncertain",
-      readings: markingRegions(q).map(r => ({ regionId: r.id, state: state === "blank" ? "blank" : state === "uncertain" ? "uncertain" : "written", text: state === "blank" ? "" : state === "uncertain" ? null : readingText(r, state === "wrong"), issue: state === "uncertain" ? "blurry" : null }) as LabelledReading) })) };
+      readings: markingRegions(q).map(r => ({ regionId: r.id, state: state === "blank" ? "blank" : state === "uncertain" ? "uncertain" : "written", text: state === "blank" ? "" : state === "uncertain" ? null : readingText(r, state === "wrong"), issue: state === "uncertain" ? "blurry" : null, ...(r.kind === "method" && state !== "blank" && state !== "uncertain" ? { verdict: "solves" } : {}) }) as LabelledReading) })) };
 }
 function manifest(): ComparisonManifest {
   return { version: 1, synthetic: true, identity: { name: "Robin", madeUp: true, containsRealData: false, profileSource: "sampleChild/samplePlanInput" }, source: { synthetic: true, draftSha256: hashBytes("draft"), renderSha256: hashBytes("render"), fixtureSha256: hashBytes("fixture") }, photos: Array.from({ length: 40 }, (_, n) => photo(n)) };
@@ -293,6 +293,19 @@ describe("synthetic manifest and fixed truth", () => {
     const centers = await syntheticChoiceCenters(bytes, region);
     expect(centers.map(c => [c.x, c.y])).toEqual([[24.5,44.5],[114.5,44.5],[204.5,44.5],[294.5,44.5]]);
     await expect(syntheticChoiceCenters(bytes, { ...region, choices: ["+", "-"] })).rejects.toThrow("geometry");
+  });
+  it("turns the saved fixed-40 parent rows into blank AI-marked rows, and changes nothing else", () => {
+    const current = manifest(), legacy = copy(current) as unknown as { photos: { truth: { format: string; result: string; readings: unknown[] }[] }[] };
+    for (const p of legacy.photos) for (const t of p.truth) if (t.format === "two-ways") { t.result = "parent"; t.readings = []; }
+    const upgraded = upgradeFixed40Manifest(legacy as unknown as Parameters<typeof upgradeFixed40Manifest>[0]);
+    expect(() => validateComparisonManifest(upgraded)).not.toThrow();
+    expect(upgraded.photos.map(p => p.image)).toEqual(current.photos.map(p => p.image));
+    const rows = upgraded.photos.flatMap(p => p.truth.filter(t => t.format === "two-ways"));
+    expect(rows).toHaveLength(40);
+    expect(rows.every(t => t.result === "blank" && t.readings.map(r => [r.regionId, r.state, r.text]).join() === "method-1,blank,,method-2,blank,,answer,blank,")).toBe(true);
+    for (const [n, p] of upgraded.photos.entries()) expect(p.truth.filter(t => t.format !== "two-ways")).toEqual(current.photos[n].truth.filter(t => t.format !== "two-ways"));
+    const bad = copy(legacy); bad.photos[0].truth.find(t => t.format === "two-ways")!.result = "right";
+    expect(() => upgradeFixed40Manifest(bad as unknown as Parameters<typeof upgradeFixed40Manifest>[0])).toThrow("fixed40-two-ways-row");
   });
   it("accepts all first-book formats with wrong/right/blank/uncertain controls and no parent path", () => {
     const m = manifest(); expect(() => validateComparisonManifest(m)).not.toThrow();

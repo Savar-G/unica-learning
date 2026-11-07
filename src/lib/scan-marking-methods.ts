@@ -1,18 +1,22 @@
-// Code's check of a two-ways method. The AI only transcribes the work; this module decides what the arithmetic shows.
+// Code's check of a two-ways method. The AI transcribes the work and says whether it is a way to solve the question.
+// Code alone cannot judge that. Code checks the arithmetic and refuses a restatement of the question (D-302).
 // Exact rational arithmetic. Pure TypeScript: no network, database, clock or Math.random.
 //
-// valid: every step is true, the method uses a number from the question, and it holds the right answer.
-// invalid: a step is false, the work is only a number, or true steps stop at a number that is neither the answer nor one
-//   from the question.
-// unknown: code cannot tell (words, a symbol it cannot read, or true steps it cannot tie to the question or the answer).
-// A limit: code checks that the arithmetic is true, not that the method is a sensible way to teach the question.
+// invalid: a written step is false, or the AI says does-not-solve.
+// valid: the AI says solves, every step is true arithmetic, the work has working numbers of its own (it is not the
+//   question with the answer filled in, nor its reverse or check), and it ends at the answer or a number in the question.
+// unknown: anything else. It stays unsure, with a plain reason.
 
 export type MethodVerdict = "valid" | "invalid" | "unknown";
+export const METHOD_JUDGMENTS = ["solves", "does-not-solve", "unsure"] as const;
+export type MethodJudgment = (typeof METHOD_JUDGMENTS)[number];
 export interface MethodRule {
   /** Code's answer, as a number or a/b. */
   answer: string;
   /** The numbers printed in the question. */
   given: readonly string[];
+  /** The printed question, sent with the method region. Never the answer. */
+  question: string;
 }
 
 type Value = { n: bigint; d: bigint };
@@ -26,7 +30,7 @@ function value(n: bigint, d: bigint): Value | null {
 const same = (a: Value, b: Value) => a.n === b.n && a.d === b.d;
 const key = (v: Value) => `${v.n}/${v.d}`;
 
-type Token = { kind: "number"; value: Value } | { kind: "op"; op: "+" | "-" | "×" | "÷" } | { kind: "=" } | { kind: "(" } | { kind: ")" } | { kind: "?" };
+type Token = { kind: "number"; value: Value } | { kind: "op"; op: "+" | "-" | "×" | "÷" } | { kind: "=" } | { kind: "(" } | { kind: ")" } | { kind: "?" } | { kind: "arrow" };
 const NUMBER = /^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?/;
 const OPS: Record<string, "+" | "-" | "×" | "÷"> = { "+": "+", "-": "-", "−": "-", "–": "-", "\u2014": "-", "×": "×", x: "×", X: "×", "*": "×", "·": "×", "÷": "÷", "/": "÷" };
 
@@ -47,6 +51,7 @@ function tokens(line: string): Token[] | null {
       if (!v || out.at(-1)?.kind === "number" || /[A-WYZa-wyz]/.test(line[i + m[0].length] ?? "")) return null;
       out.push({ kind: "number", value: v }); i += m[0].length; continue;
     }
+    if (ch === "→" || (ch === "-" && line[i + 1] === ">")) { out.push({ kind: "arrow" }); i += ch === "→" ? 1 : 2; continue; }
     if (OPS[ch]) out.push({ kind: "op", op: OPS[ch] });
     else if (ch === "=") out.push({ kind: "=" });
     else if (ch === "(" || ch === ")") out.push({ kind: ch });
@@ -96,6 +101,23 @@ function ruleValue(text: string): Value | null {
 }
 
 interface Step { tokens: Token[]; sides: Value[]; holds: boolean }
+const hasOp = (parts: readonly Token[]) => parts.some(t => t.kind === "op");
+/** A jump line: "36 +40 → 76 +7 → 83". Each jump must land on the number the next part starts from. */
+function jumpSteps(line: readonly Token[]): Step[] | null {
+  const parts: Token[][] = [[]];
+  for (const t of line) if (t.kind === "arrow") parts.push([]); else parts.at(-1)!.push(t);
+  const out: Step[] = [];
+  for (const [n, part] of parts.entries()) {
+    const own = evaluate(part);
+    if (!own) return null;
+    if (n === parts.length - 1) { out.push({ tokens: part, sides: [own], holds: true }); continue; }
+    // A bare number has no operation to check, so the arrow says nothing code can test.
+    const next = parts[n + 1][0];
+    if (!hasOp(part) || next?.kind !== "number") return null;
+    out.push({ tokens: part, sides: [own, next.value], holds: same(own, next.value) });
+  }
+  return out;
+}
 /** One equation chain per line. A line that starts with "=" goes on from the line before it. */
 function steps(text: string): { read: Step[]; unread: boolean } {
   const read: Step[] = [];
@@ -111,6 +133,11 @@ function steps(text: string): { read: Step[]; unread: boolean } {
     carry = parts; chains.push(parts);
   }
   for (const chain of chains) {
+    if (chain.some(t => t.kind === "arrow")) {
+      const jumps = jumpSteps(chain);
+      if (jumps) read.push(...jumps); else unread = true;
+      continue;
+    }
     const sides: Token[][] = [[]];
     for (const t of chain) if (t.kind === "=") sides.push([]); else sides.at(-1)!.push(t);
     const values = sides.map(evaluate);
@@ -121,17 +148,18 @@ function steps(text: string): { read: Step[]; unread: boolean } {
   return { read, unread };
 }
 
-/** The verdict on one method's transcribed work. */
-export function checkMethodReading(text: string, rule: MethodRule): MethodVerdict {
+/** The verdict on one method's transcribed work and the AI's judgment of it. A missing judgment is never valid. */
+export function checkMethodReading(text: string, rule: MethodRule, judgment: MethodJudgment | null): MethodVerdict {
   const { read, unread } = steps(text);
-  if (read.some(s => !s.holds)) return "invalid";
+  if (read.some(s => !s.holds) || judgment === "does-not-solve") return "invalid";
   const answer = ruleValue(rule.answer), given = rule.given.flatMap(g => { const v = ruleValue(g); return v ? [v] : []; });
-  if (unread || !read.length || !answer) return "unknown";
-  if (!read.some(s => s.tokens.some(t => t.kind === "op"))) return "invalid";
-  const seen = new Set(read.flatMap(s => [...s.sides.map(key), ...s.tokens.flatMap(t => t.kind === "number" ? [key(t.value)] : [])]));
-  if (seen.has(key(answer)) && given.some(g => seen.has(key(g)))) return "valid";
+  if (judgment !== "solves" || unread || !read.length || !answer || !read.some(s => hasOp(s.tokens))) return "unknown";
+  // Every number is the question's, the answer, or padding (0 and 1): the question filled in, its reverse or its check.
+  const own = [answer, ...given, value(ZERO, ONE)!, value(ONE, ONE)!].map(key);
+  const literals = read.flatMap(s => s.tokens.flatMap(t => t.kind === "number" ? [key(t.value)] : []));
+  if (literals.every(l => own.includes(l))) return "unknown";
   const last = read.at(-1)!.sides.at(-1)!;
-  return same(last, answer) || given.some(g => same(g, last)) ? "unknown" : "invalid";
+  return same(last, answer) || given.some(g => same(g, last)) ? "valid" : "unknown";
 }
 
 const canonical = (text: string) => text.replace(/\s+/g, "").replace(/[xX*·]/g, "×").replace(/[−–\u2014]/g, "-").replace(/\//g, "÷");
@@ -145,7 +173,10 @@ export function compareMethods(one: string, two: string): "same" | "reordered" |
 
 /** A made-up reading for offline route checks and synthetic photos. Never a mark and never sent to a model. */
 export function suppliedMethodText(rule: MethodRule, index: number, wrong = false): string {
-  const given = rule.given.find(g => { const v = ruleValue(g); return v && v.n !== ZERO; }) ?? "1";
-  if (wrong) return index === 0 ? `${given} + 1 = ${given}` : `${given} + 2 = ${given}`;
-  return index === 0 ? `${given} + ${rule.answer} - ${given} = ${rule.answer}` : `${given} × ${rule.answer} ÷ ${given} = ${rule.answer}`;
+  if (wrong) return index === 0 ? `${rule.answer} + 1 = ${rule.answer}` : `${rule.answer} + 2 = ${rule.answer}`;
+  return index === 0 ? `${rule.answer} + 97 - 97 = ${rule.answer}` : `${rule.answer} × 89 ÷ 89 = ${rule.answer}`;
+}
+/** The filled-in question, for offline route checks. */
+export function suppliedFilledInText(rule: MethodRule): string {
+  return rule.given.length ? `${rule.given[0]} + ${rule.answer} - ${rule.given[0]} = ${rule.answer}` : `${rule.answer} + 0 = ${rule.answer}`;
 }
