@@ -319,7 +319,7 @@ const CSS = `
 .circ.words{flex-direction:column;align-items:flex-start;gap:4px;min-height:48px;min-width:56px;padding:2px 8px}
 .circ.words.likelihood{flex-direction:row;gap:16px}
 .circ.words .co{font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-size:var(--body);line-height:1.3;white-space:nowrap}
-.wb{display:block;border:1px solid #D4D4DA;border-radius:8px;padding:10px 12px;background:#fff;flex:1 1 auto;min-width:120px}
+.wb{display:block;border:0;border-radius:0;padding:0;background:transparent;flex:1 1 auto;min-width:120px}
 .wb .lab{font-weight:400;color:#44444C}
 .ln{display:block;width:100%}
 .ln .lp{font-size:var(--body);height:calc(var(--body)*1.4)}
@@ -429,8 +429,12 @@ const CSS = `
 .cv h1{margin:20px 0 0;font-weight:300;font-size:66px;line-height:1.18;letter-spacing:-.03em;height:164px;overflow:hidden}
 .cv h1 .hl{display:inline-block;background:#FFD23F;padding:0 10px;margin-left:-10px;line-height:1.12}
 .made{margin-top:28px;background:#FFF1EA;border:1.5px solid #FF6A3D;border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:14px;max-height:268px;overflow:hidden}
-.made .lab{font-size:12px;color:#0C0C0E}
+.made .lab{font-size:12px;color:#0C0C0E;text-transform:none}
+.cv .cover-plan .lab{text-transform:none}
 .made p{margin:0;font-size:17px}
+.cv .cover-plan{margin-top:36px;display:flex;flex-direction:column;gap:16px}
+.cv .cover-plan ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:18px}
+.cv .cover-plan li{border-top:1px solid #D4D4DA;padding-top:12px;font-size:21px;line-height:1.3}
 .made ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
 .made li{display:flex;gap:12px;align-items:baseline;font-size:15px}
 .made li i{display:block;width:8px;height:8px;background:#FF6A3D;flex:none;transform:translateY(-1px)}
@@ -451,7 +455,7 @@ const CSS = `
 .hp .dn{width:56px;text-align:right}
 .hp .how{margin-top:auto;border-top:1px solid #0C0C0E;padding-top:14px;display:flex;flex-direction:column;gap:12px}
 .hp .hw{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
-.hp .hw p{margin:8px 0 0;font-size:14px}
+.hp .hw p{margin:8px 0 0;font-size:14px;overflow-wrap:anywhere}
 .hp .chip{font-size:13px}
 /* back cover */
 .bk{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden}
@@ -520,6 +524,14 @@ const CSS = `
 .pg.consistent[data-page-type="practice-2"] .q.seq-item{gap:4px}
 .pg.consistent .error-item .strip{min-height:48px}
 .pg.consistent .ways2 .wb{height:var(--work-min)}
+/* Keep the writing region, but place it beside a single full-width numeric review task. */
+.pg.consistent .q.compact-wide{display:grid;grid-template-columns:22px minmax(100px,1fr) minmax(160px,1.3fr) auto;gap:12px;align-items:start}
+.pg.consistent .q.compact-wide>.n{grid-column:1;grid-row:1}.pg.consistent .q.compact-wide>.qb{grid-column:2;grid-row:1}
+.pg.consistent .q.compact-wide>.full{grid-column:3;grid-row:1;min-width:0;padding:0}.pg.consistent .q.compact-wide>.rgs{grid-column:4;grid-row:1}
+.pg.consistent[data-page-type="practice-2"]:not(:has([data-slot="solve-it-two-ways"])) :is(.two,.cols){row-gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) .ct{gap:6px}
+.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) [data-slot="practice-row"]{gap:4px}
+
 .pg.consistent .mxs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 /* Savar, 2026-11-04: a row's cards top-aligned, each number on its text's first line; a story's number on its text's
    baseline, with one gap under its work box; one gap before every section label. */
@@ -759,6 +771,13 @@ function shapeSvg(shape: string, x: number, y: number, fill: string): string {
 /** BC prints numbers from 10 000 up in groups of three with a space (4 digits together, decimals untouched). */
 /** (The BC spaces are gone, D-230: numbers print with commas through `escape`.) */
 export const bcNumbers = (t: string) => t;
+/** Remove a second copy only when the displayed equation already has that exact numeric answer. */
+const singleWorkedAnswer = (line: WorkedLine) => line.replace(/(=\s*)(-?\d[\d, \u00a0]*)([.!?]?)\s+Answer:\s*\[([^\]]+)\]/g,
+  (whole, equals: string, result: string, punctuation: string, answer: string) =>
+    result.replace(/[,\s]/g, "") === answer.replace(/[,\s]/g, "") ? `${equals}[${answer}]${punctuation}` : whole);
+/** Keep mixed-case names as supplied. Display an all-capitals name in normal title case on the cover. */
+const coverName = (name: string) => name === name.toLocaleUpperCase() ? name.toLocaleLowerCase().replace(/\p{L}+/gu, word => word[0].toLocaleUpperCase() + word.slice(1)) : name;
+
 const worked = (line: WorkedLine) => bcNumbers(escape(printedMinus(singularPlaces(line)))).replace(/\[([^\]]*)\]/g, `<span class="blue">$1</span>`);
 
 // ---------- Questions and their answer regions ----------
@@ -1030,7 +1049,13 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   };
   const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => {
     const at = b.reviewFrom !== undefined ? qs.findIndex((q) => q.number >= b.reviewFrom!) : -1;
-    if (at < 0) return `${grid(cls, qs)}${qs.map((q, k) => render(q, k).replace(/^(<div class="[^"]+")/, ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1 ? '$1 style="grid-column:1/-1"' : "$1")).join("")}</div>`;
+    if (at < 0) return `${grid(cls, qs)}${qs.map((q, k) => {
+      const last = ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1;
+      const html = render(q, k);
+      const compact = last && c.consistentLayout && html.startsWith('<div class="q') && isMath(q.package.text)
+        && packageItem(q.package).format === "write-number" && questionWorkSpace(q.package) > 0;
+      return html.replace(/^(<div class=")([^"]+)(")/, `$1$2${compact ? " compact-wide" : ""}$3${last ? ' style="grid-column:1/-1"' : ""}`);
+    }).join("")}</div>`;
     if (at === 0) return `<div class="lab" data-measure="review-${i}">Remember these</div>${grid(cls, qs)}${qs.map((q, k) => render(q, k).replace(/^(<div class="[^"]+")/, ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1 ? '$1 style="grid-column:1/-1"' : "$1")).join("")}</div>`;
     return `${grid(cls, qs.slice(0, at))}${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Remember these</div>${grid(cls, qs.slice(at))}${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
   };
@@ -1125,7 +1150,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const names = regionNames(q);
         // Each work area names a way to do it (#482 review at db3b1a0: two methods asked, none shown).
         const ways = twoWays(q.package);
-        const works = names.filter((x) => x.region.kind === "work").map((x, k) => regionHtml(q, ways && x.region.kind === "work" ? { ...x.region, label: `Method ${k + 1}: ${ways[k] ?? ""}`.trim() } : x.region, x.name, { band, work: 110, ...(c.consistentLayout ? { minimumWork: Math.max(88, questionWorkSpace(q.package) + 32) } : {}) })).join("");
+        const works = names.filter((x) => x.region.kind === "work").map((x, k) => regionHtml(q, ways && x.region.kind === "work" ? { ...x.region, label: `Method ${k + 1}: ${ways[k] ?? ""}`.trim() } : x.region, x.name, { band, work: 110, ...(c.consistentLayout ? { minimumWork: Math.max(102, questionWorkSpace(q.package) + 38) } : {}) })).join("");
         const boxes = names.filter((x) => x.region.kind === "box").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
         return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="lab" style="color:#0C0C0E">${c.consistentLayout ? "Use 2 ways" : "Solve it two ways"}</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
       }).join("");
@@ -1148,7 +1173,8 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "reminder": {
       if (b.label === "Likelihood words") return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="lab">Likelihood words</div><div>${escape(b.explain ?? "")}</div></div>`;
       const fig = b.figure ? figureSvg(b.figure,1,c.consistentLayout ? 40 : 30) : "";
-      return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px"><div class="lab">${escape(b.label ?? "Remember")}</div>${fig}<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div><div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div></div>`;
+      const why = b.explain?.trim() ? `<div class="why"><div class="lab">What's going on</div><span>${escape(b.explain)}</span></div>` : "";
+      return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px"><div class="lab">${escape(b.label ?? "Remember")}</div>${fig}<div class="wk">${(b.lines ?? []).map(line => worked(singleWorkedAnswer(line))).join("<br>")}</div></div>${why}</div></div>`;
     }
     case "mixed-set":
       return chip() + `<div class="mxs" style="--rows:${Math.ceil(qs.length / 2)}">` + qs.map((q) => {
@@ -1408,9 +1434,9 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     const outline = partialExtra && !["worked-example", "watch-one", "reminder"].includes(b.slot);
     return [b, i, html, outline] as const;
   }).map(([b, i, html, outline]) => `<section class="blk${outline ? " optional-block" : ""}${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}" style="--rows:${blockRows(html)}${b.slot === "in-your-head" ? `;flex:0 0 auto` : ""}" data-slot="${b.slot}" data-measure="block-${i}">${html.replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
-  // A page at its day's time limit holds no more questions: its rows grow to fill it, each with more room to work
-  // (Codex at 47c5fd78: the time limit must not excuse a half-empty page).
-  const stretch = c.consistentLayout && c.fillingComplete && c.atMaximum ? " stretch" : "";
+  // Finished rows share the remaining page space. Two-method pages keep their explicit writing allocation unless
+  // their existing plan requires stretching. No new question or answer enters this rendering step.
+  const stretch = c.consistentLayout && c.fillingComplete && (c.atMaximum || !c.blocks.some(b => b.slot === "solve-it-two-ways")) ? " stretch" : "";
   return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${c.extraPractice && c.level >= 19 ? " older-extra" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 
@@ -1426,12 +1452,16 @@ const missingHtml = (b: Block) => (b.missing ?? []).map((m) =>
 
 const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i></i><i class="o"></i><i></i><i class="g"></i><i></i><i></i></div>`;
 
-function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "cover" }>): string {
-  const label = c.madeFrom === "assessment" ? `Made from ${c.child}'s assessment` : `Made from ${c.child}'s last workbook`;
+function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "cover" }>, book: WorkbookDraft): string {
+  const name = coverName(c.child);
+  const label = c.madeFrom === "assessment" ? `Made from ${name}'s assessment` : `Made from ${name}'s last workbook`;
+  const plan = book.pages.find(p => p.content?.kind === "how-plan")?.content;
+  const topics = plan?.kind === "how-plan" ? [...new Set(plan.rows.map(row => row.topic))].slice(0, 3) : [];
+  const path = topics.length ? `<section class="cover-plan"><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}>${escape(topic)}</li>`).join("")}</ul></section>` : "";
   return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
-    + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(c.child)} · Level U${c.level}</div>`
+    + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(name)} · Level U${c.level}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
-    + `<div class="made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence)}</p></div>`
+    + `<div class="made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence.replaceAll(c.child, name))}</p></div>${path}`
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
 
@@ -1453,9 +1483,9 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
   }).join("");
   const how = [
     { chip: { label: "Every day", cls: "c-pr", icon: ICONS.target }, text: times.size ? `${c.pagesADay} pages a day, ${timeText(Math.max(...[...times.values()].map(t => t.requiredMinutes)), extra)}.${extra ? " Extra blocks are optional." : ""}` : `${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
-    { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Open unicalearning.com in your browser to scan each finished page." },
+    { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Open unicalearning.com/account in your browser. Sign in, select your child, then Scan pages." },
     { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Ask for help using Maya, the AI Teaching Assistant." },
-    { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: "Anything your child got wrong in the previous workbook comes back as new questions." },
+    { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: c.workbook === 1 ? "Scan finished pages. Questions your child needs to practise can return in the next workbook." : "Anything your child got wrong in the previous workbook comes back as new questions." },
   ];
   return `<div class="pg mid">${scanMarks}<div class="hp" ${mark.slot("page")}><div class="top"><span>HOW IT WORKS · ${escape(c.child.toUpperCase())}'S PLAN</span><span>WORKBOOK ${c.workbook}</span></div>`
     + `<table><thead><tr><th style="width:96px">DAY</th><th>TOPIC</th><th style="width:96px">PAGES${times.size ? "<br>REQUIRED TIME" : ""}</th><th style="width:56px;text-align:right">DONE</th></tr></thead><tbody>${rows}</tbody></table>`
@@ -1602,7 +1632,7 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
         if (m.width < (c.consistentLayout ? 48 : ANSWER_MIN) - 0.5) small("answer box width", m.width, c.consistentLayout ? 48 : ANSWER_MIN);
       } else if (region.kind === "work") {
         const grid = ["remember-these", "now-you", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "mixed-set", "friday-5"].includes(slotOf(q.number) ?? "");
-        const minimum = c.consistentLayout ? slotOf(q.number) === "solve-it-two-ways" ? Math.max(88, questionWorkSpace(q.package) + 32) : grid ? Math.max(32, questionWorkSpace(q.package)) : workMinimum(c.level) : WORK_MIN;
+        const minimum = c.consistentLayout ? slotOf(q.number) === "solve-it-two-ways" ? Math.max(102, questionWorkSpace(q.package) + 38) : grid ? Math.max(32, questionWorkSpace(q.package)) : workMinimum(c.level) : WORK_MIN;
         if (m.height < minimum - .5) small("work box height", m.height, minimum);
       }
       else if (region.kind === "lines" && m.height < LINE_FIRST + LINE_NEXT * (LINES - 1) - 0.5) small("writing space", m.height, LINE_FIRST + LINE_NEXT * (LINES - 1));
@@ -1623,7 +1653,7 @@ export function workbookTemplate(fonts?: TemplateFonts): WorkbookTemplate {
       if (!c) return null;
       switch (c.kind) {
         case "day": return dayPage(page, parts, c);
-        case "cover": return coverPage(page, parts, c);
+        case "cover": return coverPage(page, parts, c, book);
         case "how-plan": return howPlanPage(page, parts, c, { ...book, pages: book.pages.map(printedPage) });
         case "back-cover": return blankPage(page, parts, { ...c, kind: "blank" });
         case "blank": return blankPage(page, parts, c);
