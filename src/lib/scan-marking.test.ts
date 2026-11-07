@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, type Observation } from "@/lib/scan-observation";
-import { effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, MARKING_CAP_MICROS, MARKING_MODEL, readMarkingOutput, runScanMarking, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
@@ -412,6 +412,43 @@ it.each(["friday-5", "mixed-set", "show-what-you-know", "practice", "review"])("
 });
 
 describe("S4 whole-page readings", () => {
+  it.each([
+    { name: "whole number", make: () => frame("photo-a", [7]) },
+    { name: "fraction", make: () => numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'") },
+    { name: "decimal", make: () => numericFrame({ type: "number", value: 6.1 }, "6.1") },
+    { name: "words", make: wordsFrame },
+    { name: "circle", make: circleFrame },
+    { name: "tick and number", make: tickFrame },
+    { name: "shown work", make: showWorkFrame },
+    { name: "spot the error", make: spotFrame },
+  ])("accepts schema-valid null and empty blank text for $name", ({ make }) => {
+    const f = make();
+    const part = markingRequest(f, new Uint8Array()).content.find(p => p.type === "text")!;
+    if (part.type !== "text") throw new Error("text request required");
+    const items = JSON.parse(part.text).items as { item: string; region: string }[];
+    const normalized: Observation[] = [];
+    for (const text of [null, ""]) {
+      const response = { readings: items.map(a => ({ item: a.item, region: a.region, state: "blank", text, issue: null })) };
+      expect(validMarkingOutput(f, response)).toBe(true);
+      const [o] = readMarkingOutput(f, response);
+      expect(o).toMatchObject({ state: "scored", result: "blank", certainty: "certain", issue: null, readAnswerText: "" });
+      expect(o.regions.every(r => r.result === "blank" && r.text === "" && r.issue === null)).toBe(true);
+      expect(observationProblem(o)).toBeNull();
+      normalized.push(o);
+    }
+    expect(normalized[0]).toEqual(normalized[1]);
+  });
+  it.each([
+    { text: "7", issue: null }, { text: " ", issue: null },
+    { text: null, issue: "blurry" }, { text: "", issue: "unreadable" },
+    { text: null, issue: "cut-off" }, { text: null, issue: "missing" },
+    { text: undefined, issue: null }, { text: false, issue: null },
+    { text: null, issue: undefined }, { text: "x".repeat(201), issue: null },
+  ])("keeps contradictory or malformed blank text pending: %j", fields => {
+    const [o] = readMarkingOutput(frame("photo-a", [7]), { readings: [{ item: "i1", region: "r1", state: "blank", ...fields }] });
+    expect(o).toMatchObject({ state: "pending", result: null, certainty: "uncertain" });
+    expect(observationProblem(o)).toBeNull();
+  });
   it("zero, wrong, blank and uncertainty remain distinct and code owns the score", () => {
     const f = frame();
     expect(readMarkingOutput(f, output(["0", "56", ""])).map((o) => o.result)).toEqual(["right", "wrong", "blank"]);
@@ -431,6 +468,43 @@ describe("S4 whole-page readings", () => {
     for (const privateText of [P, C, W, "private-item", "private-region", "EXAMPLE", "12", "photo-a"]) expect(text).not.toContain(privateText);
     expect(JSON.parse(text).items[0]).toEqual({ item: "i1", region: "r1", box: { x: 10, y: 30, width: 20, height: 30 }, kind: "number" });
     expect(s.events.every((e) => e.timeMs === null)).toBe(true);
+  });
+  // These fixtures exercise the request and returned readings, not image recognition.
+  it.each([
+    { evidence: "visible readable empty box", state: "blank", text: "", issue: null, result: "blank", reason: "Blank", rule: /entire answer box or choice area is plainly visible, readable and empty/ },
+    { evidence: "unreadable symbol", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /Not being able to read a symbol does not make an area blank/ },
+    { evidence: "blurred marks", state: "uncertain", text: null, issue: "blurry", result: null, reason: "The photo is blurry here.", rule: /If blur could hide writing or marks, report uncertain with issue blurry/ },
+    { evidence: "dark answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or covering prevents reading the evidence, report uncertain with issue unreadable/ },
+    { evidence: "shadowed answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or covering prevents reading the evidence, report uncertain with issue unreadable/ },
+    { evidence: "cut-off answer", state: "uncertain", text: null, issue: "cut-off", result: null, reason: "Part of this answer is cut off.", rule: /Cut-off evidence is uncertain with issue cut-off/ },
+    { evidence: "covered answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or covering prevents reading the evidence, report uncertain with issue unreadable/ },
+    { evidence: "missing answer evidence", state: "uncertain", text: null, issue: "missing", result: null, reason: "Part of this answer was not read.", rule: /missing evidence is uncertain with issue missing/ },
+    { evidence: "readable written right answer", state: "written", text: "7", issue: null, result: "right", reason: "Right", rule: /transcribe the handwritten number with every digit, sign and decimal point/ },
+    { evidence: "readable written wrong answer", state: "written", text: "8", issue: null, result: "wrong", reason: "Wrong", rule: /Never solve a question/ },
+  ] as const)("delivers the shared rule and preserves the returned reading for $evidence", async fixture => {
+    const f = frame("photo-a", [7]), s = new Store(f), requests: AiJsonRequest[] = [];
+    const response = { readings: [{ item: "i1", region: "r1", state: fixture.state, text: fixture.text, issue: fixture.issue }] };
+    expect(validMarkingOutput(f, response)).toBe(true);
+    expect(await run(s, f.photo, client(response, requests))).toBe("finished");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toEqual(markingRequest(f, new Uint8Array([1, 2, 3])));
+    expect(requests[0].system).toMatch(fixture.rule);
+    const [mark] = await s.effective(P, C);
+    expect(mark.observation).toMatchObject({ state: fixture.result === null ? "pending" : "scored", result: fixture.result, issue: fixture.issue, readAnswerText: fixture.text });
+    expect(observationProblem(mark.observation)).toBeNull();
+    expect(markingPageView([mark]).items[0].label).toBe(fixture.reason);
+    if (fixture.result === null) expect(s.events).toHaveLength(0);
+  });
+  it.each([frame, tickFrame, circleFrame])("uses one versioned empty-area rule for number, tick and circle requests", makeFrame => {
+    const request = markingRequest(makeFrame(), new Uint8Array([1, 2, 3]));
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v7");
+    expect(request.system).toMatch(/Blank requires positive visual evidence/);
+    expect(request.system).toMatch(/Check for faint writing or marks before reporting blank with empty text/);
+    expect(request.system).toMatch(/Never report blank for these conditions/);
+  });
+  it.each(["blurry", "unreadable", "cut-off", "missing"] as const)("keeps a contradictory blank with issue %s pending", issue => {
+    const [o] = readMarkingOutput(frame("photo-a", [7]), { readings: [{ item: "i1", region: "r1", state: "blank", text: "", issue }] });
+    expect(o).toMatchObject({ state: "pending", result: null, issue, certainty: "uncertain" });
   });
   it("missing key and unverified prices dispatch nothing and preserve pending photos", async () => {
     const s = new Store(frame()); expect(await run(s, "photo-a", () => null)).toBe("off"); expect(s.spend.size).toBe(0); expect(s.imageReads).toBe(0);
