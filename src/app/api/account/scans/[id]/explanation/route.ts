@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (request.headers.get("origin") !== new URL(request.url).origin) return scanJson({ status: "refused" }, 403);
   const session = await scanSession(), { id } = await params;
   if (deskGate(new URL(request.url).pathname, (await cookies()).get(DESK_COOKIE)?.value, session.parent) !== "pass") return scanJson({ status: "refused" }, 423);
-  if (!isUuid(id) || !await markingAccess(session.admin, session.parent) || !await session.active()) return scanJson({ status: "refused" }, 404);
+  if (!isUuid(id) || !await markingAccess(session.admin, session.parent, process.env, { photo: id }) || !await session.active()) return scanJson({ status: "refused" }, 404);
   const text = await request.text();
   if (text.length > 1024) return scanJson({ status: "refused" }, 400);
   let data;

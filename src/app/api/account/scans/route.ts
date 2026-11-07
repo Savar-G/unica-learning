@@ -1,7 +1,7 @@
 import { markingAccess } from "@/lib/scan-marking-server";
 import { isUuid } from "@/lib/workbook-content";
 import { scanSession, scanJson } from "@/lib/scan-photo-server";
-import { markedFamily } from "@/lib/scan-pages-access";
+import { scanChecksAccess } from "@/lib/scan-marking-access";
 import { readScanStack } from "@/lib/scan-stack-server";
 
 export async function POST(request: Request) {
@@ -19,14 +19,15 @@ export async function POST(request: Request) {
 
 /**
  * The child's stack (round r565): active photos with their check and whether they were sent, and the printed pages of
- * their days. Checks are for test families and admins only, whatever the Scan pages switch says (D-252).
+ * their days. Checks follow `scanChecksAccess` (test families and admins; in families mode a child whose plan is running),
+ * whatever the Scan pages switch says (D-252).
  */
 export async function GET(request: Request) {
   const session = await scanSession();
   const child = new URL(request.url).searchParams.get("child");
   if (!child || !isUuid(child)) return scanJson({ error: "refused" }, 400);
   try {
-    const checks = await markedFamily(session.parent, session.admin);
-    return scanJson({ checks, marking: await markingAccess(session.admin, session.parent), ...await readScanStack(session.admin, session.parent, child, checks) });
+    const checks = await scanChecksAccess(session.admin, session.parent, process.env, { child });
+    return scanJson({ checks, marking: await markingAccess(session.admin, session.parent, process.env, { child }), ...await readScanStack(session.admin, session.parent, child, checks) });
   } catch { return scanJson({ error: "unavailable" }, 503); }
 }

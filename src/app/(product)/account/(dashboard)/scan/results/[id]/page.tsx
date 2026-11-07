@@ -10,7 +10,7 @@ import { SupportPage } from "@/components/support-page";
 
 export default async function ScanResultsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ historyAfter?: string }> }) {
   const session = await scanSession(), { id } = await params;
-  if (!isUuid(id) || !await markingAccess(session.admin, session.parent)) notFound();
+  if (!isUuid(id) || !await markingAccess(session.admin, session.parent, process.env, { photo: id })) notFound();
   const result = await readScanMarking(session.admin, session.parent, id);
   if (!result || !await session.active()) notFound();
   const after = (await searchParams).historyAfter ?? "0";

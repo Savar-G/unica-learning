@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const now = Date.now();
     // Accepted scans remain readable independently of automatic marking. Its separate release gate stays intact.
     let history: ScanProgressHistoryReader | undefined;
-    if (await markingAccess(session.admin, session.parent)) {
+    if (await markingAccess(session.admin, session.parent, process.env, { child: childId })) {
       const store = scanHistoryStore(session.admin, { parent: session.parent });
       history = async (scope, after) => {
         const result = await readScanHistory(store, { child: scope.childId, workbook: scope.workbookId, status: "all", after }, now, 100);
