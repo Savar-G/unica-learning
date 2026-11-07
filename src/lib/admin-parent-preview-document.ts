@@ -3,7 +3,7 @@ import { parseFragment, serialize, type DefaultTreeAdapterMap } from "parse5";
 type Node = DefaultTreeAdapterMap["childNode"];
 type Element = DefaultTreeAdapterMap["element"];
 const TAGS = new Set("div span p h1 h2 h3 h4 h5 h6 main header footer aside nav section article table caption colgroup col thead tbody tfoot tr td th figure figcaption output meter progress blockquote code pre mark sub sup ul ol li dl dt dd b strong em i small time br hr details summary label fieldset legend input select option textarea button a img dialog svg path rect circle line polyline polygon g title".split(" "));
-const ATTRS = new Set("id class data-look role style title lang dir hidden open datetime scope colspan rowspan width height viewbox fill stroke stroke-width stroke-linecap stroke-linejoin d x y x1 y1 x2 y2 cx cy r rx ry points transform xmlns value placeholder checked selected type readonly".split(" "));
+const ATTRS = new Set("id class data-look data-label role style title lang dir hidden open datetime scope colspan rowspan width height viewbox fill stroke stroke-width stroke-linecap stroke-linejoin d x y x1 y1 x2 y2 cx cy r rx ry points transform xmlns value placeholder checked selected type readonly".split(" "));
 const CONTROLS = new Set(["button", "input", "select", "textarea", "fieldset"]);
 
 /** Parse and allow-list static React output. Never trust a future component to stay free of active HTML. */

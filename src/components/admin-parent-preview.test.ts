@@ -14,6 +14,19 @@ const styles = { origin: "https://unicalearning.com", links: [], inline: [] };
 const rendered = (view: string, scenario: string, family = "one", size = "desktop") => renderParentPreview(previewSelection({ view, scenario, family, size }), styles);
 const dom = (html: string) => new DOMParser().parseFromString(html, "text/html");
 
+it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({ size, child }))))(
+  "keeps the Schedule field labels in the $size preview for the $child child",
+  ({ size, child }) => {
+    const output = dom(renderParentPreview(previewSelection({ view: "schedule", scenario: "partial", family: "two", child, size }), styles));
+    const rows = [...output.querySelectorAll(".ps-table tbody tr")];
+    expect(rows).toHaveLength(10);
+    for (const row of rows) {
+      expect([...row.querySelectorAll("td")].map(cell => cell.getAttribute("data-label")))
+        .toEqual(["Topic", "Pages", "Required time", "Scanned pages"]);
+    }
+  },
+);
+
 it("shows the real Schedule table on both sizes with each child's rows and honest unknown or waiting states", () => {
   for (const size of ["desktop", "phone"]) {
     const selection = previewSelection({ view: "schedule", scenario: "partial", family: "two", child: "second", size });
