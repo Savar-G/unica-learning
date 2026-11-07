@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import publicEvidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
-import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, transportUsage, validateComparisonManifest, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
+import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, selectComparisonModels, transportUsage, validateComparisonManifest, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
 import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "@/lib/scan-marking-comparison-run";
 import { markingRequest, readMarkingOutput, validMarkingOutput } from "@/lib/scan-marking";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
@@ -171,6 +171,35 @@ describe("per-model preflight and refreshed prices", () => {
       const bad = copy(results); bad[0][field] = hashBytes("changed");
       expect(() => assertComparisonResultIdentity(data, bad, [prior, current], hashBytes("fixed-run"))).toThrow("identity");
     }
+  });
+  it("dispatches and reports both explicitly selected evaluation pairs through all 40 photos", async () => {
+    const data = manifest(), selected = selectComparisonModels(["openai/gpt-6.1-terra", "google/gemini-3.8-flash"]);
+    const bytes = new Uint8Array([1, 2, 3]), mem = memory(), results: ComparisonResult[] = [], bodies: Record<string, unknown>[] = [];
+    for (const p of data.photos) p.image.sha256 = hashBytes(bytes);
+    const history = selected.map(model => {
+      // The fake Terra evidence copies the existing Azure fixture. Live policy checks use public snapshots.
+      const original = evidence(COMPARISON_MODELS.find(m => m.model === model.model) ?? COMPARISON_MODELS.find(m => m.endpoint === "azure")!);
+      return { ...original, model: model.model, endpoint: { ...original.endpoint, model_id: model.model } };
+    });
+    const preflight = history.map(e => ({ model: e.model, status: "ready" as const, evidence: e, maximumMicros: 10_000 }));
+    const run = hashBytes("two-evaluation-models");
+    await runComparisonMatrix({ run, manifest: data, preflight, history, results, records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {},
+      dispatch: (model, p, proof, maximumMicros, batch, prior) => runComparisonPhoto({ run, photo: p, image: bytes, model, evidence: proof, maximumMicros, maxRunMicros: 15_000_000,
+        budget: mem.budget, journal: mem.journal, env: { SCAN_MARKING_OPENROUTER_API_KEY: "synthetic" }, maxAttempts: 1, batch, prior,
+        fetch: async (_url, init) => { bodies.push(JSON.parse(String(init?.body))); return response(p, model); } }),
+    });
+    expect(results).toHaveLength(80); expect(bodies).toHaveLength(80);
+    for (const model of selected) {
+      expect(results.filter(r => r.model === model.model).map(r => r.photo)).toEqual(data.photos.map(p => p.id));
+      expect(bodies.filter(b => b.model === model.model).every(b => JSON.stringify(b.provider) === JSON.stringify(comparisonProvider(model, history.find(e => e.model === model.model)!)))).toBe(true);
+    }
+    expect(new Set(bodies.map(b => JSON.stringify([b.messages, b.response_format, b.reasoning]))).size).toBe(1);
+    expect(() => assertComparisonResultIdentity(data, results, history, run)).not.toThrow();
+    const reports = comparisonReports(data, preflight, results, history, new Map()).filter(r => selected.some(m => m.model === r.model));
+    expect(reports.map(r => r.model)).toEqual(selected.map(m => m.model));
+    expect(reports.every(r => r.status === "tested" && r.complete && r.passed)).toBe(true);
+    const terra = reports.filter(r => r.model === "openai/gpt-6.1-terra");
+    expect(cheapestPassing(terra)?.model).toBe("openai/gpt-6.1-terra");
   });
   it("dispatches the full same 40-photo set for available pairs when one model is blocked", async () => {
     const data = manifest(), states = approved(), results: ComparisonResult[] = [], calls: string[] = [];
@@ -781,7 +810,7 @@ describe("durable clean HTTP 429 deferral", () => {
     const prior = { manifestHash: hashValue(manifest()), models: COMPARISON_MODELS, settings: COMPARISON_SETTINGS, maxAttempts: 1, approved: COMPARISON_MODELS.map(model => assessComparisonEndpoint(model, snapshot(model), publicEvidence.zdr)) };
     expect(hashValue({ ...prior, deferralPolicy: COMPARISON_DEFERRAL_POLICY })).not.toBe(hashValue(prior));
     expect(COMPARISON_DEFERRAL_POLICY).toEqual({ version: "clean429-v1", delayMs: 900_000, finalBatches: 1, globalConcurrency: 1, modelConcurrency: 1 });
-    expect(COMPARISON_SETTINGS.promptVersion).toBe("whole-page-scalar-readings-v6");
+    expect(COMPARISON_SETTINGS.promptVersion).toBe("whole-page-scalar-readings-v7");
     expect(hashValue(COMPARISON_MODELS)).toBe("1c61503c7d953b7c6427312dc88b9651a0a0647d2313a30425c81f4b886de5a2");
   });
 });

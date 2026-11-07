@@ -1,6 +1,7 @@
 // Synthetic evaluation only. Production marking, reading and scoring remain the authority.
 import { createHash } from "node:crypto";
 import models from "../../data/scan-marking-models.json";
+import evaluationModels from "../../data/scan-marking-evaluation-models.json";
 import type { OpenRouterProvider } from "@/lib/ai-openrouter";
 import { markingRequest, MARKING_MAX_TOKENS, MARKING_PROMPT_VERSION, readMarkingOutput, type MarkingFrame } from "@/lib/scan-marking";
 import { expectedItems, READING_ISSUES, type Observation, type ReadingIssue } from "@/lib/scan-observation";
@@ -10,12 +11,15 @@ import { canonical, digestOf } from "@/lib/workbook-digest";
 import type { WorkbookInput } from "@/lib/workbook-content";
 
 export const COMPARISON_MODELS = Object.freeze(models.map(m => Object.freeze({ ...m })));
+/** Evaluation additions require explicit selection. The historical default remains unchanged. */
+export const COMPARISON_ALLOWED_MODELS = Object.freeze([...COMPARISON_MODELS, ...evaluationModels.map(m => Object.freeze({ ...m }))]);
 export type ComparisonModel = (typeof COMPARISON_MODELS)[number];
 /** Select only already-pinned pairs, in canonical order. Selection is part of the immutable run plan. */
 export function selectComparisonModels(ids: readonly string[] | null): readonly ComparisonModel[] {
   if (ids === null) return COMPARISON_MODELS;
-  if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !COMPARISON_MODELS.some(m => m.model === id))) throw new Error("invalid-comparison-model-selection");
-  return COMPARISON_MODELS.filter(m => ids.includes(m.model));
+  const selectable = COMPARISON_ALLOWED_MODELS;
+  if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !selectable.some(m => m.model === id))) throw new Error("invalid-comparison-model-selection");
+  return selectable.filter(m => ids.includes(m.model));
 }
 export const SYNTHETIC_IDS = Object.freeze({ parent: "00000000-0000-4000-8000-000000000543", child: "00000000-0000-4000-8000-000000000542", workbook: "5ca70000-0000-4000-8000-000000000542" });
 export const COMPARISON_FORMATS = ["whole", "fraction", "decimal", "tick-and-number", "circle", "show-work", "spot-the-error", "write-words", "two-ways"] as const;
@@ -259,7 +263,7 @@ export function assertComparisonResultIdentity(manifest: ComparisonManifest, res
   if (!hash(run)) fail("invalid-comparison-run");
   const seen = new Set<string>();
   for (const result of results) {
-    const photo = manifest.photos.find(p => p.id === result.photo), model = COMPARISON_MODELS.find(m => m.model === result.model);
+    const photo = manifest.photos.find(p => p.id === result.photo), model = COMPARISON_ALLOWED_MODELS.find(m => m.model === result.model);
     const evidence = history.find(e => e.model === result.model && hashValue(e) === result.evidenceHash);
     const key = `${result.model}:${result.photo}`;
     if (result.run !== run || !photo || !model || !evidence || seen.has(key) || result.photoHash !== photo.image.sha256 || result.requestHash !== hashValue(markingRequest(photo.frame, new Uint8Array())) || evidence.endpoint.tag !== model.endpoint || evidence.endpoint.provider_name !== model.providerName
@@ -319,11 +323,12 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
     latencyP50Ms: percentile(latencies, 0.5), latencyP95Ms: percentile(latencies, 0.95), retries, providers: [...providers] };
 }
 export function cheapestPassing<T extends { model: string; complete: boolean; passed: boolean; costPerPageUsd: number | null }>(reports: T[]) {
-  if (reports.some(r => !COMPARISON_MODELS.some(m => m.model === r.model) || reports.filter(other => other.model === r.model).length !== 1)) return null;
+  if (reports.some(r => !COMPARISON_ALLOWED_MODELS.some(m => m.model === r.model) || reports.filter(other => other.model === r.model).length !== 1)) return null;
   return [...reports].filter(r => r.complete && r.passed && r.costPerPageUsd !== null).sort((a, b) => a.costPerPageUsd! - b.costPerPageUsd! || a.model.localeCompare(b.model))[0] ?? null;
 }
 export function comparisonReports(manifest: ComparisonManifest, states: readonly ComparisonPreflight[], results: readonly ComparisonResult[], history: readonly EndpointEvidence[], blocks: ReadonlyMap<string, string>) {
-  return COMPARISON_MODELS.map(model => {
+  return COMPARISON_ALLOWED_MODELS.filter(model => COMPARISON_MODELS.some(m => m.model === model.model)
+    || states.some(s => s.model === model.model) || results.some(r => r.model === model.model) || blocks.has(model.model)).map(model => {
     const state = states.find(s => s.model === model.model), reason = blocks.get(model.model) ?? (state?.status === "blocked" ? state.reason : null);
     const testedPhotos = results.filter(r => r.model === model.model && r.status !== "deferred" && r.attempts.some(a => !deferredAttempt(a))).length;
     if (reason || state?.status !== "ready") {
