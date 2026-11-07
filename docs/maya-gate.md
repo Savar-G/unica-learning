@@ -290,6 +290,8 @@ The saved-trace judge checks the limits, spoken-only output, exact short reply, 
 
 ## Adding a behaviour
 
+Issue #526 also has dedicated public behavior tests in `src/lib/maya/number-bonds.test.ts`. These tests pass a checked package directly to `createSession` and `createTextSession`. They do not change the shared fixtures or gate rules. They cover `missing-addend` with its `count-up` step: wrong and spoken answers, confirmation, correction, target/example roles, H0 to H4, easier examples, forced fallbacks and recorded outcomes. They complete generated U4 missing-part packages and all 210 positive pairs within 0 to 20 at the 25-word limit. Both the production counter and the independent gate counter check each emitted turn. Current approved-policy U4/U16 books remain controls for prior kinds. No model-driven practice pass is claimed.
+
 Add it to `BEHAVIOURS` with a fixture, the script and what it expects: the outcome fields, the acts in order and any counts or refusals. Then add its row to the table above; the gate test fails until the doc lists it. A new hard failure goes in `HARD_FAILURES` and `judge`, in the table above, and gets a seeded test in `gate-seeded.test.ts` that shows it can fail.
 
 ## What the gate does not prove

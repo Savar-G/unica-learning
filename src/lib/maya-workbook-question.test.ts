@@ -70,10 +70,11 @@ describe("a stored workbook question", () => {
     if (reason === "unsupported operation") {
       const found = await f.books.question({ source: "workbook", workbookId: f.ids.workbook, page: 4, question: 3 });
       if (found.status !== "found") throw Error("missing fixture question");
-      const operation = { kind: "missing-addend" as const, operands: [7, 10] as [number, number] };
-      const easier = { kind: "missing-addend" as const, operands: [1, 2] as [number, number] };
-      const pkg = { ...found.package, text: "7 + ? = 10", operation, steps: workedSteps(operation), answer: { value: { type: "number" as const, value: 3 }, accepted: [], unit: null }, wrongAnswers: [{ value: { type: "number" as const, value: 2 }, cause: "counting", description: "Miscounts the missing part.", step: null }],
-        easierExample: { text: "1 + ? = 2", operation: easier, answer: { type: "number" as const, value: 1 }, steps: workedSteps(easier) } };
+      const fraction = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
+      const operation = { kind: "fraction-multiply" as const, operands: [fraction(2, 3), fraction(3, 4)] as [ReturnType<typeof fraction>, ReturnType<typeof fraction>] };
+      const easier = { kind: "fraction-multiply" as const, operands: [fraction(1, 2), fraction(1, 3)] as [ReturnType<typeof fraction>, ReturnType<typeof fraction>] };
+      const pkg = { ...found.package, text: "2/3 × 3/4 = ?", operation, steps: workedSteps(operation), answer: { value: fraction(1, 2), accepted: [], unit: null }, wrongAnswers: [{ value: { type: "number" as const, value: 2 }, cause: "operation", description: "Uses a different amount.", step: null }],
+        easierExample: { text: "1/2 × 1/3 = ?", operation: easier, answer: fraction(1, 6), steps: workedSteps(easier) } };
       const check = checkQuestionPackage(pkg);
       if (!check.ok) throw Error(`unsupported-operation fixture: ${check.reason}`);
       question.mockResolvedValue({ status: "found", package: pkg });
