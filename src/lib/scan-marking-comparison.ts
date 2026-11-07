@@ -1,6 +1,7 @@
 // Synthetic evaluation only. Production marking, reading and scoring remain the authority.
 import { createHash } from "node:crypto";
 import models from "../../data/scan-marking-models.json";
+import evaluationModels from "../../data/scan-marking-evaluation-models.json";
 import type { OpenRouterProvider } from "@/lib/ai-openrouter";
 import { markingRequest, MARKING_MAX_TOKENS, MARKING_PROMPT_VERSION, readMarkingOutput, type MarkingFrame } from "@/lib/scan-marking";
 import { expectedItems, READING_ISSUES, type Observation, type ReadingIssue } from "@/lib/scan-observation";
@@ -14,8 +15,9 @@ export type ComparisonModel = (typeof COMPARISON_MODELS)[number];
 /** Select only already-pinned pairs, in canonical order. Selection is part of the immutable run plan. */
 export function selectComparisonModels(ids: readonly string[] | null): readonly ComparisonModel[] {
   if (ids === null) return COMPARISON_MODELS;
-  if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !COMPARISON_MODELS.some(m => m.model === id))) throw new Error("invalid-comparison-model-selection");
-  return COMPARISON_MODELS.filter(m => ids.includes(m.model));
+  const selectable = [...COMPARISON_MODELS, ...evaluationModels];
+  if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !selectable.some(m => m.model === id))) throw new Error("invalid-comparison-model-selection");
+  return selectable.filter(m => ids.includes(m.model));
 }
 export const SYNTHETIC_IDS = Object.freeze({ parent: "00000000-0000-4000-8000-000000000543", child: "00000000-0000-4000-8000-000000000542", workbook: "5ca70000-0000-4000-8000-000000000542" });
 export const COMPARISON_FORMATS = ["whole", "fraction", "decimal", "tick-and-number", "circle", "show-work", "spot-the-error", "write-words", "two-ways"] as const;
