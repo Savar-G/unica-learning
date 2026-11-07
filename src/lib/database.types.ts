@@ -2336,6 +2336,182 @@ export type Database = {
           },
         ]
       }
+      parent_explanation_dispatches: {
+        Row: {
+          child_id: string
+          context: string
+          id: string
+          item_id: string
+          parent_id: string
+        }
+        Insert: {
+          child_id: string
+          context: string
+          id: string
+          item_id: string
+          parent_id: string
+        }
+        Update: {
+          child_id?: string
+          context?: string
+          id?: string
+          item_id?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_explanation_dispatches_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "parent_explanation_dispatches_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "parent_explanation_spend"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parent_explanation_dispatches_item_id_context_fkey"
+            columns: ["item_id", "context"]
+            isOneToOne: false
+            referencedRelation: "parent_explanations"
+            referencedColumns: ["item_id", "context"]
+          },
+          {
+            foreignKeyName: "parent_explanation_dispatches_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parent_explanation_prices: {
+        Row: {
+          enabled: boolean
+          evidence: string | null
+          max_input_bytes: number
+          max_tokens: number
+          maximum_micros: number | null
+          model: string
+          protocol: string
+          verified_at: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          evidence?: string | null
+          max_input_bytes?: number
+          max_tokens?: number
+          maximum_micros?: number | null
+          model: string
+          protocol?: string
+          verified_at?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          evidence?: string | null
+          max_input_bytes?: number
+          max_tokens?: number
+          maximum_micros?: number | null
+          model?: string
+          protocol?: string
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
+      parent_explanation_spend: {
+        Row: {
+          charged_micros: number | null
+          created_at: string
+          id: string
+          model: string
+          period: string
+          reserved_micros: number
+          settled_at: string | null
+        }
+        Insert: {
+          charged_micros?: number | null
+          created_at?: string
+          id?: string
+          model: string
+          period: string
+          reserved_micros: number
+          settled_at?: string | null
+        }
+        Update: {
+          charged_micros?: number | null
+          created_at?: string
+          id?: string
+          model?: string
+          period?: string
+          reserved_micros?: number
+          settled_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_explanation_spend_model_fkey"
+            columns: ["model"]
+            isOneToOne: false
+            referencedRelation: "parent_explanation_prices"
+            referencedColumns: ["model"]
+          },
+        ]
+      }
+      parent_explanations: {
+        Row: {
+          child_id: string
+          context: string
+          explanation: Json | null
+          item_id: string
+          lease_token: string
+          lease_until: string
+          parent_id: string
+        }
+        Insert: {
+          child_id: string
+          context: string
+          explanation?: Json | null
+          item_id: string
+          lease_token: string
+          lease_until: string
+          parent_id: string
+        }
+        Update: {
+          child_id?: string
+          context?: string
+          explanation?: Json | null
+          item_id?: string
+          lease_token?: string
+          lease_until?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_explanations_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "parent_explanations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parent_explanations_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_pins: {
         Row: {
           created_at: string
@@ -6960,6 +7136,16 @@ export type Database = {
           p_token: string
         }
         Returns: boolean
+      }
+      parent_explanation_command: {
+        Args: {
+          p_action: string
+          p_data?: Json
+          p_parent: string
+          p_photo: string
+          p_token: string
+        }
+        Returns: Json
       }
       parent_maya_note_sessions: {
         Args: { p_calls: string[] }

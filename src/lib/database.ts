@@ -99,6 +99,7 @@ type AnswerNulls = "p_misconception" | "p_read_aloud_count" | "p_read_aloud_at_m
 type NullArgs = KnownArgs<{
   submit_feedback: "p_child";
   scan_marking_command: "p_parent" | "p_photo" | "p_token";
+  parent_explanation_command: "p_parent" | "p_photo" | "p_token";
   save_marked_child_profile: "p_assessment" | "p_expected";
   queue_workbook_edit: "p_question" | "p_item";
   // A plan start on a child with no card update has no session.

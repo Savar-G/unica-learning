@@ -141,6 +141,10 @@ The email is one 600 px column: greeting, the level and verdict in the same colo
 - Under every "Take free assessment" button, one line says "Your child takes the test on a laptop or tablet." (D-134); the hero has no such line since D-157. The nav buttons have no line.
 - The mobile assessment button ("Take free assessment", a link to `/start`) uses the existing primary button below 700 px, with the laptop-or-tablet line above it. Hide it while a dialog or the cookie banner is open. Reserve space for it at the end of the page.
 
+## Parent problem explanations (D-299)
+
+On Page results, put Explain this problem beside each eligible wrong answer. Keep the result beside that question. Show the stored correct answer, up to four short steps, and one way the parent can say them to the child. Use the existing scan controls and semantic tokens. Show loading, retry, limit, changed-mark and unavailable states with accessible announcements. Render all AI output as text. A corrected right mark hides the control. The first successful explanation is reused only for the same current question and mark context. The Desk has no explanation control. D236 and D249 still restrict family release. The state matrix is in `.design/experiments/r675/contract.md`. Browser evidence remains with root.
+
 ## Responsive and accessibility
 
 - Mobile first (375 px), then tablet and desktop (1440 px).
