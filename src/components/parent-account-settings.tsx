@@ -14,11 +14,12 @@ function CardNote({ card }: { card: unknown }) {
   return null;
 }
 
-export function ParentAccountSettings({ card, billing, details, hasCard, province }: {
-  card: unknown; billing: ReactNode; details: ReactNode; hasCard: boolean; province: CurriculumId;
+export function ParentAccountSettings({ card, billing, details, hasCard, province, note }: {
+  card: unknown; billing: ReactNode; details: ReactNode; hasCard: boolean; province: CurriculumId; note?: ReactNode;
 }) {
   return (
     <SupportPage label="Your account" title="Account">
+      {note}
       <CardNote card={card} />
       {billing}
       <h2>Settings</h2>

@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
+import { familyOpenPlanChildren } from "@/lib/plan-access";
 import { adminClient } from "@/lib/supabase-auth";
 import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
@@ -20,19 +21,35 @@ import { familyWorkbookIsShipped, selectFamilyWorkbookQuestion, type FamilyWorkb
 
 type DB = SupabaseClient<Database>;
 /**
- * The family part of the chat check (#530): a test family, or a family on the admin list with the switch on and a
- * running plan. Stripe remains the plan authority. Unknown, canceled and past due fail closed. A family off the list
- * is refused before Stripe is read.
+ * The family part of the chat check (#530), read once for all of a family's children: a test family; a child with an open
+ * plan in child_plan_states (src/lib/plan-access.ts), with no list row and no switch; or a family on the admin list with the
+ * switch on and a running plan. `MAYA_CHAT_ENABLED=off` stops all but test families. Stripe remains the plan authority for the
+ * list path: unknown, canceled and past due fail closed, and a family off the list is refused before Stripe is read.
+ * With no child named, any open plan of the family counts.
  */
-export async function chatAccess(db: DB, parent: string): Promise<boolean> {
-  const [{ data: test, error }, { data: listed, error: listError }] = await Promise.all([
+async function chatChecker(db: DB, parent: string): Promise<(child?: string) => boolean | Promise<boolean>> {
+  const [{ data: test, error }, { data: listed, error: listError }, open] = await Promise.all([
     db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle(),
     db.from("maya_chat_families").select("parent_id").eq("parent_id", parent).maybeSingle(),
+    familyOpenPlanChildren({ parentId: parent }, { db }),
   ]);
   if (error || listError) throw Error((error ?? listError)!.message);
-  const gate = chatFamilyGate({ test: !!test, listed: !!listed }, process.env);
-  if (gate === "closed") return false;
-  if (gate === "test") return true;
+  let running: Promise<boolean> | null = null;
+  return (child) => {
+    const gate = chatFamilyGate({ test: !!test, listed: !!listed, planOpen: child ? open.has(child) : open.size > 0 }, process.env);
+    if (gate === "closed") return false;
+    if (gate !== "plan") return true;
+    running ??= familyRunningPlan(db, parent);
+    return running;
+  };
+}
+
+/** Whether chat is open to this child, or with no child named, to any child of the family. */
+export async function chatAccess(db: DB, parent: string, child?: string): Promise<boolean> {
+  return (await chatChecker(db, parent))(child);
+}
+
+async function familyRunningPlan(db: DB, parent: string): Promise<boolean> {
   const s = stripe();
   if (!s) return false;
   const { data, error: cardsError } = await db.rpc("family_retention_cards", { p: parent });
@@ -82,8 +99,8 @@ async function readChatSpend(parent: string, child: string, zone: FamilyZone, no
 }
 
 /** The whole chat check on every chat request: the family first, then the child's grade (Grade 3 and up). */
-export async function chatGate(db: DB, parent: string, grade: number | null | undefined): Promise<"open" | "too_young" | "closed"> {
-  if (!await chatAccess(db, parent)) return "closed";
+export async function chatGate(db: DB, parent: string, grade: number | null | undefined, child?: string): Promise<"open" | "too_young" | "closed"> {
+  if (!await chatAccess(db, parent, child)) return "closed";
   return chatServesGrade(grade) ? "open" : "too_young";
 }
 
@@ -91,17 +108,26 @@ export async function chatGate(db: DB, parent: string, grade: number | null | un
 export async function parentChatUsage(session: DB, parent: string, children: readonly { id: string; grade: number }[], zone: FamilyZone): Promise<Map<string, ChatUsage>> {
   try {
     const admin = adminClient();
-    if (!admin || !await chatAccess(admin, parent)) return new Map();
-    return new Map(await Promise.all(children.filter((c) => chatServesGrade(c.grade))
+    if (!admin) return new Map();
+    const open = await parentChatChildren(admin, parent, children);
+    return new Map(await Promise.all(children.filter((c) => open.has(c.id))
       .map(async (c) => [c.id, await readChatUsage(session, parent, c.id, zone)] as const)));
   } catch { return new Map(); }
+}
+
+/** The children of this list who can chat now: chat is open to them, and their grade is served. Throws when the read fails. */
+export async function parentChatChildren(db: DB, parent: string, children: readonly { id: string; grade: number }[]): Promise<ReadonlySet<string>> {
+  const check = await chatChecker(db, parent);
+  const served = children.filter((c) => chatServesGrade(c.grade));
+  const open = await Promise.all(served.map((c) => check(c.id)));
+  return new Set(served.filter((_, i) => open[i]).map((c) => c.id));
 }
 
 /** What the desk shows for one child: the chat usage, or why a younger child has none. Nothing when the family has no chat. */
 export async function deskChat(session: DB, parent: string, child: { id: string; grade: number }, zone: FamilyZone): Promise<{ usage: ChatUsage | null; note: string | null }> {
   try {
     const admin = adminClient();
-    const gate = admin ? await chatGate(admin, parent, child.grade) : "closed";
+    const gate = admin ? await chatGate(admin, parent, child.grade, child.id) : "closed";
     if (gate === "too_young") return { usage: null, note: chatGradeLine() };
     if (gate === "open") return { usage: await readChatUsage(session, parent, child.id, zone), note: null };
   } catch { /* The desk shows chat as not open yet. */ }

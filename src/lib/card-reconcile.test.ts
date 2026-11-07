@@ -265,6 +265,30 @@ describe("a plan creation lands late (the review's second case)", () => {
     expect(f.announced).toEqual(["sub_made_1"]);
   });
 
+  it("writes the plan state for the plan gate when it closes the record, with no event at all (#plan-access)", async () => {
+    const f = await creationLandsLate();
+    dropEvents(f);
+    const written: [string, string | null][] = [];
+    f.seams.planStarted = async (card, start) => { written.push([card.cardId, start.subscription]); };
+    expect(await f.sweep()).toMatchObject({ plans: 0 });
+    expect(written).toEqual([]);
+    later(PLAN_ANSWER_MS + 1);
+    expect(await f.sweep()).toMatchObject({ plans: 1, failed: 0 });
+    expect(written).toEqual([["card-1", "sub_made_1"]]);
+    await f.sweep();
+    expect(written).toHaveLength(1);
+  });
+
+  it("a failed plan state write fails neither the record nor the email", async () => {
+    const f = await creationLandsLate();
+    dropEvents(f);
+    f.seams.planStarted = async () => { throw new Error("Database down"); };
+    later(PLAN_ANSWER_MS + 1);
+    expect(await f.sweep()).toMatchObject({ plans: 1, failed: 0 });
+    expect(record(f)?.state).toBe("started");
+    expect(f.announced).toEqual(["sub_made_1"]);
+  });
+
   it("closes the record when the parent cannot be told yet, and a later sweep tells them", async () => {
     const f = await creationLandsLate();
     dropEvents(f);

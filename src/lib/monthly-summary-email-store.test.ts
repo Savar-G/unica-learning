@@ -96,8 +96,74 @@ const twoFamilies = () => ({
   admin_users: [],
 });
 
-const OFF = { PARENT_DASHBOARD_ENABLED: undefined };
-const ON = { PARENT_DASHBOARD_ENABLED: "on" };
+const OFF = { PARENT_DASHBOARD_ENABLED: undefined, MONTHLY_SUMMARY_EMAIL_ENABLED: "on" };
+const ON = { PARENT_DASHBOARD_ENABLED: "on", MONTHLY_SUMMARY_EMAIL_ENABLED: "on" };
+
+describe("the monthly email release switch", () => {
+  const notEnabled = [undefined, "", "off", "test-only", "true", "ON", "On", "on ", " on", "on\n", "1", "on,off"];
+  const families = () => ({
+    ...twoFamilies(),
+    parents: [parent("normal"), parent("marked"), parent("admin")],
+    children: [child("c1", "normal"), child("c2", "marked"), child("c3", "admin")],
+    workbook_delivery_receipts: [receipt("w1", "c1", "normal"), receipt("w2", "c2", "marked"), receipt("w3", "c3", "admin")],
+    admin_users: [{ user_id: "admin" }],
+    email_log: [{ id: "retry", parent_id: "marked", kind: "monthly_summary", summary_month: "2026-10-01", status: "failed", attempts: 2, error: "refused", unsubscribe_hash: "old-hash" }],
+  });
+
+  describe.each([undefined, "on"])("with dashboard value %j", (dashboard) => {
+    it.each(notEnabled)("monthly value %j admits no family, claim, retry or send", async (value) => {
+      const tables = families();
+      const before = structuredClone(tables);
+      const { db, reads } = fakeDb(tables);
+      const store = monthlySummaryEmailStore(db, { PARENT_DASHBOARD_ENABLED: dashboard, MONTHLY_SUMMARY_EMAIL_ENABLED: value });
+      const mail = memoryTransport();
+      expect(dueMonthlyEmails(await store.load(NOV_1), NOV_1)).toEqual([]);
+      expect(await runMonthlyEmails(store, NOV_1, { origin: ORIGIN, newToken, transport: mail.transport })).toMatchObject({ due: 0, sent: 0 });
+      for (const [parentId, childId] of [["normal", "c1"], ["marked", "c2"], ["admin", "c3"]]) {
+        expect(await store.ledger.claim({ parentId, month: "2026-10", childIds: [childId], retry: null }, { unsubscribe_hash: "new-hash" })).toBeNull();
+      }
+      expect(await store.ledger.claim({ parentId: "marked", month: "2026-10", childIds: ["c2"], retry: { logId: "retry", attempts: 2 } }, { unsubscribe_hash: "new-hash" })).toBeNull();
+      expect(reads).toEqual([]);
+      expect(tables).toEqual(before);
+      expect(mail.delivered).toEqual([]);
+    });
+  });
+
+  it.each([false, true])("rejects a previously loaded direct claim and run after disable (retry %j)", async (retry) => {
+    const tables = { ...twoFamilies(), email_log: retry ? families().email_log : [] };
+    const env: Record<string, string | undefined> = { ...OFF };
+    const { db, reads } = fakeDb(tables);
+    const store = monthlySummaryEmailStore(db, env);
+    const state = await store.load(NOV_1);
+    const [due] = dueMonthlyEmails(state, NOV_1);
+    expect(due).toMatchObject({ parentId: "marked", month: "2026-10", childIds: ["c2"], retry: retry ? { logId: "retry", attempts: 2 } : null });
+    const before = structuredClone(tables);
+    delete env.MONTHLY_SUMMARY_EMAIL_ENABLED;
+    reads.length = 0;
+    expect(await store.ledger.claim(due, { unsubscribe_hash: "new-hash" })).toBeNull();
+    const mail = memoryTransport();
+    // A caller can hold the old candidate state, but the real ledger must still refuse its claim.
+    expect(await runMonthlyEmails({ ...store, load: async () => state }, NOV_1, { origin: ORIGIN, newToken, transport: mail.transport })).toMatchObject({ due: 1, busy: 1, sent: 0 });
+    expect(dueMonthlyEmails(await store.load(NOV_1), NOV_1)).toEqual([]);
+    expect(reads).toEqual([]);
+    expect(tables).toEqual(before);
+    expect(mail.delivered).toEqual([]);
+  });
+
+  it("reads the current value on each load and permits sends only after explicit enable", async () => {
+    const tables = twoFamilies() as Record<string, Row[]>;
+    const env: Record<string, string | undefined> = { PARENT_DASHBOARD_ENABLED: "on" };
+    const { db, reads } = fakeDb(tables);
+    const store = monthlySummaryEmailStore(db, env);
+    expect(dueMonthlyEmails(await store.load(NOV_1), NOV_1)).toEqual([]);
+    expect(reads).toEqual([]);
+    env.MONTHLY_SUMMARY_EMAIL_ENABLED = "on";
+    const mail = memoryTransport();
+    expect(await runMonthlyEmails(store, NOV_1, { origin: ORIGIN, newToken, transport: mail.transport })).toMatchObject({ due: 2, sent: 2 });
+    expect(mail.delivered).toHaveLength(2);
+    expect(tables.email_log.map((r) => [r.parent_id, r.status]).sort()).toEqual([["marked", "sent"], ["normal", "sent"]]);
+  });
+});
 
 describe("the dashboard switch decides who gets the email", () => {
   it("while it is off, only a marked family is due; a normal family is never due", async () => {
@@ -117,7 +183,12 @@ describe("the dashboard switch decides who gets the email", () => {
 
   it.each(["off", "ON", "true", ""])("the value %j does not open it", async (value) => {
     const { db } = fakeDb(twoFamilies());
-    expect(dueMonthlyEmails(await monthlySummaryEmailStore(db, { PARENT_DASHBOARD_ENABLED: value }).load(NOV_1), NOV_1).map((d) => d.parentId)).toEqual(["marked"]);
+    expect(dueMonthlyEmails(await monthlySummaryEmailStore(db, { ...OFF, PARENT_DASHBOARD_ENABLED: value }).load(NOV_1), NOV_1).map((d) => d.parentId)).toEqual(["marked"]);
+  });
+
+  it("an open plan makes no family due: the plan gate opens the dashboard, not this email", async () => {
+    const { db } = fakeDb({ ...twoFamilies(), child_plan_states: [{ parent_id: "normal", child_id: "c1", kind: "paying", ends_at: null, next_charge_at: null, monthly_cents: 7999, ending_free: false }] });
+    expect(dueMonthlyEmails(await monthlySummaryEmailStore(db, OFF).load(NOV_1), NOV_1).map((d) => d.parentId)).toEqual(["marked"]);
   });
 
   it("a failed read of the marks sends to no one", async () => {

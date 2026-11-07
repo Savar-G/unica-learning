@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 const f = vi.hoisted(() => ({ user: vi.fn(), access: vi.fn(), admin: vi.fn(), ask: vi.fn(), retry: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ sessionClient: async () => ({ auth: { getUser: f.user } }), adminClient: f.admin }));
-vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access }));
+vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access, planManagementAccess: f.access }));
 vi.mock("@/lib/family-time-server", () => ({ familyRetryTime: f.retry }));
 vi.mock("@/lib/email-delivery", () => ({ sendEmail: vi.fn(), emailConfigProblem: () => null }));
 vi.mock("@/lib/family-delete-code", () => ({ requestDeleteCode: f.ask }));

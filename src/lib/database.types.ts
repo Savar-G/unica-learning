@@ -4871,6 +4871,73 @@ export type Database = {
           },
         ]
       }
+      workbook_plan_previews: {
+        Row: {
+          actor_id: string
+          child_id: string
+          created_at: string
+          cutoff: string
+          engine: string
+          id: string
+          number: number
+          parent_id: string
+          payload: string
+          payload_hash: string
+          printed_revision: string
+          workbook_id: string
+        }
+        Insert: {
+          actor_id: string
+          child_id: string
+          created_at?: string
+          cutoff: string
+          engine: string
+          id: string
+          number: number
+          parent_id: string
+          payload: string
+          payload_hash: string
+          printed_revision: string
+          workbook_id: string
+        }
+        Update: {
+          actor_id?: string
+          child_id?: string
+          created_at?: string
+          cutoff?: string
+          engine?: string
+          id?: string
+          number?: number
+          parent_id?: string
+          payload?: string
+          payload_hash?: string
+          printed_revision?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_plan_previews_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_plan_previews_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_plan_previews_workbook_id_parent_id_child_id_numb_fkey"
+            columns: ["workbook_id", "parent_id", "child_id", "number"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "parent_id", "child_id", "number"]
+          },
+        ]
+      }
       workbook_questions: {
         Row: {
           box_height: number
@@ -5640,6 +5707,108 @@ export type Database = {
           },
         ]
       }
+      workbook_scan_inactivity_episodes: {
+        Row: {
+          activity_key: string
+          activity_receipt_id: string | null
+          anchor_at: string
+          calendar_revision: string
+          child_id: string
+          clock_context: Json
+          clock_version: string
+          consumed_at: string | null
+          consumed_token: string | null
+          created_at: string
+          delivery_audit_id: number
+          dispatch_count: number
+          due_at: string
+          id: string
+          number: number
+          parent_id: string
+          printed_revision: string
+          refreshed_at: string
+          workbook_id: string
+        }
+        Insert: {
+          activity_key: string
+          activity_receipt_id?: string | null
+          anchor_at: string
+          calendar_revision?: string
+          child_id: string
+          clock_context: Json
+          clock_version: string
+          consumed_at?: string | null
+          consumed_token?: string | null
+          created_at?: string
+          delivery_audit_id: number
+          dispatch_count?: number
+          due_at: string
+          id?: string
+          number: number
+          parent_id: string
+          printed_revision: string
+          refreshed_at?: string
+          workbook_id: string
+        }
+        Update: {
+          activity_key?: string
+          activity_receipt_id?: string | null
+          anchor_at?: string
+          calendar_revision?: string
+          child_id?: string
+          clock_context?: Json
+          clock_version?: string
+          consumed_at?: string | null
+          consumed_token?: string | null
+          created_at?: string
+          delivery_audit_id?: number
+          dispatch_count?: number
+          due_at?: string
+          id?: string
+          number?: number
+          parent_id?: string
+          printed_revision?: string
+          refreshed_at?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_scan_inactivity_epis_workbook_id_parent_id_child__fkey"
+            columns: ["workbook_id", "parent_id", "child_id", "number"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "parent_id", "child_id", "number"]
+          },
+          {
+            foreignKeyName: "workbook_scan_inactivity_episodes_activity_receipt_id_fkey"
+            columns: ["activity_receipt_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_scan_receipts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_scan_inactivity_episodes_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_scan_inactivity_episodes_delivery_audit_id_fkey"
+            columns: ["delivery_audit_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_audit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_scan_inactivity_episodes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_scan_pending_items: {
         Row: {
           child_id: string
@@ -5876,6 +6045,158 @@ export type Database = {
           },
         ]
       }
+      workbook_scan_reminder_attempts: {
+        Row: {
+          admitted_at: string | null
+          attempt: number
+          finished_at: string | null
+          message_id: string
+          parent_id: string
+          reserved_at: string
+          state: string
+          token: string
+        }
+        Insert: {
+          admitted_at?: string | null
+          attempt: number
+          finished_at?: string | null
+          message_id: string
+          parent_id: string
+          reserved_at?: string
+          state: string
+          token: string
+        }
+        Update: {
+          admitted_at?: string | null
+          attempt?: number
+          finished_at?: string | null
+          message_id?: string
+          parent_id?: string
+          reserved_at?: string
+          state?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_scan_reminder_attempts_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_scan_reminder_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_scan_reminder_attempts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_scan_reminder_links: {
+        Row: {
+          calendar_revision: string
+          child_id: string
+          episode_id: string
+          message_id: string
+          parent_id: string
+          released: boolean
+        }
+        Insert: {
+          calendar_revision: string
+          child_id: string
+          episode_id: string
+          message_id: string
+          parent_id: string
+          released?: boolean
+        }
+        Update: {
+          calendar_revision?: string
+          child_id?: string
+          episode_id?: string
+          message_id?: string
+          parent_id?: string
+          released?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_scan_reminder_links_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_scan_reminder_links_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_scan_inactivity_episodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_scan_reminder_links_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_scan_reminder_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_scan_reminder_links_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_scan_reminder_messages: {
+        Row: {
+          attempt_count: number
+          attempt_token: string
+          created_at: string
+          email_log_id: string
+          id: string
+          parent_id: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count: number
+          attempt_token: string
+          created_at?: string
+          email_log_id: string
+          id?: string
+          parent_id: string
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          attempt_token?: string
+          created_at?: string
+          email_log_id?: string
+          id?: string
+          parent_id?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_scan_reminder_messages_email_log_id_fkey"
+            columns: ["email_log_id"]
+            isOneToOne: true
+            referencedRelation: "email_log"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_scan_reminder_messages_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_scan_trigger_claims: {
         Row: {
           backstop_at: string | null
@@ -6108,6 +6429,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      _lock_workbook_scan_reminder_parent: {
+        Args: { p_parent: string }
+        Returns: boolean
+      }
       _maya_family_window: {
         Args: { p_at: string; p_kind: string; p_parent: string }
         Returns: {
@@ -6153,6 +6478,26 @@ export type Database = {
       }
       _maya_zone_at: { Args: { p_at: string; p_zone: string }; Returns: string }
       _workbook_scan_day7: { Args: { p_book: string }; Returns: string[] }
+      _workbook_scan_family_clock_context: {
+        Args: { p_parent: string }
+        Returns: Json
+      }
+      _workbook_scan_inactivity_identity: {
+        Args: { p_at: string; p_book: string }
+        Returns: Json
+      }
+      _workbook_scan_inactivity_recovery: {
+        Args: { p_at: string; p_book: string; p_kind: string }
+        Returns: boolean
+      }
+      _workbook_scan_reminder_due_set: {
+        Args: { p_at: string; p_message?: string; p_parent: string }
+        Returns: Json
+      }
+      _workbook_scan_reminder_program: {
+        Args: { p_at: string; p_child: string; p_parent: string }
+        Returns: boolean
+      }
       abandon_family_payment_operation: {
         Args: {
           p: string
@@ -6457,6 +6802,10 @@ export type Database = {
           p_parent: string
         }
         Returns: string
+      }
+      admit_workbook_scan_reminder: {
+        Args: { p_attempt: string; p_message: string }
+        Returns: Json
       }
       advance_family_deletion_cursor: {
         Args: { p: string }
@@ -6856,6 +7205,14 @@ export type Database = {
             Args: { p_lease: string; p_run: string; p_runner: string }
             Returns: boolean
           }
+      claim_workbook_scan_reminder: {
+        Args: {
+          p_episodes: string[]
+          p_parent: string
+          p_unsubscribe_hash: string
+        }
+        Returns: Json
+      }
       clear_family_delete_attempts: {
         Args: { p_parent: string }
         Returns: undefined
@@ -7115,6 +7472,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      finish_workbook_scan_reminder: {
+        Args: {
+          p_attempt: string
+          p_email_id?: string
+          p_message: string
+          p_outcome: string
+        }
+        Returns: Json
+      }
       frame_workbook_edit: {
         Args: { p_frame: Json; p_id: string; p_lease: string }
         Returns: Json
@@ -7170,6 +7536,10 @@ export type Database = {
       }
       list_workbook_scan_clock_requests: {
         Args: { p_limit: number }
+        Returns: Json
+      }
+      list_workbook_scan_recovery_books: {
+        Args: { p_after?: string; p_kind: string; p_limit: number }
         Returns: Json
       }
       lock_assessment_block: {
@@ -7326,6 +7696,18 @@ export type Database = {
         Args: { p_card: string; p_generation: number }
         Returns: Json
       }
+      propose_workbook_scan_inactivity: {
+        Args: {
+          p_activity: string
+          p_anchor: string
+          p_book: string
+          p_clock_version: string
+          p_context: Json
+          p_delivery_audit: number
+          p_due: string
+        }
+        Returns: Json
+      }
       queue_workbook_edit: {
         Args: {
           p_action: string
@@ -7360,6 +7742,14 @@ export type Database = {
       }
       read_family_payment_progress: {
         Args: { customer: string; p: string; token: string }
+        Returns: Json
+      }
+      read_workbook_scan_inactivity_context: {
+        Args: { p_book: string }
+        Returns: Json
+      }
+      read_workbook_scan_reminder_due: {
+        Args: { p_parent: string }
         Returns: Json
       }
       reconcile_scan_cleanup: { Args: { p_id: string }; Returns: boolean }
@@ -7463,6 +7853,10 @@ export type Database = {
         Args: { p_id: string; p_lease: string }
         Returns: boolean
       }
+      release_workbook_scan_reminder: {
+        Args: { p_attempt: string; p_message: string }
+        Returns: Json
+      }
       rename_child: {
         Args: {
           p_child: string
@@ -7544,6 +7938,19 @@ export type Database = {
         Returns: Json
       }
       reserve_scan_marking_evaluation_checked: {
+        Args: {
+          p_attempt: string
+          p_endpoint: string
+          p_evidence: string
+          p_maximum: number
+          p_model: string
+          p_pixels: number
+          p_run: string
+          p_run_maximum: number
+        }
+        Returns: Json
+      }
+      reserve_scan_marking_physical_evaluation_checked: {
         Args: {
           p_attempt: string
           p_endpoint: string
@@ -7906,6 +8313,29 @@ export type Database = {
         Returns: string
       }
       workbook_edit_target_value: { Args: { p_value: Json }; Returns: Json }
+      workbook_preview_access: {
+        Args: {
+          p_book: string
+          p_child: string
+          p_parent: string
+          p_revision: string
+        }
+        Returns: boolean
+      }
+      workbook_preview_command: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_book: string
+          p_child: string
+          p_hash?: string
+          p_parent: string
+          p_payload?: string
+          p_request: string
+          p_revision: string
+        }
+        Returns: Json
+      }
       workbook_run_held: {
         Args: { p_lease: string; p_run: string }
         Returns: boolean

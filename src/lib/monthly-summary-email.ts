@@ -1,7 +1,7 @@
 // The monthly summary email (#563, spec #544, D-248): one email per family per calendar month in family time, with a link
 // to each child's Overview and no attachment. It names each child whose summary the Overview offers (the same rule,
 // src/lib/monthly-summary-offer.ts) and says nothing about the child's results.
-//   - Who: only a family the dashboard switch opens to (`dashboardOpen`, read by the store with parentDashboardAccess),
+//   - Who: only a family the dashboard switch opens to (`dashboardOpen`, read by the store with dashboardSwitchOpen, never the plan gate),
 //     so no family gets a link to a page it cannot see. Test families and admins get it while the switch is off.
 //   - When: from the 1st of the month at 7 a.m. family time to the end of the 7th. It names the month that just ended.
 //   - Once: the send key is (parent, month), claimed in public.email_log. A refused send can retry up to MAX_SEND_ATTEMPTS
@@ -41,7 +41,7 @@ export interface MonthlyParent {
   /** The stored browser zone takes precedence over postal and province. */
   timeZone?: string | null;
   postal: string | null;
-  /** The dashboard switch opens to this family (parentDashboardAccess). */
+  /** The dashboard switch opens to this family (dashboardSwitchOpen). */
   dashboardOpen: boolean;
 }
 

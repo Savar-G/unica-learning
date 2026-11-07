@@ -101,6 +101,12 @@ type Fns = Generated["public"]["Functions"];
 type KnownArgs<T extends { [F in keyof T]: F extends keyof Fns ? keyof Fns[F]["Args"] : never }> = T;
 type AnswerNulls = "p_misconception" | "p_read_aloud_count" | "p_read_aloud_at_ms" | "p_away_count" | "p_away_ms" | "p_work_text";
 type NullArgs = KnownArgs<{
+  // Saved-preview reads send no new payload or hash.
+  workbook_preview_command: "p_payload" | "p_hash";
+  // A first recovery page has no cursor; delivery-only inactivity has no receipt.
+  list_workbook_scan_recovery_books: "p_after";
+  propose_workbook_scan_inactivity: "p_activity";
+  finish_workbook_scan_reminder: "p_email_id";
   submit_feedback: "p_child";
   scan_marking_command: "p_parent" | "p_photo" | "p_token";
   parent_explanation_command: "p_parent" | "p_photo" | "p_token";

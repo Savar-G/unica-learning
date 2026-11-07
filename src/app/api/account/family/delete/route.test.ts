@@ -11,7 +11,7 @@ vi.mock("next/headers", () => ({ cookies: async () => ({
   delete: f.cookieDelete, set: f.cookieSet,
 }) }));
 vi.mock("@/lib/supabase-auth", () => ({ sessionClient: async () => ({ auth: { getUser: f.user, signOut: f.signOut } }), adminClient: f.admin }));
-vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access }));
+vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access, planManagementAccess: f.access }));
 vi.mock("@/lib/stripe", () => ({ stripe: f.stripe }));
 vi.mock("@/lib/family-time-server", () => ({ familyRetryTime: f.retry }));
 vi.mock("@/lib/family-delete", async (original) => ({ ...(await original<typeof import("@/lib/family-delete")>()), requestFamilyDelete: f.request }));

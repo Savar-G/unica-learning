@@ -103,6 +103,19 @@ export async function applyPlanEvent(event: PlanEvent, { store, provider }: Plan
   return store.save(event.customer, { plan, eventAt, eventId: event.id, readOrder });
 }
 
+/**
+ * Stores what Stripe says right after a plan start, so the plan gate (src/lib/plan-access.ts) opens with no webhook. It goes
+ * through applyPlanEvent, not a fill: a fill leaves a `not_started` row as it is. The event's time is when the start began,
+ * before the subscription existed, so no event of that subscription reads as older than this write. The id is one per start
+ * and generation. Throws when Stripe or the store fails; the webhook or the sweep then writes the row.
+ */
+export function applyPlanStart(start: { customer: string; cardSetup: string; generation: number; startedAt: number }, states: PlanStates): Promise<PlanSave> {
+  return applyPlanEvent({
+    id: `plan-start:${start.cardSetup}:${start.generation}`, type: "customer.subscription.created",
+    created: Math.floor(start.startedAt / 1000), customer: start.customer,
+  }, states);
+}
+
 /** The stored plan. A child with no row, or a read that fails, is unknown. Asks Stripe nothing. */
 export async function readChildPlan(key: PlanKey, store: PlanStateStore): Promise<ParentPlan> {
   try {
