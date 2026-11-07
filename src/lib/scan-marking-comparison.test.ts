@@ -416,6 +416,39 @@ it.each(["http", "schema", "json", "refusal"])("retains fatal settlement state a
   expect(dispatched).toBe(1); expect(fetched).toBe(1);
 });
 
+it("keeps a fake400 response and OpenRouter metadata before and after settlement", async () => {
+  const p = photo(), mem = memory(); let beforeSettlement: unknown;
+  const metadata = { provider_name: "Google", raw: "Synthetic provider schema error" };
+  const envelope = { error: { code: 400, message: "Synthetic invalid schema", metadata }, openrouter_metadata: metadata };
+  const body = JSON.stringify(envelope);
+  const budget: EvaluationBudget = { ...mem.budget, settle: async (id, cost) => {
+    beforeSettlement = copy([...mem.files.values()][0]);
+    await mem.budget.settle(id, cost);
+  } };
+  const r = await runComparisonPhoto({ ...runOptions(p, mem), budget, fetch: async () => new Response(body, { status: 400 }) });
+  expect(r.failure).toBe("http-400");
+  expect(beforeSettlement).toMatchObject({ state: "response", status: 400, body, openrouter_metadata: metadata, envelope });
+  expect([...mem.files.values()]).toEqual([expect.objectContaining({ state: "unknown", status: 400, body, openrouter_metadata: metadata, envelope })]);
+  expect([...mem.amounts.values()]).toEqual([null]);
+});
+
+it("keeps each retry's own response after both settlements", async () => {
+  const p = photo(), mem = memory(); let fetched = 0;
+  const bodies: string[] = [];
+  const r = await runComparisonPhoto({ ...runOptions(p, mem), maxAttempts: 2, fetch: async () => {
+    fetched++;
+    const base = JSON.parse(await response(p).text());
+    base.openrouter_metadata = { request: fetched };
+    if (fetched === 1) base.error = { message: "Synthetic temporary error" };
+    const body = JSON.stringify(base); bodies.push(body);
+    return new Response(body, { status: fetched === 1 ? 503 : 200 });
+  } });
+  expect(r.status).toBe("complete"); expect(fetched).toBe(2);
+  expect([...mem.files.values()]).toEqual(bodies.map((body, i) => expect.objectContaining({
+    state: "settled", status: i === 0 ? 503 : 200, body, openrouter_metadata: { request: i + 1 },
+  })));
+});
+
 it("probes the Sonnet reference first without changing the fixed model data", async () => {
   const data = manifest(), history = [evidence(), evidence(COMPARISON_MODELS.at(-1)!)], order: string[] = [];
   await runComparisonMatrix({ manifest: data, preflight: history.map(e => ({ model: e.model, status: "ready", evidence: e, maximumMicros: reserveMaximum(e) })),

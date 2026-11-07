@@ -77,6 +77,7 @@ export async function runComparisonPhoto(options: {
   let observations: Observation[] = [], schemaValid = false, failure: string | null = null;
   const attempts: ComparisonAttempt[] = [];
   let currentKey: string | null = null, current: ComparisonAttempt | null = null;
+  let responseEvidence: { status: number; body: string | null; openrouter_metadata: unknown; envelope: unknown } | null = null;
   let journalFailed = false, budgetFailed = false;
   const financial = async <T>(action: () => Promise<T>): Promise<T> => {
     try { return await action(); }
@@ -102,13 +103,17 @@ export async function runComparisonPhoto(options: {
     const start = now();
     try {
       const response = await base(input, init);
-      let envelope: unknown = null;
-      try { envelope = await response.clone().json(); } catch { /* Unknown cost retains its hold. */ }
+      let body: string | null = null, envelope: unknown = null;
+      try { body = await response.clone().text(); } catch { /* Unknown cost retains its hold. */ }
+      try { if (body !== null) envelope = JSON.parse(body); } catch { /* Keep a non-JSON error body verbatim. */ }
+      const parsed = envelope !== null && typeof envelope === "object" && !Array.isArray(envelope) ? envelope as Record<string, unknown> : null;
+      const errorMetadata = parsed?.error !== null && typeof parsed?.error === "object" && "metadata" in parsed.error ? parsed.error.metadata : null;
+      responseEvidence = { status: response.status, body, openrouter_metadata: parsed?.openrouter_metadata ?? errorMetadata, envelope };
       current!.usage = transportUsage(envelope);
       current!.latencyMs = Math.max(0, now() - start);
       current!.error = response.ok ? null : `http-${response.status}`;
       // Persist transport evidence before the production parser can reject the answer.
-      await journal.save(currentKey!, { state: "response", attempt: current, envelope });
+      await journal.save(currentKey!, { state: "response", attempt: current, ...responseEvidence });
       return response;
     } catch {
       current!.latencyMs = Math.max(0, now() - start); current!.error = journalFailed ? "journal-failure" : "transport-failure";
@@ -130,6 +135,7 @@ export async function runComparisonPhoto(options: {
       if ("refused" in reservation) { failure = reservation.refused; await journal.save(key, { state: "refused", reason: reservation.refused }); return "budget"; }
       currentKey = key;
       current = { id: reservation.id, usage: transportUsage(null), latencyMs: 0, error: null };
+      responseEvidence = null;
       attempts.push(current);
       await journal.save(key, { state: "reserved", attempt: current });
       return { dispatch: reservation.id };
@@ -138,7 +144,7 @@ export async function runComparisonPhoto(options: {
       const attempt = attempts.find(a => a.id === id)!;
       // Ignore model JSON and the adapter's convenience cost. Only the captured HTTP envelope is authoritative.
       await financial(() => budget.settle(id, attempt.usage.costMicros));
-      await journal.save(currentKey!, { state: attempt.usage.costMicros === null ? "unknown" : "settled", attempt });
+      await journal.save(currentKey!, { state: attempt.usage.costMicros === null ? "unknown" : "settled", attempt, ...(responseEvidence ?? {}) });
     },
     extract: async (_ref, _token, value) => { observations = value; return true; },
     apply: async () => true, finish: async () => true, pause: async () => {}, publish: async () => {}, effective: async () => [],
