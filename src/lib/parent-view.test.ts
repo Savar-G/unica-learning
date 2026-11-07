@@ -95,6 +95,13 @@ describe("the tabs follow the reader's switches", () => {
     const child = await readChild(parent({ ...delivered, switches: { progress: true, maya: true, scanPages: true } }), "child-1", NOW);
     expect(child?.tabs).toEqual(["overview", "progress", "workbooks", "scan_pages", "maya", "assessment", "account"]);
   });
+  it("a child's own open plan shows Scan pages for that child only", async () => {
+    const off = { progress: false, maya: false, scanPages: false };
+    const named = await readChild(parent({ ...delivered, switches: { ...off, scanPlanChildren: new Set(["child-1"]) } }), "child-1", NOW);
+    expect(named?.tabs).toContain("scan_pages");
+    const sibling = await readChild(parent({ ...delivered, switches: { ...off, scanPlanChildren: new Set(["child-2"]) } }), "child-1", NOW);
+    expect(sibling?.tabs).not.toContain("scan_pages");
+  });
 });
 
 describe("what a parent reads", () => {

@@ -1,6 +1,6 @@
 import { cleanFirstName, type ChildNameError, type ChildNameResult } from "@/lib/account";
 import { isUuid } from "@/lib/assessment-store";
-import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
+import { planManagementAccess } from "@/lib/parent-dashboard-access";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { STALE_SECONDS } from "@/lib/workbook-job";
 
@@ -33,7 +33,7 @@ export async function PATCH(request: Request, { params }: RouteContext<"/api/acc
   const admin = adminClient();
   if (!admin) return fail("store_failed", 503);
   // The same answer as an unknown child: a family the switch does not open to has no such route yet.
-  if (!(await parentDashboardAccess(parent, admin))) return fail("not_found", 404);
+  if (!(await planManagementAccess(parent, admin))) return fail("not_found", 404);
 
   const { id } = await params;
   if (!isUuid(id)) return fail("not_found", 404);

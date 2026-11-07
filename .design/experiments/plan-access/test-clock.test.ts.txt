@@ -1,0 +1,140 @@
+// The plan gate on the real Stripe TEST API and test clocks. Copy to a temporary .test.ts, set UNICA_STRIPE_TEST_ENV_FILE to a
+// file holding STRIPE_SECRET_KEY=sk_test_... or rk_test_..., and run it with a vitest config that aliases @ to src and includes
+// that file. It refuses any other key. Synthetic customers with no name, email or address. The card rows and the plan state rows
+// are in memory: no database row is written, and no email is sent. It deletes only its own clocks, which removes their customers.
+import fs from "node:fs";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import Stripe from "stripe";
+import { afterAll, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
+import { memoryBilling } from "@/lib/billing-memory";
+import { cancelPlan, startPlan } from "@/lib/stripe";
+import { planAccessRule } from "@/lib/plan-access";
+import { customerPlan } from "@/lib/parent-plan-server";
+import { applyPlanEvent, applyPlanStart, readChildPlan } from "@/lib/plan-state";
+import { memoryPlanStates } from "@/lib/plan-state-memory";
+import { stripePlanProvider } from "@/lib/plan-state-server";
+
+const env = fs.readFileSync(process.env.UNICA_STRIPE_TEST_ENV_FILE!, "utf8");
+const key = /^STRIPE_SECRET_KEY=["']?([^"'\s]+)/m.exec(env)?.[1] ?? "";
+assert.match(key, /^(sk|rk)_test_[A-Za-z0-9]+$/, "A test key is required");
+const run = randomUUID();
+const reportPath = process.env.UNICA_STRIPE_REPORT!;
+const report: { run: string; mode: "test"; checks: unknown[]; errors: unknown[]; resources: unknown[]; cleanup: unknown[] } = { run, mode: "test", checks: [], errors: [], resources: [], cleanup: [] };
+const save = () => fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 });
+const s = new Stripe(key, { maxNetworkRetries: 1, timeout: 20000, httpClient: Stripe.createFetchHttpClient(async (input, init) => {
+  assert.equal(new URL(String(input)).host, "api.stripe.com");
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    const body = await response.clone().json().catch(() => ({} as { error?: { type?: string; code?: string } }));
+    report.errors.push({ path: new URL(String(input)).pathname.replace(/\/(cus|sub|pm|clock|in)_[A-Za-z0-9]+/g, "/$1_x"), status: response.status, type: body.error?.type, code: body.error?.code }); save();
+  }
+  return response;
+}) });
+const test = <T extends { livemode: boolean }>(x: T): T => { assert.equal(x.livemode, false); return x; };
+const DAY = 86_400;
+const clocks: string[] = [];
+
+async function fixture(label: string, token: string) {
+  const base = Math.floor(Date.now() / 1000) + 60;
+  const clock = test(await s.testHelpers.testClocks.create({ frozen_time: base, name: `unica-plan-access-${label}-${run}` }));
+  clocks.push(clock.id);
+  const customer = test(await s.customers.create({ test_clock: clock.id, description: `Synthetic Unica plan access QA ${run}`, metadata: { qa_run: run } }));
+  report.resources.push({ clock: clock.id, customer: customer.id, label }); save();
+  const method = test(await s.paymentMethods.create({ type: "card", card: { token } }));
+  await s.paymentMethods.attach(method.id, { customer: customer.id });
+  await s.customers.update(customer.id, { invoice_settings: { default_payment_method: method.id } });
+  const parentId = randomUUID(), childId = randomUUID(), card = randomUUID();
+  const billing = memoryBilling({ children: [{ parentId, childId, firstName: "Sample", card: { id: card, customer: customer.id, saved: true } }] });
+  await billing.store.recordCard(card, { parentId, session: randomUUID(), created: base, paymentMethod: method.id });
+  await billing.store.settleCard(card, (await billing.store.cardRow(card))!.session!, true);
+  const memory = memoryPlanStates({ cards: [{ parentId, childId, customer: customer.id, cardSaved: true }] });
+  const states = { store: memory.store, provider: stripePlanProvider(s) };
+  let at = base;
+  let events = 0;
+  const f = {
+    base, clock, customer, method, card, billing,
+    now: () => at * 1000,
+    start: async () => {
+      const started = await startPlan(s, { cardSetup: card, customer: customer.id, price: 79.99, deliveryConfirmed: true }, new Date(base * 1000), billing.store);
+      assert.equal(started.ok, true);
+      // The start route's write, with no webhook.
+      await applyPlanStart({ customer: customer.id, cardSetup: card, generation: started.ok ? started.generation : 0, startedAt: base * 1000 }, states);
+      return started;
+    },
+    advance: async (to: number) => {
+      test(await s.testHelpers.testClocks.advance(clock.id, { frozen_time: to }));
+      const deadline = Date.now() + 120_000;
+      for (;;) {
+        const now = test(await s.testHelpers.testClocks.retrieve(clock.id));
+        if (now.status === "ready") break;
+        assert.notEqual(now.status, "internal_failure");
+        if (Date.now() > deadline) throw new Error("Test clock did not settle");
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      at = to;
+    },
+    /** What Stripe says now, through customerPlan and parentPlan, and the row a webhook would write. */
+    read: async (label: string) => {
+      const live = await customerPlan(s, customer.id);
+      const fromStripe = planAccessRule(live, at * 1000);
+      await applyPlanEvent({ id: `evt_qa_${++events}`, type: "customer.subscription.updated", created: at, customer: customer.id }, states);
+      const stored = await readChildPlan({ parentId, childId }, memory.store);
+      const fromRow = planAccessRule(stored, at * 1000);
+      report.checks.push({ case: label, day: Math.round((at - base) / DAY * 10) / 10, kind: live.kind, stored: stored.kind, fromStripe, fromRow }); save();
+      expect(fromRow).toEqual(fromStripe);
+      return fromRow;
+    },
+  };
+  return f;
+}
+const invoices = async (customer: string) => (await s.invoices.list({ customer, limit: 100 })).data.map((i) => ({ status: i.status, paid: i.amount_paid, due: i.amount_due, reason: i.billing_reason }));
+const trialEnd = (f: Awaited<ReturnType<typeof fixture>>) => f.base + 30 * DAY;
+
+afterAll(async () => {
+  for (const id of clocks) {
+    try { await s.testHelpers.testClocks.del(id); report.cleanup.push({ clock: id, deleted: true }); }
+    catch (e) { report.cleanup.push({ clock: id, deleted: false, error: e instanceof Error ? e.message.slice(0, 120) : "failed" }); }
+  }
+  save();
+});
+
+it("a paid plan: closed before the start, free month open, stays open past day 30 after payment", { timeout: 300_000 }, async () => {
+  const f = await fixture("paid", "tok_visa");
+  expect(await f.read("paid: before start")).toEqual({ open: false, reason: "no_plan" });
+  await f.start();
+  expect(await f.read("paid: after start")).toEqual({ open: true, reason: "open" });
+  await f.advance(trialEnd(f) - DAY);
+  expect((await f.read("paid: day 29")).open).toBe(true);
+  await f.advance(trialEnd(f) + 2 * 3600);
+  expect(await f.read("paid: day 30 after payment")).toEqual({ open: true, reason: "open" });
+  report.checks.push({ case: "paid: invoices", invoices: await invoices(f.customer.id) }); save();
+});
+
+it("a plan cancelled in its free month: stays open until the end, closes at it", { timeout: 300_000 }, async () => {
+  const f = await fixture("cancel", "tok_visa");
+  await f.start();
+  await cancelPlan(s, f.customer.id);
+  expect(await f.read("cancel: just cancelled")).toEqual({ open: true, reason: "ending_until_end" });
+  await f.advance(trialEnd(f) - 60);
+  expect(await f.read("cancel: a minute before the end")).toEqual({ open: true, reason: "ending_until_end" });
+  await f.advance(trialEnd(f) + 3600);
+  expect(await f.read("cancel: after the end")).toEqual({ open: false, reason: "ended" });
+  report.checks.push({ case: "cancel: invoices", invoices: await invoices(f.customer.id) }); save();
+});
+
+it("a failed payment closes, and a payment that succeeds reopens at once", { timeout: 300_000 }, async () => {
+  const f = await fixture("failed", "tok_chargeCustomerFail");
+  await f.start();
+  expect((await f.read("failed: free month")).open).toBe(true);
+  await f.advance(trialEnd(f) + 2 * 3600);
+  expect(await f.read("failed: day 30, payment failed")).toEqual({ open: false, reason: "payment_failed" });
+  const open = (await s.invoices.list({ customer: f.customer.id, status: "open", limit: 1 })).data[0];
+  assert.ok(open?.id);
+  const good = test(await s.paymentMethods.create({ type: "card", card: { token: "tok_visa" } }));
+  await s.paymentMethods.attach(good.id, { customer: f.customer.id });
+  test(await s.invoices.pay(open.id, { payment_method: good.id }));
+  expect(await f.read("failed: after a good payment")).toEqual({ open: true, reason: "open" });
+  report.checks.push({ case: "failed: invoices", invoices: await invoices(f.customer.id) }); save();
+});

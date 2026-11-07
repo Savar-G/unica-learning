@@ -6,7 +6,7 @@ import { parentDashboard } from "@/lib/parent-dashboard-server";
 import { readWorkbooks } from "@/lib/parent-view";
 import { parentViewReader } from "@/lib/parent-view-server";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
-import { scanPagesAccess } from "@/lib/scan-pages-access";
+import { scanChildAccess } from "@/lib/scan-pages-access";
 import { markingAccess } from "@/lib/scan-marking-server";
 
 export const metadata = pageMetadata({ path: "/account/workbooks", title: "Workbooks", description: "Your child's workbooks.", index: false });
@@ -19,7 +19,7 @@ async function load(childId: string) {
   const admin = adminClient();
   const view = await readWorkbooks(parentViewReader(session, parent, admin), childId, Date.now());
   if (!view) notFound();
-  const historyAvailable = admin && await scanPagesAccess(parent, admin) && await markingAccess(admin, parent);
+  const historyAvailable = admin && await scanChildAccess(parent, childId, admin) && await markingAccess(admin, parent);
   return { view, parent, historyAvailable };
 }
 

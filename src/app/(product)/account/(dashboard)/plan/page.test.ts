@@ -6,7 +6,9 @@ import { canCancel } from "@/lib/parent-plan";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account/plan", useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
-const f = vi.hoisted(() => ({ dashboard: null as unknown, plans: [] as unknown[], pending: new Map<string, "pause" | "restart" | "cancel">() }));
+const f = vi.hoisted(() => ({ dashboard: null as unknown, plans: [] as unknown[], pending: new Map<string, "pause" | "restart" | "cancel">(), manage: false, closed: false }));
+vi.mock("@/lib/parent-dashboard-access", () => ({ planManagementAccess: async () => f.manage }));
+vi.mock("@/components/plan-closed-note", () => ({ planClosedFamily: async () => f.closed, PlanClosedNote: () => "Your plan is not running" }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => f.dashboard }));
 vi.mock("@/lib/plan-controls-server", () => ({ familyPendingControls: async () => f.pending }));
 vi.mock("@/lib/parent-plan-server", () => ({ familyPlans: async () => f.plans }));
@@ -25,7 +27,7 @@ vi.mock("@/lib/supabase-auth", () => ({
 const failed: ChildPlan = { cardId: "card-1", childName: "Leah", plan: { kind: "payment_failed" } };
 const page = async () => renderToStaticMarkup(await PlanPage());
 
-beforeEach(() => { f.dashboard = null; f.plans = [failed]; f.pending = new Map(); });
+beforeEach(() => { f.dashboard = null; f.plans = [failed]; f.pending = new Map(); f.manage = false; f.closed = false; });
 
 it("keeps today's words for a family the dashboard's switch does not open to", async () => {
   const out = await page();
@@ -34,6 +36,20 @@ it("keeps today's words for a family the dashboard's switch does not open to", a
   expect(out).not.toContain("Update card");
   expect(canCancel(failed.plan)).toBe(true);
   expect(out).toContain("Cancel plan");
+});
+
+it("gives a closed family with a failed payment the way to pay, the cancel button and a plain note, with no dashboard", async () => {
+  f.manage = true; f.closed = true;
+  const out = await page();
+  expect(out).toContain("Your plan is not running");
+  expect(out).toContain('Please <a href="/account/settings">update your card</a>.');
+  expect(out).toContain("Cancel plan");
+  expect(out).not.toContain("To update your card, email");
+});
+
+it("offers Restart to a closed family whose plan ended", async () => {
+  f.manage = true; f.closed = true; f.plans = [{ cardId: "card-1", childName: "Leah", plan: { kind: "ended" } }];
+  expect(await page()).toContain("Your plan is not running");
 });
 
 it("points a dashboard family to the card update on the Account tab, and keeps the cancel button here", async () => {

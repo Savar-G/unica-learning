@@ -1,13 +1,26 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
+import { childPlanAccess } from "@/lib/plan-access";
 import { markingAccess } from "@/lib/scan-marking-server";
 import { parentExplanationStore } from "@/lib/parent-problem-explanation-store";
 import { explanationAiClient } from "@/lib/parent-problem-explanation-ai";
 import { explainParentProblem, type ExplanationRef } from "@/lib/parent-problem-explanation";
 
+/**
+ * Who may ask: marking's own gate, or the open plan of this photo's child (src/lib/plan-access.ts). A plan does not open a
+ * sibling's photo. It also opens nothing to read until the page has marks and the price row is enabled: with neither, the
+ * feature refuses and makes no AI call.
+ */
+export async function explanationAccess(db: SupabaseClient<Database>, parent: string, photo: string): Promise<boolean> {
+  if (await markingAccess(db, parent)) return true;
+  const { data, error } = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
+  if (error || !data) return false;
+  return (await childPlanAccess({ parentId: parent, childId: data.child_id }, { db })).open;
+}
+
 export async function parentProblemExplanation(db: SupabaseClient<Database>, ref: ExplanationRef, sessionActive: () => Promise<boolean>, signal: AbortSignal) {
-  // D236 stays closed to real families even if the broad scan release is enabled later.
-  const active = async () => await sessionActive() && await markingAccess(db, ref.parent);
+  // The broad scan release (SCAN_PAGES_ENABLED) opens nothing here; only the gate above does.
+  const active = async () => await sessionActive() && await explanationAccess(db, ref.parent, ref.photo);
   return explainParentProblem(parentExplanationStore(db), ref, crypto.randomUUID(), explanationAiClient(), { active, signal });
 }

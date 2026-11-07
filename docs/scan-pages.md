@@ -2,6 +2,8 @@
 
 `SCAN_PAGES_ENABLED` is a server release switch. Leave it unset to keep scanning closed to ordinary families in every environment, including production. While it is off, only families marked in `public.test_accounts` and users listed in `public.admin_users` have access. The server reads those marks on each request. A browser cannot supply its own mark.
 
+A child with an open plan also has scanning, with no switch (`src/lib/plan-access.ts`). `scanPagesAccess` is the family's way in; each route or page that names a child or a photo also asks `scanChildAccess`, so one child's plan does not open a sibling. The switch and a mark go on opening every child. A closed plan reads as the usual not found. The per-child routes are the stack, admission, reading and saving a photo, the image, progress and "Email me the link". Delete and release of a photo ask only the family's way in. Send and the checks stay for marked families (`markedFamily`), and marking keeps its own gate (`markingAccess`).
+
 To open scanning to signed-in families, set `SCAN_PAGES_ENABLED` to `on` in the server environment for the deployment, then redeploy. Only the exact value `on` enables it. Remove the value and redeploy to close access again. This PR does not set the variable.
 
 Parent home shows the link only when the server permits access. `/account/scan` and every scan API handler independently check the live signed-in session and release before they read a photo, parse an upload or change data. Blocked requests use the normal not-found response. The image route checks access again after the Storage read. The desk lock still applies to permitted users.

@@ -2,6 +2,8 @@ import { adminSession, type CardSetupRow } from "@/lib/admin-store";
 import { adminClient } from "@/lib/supabase-auth";
 import { isUuid } from "@/lib/assessment-store";
 import { endCardOperation, holdPlanStart } from "@/lib/family-deletion-store";
+import { applyPlanStart } from "@/lib/plan-state";
+import { livePlanStates } from "@/lib/plan-state-server";
 import { startPlan, stripe } from "@/lib/stripe";
 import { planPrice } from "@/lib/subscription-plan";
 import { firstDelivery } from "@/lib/workbook-delivery";
@@ -10,8 +12,9 @@ import { sendPlanStartEmail } from "@/lib/workbook-email-server";
 import { workbookStore } from "@/lib/workbook-store";
 
 // D-139: an admin starts a saved card's paid plan when the child's first workbook arrives at your home. Stripe holds the result; the
-// dashboard reads it from there, and the parent gets the confirmation email. Answers { ok, firstChargeAt, confirmation }
-// or { ok: false, error }.
+// dashboard reads it from there, and the parent gets the confirmation email. This action also opens the product for that child
+// (src/lib/plan-access.ts): it writes the plan state at once, before any webhook. Answers { ok, firstChargeAt, access, confirmation }
+// or { ok: false, error }. `access` is "open" when the plan state is written, else "pending": the webhook or the sweep then writes it.
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards/[id]/start">) {
   // Checks Auth and live admin membership for every request.
   const admin = await adminSession();
@@ -45,13 +48,27 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     if (!service) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
     if (await holdPlanStart(service, card.parent_id, card.id) === "fenced") return Response.json({ ok: false, error: "family_unavailable" }, { status: 409 });
     const price = planPrice(Number(card.price), card.plan);
+    const startedAt = Date.now();
     const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true });
     await endCardOperation(service, card.id);
     if (!result.ok) return Response.json(result, { status: 409 });
-    return Response.json({ ...result, confirmation: await confirm(card.id, result.generation, price, result.firstChargeAt, new URL(request.url).origin) });
+    const access = await openAccess({ customer: card.stripe_customer_id, cardSetup: card.id, generation: result.generation, startedAt });
+    return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, price, result.firstChargeAt, new URL(request.url).origin) });
   } catch (e) {
     console.error("[stripe] start plan failed", e instanceof Error ? e.message : "failed");
     return Response.json({ ok: false, error: "failed" }, { status: 502 });
+  }
+}
+
+/** The plan has started, so a failed write must not read as a failed start. The webhook and the sweep each write the row too. */
+async function openAccess(start: Parameters<typeof applyPlanStart>[0]): Promise<"open" | "pending"> {
+  try {
+    const states = livePlanStates();
+    if (!states) return "pending";
+    return await applyPlanStart(start, states) === "no_match" ? "pending" : "open";
+  } catch (e) {
+    console.error("[stripe] plan state after start failed", e instanceof Error ? e.message : "failed");
+    return "pending";
   }
 }
 

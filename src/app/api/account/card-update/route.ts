@@ -1,14 +1,14 @@
 import { isUuid } from "@/lib/assessment-store";
 import { startCardUpdate } from "@/lib/billing";
 import { liveCardUpdates } from "@/lib/billing-server";
-import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
+import { planManagementAccess } from "@/lib/parent-dashboard-access";
 import { ACCOUNT_PATH } from "@/lib/parent-shell";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 
 const fail = (error: string, status: number) => Response.json({ ok: false, error }, { status });
 
-// The Account tab's "Update card" (#554): answers with Stripe's hosted page. Behind the dashboard's switch, so a family it
-// does not open to gets the same 404 as an unknown row. JSON and the site's origin only: a form on another site cannot
+// The Account tab's "Update card" (#554): answers with Stripe's hosted page. Behind planManagementAccess, so a family with a
+// failed payment can pay, and a family with no plan and no dashboard gets the same 404 as an unknown row. JSON and the site's origin only: a form on another site cannot
 // send it with the parent's cookies. The body names only the card setup; the Stripe customer comes from the parent's row.
 export async function POST(request: Request) {
   const { origin } = new URL(request.url);
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   if (!request.headers.get("content-type")?.startsWith("application/json")) return fail("bad_json", 415);
   const parent = await parentId(await sessionClient());
   if (!parent) return fail("signed_out", 401);
-  if (!(await parentDashboardAccess(parent))) return fail("not_found", 404);
+  if (!(await planManagementAccess(parent))) return fail("not_found", 404);
   let body: { card?: unknown } | null;
   try { body = await request.json(); } catch { return fail("bad_json", 400); }
   if (typeof body?.card !== "string" || !isUuid(body.card)) return fail("invalid", 400);

@@ -10,6 +10,7 @@ export async function POST(request: Request) {
   try {
     const { id, child, bytes } = await request.json();
     if (!isUuid(id) || !isUuid(child) || !Number.isSafeInteger(bytes)) return scanJson({ error: "refused" }, 400);
+    if (!await session.childOpen(child)) return scanJson({ error: "refused" }, 404);
     const { data, error } = await session.admin.rpc("admit_scan_photo", { p_parent: session.parent, p_child: child, p_id: id, p_bytes: bytes });
     if (error) return scanJson({ error: "unavailable" }, 503);
     if (!["reserved", "processing", "pending", "saved"].includes(data)) return scanJson({ error: data }, 429);
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
   const session = await scanSession();
   const child = new URL(request.url).searchParams.get("child");
   if (!child || !isUuid(child)) return scanJson({ error: "refused" }, 400);
+  if (!await session.childOpen(child)) return scanJson({ error: "refused" }, 404);
   try {
     const checks = await markedFamily(session.parent, session.admin);
     return scanJson({ checks, marking: await markingAccess(session.admin, session.parent), ...await readScanStack(session.admin, session.parent, child, checks) });

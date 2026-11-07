@@ -271,6 +271,8 @@ export async function settleNewestCard(cardId: string, customer: string, first: 
 export type SendOutcome = { status: "sent"; emailId: string } | { status: "refused"; error: string } | { status: "unknown"; error: string } | { status: "busy" };
 
 export interface CardCheckSeams extends CardSeams {
+  /** Stores the plan state of a start this check just closed, for the plan gate (src/lib/plan-access.ts), as the start route does for its own. */
+  planStarted?(row: CardRow, start: PlanStart): Promise<void>;
   /** Tells the parent that the plan they did not hear about has started. Answers the send's outcome. Throws when the claim fails: nothing went. */
   announcePlan(row: CardRow, start: PlanStart): Promise<SendOutcome | { status: "not_sent"; released: boolean }>;
   /**
@@ -388,6 +390,15 @@ export interface CardCheck {
   failure: unknown;
 }
 
+/** A failed write costs only the plan gate's wait for the next event: the record is closed, and the email still goes. */
+async function writePlanState(row: CardRow, start: PlanStart, seams: CardCheckSeams) {
+  try {
+    await seams.planStarted?.(row, start);
+  } catch (e) {
+    console.error("[billing] plan state after a closed start failed", e instanceof Error ? e.message : "failed");
+  }
+}
+
 /** Brings one row's Stripe side to the row, decides its open start, and sends its pending email. Throws only when the row cannot be flagged. */
 export async function checkCardRow(row: CardRow, seams: CardCheckSeams, now = Date.now()): Promise<CardCheck> {
   const card = row.deletionQueued ? { wrote: 0, failure: null } : await settleNewestCard(row.cardId, row.customer, row, seams);
@@ -397,6 +408,7 @@ export async function checkCardRow(row: CardRow, seams: CardCheckSeams, now = Da
   let justClosed = false;
   try {
     if (start.state === "open") ({ plan, start, justClosed } = await checkOpenStart(row, start, seams, now));
+    if (justClosed) await writePlanState(row, start, seams);
     return { wrote: card.wrote, plan, email: row.deletionQueued ? "none" : await tellParent(row, start, seams, justClosed, now), failure: card.failure };
   } catch (e) {
     console.error("[billing] plan start check failed", e instanceof Error ? e.message : "failed");

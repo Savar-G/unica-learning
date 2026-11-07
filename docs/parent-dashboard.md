@@ -2,7 +2,19 @@
 
 `PARENT_DASHBOARD_ENABLED` is a server release switch (spec #544, #551). Leave it unset. While it is unset, only families marked in `public.test_accounts` and users listed in `public.admin_users` get the dashboard, and every other family gets today's Parent home. The server reads those marks on each request. A browser cannot supply its own mark.
 
-Only the exact value `on` opens the dashboard to every family. Set it in the server environment and redeploy, and do this only after Savar approves on the one review page (D-249). Remove the value and redeploy to close it again.
+A family with any child on an open plan also gets the dashboard, with no switch (`src/lib/plan-access.ts`, see "The plan gate" below). Only the exact value `on` opens the dashboard to every family. Set it in the server environment and redeploy, and do this only after Savar approves on the one review page (D-249). Remove the value and redeploy to close it again.
+
+## The plan gate
+
+The admin action "Workbook delivered: start free month" (`/api/admin/cards/[id]/start`) opens the product for that child, and access closes when the plan stops. The report's button only saves a card and opens nothing.
+
+- One gate, read from `child_plan_states`: `childPlanAccess({ parentId, childId }, deps?)` and `familyPlanAccess({ parentId }, deps?)` answer `{ open, reason }`. `deps` holds the database client and the clock, for tests. They never throw for a failed read.
+- Open: `free_month`, `paying`, and `ending` until its end date. Closed: no row, `not_started`, `ended`, `payment_failed`, `paused`, a kind the code does not know, a row that does not fit its kind, an `ending` row with no readable end date, and any failed read.
+- Who uses it: the dashboard (family level), Scan pages, Explain and Maya chat (each per child). Marking keeps its own gate.
+- No webhook wait: after `startPlan` answers ok, the route writes the row through `applyPlanStart` (`src/lib/plan-state.ts`). A failed write answers `access: "pending"` and still reads as a started plan. An `unconfirmed` start writes nothing. The card sweep and the webhook's card check write the row when they close such a start.
+- A closed family: `planManagementAccess` is the dashboard's gate or `familyHasPlanHistory` (a plan row other than `not_started`, or a plan start that is `open`, `started` or `other`). It keeps `/account/plan`, `/account/settings` (with no dashboard frame and a plain note), the card update, invoices, Pause and Restart, child details and the family and child delete. A family with no plan and no dashboard gets the same pages as before.
+- No email: opening the gate makes no email due. The monthly summary reads `dashboardSwitchOpen`, not the gate. Scan reminders stay on their own parent list. The weekly Maya recap needs a completed call, as the Maya notice says, so it can go to a plan family only after the child chats and a parent agreed to that notice.
+- Known limit: the gate trusts the row. A lost webhook leaves `paying` or `free_month` open until the next event for that customer. No read refreshes it, and after `ended` no more events come. `ending` closes by date with no event.
 
 ## What the switch controls
 
@@ -43,7 +55,7 @@ The pages in `(dashboard)` keep their addresses, because a route group is not in
 - Probes: `supabase/tests/plan_starts.sql`, `supabase/tests/card_row_reconcile.sql` and `supabase/tests/child_card_updates.sql`, through the Supabase MCP `execute_sql`; a run ends with `PROBE_OK` and rolls back.
 - Cancel stays on `/account/plan` (D-222).
 - Pause (#559) and paid Restart (#546) use the existing Account and Plan child cards. Pending requests keep a recovery action after reload. The release stays off. Supported states, the classic paid Pause refusal, durable holds and parent acceptance steps are in `docs/plan-controls.md`.
-- Both card routes answer only to a family the switch opens to, and every other family keeps today's pages.
+- Both card routes answer to `planManagementAccess`: a family the dashboard opens to, or one that has or had a plan. Every other family keeps today's pages.
 - Stored plans change only through `docs/stripe-webhook.md`. Set up that endpoint before families see this page, or a filled row goes stale.
 
 ## Workbooks and answer keys (D-246, revised 2026-11-06)
@@ -74,7 +86,7 @@ The tab still shows for test families only; the `maya` switch in `src/lib/parent
 
 `src/components/account-child-details.tsx` shows one section per child: the first name, the school grade and the learning card. The learning card's questions stay at `/account/learning/<child>` with their route, `/api/account/learning`, which rebuilds the profiles after a save. A grade change goes through the support email.
 
-`PATCH /api/account/children/<id>` changes the first name. It answers only to a family the switch opens to, and answers not found to every other family and for another family's child. Parents have no update right on `first_name`, so the server's key writes it through the service-only function `rename_child` (migration `child_rename`), which keeps it to the parent's own child, and the family write fence still applies. It takes the name by the signup rule (`cleanFirstName`).
+`PATCH /api/account/children/<id>` changes the first name. It answers to `planManagementAccess`, and answers not found to every other family and for another family's child. Parents have no update right on `first_name`, so the server's key writes it through the service-only function `rename_child` (migration `child_rename`), which keeps it to the parent's own child, and the family write fence still applies. It takes the name by the signup rule (`cleanFirstName`).
 
 The rename refuses while the child has an active workbook run. A kept page prints the name in its id, and a resume with another name fails the run. `rename_child` checks the runs and writes the name in one transaction under the child's row lock, and `start_workbook_run` takes that same lock first, so no run starts between the check and the write. A run is active by the app's rule for a stopped run (`runState`, `STALE_SECONDS` in `src/lib/workbook-job.ts`): a queued run for the Mac waits however long it takes, and any other queued or running run is active until it has had no heartbeat for 6 minutes. `rename_child` locks the child's queued and running runs while it decides, so it waits for a resume being made and then sees its fresh heartbeat. A stopped run whose status still says running never blocks a rename: the rename ends it in the same transaction, as `fail_workbook_run` does (failed, the reason "The child's name changed while this workbook was stopped. Prepare it again.", no lease, a `run-failed` audit row), so its old lease writes nothing more and it cannot be taken up again (migration `child_rename_stops_runs`). The admin run page shows that reason, and the next "Prepare next workbook" starts a new run with the new name.
 
@@ -86,7 +98,7 @@ What it does not update: a workbook draft or shipped workbook already made (its 
 
 ## The family delete (#556)
 
-The Account tab's delete and its two routes (the code and the delete, D-255) follow the same switch: each route answers 404 for a family the switch does not open to. The confirmation is `/family-deleted`, outside the account pages, because the session has ended. The privacy and terms pages are worded to stay true while the switch is off: they say "if your account page offers it". See `docs/assessment-deletion.md`.
+The Account tab's delete and its two routes (the code and the delete, D-255) follow `planManagementAccess`: each route answers 404 for a family with no dashboard and no plan. The confirmation is `/family-deleted`, outside the account pages, because the session has ended. The privacy and terms pages are worded to stay true while the switch is off: they say "if your account page offers it". See `docs/assessment-deletion.md`.
 
 ## Adding a tab's page
 
@@ -109,7 +121,7 @@ The Overview is the home page (`/account`) for a child whose stage has the Overv
 
 One email per family per month, with a link to each child's Overview and no attachment. `src/lib/monthly-summary-email.ts` holds the rules, `src/lib/monthly-summary-email-store.ts` the reads and the claims, and the `/api/reminders` run sends it after the other emails, on the same spaced transport (one send every 600 ms). `?dry=1` counts it as `monthly` and sends nothing.
 
-- Who: only a family the switch opens to, through `parentDashboardAccess`, as the rest of the dashboard reads it. While the switch is off, that is test families and admins, with their real addresses. A failed read of a mark counts as not marked. An address on a domain that cannot get email (`canGetEmail`) is left out. A family with no confirmed delivery has no summary, so it gets no email.
+- Who: only a family the switch opens to, through `dashboardSwitchOpen`, never the plan gate: opening a plan makes no email due. While the switch is off, that is test families and admins, with their real addresses. A failed read of a mark counts as not marked. An address on a domain that cannot get email (`canGetEmail`) is left out. A family with no confirmed delivery has no summary, so it gets no email.
 - Which children: each child whose summary the Overview offers. `src/lib/monthly-summary-offer.ts` is the one rule; `readOverview` and the email both call it, in family time (`src/lib/family-time.ts`). A child with an ended plan still counts, because the Overview still offers the summary.
 - When: from the 1st of the month at 7 a.m. family time to the end of the 7th. It names the month that just ended. After the 7th, a family with no email that month waits for the next month. The store reads nothing on UTC days that no window touches (the 9th to the 27th).
 - Once: the send key is (parent, month), in `email_log.summary_month` (the first day of that month), with a unique index. A refused send retries up to `MAX_SEND_ATTEMPTS` times. An unknown outcome stays claimed, and nothing sends it again. A claim that fails stops that family only. A run sends at most 20.

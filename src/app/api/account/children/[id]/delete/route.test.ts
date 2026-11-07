@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 const f = vi.hoisted(() => ({ user: vi.fn(), access: vi.fn(), service: vi.fn(), request: vi.fn(), run: vi.fn(), prove: vi.fn(), plans: vi.fn(), stripe: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ sessionClient: async () => ({ auth: { getUser: f.user } }), adminClient: f.service }));
-vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access }));
+vi.mock("@/lib/parent-dashboard-access", () => ({ parentDashboardAccess: f.access, planManagementAccess: f.access }));
 vi.mock("@/lib/family-delete-code", () => ({ codeProof: f.prove }));
 vi.mock("@/lib/family-delete", () => ({ requestFamilyDelete: f.request }));
 vi.mock("@/lib/family-delete-server", () => ({ supabaseDeleteCodes: () => "codes" }));

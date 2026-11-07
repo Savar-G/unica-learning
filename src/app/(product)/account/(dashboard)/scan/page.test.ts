@@ -37,6 +37,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
     const kids = [{ id: "c1", first_name: "Iris" }, { id: "c2", first_name: "Leo" }];
     return {
       parent: "p1",
+      childOpen: async () => true,
       db: {
         from: (table: string) => ({
           select: () => ({

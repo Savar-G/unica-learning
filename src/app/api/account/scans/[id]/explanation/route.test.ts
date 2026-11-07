@@ -3,8 +3,7 @@ const seams = vi.hoisted(() => ({ signedIn: true, active: true, released: true, 
 const parent = "11111111-1111-4111-8111-111111111111", photo = "22222222-2222-4222-8222-222222222222";
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => seams.cookie ? { value: seams.cookie } : undefined }) }));
 vi.mock("@/lib/scan-photo-server", () => ({ scanSession: async () => { if (!seams.signedIn) throw Error("NEXT_NOT_FOUND"); return { parent, admin: {}, active: async () => seams.active }; }, scanJson: (v: unknown, status = 200) => Response.json(v, { status, headers: { "Cache-Control": "private, no-store", "Vary": "Cookie" } }) }));
-vi.mock("@/lib/scan-marking-server", () => ({ markingAccess: async () => seams.released }));
-vi.mock("@/lib/parent-problem-explanation-server", () => ({ parentProblemExplanation: (...args: unknown[]) => seams.run(...args) }));
+vi.mock("@/lib/parent-problem-explanation-server", () => ({ explanationAccess: async () => seams.released, parentProblemExplanation: (...args: unknown[]) => seams.run(...args) }));
 import { POST } from "./route";
 const request = (body: unknown = { itemId: "original", version: 2 }, origin = "https://synthetic.invalid", signal?: AbortSignal) => new Request(`https://synthetic.invalid/api/account/scans/${photo}/explanation`, { method: "POST", headers: { origin }, body: typeof body === "string" ? body : JSON.stringify(body), signal });
 const context = { params: Promise.resolve({ id: photo }) };
