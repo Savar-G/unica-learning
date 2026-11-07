@@ -28,8 +28,17 @@ it("uses canonical parent-corrected results after expiry and does not count reta
 it("keeps blank, unscored, pending, failed, never scanned and ready separate", () => {
   const blank = record(1, "blank"), unscored = record(2), pending = record(3, null), failed = record(4, null), empty = record(5);
   unscored.marks[0].expected.method = "unscored"; Object.assign(unscored.marks[0].observation, { state: "unscored", method: "unscored", result: null });
-  pending.jobs[0].state = "running"; pending.photos[0].state = "saved"; pending.photos[0].expiresAt = "2027-01-01"; failed.jobs[0].state = "queued"; failed.jobs[0].blocked = "attempts"; empty.marks = []; empty.photos = []; empty.jobs = [];
+  pending.jobs[0].state = "running"; pending.photos[0].state = "saved"; pending.photos[0].expiresAt = "2027-01-01"; failed.jobs[0].state = "queued"; failed.jobs[0].blocked = "attempts"; failed.marks[0].model = null; empty.marks = []; empty.photos = []; empty.jobs = [];
   expect([blank, unscored, pending, failed, empty, record(6)].map((r) => historyPage(r, now).status)).toEqual(["blank", "unscored", "pending", "failed", "never-scanned", "ready"]);
+});
+it("an unsure page says our team is checking it; a page not read yet says Not marked yet; neither asks the parent (#715)", () => {
+  const unsure = record(1, null), unread = record(2, null);
+  unread.marks[0].model = null; unread.jobs = []; unread.photos[0].state = "saved"; unread.photos[0].expiresAt = "2027-01-01";
+  expect(historyPage(unsure, now)).toMatchObject({ status: "review", label: "Our team is checking", counts: { teamChecks: 1, pending: 0 } });
+  expect(historyPage(unread, now)).toMatchObject({ status: "pending", label: "Not marked yet", counts: { teamChecks: 0, pending: 1 } });
+  // Photo gone and never read: still not marked, never a team claim.
+  unread.photos[0].expiresAt = "2026-01-01";
+  expect(historyPage(unread, now)).toMatchObject({ status: "pending", label: "Not marked yet" });
 });
 it("advances across every cursor page and filters before counting or costing the displayed set", async () => {
   const data = Array.from({ length: 108 }, (_, n) => record(n + 1, n % 3 === 0 ? null : "right"));

@@ -125,7 +125,9 @@ it("renders the actual confirmation, late mailing, paid restart, decline and sca
   const map = dom(rendered("progress", "map"));
   for (const state of STATE_ORDER) expect(map.querySelector(`.pp-tile.is-${state}`)).not.toBeNull();
   expect(text("plan", "restart_declined")).toContain("Your payment did not go through");
-  expect(text("scan_results", "uncertain")).toContain("Please check this answer");
+  expect(text("scan_results", "uncertain")).toContain("Our team is checking it.");
+  expect(text("scan_results", "uncertain")).not.toMatch(/please check|check this answer/i);
+  expect(text("scan_results", "pending")).toContain("Your page is not marked yet.");
   expect(text("scan_results", "unscored")).toContain("Not scored");
   expect(text("scan_results", "expired")).toContain("Photo no longer available");
   expect(text("scan_results", "budget")).toContain("We cannot check more pages right now");
@@ -246,7 +248,7 @@ it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({
     expect(history.textContent).toContain(`Workbook 3 · Day ${child === "first" ? 1 : 2}`);
     expect(history.textContent).not.toContain("Workbook 2");
     expect(history.textContent).toContain("More pages");
-    for (const text of ["Results ready", "2 of 3 right", "Please check", "Waiting for a check", "Could not check", "All answers blank", "Not scored", "No saved results"]) expect(history.textContent).toContain(text);
+    for (const text of ["Results ready", "2 of 3 right", "Our team is checking", "Not marked yet", "Could not mark", "All answers blank", "Not scored", "No saved results"]) expect(history.textContent).toContain(text);
     expect(history.textContent).not.toContain("Loading page history");
     expect(history.querySelectorAll('a[role="link"]')).toHaveLength(6);
     expect(history.querySelectorAll('[href]')).toHaveLength(0);
@@ -256,9 +258,10 @@ it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({
 it("has real empty, expired, missing-photo, loading, error and closed history states in the Admin sandbox", () => {
   const history = (state: string) => dom(rendered("workbooks", state)).querySelector(".scan-history")!;
   expect(history("history_empty").textContent).toContain("No saved page results");
-  expect(history("history_review").textContent).toContain("Continue checking");
-  expect(history("history_pending").textContent).toContain("Waiting for a check");
-  expect(history("history_failed").textContent).toContain("Could not check");
+  expect(history("history_review").textContent).toContain("Our team is checking");
+  expect(history("history_review").textContent).not.toMatch(/continue checking|parent check|answers to check/i);
+  expect(history("history_pending").textContent).toContain("Not marked yet");
+  expect(history("history_failed").textContent).toContain("Could not mark");
   expect(history("history_expired").textContent).toContain("Photo no longer available");
   expect(history("history_expired").querySelector('a[role="link"]')).not.toBeNull();
   expect(history("history_missing_photo").textContent).toContain("2 of 3 right");

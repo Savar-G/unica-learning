@@ -11,7 +11,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => fake.pathname }));
 vi.mock("@/lib/supabase-browser", () => ({ browserClient: () => ({ auth: { onAuthStateChange: (callback: typeof fake.auth) => { fake.auth = callback; return { data: { subscription: { unsubscribe() {} } } }; } } }) }));
 vi.mock("@/lib/scan-track", () => ({ scanEventTicket: (current: () => boolean) => (event: string, status: string) => { if (current()) fake.events.push(`${event}:${status}`); } }));
 let host: HTMLDivElement, root: Root;
-const page: HistoryPage = { id: "page", childId: "child", childName: "Synthetic", workbookId: "book", book: 2, revision: "frozen", day: "Day 4", pageNumber: 8, status: "review", label: "Please check", photo: "expired", photoAvailable: false, failedJob: false, counts: { scored: 0, unscored: 0, parentChecks: 1, pending: 0 }, right: 0, wrong: 0, blank: 0 };
+const page: HistoryPage = { id: "page", childId: "child", childName: "Synthetic", workbookId: "book", book: 2, revision: "frozen", day: "Day 4", pageNumber: 8, status: "review", label: "Our team is checking", photo: "expired", photoAvailable: false, failedJob: false, counts: { scored: 0, unscored: 0, teamChecks: 1, pending: 0 }, right: 0, wrong: 0, blank: 0 };
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); fake.events = []; fake.pathname = "/account/workbooks/child"; host = document.createElement("div"); document.body.append(host); root = createRoot(host); });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 it("history groups retained results and links unfinished checks to the existing review", async () => {
@@ -96,10 +96,10 @@ it("keeps the canonical result states distinct without inferring a missing scan"
   const states = ["ready", "review", "pending", "failed", "blank", "unscored", "never-scanned"] as const;
   const pages = states.map((status, index) => ({ ...page, id: String(index), status, label: status, workbookId: index < 4 ? "current-book" : "past-book", book: index < 4 ? 3 : 2,
     photo: status === "never-scanned" ? null : "expired", right: status === "ready" ? 2 : 0, blank: status === "blank" ? 1 : 0,
-    counts: { scored: 3, unscored: status === "unscored" ? 1 : 0, parentChecks: status === "review" ? 1 : 0, pending: status === "pending" ? 1 : 0 } }));
+    counts: { scored: 3, unscored: status === "unscored" ? 1 : 0, teamChecks: status === "review" ? 1 : 0, pending: status === "pending" ? 1 : 0 } }));
   const html = renderToStaticMarkup(createElement(ScanHistoryView, { listing: listing(pages), state: "ready" }));
   expect(html).toContain("2 of 3 right"); expect(html).toContain("1 blank"); expect(html).toContain("1 not scored");
-  expect(html).toContain("Continue checking"); expect(html).toContain("Photo no longer available");
+  expect(html).toContain("View page results"); expect(html).not.toMatch(/continue checking|parent check|answers to check/i); expect(html).toContain("Photo no longer available");
   expect(html).toContain("No saved results"); expect(html).not.toContain("No photo yet");
   expect(html.indexOf("Workbook 3")).toBeLessThan(html.indexOf("Workbook 2"));
   expect((html.match(/href=/g) ?? []).length).toBe(6);

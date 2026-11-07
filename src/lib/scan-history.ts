@@ -1,7 +1,8 @@
 import { markingPageView, type EffectiveMark } from "@/lib/scan-marking";
 
 export type HistoryStatus = "never-scanned" | "pending" | "review" | "failed" | "blank" | "unscored" | "ready";
-export const HISTORY_LABELS: Record<HistoryStatus, string> = { "never-scanned": "No photo yet", pending: "Waiting for a check", review: "Please check", failed: "Could not check", blank: "All answers blank", unscored: "Not scored", ready: "Results ready" };
+/** "review": our team is checking an answer the AI was unsure of. No label asks a parent to judge an answer (#715). */
+export const HISTORY_LABELS: Record<HistoryStatus, string> = { "never-scanned": "No photo yet", pending: "Not marked yet", review: "Our team is checking", failed: "Could not mark", blank: "All answers blank", unscored: "Not scored", ready: "Results ready" };
 export interface HistoryPhoto { id: string; state: string; expiresAt: string; sentAt: string | null; at: string }
 export interface HistoryJob { photo: string; state: string; blocked: string | null; dispatches: number }
 export interface HistorySpend { id: string; model: string; at: string; reserved: number; charged: number | null; outcome: string }
@@ -21,10 +22,12 @@ export function historyPage(r: HistoryRecord, now: number): HistoryPage {
   const view = markingPageView(r.marks);
   const failedJob = r.jobs.some((j) => j.blocked === "attempts" || j.blocked === "pending") || r.photos.some((p) => p.state === "rejected");
   const complete = view.completion.status === "complete";
+  // A job still reading (not finished and not held) means a retake is being marked: not marked yet.
+  const reading = r.jobs.some((j) => j.state !== "finished" && j.blocked === null);
   const blank = r.marks.filter((m) => m.observation.result === "blank").length;
   const status: HistoryStatus = complete ? view.counts.scored === 0 ? "unscored" : blank === view.counts.scored ? "blank" : "ready"
-    : view.counts.parentChecks > 0 || (r.jobs.some((j) => j.state === "finished") && view.counts.pending > 0) ? "review"
-    : failedJob ? "failed" : view.counts.pending > 0 && !r.photos.some((p) => p.state === "saved" && Date.parse(p.expiresAt) > now) ? "review" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
+    : view.counts.teamChecks > 0 && !reading ? "review"
+    : failedJob ? "failed" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
   const photo = r.photos.find((p) => p.sentAt !== null) ?? r.photos.at(-1);
   return { id: r.id, childId: r.childId, childName: r.childName, workbookId: r.workbookId, book: r.book, revision: r.revision, day: r.day, pageNumber: r.pageNumber,
     status, label: HISTORY_LABELS[status], photo: photo?.id ?? null, photoAvailable: Boolean(photo && photo.state === "saved" && Date.parse(photo.expiresAt) > now), failedJob,

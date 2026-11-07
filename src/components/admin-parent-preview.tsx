@@ -101,7 +101,7 @@ function workbookHistory(child: ChildView, state: string) {
     book: 3, revision: "synthetic-frozen", day: child.id === "sample-child-2" ? "Day 2" : "Day 1", pageNumber: index + 4,
     status: pageStatus, label: HISTORY_LABELS[pageStatus], photo: pageStatus === "never-scanned" || state === "history_missing_photo" ? null : `${child.id}-photo-${index}`,
     photoAvailable: state !== "history_expired", failedJob: pageStatus === "failed",
-    counts: { scored: pageStatus === "ready" ? 3 : pageStatus === "blank" ? 1 : 0, unscored: pageStatus === "unscored" ? 1 : 0, parentChecks: pageStatus === "review" ? 1 : 0, pending: pageStatus === "pending" ? 1 : 0 },
+    counts: { scored: pageStatus === "ready" ? 3 : pageStatus === "blank" ? 1 : 0, unscored: pageStatus === "unscored" ? 1 : 0, teamChecks: pageStatus === "review" ? 1 : 0, pending: pageStatus === "pending" ? 1 : 0 },
     right: pageStatus === "ready" ? 2 : 0, wrong: pageStatus === "ready" ? 1 : 0, blank: pageStatus === "blank" ? 1 : 0,
   }));
   const listing = { pages, counts: Object.fromEntries(states.map(value => [value, pages.filter(page => page.status === value).length])), after: null };
@@ -153,10 +153,10 @@ function scanResult(state: string): Parameters<typeof ScanMarkingResults>[0]["re
   const unscored = state === "unscored";
   return { photoAvailable: state !== "expired", budgetHeld: state === "budget", solutionsAvailable: !pending && !uncertain && !unscored,
     completion: { total: pending ? 0 : 1, status: pending ? "no-items" : uncertain ? "incomplete" : "complete", finished: pending || uncertain ? 0 : 1, items: pending ? [] : [{ itemId: "sample-question", number: 1, progress: uncertain ? "pending" : "finished" }] },
-    counts: { scored: pending || uncertain || unscored ? 0 : 1, unscored: unscored ? 1 : 0, parentChecks: 0, pending: pending || uncertain ? 1 : 0 },
+    counts: { scored: pending || uncertain || unscored ? 0 : 1, unscored: unscored ? 1 : 0, teamChecks: uncertain ? 1 : 0, pending: pending ? 1 : 0 },
     items: pending ? [] : [{ number: 1, itemId: "sample-question", version: 1, state: uncertain ? "pending" : unscored ? "unscored" : "scored", result: uncertain || unscored ? null : state.startsWith("explain_") ? "wrong" : "right", readAnswerText: uncertain ? "4?" : state.startsWith("explain_") ? "41" : "42",
-      canChange: !unscored, actor: "system", at: "2026-11-05T20:00:00Z", evidencePhoto: "sample-photo", photoAvailable: state !== "expired",
-      label: uncertain ? "Please check this answer" : unscored ? "Not scored" : state.startsWith("explain_") ? "Wrong" : "Right" }] };
+      canChange: !unscored && !uncertain, actor: "system", at: "2026-11-05T20:00:00Z", evidencePhoto: "sample-photo", photoAvailable: state !== "expired",
+      label: uncertain ? "We cannot read this answer. Our team is checking it." : unscored ? "Not scored" : state.startsWith("explain_") ? "Wrong" : "Right" }] };
 }
 
 function previewContent(selection: PreviewSelection, child: ChildView | undefined, kids: ChildView[]) {

@@ -21,8 +21,8 @@ export default async function ScanResultsPage({ params, searchParams }: { params
     <Link href="/account/scan">Back to Scan pages</Link>
     {result.completion.status === "complete" && <ScanPostChoice parent={session.parent} photo={id} />}
     <div id="page-results"><ScanMarkingResults photo={id} parent={session.parent} result={result} showHeading={false} /></div>
-    <details><summary>Parent mark changes</summary>
-      {!changes.length ? <p>No more changes.</p> : <ol>{changes.map((c) => <li key={c.id}>Question {c.previous.expected.number}: {c.previous.observation.result ?? "Waiting for a check"} to {c.current.result}. Parent · {c.at}. We read: {c.previous.observation.readAnswerText ?? "Not read"}.</li>)}</ol>}
+    <details><summary>Mark changes</summary>
+      {!changes.length ? <p>No more changes.</p> : <ol>{changes.map((c) => <li key={c.id}>Question {c.previous.expected.number}: {c.previous.observation.result ?? "Not marked"} to {c.current.result}. {c.actor === "admin" ? "Our team" : "Parent"} · {c.at}. We read: {c.previous.observation.readAnswerText ?? "Not read"}.</li>)}</ol>}
       {changes.length > 0 && <Link className="scan-link" href={`/account/scan/results/${id}?historyAfter=${changes[changes.length - 1].id}`}>More changes</Link>}
       {Number(after) > 0 && <Link className="scan-link" href={`/account/scan/results/${id}`}>First changes</Link>}
     </details>
