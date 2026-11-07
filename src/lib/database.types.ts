@@ -7883,6 +7883,19 @@ export type Database = {
         }
         Returns: Json
       }
+      reserve_scan_marking_physical_evaluation_checked: {
+        Args: {
+          p_attempt: string
+          p_endpoint: string
+          p_evidence: string
+          p_maximum: number
+          p_model: string
+          p_pixels: number
+          p_run: string
+          p_run_maximum: number
+        }
+        Returns: Json
+      }
       reserve_workbook_edit_call: {
         Args: {
           p_hash: string

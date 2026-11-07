@@ -1,0 +1,12 @@
+import { build } from "esbuild";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { resolve } from "node:path";
+await mkdir(".workbook-sample", { recursive: true });
+const folder = await mkdtemp(resolve(".workbook-sample/physical-runner-"));
+try {
+  await build({ stdin: { contents: 'import { physicalMain } from "./scripts/scan-marking-physical-cli.ts"; physicalMain().catch(e => { console.error(`Physical evaluation stopped: ${e.message}`); process.exitCode = 1; });', resolveDir: process.cwd(), sourcefile: "physical-entry.ts" }, define: { "import.meta.url": '"physical-evaluation-bundle"' }, outfile: resolve(folder, "runner.mjs"), bundle: true, platform: "node", target: "node22", format: "esm", packages: "external" });
+  const child = spawnSync(process.execPath, [resolve(folder, "runner.mjs"), "--source-root", process.cwd(), ...process.argv.slice(2)], { stdio: "inherit" });
+  if (child.error) throw child.error;
+  process.exitCode = child.status ?? 1;
+} finally { await rm(folder, { recursive: true, force: true }); }
