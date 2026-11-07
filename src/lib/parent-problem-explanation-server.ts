@@ -8,6 +8,6 @@ import { explainParentProblem, type ExplanationRef } from "@/lib/parent-problem-
 
 export async function parentProblemExplanation(db: SupabaseClient<Database>, ref: ExplanationRef, sessionActive: () => Promise<boolean>, signal: AbortSignal) {
   // D236 stays closed to real families even if the broad scan release is enabled later.
-  const active = async () => await sessionActive() && await markingAccess(db, ref.parent);
+  const active = async () => await sessionActive() && await markingAccess(db, ref.parent, process.env, { photo: ref.photo });
   return explainParentProblem(parentExplanationStore(db), ref, crypto.randomUUID(), explanationAiClient(), { active, signal });
 }

@@ -19,7 +19,7 @@ async function load(childId: string) {
   const admin = adminClient();
   const view = await readWorkbooks(parentViewReader(session, parent, admin), childId, Date.now());
   if (!view) notFound();
-  const historyAvailable = admin && await scanPagesAccess(parent, admin) && await markingAccess(admin, parent);
+  const historyAvailable = admin && await scanPagesAccess(parent, admin) && await markingAccess(admin, parent, process.env, { child: view.child.id });
   return { view, parent, historyAvailable };
 }
 

@@ -27,6 +27,6 @@ export async function GET(request: Request) {
   if (!child || !isUuid(child)) return scanJson({ error: "refused" }, 400);
   try {
     const checks = await markedFamily(session.parent, session.admin);
-    return scanJson({ checks, marking: await markingAccess(session.admin, session.parent), ...await readScanStack(session.admin, session.parent, child, checks) });
+    return scanJson({ checks, marking: await markingAccess(session.admin, session.parent, process.env, { child }), ...await readScanStack(session.admin, session.parent, child, checks) });
   } catch { return scanJson({ error: "unavailable" }, 503); }
 }
