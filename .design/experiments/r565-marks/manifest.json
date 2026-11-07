@@ -10,7 +10,7 @@
   ],
   "constraint_mode": "existing-system",
   "base": "d4af3d62d5fba25ba3b39441d9cc719b2bf06604",
-  "phase": "implementation-handoff",
+  "phase": "review",
   "contract": ".design/experiments/r565-marks/contract.md",
   "state_matrix": ".design/experiments/r565-marks/state-matrix.md",
   "preview": "/admin/dashboard?view=workbooks&scenario=history_populated&family=two&child=second",
@@ -77,7 +77,7 @@
   "evidence": {
     "local": "PASS: 403 focused tests in 12 files; npx eslint src; npx next typegen; npx tsc --noEmit --incremental false. No full suite or build.",
     "screenshots": [],
-    "browser": "Pending root; no browser permitted in this implementation lane.",
+    "browser": "PASS: root browser-review.md, desktop/phone synthetic components and scoped local parent route checks. No production parent-success claim.",
     "hosted": "Not run. Existing RPC ownership inspected in source only.",
     "independent_review": "Pending root.",
     "full_gate": "Pending root.",
@@ -92,5 +92,166 @@
     "skill-panel mistake summaries",
     "monthly summaries"
   ],
-  "report": "/Users/savargupta/unica-workbook-samples/parent-dashboard-remaining-20261106/pd565-implementation-report.md"
+  "report": "/Users/savargupta/unica-workbook-samples/parent-dashboard-remaining-20261106/pd565-implementation-report.md",
+  "screenshots": [
+    {
+      "file": ".design/experiments/r565-marks/admin-active-desktop.png",
+      "bytes": 290277,
+      "sha256": "b9bbfcf28da3480577b2bc39ec091d83479d9335ed5e7ac002567a912a620487"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-empty-desktop.png",
+      "bytes": 284093,
+      "sha256": "44435b1ca18c9abb7c9e69f9d0eca696beb0f4ce4665e4e5dca6b6043ac16ff4"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-review-desktop.png",
+      "bytes": 291804,
+      "sha256": "148de8e9b7a68f69fbae3343b67fcd4f170749812c8a9a9770896580ddb635b0"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-pending-desktop.png",
+      "bytes": 293470,
+      "sha256": "8ce77647dc7049ea3b3084280d3fe98adbfd304697030837e031477ff499064a"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-failed-desktop.png",
+      "bytes": 292821,
+      "sha256": "508adc451b1f61a663a94d09b981e556ea319bb88cbffd6a47433af8d8bfcced"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-expired-desktop.png",
+      "bytes": 297751,
+      "sha256": "9914c57a0f479b17abf70d5726e0204c6792fb1529ab3a9c2524df91e7f099c0"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-missing-photo-desktop.png",
+      "bytes": 297260,
+      "sha256": "8c115b5698cb971010d1a16cbf89359fb8d0e42ea4759bf7482679e2b333be40"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-loading-desktop.png",
+      "bytes": 281873,
+      "sha256": "c008df06aecfe459cdd4b1992cdfcc0e5551ab80bfc25bc5283c5b244a9c4fb5"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-error-desktop.png",
+      "bytes": 288728,
+      "sha256": "55d45ba1a3d02e2afe3799f60bf583d79fb73b87f4f6db8618ed45589fc7c813"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-unavailable-desktop.png",
+      "bytes": 293894,
+      "sha256": "6df45727413aa8d77d16ced904ab7b2d5823898a4cfccbb39787a7bb75f6b7a4"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-active-phone.png",
+      "bytes": 242912,
+      "sha256": "4060199581e92bb3ad534c584d4083a65436d22d74c4cadb731d222a83b93db8"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-empty-phone.png",
+      "bytes": 245209,
+      "sha256": "255c7b58c7f70be09a54bbf4c2c4327d8e62581c9f31b63df22868fb95ce7218"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-review-phone.png",
+      "bytes": 248432,
+      "sha256": "386817581ac739f52a3daffe28f5d749eee3bbbbe3c6a199eb6386faa612dbe4"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-pending-phone.png",
+      "bytes": 249329,
+      "sha256": "2c44b919201b9a1c00e5b1bb886f88532d36a056b62e0ced631b711bc4137def"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-failed-phone.png",
+      "bytes": 248645,
+      "sha256": "c650e9b502854c67625973f0291cff54c7d48806e2a93f2196522ccf8ace219b"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-expired-phone.png",
+      "bytes": 251995,
+      "sha256": "5ffc9e374d78225985e22344dfb5cf7137d6ae141f8c5feb969af5a4e1669a28"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-missing-photo-phone.png",
+      "bytes": 154955,
+      "sha256": "9c7d21e511e8d88d434360e83052ebb0adaa192f7649811872c90e68c1483540"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-loading-phone.png",
+      "bytes": 243015,
+      "sha256": "6c7ba8bb317851cde547131c6a8b30cd88b78147bb71f2eac80d3e8b8d185f39"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-error-phone.png",
+      "bytes": 250506,
+      "sha256": "d5d50372c892318a1bdc6b0b0c8d549f8233443ead19fff3058200ce2d132bf5"
+    },
+    {
+      "file": ".design/experiments/r565-marks/admin-history-unavailable-phone.png",
+      "bytes": 250392,
+      "sha256": "f1be8a2be2e7874f540257135bc7ef838e0671dda3e66b44c03aaeb45bcb6dca"
+    },
+    {
+      "file": ".design/experiments/r565-marks/workbooks-long-phone.png",
+      "bytes": 250985,
+      "sha256": "b7bd27ef93531fc308334e7ed76a36714b3f3494288eb058ec168d6b535ac7b7"
+    },
+    {
+      "file": ".design/experiments/r565-marks/workbooks-sibling-phone.png",
+      "bytes": 239798,
+      "sha256": "28cbae7ee5968213a0b8804cd884db77d568f32d9dee7c028d8bacdbb48eed4b"
+    },
+    {
+      "file": ".design/experiments/r565-marks/workbooks-sibling-desktop.png",
+      "bytes": 291043,
+      "sha256": "a68c4c2c3b9deba4a7fe38977725fec1e49c00177d98a40e5ac17aac9e121928"
+    },
+    {
+      "file": ".design/experiments/r565-marks/workbooks-unconfirmed-phone.png",
+      "bytes": 232521,
+      "sha256": "a0d519be59511f0331bea0bfda3caf8cf23374efee78e03d18e76e515c5bbba9"
+    },
+    {
+      "file": ".design/experiments/r565-marks/workbooks-no-book-phone.png",
+      "bytes": 231370,
+      "sha256": "e7176218910b8c05080243f73514904d29351330b0fbb0349b3a470894987d9b"
+    },
+    {
+      "file": ".design/experiments/r565-marks/parent-desktop.png",
+      "bytes": 241200,
+      "sha256": "9c0c84385a52fe6d4ec59b11e1b49de92d036651eac35bcc80fa68de430cc438"
+    },
+    {
+      "file": ".design/experiments/r565-marks/parent-phone.png",
+      "bytes": 58145,
+      "sha256": "8decad479ec0d7e8d553e64e6fa397dac2eb675d511466dd958308cf4fb41047"
+    },
+    {
+      "file": ".design/experiments/r565-marks/parent-siblingPhone.png",
+      "bytes": 63514,
+      "sha256": "498b8034636bf414da5399e071d616aaedd59e6c40d009522b0e16ba03c23afc"
+    },
+    {
+      "file": ".design/experiments/r565-marks/parent-errorPhone.png",
+      "bytes": 60608,
+      "sha256": "ac52ac1cad4456e912c707e601de3965da10f2364dc423f2b1d3c62e6fb272d2"
+    },
+    {
+      "file": ".design/experiments/r565-marks/parent-resultsPhone.png",
+      "bytes": 62784,
+      "sha256": "9a66eb7ba9117a65553e823eef90628286c58b7dec4b62fbcae1e09348a69d37"
+    },
+    {
+      "file": ".design/experiments/r565-marks/parent-answersPhone.png",
+      "bytes": 47399,
+      "sha256": "f4a0067b175ab78a2353c74739b5c7195263302d550f5742c41a6ca612a476da"
+    }
+  ],
+  "browser_review": "browser-review.md; local synthetic data, desktop and phone. No real-device or 200-percent-zoom claim.",
+  "source_before_evidence": "f4d39429f80ccf741df2878777ab48a424f6572c",
+  "full_gate": "queued in released serial window",
+  "independent_review": "pending"
 }
