@@ -59,7 +59,7 @@ The original nine columns remain: `pdf_page,printed_page,page_id,question,format
 | `photo_clarity` | The operator's map label. It must match the map. |
 | `device` | The operator's map label. It must match the map. |
 
-The generated template has one row per scored region in each photo. A tick-and-number item has two region rows. Repeat the same item-level `intended_result` on both rows. A parent-method item has one `parent-methods` row. The frozen kit gives 76 region rows per complete phone series: 75 automatic regions and one parent row. Two phone series give 152 rows and 148 item labels. The scored item denominator is 146. Additional photos add their own complete rows and items.
+The generated template has one row per scored region in each photo. A tick-and-number item has two region rows. Repeat the same item-level `intended_result` on both rows. A parent-method item has one `parent-methods` row. The frozen kit gives 79 region rows per complete phone series: 78 automatic regions and one parent row. Two phone series give 158 rows and 148 item labels. Each of the three spot-the-error items needs two region readings. The scored item denominator is 146. Additional photos add their own complete rows and items.
 
 For `written`, supply the visible final text in `final_written_answer`. For a choice, supply its printed choice label. Use `right` or `wrong` as the item result. For `blank`, leave the final text and issue empty and use result `blank`. For `uncertain`, use result `uncertain` and an issue from this list: `unreadable`, `crossed-out`, `multiple-marks`, `missing`, `blurry`, `cut-off`, `incomplete`, `answer-form`. The final text may be empty when it cannot be read. A visible partial transcription may be supplied with an uncertain reading.
 
