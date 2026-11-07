@@ -55,7 +55,7 @@ A successful `WorkbookProgressDecision` contains the input snapshot ID, cutoff, 
 
 The action is one of `retain-unfinished`, `advance`, `skill-complete`, `repeat-new-numbers`, `regress-represent`, `repeat-check-work`, `retain-review`, or `change-approach`. Refusals return only a typed reason. They do not echo private evidence. The module has no logging calls.
 
-- Every eligible required item must have resolved first and effective original evidence. Any missing context, missing item, pending item, or uncertain evidence returns `insufficient-evidence`. The step remains unchanged. There is no repeat increment, regression, advancement, or focused-practice decision. Known unresolved misses and unfinished per-item states remain visible.
+- Every eligible required item must have a resolved effective original. The first saved reading can remain pending when a later explicit parent original adjudication resolves it. Any missing context, missing item, pending item, or uncertain evidence returns `insufficient-evidence`. The step remains unchanged. There is no repeat increment, regression, advancement, or focused-practice decision. Known unresolved misses and unfinished per-item states remain visible.
 - Blank is resolved non-right. Try first, unscored activities, and ineligible parent checks do not enter the denominator. A parent check counts only when the trusted expected-item contract explicitly permits it.
 - The effective original mark determines first-answer accuracy. An explicit parent mark change can correct that original adjudication. The first saved mark, score, reading, and provenance remain unchanged in `items[].first`. A successful later try can remove an unresolved miss but never changes first-answer accuracy. The paired tests distinguish these two operations.
 - Help on the first attempt cannot be erased by a later original-mark change. `math-help` and `unknown` never count as independent success. A right result with such help remains `right_with_help` until a separate successful try resolves the miss.
@@ -68,7 +68,7 @@ The action is one of `retain-unfinished`, `advance`, `skill-complete`, `repeat-n
 - Time does not gate mastery. The core has no timing-speed input. Photo availability does not gate retained results. The saved wrong reading `56`, typed value, and model/prompt/event provenance survive a much later supplied cutoff.
 - `reviews` and `missedReviews` reuse `SpacedReview`. Structurally valid caller-validated saved inputs pass through unchanged, including another skill's saved reviews. This core calculates no review schedule. The adapter must validate other-skill curriculum references.
 
-`passed` assumes steps before the selected approved step were previously passed. It reports that count plus the selected step only on mastery. It does not lower that count to imitate regression. The future planner must consume the versioned target/action as well as this projection. Passing `passed` alone would ignore regression and changed approaches.
+`snapshot.priorMastery` now requires an explicit `passedSteps` contiguous prefix and its trusted evidence reference. The count is an integer from zero through the pinned skill step count. Selection approval supplies no earlier mastery. Incomplete and non-mastered samples preserve the supplied prefix. A mastered selected step can extend it only without a gap; a gap returns the bounded `mastery-gap` refusal. A higher proven prefix is preserved. The future adapter must validate this prefix against persisted evidence at the cutoff. It must consume the versioned target/action as well as this projection; passing `passed` alone still cannot express regression or a changed approach.
 
 ## Checks, falsifiers, and limits
 
@@ -107,3 +107,21 @@ This bounded cause contract accepts conceptual evidence only through trusted exp
 - Obtain independent review, settle the stated assumptions, run the required full test/lint/build/browser gate, and handle any later push/PR. The implementation sub-agent did not run those actions.
 
 HANDOFF_READY remains pending root consumption. Root can change the marker after integration.
+
+
+## Root repair round 2
+
+The independent review of 3fde980d found F1, invented earlier mastery, and F2, rejected parent resolution of a pending original. Both findings are retained in workbook-progress-core-472-independent-review.md. Root changed only the new core, its public tests and this handoff. The original review is not rewritten as a pass.
+
+F1 now uses the explicit priorMastery contract described above. F2 treats a canonical parent-checked original as terminal even when it retains uncertain AI reading evidence. Completeness uses the effective original, not the old pending reading. The old reading, result version, provenance and first-attempt help remain available. Successful second tries stay separate from original accuracy.
+
+Before the source repair, the 11 binding regression cases failed while the original 80 tests passed, exit 1. Logs are in overnight-20261107/472-r2-prior-tests.*. After the repair and three extra guard/help cases, all 94 focused tests pass, exit 0. Canonical observationProblem and markingEvent accept the same preserved uncertain parent observations used by the new tests. Right, wrong and blank adjudications resolve the sample; math-help and unknown first-attempt help never become independent success.
+
+The next independent recheck must verify F1 and F2. No full suite, build, browser, provider call, hosted write, planner integration or customer action is established by this repair. Existing printed-source files remain unchanged. Root has not published this branch.
+
+
+### Final root repair checks
+
+The final 94-test selection was run against the exact prior core from 3fde980d through an in-memory Vite loader. No tracked source was replaced. Result: 14 failed and the original 80 passed, exit 1. The same selection then passed all 94 on the repaired source, exit 0. The fixed source and test files passed scoped ESLint with zero errors and zero warnings. Scoped TypeScript returned zero diagnostics. The tool printed a React package auto-detection notice because this isolated checkout has no node_modules; it is not a source warning. No dependency or symlink was installed.
+
+Private evidence: overnight-20261107/472-r2-final-prior-tests.json/log/exit, 472-r2-fixed-tests.json/log/exit, and 472-r2-scoped.log/exit. This remains a new candidate requiring independent recheck. Email #684 retains its reserved main position; no generator heavy or main position is requested.

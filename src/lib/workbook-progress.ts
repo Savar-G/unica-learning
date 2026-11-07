@@ -30,6 +30,8 @@ export interface ProgressSnapshot {
   cutoff: number;
   selection: StepRef & { approvalReference: string };
   curriculum: { key: CurriculumKey; version: string };
+  /** A proven contiguous mastery prefix at this cutoff, independent of which step the book introduced. */
+  priorMastery: { passedSteps: number; evidenceReference: string };
   /** The adapter freezes the allowed books, revisions and days. Days 8-10 need explicit inclusion. */
   scope: readonly { workbookId: string; printedRevision: string; days: readonly number[] }[];
   requiredSample: readonly ProgressSampleItem[] | null;
@@ -126,7 +128,7 @@ export interface WorkbookProgressDecision {
   missedReviews: readonly SpacedReview[];
 }
 export type WorkbookProgressResult = { ok: true; decision: WorkbookProgressDecision } | {
-  ok: false; reason: "invalid-contract" | "invalid-scope" | "invalid-context" | "invalid-evidence" | "conflicting-duplicate";
+  ok: false; reason: "invalid-contract" | "invalid-scope" | "invalid-context" | "invalid-evidence" | "conflicting-duplicate" | "mastery-gap";
 };
 
 // Tuple encoding avoids the delimiter collision of user-supplied item IDs containing colons.
@@ -143,8 +145,8 @@ function stable(v: unknown): string {
 }
 const copy = <T>(v: T): T => structuredClone(v);
 const stepRef = (s: StepRef): StepRef => ({ unit: s.unit, skill: s.skill, step: s.step });
-const resolved = (o: Observation) => o.certainty !== "uncertain"
-  && (o.state === "parent-checked" || (o.state === "scored" && o.certainty === "certain"));
+// A parent's original adjudication is terminal even when the saved AI reading remains uncertain.
+const resolved = (o: Observation) => o.state === "parent-checked" || (o.state === "scored" && o.certainty === "certain");
 const resultOK = (v: unknown) => ["right", "wrong", "blank"].includes(v as string);
 const helpOK = (v: unknown) => ["none", "math-help", "unknown"].includes(v as string);
 
@@ -197,7 +199,9 @@ function derive(s: ProgressSnapshot, c: ProgressCurriculum, h: ProgressHistory):
   if (s.version !== 1 || h.version !== 1 || ![s.id, s.parentId, s.childId, s.selection.approvalReference, c.version].every(text)
     || !time(s.cutoff) || !same(s.curriculum, { key: c.key, version: c.version })
     || c.key !== c.skill.curriculum || s.selection.skill !== c.skill.id || s.selection.unit !== c.skill.unit
-    || !positive(s.selection.step) || !c.steps.length) return fail("invalid-contract");
+    || !positive(s.selection.step) || !c.steps.length || !text(s.priorMastery.evidenceReference)
+    || !Number.isSafeInteger(s.priorMastery.passedSteps) || s.priorMastery.passedSteps < 0
+    || s.priorMastery.passedSteps > c.steps.length) return fail("invalid-contract");
   if (c.steps.some((x, i) => x.number !== i + 1 || x.skill !== c.skill.id || x.curriculum !== c.key || !text(x.position) || !text(x.representation))
     || new Set(c.steps.map(x => x.position)).size !== c.steps.length) return fail("invalid-contract");
   const selected = c.steps[s.selection.step - 1];
@@ -314,7 +318,7 @@ function derive(s: ProgressSnapshot, c: ProgressCurriculum, h: ProgressHistory):
     const first = r?.first ?? null, effective = r ? r.changes.at(-1) ?? r.first : null;
     const missingContext = !e.teaching || x.contextVersion === null;
     const status: ProgressItemDecision["status"] = missingContext ? "missing-context" : !e.mastery.eligible ? "excluded"
-      : !r ? "missing" : !resolved(first!.observation) || !resolved(effective!.observation) ? "pending" : "resolved";
+      : !r ? "missing" : !resolved(effective!.observation) ? "pending" : "resolved";
     const secondTryFixed = r?.secondTries.some(t => t.result === "right" && t.basedOnResultVersion === effective?.observation.resultVersion);
     const independentRight = effective?.observation.result === "right" && first?.observation.help === "none";
     const cause = r?.cause ?? { kind: "unknown" as const };
@@ -337,6 +341,8 @@ function derive(s: ProgressSnapshot, c: ProgressCurriculum, h: ProgressHistory):
   let repeatIncrement: 0 | 1 = 0;
   if (complete) {
     if (right * 100 >= eligible.length * 90) {
+      // Passing a later introduced step cannot establish mastery of missing earlier steps.
+      if (s.selection.step > s.priorMastery.passedSteps + 1) return fail("mastery-gap");
       action = s.selection.step === c.steps.length ? "skill-complete" : "advance"; reason = "mastered";
       target = { ...target, step: Math.min(c.steps.length, target.step + 1) };
     } else if (right * 100 >= eligible.length * 75) { action = "repeat-new-numbers"; reason = "practice"; }
@@ -365,7 +371,8 @@ function derive(s: ProgressSnapshot, c: ProgressCurriculum, h: ProgressHistory):
     focusedPractice: complete ? [...focused].filter(([, keys]) => keys.length >= 3).map(([mistakeIndex, keys]) => ({
       stepPosition: selected.position, mistakeIndex, misconception: selected.mistakes[mistakeIndex].misconception, occurrences: keys.length, keys,
     })) : [],
-    passed: { [c.skill.id]: action === "advance" || action === "skill-complete" ? s.selection.step : s.selection.step - 1 },
+    passed: { [c.skill.id]: action === "advance" || action === "skill-complete"
+      ? Math.max(s.priorMastery.passedSteps, s.selection.step) : s.priorMastery.passedSteps },
     misses, items, deferredOriginals: noSample ? copy([...originals.values()]) : [],
     consumed: items.filter(x => x.first).map(x => ({ key: x.key, firstVersion: x.first!.observation.resultVersion, effectiveVersion: x.effective!.observation.resultVersion })),
     reviews: copy(s.reviews), missedReviews: copy(s.missedReviews),

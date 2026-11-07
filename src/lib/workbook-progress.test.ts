@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { markingEvent, observationProblem } from "./scan-observation";
 import { deriveWorkbookProgress, type IssuedProgressDecision, type ProgressCause, type ProgressCurriculum,
   type ProgressHistory, type ProgressOriginal, type ProgressSampleItem, type ProgressSnapshot,
   type WorkbookProgressDecision } from "./workbook-progress";
@@ -20,6 +21,7 @@ function fixture(right = 80, total = 100, step = 2) {
     version: 1, id: "snapshot", parentId: "parent", childId: "child", cutoff: 1_000,
     curriculum: { key: curriculum.key, version: curriculum.version },
     selection: { unit: "S.1", skill: "synthetic-skill", step, approvalReference: "synthetic-test-only-approval" },
+    priorMastery: { passedSteps: step - 1, evidenceReference: "synthetic-prior-mastery" },
     scope: [{ workbookId: "book", printedRevision: "print-v1", days: [1, 2, 3, 4, 5, 6, 7] }],
     requiredSample: [], reviews: [{ skill: "synthetic-skill", step: 1, interval: 2, due: 8 }],
     missedReviews: [{ skill: "synthetic-skill", step: 1, interval: 0, due: -1 }],
@@ -75,6 +77,45 @@ function correctOriginal(f: Fixture, n: number, result: "right" | "wrong" | "bla
 function freeze(v: unknown) {
   if (v && typeof v === "object") { Object.freeze(v); Object.values(v).forEach(freeze); }
 }
+
+describe("explicit prior mastery", () => {
+  it("preserves zero earlier mastery when the selected step has no sample", () => {
+    const f = fixture(0, 0, 2);
+    f.snapshot.priorMastery.passedSteps = 0;
+    expect(decision(f)).toMatchObject({ status: "insufficient-evidence", action: "retain-unfinished",
+      target: { step: 2 }, passed: { "synthetic-skill": 0 } });
+  });
+  it("does not infer mastery from a later selected step below the mastery threshold", () => {
+    const f = fixture(80);
+    f.snapshot.priorMastery.passedSteps = 0;
+    expect(decision(f)).toMatchObject({ action: "repeat-new-numbers", passed: { "synthetic-skill": 0 } });
+  });
+  it("refuses a newly mastered step separated from the proven prefix by a gap", () => {
+    const f = fixture(90);
+    f.snapshot.priorMastery.passedSteps = 0;
+    expect(deriveWorkbookProgress(f.snapshot, f.curriculum, f.history)).toEqual({ ok: false, reason: "mastery-gap" });
+  });
+  it("preserves a higher previously proven prefix", () => {
+    const f = fixture(90);
+    f.snapshot.priorMastery.passedSteps = 3;
+    expect(decision(f).passed).toEqual({ "synthetic-skill": 3 });
+  });
+  it.each([-1, 1.5, 4])("refuses an invalid prior mastery count %s", passedSteps => {
+    const f = fixture(); f.snapshot.priorMastery.passedSteps = passedSteps;
+    expect(deriveWorkbookProgress(f.snapshot, f.curriculum, f.history)).toEqual({ ok: false, reason: "invalid-contract" });
+  });
+  it("requires a prior mastery evidence reference", () => {
+    const f = fixture(); f.snapshot.priorMastery.evidenceReference = "";
+    expect(deriveWorkbookProgress(f.snapshot, f.curriculum, f.history)).toEqual({ ok: false, reason: "invalid-contract" });
+  });
+  it("refuses persisted input with no explicit prior mastery", () => {
+    const f = fixture();
+    const withoutPrior: Partial<ProgressSnapshot> = { ...f.snapshot };
+    delete withoutPrior.priorMastery;
+    expect(deriveWorkbookProgress(withoutPrior as ProgressSnapshot, f.curriculum, f.history))
+      .toEqual({ ok: false, reason: "invalid-contract" });
+  });
+});
 
 describe("deriveWorkbookProgress: complete distributions and targets", () => {
   it.each([
@@ -196,6 +237,24 @@ describe("required frozen evidence", () => {
 });
 
 describe("first score, effective original, and later work", () => {
+  it.each([["right", "none"], ["wrong", "none"], ["blank", "none"], ["right", "math-help"], ["right", "unknown"]] as const)("accepts a canonical parent %s resolution with %s help and preserves the uncertain first reading", (result, help) => {
+    const f = fixture(0, 1), first = f.originals[0].first;
+    Object.assign(first.observation, { state: "pending", result: null, certainty: "uncertain", readAnswerText: "5?",
+      help, issue: "blurry", regions: [{ regionId: "answer", text: "5?", value: null, certainty: "uncertain" }] });
+    const change = structuredClone(first);
+    change.at = 200; change.provenance = { eventId: "parent-resolution", model: null, prompt: null };
+    Object.assign(change.observation, { state: "parent-checked", method: "parent", actor: "parent", result, resultVersion: 2 });
+    f.originals[0].changes = [change]; f.sample[0].resultVersion = 2;
+    expect(observationProblem(change.observation)).toBeNull();
+    expect(markingEvent(f.sample[0].expected, change.observation)).toMatchObject({ publish: true, result });
+    const d = decision(f);
+    const independentRight = result === "right" && help === "none";
+    expect(d).toMatchObject({ status: "complete", score: { resolved: 1, independentFirstRight: independentRight ? 1 : 0,
+      percent: independentRight ? 100 : 0 } });
+    expect(d.items[0]).toMatchObject({ status: "resolved", first: { observation: { state: "pending", readAnswerText: "5?", certainty: "uncertain" } },
+      effective: { observation: { state: "parent-checked", result, certainty: "uncertain", resultVersion: 2 } } });
+    expect(d.misses).toHaveLength(independentRight ? 0 : 1);
+  });
   it("corrects the effective original score but preserves its first saved wrong score and reading", () => {
     const f = fixture(3, 4); correctOriginal(f, 3, "right");
     const d = decision(f);
