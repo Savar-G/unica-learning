@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 
 vi.mock("server-only", () => ({}));
-import { stripePlanProvider, supabasePlanStore } from "@/lib/plan-state-server";
+import { stripePlanProvider, supabasePlanReads, supabasePlanStore } from "@/lib/plan-state-server";
 
 const when = (seconds: number) => new Date(seconds * 1000).toISOString();
 
@@ -151,5 +151,32 @@ describe("the row read during a page render", () => {
     } } }) as never;
     await supabasePlanStore(db).load({ parentId: "p1", childId: "c1" });
     expect(signals[0]).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe("the re-read's rows in the database", () => {
+  const client = (answer: (name: string, body: Record<string, unknown>) => Response) => createClient<Database>("https://synthetic.invalid", "synthetic", {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: async (input, init) => answer(new URL(String(input)).pathname.split("/").at(-1)!, JSON.parse(String(init?.body ?? "{}"))) },
+  });
+  const row = { child_id: "c", parent_id: "p", customer: "cus_1", kind: "ending", event_at: null };
+
+  it("reads the due rows by the database's clock, with no time from the app", async () => {
+    const calls: unknown[] = [];
+    const rows = supabasePlanReads(client((name, body) => { calls.push([name, body]); return Response.json([row]); }));
+    expect(await rows.duePlanReads(50)).toEqual([{ parentId: "p", childId: "c", customer: "cus_1", kind: "ending", eventAt: null }]);
+    expect(calls).toEqual([["due_plan_reads", { p_limit: 50 }]]);
+  });
+
+  it("refuses a kind the re-read does not look at, and a failed read throws", async () => {
+    await expect(supabasePlanReads(client(() => Response.json([{ ...row, kind: "ended" }]))).duePlanReads(1)).rejects.toThrow("unreadable");
+    await expect(supabasePlanReads(client(() => Response.json({ message: "down" }, { status: 500 }))).duePlanReads(1)).rejects.toThrow("down");
+  });
+
+  it("notes a row, and a failed note throws", async () => {
+    const calls: unknown[] = [];
+    await supabasePlanReads(client((name, body) => { calls.push([name, body]); return Response.json(null); })).notePlanReadTried("c");
+    expect(calls).toEqual([["note_plan_read_tried", { p_child: "c" }]]);
+    await expect(supabasePlanReads(client(() => Response.json({ message: "fenced" }, { status: 400 }))).notePlanReadTried("c")).rejects.toThrow("fenced");
   });
 });

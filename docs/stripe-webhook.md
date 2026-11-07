@@ -1,6 +1,6 @@
 # Stripe webhook: plan state
 
-The route `POST /api/stripe-webhook` keeps one row per child in `public.child_plan_states`, so a page load does not call Stripe per child (#548, spec #544). No page reads the row yet. It also brings a child's Stripe side to their newest card (#554, below).
+The route `POST /api/stripe-webhook` keeps one row per child in `public.child_plan_states`, so a page load does not call Stripe per child (#548, spec #544). The plan gate (`src/lib/plan-access.ts`) reads the row. It also brings a child's Stripe side to their newest card (#554, below).
 
 Until the steps below are done, the route answers 503 and no event is stored.
 
@@ -61,13 +61,35 @@ On `customer.subscription.created` and `customer.subscription.updated`, for a cu
 - A write to the Customer alone raises no event we listen to. The sweep in `/api/reminders` covers it, and any event that was missed: see `docs/parent-dashboard.md`.
 - A default changed by hand in Stripe's dashboard goes back to the row's card.
 
-## Limit to know before a page reads the row
+## The daily re-read
 
-A filled row changes only through an event. If the endpoint is not set up, or Stripe stops trying an event, the row stays as it was. Set up the endpoint before a parent-facing page reads the row.
+A lost event must not leave a stopped plan open. So the sweep in the `/api/reminders` run reads each row of kind `free_month`, `paying` or `ending` again when it has not been read for 24 hours (`sweepPlanReads`, `src/lib/card-reconcile.ts`; `rereadPlan`, `src/lib/plan-state.ts`; migration `plan_state_reread`).
+
+- Each read takes its value from `take_plan_read_order`, reads Stripe through `customerPlan`, and saves through `save_child_plan_state`. So the order rule above holds: an event that took later wins, whichever save lands first.
+- `read_at` is the last read, from the database's clock. Every save writes it, and `due_plan_reads` compares it with the same clock. A row read by a webhook or a start is not due.
+- The save keeps the row's own event time, or the Unix start time for a filled row, with a new event id `plan-read:<take>`. It never stores a time of its own: the webhook skips an event older than the row's event, and our clock and Stripe's can disagree.
+- `read_tried_at` is the place in the list between runs. A row is noted before its work, so a row that fails or hangs goes behind the others.
+- A failed read changes nothing, and the row stays due. Stripe being down closes no family.
+- It runs beside the card rows, under the same times and the one signal: no new row after 25 seconds and no work after 45. One read has Stripe's limit of about 9 seconds. Each run lists at most 200 rows.
+- It writes the plan state and nothing else: no Stripe write and no email.
+- `?dry=1` counts due rows as `planReads`. The run's answer holds `cards.planReads`: `due`, `read`, `changed`, `failed`, `outOfTime`. `changed` above 0 means that a row's kind moved with no event yet, so look for a lost webhook.
+
+### The longest time a stopped plan can stay open
+
+With Stripe answering and the run working: 24 hours from the row's last read, plus the wait for the next run (up to 15 minutes), plus that run's time. So about 24 hours and 15 minutes. An `ending` row closes on its end date with no read.
+
+That time gets longer in these cases:
+
+- Each failed read adds up to 15 minutes, as the next try is in the next run. **While Stripe does not answer, there is no limit**, by rule: the row stays open.
+- `/api/reminders` does not run, or answers 503: no limit until it runs again.
+- More rows are due than a run can read. At the slowest answers each client allows, a run reads about 5 rows, which is about 480 rows a day. Normal Stripe answers are much faster. Watch `outOfTime` in `cards.planReads`.
+- Stripe answers `resource_missing` for a customer it cannot find (a test-mode customer on the live key, or a wrong key): each read fails, so the row stays open. This is on purpose: a wrong key would otherwise close every family. A customer deleted in Stripe is different: its list still answers, with the cancelled subscription, so the row closes.
+
+Rows of kind `payment_failed`, `paused`, `ended` and `not_started` are not read again. They are closed, so a lost event there keeps a family closed until the next event, not open.
 
 ## Checks
 
-- Unit tests: `npx vitest run src/lib/plan-state.test.ts src/lib/plan-state-server.test.ts src/lib/card-reconcile.test.ts src/app/api/stripe-webhook/route.test.ts`.
+- Unit tests: `npx vitest run src/lib/plan-state.test.ts src/lib/plan-state-server.test.ts src/lib/plan-read-sweep.test.ts src/lib/card-sweep-server.test.ts src/lib/card-reconcile.test.ts src/app/api/stripe-webhook/route.test.ts`.
 - Database rules: post `supabase/tests/child_plan_states.sql` to the Supabase Management API (`/v1/projects/cdjobwsyzndtltzfpyqa/database/query`, Keychain token `supabase-pagewise`). A pass is the error `PROBE_OK`: the final exception rolls back every synthetic row.
 - Local events: `stripe listen --forward-to localhost:3000/api/stripe-webhook`, then set the secret it prints as `STRIPE_WEBHOOK_SECRET` in `.env.local`.
 

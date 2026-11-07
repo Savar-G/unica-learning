@@ -195,9 +195,65 @@ begin
   end;
   reset role;
 
+  -- The daily re-read (migration plan_state_reread). Only open kinds not read for 24 hours, by the database's clock, with no fenced family.
+  reset role;
+  update public.child_plan_states set kind = 'paying', next_charge_at = t0, ends_at = null, read_at = now() - interval '25 hours', read_tried_at = null where child_id = child_a;
+  update public.child_plan_states set kind = 'ended', next_charge_at = null, read_at = now() - interval '25 hours', read_tried_at = null where child_id = child_b;
+  update public.child_plan_states set kind = 'free_month', next_charge_at = t0, read_at = now() - interval '23 hours', read_tried_at = null where child_id = child_c;
+  set local role service_role;
+  select count(*) into n from public.due_plan_reads(1000) d where d.child_id in (child_a, child_b, child_c);
+  if n <> 1 then raise exception 'due rows counted %', n; end if;
+  select count(*) into n from public.due_plan_reads(1000) d where d.child_id = child_a and d.customer = 'cus_probe_' || replace(p::text, '-', '') and d.parent_id = p and d.kind = 'paying';
+  if n <> 1 then raise exception 'the due row does not name its customer'; end if;
+  -- The note moves a row behind one not yet tried, and writes nothing else.
+  reset role;
+  update public.child_plan_states set kind = 'ending', ends_at = t0, next_charge_at = null, read_at = now() - interval '26 hours' where child_id = child_b;
+  set local role service_role;
+  if (select array_agg(d.child_id) from public.due_plan_reads(1000) d where d.child_id in (child_a, child_b)) <> array[child_b, child_a] then raise exception 'the longest unread row is not first'; end if;
+  select * into s from public.child_plan_states where child_id = child_b;
+  perform public.note_plan_read_tried(child_b);
+  if (select array_agg(d.child_id) from public.due_plan_reads(1000) d where d.child_id in (child_a, child_b)) <> array[child_a, child_b] then raise exception 'a tried row did not go to the back'; end if;
+  if (select read_at from public.child_plan_states where child_id = child_b) <> s.read_at or (select updated_at from public.child_plan_states where child_id = child_b) <> s.updated_at or (select read_tried_at from public.child_plan_states where child_id = child_b) is null then raise exception 'the note wrote more than its time'; end if;
+  -- A saved re-read counts as read: its row leaves the list, and the row's old event time stays with it.
+  r := public.save_child_plan_state(customer, 'ended', null, null, null, false, t0, 'plan-read:probe', public.take_plan_read_order());
+  if r <> 'stored' then raise exception 're-read answered %', r; end if;
+  select count(*) into n from public.due_plan_reads(1000) d where d.child_id = child_a;
+  if n <> 0 then raise exception 'a read row stayed due'; end if;
+  select * into s from public.child_plan_states where child_id = child_a;
+  if s.event_at <> t0 or s.event_id <> 'plan-read:probe' or s.read_at < now() - interval '1 minute' then raise exception 'the re-read row is wrong'; end if;
+  reset role;
+  -- Parents and anon reach neither function.
+  set local role authenticated;
+  begin
+    perform public.due_plan_reads(1);
+    raise exception 'a parent read the due rows';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.note_plan_read_tried(child_a);
+    raise exception 'a parent wrote a note';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+  set local role anon;
+  begin
+    perform public.due_plan_reads(1);
+    raise exception 'anon read the due rows';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+
   -- The family write fence refuses a write once a deletion is requested, and the deletion removes the row.
   update public.parents set deletion_requested_at = now() where id = p;
   set local role service_role;
+  -- A fenced family's rows leave the re-read's list, and its note is refused.
+  select count(*) into n from public.due_plan_reads(1000) d where d.parent_id = p;
+  if n <> 0 then raise exception 'a fenced family stayed due'; end if;
+  begin
+    perform public.note_plan_read_tried(child_b);
+    raise exception 'the fence let a note through';
+  exception when sqlstate '55000' then null;
+  end;
   begin
     perform public.save_child_plan_state(customer, 'ended', null, null, null, false, t0 + interval '1 day', 'evt_fence', public.take_plan_read_order());
     raise exception 'the fence let a write through';

@@ -1,10 +1,10 @@
 import "server-only";
 import { sendPlanStartAlert } from "@/lib/card-plan-alert";
-import { CARD_WATCH_MS, sweepCards, writeWindow, type CardCheckSeams, type CardSweep } from "@/lib/card-reconcile";
+import { CARD_WATCH_MS, sweepCards, sweepPlanReads, writeWindow, type CardCheckSeams, type CardSweep, type PlanReadSweep } from "@/lib/card-reconcile";
 import { supabaseCardRows } from "@/lib/card-reconcile-server";
 import type { MailTransport } from "@/lib/email-delivery";
 import { applyPlanStart } from "@/lib/plan-state";
-import { stripePlanProvider, supabasePlanStore } from "@/lib/plan-state-server";
+import { stripePlanProvider, supabasePlanReads, supabasePlanStore } from "@/lib/plan-state-server";
 import { stripe, stripeWithin } from "@/lib/stripe";
 import { stripeCards } from "@/lib/stripe-subscriptions";
 import { planPrice } from "@/lib/subscription-plan";
@@ -18,6 +18,8 @@ import { planStartEmailClaim, sendPlanStartEmail } from "@/lib/workbook-email-se
 //   - 30 s: no Stripe write and no email starts, also after an email's reads, claim and wait in the transport. Each has a 15-second
 //     limit, so one that starts in time ends by 45 s.
 //   - 45 s: all the sweep's work ends. One signal goes to every Stripe call, database call and email in it.
+// The daily re-read of open plan rows (sweepPlanReads) runs beside the card rows, under the same times and the same signal, so a long
+// list of either cannot use all the time of the other.
 // The monthly emails' work ends at 50 s (MONTHLY_END_MS in the route), as before. That leaves 15 s and 10 s to answer.
 
 /** The sweep starts no new row after this, from the start of the run. */
@@ -60,16 +62,33 @@ export function liveCardChecks(origin: string, { canWrite = writeWindow(), signa
   };
 }
 
-/** The sweep of one /api/reminders run. Never throws, and all its work ends SWEEP_END_MS after `startedAt`. */
-export async function sweepCardsNow({ origin, startedAt, transport }: { origin: string; startedAt: number; transport: MailTransport }): Promise<CardSweep | { error: "run_failed" } | { error: "not_configured" }> {
+/** The sweep of one /api/reminders run, with the plan re-read beside it. Never throws, and all its work ends SWEEP_END_MS after `startedAt`. */
+export async function sweepCardsNow({ origin, startedAt, transport }: { origin: string; startedAt: number; transport: MailTransport }): Promise<((CardSweep | { error: "run_failed" }) & { planReads: PlanReadSweep | { error: "run_failed" } }) | { error: "run_failed" } | { error: "not_configured" }> {
   const end = new AbortController();
   const timer = setTimeout(() => end.abort(new Error("The sweep's time is over")), Math.max(0, startedAt + SWEEP_END_MS - Date.now()));
   try {
     const seams = liveCardChecks(origin, { canWrite: writeWindow(SWEEP_WRITE_MS, startedAt), signal: end.signal, transport });
-    if (!seams) return { error: "not_configured" };
-    const result = await sweepCards(seams, { now: () => Date.now(), startBy: startedAt + SWEEP_START_MS, signal: end.signal });
-    if (result.corrected > 0 || result.plans > 0 || result.emails > 0 || result.needsTeam > 0 || result.failed > 0 || result.outOfTime) console.info("[card sweep] run", JSON.stringify(result));
-    return result;
+    const db = adminClient(end.signal);
+    const client = stripeWithin(end.signal);
+    if (!seams || !db || !client) return { error: "not_configured" };
+    const time = { now: () => Date.now(), startBy: startedAt + SWEEP_START_MS, signal: end.signal };
+    const [cards, planReads] = await Promise.all([
+      sweepCards(seams, time).then((result): CardSweep | { error: "run_failed" } => {
+        if (result.corrected > 0 || result.plans > 0 || result.emails > 0 || result.needsTeam > 0 || result.failed > 0 || result.outOfTime) console.info("[card sweep] run", JSON.stringify(result));
+        return result;
+      }, (e): { error: "run_failed" } => {
+        console.error("[card sweep] run failed", e instanceof Error ? e.message : e);
+        return { error: "run_failed" };
+      }),
+      sweepPlanReads(supabasePlanReads(db), { store: supabasePlanStore(db), provider: stripePlanProvider(client) }, time).then((result): PlanReadSweep | { error: "run_failed" } => {
+        if (result.changed > 0 || result.failed > 0 || result.outOfTime) console.info("[plan state] re-read run", JSON.stringify(result));
+        return result;
+      }, (e): { error: "run_failed" } => {
+        console.error("[plan state] re-read run failed", e instanceof Error ? e.message : e);
+        return { error: "run_failed" };
+      }),
+    ]);
+    return { ...cards, planReads };
   } catch (e) {
     console.error("[card sweep] run failed", e instanceof Error ? e.message : e);
     return { error: "run_failed" };
@@ -82,4 +101,10 @@ export async function sweepCardsNow({ origin, startedAt, transport }: { origin: 
 export async function dueCardCount(now: number): Promise<number> {
   const db = adminClient();
   return db ? (await supabaseCardRows(db).dueCardRows(now - CARD_WATCH_MS, 1000)).length : 0;
+}
+
+/** The dry run's count of plan rows to read again. */
+export async function duePlanReadCount(): Promise<number> {
+  const db = adminClient();
+  return db ? (await supabasePlanReads(db).duePlanReads(1000)).length : 0;
 }

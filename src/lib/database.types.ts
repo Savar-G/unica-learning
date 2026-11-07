@@ -649,6 +649,7 @@ export type Database = {
           parent_id: string
           read_at: string
           read_order: number | null
+          read_tried_at: string | null
           updated_at: string
         }
         Insert: {
@@ -663,6 +664,7 @@ export type Database = {
           parent_id: string
           read_at: string
           read_order?: number | null
+          read_tried_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -677,6 +679,7 @@ export type Database = {
           parent_id?: string
           read_at?: string
           read_order?: number | null
+          read_tried_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -7324,6 +7327,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      due_plan_reads: {
+        Args: { p_limit?: number }
+        Returns: {
+          child_id: string
+          customer: string
+          event_at: string
+          kind: string
+          parent_id: string
+        }[]
+      }
       email_copy_child_scope: {
         Args: { l: Database["public"]["Tables"]["email_log"]["Row"] }
         Returns: string[]
@@ -7605,6 +7618,7 @@ export type Database = {
       }
       my_family_deletion_state: { Args: never; Returns: string }
       note_card_checked: { Args: { p_card: string }; Returns: undefined }
+      note_plan_read_tried: { Args: { p_child: string }; Returns: undefined }
       note_plan_start_alert: {
         Args: {
           p_card: string
