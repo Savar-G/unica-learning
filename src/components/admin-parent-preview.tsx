@@ -15,6 +15,7 @@ import { workbookAnswerPages, type ParentWorkbookAnswers } from "@/lib/parent-wo
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { storedQuestion } from "@/lib/workbook-content";
 import { ParentWorkbooks } from "@/components/parent-workbooks";
+import { ParentSchedule } from "@/components/parent-schedule";
 import { ParentProgress } from "@/components/parent-progress";
 import { SkillPanel } from "@/components/parent-skill-map";
 import { NoteCard, ParentSessionView } from "@/components/parent-maya-notes";
@@ -174,6 +175,13 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
     case "overview": return <SupportPage label="Overview" title={child.firstName}><ParentOverview overview={overview(child, state)} maya={child.stage === "active" ? minutes : null} /></SupportPage>;
     case "workbook_answers": return <ParentWorkbookAnswerKey answerKey={answerKey(child, state)} />;
     case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} />;
+    case "schedule": return <ParentSchedule schedule={state === "waiting" || state === "unavailable" ? { kind: state, child: { ...child, parentId: "sample-parent" } } : {
+      kind: "ready", child: { ...child, parentId: "sample-parent" }, book: { id: "sample-printed-book", number: child.id === "sample-child-2" ? 2 : 1 }, dailyTime: "about 20 minutes, plus Extra if there's time",
+      rows: Array.from({ length: 10 }, (_, i) => ({ day: i + 1, topic: child.id === "sample-child-2" ? "Multiplication" : "Addition", second: i === 6 ? "Level check" : "Number practice",
+        pages: [3 + i * 8, 10 + i * 8], requiredMinutes: 20, extra: true,
+        scan: state === "unknown" ? { kind: "unknown" } : { kind: "known", accepted: state === "accepted" || state === "expired" ? 8 : state === "partial" && i === 0 ? 3 : 0, required: 8 },
+      })),
+    }} />;
     case "progress": {
       const areas = state === "empty" ? [] : skillMapView({ firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: 2, tests: [{ standard: "2.1", correct: 4, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }, { standard: "2.3", correct: 0, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }], workbookStandards: ["2.1", "2.2"], workbookNumber: 3, day: at => at.slice(0, 10) });
       return <ParentProgress child={child} level={state === "empty" ? null : { working: 2, earlySign: false, testedOn: "2026-11-04", unreliable: state === "unreliable" }} workbookNumber={3} areas={areas}

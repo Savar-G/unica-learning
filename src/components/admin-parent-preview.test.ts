@@ -14,6 +14,21 @@ const styles = { origin: "https://unicalearning.com", links: [], inline: [] };
 const rendered = (view: string, scenario: string, family = "one", size = "desktop") => renderParentPreview(previewSelection({ view, scenario, family, size }), styles);
 const dom = (html: string) => new DOMParser().parseFromString(html, "text/html");
 
+it("shows the real Schedule table on both sizes with each child's rows and honest unknown or waiting states", () => {
+  for (const size of ["desktop", "phone"]) {
+    const selection = previewSelection({ view: "schedule", scenario: "partial", family: "two", child: "second", size });
+    const output = dom(renderParentPreview(selection, styles));
+    expect(output.querySelector("h1")?.textContent).toBe("Kai's schedule");
+    expect(output.querySelectorAll(".ps-table tbody tr")).toHaveLength(10);
+    expect(output.querySelector(".ps-table")?.textContent).toContain("Multiplication");
+    expect(output.querySelector(".ps-table")?.textContent).toContain("3 of 8 accepted");
+  }
+  expect(rendered("schedule", "unknown")).toContain("Scan status unavailable");
+  expect(rendered("schedule", "waiting")).toContain("No printed workbook yet");
+  expect(rendered("schedule", "expired")).toContain("8 of 8 accepted");
+  expect(rendered("schedule", "unavailable")).not.toContain("ps-table");
+});
+
 beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("fetch", calls.fetch); });
 afterEach(() => vi.unstubAllGlobals());
 

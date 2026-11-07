@@ -7,6 +7,7 @@ import { pinIsSet } from "@/lib/parent-pin-server";
 import { listChildren, readOverview, type ChildView, type OverviewView } from "@/lib/parent-view";
 import { parentViewReader } from "@/lib/parent-view-server";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
+import { parentSchedule } from "@/lib/parent-schedule-server";
 
 // Who gets the dashboard shell (#551), and the facts the frame needs. The account pages' layout and the home page both
 // ask, once per request. Null gives today's Parent home: no one signed in, a family the switch does not open to, or a
@@ -42,8 +43,15 @@ export const parentDashboard = cache(async (): Promise<ParentDashboard | null> =
       cookies(),
     ]);
     if (family.error) throw new Error(`parents read: ${family.error.message}`);
+    const withSchedule = await Promise.all(children.map(async child => {
+      const schedule = await parentSchedule(parent, child.id);
+      if (schedule.kind !== "ready") return child;
+      const tabs = [...child.tabs];
+      tabs.splice(Math.max(0, tabs.indexOf("workbooks") + 1), 0, "schedule");
+      return { ...child, tabs };
+    }));
     return {
-      children, remembered: jar.get(LAST_CHILD_COOKIE)?.value ?? null, pinSet, timeZoneSaved: !!family.data?.time_zone,
+      children: withSchedule, remembered: jar.get(LAST_CHILD_COOKIE)?.value ?? null, pinSet, timeZoneSaved: !!family.data?.time_zone,
       deletionRequested: !!family.data?.deletion_requested_at && await deletionRequested(parent),
     };
   } catch (error) {

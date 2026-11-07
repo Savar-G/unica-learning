@@ -1,5 +1,6 @@
 import type { ChildTab } from "@/lib/child-stage";
 import type { ChildView } from "@/lib/parent-view";
+import { schedulePath } from "@/lib/parent-schedule";
 
 // The dashboard shell's rules (spec #544, #551). Pure, and shared by the server and the browser: which child shows, which
 // tabs link where, and the phone navigation. No database, cookie store or clock here.
@@ -31,6 +32,7 @@ const LABELS: Record<ChildTab, string> = {
   overview: "Overview",
   progress: "Progress",
   workbooks: "Workbooks",
+  schedule: "Schedule",
   scan_pages: "Scan pages",
   maya: "Maya",
   assessment: "Assessment",
@@ -48,6 +50,7 @@ const TAB_PAGE: Record<ChildTab, (child: ShellChild) => string | null> = {
   overview: (c) => homePath(c.id),
   progress: (c) => progressPath(c.id),
   workbooks: (c) => workbooksPath(c.id),
+  schedule: (c) => schedulePath(c.id),
   scan_pages: () => "/account/scan",
   maya: (c) => `/account/notes/${c.id}`,
   assessment: (c) => (c.reportIds[0] && c.opensOn !== "continue_or_wait" ? `/account/report/${c.reportIds[0]}` : homePath(c.id)),
@@ -71,7 +74,7 @@ export function tabLinks(child: ShellChild | null): TabLink[] {
 
 /** The child named by the address, if this page belongs to one child. */
 export function addressChild(pathname: string, queryChild: string | null, children: readonly Pick<ChildView, "id" | "reportIds">[]): string | null {
-  if (pathname === "/account") return queryChild;
+  if (pathname === "/account" || pathname === "/account/schedule") return queryChild;
   const [, , section, id] = pathname.split("/");
   if (section === "notes" || section === "learning" || section === "workbooks" || section === "progress") return id ?? null;
   if (section === "report") return children.find((c) => c.reportIds.includes(id))?.id ?? null;
@@ -94,11 +97,15 @@ export function activeTab(pathname: string, links: readonly TabLink[]): ChildTab
     : section === "notes" ? "maya"
     : section === "workbooks" ? "workbooks"
     : section === "progress" ? "progress"
+    : section === "schedule" ? "schedule"
     : section === "scan" ? "scan_pages"
     : section === "settings" || section === "plan" || section === "pin" || section === "password" ? "account"
     : null;
   return tab && has(tab) ? tab : null;
 }
+
+/** Keep Schedule selected across a child switch, including a child still waiting for a printed book. */
+export const childSwitchPath = (pathname: string, child: string) => pathname === "/account/schedule" ? schedulePath(child) : homePath(child);
 
 export type PhoneNav = { kind: "top"; links: TabLink[] } | { kind: "bar"; bar: TabLink[]; more: TabLink[] };
 
