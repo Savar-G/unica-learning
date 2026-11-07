@@ -4,7 +4,7 @@
 -- same way. A parent can still change it afterwards.
 --
 -- Additive only. The journal's actor check still allows only 'parent'; the separate migration
--- 20261107204700_scan_mark_changes_team_actor.sql widens it to 'parent' or 'admin'. Until that is applied,
+-- 20261107211637_scan_mark_changes_team_actor.sql widens it to 'parent' or 'admin'. Until that is applied,
 -- admin_set_scan_mark fails on its insert and saves nothing.
 
 -- Who on the team set the mark. Only team rows have one. No foreign key: the journal is append only (an update is

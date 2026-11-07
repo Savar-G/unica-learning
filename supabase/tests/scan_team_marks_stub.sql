@@ -53,7 +53,7 @@ select public.admin_set_scan_mark('00000000-0000-4000-8000-000000000011',2,'mayb
 -- before the swap: insert fails on the actor check
 do $$ begin perform public.admin_set_scan_mark('00000000-0000-4000-8000-000000000011',2,'wrong'); raise exception 'should fail'; exception when check_violation then raise notice 'before swap: check violation, nothing saved: ok'; end $$;
 select result_version, observation->>'state' from public.scan_marking_items where id='00000000-0000-4000-8000-000000000011';
-\i supabase/migrations/20261107204700_scan_mark_changes_team_actor.sql
+\i supabase/migrations/20261107211637_scan_mark_changes_team_actor.sql
 select public.admin_set_scan_mark('00000000-0000-4000-8000-000000000011',2,'wrong') as saved;
 select result_version, observation->>'state' st, observation->>'actor' actor, observation->>'result' r, original_event->>'result' ev, original_event->'evidence'->>'id' photo, owner_photo from public.scan_marking_items where id='00000000-0000-4000-8000-000000000011';
 select actor, admin_id, from_version, to_version, previous->'observation'->>'state' prev from public.scan_mark_changes;
