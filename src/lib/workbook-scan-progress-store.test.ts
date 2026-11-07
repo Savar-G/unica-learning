@@ -247,7 +247,7 @@ describe("typed scan progress store through the real Supabase client", () => {
       delivery_correction_id: null, delivered_at: delivered, time_zone: "UTC", zone_override: true, backstop_at: null,
       receipt_ids: [id(3000), id(3001)] }];
     const corrected = "2026-10-05T12:00:00.000Z";
-    s.tables.workbook_delivery_corrections = [{ ...identity, id: id(9000), audit_id: 22, delivered_at: corrected,
+    s.tables.workbook_delivery_corrections = [{ ...identity, number: 2, id: id(9000), audit_id: 22, delivered_at: corrected,
       local_time: "2026-10-05T12:00", reason: "synthetic correction", previous_delivered_at: delivered,
       recorded_at: "2026-10-06T12:00:00.000Z", actor_id: id(9) }];
     s.tables.workbook_scan_clock_requests = [request(22, corrected, id(9000))];
@@ -259,6 +259,19 @@ describe("typed scan progress store through the real Supabase client", () => {
     expect(result.persisted.claimCalendar?.deliveryAuditId ?? null).toBe(laterCalendar ? 11 : null);
     expect(result.persisted.clock.calendar).toMatchObject({ deliveryAuditId: 22, backstopAt: "2026-10-26T12:01:00.000Z" });
     expect(result.progress.delivery).toMatchObject({ deliveredAt: corrected, backstopAt: "2026-10-26T12:00:00.000Z" });
+  });
+
+  it("does not use a delivery correction from a different numbered book", async () => {
+    const s = setup();
+    s.tables.workbook_scan_receipts = [receipt()];
+    s.tables.workbook_delivery_corrections = [{ ...identity, number: 3, id: id(9000), audit_id: 22,
+      delivered_at: "2026-10-05T12:00:00.000Z", local_time: "2026-10-05T12:00", reason: "synthetic correction",
+      previous_delivered_at: delivered, recorded_at: "2026-10-06T12:00:00.000Z", actor_id: id(9) }];
+    const result = await readWorkbookScanProgress(s.store, scope, now);
+    if (result.status !== "available") throw new Error("expected retained scans");
+    expect(result.progress.delivery).toEqual({ status: "missing" });
+    expect(result.progress.acceptedPageCount).toBe(1);
+    expect(result.persisted.claim).toBeNull();
   });
 
   it.each(["unknown-reason", "missing-captured-receipt", "backstop-without-deadline", "bad-calendar-time", "foreign-calendar", "wrong-request-audit", "wrong-request-zone", "calendar-without-request", "wrong-hold-deadline"])("refuses malformed durable state: %s", async kind => {

@@ -1,4 +1,5 @@
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
+import { scanPageUrl } from "@/lib/scan-tab";
 
 const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => entities[character]);
@@ -10,7 +11,7 @@ export function workbookScanReminderEmail(input: { origin: string; token: string
   if (origin.protocol !== "https:" && !(origin.protocol === "http:" && local)
     || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash
     || !/^[A-Za-z0-9_-]{32,128}$/.test(input.token)) throw new Error("scan_reminder_links");
-  const scan = new URL("/account/scans", origin).href;
+  const scan = scanPageUrl(origin.origin);
   const unsubscribe = new URL(`/unsubscribe?t=${input.token}`, origin).href;
   const oneClick = new URL(`/api/unsubscribe?t=${input.token}`, origin).href;
   const subject = "Ready to scan your next page?";

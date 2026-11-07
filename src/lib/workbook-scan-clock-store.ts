@@ -30,6 +30,23 @@ function reconciled(value: unknown, books: readonly string[]): boolean {
   return remaining.size === 0;
 }
 
+/** A complete bounded test-book request set. Recorded or obsolete identities remain subject to SQL's write guard. */
+export async function workbookScanClockRequestsForBooks(db: SupabaseClient<Database>, books: readonly string[], limit: number): Promise<ScanClockRequest[]> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || books.length > 100
+    || books.some(id => !isUuid(id)) || new Set(books).size !== books.length) throw new Error("scan_clock_request_scope");
+  if (!books.length) return [];
+  const { data, error, count } = await db.from("workbook_scan_clock_requests")
+    .select("workbook_id,delivery_audit_id,delivered_at,time_zone,zone_override", { count: "exact" })
+    .in("workbook_id", [...books]).order("delivery_audit_id").limit(limit + 1);
+  if (error) throw new Error("scan_clock_request_read");
+  if (!Array.isArray(data) || data.length !== count || data.length > limit) throw new Error("scan_clock_request_shape");
+  const rows = data.map(request);
+  if (rows.some(r => !books.includes(r.workbookId)) || new Set(rows.map(r => r.deliveryAuditId)).size !== rows.length) {
+    throw new Error("scan_clock_request_shape");
+  }
+  return rows;
+}
+
 /** Service client only. Browser callers cannot supply a calendar through these RPCs. */
 export function workbookScanClockStore(db: SupabaseClient<Database>): ScanClockStore {
   return {

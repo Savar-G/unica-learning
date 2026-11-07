@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BUSINESS_NAME, MAILING_ADDRESS, WEBSITE } from "@/lib/contact";
 import { workbookScanReminderEmail } from "@/lib/workbook-scan-reminder-email";
+import { scanPageUrl } from "@/lib/scan-tab";
 
 const input = { origin: "https://unicalearning.com", token: "a".repeat(43) };
 
@@ -8,8 +9,10 @@ describe("one parent scan reminder", () => {
   it("opens the protected Scan pages entry without child, workbook, photo or page identifiers", () => {
     const message = workbookScanReminderEmail(input);
     expect(message.subject).toBe("Ready to scan your next page?");
-    expect(message.text).toContain("Scan pages: https://unicalearning.com/account/scans");
-    expect(message.html).toContain('href="https://unicalearning.com/account/scans"');
+    const destination = scanPageUrl(input.origin);
+    expect(destination).toBe("https://unicalearning.com/account/scan");
+    expect(message.text.split("\n")).toContain(`Scan pages: ${destination}`);
+    expect(message.html).toContain(`href="${destination}"`);
     expect(message.text).toContain("You may be asked to sign in first.");
     expect(message.html).not.toMatch(/<img|tutor\/p|photo_id|workbook_id|child_id|written answer|score/i);
   });
@@ -42,7 +45,7 @@ describe("one parent scan reminder", () => {
 
   it("uses the same routes on a local QA origin without sending an email", () => {
     const message = workbookScanReminderEmail({ ...input, origin: "http://localhost:3467/" });
-    expect(message.html).toContain('href="http://localhost:3467/account/scans"');
+    expect(message.html).toContain('href="http://localhost:3467/account/scan"');
     expect(message.headers["List-Unsubscribe"]).toBe(`<http://localhost:3467/api/unsubscribe?t=${input.token}>`);
   });
 });
