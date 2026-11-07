@@ -278,6 +278,8 @@ begin
         or doc->'outcome'->>'availability' not in ('unavailable','held','complete')
         or (doc->'outcome'->>'availability'='complete') <> (jsonb_typeof(doc->'outcome'->'plan')='object' and jsonb_typeof(doc->'outcome'->'decision')='object')
         or (doc->'outcome'->>'availability'<>'complete' and (doc->'outcome'->'decision' is distinct from 'null'::jsonb or doc->'outcome'->'plan' is distinct from 'null'::jsonb))
+        -- A real plan needs its Book 1 sources (review on #472b): complete with book1 null is refused here too.
+        or (doc->'outcome'->>'availability'='complete' and jsonb_typeof(doc->'frozen'->'book1') is distinct from 'object')
       else doc->>'version' is distinct from '1' or doc->>'engine' is distinct from 'workbook-preview-sources/1;progress/1;history/1;plan-preview/1'
         or doc->'frozen'->>'version' is distinct from '1'
         or doc->'outcome'->>'availability' is distinct from 'unavailable' or doc->'outcome'->'decision' is distinct from 'null'::jsonb

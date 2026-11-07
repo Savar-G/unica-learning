@@ -15,7 +15,9 @@ function memorySql() {
     async command(a) {
       calls.push({ fn: "command", args: a });
       const scope = JSON.stringify([a.p_parent, a.p_child, a.p_run, a.p_draft]);
-      const found = [...rows.entries()].find(([, r]) => r.scope === scope);
+      // As the SQL does: a read finds a row by its request id only, within the same scope.
+      const byId = rows.get(a.p_request);
+      const found = byId && byId.scope === scope ? [a.p_request, byId] as const : undefined;
       if (a.p_action === "read") return found ? { status: "found", id: found[0], payload: found[1].payload, hash: found[1].hash, boundary_at: "2026-11-08T00:00:00.000Z",
         initial_activity: { items: 0, changes: 0, events: 0, receipts: 0, secondTries: 0 } } : { status: "missing" };
       const same = rows.get(a.p_request);
@@ -84,7 +86,7 @@ describe("SQL transport contract", () => {
     await expect(odd.save(ACTOR, scope, BASELINE, record)).rejects.toThrow("baseline-sql-answer");
     const forged = book1BaselineRepository({ ...memorySql().sql, command: async () => ({ status: "found", id: BASELINE, payload: record.payload, hash: "1".repeat(64),
       boundary_at: "2026-11-08T00:00:00.000Z", initial_activity: { items: 0, changes: 0, events: 0, receipts: 0, secondTries: 0 } }) });
-    await expect(forged.read(ACTOR, scope)).rejects.toThrow("baseline-invalid-record");
+    await expect(forged.read(ACTOR, scope, BASELINE)).rejects.toThrow("baseline-invalid-record");
   });
   it("reads the source answer strictly and the ledger seam refuses bad input without a call", async () => {
     const reader = book1SourceReader({ ...memorySql().sql, sources: async () => ({ status: "found", id: BASELINE, payload: "{}", hash: "x", boundary_at: "2026-11-08T00:00:00Z",

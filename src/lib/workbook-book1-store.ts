@@ -27,7 +27,8 @@ export interface Book1Scope { parentId: string; childId: string; runId: string; 
 export interface StoredBook1Baseline { id: string; record: Book1BaselineRecord; boundaryAt: string; initialActivity: Book1CorrectionSources["initialActivity"] }
 export type Book1SaveStatus = "saved" | "duplicate" | "conflict" | "unavailable" | { refused: string };
 export interface Book1BaselineRepository {
-  read(actorId: string, scope: Book1Scope): Promise<StoredBook1Baseline | null>;
+  /** One baseline by its id, within its scope (the SQL looks it up by id only). */
+  read(actorId: string, scope: Book1Scope, id: string): Promise<StoredBook1Baseline | null>;
   save(actorId: string, scope: Book1Scope, id: string, record: Book1BaselineRecord): Promise<Book1SaveStatus>;
 }
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -43,8 +44,9 @@ export function book1BaselineRepository(sql: Book1BaselineSql): Book1BaselineRep
     p_action: action, p_actor: actor, p_parent: s.parentId, p_child: s.childId, p_run: s.runId, p_draft: s.draftId,
     p_request: id ?? "00000000-0000-4000-8000-000000000000", p_payload: record?.payload ?? null, p_hash: record?.hash ?? null });
   return {
-    async read(actor, scope) {
-      const a = await sql.command(args("read", actor, scope, null, null));
+    async read(actor, scope, id) {
+      // By the baseline's id: the SQL read finds a row only by p_request (review on #472b: a read with no id always missed).
+      const a = await sql.command(args("read", actor, scope, id, null));
       if (!object(a)) throw Error("baseline-sql-answer");
       if (a.status === "missing") return null;
       const activity = counts(a.initial_activity);
@@ -141,7 +143,7 @@ export async function captureBook1Baseline(deps: Book1CaptureDeps, o: { id: stri
   if (typeof status === "object") return refuse(status.refused);
   if (status !== "saved" && status !== "duplicate") return refuse(status);
   // Read back through the saved contract: a successful call alone is not storage proof.
-  const saved = await deps.repository.read(o.actorId, scope);
+  const saved = await deps.repository.read(o.actorId, scope, o.id);
   if (!saved || saved.record.payload !== made.record.payload || saved.record.hash !== made.record.hash) return refuse("saved-baseline-unavailable");
   return { status, baseline: saved };
 }

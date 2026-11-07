@@ -237,6 +237,9 @@ const count = async (c, t) => (await c.query(`select count(*)::int n from public
     assert.equal(await prev(id(807), { ...v1(id(807)), outcome: { availability: 'complete', decision: {}, plan: {}, consumedVersions: [] } }), 'conflict');
     const missing = v2(id(808)); delete missing.frozen.book1;
     assert.equal(await prev(id(808), missing), 'conflict');
+    // Review on #472b: a complete v2 preview with book1 null is refused by SQL too.
+    const nullBook1 = v2(id(810)); nullBook1.frozen.book1 = null;
+    assert.equal(await prev(id(810), nullBook1), 'conflict');
     assert.equal((await outcome(db.query("insert into public.workbook_plan_previews(id,parent_id,child_id,workbook_id,number,printed_revision,actor_id,engine,cutoff,payload,payload_hash) values($1,$2,$3,$4,1,$5,$6,'other',now(),'{}',$7)",
       [id(809), PARENT, CHILD, DRAFT, PRINTED, ADMIN, sha('{}')]))).error.code, '23514');
     assert.equal(await count(db, 'workbook_plan_previews'), 2);
