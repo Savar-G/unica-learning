@@ -6,7 +6,9 @@
 | Selected sibling | Only the selected child's book IDs enter history | Workbooks route and Admin preview tests |
 | Child switch after a successful read | No old history in the new child's first committed view | Layout observer in history public-interface test |
 | Late account, child, route or filter reply | Old reply is discarded | Deferred fake HTTP tests |
-| Cursor change | Existing More pages and First pages request the cursor | Existing history test; keyed request context |
+| Cursor change | More pages finishes the newest book's bounded cursor, then opens the next book; First pages resets to the newest book | Real canonical reader plus fake HTTP/React test: 56 distinct pages across two books, four responses, no missing or duplicate page |
+| Empty current-book filter | State names this workbook; More pages can open the next book; a filter change resets to the newest book | Public history component tests; no automatic all-book fetch |
+| Empty shipped-book list | No all-book history request | Public history component test |
 | Foreign family or child | Server refuses before history is composed | Workbooks route and existing history API tests; SQL source ownership check |
 | Unexpected child or book in a success reply | Hide private results and stop requests | Fake HTTP response-scope tests |
 | Loading | Loading page history status | History and Admin previews |

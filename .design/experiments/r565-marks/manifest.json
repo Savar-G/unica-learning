@@ -248,10 +248,38 @@
       "file": ".design/experiments/r565-marks/parent-answersPhone.png",
       "bytes": 47399,
       "sha256": "f4a0067b175ab78a2353c74739b5c7195263302d550f5742c41a6ca612a476da"
+    },
+    {
+      "file": ".design/experiments/r565-marks/order-desktop.png",
+      "bytes": 232062,
+      "sha256": "547463e27180d3947cd5ebcd1e615d7aedba9c3359c7111829327bef13eb28ef"
+    },
+    {
+      "file": ".design/experiments/r565-marks/order-phone.png",
+      "bytes": 150705,
+      "sha256": "2f4e88262f0531fa8aea7ab91389760b658676472aa436fa0bdce9b7b986e7db"
     }
   ],
   "browser_review": "browser-review.md; local synthetic data, desktop and phone. No real-device or 200-percent-zoom claim.",
   "source_before_evidence": "f4d39429f80ccf741df2878777ab48a424f6572c",
-  "full_gate": "queued in released serial window",
-  "independent_review": "pending"
+  "full_gate": "Previous source 2fe858c6 passed. New pagination repair gate queued after the bounded generator print check.",
+  "independent_review": "Combined de7c2408 rejected for one pagination P2. Fresh repair recheck pending.",
+  "pagination_repair": {
+    "finding": "Current book could appear after past books across UUID pagination",
+    "behavior": "Finish each bounded workbook cursor in the supplied newest-first order",
+    "binding_before": "One public-interface regression fails against de7c2408",
+    "focused_after": "20 history tests; 244 tests across four affected files pass",
+    "browser": "Static current-book preview: desktop1280/phone390; no overflow; every history action44px; zero scripts; no release flags set. Earlier history images predate this pagination correction.",
+    "screenshots": [
+      "order-desktop.png",
+      "order-phone.png"
+    ],
+    "runtime_sha256": {
+      "src/components/scan-history.tsx": "6a263ed589134f5a6a20a9fa3e9e499837b5e6c31363a5fc97ae976640892823",
+      "src/components/admin-parent-preview.tsx": "4d7344e09a66af4ac88d4d5d3709885661d6309c54b473769dc6bfe489581b62",
+      "src/components/parent-workbooks.css": "00d20c5ff9df226102cfffb35f0a588266d477fbedf456040480b4616be1289b"
+    },
+    "combined_focused": "643 passed in 21 files",
+    "types": "npx tsc --noEmit --incremental false: exit 0"
+  }
 }

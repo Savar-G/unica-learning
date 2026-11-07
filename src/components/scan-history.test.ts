@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ScanHistory, ScanHistoryView } from "./scan-history";
 import { ScanPostChoice } from "./scan-post-choice";
-import type { HistoryPage } from "@/lib/scan-history";
+import { readScanHistory, type HistoryPage, type HistoryRecord, type HistoryStore } from "@/lib/scan-history";
 const fake = vi.hoisted(() => ({ auth: null as null | ((_event: string, session: { user: { id: string } }) => void), pathname: "/account/workbooks/child", events: [] as string[] }));
 vi.mock("next/navigation", () => ({ usePathname: () => fake.pathname }));
 vi.mock("@/lib/supabase-browser", () => ({ browserClient: () => ({ auth: { onAuthStateChange: (callback: typeof fake.auth) => { fake.auth = callback; return { data: { subscription: { unsubscribe() {} } } }; } } }) }));
@@ -119,4 +119,77 @@ it("never commits the previous child's loaded history below the next child's hea
   expect(snapshots.at(-1)).toContain("sibling");
   expect(snapshots.at(-1)).toContain("Loading page history");
   expect(snapshots.at(-1)).not.toContain("Workbook 2");
+});
+
+it("finishes the current workbook's bounded pages before visiting past workbooks", async () => {
+  const records: HistoryRecord[] = Array.from({ length: 56 }, (_, index) => ({
+    id: `${String(index + 1).padStart(8, "0")}-1111-4111-8111-111111111111`, childId: "child", childName: "Synthetic",
+    workbookId: index < 26 ? "past" : "current", book: index < 26 ? 1 : 2, revision: "frozen",
+    day: "Day 1", pageNumber: index < 26 ? index + 1 : index - 25, marks: [], photos: [], jobs: [], spend: [],
+  }));
+  const store: HistoryStore = { read: async filter => ({ budget: null, pages: records.filter(record =>
+    (!filter.workbook || record.workbookId === filter.workbook) && (!filter.after || record.id > filter.after)) }) };
+  const queries: URLSearchParams[] = [], shown: string[] = [];
+  vi.stubGlobal("fetch", async (path: string) => {
+    const query = new URL(path, "http://synthetic.local").searchParams; queries.push(query);
+    const result = await readScanHistory(store, { child: query.get("child")!, workbook: query.get("workbook") ?? undefined,
+      after: query.get("after") ?? undefined }, 0);
+    shown.push(...result!.pages.map(page => page.id)); return Response.json(result);
+  });
+  const more = async () => { await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "More pages")!.click()); };
+  await showHistory("child", ["current", "past"]);
+  expect(host.textContent).toContain("Workbook 2"); expect(host.textContent).not.toContain("Workbook 1");
+  expect(queries[0].get("workbook")).toBe("current"); expect(shown).toHaveLength(25);
+  await more(); expect(host.textContent).toContain("Workbook 2"); expect(host.textContent).not.toContain("Workbook 1");
+  expect(queries[1].get("workbook")).toBe("current"); expect(queries[1].get("after")).toBe(records[50].id);
+  await more(); expect(host.textContent).toContain("Workbook 1"); expect(host.textContent).not.toContain("Workbook 2");
+  expect(queries[2].get("workbook")).toBe("past"); expect(queries[2].has("after")).toBe(false);
+  await more(); expect(queries[3].get("workbook")).toBe("past");
+  expect(shown).toHaveLength(56); expect(new Set(shown).size).toBe(56);
+  expect([...host.querySelectorAll("button")].some(button => button.textContent === "More pages")).toBe(false);
+  await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "First pages")!.click());
+  expect(queries[4].get("workbook")).toBe("current"); expect(queries[4].has("after")).toBe(false);
+});
+
+it("keeps an empty current-book filter bounded and resets to that book when the filter changes", async () => {
+  const paths: URLSearchParams[] = [];
+  vi.stubGlobal("fetch", async (path: string) => {
+    const query = new URL(path, "http://synthetic.local").searchParams; paths.push(query);
+    return Response.json(listing(query.get("workbook") === "current" ? [] : [{ ...page, workbookId: "past", book: 1 }]));
+  });
+  await showHistory("child", ["current", "past"]);
+  expect(paths).toHaveLength(1); expect(host.textContent).toContain("No saved page results in this workbook");
+  await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "More pages")!.click());
+  expect(host.textContent).toContain("Workbook 1"); expect(paths[1].get("workbook")).toBe("past");
+  await act(async () => { const select = host.querySelector("select")!; select.value = "review"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(paths[2].get("workbook")).toBe("current"); expect(paths[2].get("status")).toBe("review"); expect(paths[2].has("after")).toBe(false);
+  expect(host.textContent).toContain("No saved page results in this workbook for this filter"); expect(host.textContent).not.toContain("Workbook 1");
+});
+
+it("does not request all-book history when the shipped-book list is empty", async () => {
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  await showHistory("child", []);
+  expect(fetch).not.toHaveBeenCalled(); expect(host.textContent).toContain("No saved page results"); expect(host.querySelector("button")).toBeNull();
+});
+
+it("refuses a different shipped workbook than the one requested", async () => {
+  vi.stubGlobal("fetch", async () => Response.json(listing([{ ...page, workbookId: "past" }])));
+  await showHistory("child", ["current", "past"]);
+  expect(host.textContent).toContain("Page history is not available here"); expect(host.querySelector("a")).toBeNull();
+});
+
+it("ignores a late current-book refresh after More pages opens a past book", async () => {
+  vi.useFakeTimers(); let resume!: (value: ReturnType<typeof listing>) => void;
+  const pending = new Promise<ReturnType<typeof listing>>(resolve => { resume = resolve; });
+  const current = { ...page, workbookId: "current" }, past = { ...page, workbookId: "past", book: 1 };
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json(listing([current])))
+    .mockResolvedValueOnce({ status: 200, ok: true, json: () => pending })
+    .mockResolvedValueOnce(Response.json(listing([past])));
+  vi.stubGlobal("fetch", fetch);
+  await showHistory("child", ["current", "past"]);
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); }); expect(fetch).toHaveBeenCalledTimes(2);
+  await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "More pages")!.click());
+  expect(host.textContent).toContain("Workbook 1");
+  await act(async () => resume(listing([current])));
+  expect(host.textContent).toContain("Workbook 1"); expect(host.textContent).not.toContain("Workbook 2");
 });

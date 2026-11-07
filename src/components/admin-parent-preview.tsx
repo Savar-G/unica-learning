@@ -90,22 +90,23 @@ function workbooks(child: ChildView, state: string): WorkbooksView {
     books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", deliveredOn: number === 3 && mailed ? null : "2026-11-01" })) };
 }
 
-/** Inert canonical history projections for the selected synthetic child, including current and past books. */
+/** Inert canonical history for the selected child's current book. More pages keeps past books behind this book. */
 function workbookHistory(child: ChildView, state: string) {
   const status: HistoryState = state === "history_loading" ? "loading" : state === "history_error" ? "failed" : state === "history_unavailable" ? "unavailable" : "ready";
   const states: HistoryStatus[] = state === "history_empty" || state === "first_book_coming" ? []
     : state === "history_review" ? ["review"] : state === "history_pending" ? ["pending"] : state === "history_failed" ? ["failed"]
       : state === "history_expired" || state === "history_missing_photo" ? ["ready"] : ["ready", "review", "pending", "failed", "blank", "unscored", "never-scanned"];
   const pages: HistoryListing["pages"] = states.map((pageStatus, index) => ({
-    id: `${child.id}-page-${index}`, childId: child.id, childName: child.firstName, workbookId: `sample-book-${index > 3 ? 2 : 3}`,
-    book: index > 3 ? 2 : 3, revision: "synthetic-frozen", day: child.id === "sample-child-2" ? "Day 2" : "Day 1", pageNumber: index + 4,
+    id: `${child.id}-page-${index}`, childId: child.id, childName: child.firstName, workbookId: "sample-book-3",
+    book: 3, revision: "synthetic-frozen", day: child.id === "sample-child-2" ? "Day 2" : "Day 1", pageNumber: index + 4,
     status: pageStatus, label: HISTORY_LABELS[pageStatus], photo: pageStatus === "never-scanned" || state === "history_missing_photo" ? null : `${child.id}-photo-${index}`,
     photoAvailable: state !== "history_expired", failedJob: pageStatus === "failed",
     counts: { scored: pageStatus === "ready" ? 3 : pageStatus === "blank" ? 1 : 0, unscored: pageStatus === "unscored" ? 1 : 0, parentChecks: pageStatus === "review" ? 1 : 0, pending: pageStatus === "pending" ? 1 : 0 },
     right: pageStatus === "ready" ? 2 : 0, wrong: pageStatus === "ready" ? 1 : 0, blank: pageStatus === "blank" ? 1 : 0,
   }));
   const listing = { pages, counts: Object.fromEntries(states.map(value => [value, pages.filter(page => page.status === value).length])), after: null };
-  return <ScanHistoryView state={status} listing={listing} />;
+  return <ScanHistoryView state={status} listing={listing} workbookScoped={state !== "first_book_coming"}
+    hasMore={status === "ready" && state !== "first_book_coming"} />;
 }
 
 function answerKey(child: ChildView, state: string): ParentWorkbookAnswers {

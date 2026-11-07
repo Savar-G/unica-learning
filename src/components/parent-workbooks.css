@@ -33,5 +33,6 @@
 .support-page .pw-history p { margin: 0; }
 .pw-history .scan-group h3 { font: 500 16px/1.4 var(--sans); margin: 8px 0 12px; }
 .pw-history .scan-link { display: inline-flex; align-items: center; min-height: 44px; white-space: normal; }
+.pw-history .btn { min-height: 44px; }
 .pw-history .scan-group li { padding-block: 4px; }
 .pw-history .scan-link:focus-visible, .pw-history select:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }

@@ -244,7 +244,8 @@ it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({
     const history = output.querySelector('.pw-history .scan-history')!;
     expect(output.querySelector("h1")?.textContent).toBe(`${child === "first" ? "Leah" : "Kai"}'s workbooks`);
     expect(history.textContent).toContain(`Workbook 3 · Day ${child === "first" ? 1 : 2}`);
-    expect(history.textContent).toContain(`Workbook 2 · Day ${child === "first" ? 1 : 2}`);
+    expect(history.textContent).not.toContain("Workbook 2");
+    expect(history.textContent).toContain("More pages");
     for (const text of ["Results ready", "2 of 3 right", "Please check", "Waiting for a check", "Could not check", "All answers blank", "Not scored", "No saved results"]) expect(history.textContent).toContain(text);
     expect(history.textContent).not.toContain("Loading page history");
     expect(history.querySelectorAll('a[role="link"]')).toHaveLength(6);

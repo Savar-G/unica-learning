@@ -30,3 +30,11 @@ The signed-in route check is local Next code using owned hosted synthetic rows. 
 The 638 combined focused tests passed across 21 files. They include the binding child-identity remount control supplied by the implementer. The complete gate and independent review remain required. All 31 history/parent PNG files match the manifest's signatures, byte sizes and SHA256 values. The 16 chat-only PNG files are listed in the adjacent chat-only manifest.
 
 The owned browser tab and ports 3093/3094 were closed. Two synthetic Auth/parents, three children, four books and three photos are retained under the overnight family-data deletion hold. Their private file is mode 0600 and is not in the repository. No real family data was deleted. The morning note records cleanup as a question. Family switches remain off.
+
+## Pagination repair after combined review
+
+The independent review found that UUID selection could place past books before the current book. The repaired Workbooks loader reads one supplied newest-first book at a time. It finishes the bounded cursor before More pages opens the next book. A 56-page public-reader/React case failed on the old source and passes on the repair with no missing or duplicate pages. Twenty history tests and 244 focused tests pass.
+
+New static Admin evidence: `order-desktop.png` and `order-phone.png`. The actual iframe widths are 1280 and 390 pixels. Both show only the selected current book, with More pages. Neither has horizontal overflow. Each result action and More pages measures 44 pixels. The initial More pages height was 43 pixels; the Workbooks button minimum height is now 44 pixels. The iframe contains zero scripts. The two child headings remain distinct. The phone image is scrolled to show the lower history controls.
+
+No release environment flag was set for this check. The local server used the existing synthetic Admin session. No recognition, provider, email, charge, customer write or deletion ran. The owned tab was signed out and closed. The local server stopped. This static browser check proves layout and current-book presentation; the fake HTTP/React test proves live loader traversal. Earlier history screenshots predate the pagination correction and are retained as earlier state evidence. No positive production parent proof is claimed.
