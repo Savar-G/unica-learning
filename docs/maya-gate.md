@@ -274,7 +274,7 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P1b | A | passing | A doubtful right answer refused twice: code's fallback is the confirmation, never a warm phrase alone | checked controller behavior | |
 | P1c | A | passing | A no after the confirmation accepts nothing: the model's right reading is refused, and the question goes on | checked controller behavior | |
 | P1d | A | passing | An unclear turn with no number, refused twice: code asks for the final answer alone | checked controller behavior | |
-| P2 | A | passing | 'Yes, 16. But I don't know what to do with it.': another sentence in the turn, so Maya asks before the step counts | checked controller behavior | |
+| P2 | A | passing | 'Yes, 16. But I don't know what to do with it.': another sentence in the turn, so no credit and no step confirm: Maya helps with the step | checked controller behavior | |
 | P2b | A | passing | '66. That is wrong.': a negative that points back still takes the number back | checked controller behavior | |
 | P3 | A | passing | Repeated fallbacks on one step: each child turn raises help one level (H0, H1, H2) | checked controller behavior | |
 | P4 | A | passing | The opening draws what it is offered: no board offer for an act that cannot draw, so no refused call before hello | checked controller behavior | |

@@ -44,7 +44,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { claimWordsOnly, committedText, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
+import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -749,6 +749,8 @@ function gate(s: Session, reading: Reading): Allowed | null {
     if (s.turn && s.package && outsideConfirmation(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0)) {
       return { acts: ["clarify"], code: "confirm_first", reason: "This turn contains outside arithmetic. Read the stored question instead of confirming any number from the turn." };
     }
+    // A confirm that could credit nothing is no use: the normal help comes instead ("Is it 6?" on the ones, "I carried 1.").
+    if (stepOnlyTurn(s) || claimJudgedWrong(s)) return null;
     if (s.confirmTries < 2) return { acts: ["confirm"], code: "confirm_first", reason: "What the child said is unclear: confirm it before judging any math." };
     return {
       acts: s.offeredOtherInput ? ["close"] : ["offer_other_input", "close"],
@@ -1396,7 +1398,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       s.confirmTries += 1;
       s.mishearing.confirmations += 1;
       const asked = spoken.chosen.filter((o) => o.line === "confirm.heard" || o.line === "confirm.which");
-      s.heardAsked = asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots.heard ? valuesIn(asked[0].slots.heard, readOptionsFor(pkg))[0] ?? null : null;
+      // After a claim judged wrong (a confirm only an unclear hearing allows), a yes gives no number.
+      s.heardAsked = !claimJudgedWrong(s) && asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots.heard ? valuesIn(asked[0].slots.heard, readOptionsFor(pkg))[0] ?? null : null;
       const total = stepSaidUnheard(s) ? stepConfirmable(s) : null;
       s.stepAsked = total && s.heardAsked && saidAs(total, s.heardAsked) ? s.heardAsked : null;
       enterInterrupt(s, "CONFIRM_HEARD");
@@ -2042,7 +2045,8 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
 function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolean {
   const pkg = s.package;
   if (!pkg || !s.turn || step.kind !== "add-column") return false;
-  const body = wholeTurn(s.turn.text);
+  // A turn code could not hear for sure is no step credit: it gets its confirm first.
+  const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
   if (body === null) return false;
   // Only the first step not done: no tens credit before the ones.
   if (workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
@@ -2106,8 +2110,9 @@ function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" }> 
 
 /**
  * The only turn Maya may ask a step's confirm about, and the number she asks: exactly one number, which is the column's full
- * total, and no written-digit or carry claim. Any other turn gets no step confirm, so she never asks about a number she will
- * not credit, and a claim about a column cannot pass as a hearing problem ("I wrote 6." on the tens). Review of 6528f2ca.
+ * total, and no other word but the short list of confirmWordsOnly. An allow-list on the words: any place, column, verb, speaker
+ * or "answer" means no step confirm ("6 in the ones.", "The answer is 16.", "I wrote 6."), so she never asks about a number she
+ * will not credit, and a claim about a column cannot pass as a hearing problem. Reviews of 6528f2ca and 66491fd5.
  */
 function stepConfirmable(s: Session): AnswerValue | null {
   const st = currentColumn(s);
@@ -2115,7 +2120,7 @@ function stepConfirmable(s: Session): AnswerValue | null {
   const opts = readOptionsFor(s.package);
   const values = valuesIn(s.turn.text, opts);
   const total = number(st.total);
-  return values.length === 1 && readAnswer(s.turn.text, opts).kept.length === 1 && saidAs(values[0], total) && columnClaims(s.turn.text).length === 0 ? total : null;
+  return values.length === 1 && readAnswer(s.turn.text, opts).kept.length === 1 && saidAs(values[0], total) && confirmWordsOnly(s.turn.text) ? total : null;
 }
 
 /**

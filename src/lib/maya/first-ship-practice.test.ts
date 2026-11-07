@@ -120,7 +120,7 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     ["16 and 3.", 16], ["I didn't write 6.", 6], ["I wrote 6. I think.", 6],
   ];
   // One number, the column's total, no claim: the only turns that get a step confirm (review of 6528f2ca).
-  const STEP_CONFIRM = new Set(["Is it 16?", "Uh, 16?", "16?", "It's 16, I think.", "I got 16?", "It is 16?", "I got 16 for the ones.", "My mom got 16.", "The ones make 16.", "16. My mom said."]);
+  const STEP_CONFIRM = new Set(["Is it 16?", "Uh, 16?", "16?", "It's 16, I think.", "I got 16?", "It is 16?"]);
   it.each(NOT_HEARD_ONES)("does not hear the ones in %j, and asks a step confirm only for the total alone", async (text, value) => {
     const down1 = (await play("A", [down(text)])).told[1];
     expect(down1.lines).not.toContain("check.right_step");
@@ -178,7 +178,7 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
   });
 
   // A plain yes to Maya's own "Did you say 16?" (decision after review of 27a0ea5b), as the final answer's confirm (P11b).
-  const asked16: Step = { child: "My mom said 16.", read: { answers: [[16, "ones", "right"]] }, maya: [{ act: "confirm", heard: "16", repair: { throws: true } }] };
+  const asked16: Step = { child: "Is it 16?", read: { answers: [[16, "ones", "right"]] }, maya: [{ act: "confirm", heard: "16", repair: { throws: true } }] };
   const nextAfterYes = (text: string, value: number): Step => named(text, value, "ones");
   const yesRead: Step = { child: "Yes.", read: { answers: [[16, "ones", "right"]] }, maya: [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }] };
 
@@ -197,9 +197,11 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     expect(told[2]).toMatchObject({ ...NEXT, step: "tens" });
   });
 
-  it("credits a plain yes after an other-speaker turn: the child now owns the number", async () => {
+  it("gives an other-speaker turn no confirm, so a yes credits nothing", async () => {
     const asked: Step = { child: "My mom said 16.", read: { answers: [[16, "ones", "right"]] }, maya: [{ act: "confirm", heard: "16", repair: { throws: true } }] };
-    expect((await play("A", [asked, down("Yes.")])).told[2]).toMatchObject({ ...NEXT, step: "tens" });
+    const { told } = await play("A", [asked, down("Yes.")]);
+    expect(told[1].act).not.toBe("confirm");
+    expect(told[2].lines).not.toContain("check.right_step");
   });
 
   it.each(["Yes, I think 16.", "Yes, 16. I think.", "Yes?", "Yes maybe.", "Yes, 15.", "Yes it's 15.", "Yes, 16. My mom said.", "Yes, I guess.", "Yes, but I don't know.", "No.", "Yes. Yes."])("does not credit %j after 'Did you say 16?', and asks again", async (text) => {
@@ -397,11 +399,75 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     }
   });
 
-  it.each([["Is it 16?"], ["16?"], ["Uh, 16?"], ["It's 16, I think."], ["My mom said 16."], ["The ones make 16."], ["I got 16?"]])("may ask about one number that is the total, and the yes credits it: %j", async (text) => {
+  it.each([["Is it 16?"], ["16?"], ["Uh, 16?"], ["It's 16, I think."], ["Maybe 16."], ["I guess 16."], ["I think it's 16."], ["Hmm, I got 16?"], ["I got 16?"]])("may ask about one number that is the total, and the yes credits it: %j", async (text) => {
     const { told } = await play("A", [named(text, 16, "ones"), down("Yes.")]);
     expect(told[1]).toMatchObject({ act: "confirm", lines: ["confirm.heard"] });
     expect(told[1].say).toContain("16");
     expect(told[2]).toMatchObject({ ...NEXT, step: "tens" });
+  });
+
+  // Review of 66491fd5: after removing the one number, every other word must be on a short list.
+  const noStepConfirm = async (a: number, b: number, before: { child: string; read?: Read; maya?: Plan[] }[], text: string, value: number, step: string) => {
+    const yes = { child: "Yes.", read: { answers: [[value, step, "right"]] } as Read, maya: [THROWS_REPAIR] };
+    for (const first of [
+      { child: text, read: { answers: [[value, step, "right"]] } as Read, maya: [THROWS_REPAIR] },
+      { child: text, maya: [{ act: "confirm" as const, heard: String(value), repair: { throws: true } }] },
+      { child: text, maya: THROWS },
+    ]) {
+      const told = await playSum(a, b, [...before, first, yes]);
+      expect([text, told[before.length + 1].act]).not.toEqual([text, "confirm"]);
+      expect(told.slice(before.length + 1).flatMap((x) => x.lines)).not.toContain("check.right_step");
+    }
+  };
+  it.each(["6 in the ones.", "The ones are 6.", "I got 6 for the ones.", "6 tens?"])("gives the tens no confirm and no credit: %j (27 + 39)", async (text) => {
+    await noStepConfirm(27, 39, [onesDone], text, 6, "tens");
+  });
+  it.each(["16 in the tens.", "The tens make 16.", "16 tens?", "The answer is 16.", "My mom said 16.", "16. My mom said.", "The ones make 16.", "I got 16 for the ones."])("gives the ones no confirm and no credit: %j (27 + 39)", async (text) => {
+    await noStepConfirm(27, 39, [], text, 16, "ones");
+  });
+  it("gives the hundreds no confirm and no credit: '3 in the ones?' (156 + 237)", async () => {
+    await noStepConfirm(156, 237, [{ child: "6 plus 7 is 13.", read: { answers: [[13, "ones", "right"]] } }, { child: "5 plus 3 plus 1 is 9.", read: { answers: [[9, "tens", "right"]] } }], "3 in the ones?", 3, "hundreds");
+  });
+  it.each(["6 in the ones.", "The ones are 16.", "16 in the ones.", "The tens make 16.", "16 tens?"])("gives the tens no confirm and no credit: %j (77 + 89)", async (text) => {
+    await noStepConfirm(77, 89, [{ child: "7 plus 9 is 16.", read: { answers: [[16, "ones", "right"]] } }], text, 16, "tens");
+  });
+  it("still credits the tens for 'Is it 16?' then a yes (77 + 89)", async () => {
+    const told = await playSum(77, 89, [{ child: "7 plus 9 is 16.", read: { answers: [[16, "ones", "right"]] } }, { child: "Is it 16?", read: { answers: [[16, "tens", "right"]] }, maya: [THROWS_REPAIR] }, { child: "Yes.", maya: THROWS }]);
+    expect(told[2]).toMatchObject({ act: "confirm" });
+    expect(told[3].lines).toContain("check.right_step");
+  });
+
+  // Review of 66491fd5: a plan or a wrong claim beside a right final answer. No yes can pass over it.
+  it.each([
+    ["a model that names the answer", { child: "I wrote 16 in the ones. It is 66.", read: { answers: [[66, "result", "right"]] }, maya: [{ act: "accept_answer" as const, repair: { throws: true } }] }],
+    ["a model's confirm", { child: "I wrote 16 in the ones. It is 66.", maya: [{ act: "confirm" as const, heard: "66", repair: { throws: true } }] }],
+    ["a model's unclear reading", { child: "I wrote 16 in the ones. It is 66.", read: { unclear: true } as Read, maya: [{ act: "confirm" as const, heard: "66", repair: { throws: true } }] }],
+    ["the model down", down("I wrote 16 in the ones. It is 66.")],
+  ] as const)("does not pass over 'I wrote 16 in the ones. It is 66.' with a yes: %s", async (_name, first) => {
+    for (const yes of [down("Yes."), { child: "Yes.", read: { answers: [[66, "result", "right"]] }, maya: [{ act: "accept_answer" as const, repair: { throws: true } }] } as Step]) {
+      const { told } = await play("A", [first as Step, yes]);
+      expect(told[1].act).not.toBe("confirm");
+      expect(told.map((x) => x.act)).not.toContain("accept_answer");
+      expect(told.map((x) => x.say).join(" ")).not.toMatch(/= 66/);
+    }
+  });
+
+  // Review of 66491fd5: an unclear turn gets a confirm only when that confirm could credit something.
+  it.each(["Is it 6?", "6", "It's 6."])("uses the normal help for an unclear %j on the ones", async (text) => {
+    for (const first of [{ child: text, read: { unclear: true } as Read, maya: [{ act: "confirm" as const, heard: "6", repair: { throws: true } }] }, { child: text, uncertain: true, maya: THROWS }]) {
+      const { told } = await play("A", [first as Step, down("Yes.")]);
+      expect(told[1]).toMatchObject({ act: "guide", step: "ones" });
+      expect(told[2].lines).not.toContain("check.right_step");
+    }
+  });
+  it("uses the normal help for an unclear 'I carried 1.' (156 + 235)", async () => {
+    const told = await playSum(156, 235, [{ child: "I carried 1.", read: { unclear: true }, maya: [{ act: "confirm", heard: "1", repair: { throws: true } }] }, { child: "Yes.", maya: THROWS }]);
+    expect(told[1]).toMatchObject({ act: "guide", step: "ones" });
+    expect(told[2].lines).not.toContain("check.right_step");
+  });
+  it.each(["Is it 16?", "Is it 66?"])("still confirms an unclear %j, which a yes can credit", async (text) => {
+    const { told } = await play("A", [{ child: text, read: { unclear: true }, maya: [{ act: "confirm", heard: text.includes("66") ? "66" : "16" }] }]);
+    expect(told[1].act).toBe("confirm");
   });
 
   it("keeps the final answer's confirm (P11)", async () => {

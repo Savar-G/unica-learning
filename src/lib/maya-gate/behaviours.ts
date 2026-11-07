@@ -1558,7 +1558,7 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "P2",
-    title: "'Yes, 16. But I don't know what to do with it.': another sentence in the turn, so Maya asks before the step counts",
+    title: "'Yes, 16. But I don't know what to do with it.': another sentence in the turn, so no credit and no step confirm: Maya helps with the step",
     fixture: "A",
     status: "passing",
     steps: [
@@ -1568,7 +1568,7 @@ export const BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
-      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
       refused: ["answer_not_committed"],
     },
   },

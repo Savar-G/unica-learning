@@ -1070,6 +1070,13 @@ export function wholeYes(body: string): { value: number | null } | null {
   return value === null ? null : { value };
 }
 
+/** The only words a step's confirm may stand on beside its number: no place, column, verb, speaker or "answer". */
+const CONFIRM_ONLY = new Set(["is", "it", "it's", "its", "i", "got", "get", "think", "maybe", "guess", "so", "okay", "ok", "oh", "um", "uh", "hmm"]);
+
+/** After the number, every word of the text is on the step confirm's short list ("Is it 16?", "I got 16, I think."). */
+export const confirmWordsOnly = (text: string) =>
+  text.toLowerCase().replace(/’/g, "'").split(/[\s,.?!]+/).filter(Boolean).every((w) => CONFIRM_ONLY.has(w) || plainNumber(w) !== null);
+
 /** The whole text is one sum: "a plus|and|+ b [plus|and|+ c] is|equals|makes|make|= d", in digits or words, or null. */
 export function wholeSum(body: string): { operands: number[]; sum: number } | null {
   const m = /^(.+?)\s*(?:\s(?:is|equals|makes|make)\s|=)\s*(.+)$/.exec(body);
