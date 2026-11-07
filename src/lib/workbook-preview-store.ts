@@ -1,11 +1,20 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "./database";
 import type { WorkbookPreviewRequest } from "./workbook-progress-source";
 import { replayWorkbookPreview, type WorkbookPreviewRecord, type WorkbookPreviewRepository } from "./workbook-preview-record";
 
-/** Pending generated types. This is a dedicated SQL transport contract, not a widened Supabase client. */
+/** Dedicated SQL transport contract, bound to the generated schema below. */
 export interface WorkbookPreviewSql {
   command(args: { p_action: "read" | "save"; p_actor: string; p_parent: string; p_child: string; p_book: string;
     p_revision: string; p_request: string; p_payload: string | null; p_hash: string | null }): Promise<unknown>;
+}
+export function workbookPreviewSql(db: SupabaseClient<Database>): WorkbookPreviewSql {
+  return { async command(args) {
+    const result = await db.rpc("workbook_preview_command", args);
+    if (result.error) throw Error("preview-sql-unavailable");
+    return result.data;
+  } };
 }
 export function workbookPreviewRepository(sql: WorkbookPreviewSql): WorkbookPreviewRepository {
   async function command(action: "read" | "save", actor: string, r: WorkbookPreviewRequest, record?: WorkbookPreviewRecord) {
