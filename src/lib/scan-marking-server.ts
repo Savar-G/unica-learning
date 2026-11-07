@@ -1,8 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { markedFamily } from "@/lib/scan-pages-access";
-import { isUuid } from "@/lib/workbook-content";
+import { childPlanAccess, markingAccess, markingMode, type ChildPlanAccess, type Env } from "@/lib/scan-marking-access";
 import { changeScanMark, markingCommand, scanMarkingStore, type ParentMarkChoice } from "@/lib/scan-marking-store";
 import { markingAiClient } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL, MARKING_PROMPT_VERSION, markingPageView, runScanMarking } from "@/lib/scan-marking";
@@ -11,13 +10,7 @@ import { rebuildChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { learningEventStore } from "@/lib/learning-events-store";
 
-type Env = Readonly<Record<string, string | undefined>>;
-
-/** The marking switch. Only the exact values `test-only` and `families` turn it on; anything else is off. */
-function markingMode(env: Env) {
-  const value = env.SCAN_MARKING_ENABLED;
-  return value === "test-only" || value === "families" ? value : "off" as const;
-}
+export { markingAccess, markingDecision, type ChildPlanAccess, type ChildPlanReason, type MarkingDecision, type MarkingScope } from "@/lib/scan-marking-access";
 
 /**
  * Evidence readiness. `familyReady` reads only the source-controlled launch record; it is not the switch. The
@@ -34,74 +27,6 @@ export function scanMarkingServerReadiness(env: Env = process.env, now: string =
   };
 }
 
-/** The shared stored child-plan gate's contract (owned by the parent dashboard, `src/lib/plan-access.ts`). */
-export type ChildPlanReason = "open" | "ending_until_end" | "no_plan" | "ended" | "payment_failed" | "paused" | "unknown" | "read_failed";
-export type ChildPlanAccess = (input: { parentId: string; childId: string }) => Promise<{ open: boolean; reason: ChildPlanReason }>;
-const PLAN_REASONS: readonly ChildPlanReason[] = ["open", "ending_until_end", "no_plan", "ended", "payment_failed", "paused", "unknown", "read_failed"];
-
-// TODO(plan-access): replace with `childPlanAccess` from `@/lib/plan-access` once the dashboard's gate is on main.
-// Until then no real family's plan reads as running, so families mode admits only test families and admins.
-const childPlanAccess: ChildPlanAccess = async () => ({ open: false, reason: "unknown" });
-
-/** Where the marking happens: the child named by the page, or the child that owns the photo. */
-export type MarkingScope = Readonly<{ child: string }> | Readonly<{ photo: string }>;
-export type MarkingAccessReason = "off" | "test_family" | "not_test_family" | "child_unknown" | ChildPlanReason;
-export type MarkingDecision = Readonly<{ open: boolean; reason: MarkingAccessReason }>;
-
-/** null: the list is absent. false: present and malformed, which refuses everyone. Never exposes the identities. */
-function testParentList(env: Env): Set<string> | null | false {
-  const configured = env.SCAN_MARKING_TEST_PARENT_IDS;
-  if (configured === undefined) return null;
-  // At most 100 canonical UUIDs and 99 commas.
-  if (!configured.length || configured.length > 3699) return false;
-  const ids = configured.split(",");
-  if (ids.length > 100 || ids.some(id => id.length !== 36 || !isUuid(id))) return false;
-  const unique = new Set(ids.map(id => id.toLowerCase()));
-  return unique.size === ids.length ? unique : false;
-}
-
-async function scopedChild(db: SupabaseClient<Database>, parent: string, scope: MarkingScope | undefined): Promise<string | null> {
-  if (!scope) return null;
-  if ("child" in scope) return isUuid(scope.child) ? scope.child : null;
-  if (!isUuid(scope.photo)) return null;
-  try {
-    const row = await db.from("scan_photos").select("child_id").eq("id", scope.photo).eq("parent_id", parent).maybeSingle();
-    return !row.error && row.data && isUuid(row.data.child_id) ? row.data.child_id : null;
-  } catch { return null; }
-}
-
-/** Open only for an explicit running answer. Anything else, including a throw or an odd shape, is closed. */
-async function planDecision(plan: ChildPlanAccess, parentId: string, childId: string): Promise<MarkingDecision> {
-  let answer: unknown;
-  try { answer = await plan({ parentId, childId }); } catch { return { open: false, reason: "read_failed" }; }
-  const a = answer && typeof answer === "object" ? answer as { open?: unknown; reason?: unknown } : null;
-  const reason = a && PLAN_REASONS.includes(a.reason as ChildPlanReason) ? a.reason as ChildPlanReason : "unknown";
-  return { open: a?.open === true && (reason === "open" || reason === "ending_until_end"), reason };
-}
-
-/**
- * Marking admission, read on each call. `test-only`: test families and admins (and only listed ones when
- * SCAN_MARKING_TEST_PARENT_IDS is present). `families`: the same, plus a real family when the stored plan of the
- * scoped child is running. SCAN_PAGES_ENABLED and browser claims cannot grant it. The reason is for server code
- * and logs only; never show it to a parent.
- */
-export async function markingDecision(db: SupabaseClient<Database>, parent: string, env: Env = process.env,
-  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess): Promise<MarkingDecision> {
-  const mode = markingMode(env);
-  if (mode === "off") return { open: false, reason: "off" };
-  const list = testParentList(env);
-  if (list === false) return { open: false, reason: "off" };
-  if ((list === null || list.has(parent.toLowerCase())) && await markedFamily(parent, db)) return { open: true, reason: "test_family" };
-  if (mode === "test-only") return { open: false, reason: "not_test_family" };
-  const child = await scopedChild(db, parent, scope);
-  if (!child) return { open: false, reason: "child_unknown" };
-  return planDecision(plan, parent, child);
-}
-
-export async function markingAccess(db: SupabaseClient<Database>, parent: string, env: Env = process.env,
-  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess) {
-  return (await markingDecision(db, parent, env, scope, plan)).open;
-}
 export async function processScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess) {
   if (!await markingAccess(db, parent, env, { photo }, plan)) return "off";
   const row = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();

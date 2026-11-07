@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
+import { scanChecksAccess, scanChecksDecision } from "./scan-marking-access";
 import { markingAccess, markingDecision, processScanMarking, recoverScanMarking, scanMarkingServerReadiness, type ChildPlanAccess, type ChildPlanReason } from "./scan-marking-server";
 
 vi.mock("server-only", () => ({}));
@@ -172,4 +173,59 @@ it("readiness reports the families mode and keeps the evidence hold", () => {
   const release = scanMarkingServerReadiness(families, "2026-11-07T20:00:00.000Z");
   expect(release.mode).toBe("families");
   expect(release.familyReady).toBe(false);
+});
+
+// Send, the photo checks and the stack's `checks` field: the same rule, without the marking parent list.
+const closedReasons = ["no_plan", "ended", "payment_failed", "paused", "unknown", "read_failed"] as const;
+
+it("families mode opens checks and Send for a child whose plan is running, by child and by photo", async () => {
+  expect(await scanChecksAccess(db, parent, families, { child: running }, gate)).toBe(true);
+  expect(await scanChecksAccess(db, parent, families, { photo: runningPhoto }, gate)).toBe(true);
+  expect(await scanChecksAccess(db, parent, families, { child: stopped }, gate)).toBe(false);
+  expect(await scanChecksAccess(db, parent, families, { photo: stoppedPhoto }, gate)).toBe(false);
+});
+
+it.each(closedReasons)("families mode closes checks and Send for %s, like marking", async (reason) => {
+  plans[running] = { open: false, reason };
+  expect(await scanChecksDecision(db, parent, families, { child: running }, gate)).toEqual({ open: false, reason });
+  expect(await scanChecksAccess(db, parent, families, { photo: runningPhoto }, gate)).toBe(false);
+});
+
+it("checks and marking give the same answer for a real family for every plan answer", async () => {
+  for (const reason of ["open", "ending_until_end", ...closedReasons] as const) {
+    plans[running] = { open: reason === "open" || reason === "ending_until_end", reason };
+    for (const scope of [{ child: running }, { photo: runningPhoto }, { photo: missingPhoto }, undefined]) {
+      expect(await scanChecksDecision(db, parent, families, scope, gate)).toEqual(await markingDecision(db, parent, families, scope, gate));
+    }
+  }
+});
+
+it("another family's child closes checks and Send", async () => {
+  expect(await scanChecksAccess(db, otherParent, families, { child: running }, gate)).toBe(false);
+  expect(await scanChecksAccess(db, otherParent, families, { photo: runningPhoto }, gate)).toBe(false);
+});
+
+it.each(["test", "admin"] as const)("families mode keeps checks and Send for %s without a plan or a listing", async (role) => {
+  state[role] = true; plans[running] = { open: false, reason: "no_plan" };
+  const env = { ...families, SCAN_MARKING_TEST_PARENT_IDS: otherParent };
+  expect(await scanChecksAccess(db, parent, env, { child: running }, gate)).toBe(true);
+  expect(await scanChecksAccess(db, parent, env, undefined, gate)).toBe(true);
+  expect(asked).toEqual([]);
+});
+
+it.each([undefined, "off", "test-only", "on"])("with switch %s checks and Send stay with test families and admins only", async (flag) => {
+  const env = { SCAN_MARKING_ENABLED: flag, SCAN_MARKING_TEST_PARENT_IDS: otherParent };
+  expect(await scanChecksAccess(db, parent, env, { child: running }, gate)).toBe(false);
+  expect(await scanChecksAccess(db, parent, env, { photo: runningPhoto }, gate)).toBe(false);
+  state.admin = true;
+  expect(await scanChecksAccess(db, parent, env, { child: stopped }, gate)).toBe(true);
+  expect(asked).toEqual([]);
+});
+
+it("in families mode a malformed parent list closes checks and Send as it closes marking", async () => {
+  state.test = true;
+  const env = { ...families, SCAN_MARKING_TEST_PARENT_IDS: "broken" };
+  expect(await scanChecksAccess(db, parent, env, { child: running }, gate)).toBe(false);
+  expect(await markingAccess(db, parent, env, { child: running }, gate)).toBe(false);
+  expect(await scanChecksAccess(db, parent, { SCAN_MARKING_ENABLED: "test-only", SCAN_MARKING_TEST_PARENT_IDS: "broken" }, { child: running }, gate)).toBe(true);
 });

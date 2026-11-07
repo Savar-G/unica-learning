@@ -18,7 +18,7 @@ To reverse this restriction, remove `SCAN_MARKING_TEST_PARENT_IDS` from the serv
 
 ### Families mode
 
-`SCAN_MARKING_ENABLED=families` opens marking to a real family for one child when that child's plan is running. Marking opens when an admin presses "Start free month" and closes with the plan. `markingAccess` (`src/lib/scan-marking-server.ts`) decides on every request:
+`SCAN_MARKING_ENABLED=families` opens marking to a real family for one child when that child's plan is running. Marking opens when an admin presses "Start free month" and closes with the plan. `markingAccess` (`src/lib/scan-marking-access.ts`) decides on every request:
 
 1. Test families and admins keep the `test-only` rule, including `SCAN_MARKING_TEST_PARENT_IDS` when it is present. The list limits only this path; a malformed list closes marking for everyone.
 2. Any other family needs the child: the page names it (the workbooks page, history, progress and the stack), or the photo belongs to it (results, marking, corrections, explanations, direct marking and recovery; the photo is read with the signed-in parent's id, so another family's photo has no child). With no child, marking stays closed.
@@ -26,9 +26,11 @@ To reverse this restriction, remove `SCAN_MARKING_TEST_PARENT_IDS` from the serv
 
 The same check runs again before recovery marks a previously sent photo, so a plan that ends stops new marking at once. `markingDecision` returns the reason for server code and logs; parents see only the usual not-found or "unavailable" screen, never the reason. `familyReady` still reports only the evidence record below; it is not the switch.
 
-The plan gate is the parent dashboard's `childPlanAccess` (`src/lib/plan-access.ts`). Until that module is on `main`, the stand-in `childPlanAccess` in `scan-marking-server.ts` answers `unknown` for every child, so families mode admits only test families and admins (TODO in that file: replace the stand-in with the import).
+The plan gate is the parent dashboard's `childPlanAccess` (`src/lib/plan-access.ts`). Until that module is on `main`, the stand-in `childPlanAccess` in `scan-marking-access.ts` answers `unknown` for every child, so families mode admits only test families and admins (TODO in that file: replace the stand-in with the import).
 
-Send, the photo checks (preview and calibration) and the stack's `checks` still use `markedFamily`, so they stay with test families and admins in every mode. A real family therefore cannot send a page for marking yet; opening them is a separate decision.
+Send, the photo checks (preview and calibration, with their crops) and the stack's `checks` follow the same rule through `scanChecksAccess` in `src/lib/scan-marking-access.ts`, the one module that holds it: in families mode a real family can check and send a child's pages while that child's plan is running, and not otherwise. In `test-only` and off they stay with test families and admins, and the parent list does not limit them, as before. In families mode a malformed list closes them as it closes marking.
+
+Families mode does not open the Scan pages tab: a real family reaches `/account/scan` only when `SCAN_PAGES_ENABLED` is `on` (see the top of this page).
 
 To switch: Savar picks the marking model first. Then set `SCAN_MARKING_ENABLED` to `families` in the Vercel Production environment (`npx vercel@latest env` with `--scope unica-learning`) and redeploy. To go back, set it to `test-only` (or remove it to turn marking off) and redeploy. The switch changes no price row, spending cap, model or parent list.
 
