@@ -140,3 +140,15 @@ The local audit uses the actual production request and fake transport. It counts
 At2026-11-07T00:10:49Z, the dedicated key again reported total and daily usage 0, remaining 50 and total limit 50with no reset. Following Savar's explicit reconciliation direction, root settled the first failed request at 0; its original unknown journal remains unchanged. A separate reconciliation record links the key snapshots and hosted ledger result. No blind resume is authorized.
 
 The one-request probe uses the same public production job, fixed image and exact model/host. Its external launcher imports the existing budget and journal helpers; it sends no other model and has an exclusive one-request lock. It remains pending independent review. The shared USD 50 cap and USD 15 comparison cap stay in force.
+
+## Shared anyOf schema repair
+
+The authorized second same-pair probe returned HTTP 400 and stopped after one request. The retained Google error was: output_config.format.schema: Invalid schema: Enum value 'unreadable' does not match declared type '['string', 'null']'. No other model ran. Savar then explicitly authorized the equivalent anyOf repair, one further same-pair probe, and the full comparison if that probe passes, all under the USD 15 stop. Another failed probe must stop and report its exact error.
+
+The shared request now uses separate string and null branches. The issue string branch retains the same enum. Provider documentation also rejects maxLength. The text branch states the 200-character limit in its description, while the existing code validator still accepts 200 characters and rejects 201. This follows the provider's documented approach of moving unsupported constraints into descriptions while validating in code: https://platform.claude.com/docs/en/build-with-claude/structured-outputs . No score, reading rule or D267 threshold changes.
+
+The request protocol version rises to whole-page-scalar-readings-v6. Every model uses this same schema and prompt; no per-model tuning is added. The observed provider-rule control failed before repair. A separate control caught maxLength before another paid request. All 287 focused tests passed in seven files. The readiness fixture now binds the current prompt constant, preserving its model-mismatch assertion.
+
+The one-probe launcher now uses the normal full comparison plan, run ID, journal, evidence history and result path. It calls the production public photo runner once. If it passes, the normal CLI resumes that same run and skips the completed Sonnet first photo. Its cost remains in the same USD 15 ledger, with no duplicate call. Both prior failed requests are retained as separate diagnostics. Repeated key API checks showed total and daily usage 0 and remaining USD 50; their holds were reconciled to 0.
+
+The latest supplied layout candidate has contract SHA256 d6a8d9f1a36bb668c7b09c19b875a1d10b03ae24e4ea62ae5914f7b2cd76e4c3. A separate read-only public coverage check uses its actual measured geometry. That check uses supplied readings, never a live model, and does not claim recognition or final print approval.

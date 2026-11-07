@@ -416,6 +416,27 @@ it.each(["http", "schema", "json", "refusal"])("retains fatal settlement state a
   expect(dispatched).toBe(1); expect(fetched).toBe(1);
 });
 
+it("uses nullable enum branches accepted by the observed provider schema rule", async () => {
+  const p = photo(), mem = memory();
+  function incompatible(value: unknown): boolean {
+    if (!value || typeof value !== "object") return false;
+    const node = value as Record<string, unknown>;
+    return (Array.isArray(node.type) && Array.isArray(node.enum)) || "maxLength" in node || Object.values(node).some(incompatible);
+  }
+  const r = await runComparisonPhoto({ ...runOptions(p, mem), fetch: async (_url, init) => {
+    const wire = JSON.parse(String(init?.body));
+    if (incompatible(wire.response_format.json_schema.schema)) return Response.json({ error: { code: 400, message: "Enum value 'unreadable' does not match declared type '['string', 'null']'" } }, { status: 400 });
+    return response(p);
+  } });
+  expect(r.status).toBe("complete");
+  expect(r.schemaValid).toBe(true);
+  const output = labelledOutput(p);
+  output.readings[0].text = "1".repeat(200);
+  expect(validMarkingOutput(p.frame, output)).toBe(true);
+  output.readings[0].text = "1".repeat(201);
+  expect(validMarkingOutput(p.frame, output)).toBe(false);
+});
+
 it("keeps a fake400 response and OpenRouter metadata before and after settlement", async () => {
   const p = photo(), mem = memory(); let beforeSettlement: unknown;
   const metadata = { provider_name: "Google", raw: "Synthetic provider schema error" };

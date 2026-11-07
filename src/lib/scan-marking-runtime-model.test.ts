@@ -6,8 +6,9 @@ vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
 // change the real record, environment, release mode or family admission.
 vi.mock("@/lib/scan-marking-launch", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/scan-marking-launch")>();
+  const { MARKING_PROMPT_VERSION } = await import("@/lib/scan-marking");
   const candidate = {
-    model: "anthropic/claude-sonnet-5.5", prompt: "whole-page-scalar-readings-v5",
+    model: "anthropic/claude-sonnet-5.5", prompt: MARKING_PROMPT_VERSION,
     photoSetSha256: "a".repeat(64), printedRevision: "synthetic-print-v1",
   };
   const evidence = {
