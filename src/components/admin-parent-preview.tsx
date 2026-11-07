@@ -15,6 +15,8 @@ import { workbookAnswerPages, type ParentWorkbookAnswers } from "@/lib/parent-wo
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { storedQuestion } from "@/lib/workbook-content";
 import { ParentWorkbooks } from "@/components/parent-workbooks";
+import { ScanHistoryView, type HistoryListing, type HistoryState } from "@/components/scan-history";
+import { HISTORY_LABELS, type HistoryStatus } from "@/lib/scan-history";
 import { ParentSchedule } from "@/components/parent-schedule";
 import { ParentProgress } from "@/components/parent-progress";
 import { SkillPanel } from "@/components/parent-skill-map";
@@ -87,6 +89,24 @@ function workbooks(child: ChildView, state: string): WorkbooksView {
   return { child, current: state === "first_book_coming" ? null : { id: "sample-book", number: 3, shippedOn: "2026-10-28", deliveredOn: mailed ? null : "2026-11-01", delivery: state === "hand" ? { method: "hand" } : { method: "mail", carrier: "Canada Post", trackingNumber: "SAMPLE 000 000", trackingUrl: "https://example.invalid/track" } },
     next: child.readOnly || state === "first_book_coming" ? { kind: "none" } : state === "late" ? { kind: "past_estimate" } : { kind: "range", earliest: state === "paused" ? "2026-12-10" : "2026-11-26", latest: state === "paused" ? "2026-12-15" : "2026-12-01" },
     books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", deliveredOn: number === 3 && mailed ? null : "2026-11-01" })) };
+}
+
+/** Inert canonical history projections for the selected synthetic child, including current and past books. */
+function workbookHistory(child: ChildView, state: string) {
+  const status: HistoryState = state === "history_loading" ? "loading" : state === "history_error" ? "failed" : state === "history_unavailable" ? "unavailable" : "ready";
+  const states: HistoryStatus[] = state === "history_empty" || state === "first_book_coming" ? []
+    : state === "history_review" ? ["review"] : state === "history_pending" ? ["pending"] : state === "history_failed" ? ["failed"]
+      : state === "history_expired" || state === "history_missing_photo" ? ["ready"] : ["ready", "review", "pending", "failed", "blank", "unscored", "never-scanned"];
+  const pages: HistoryListing["pages"] = states.map((pageStatus, index) => ({
+    id: `${child.id}-page-${index}`, childId: child.id, childName: child.firstName, workbookId: `sample-book-${index > 3 ? 2 : 3}`,
+    book: index > 3 ? 2 : 3, revision: "synthetic-frozen", day: child.id === "sample-child-2" ? "Day 2" : "Day 1", pageNumber: index + 4,
+    status: pageStatus, label: HISTORY_LABELS[pageStatus], photo: pageStatus === "never-scanned" || state === "history_missing_photo" ? null : `${child.id}-photo-${index}`,
+    photoAvailable: state !== "history_expired", failedJob: pageStatus === "failed",
+    counts: { scored: pageStatus === "ready" ? 3 : pageStatus === "blank" ? 1 : 0, unscored: pageStatus === "unscored" ? 1 : 0, parentChecks: pageStatus === "review" ? 1 : 0, pending: pageStatus === "pending" ? 1 : 0 },
+    right: pageStatus === "ready" ? 2 : 0, wrong: pageStatus === "ready" ? 1 : 0, blank: pageStatus === "blank" ? 1 : 0,
+  }));
+  const listing = { pages, counts: Object.fromEntries(states.map(value => [value, pages.filter(page => page.status === value).length])), after: null };
+  return <ScanHistoryView state={status} listing={listing} />;
 }
 
 function answerKey(child: ChildView, state: string): ParentWorkbookAnswers {
@@ -175,7 +195,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
     }
     case "overview": return <SupportPage label="Overview" title={child.firstName}><ParentOverview overview={overview(child, state)} maya={child.stage === "active" ? minutes : null} /></SupportPage>;
     case "workbook_answers": return <ParentWorkbookAnswerKey answerKey={answerKey(child, state)} />;
-    case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} />;
+    case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} history={workbookHistory(child, state)} />;
     case "schedule": return <ParentSchedule schedule={state === "waiting" || state === "unavailable" ? { kind: state, child: { ...child, parentId: "sample-parent" } } : {
       kind: "ready", child: { ...child, parentId: "sample-parent" }, book: { id: "sample-printed-book", number: child.id === "sample-child-2" ? 2 : 1 }, dailyTime: "about 20 minutes, plus Extra if there's time",
       rows: Array.from({ length: 10 }, (_, i) => ({ day: i + 1, topic: child.id === "sample-child-2" ? "Multiplication" : "Addition", second: i === 6 ? "Level check" : "Number practice",

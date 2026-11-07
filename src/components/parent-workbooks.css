@@ -27,3 +27,11 @@
 .support-page .pw-answer-parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .support-page .pw-answer-parts li { margin: 0; overflow-wrap: anywhere; }
 .pw-answer-label { color: var(--ink-2); font-size: 14px; }
+
+.pw-history .scan-history { margin: 0; border: 0; padding: 0; min-width: 0; }
+.support-page .pw-history h2 { margin-bottom: 0; }
+.support-page .pw-history p { margin: 0; }
+.pw-history .scan-group h3 { font: 500 16px/1.4 var(--sans); margin: 8px 0 12px; }
+.pw-history .scan-link { display: inline-flex; align-items: center; min-height: 44px; white-space: normal; }
+.pw-history .scan-group li { padding-block: 4px; }
+.pw-history .scan-link:focus-visible, .pw-history select:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }

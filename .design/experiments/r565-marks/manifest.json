@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "issue": 565,
+  "scope": "reduced565",
+  "route": "direct",
+  "job_kind": "improve",
+  "surface": [
+    "product",
+    "component"
+  ],
+  "constraint_mode": "existing-system",
+  "base": "d4af3d62d5fba25ba3b39441d9cc719b2bf06604",
+  "phase": "implementation-handoff",
+  "contract": ".design/experiments/r565-marks/contract.md",
+  "state_matrix": ".design/experiments/r565-marks/state-matrix.md",
+  "preview": "/admin/dashboard?view=workbooks&scenario=history_populated&family=two&child=second",
+  "scenarios": [
+    {
+      "id": "history_populated",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_populated&family=two&child=second"
+    },
+    {
+      "id": "history_empty",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_empty&family=two&child=second"
+    },
+    {
+      "id": "history_review",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_review&family=two&child=second"
+    },
+    {
+      "id": "history_pending",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_pending&family=two&child=second"
+    },
+    {
+      "id": "history_failed",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_failed&family=two&child=second"
+    },
+    {
+      "id": "history_expired",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_expired&family=two&child=second"
+    },
+    {
+      "id": "history_missing_photo",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_missing_photo&family=two&child=second"
+    },
+    {
+      "id": "history_loading",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_loading&family=two&child=second"
+    },
+    {
+      "id": "history_error",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_error&family=two&child=second"
+    },
+    {
+      "id": "history_unavailable",
+      "query": "/admin/dashboard?view=workbooks&scenario=history_unavailable&family=two&child=second"
+    }
+  ],
+  "references": [
+    "DESIGN.md",
+    ".design/experiments/r558/manifest.json",
+    ".design/experiments/r-parent-workbook-access/answer-order-repair.md",
+    ".design/experiments/r-parent-workbook-access/answers-phone.png",
+    ".design/experiments/r675/contract.md",
+    ".design/experiments/r675/ready-desktop.png",
+    ".design/experiments/r675/ready-phone.png",
+    ".design/experiments/r675/pending-phone.png"
+  ],
+  "implementation": [
+    "src/components/parent-workbooks.tsx",
+    "src/components/parent-workbooks.css",
+    "src/components/scan-history.tsx",
+    "src/app/(product)/account/(dashboard)/workbooks/[child]/page.tsx",
+    "src/components/admin-parent-preview.tsx",
+    "src/lib/admin-parent-dashboard.ts"
+  ],
+  "evidence": {
+    "local": "PASS: 403 focused tests in 12 files; npx eslint src; npx next typegen; npx tsc --noEmit --incremental false. No full suite or build.",
+    "screenshots": [],
+    "browser": "Pending root; no browser permitted in this implementation lane.",
+    "hosted": "Not run. Existing RPC ownership inspected in source only.",
+    "independent_review": "Pending root.",
+    "full_gate": "Pending root.",
+    "focused_results": "/Users/savargupta/unica-workbook-samples/parent-dashboard-remaining-20261106/pd565-focused-tests.json",
+    "binding_control": "Removing the HistorySession identity key makes the sibling commit-observer test fail with old Workbook 2 results. Exact source restored; same test passes."
+  },
+  "release": "All family switches off. D-236 and D-249 approval pending.",
+  "deferred": [
+    "skills line",
+    "Since the child started",
+    "More/New/Less/Review",
+    "skill-panel mistake summaries",
+    "monthly summaries"
+  ],
+  "report": "/Users/savargupta/unica-workbook-samples/parent-dashboard-remaining-20261106/pd565-implementation-report.md"
+}

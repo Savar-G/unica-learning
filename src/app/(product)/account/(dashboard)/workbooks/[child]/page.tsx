@@ -1,25 +1,31 @@
 import { notFound, redirect } from "next/navigation";
 import { ParentWorkbooks } from "@/components/parent-workbooks";
+import { ScanHistory, ScanHistoryView } from "@/components/scan-history";
 import { pageMetadata } from "@/lib/metadata";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
 import { readWorkbooks } from "@/lib/parent-view";
-import { signedInParentView } from "@/lib/parent-view-server";
+import { parentViewReader } from "@/lib/parent-view-server";
+import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
+import { scanPagesAccess } from "@/lib/scan-pages-access";
+import { markingAccess } from "@/lib/scan-marking-server";
 
 export const metadata = pageMetadata({ path: "/account/workbooks", title: "Workbooks", description: "Your child's workbooks.", index: false });
 
-// The Workbooks tab (#558, spec #544, D-246): the current book and its tracking, a date range for the next book, and the
-// answer-key access after confirmed delivery. Only for families the dashboard is open to; every other family gets the 404.
-// Page history and worked explanations come later; Skip, See the full plan and the More / New / Less / Review
-// list are not in the product.
-
-/** The signed-in parent's child's Workbooks tab; a redirect or the 404 when there is none to show. */
+/** Whole answer keys follow delivery. Saved page history follows the independent scan and marking gates. */
 async function load(childId: string) {
-  const reader = await signedInParentView();
-  if (!reader) redirect("/sign-in");
+  const session = await sessionClient(), parent = await parentId(session);
+  if (!parent) redirect("/sign-in");
   if (!(await parentDashboard())) notFound();
-  return (await readWorkbooks(reader, childId, Date.now())) ?? notFound();
+  const admin = adminClient();
+  const view = await readWorkbooks(parentViewReader(session, parent, admin), childId, Date.now());
+  if (!view) notFound();
+  const historyAvailable = admin && await scanPagesAccess(parent, admin) && await markingAccess(admin, parent);
+  return { view, parent, historyAvailable };
 }
 
 export default async function Workbooks({ params }: PageProps<"/account/workbooks/[child]">) {
-  return <ParentWorkbooks {...await load((await params).child)} />;
+  const { view, parent, historyAvailable } = await load((await params).child);
+  return <ParentWorkbooks {...view} history={historyAvailable
+    ? <ScanHistory parent={parent} child={view.child.id} books={view.books.map(book => book.id)} />
+    : <ScanHistoryView state="unavailable" />} />;
 }
