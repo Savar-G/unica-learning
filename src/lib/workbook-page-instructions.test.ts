@@ -9,7 +9,7 @@ import type { DayContent } from "@/lib/workbook-page";
 import type { ItemFormat, AnswerRegion } from "@/lib/question-package";
 
 const sample = () => sampleBook({level:"U16",workbookId:"55555555-5555-4555-8555-000000000002",childId:"22222222-2222-4222-8222-222222222222",child:"Mila",number:1}).draft;
-function question(number: number, text: string, regions: AnswerRegion[], format: ItemFormat = "write-number"): DraftQuestion {
+function question(number: number, text: string, regions: AnswerRegion[], format: ItemFormat = "write-number"): DraftQuestion & { place: "on-your-own" } {
  const source = sample().pages.flatMap(p=>p.questions)[0];
  return {...source,number,place:"on-your-own",package:{...source.package,text,operation:null,
   item:{format,scorable:true,parentChecked:false,error:null,checks:[],regions}}};
