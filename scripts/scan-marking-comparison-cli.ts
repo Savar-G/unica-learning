@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import sharp from "sharp";
 import type { WorkbookInput } from "../src/lib/workbook-content";
-import { COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, comparisonReports, hashBytes, hashValue, syntheticPrintRevision, validateComparisonManifest, type AttemptRecord, type ComparisonManifest, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type Endpoint, type EndpointEvidence, type EndpointSnapshot } from "../src/lib/scan-marking-comparison";
+import { COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, comparisonReports, hashBytes, hashValue, selectComparisonModels, assertSelectedComparisonResults, syntheticPrintRevision, validateComparisonManifest, type AttemptRecord, type ComparisonManifest, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type Endpoint, type EndpointEvidence, type EndpointSnapshot } from "../src/lib/scan-marking-comparison";
 import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "../src/lib/scan-marking-comparison-run";
 
 const json = async <T>(path: string): Promise<T> => JSON.parse(await readFile(path, "utf8")) as T;
@@ -108,14 +108,15 @@ export function rpcEvaluationBudget(url: string, serviceKey: string, base: typeo
   };
 }
 
-export async function comparisonSnapshots(folder: string): Promise<ComparisonPreflight[]> {
+export async function comparisonSnapshots(folder: string, modelIds: readonly string[] | null = null): Promise<ComparisonPreflight[]> {
   const zdr = await json<{ data: Endpoint[] }>(resolve(folder, "zdr-endpoints-20261106.json"));
-  return Promise.all(COMPARISON_MODELS.map(async model => {
+  return Promise.all(selectComparisonModels(modelIds).map(async model => {
     try { return assessComparisonEndpoint(model, await json<EndpointSnapshot>(resolve(folder, `${model.model.replaceAll("/", "--")}-endpoints.json`)), zdr); }
     catch (error) { return { model: model.model, status: "blocked" as const, reason: error instanceof Error ? error.message : "snapshot-missing" }; }
   }));
 }
-export async function refreshEvidence(folder: string, approved: readonly ComparisonPreflight[], base: typeof fetch = fetch): Promise<ComparisonPreflight[]> {
+export async function refreshEvidence(folder: string, approved: readonly ComparisonPreflight[], base: typeof fetch = fetch, modelIds: readonly string[] | null = null): Promise<ComparisonPreflight[]> {
+  const selected = selectComparisonModels(modelIds);
   const publicJson = async <T>(url: string): Promise<T> => {
     const response = await base(url, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
     if (!response.ok) throw new Error("public-preflight-http-failed");
@@ -127,7 +128,7 @@ export async function refreshEvidence(folder: string, approved: readonly Compari
   await durableJson(resolve(folder, "live-catalog.json"), { checkedAt, catalog });
   await durableJson(resolve(folder, "live-zdr.json"), { checkedAt, zdr });
   const states: ComparisonPreflight[] = [];
-  for (const model of COMPARISON_MODELS) {
+  for (const model of selected) {
     try {
       const prior = approved.find(e => e.model === model.model);
       if (!prior || prior.status === "blocked") throw new Error(prior?.reason ?? "reviewed-snapshot-missing");
@@ -143,7 +144,7 @@ export async function refreshEvidence(folder: string, approved: readonly Compari
 const readyEvidence = (states: readonly ComparisonPreflight[]) => states.flatMap(s => s.status === "ready" ? [s.evidence] : []);
 
 export async function main() {
-  const { values } = parseArgs({ options: { manifest: { type: "string" }, snapshots: { type: "string" }, out: { type: "string" }, estimate: { type: "boolean" }, run: { type: "boolean" }, report: { type: "boolean" }, preflight: { type: "boolean" }, prepare: { type: "string" }, "make-photos": { type: "string" }, "max-usd": { type: "string" }, "max-attempts": { type: "string", default: "1" } } });
+  const { values } = parseArgs({ options: { manifest: { type: "string" }, snapshots: { type: "string" }, models: { type: "string" }, out: { type: "string" }, estimate: { type: "boolean" }, run: { type: "boolean" }, report: { type: "boolean" }, preflight: { type: "boolean" }, prepare: { type: "string" }, "make-photos": { type: "string" }, "max-usd": { type: "string" }, "max-attempts": { type: "string", default: "1" } } });
   if (values["make-photos"]) {
     if (!values.out || values.run) throw new Error("--make-photos requires --out DIR and no --run");
     console.log(await (await import("./scan-marking-synthetic-photos")).makeComparisonPhotos(values["make-photos"], values.out)); return;
@@ -155,12 +156,14 @@ export async function main() {
   if (!values.manifest || !values.snapshots || !values.out || [values.estimate, values.run, values.report, values.preflight].filter(Boolean).length !== 1) throw new Error("Use --manifest FILE --snapshots DIR --out DIR and exactly one of --estimate, --preflight, --run, --report. --run also requires --max-usd <=15.");
   const maxAttempts = Number(values["max-attempts"]);
   if (maxAttempts !== 1 && maxAttempts !== 2) throw new Error("--max-attempts must be 1 or 2");
+  const selected = selectComparisonModels(values.models === undefined ? null : values.models.split(","));
+  const selectedIds = selected.map(m => m.model);
   const { manifest, images } = await loadComparisonAssets(values.manifest);
-  const approved = await comparisonSnapshots(values.snapshots), evidence = readyEvidence(approved);
-  const plan = { manifestHash: hashValue(manifest), models: COMPARISON_MODELS, settings: COMPARISON_SETTINGS, maxAttempts, approved };
+  const approved = await comparisonSnapshots(values.snapshots, selectedIds), evidence = readyEvidence(approved);
+  const plan = { manifestHash: hashValue(manifest), models: selected, settings: COMPARISON_SETTINGS, maxAttempts, approved };
   const run = hashValue(plan), out = resolve(values.out, run);
   if (values.estimate) {
-    console.log(JSON.stringify({ run, dispatchReady: false, reason: "Live preflight, reviewed SQL price bounds and first-photo usage projection are required before the full matrix.", photos: 40, models: 13, requests: 40 * 13 * maxAttempts, blocked: approved.filter(s => s.status === "blocked"), bounds: approved.flatMap(s => s.status === "ready" ? [{ model: s.model, endpoint: s.evidence.endpoint.tag, policy: s.evidence.policy, evidenceHash: hashValue(s.evidence), maximumReservationMicros: s.maximumMicros, maxPixels: Math.max(...manifest.photos.map(p => p.image.width * p.image.height)), evidence: s.evidence }] : []), firstProbeUpperBoundUsd: approved.reduce((sum, s) => sum + (s.status === "ready" ? s.maximumMicros : 0), 0) / 1e6,
+    console.log(JSON.stringify({ run, dispatchReady: false, reason: "Live preflight, reviewed SQL price bounds and first-photo usage projection are required before the full matrix.", photos: 40, models: selected.length, requests: 40 * selected.length * maxAttempts, blocked: approved.filter(s => s.status === "blocked"), bounds: approved.flatMap(s => s.status === "ready" ? [{ model: s.model, endpoint: s.evidence.endpoint.tag, policy: s.evidence.policy, evidenceHash: hashValue(s.evidence), maximumReservationMicros: s.maximumMicros, maxPixels: Math.max(...manifest.photos.map(p => p.image.width * p.image.height)), evidence: s.evidence }] : []), firstProbeUpperBoundUsd: approved.reduce((sum, s) => sum + (s.status === "ready" ? s.maximumMicros : 0), 0) / 1e6,
       planningOnly: "USD 1.54 for one attempt or USD 8.42 for two attempts assumes 4000 image-inclusive input tokens. These are unverified estimates.", keyTotalUsd: 50, sharedUtcMonthUsd: 50, evaluationMaxUsd: 15 }, null, 2)); return;
   }
   await mkdir(out, { recursive: true });
@@ -169,7 +172,11 @@ export async function main() {
   const journalDir = resolve(out, "attempts"), resultsDir = resolve(out, "results");
   await mkdir(journalDir, { recursive: true }); await mkdir(resultsDir, { recursive: true });
   const resultPath = (model: string, photo: string) => resolve(resultsDir, `${hashValue({ model, photo })}.json`);
-  const readResults = async () => Promise.all((await readdir(resultsDir)).filter(p => p.endsWith(".json")).sort().map(p => json<ComparisonResult>(resolve(resultsDir, p))));
+  const readResults = async () => {
+    const results = await Promise.all((await readdir(resultsDir)).filter(p => p.endsWith(".json")).sort().map(p => json<ComparisonResult>(resolve(resultsDir, p))));
+    assertSelectedComparisonResults(results, selectedIds);
+    return results;
+  };
   const historyPath = resolve(out, "evidence-history.json"), statePath = resolve(out, "model-states.json");
   let history = [...evidence], states = approved;
   const blocks = new Map<string, string>();
@@ -181,7 +188,7 @@ export async function main() {
   const writeReport = async () => {
     const results = await readResults();
     assertComparisonResultIdentity(manifest, results, history);
-    const reports = comparisonReports(manifest, states, results, history, blocks);
+    const reports = comparisonReports(manifest, states, results, history, blocks).filter(r => selectedIds.includes(r.model));
     await durableJson(resolve(out, "report.json"), { run, syntheticOnly: true, realHandwritingProven: false, settings: COMPARISON_SETTINGS, reports, blockedOrIncomplete: reports.filter(r => r.status !== "tested"), cheapestMeasuredPassing: cheapestPassing(reports), selectionScope: "fully-tested-passing-available-pairs-only", productionSwitch: "blocked-until-explicit-host-policy-choice", evidence: history });
   };
   if (values.report) { await writeReport(); console.log(resolve(out, "report.json")); return; }
@@ -190,7 +197,7 @@ export async function main() {
   const records = await Promise.all((await readdir(journalDir)).filter(p => p.endsWith(".json")).map(p => json<AttemptRecord>(resolve(journalDir, p))));
   assertComparisonResume(records, priorResults);
   assertComparisonResultIdentity(manifest, priorResults, history);
-  states = await refreshEvidence(out, approved);
+  states = await refreshEvidence(out, approved, fetch, selectedIds);
   for (const e of readyEvidence(states)) if (!history.some(prior => hashValue(prior) === hashValue(e))) history.push(e);
   await durableJson(historyPath, history);
   const save = async (currentBlocks: ReadonlyMap<string, string>, projection: unknown) => {

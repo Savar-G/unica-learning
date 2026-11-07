@@ -152,3 +152,15 @@ The request protocol version rises to whole-page-scalar-readings-v6. Every model
 The one-probe launcher now uses the normal full comparison plan, run ID, journal, evidence history and result path. It calls the production public photo runner once. If it passes, the normal CLI resumes that same run and skips the completed Sonnet first photo. Its cost remains in the same USD 15 ledger, with no duplicate call. Both prior failed requests are retained as separate diagnostics. Repeated key API checks showed total and daily usage 0 and remaining USD 50; their holds were reconciled to 0.
 
 The latest supplied layout candidate has contract SHA256 d6a8d9f1a36bb668c7b09c19b875a1d10b03ae24e4ea62ae5914f7b2cd76e4c3. A separate read-only public coverage check uses its actual measured geometry. That check uses supplied readings, never a live model, and does not claim recognition or final print approval.
+
+## Immutable model subsets after a rate limit
+
+The user authorized a new immutable twelve-pair run after Qwen returned HTTP429. The stopped thirteen-pair run remains unchanged. Its unknown-usage resume guard is unchanged. Its seven completed first-photo responses remain diagnostic records. They are not copied into the new run or scored there.
+
+The CLI now accepts `--models` as comma-separated IDs from the existing pinned data. It rejects empty, duplicate and unknown IDs. It preserves the canonical order and exact host objects. With no option, its original thirteen-pair plan and hash remain unchanged. A twelve-pair selection and a Qwen-only selection each have a different immutable plan hash. Public preflight fetches only selected model endpoints. Reports contain only the selected pairs. A result from an excluded pair stops loading before configuration or dispatch.
+
+No photo, truth, prompt, schema, model host, retry, reservation, settlement, D267 scoring or unresolved-usage rule changed. A fresh run starts with empty journals and results. Qwen's first response remains rate-limited, not scored. A separate authorized Qwen-only attempt must start no earlier than 2026-11-07T01:22:54Z. Another429 remains not tested.
+
+The final key check at01:13:03UTC showed usageUSD0.015720882, consistent at reporting precision with all seven completed raw response costs, USD0.0157208825. No Qwen charge was visible more than five minutes after its429. The hold was settled at zero through the existing service RPC. Hosted verification found zero unknown holds and15725charged microdollars. Raw local records remain unchanged. The reconciliation receipt is kept outside source.
+
+The aggregate USD15 comparison stop still includes prior charges. Before dispatch, deduct all previous charged or held comparison liability from the new run's maximum. Allocate the later Qwen-only maximum from the remaining amount after the twelve-pair run. Run these phases sequentially. The USD50 ledger and key limits remain separate upper bounds. No family switch or production model is selected by a test.

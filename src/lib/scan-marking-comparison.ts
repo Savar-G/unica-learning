@@ -11,6 +11,12 @@ import type { WorkbookInput } from "@/lib/workbook-content";
 
 export const COMPARISON_MODELS = Object.freeze(models.map(m => Object.freeze({ ...m })));
 export type ComparisonModel = (typeof COMPARISON_MODELS)[number];
+/** Select only already-pinned pairs, in canonical order. Selection is part of the immutable run plan. */
+export function selectComparisonModels(ids: readonly string[] | null): readonly ComparisonModel[] {
+  if (ids === null) return COMPARISON_MODELS;
+  if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !COMPARISON_MODELS.some(m => m.model === id))) throw new Error("invalid-comparison-model-selection");
+  return COMPARISON_MODELS.filter(m => ids.includes(m.model));
+}
 export const SYNTHETIC_IDS = Object.freeze({ parent: "00000000-0000-4000-8000-000000000543", child: "00000000-0000-4000-8000-000000000542", workbook: "5ca70000-0000-4000-8000-000000000542" });
 export const COMPARISON_FORMATS = ["whole", "fraction", "decimal", "tick-and-number", "circle", "show-work", "spot-the-error", "write-words", "two-ways"] as const;
 export type ComparisonFormat = typeof COMPARISON_FORMATS[number];
@@ -175,6 +181,11 @@ export interface ComparisonResult {
   observations: Observation[]; schemaValid: boolean; requestHash: string; photoHash: string; evidenceHash: string;
 }
 export interface AttemptRecord { state: string; attempt?: { id: string; usage: { costMicros: number | null } } }
+/** A subset run must not import a result from an excluded pair. */
+export function assertSelectedComparisonResults(results: readonly ComparisonResult[], modelIds: readonly string[]): void {
+  const selected = selectComparisonModels(modelIds);
+  if (results.some(r => !selected.some(m => m.model === r.model))) fail("result-outside-comparison-selection");
+}
 /** An orphaned durable attempt blocks every model, not only a retry of its own photo. */
 export function assertComparisonResume(records: readonly AttemptRecord[], results: readonly ComparisonResult[]): void {
   if (results.some(r => r.failure === "journal-failure" || r.failure === "reservation-or-settlement-failed" || r.attempts.some(a => a.error === "journal-failure" || a.error === "transport-or-journal-failure"))) fail("journal-or-budget-failure-stopped-run");
