@@ -26,7 +26,7 @@ const GATE_MODULES = new Set([
   "src/lib/scan-photo-server.ts", // scanSession
   "src/lib/maya-chat-server.ts", // chatAccess, chatGate
   "src/lib/maya-notice-server.ts", // mayaNoticeDue
-  "src/lib/parent-problem-explanation-server.ts", // explanationAccess
+  "src/lib/parent-problem-explanation-server.ts", // explanationPlanOpen
   "src/lib/desk-chat-request.ts",
   "src/lib/plan-control-request.ts",
   "src/components/plan-closed-note.tsx",

@@ -7,7 +7,7 @@ vi.mock("@/lib/parent-problem-explanation", () => ({ explainParentProblem: vi.fn
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { childPlanAccess } from "@/lib/plan-access";
-import { explanationAccess } from "@/lib/parent-problem-explanation-server";
+import { explanationPlanOpen } from "@/lib/parent-problem-explanation-server";
 import { markingAccess, scanChecksAccess } from "@/lib/scan-marking-access";
 import { scanChildAccess, scanPagesAccess } from "@/lib/scan-pages-access";
 import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
@@ -46,7 +46,7 @@ describe("a family whose only access is an open plan", () => {
     expect(await scanChildAccess(parent, kid, planFamily, {})).toBe(true);
     expect(await scanChildAccess(parent, sibling, planFamily, {})).toBe(false);
     expect(await parentDashboardAccess(parent, planFamily, {})).toBe(true);
-    expect(await explanationAccess(planFamily, parent, photo)).toBe(true);
+    expect(await explanationPlanOpen(planFamily, parent, photo)).toBe(true);
   });
 
   it.each([undefined, "off", "test-only"])("gains no marking, Send or checks with SCAN_MARKING_ENABLED=%s", async (value) => {
