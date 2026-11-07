@@ -5,6 +5,7 @@ import { adminClient } from "@/lib/supabase-auth";
 import { isUuid } from "@/lib/workbook-content";
 import { readScanHistoryNow } from "@/lib/scan-history-reader";
 import { readScanTeamQueue } from "@/lib/scan-team-marks";
+import { AdminTeamMark } from "@/components/admin-team-mark";
 import { readingIssueText, READING_ISSUES, type ReadingIssue } from "@/lib/scan-observation";
 import { AdminFrame, Table } from "@/components/admin";
 const usd = (micros: number) => `USD ${(micros / 1_000_000).toFixed(4)}`;
@@ -17,6 +18,11 @@ export default async function AdminScans({ searchParams }: { searchParams: Promi
   const c = result.costs, b = result.budget;
   // #715: answers the AI was unsure of wait here for our team. No screen asks the parent to judge them.
   const team = await readScanTeamQueue(admin.db);
+  // A waiting answer with no photo is still marked here, at the version its own row holds.
+  const noPhoto = team.items.filter((t) => !t.photo).map((t) => t.item);
+  const versions = noPhoto.length ? await db.from("scan_marking_items").select("id,result_version").in("id", noPhoto) : { data: [], error: null };
+  if (versions.error) throw new Error("team_queue_versions");
+  const version = (item: string) => (versions.data ?? []).find((v) => v.id === item)?.result_version ?? null;
   const reason = (issue: string | null) => issue && READING_ISSUES.includes(issue as ReadingIssue) ? readingIssueText(issue as ReadingIssue) : "Waiting for a person to mark it.";
   return <AdminFrame email={admin.email} section="scans" title="Scan pages">
     <h2>Waiting for our team</h2>
@@ -25,7 +31,8 @@ export default async function AdminScans({ searchParams }: { searchParams: Promi
     {team.items.length > 0 && <Table label="Answers waiting for our team" head={["Child", "Workbook / page / question", "What the AI read", "Why it is waiting", "Waiting since", "Open"]} empty="None.">
       {team.items.map((t) => <tr key={t.item}><td>{t.childName}{t.testFamily && " (test family)"}</td><td>Workbook {t.book} · page {t.page} · question {t.question}</td>
         <td>{t.read === null ? "Not read" : t.read === "" ? "Empty" : t.read}</td><td>{reason(t.issue)}</td><td>{t.since}</td>
-        <td>{t.photo ? <Link href={`/admin/scans/${t.photo}`}>Open scan to mark</Link> : "No photo"}</td></tr>)}
+        <td>{t.photo ? <Link href={`/admin/scans/${t.photo}`}>Open scan to mark</Link>
+          : <>No photo is saved for this answer. Mark it from what the AI read.{version(t.item) !== null && <AdminTeamMark item={t.item} version={version(t.item)!} number={t.question} />}</>}</td></tr>)}
     </Table>}
     <form className="adm-row" method="get"><label>Child ID <input name="child" defaultValue={q.child} /></label><label>Workbook ID <input name="workbook" defaultValue={q.workbook} /></label>
       <label>Show <select name="status" defaultValue={q.status ?? "all"}><option value="all">All pages</option><option value="review">Our team is checking</option><option value="failed">Could not mark</option></select></label><button type="submit">Apply</button></form>

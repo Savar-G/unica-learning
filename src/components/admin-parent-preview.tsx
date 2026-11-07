@@ -156,7 +156,7 @@ function scanResult(state: string): Parameters<typeof ScanMarkingResults>[0]["re
     counts: { scored: pending || uncertain || unscored ? 0 : 1, unscored: unscored ? 1 : 0, teamChecks: uncertain ? 1 : 0, pending: pending ? 1 : 0 },
     items: pending ? [] : [{ number: 1, itemId: "sample-question", version: 1, state: uncertain ? "pending" : unscored ? "unscored" : "scored", result: uncertain || unscored ? null : state.startsWith("explain_") ? "wrong" : "right", readAnswerText: uncertain ? "4?" : state.startsWith("explain_") ? "41" : "42",
       canChange: !unscored && !uncertain, actor: "system", at: "2026-11-05T20:00:00Z", evidencePhoto: "sample-photo", photoAvailable: state !== "expired",
-      label: uncertain ? "We cannot read this answer. Our team is checking it." : unscored ? "Not scored" : state.startsWith("explain_") ? "Wrong" : "Right" }] };
+      label: uncertain ? "Our team is checking this answer." : unscored ? "Not scored" : state.startsWith("explain_") ? "Wrong" : "Right" }] };
 }
 
 function previewContent(selection: PreviewSelection, child: ChildView | undefined, kids: ChildView[]) {

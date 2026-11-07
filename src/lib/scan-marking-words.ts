@@ -1,5 +1,6 @@
 // Write-words marking (#715, D-266): the AI only transcribes the words; code decides whether they name the key.
-// A number name in an ordinary form is the same number: with or without "and", with hyphens or spaces, in any case.
+// A number name in an ordinary form is the same number: with or without "and" (after hundred or thousand), with hyphens
+// or spaces, in any case. An ordinal word is never a number name.
 // A clear different number is wrong. Anything code cannot read as a number name stays unsure, for our team to check.
 // Pure TypeScript: no network, database, clock or Math.random.
 import type { MarkResult } from "@/lib/scan-observation";
@@ -20,10 +21,14 @@ const NUMBER_WORDS = VOCABULARY.filter(w => w !== "and");
 /** Pairs of word answers where the other word is a clear wrong answer. */
 const OPPOSITES: readonly (readonly [string, string])[] = [["true", "false"], ["even", "odd"], ["yes", "no"]];
 
-/** Lower case, hyphens and dashes as spaces, no commas or end punctuation, single spaces. */
-export function plainWords(text: string): string {
+/** For a number name only: lower case, hyphens and dashes as spaces, no commas or end punctuation, single spaces. */
+function plainNumberWords(text: string): string {
   return text.toLowerCase().replace(/[‐-―\-_]/g, " ").replace(/[,.!]/g, " ").replace(/\s+/g, " ").trim();
 }
+/** Any other answer: only case and spacing, so "9 4" is not "9 - 4" and "$4 05" is not "$4.05". */
+const plainText = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
+/** An ordinal word (fifth, forty-second, twentieth, hundredth). No cardinal number word ends in "th", "st" or "rd". */
+const ordinal = (token: string) => /(th|first|second|third)$/.test(token);
 
 /** A run-together token ("fortytwo") as known number words, fewest pieces first; null when it is not one. */
 function split(token: string): string[] | null {
@@ -59,8 +64,10 @@ function corrected(token: string): string | null {
 function tokens(text: string, fixSpelling: boolean): { words: string[]; fixed: boolean } | null {
   const out: string[] = [];
   let fixed = false;
-  for (const raw of plainWords(text).split(" ")) {
+  for (const raw of plainNumberWords(text).split(" ")) {
     if (!raw) continue;
+    // Never correct an ordinal into a number ("fifth" is not "fifty"): the reading is not a number name.
+    if (ordinal(raw)) return null;
     const pieces = VOCABULARY.includes(raw) ? [raw] : split(raw);
     if (pieces) { out.push(...pieces); continue; }
     const fix = fixSpelling ? corrected(raw) : null;
@@ -81,8 +88,12 @@ function belowThousand(w: readonly string[], i: number): [number, number] | null
   return at > i && value > 0 ? [value, at] : null;
 }
 
-/** The whole number the words name in an ordinary form, or null. "and" is ignored. */
+/** "and" only right after hundred, thousand or million, and before more number words. */
+const andPlaced = (words: readonly string[]) => words.every((x, i) => x !== "and"
+  || (i > 0 && ["hundred", "thousand", "million"].includes(words[i - 1]) && i + 1 < words.length && words[i + 1] !== "and"));
+/** The whole number the words name in an ordinary form, or null. A well-placed "and" is ignored. */
 function wordsValue(words: readonly string[]): number | null {
+  if (!andPlaced(words)) return null;
   const w = words.filter(x => x !== "and");
   if (!w.length) return null;
   if (w.length === 1 && w[0] === "zero") return 0;
@@ -114,7 +125,7 @@ export function numberFromWords(text: string, fixSpelling = false): { value: num
 export function checkWordsReading(reading: string, key: string): MarkResult | null {
   const want = numberFromWords(key);
   if (!want) {
-    const read = plainWords(reading), expected = plainWords(key);
+    const read = plainText(reading), expected = plainText(key);
     if (!read || !expected) return null;
     if (read === expected) return "right";
     return OPPOSITES.some(([a, b]) => (a === expected && b === read) || (b === expected && a === read)) ? "wrong" : null;

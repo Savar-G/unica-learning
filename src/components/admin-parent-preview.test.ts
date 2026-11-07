@@ -125,7 +125,8 @@ it("renders the actual confirmation, late mailing, paid restart, decline and sca
   const map = dom(rendered("progress", "map"));
   for (const state of STATE_ORDER) expect(map.querySelector(`.pp-tile.is-${state}`)).not.toBeNull();
   expect(text("plan", "restart_declined")).toContain("Your payment did not go through");
-  expect(text("scan_results", "uncertain")).toContain("Our team is checking it.");
+  expect(text("scan_results", "uncertain")).toContain("Our team is checking this answer.");
+  expect(text("scan_results", "uncertain")).not.toContain("We cannot read this answer");
   expect(text("scan_results", "uncertain")).not.toMatch(/please check|check this answer/i);
   expect(text("scan_results", "pending")).toContain("Your page is not marked yet.");
   expect(text("scan_results", "unscored")).toContain("Not scored");

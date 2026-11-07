@@ -50,4 +50,22 @@ describe("write-words: number names in code (#715)", () => {
     expect(checkWordsReading("subtraction", "addition")).toBeNull();
     expect(checkWordsReading("evn", "even")).toBeNull();
   });
+  it.each([["fifty", "fifth"], ["sixty", "sixth"], ["seventy", "seventh"], ["forty-two", "forty-second"], ["three", "third"], ["one", "first"], ["twenty", "twentieth"], ["one hundred", "hundredth"]])(
+    "an ordinal word is never corrected into a number: key %j, reading %j is unsure", (key, reading) => {
+      expect(numberFromWords(reading, true)).toBeNull();
+      expect(checkWordsReading(reading, key)).toBeNull();
+    });
+  it("removes punctuation only when the key is a number name; other answers keep their exact form", () => {
+    expect(checkWordsReading("forty-two.", "forty-two")).toBe("right");
+    expect(checkWordsReading("9 - 4", "9 4")).toBeNull();
+    expect(checkWordsReading("9 4", "9 - 4")).toBeNull();
+    expect(checkWordsReading("$4 05", "$4.05")).toBeNull();
+    expect(checkWordsReading("$4.05", "$4 05")).toBeNull();
+    expect(checkWordsReading("  $4.05 ", "$4.05")).toBe("right");
+    expect(checkWordsReading("Even.", "even")).toBeNull();
+  });
+  it.each([["one and hundred five", null], ["two thousand and", null], ["forty and two", null], ["and five", null],
+    ["three hundred and forty-two", 342], ["two thousand and five", 2005], ["one thousand and one hundred", 1100]])("'and' only after hundred or thousand, before more number words: %j", (text, value) => {
+    expect(numberFromWords(text)?.value ?? null).toBe(value);
+  });
 });

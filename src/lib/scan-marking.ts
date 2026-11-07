@@ -253,8 +253,10 @@ function itemLabel(m: EffectiveMark): string {
   if (o.result === "blank") return "Blank";
   if (o.state === "unscored") return "Not scored";
   if (!waitsForTeam(m)) return "Not marked yet";
-  if (!o.issue) return "Our team is checking this answer.";
-  return `${readingIssueText(o.issue)} ${PHOTO_ISSUES.includes(o.issue) ? "Our team is checking it, or you can send a new photo of this page." : "Our team is checking it."}`;
+  // Exactly this for every unsure answer: a clear photo the AI was unsure of is not "unreadable". Only a reading the AI
+  // marked blurry or cut off adds that reason and the retake.
+  return o.issue && PHOTO_ISSUES.includes(o.issue) ? `Our team is checking this answer. ${readingIssueText(o.issue)} You can also send a new photo of this page.`
+    : "Our team is checking this answer.";
 }
 export function markingPageView(marks: readonly EffectiveMark[]) {
   marks = [...marks].sort((a, b) => a.expected.number - b.expected.number);

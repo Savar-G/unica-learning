@@ -1,6 +1,6 @@
 -- #715 team marks on a disposable local Postgres with stub tables (no Supabase, no network).
 -- Run: createdb t715 && psql -d t715 -v ON_ERROR_STOP=1 -f supabase/tests/scan_team_marks_stub.sql
--- It loads the stubs, then the two migrations (paths relative to the repo root), then the checks.
+-- It loads the stubs, then the #715 migrations (paths relative to the repo root), then the checks.
 create schema auth;
 create table auth.cur(uid uuid);
 create function auth.uid() returns uuid language sql stable as $$ select uid from auth.cur limit 1 $$;
@@ -14,6 +14,8 @@ create table public.family_deletions(parent_id uuid primary key);
 create table public.workbooks(id uuid primary key, number int);
 create table public.workbook_pages(id uuid primary key, page_number int);
 create table public.workbook_questions(page_id uuid, parent_id uuid, question_number int, package jsonb);
+-- Row types the explanation function declares (#715 follow-up replaces its body); this test does not call it.
+create table public.scan_photos(id uuid primary key); create table public.parent_explanations(id uuid primary key); create table public.parent_explanation_prices(id uuid primary key);
 create table public.scan_marking_revisions(child_id uuid primary key, parent_id uuid, revision bigint not null default 0);
 create table public.scan_marking_items(id uuid primary key default gen_random_uuid(), parent_id uuid, child_id uuid, workbook_id uuid, printed_revision text, page_id uuid, item_id text,
   expected jsonb, observation jsonb, result_version int not null default 1, owner_photo uuid, original_event jsonb, event_id uuid, evidence_at timestamptz not null default now(), model text, prompt text,
@@ -26,6 +28,7 @@ create function public.assert_family_writable(p uuid) returns void language plpg
 declare deleting timestamptz; begin select deletion_requested_at into deleting from public.parents where id = p for share;
   if not found or deleting is not null then raise exception 'family_unavailable' using errcode = '55000'; end if; end $$;
 \i supabase/migrations/20261107204619_scan_team_marks.sql
+\i supabase/migrations/20261107213302_scan_team_mark_followups.sql
 insert into public.parents values ('00000000-0000-4000-8000-000000000001', null);
 insert into public.children values ('00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000001','Iris');
 insert into public.workbooks values ('00000000-0000-4000-8000-000000000003', 1);
@@ -63,3 +66,15 @@ select public.admin_set_scan_mark('00000000-0000-4000-8000-000000000011',3,'righ
 -- parent journal row still allowed, and an admin row without admin id refused
 insert into public.scan_mark_changes(item_id,parent_id,child_id,from_version,to_version,previous,current) values ('00000000-0000-4000-8000-000000000011','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',3,4,'{}','{}');
 do $$ begin insert into public.scan_mark_changes(item_id,parent_id,child_id,from_version,to_version,actor,previous,current) values ('00000000-0000-4000-8000-000000000011','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',4,5,'admin','{}','{}'); raise exception 'should fail'; exception when check_violation then raise notice 'admin row needs admin id: ok'; end $$;
+-- One waiting rule (#715 review): a stored reading with no model still waits for the team and can be marked; an
+-- unread row with no model does not. Same rule as waitsForTeam in src/lib/scan-marking.ts.
+insert into public.scan_marking_items(id,parent_id,child_id,workbook_id,printed_revision,page_id,item_id,expected,observation,result_version,model) values
+ ('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','rev','00000000-0000-4000-8000-000000000004','q5',
+  '{"number":5,"method":"code","mastery":{"eligible":false}}','{"state":"pending","result":null,"actor":"system","method":"code","certainty":"uncertain","issue":"unreadable","resultVersion":2}',2,null);
+do $$ begin
+  if (select count(*) from public.admin_scan_team_queue() where item_id='00000000-0000-4000-8000-000000000021') <> 1 then raise exception 'reading without a model is not in the team list'; end if;
+  if (select count(*) from public.admin_scan_team_queue() where item_id='00000000-0000-4000-8000-000000000012') <> 0 then raise exception 'unread row is in the team list'; end if;
+  if (select photo_id from public.admin_scan_team_queue() where item_id='00000000-0000-4000-8000-000000000021') is not null then raise exception 'expected no photo'; end if;
+  raise notice 'one waiting rule in the list: ok';
+end $$;
+select public.admin_set_scan_mark('00000000-0000-4000-8000-000000000021',2,'right')->>'status' as no_model_reading_marked;
