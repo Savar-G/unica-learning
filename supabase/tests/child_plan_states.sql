@@ -221,6 +221,26 @@ begin
   if n <> 0 then raise exception 'a read row stayed due'; end if;
   select * into s from public.child_plan_states where child_id = child_a;
   if s.event_at <> t0 or s.event_id <> 'plan-read:probe' or s.read_at < now() - interval '1 minute' then raise exception 'the re-read row is wrong'; end if;
+  -- The closed kinds are due too (migration plan_state_reread_closed). ended and not_started never are.
+  reset role;
+  update public.child_plan_states set kind = 'payment_failed', next_charge_at = null, ends_at = null, read_at = now() - interval '25 hours', read_tried_at = null where child_id = child_a;
+  update public.child_plan_states set kind = 'paused', next_charge_at = null, ends_at = null, read_at = now() - interval '26 hours', read_tried_at = null where child_id = child_b;
+  update public.child_plan_states set kind = 'not_started', next_charge_at = null, ends_at = null, read_at = now() - interval '27 hours', read_tried_at = null where child_id = child_c;
+  set local role service_role;
+  if (select array_agg(d.kind) from public.due_plan_reads(1000) d where d.parent_id = p) <> array['paused', 'payment_failed'] then raise exception 'closed kinds were not due in order'; end if;
+  -- A read that stores nothing leaves the row as it is. The note alone moves it behind, and it stays due.
+  select * into s from public.child_plan_states where child_id = child_b;
+  perform public.note_plan_read_tried(child_b);
+  if (select array_agg(d.kind) from public.due_plan_reads(1000) d where d.parent_id = p) <> array['payment_failed', 'paused'] then raise exception 'a tried closed row did not go to the back'; end if;
+  if (select read_at from public.child_plan_states where child_id = child_b) <> s.read_at or (select kind from public.child_plan_states where child_id = child_b) <> 'paused' then raise exception 'the note changed a closed row'; end if;
+  -- A paid answer on a closed row reopens it, and the row leaves the list.
+  r := public.save_child_plan_state(customer, 'paying', t0 + interval '30 days', null, 7999, false, t0, 'plan-read:probe2', public.take_plan_read_order());
+  if r <> 'stored' then raise exception 'closed row reread answered %', r; end if;
+  if exists (select 1 from public.due_plan_reads(1000) d where d.child_id = child_a) then raise exception 'a reopened row stayed due'; end if;
+  reset role;
+  update public.child_plan_states set kind = 'ended', ends_at = t0, next_charge_at = null, monthly_cents = null, read_at = now() - interval '27 hours', read_tried_at = null where child_id = child_c;
+  set local role service_role;
+  if exists (select 1 from public.due_plan_reads(1000) d where d.child_id = child_c) then raise exception 'an ended row was due'; end if;
   reset role;
   -- Parents and anon reach neither function.
   set local role authenticated;

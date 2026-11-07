@@ -386,6 +386,20 @@ describe("the daily plan re-read, through the real Supabase client and Stripe SD
     expect(stripeOrder(net, reads)).toEqual(["cus_6", "cus_7", "cus_8"]);
   });
 
+  it("a closed row, through the real clients: a paid answer saves, and a trial answer saves nothing and sends no customer to the log", async () => {
+    const closed = (n: number, kind: string) => ({ ...planRow(n), kind });
+    const paid = [{ ...over[0], status: "active", ended_at: null }];
+    const trial = [{ ...over[0], status: "trialing", ended_at: null, trial_end: 1_900_000_000 }];
+    const net = noCardRow({ planRows: [closed(1, "payment_failed"), closed(2, "paused")], lists: { cus_1: { ms: 10, data: paid }, cus_2: { ms: 10, data: trial } } });
+    const { result } = await run(net);
+    expect(result).toMatchObject({ planReads: { due: 2, read: 1, changed: 1, unclear: 1, failed: 0 } });
+    expect(saves(net).map((b) => [b.p_customer, b.p_kind])).toEqual([["cus_1", "paying"]]);
+    expect(net.emails).toBe(0);
+    const logged = JSON.stringify([...vi.mocked(console.info).mock.calls, ...vi.mocked(console.error).mock.calls]);
+    expect(logged).toContain("re-read run");
+    expect(logged).not.toContain("cus_");
+  });
+
   it("Stripe down: every read fails, nothing is saved, and the rows stay for a later run", async () => {
     const net = noCardRow({ planRows: [planRow(1), planRow(2)], lists: { cus_1: { ms: 10, data: [], status: 500 }, cus_2: { ms: 10, data: [], status: 500 } } });
     const { result } = await run(net);

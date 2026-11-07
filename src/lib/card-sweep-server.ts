@@ -18,7 +18,7 @@ import { planStartEmailClaim, sendPlanStartEmail } from "@/lib/workbook-email-se
 //   - 30 s: no Stripe write and no email starts, also after an email's reads, claim and wait in the transport. Each has a 15-second
 //     limit, so one that starts in time ends by 45 s.
 //   - 45 s: all the sweep's work ends. One signal goes to every Stripe call, database call and email in it.
-// The daily re-read of open plan rows (sweepPlanReads) runs beside the card rows, under the same times and the same signal, so a long
+// The daily re-read of plan rows (sweepPlanReads) runs beside the card rows, under the same times and the same signal, so a long
 // list of either cannot use all the time of the other.
 // The monthly emails' work ends at 50 s (MONTHLY_END_MS in the route), as before. That leaves 15 s and 10 s to answer.
 
@@ -81,7 +81,7 @@ export async function sweepCardsNow({ origin, startedAt, transport }: { origin: 
         return { error: "run_failed" };
       }),
       sweepPlanReads(supabasePlanReads(db), { store: supabasePlanStore(db), provider: stripePlanProvider(client) }, time).then((result): PlanReadSweep | { error: "run_failed" } => {
-        if (result.changed > 0 || result.failed > 0 || result.outOfTime) console.info("[plan state] re-read run", JSON.stringify(result));
+        if (result.changed > 0 || result.unclear > 0 || result.failed > 0 || result.outOfTime) console.info("[plan state] re-read run", JSON.stringify(result));
         return result;
       }, (e): { error: "run_failed" } => {
         console.error("[plan state] re-read run failed", e instanceof Error ? e.message : e);

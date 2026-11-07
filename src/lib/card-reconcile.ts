@@ -23,7 +23,7 @@ import { rereadPlan, type PlanRead, type PlanStates } from "@/lib/plan-state";
 // The parent's confirmation email has its own state on the record. A refused or a busy send stays pending for the next sweep. An
 // unknown outcome is final, as the email delivery module's rule says. So an email problem cannot take away a record's recovery.
 //
-// The plan gate trusts the stored plan state, so the same run also reads each open row again once a day (sweepPlanReads). It writes
+// The plan gate trusts the stored plan state, so the same run also reads each row that can still change again once a day (sweepPlanReads). It writes
 // the plan state and nothing else: it has no card write, no email and no Stripe write.
 
 /** The sweep's look at a clean row lasts this long after its card changed. */
@@ -499,7 +499,7 @@ export async function sweepCards(seams: CardCheckSeams, time: SweepTime, limit =
 
 /** The rows of the daily re-read. The database decides what is due, by its own clock. */
 export interface PlanReadRows {
-  /** Rows of an open kind not read for 24 hours, the row looked at longest ago first. Throws when it fails. */
+  /** Rows of a kind in PLAN_READ_KINDS not read for 24 hours, the row looked at longest ago first. Throws when it fails. */
   duePlanReads(limit: number): Promise<PlanRead[]>;
   /** The re-read is about to try this row. It goes behind the rows not tried since. Throws when it fails. */
   notePlanReadTried(childId: string): Promise<void>;
@@ -511,18 +511,20 @@ export interface PlanReadSweep {
   read: number;
   /** Rows whose kind changed: a webhook event did not arrive, or has not arrived yet. */
   changed: number;
+  /** Closed rows that Stripe answered, with an answer they may not store (planReadMayStore). The row stays as it is, and stays due. */
+  unclear: number;
   failed: number;
   outOfTime: boolean;
 }
 
 /**
- * Reads each due row again, in turn, inside the sweep's time. A row is noted before its work, so a row that uses all the time, or
- * that keeps failing, goes behind the others and cannot hold them up. A failed read changes nothing, as Stripe being down must not
+ * Reads each due row again, in turn, inside the sweep's time. A row is noted before its work, so a row that uses all the time, that
+ * keeps failing or that keeps answering `unclear` goes behind the others and cannot hold them up. A failed read changes nothing, as Stripe being down must not
  * close a paying family, and the row stays due. Throws when the first read fails.
  */
 export async function sweepPlanReads(rows: PlanReadRows, states: PlanStates, time: SweepTime, limit = SWEEP_LIMIT): Promise<PlanReadSweep> {
   const due = await untilEnd(rows.duePlanReads(limit), time.signal);
-  const result: PlanReadSweep = { due: due.length, read: 0, changed: 0, failed: 0, outOfTime: false };
+  const result: PlanReadSweep = { due: due.length, read: 0, changed: 0, unclear: 0, failed: 0, outOfTime: false };
   for (const row of due) {
     if (time.now() >= time.startBy || time.signal?.aborted) {
       result.outOfTime = true;
@@ -536,6 +538,10 @@ export async function sweepPlanReads(rows: PlanReadRows, states: PlanStates, tim
     try {
       const { save, plan } = await untilEnd(rereadPlan(row, states), time.signal);
       if (save === "no_match") throw new Error("No card setup has this customer");
+      if (save === "unclear") {
+        result.unclear++;
+        continue;
+      }
       result.read++;
       if (save === "stored" && plan.kind !== row.kind) result.changed++;
     } catch (e) {

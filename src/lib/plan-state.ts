@@ -14,7 +14,7 @@ import type { KnownPlan, ParentPlan } from "@/lib/parent-plan";
 //
 // `unknown` is never stored. It is what a child with no row reads as, and a read that fails leaves the row as it is.
 //
-// A webhook can be lost, so each open row is also read again once a day (rereadPlan, run by sweepPlanReads in card-reconcile.ts).
+// A webhook can be lost, so each row that can still change is also read again once a day (rereadPlan, run by sweepPlanReads in card-reconcile.ts).
 // That read follows the same order. It keeps the row's event time: see rereadPlan.
 // The store (child_plan_states and card_setups) and the provider (Stripe) are the seams: plan-state-server.ts holds
 // Supabase and Stripe, plan-state-memory.ts holds both in memory for tests.
@@ -119,8 +119,12 @@ export function applyPlanStart(start: { customer: string; cardSetup: string; gen
   }, states);
 }
 
-/** The kinds the daily re-read looks at: every kind that holds the plan gate open, so a lost event cannot leave it open. */
-export const PLAN_READ_KINDS = ["free_month", "paying", "ending"] as const;
+/**
+ * The kinds the daily re-read looks at: free_month, paying and ending hold the plan gate open, so a lost event must not leave them open;
+ * payment_failed and paused hold it closed, so a lost event must not lock out a parent who paid. A row of kind ended or not_started has
+ * nothing that a read could find: a restart or a start writes its row.
+ */
+export const PLAN_READ_KINDS = ["free_month", "paying", "ending", "payment_failed", "paused"] as const;
 
 /** One row the daily re-read looks at. */
 export interface PlanRead extends PlanKey {
@@ -128,6 +132,25 @@ export interface PlanRead extends PlanKey {
   kind: (typeof PLAN_READ_KINDS)[number];
   /** The row's event time, or null on a filled row. */
   eventAt: string | null;
+}
+
+/**
+ * What a read may store on this row. An open row stores what Stripe says. A closed row (payment_failed, paused) reopens only on a paid
+ * answer: Stripe `active`, as past_due goes to active on payment and a pause resumes with resume_on_payment_success. It also takes an answer
+ * that stays closed. A trial is not paid, and an empty list on a row that had a plan is not a clear answer: not_started would also take the
+ * family out of familyHasPlanHistory, and so away from its card and its plan's controls. Such an answer leaves the row as it is.
+ */
+export function planReadMayStore(rowKind: PlanRead["kind"], plan: KnownPlan): boolean {
+  if (rowKind !== "payment_failed" && rowKind !== "paused") return true;
+  switch (plan.kind) {
+    case "paying":
+    case "payment_failed":
+    case "paused":
+    case "ended": return true;
+    case "ending": return !plan.free;
+    case "free_month":
+    case "not_started": return false;
+  }
 }
 
 /** Stored on a re-read of a row with no event: the save needs a time, and no Stripe event is older. */
@@ -139,11 +162,13 @@ const NO_EVENT_AT = new Date(0).toISOString();
  *
  * It stores the row's own event time, never a time of its own: applyPlanEvent skips the read for an event older than the row's, and
  * our clock and Stripe's can disagree. With a time from our clock, the event of a change that came just after this read could read as
- * older, and that change would be lost. Throws when Stripe or the store fails, and the row stays as it is.
+ * older, and that change would be lost. `unclear`: planReadMayStore refused the answer, so nothing was saved and the take goes unused. A
+ * value with no save leaves a gap, and a gap changes nothing. Throws when Stripe or the store fails, and the row stays as it is.
  */
-export async function rereadPlan(row: PlanRead, { store, provider }: PlanStates): Promise<{ save: PlanSave; plan: KnownPlan }> {
+export async function rereadPlan(row: PlanRead, { store, provider }: PlanStates): Promise<{ save: PlanSave | "unclear"; plan: KnownPlan }> {
   const readOrder = await store.takeReadOrder();
   const plan = await provider.plan(row.customer);
+  if (!planReadMayStore(row.kind, plan)) return { save: "unclear", plan };
   return { save: await store.save(row.customer, { plan, eventAt: row.eventAt ?? NO_EVENT_AT, eventId: `plan-read:${readOrder}`, readOrder }), plan };
 }
 

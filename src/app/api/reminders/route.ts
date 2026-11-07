@@ -21,7 +21,7 @@ import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/l
 // monthly summary emails (#563, src/lib/monthly-summary-email.ts). Everything the run sends goes through one paced transport. Beside the emails, the same run ends abandoned Maya chats and calls (#528,
 // src/lib/maya-call-sweep.ts): it starts no new end after SWEEP_START_MS and stops waiting at SWEEP_TIME_LIMIT_MS, inside
 // the cron's 60-second request limit (timeout_milliseconds in migration add_reminder_cron). Also beside the emails, it brings
-// Stripe to each child's newest card (#554, src/lib/card-reconcile.ts) and reads each open plan row not read for 24 hours again. All the card sweep's work ends 45 seconds after the run began
+// Stripe to each child's newest card (#554, src/lib/card-reconcile.ts) and reads each plan row that can still change, not read for 24 hours, again. All the card sweep's work ends 45 seconds after the run began
 // (SWEEP_END_MS in src/lib/card-sweep-server.ts), and the monthly emails' work 50 seconds after it (MONTHLY_END_MS).
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.

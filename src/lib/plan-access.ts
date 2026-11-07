@@ -11,7 +11,8 @@ import { adminClient } from "@/lib/supabase-auth";
 // Open: free_month, paying, and ending until its end date. Closed: everything else, a kind the code does not know, a row
 // that does not fit its kind, and any failed read. Nothing here asks Stripe: the webhook, the start and restart routes and the card
 // sweep keep the row (src/lib/plan-state.ts), so a later payment that makes a plan run reopens this on its next read. The sweep also
-// reads each open row again once a day (sweepPlanReads), so a lost event cannot hold this open with no limit while Stripe answers.
+// reads each row that can still change again once a day (sweepPlanReads), so a lost event cannot hold this open, or closed after a
+// payment, with no limit while Stripe answers.
 //
 // This file does not say who sees what. Each feature adds its own switches beside this gate (scan-pages-access.ts,
 // parent-dashboard-access.ts, maya-chat-server.ts, parent-problem-explanation-server.ts).

@@ -168,8 +168,13 @@ describe("the re-read's rows in the database", () => {
     expect(calls).toEqual([["due_plan_reads", { p_limit: 50 }]]);
   });
 
+  it("reads the closed kinds too", async () => {
+    for (const kind of ["payment_failed", "paused"]) expect(await supabasePlanReads(client(() => Response.json([{ ...row, kind }]))).duePlanReads(1)).toMatchObject([{ kind }]);
+  });
+
   it("refuses a kind the re-read does not look at, and a failed read throws", async () => {
     await expect(supabasePlanReads(client(() => Response.json([{ ...row, kind: "ended" }]))).duePlanReads(1)).rejects.toThrow("unreadable");
+    await expect(supabasePlanReads(client(() => Response.json([{ ...row, kind: "not_started" }]))).duePlanReads(1)).rejects.toThrow("unreadable");
     await expect(supabasePlanReads(client(() => Response.json({ message: "down" }, { status: 500 }))).duePlanReads(1)).rejects.toThrow("down");
   });
 
