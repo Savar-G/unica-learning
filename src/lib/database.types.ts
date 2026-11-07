@@ -4871,6 +4871,73 @@ export type Database = {
           },
         ]
       }
+      workbook_plan_previews: {
+        Row: {
+          actor_id: string
+          child_id: string
+          created_at: string
+          cutoff: string
+          engine: string
+          id: string
+          number: number
+          parent_id: string
+          payload: string
+          payload_hash: string
+          printed_revision: string
+          workbook_id: string
+        }
+        Insert: {
+          actor_id: string
+          child_id: string
+          created_at?: string
+          cutoff: string
+          engine: string
+          id: string
+          number: number
+          parent_id: string
+          payload: string
+          payload_hash: string
+          printed_revision: string
+          workbook_id: string
+        }
+        Update: {
+          actor_id?: string
+          child_id?: string
+          created_at?: string
+          cutoff?: string
+          engine?: string
+          id?: string
+          number?: number
+          parent_id?: string
+          payload?: string
+          payload_hash?: string
+          printed_revision?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_plan_previews_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_plan_previews_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_plan_previews_workbook_id_parent_id_child_id_numb_fkey"
+            columns: ["workbook_id", "parent_id", "child_id", "number"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "parent_id", "child_id", "number"]
+          },
+        ]
+      }
       workbook_questions: {
         Row: {
           box_height: number
@@ -8246,6 +8313,29 @@ export type Database = {
         Returns: string
       }
       workbook_edit_target_value: { Args: { p_value: Json }; Returns: Json }
+      workbook_preview_access: {
+        Args: {
+          p_book: string
+          p_child: string
+          p_parent: string
+          p_revision: string
+        }
+        Returns: boolean
+      }
+      workbook_preview_command: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_book: string
+          p_child: string
+          p_hash?: string
+          p_parent: string
+          p_payload?: string
+          p_request: string
+          p_revision: string
+        }
+        Returns: Json
+      }
       workbook_run_held: {
         Args: { p_lease: string; p_run: string }
         Returns: boolean
