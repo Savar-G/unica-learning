@@ -1,13 +1,13 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { dueWeeklyEmails, type WeeklyState } from "@/lib/maya-weekly-email";
 import type { CallNote } from "@/lib/maya-call-note";
 
-// Opening the plan gate makes no email due. This follows the imports from every file that sends an email, and fails when one
-// reaches a module that holds a gate. A plain text search would miss a gate read through another module.
+// What this proves: no email sender, and no module a sender imports, reaches a module that holds a gate, except the edges named
+// below. A sender is a file that imports a delivery module or calls Resend's address itself. It does not walk up to the routes
+// that call a sender: a route can sit behind a gate and call one, as the scan link's route does, which is asserted on its own.
 //
 // The one allowed exception, for an email no one asked for: the monthly summary imports only `dashboardSwitchOpen` from
 // parent-dashboard-access.ts, the dashboard's switch with no plan (its own test: parent-dashboard-access.test.ts).
@@ -66,8 +66,27 @@ function gateEdges(start: string): string[] {
   return [...edges];
 }
 
-const senders = execFileSync("rg", ["-l", "--glob", "!*.test.*", "--glob", "!*-memory.ts", "--glob", "!src/lib/email-delivery.ts", "--glob", "!src/lib/email-resend.ts",
-  'from "@/lib/(email-delivery|email-resend|workbook-email-server)"', "src"], { encoding: "utf8" }).trim().split("\n");
+const DELIVERY = new Set(["src/lib/email-delivery.ts", "src/lib/email-resend.ts", "src/lib/workbook-email-server.ts"]);
+
+/** A file that sends email: it imports a delivery module (`import type` too: a transport passed in is still a send), or fetches Resend's address. */
+function sends(file: string, source: string): boolean {
+  if (/\bfetch\(\s*["'`]https:\/\/api\.resend\.com/.test(source)) return true;
+  for (const m of source.matchAll(/(?:\bfrom\s+|\bimport\s+|\bimport\(\s*)["']([^"']+)["']/g)) {
+    const to = resolve(file, m[1]);
+    if (to && DELIVERY.has(to)) return true;
+  }
+  return false;
+}
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(file);
+    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) && !/-memory\.ts$/.test(entry.name) ? [file] : [];
+  });
+}
+
+const senders = sourceFiles("src").filter((file) => !["src/lib/email-delivery.ts", "src/lib/email-resend.ts"].includes(file) && sends(file, readFileSync(file, "utf8")));
 
 const MONTHLY = 'src/lib/monthly-summary-email-store.ts -> src/lib/parent-dashboard-access.ts { dashboardSwitchOpen }';
 /** The edges each sender may have. Anything else fails. */
@@ -79,6 +98,24 @@ const ALLOWED: Record<string, string[]> = {
 };
 
 describe("no email sender reaches the plan gate", () => {
+  it("finds a sender by an alias import, a relative import, a type import, a dynamic import and a direct fetch; a mention alone is no send", () => {
+    for (const source of [
+      'import { sendEmail } from "@/lib/email-delivery";',
+      'import { sendEmail } from "./email-delivery";',
+      'import { sendEmail } from "../lib/email-delivery";',
+      'import type { MailTransport } from "./email-delivery";',
+      'const { resendTransport } = await import("./email-resend");',
+      'import { sendPlanStartEmail } from "./workbook-email-server";',
+      'await fetch("https://api.resend.com/emails", { method: "POST" });',
+    ]) expect(sends("src/lib/any.ts", source), source).toBe(true);
+    for (const source of ['// The Resend address is https://api.resend.com/emails.', 'import { x } from "./email-copies";']) expect(sends("src/lib/any.ts", source), source).toBe(false);
+  });
+
+  it("finds the team alert in the signup route, which calls Resend directly and reads no gate", () => {
+    expect(senders).toContain("src/app/api/signup/route.ts");
+    expect(gateEdges("src/app/api/signup/route.ts")).toEqual([]);
+  });
+
   it("finds the senders of the /api/reminders run, the start, the sweep and the parent's presses", () => {
     for (const file of ["src/app/api/reminders/route.ts", "src/lib/reminder-store.ts", "src/lib/maya-weekly-email.ts", "src/lib/maya-weekly-email-store.ts", "src/lib/monthly-summary-email-store.ts", "src/lib/workbook-scan-reminder-send.ts", "src/lib/workbook-scan-maintenance-server.ts", "src/lib/card-sweep-server.ts", "src/lib/workbook-email-server.ts", "src/lib/scan-link.ts", "src/lib/report-job.ts", "src/app/api/admin/cards/[id]/start/route.ts"]) expect(senders).toContain(file);
   });

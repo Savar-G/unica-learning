@@ -197,8 +197,19 @@ describe("familyClosedPlan", () => {
   it("reads an ending plan past its date as ended", async () => {
     expect(await read({ child_plan_states: [stateRow("p1", "c1", "ending", { ends_at: earlier })], children: kids })).toEqual({ reason: "ended", child: "Leo" });
   });
-  it("reads a start with no plan row yet as unknown", async () => {
-    expect(await read({ plan_starts: [{ parent_id: "p1", state: "started" }], children: kids })).toEqual({ reason: "unknown", child: null });
+  it("is null for a started plan with no row yet, so no note sits above Stripe's live line; access stays closed", async () => {
+    const tables = { plan_starts: [{ parent_id: "p1", state: "started" }], children: kids };
+    expect(await read(tables)).toBeNull();
+    expect(await read({ ...tables, child_plan_states: [stateRow("p1", "c1", "not_started")] })).toBeNull();
+    const db = fakeDb(tables);
+    expect(await childPlanAccess({ parentId: "p1", childId: "c1" }, { db, ...clock })).toEqual({ open: false, reason: "no_plan" });
+    expect((await familyPlanAccess({ parentId: "p1" }, { db, ...clock })).open).toBe(false);
+    expect(await familyHasPlanHistory({ parentId: "p1" }, { db })).toBe(true);
+  });
+  it("keeps unknown closed for access and in the note, for a row the code cannot read", async () => {
+    const tables = { child_plan_states: [stateRow("p1", "c1", "gold")], children: kids };
+    expect(await read(tables)).toEqual({ reason: "unknown", child: "Leo" });
+    expect(await familyPlanAccess({ parentId: "p1" }, { db: fakeDb(tables), ...clock })).toEqual({ open: false, reason: "unknown" });
   });
   it("still answers when the child's name cannot be read", async () => {
     expect(await read({ child_plan_states: [stateRow("p1", "c1", "paused")] }, ["children"])).toEqual({ reason: "paused", child: null });

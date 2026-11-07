@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({}),
   redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); },
 }));
-const state = vi.hoisted(() => ({ dashboard: null as ParentDashboard | null, parent: "p1" as string | null, card: true, plans: [] as Record<string, unknown>[] }));
+const state = vi.hoisted(() => ({ dashboard: null as ParentDashboard | null, parent: "p1" as string | null, card: true, plans: [] as Record<string, unknown>[], starts: [] as Record<string, unknown>[] }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => state.dashboard }));
 const billing = vi.hoisted(() => ({ seams: vi.fn(() => null as unknown) }));
 vi.mock("@/lib/billing-server", () => ({ liveFamilyBilling: billing.seams }));
@@ -28,7 +28,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   // The secret key's reads of the plan gate. The family is not marked; its plan rows are `state.plans`.
   adminClient: () => ({
     from: (table: string) => {
-      const rows = () => (table === "child_plan_states" ? state.plans : table === "children" ? [{ id: "c1", first_name: "Leah", parent_id: "p1" }] : []);
+      const rows = () => (table === "child_plan_states" ? state.plans : table === "plan_starts" ? state.starts : table === "children" ? [{ id: "c1", first_name: "Leah", parent_id: "p1" }] : []);
       const query = { select: () => query, eq: () => query, in: () => query, limit: () => query, maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }), then: (resolve: (r: { data: unknown[]; error: null }) => unknown) => resolve({ data: rows(), error: null }) };
       return query;
     },
@@ -50,7 +50,7 @@ const page = createElement("p", null, "the page");
 const settings = (card?: string) => AccountSettings({ params: Promise.resolve({}), searchParams: Promise.resolve(card ? { card } : {}) });
 const render = async () => renderToStaticMarkup(createElement("div", null, await DashboardLayout({ children: page })));
 
-beforeEach(() => { billing.seams.mockReset(); billing.seams.mockReturnValue(null); state.dashboard = family(); state.parent = "p1"; state.card = true; state.plans = []; nav.path = "/account"; nav.query = new URLSearchParams(); });
+beforeEach(() => { billing.seams.mockReset(); billing.seams.mockReturnValue(null); state.dashboard = family(); state.parent = "p1"; state.card = true; state.plans = []; state.starts = []; nav.path = "/account"; nav.query = new URLSearchParams(); });
 
 it("sends a parent whose family's deletion is queued to the confirmation, not to a live account", async () => {
   state.dashboard = family({ deletionRequested: true });
@@ -155,6 +155,13 @@ describe("a family whose dashboard is closed, on the real plan gate", () => {
   it("still sends a family with only a saved card to Parent home", async () => {
     state.dashboard = null; state.plans = [row("not_started")];
     await expect(settings()).rejects.toThrow("REDIRECT /account");
+  });
+
+  it("serves a started plan with no row yet its page, with no closed note", async () => {
+    state.dashboard = null; state.starts = [{ parent_id: "p1", state: "started" }];
+    const out = renderToStaticMarkup(await settings());
+    expect(out).not.toContain("Scan pages and Maya are closed");
+    expect(out).toContain("Delete your family&#x27;s account");
   });
 
   it("shows a paying family no closed note when its dashboard read failed", async () => {

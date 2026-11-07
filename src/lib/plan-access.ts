@@ -109,13 +109,16 @@ export async function familyHasPlanHistory(input: { parentId: string }, deps: Pl
 export interface ClosedPlan { reason: PlanAccessReason; child: string | null }
 
 /**
- * A family that has or had a plan, with no child open now. Two children's plans that stopped in different ways read as unknown.
- * Null with an open plan, with no plan, and when the plan read fails. A failed read of the name only leaves the name out.
+ * A family with a stopped plan and no child open now, for the note a parent reads. Two children's plans that stopped in different
+ * ways read as unknown. Null with an open plan, with no plan, when the plan read fails, and for a started plan with no row yet:
+ * access stays closed then, but Stripe's live line says "Free month", so no note says otherwise. A failed read of the name only
+ * leaves the name out.
  */
 export async function familyClosedPlan(input: { parentId: string }, deps: PlanAccessDeps = {}): Promise<ClosedPlan | null> {
   const rows = await familyRows(input.parentId, deps);
-  if (!rows || rows.some((r) => r.access.open) || !(await familyHasPlanHistory(input, deps))) return null;
+  if (!rows || rows.some((r) => r.access.open)) return null;
   const stopped = rows.filter((r) => r.access.reason !== "no_plan");
+  if (stopped.length === 0) return null;
   const reasons = new Set(stopped.map((r) => r.access.reason));
   const reason: PlanAccessReason = reasons.size === 1 ? stopped[0].access.reason : "unknown";
   if (stopped.length !== 1) return { reason, child: null };
