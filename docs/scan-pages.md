@@ -181,7 +181,33 @@ Savar decided on 7 November that AI does all marking and a parent marks no quest
 
 The printed item has two work areas and one final-answer box. The model reads all three regions on the whole page. It transcribes each method as written, one step per line, and it never leaves out or tidies a step. It receives the question with each method region and no answer. For each method it also gives a verdict: `solves`, `does-not-solve` or `unsure`, with a short reason. The reason is evidence for the team and is never shown to a parent.
 
-Until the method rules ship (`TWO_WAYS_METHOD_MARKS` in `src/lib/scan-marking.ts` is off), every two-ways item waits for our team, whatever the reading shows. It is never Right, Wrong or Blank by code. The parent sees "Our team is checking this answer.", with the retake line only for a blurry or cut-off part (#717). Our team's mark finishes the item and publishes its event. The rules, their method kinds and their strategy families are in D-302 and ship apart.
+Code marks the item with the method rules in `src/lib/scan-marking-methods.ts` (`TWO_WAYS_METHOD_MARKS` on, D-302). The rules are a narrow allow-list of exact templates, and they fail closed. Only the first book's two question shapes have templates. Every other shape waits for our team, for example `1 × ? = n`, `? ÷ 1 = n`, `c ÷ ? = a`, `? - a = c` (#723), every sum and difference, and a story with no printed equation.
+
+| Question shape | Templates |
+| --- | --- |
+| `a × b = ?`, one factor a tens number, no factor 1 or a power of ten (`7 × 360`, `50 × 80`) | split a factor by place value; strip the zeros of a tens factor; round a factor up |
+| `k × ? = t` or `? × k = t`, with k and the answer 2 or more and the answer not k (`8 × ? = 800`) | divide; groups of k (build up from multiples of k, skip count or repeated subtraction) |
+
+Each template states every line exactly:
+
+- **Split a factor by place value:** `7 × 300 = 2100`, `7 × 60 = 420`, `2100 + 420 = 2520`. The parts are the factor's place-value parts, largest first.
+- **Strip the zeros of a tens factor:** its core times the other factor, then times 10 to the number of zeros: `36 × 7 = 252`, `252 × 10 = 2520`. When both factors are tens numbers, both may lose their zeros (`5 × 8 = 40`, `40 × 100 = 4000`). These forms are one template. The core is 2 or more.
+- **Round a factor up:** a factor that is not a tens number goes up to the next tens number, and a tens number goes up to the next hundreds number. Then the stated difference is taken off: `10 × 360 = 3600`, `3 × 360 = 1080`, `3600 - 1080 = 2520`. The difference is 2 or more, and it is not equal to a factor of the question or to the answer, so rounding 50 up to 100 on `50 × 80` has no template. Rounding down is a split, so it has no template.
+- **Divide:** `t ÷ k`, or the same division with the same zeros taken off both numbers (`480 ÷ 6 = 80` for `4800 ÷ 60`), with a divisor of 2 or more. These forms are one template.
+- **Groups of k**, in three exact forms that are one template. A skip count is a build-up in chunks of 1 × k, and repeated subtraction is the same count going down, so two of these forms are one way written twice:
+  - build up: exact multiples of k, then their sum, then the sum of the multipliers: `8 × 400 = 3200`, `8 × 30 = 240`, `3200 + 240 = 3440`, `400 + 30 = 430`. Each multiplier is 2 or more and less than the answer. Build-up adds only: a multiplying form (`8 × 43 = 344`, `344 × 10 = 3440`) is a reverse check with zeros taken off;
+  - skip count: `k, 2k, ..., t`, then the count (`20 times`);
+  - repeated subtraction: `t - k`, then each result less k, down to 0, then the count.
+
+A method that does not match one template exactly is unsure. These bans apply first, each by its exact form:
+
+- the answer as an operand, anywhere, the final line included;
+- padding: `× 1`, `÷ 1`, `+ 0`, `- 0`, a number put on and taken off again (`+ n - n`, in one line or in two), and a core of 1;
+- the question with the answer filled in, in either order;
+- every reverse check: on `a × b` any division, and on a missing factor any product of k and the answer, also with zeros taken off (`8 × 43 = 344` for `8 × ? = 3440`);
+- an extra line, a run-on chain, `?` or `_` in a line, and an arrow chain whose tail is not one bare number.
+
+Two ways means two different templates. An item is Right only when the answer is right, both methods are valid and their templates differ. A false step or `does-not-solve` makes it Wrong, and so does a missing method. Anything else waits for our team ("Our team is checking this answer."). On the 7 two-ways questions of the first book, `7 × 360` has all three product templates, `50 × 80` has strip zeros and round up, and each of the five missing factors has divide and groups of k.
 
 The item keeps one crop of both work areas and the answer box, one canonical result and one event key. It follows its frozen mastery decision. The stored package and print contract stay unchanged. Missing or invalid measured regions make no crop and no reading.
 
@@ -189,7 +215,7 @@ Prompt v8 adds the method reading. It is frozen for the paid run: a test pins th
 
 ### Round 9 coverage
 
-The first-customer round 9 contract (`bfc5542e`) has 582 questions: 582 have an AI reading path, 0 have a parent marking path and 0 are unsupported ([coverage record](scan-marking-first-book-coverage-ai-only-20261107.json)). The 7 two-ways items wait for our team on every supplied reading. No label, on any path, asks a parent to judge, and no page history status does (#717). This is supplied-reading route proof. It does not prove recognition.
+The first-customer round 9 contract (`bfc5542e`) has 582 questions: 582 have an AI reading path, 0 have a parent marking path and 0 are unsupported ([coverage record](scan-marking-first-book-coverage-ai-only-20261107.json)). Each of the 7 two-ways items gives its expected mark on every supplied reading. No label, on any path, asks a parent to judge, and no page history status does (#717). This is supplied-reading route proof. It does not prove recognition.
 
 ### Database
 

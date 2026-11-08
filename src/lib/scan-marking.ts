@@ -5,7 +5,7 @@ import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { expectedItems, firstObservation, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { checkFractionReading } from "@/lib/scan-marking-fractions";
-import { checkMethodReading, METHOD_JUDGMENTS, type MethodJudgment } from "@/lib/scan-marking-methods";
+import { checkMethodReading, differentStrategies, METHOD_JUDGMENTS, type MethodJudgment } from "@/lib/scan-marking-methods";
 import { exactNumber } from "@/lib/scan-marking-numbers";
 import { checkWordsReading } from "@/lib/scan-marking-words";
 import type { PrintedRegion } from "@/lib/workbook-print-contract";
@@ -18,7 +18,7 @@ export const MARKING_MODEL = "anthropic/claude-sonnet-5.5";
  * Off: the AI reads every two-ways item (both methods and the answer), and every one waits for our team, never Right.
  * On: code's method rules (`src/lib/scan-marking-methods.ts`, D-302) can mark a valid pair. The method rules ship apart.
  */
-export const TWO_WAYS_METHOD_MARKS = false;
+export const TWO_WAYS_METHOD_MARKS = true;
 export const MARKING_MAX_TOKENS = 4096;
 export const MARKING_MAX_DISPATCHES = 2;
 const MAX_VERDICT_REASON = 120;
@@ -161,11 +161,12 @@ function readRegion(a: Alias, readings: unknown[]): RegionReading {
   return { regionId: a.regionId, text: blank ? "" : text, value: value === null ? null : String(value), certainty: certain ? "certain" : "uncertain",
     result, issue: certain ? result === null ? a.kind === "method" ? "method-form" : "answer-form" : null : issue ?? "unreadable", ...evidence };
 }
-/** The two methods must be two kinds of work. Code compares the kinds, never the text. No two-ways reason asks a parent to check. */
+/** The two methods must be two different strategies (D-302). Code compares their families, never the text. */
 function twoWaysRegions(group: readonly Alias[], regions: readonly RegionReading[]): RegionReading[] {
   const plain = regions.map((r, n) => r.issue !== "answer-form" ? r : { ...r, issue: group[n].kind === "method" ? "method-form" as const : "answer-check" as const });
   const methods = plain.filter((_, n) => group[n].kind === "method");
-  if (methods.length !== 2 || methods.some(m => m.result !== "right") || methods[0].methodKind !== methods[1].methodKind) return plain;
+  const first = group.find(a => a.kind === "method"), shape = first?.kind === "method" ? first.shape : null;
+  if (methods.length !== 2 || methods.some(m => m.result !== "right") || (shape && differentStrategies(shape, methods[0].methodKind!, methods[1].methodKind!))) return plain;
   return plain.map(r => r === methods[1] ? { ...r, result: null, issue: "method-form" as const } : r);
 }
 /**
@@ -191,7 +192,9 @@ function twoWaysText(group: readonly Alias[], regions: readonly RegionReading[])
   return [...answer, ...methods].join("; ").slice(0, MAX_READ_TEXT);
 }
 /** Read every region once. Code aggregates regions into exactly one item result. */
-export function readMarkingOutput(frame: MarkingFrame, output: unknown): Observation[] {
+/** `methodMarks` overrides the switch only so a test can prove the off path. */
+export function readMarkingOutput(frame: MarkingFrame, output: unknown, options: { methodMarks?: boolean } = {}): Observation[] {
+  const methodMarks = options.methodMarks ?? TWO_WAYS_METHOD_MARKS;
   const expected = expectedItems(frame), local = aliases(frame, expected);
   const readings = object(output) && Array.isArray(output.readings) && output.readings.length <= 400 ? output.readings : [];
   return expected.map(e => {
@@ -201,12 +204,12 @@ export function readMarkingOutput(frame: MarkingFrame, output: unknown): Observa
     const twoWays = e.twoWays === true;
     const read = group.map(a => readRegion(a, readings));
     const regions = twoWays ? twoWaysRegions(group, read) : read;
-    const result = twoWays ? (TWO_WAYS_METHOD_MARKS ? twoWaysResult(regions) : null) : regions.some(r => r.result === "wrong") ? "wrong" : regions.every(r => r.result === "right") ? "right"
+    const result = twoWays ? (methodMarks ? twoWaysResult(regions) : null) : regions.some(r => r.result === "wrong") ? "wrong" : regions.every(r => r.result === "right") ? "right"
       : regions.every(r => r.result === "blank") ? "blank" : null;
     const readAnswerText = group.length === 1 ? regions[0].text : regions.every(r => r.result === "blank") ? "" : twoWays ? twoWaysText(group, regions)
       : regions.map((r, n) => `${group[n].kind === "choice" ? "Choice" : group[n].kind === "text" ? "Words" : "Number"}: ${r.text ?? "Not read"}`).join("; ").slice(0, MAX_READ_TEXT);
     return { ...first, readAnswerText, regions, certainty: regions.every(r => r.certainty === "certain") ? "certain" : "uncertain",
-      state: result === null ? "pending" : "scored", result, help: "none", issue: twoWays ? (TWO_WAYS_METHOD_MARKS ? twoWaysIssue(group, regions, result) : regions.find(r => r.issue && PHOTO_ISSUES.includes(r.issue))?.issue ?? "method-form") : regions.find(r => r.issue)?.issue ?? (result === null ? "incomplete" : null) };
+      state: result === null ? "pending" : "scored", result, help: "none", issue: twoWays ? (methodMarks ? twoWaysIssue(group, regions, result) : regions.find(r => r.issue && PHOTO_ISSUES.includes(r.issue))?.issue ?? "method-form") : regions.find(r => r.issue)?.issue ?? (result === null ? "incomplete" : null) };
   });
 }
 function originalEvents(frame: MarkingFrame, observations: Observation[], at: string): NewLearningEvent[] {
