@@ -1,5 +1,6 @@
 // Physical photos of the frozen, made-up Robin kit. This is not the fixed40 set.
-import { COMPARISON_ALLOWED_MODELS, COMPARISON_SETTINGS, COMPARISON_DEFERRAL_POLICY, SYNTHETIC_IDS, comparisonItemFormat, hashValue, labelledOutput, scoreComparison, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type TruthRow } from "@/lib/scan-marking-comparison";
+import reviewedEvidence from "../../data/scan-marking-physical-reviewed-evidence-20261107.json";
+import { COMPARISON_ALLOWED_MODELS, COMPARISON_SETTINGS, COMPARISON_DEFERRAL_POLICY, SYNTHETIC_IDS, comparisonItemFormat, hashValue, labelledOutput, reserveMaximum, scoreComparison, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type TruthRow } from "@/lib/scan-marking-comparison";
 import { expectedItems, READING_ISSUES, type ReadingIssue } from "@/lib/scan-observation";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { markingRequest, readMarkingOutput, TWO_WAYS_METHOD_MARKS, validMarkingOutput, type MarkingFrame } from "@/lib/scan-marking";
@@ -227,6 +228,25 @@ export const physicalSettings = (maxMicros: number) => {
     deferral: COMPARISON_DEFERRAL_POLICY, maxMicros, aggregateMicros: 15_000_000, sharedMonthlyMicros: 50_000_000, dedicatedTotalMicros: 50_000_000 };
 };
 export type PhysicalState = { evidence: EndpointEvidence; maximumMicros: number };
+/**
+ * The evidence hashes of the enabled rows in public.scan_marking_evaluation_prices. The price check refuses any other,
+ * so the plan starts from exactly this reviewed evidence, never from a newer public snapshot.
+ */
+export const PHYSICAL_REVIEWED_EVIDENCE_SHA256: Readonly<Record<string, string>> = {
+  "anthropic/claude-sonnet-5.5": "caf1ec5580ae81b87df0bcd396c58c594ef3acb67457633c76f05d3352ba6278",
+  "openai/gpt-6.1-terra": "669916576e5f10e6cff3a77539a98f68f35bbf2452276568e2b02bf6c70bc71e",
+};
+export function reviewedPhysicalStates(): PhysicalState[] {
+  const saved = reviewedEvidence.evidence as unknown as Record<string, EndpointEvidence>;
+  return PHYSICAL_MODELS.map(model => {
+    const evidence = saved[model.model];
+    if (!evidence || hashValue(evidence) !== PHYSICAL_REVIEWED_EVIDENCE_SHA256[model.model] || evidence.model !== model.model
+      || evidence.endpoint.tag !== model.endpoint || evidence.endpoint.provider_name !== model.providerName) fail("reviewed-evidence-changed");
+    const maximumMicros = reserveMaximum(evidence);
+    if (!Number.isSafeInteger(maximumMicros) || maximumMicros < 1 || maximumMicros > 15_000_000) fail("reviewed-evidence-reservation");
+    return { evidence, maximumMicros };
+  });
+}
 export type PhysicalEstimate = ReturnType<typeof physicalEstimate>;
 /** Expected cost from the pinned base prices, for Robin and the fixed set. The in-flight need is the most that requests running at one time can cost. */
 export function physicalEstimate(photos: number, states: readonly PhysicalState[], maxMicros: number, fixedPhotos = 0) {

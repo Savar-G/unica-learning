@@ -6,8 +6,7 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
 import ts from "typescript";
-import savedEvidence from "../data/scan-marking-endpoint-evidence-20261106.json";
-import savedTerraEvidence from "../data/scan-marking-terra-endpoint-evidence-20261107.json";
+import reviewedEvidence from "../data/scan-marking-physical-reviewed-evidence-20261107.json";
 import { calibratePhoto, cropBox, cropPlan, sheetChecker, straightenedPage, type Raster } from "../src/lib/scan-calibration";
 import { normalizeScanPhoto } from "../src/lib/scan-photo-image";
 import { printContractForPhoto, printContractProblem, regionsProblem } from "../src/lib/workbook-print-contract";
@@ -16,14 +15,14 @@ import type { WorkbookInput } from "../src/lib/workbook-content";
 import { expectedItems } from "../src/lib/scan-observation";
 import { markingRegions } from "../src/lib/scan-marking-regions";
 import { markingRequest, readMarkingOutput, validMarkingOutput } from "../src/lib/scan-marking";
-import { FIXED40_V7_MANIFEST_SHA256, assertComparisonResultIdentity, assertComparisonResume, assessComparisonEndpoint, deferredAttempt, endpointPolicy, hashBytes, hashValue, labelledOutput, syntheticPrintRevision, transportUsage, upgradeFixed40Manifest, type AttemptRecord, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type EndpointSnapshot } from "../src/lib/scan-marking-comparison";
+import { FIXED40_V7_MANIFEST_SHA256, assertComparisonResultIdentity, assertComparisonResume, deferredAttempt, endpointPolicy, hashBytes, hashValue, labelledOutput, syntheticPrintRevision, transportUsage, upgradeFixed40Manifest, type AttemptRecord, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence } from "../src/lib/scan-marking-comparison";
 import { runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "../src/lib/scan-marking-comparison-run";
-import { FROZEN_KIT, PHYSICAL_MODELS, PHYSICAL_VERSION, assertPhysicalFrame, physicalCreditPreflight, physicalEstimate, physicalEstimateLines, physicalFixedReport, physicalFixedSideBySide, physicalPhotoId, physicalReport, physicalScoringInput, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalPhoto, type PhysicalSet, type PhysicalState } from "../src/lib/scan-marking-physical";
+import { FROZEN_KIT, PHYSICAL_MODELS, PHYSICAL_VERSION, assertPhysicalFrame, physicalCreditPreflight, physicalEstimate, physicalEstimateLines, physicalFixedReport, physicalFixedSideBySide, physicalPhotoId, physicalReport, reviewedPhysicalStates, physicalScoringInput, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalPhoto, type PhysicalSet, type PhysicalState } from "../src/lib/scan-marking-physical";
 import { durableJson, fileJournal, loadComparisonAssets, refreshEvidence, rpcEvaluationBudget } from "./scan-marking-comparison-cli";
 
 const ROOT = resolve(import.meta.dirname, "..");
 // Paths resolved by the launcher are supplied explicitly because the bundled file lives in a temporary directory.
-export const SOURCE_FILES = ["scripts/scan-marking-physical.mjs", "scripts/scan-marking-physical-cli.ts", "src/lib/scan-marking-physical.ts", "src/lib/scan-marking.ts", "src/lib/scan-marking-ai.ts", "src/lib/scan-marking-comparison.ts", "src/lib/scan-marking-comparison-run.ts", "scripts/scan-marking-comparison-cli.ts", "src/lib/scan-calibration.ts", "src/lib/scan-photo-image.ts", "src/lib/scan-marking-regions.ts", "src/lib/scan-marking-numbers.ts", "src/lib/scan-observation.ts", "src/lib/workbook-print-contract.ts", "src/lib/ai-openrouter.ts", "src/lib/ai-client.ts", "data/scan-marking-models.json", "data/scan-marking-endpoint-evidence-20261106.json", "data/scan-marking-terra-endpoint-evidence-20261107.json", "supabase/migrations/20261107_scan_marking_physical_evaluation.sql", "package-lock.json"];
+export const SOURCE_FILES = ["scripts/scan-marking-physical.mjs", "scripts/scan-marking-physical-cli.ts", "src/lib/scan-marking-physical.ts", "src/lib/scan-marking.ts", "src/lib/scan-marking-ai.ts", "src/lib/scan-marking-comparison.ts", "src/lib/scan-marking-comparison-run.ts", "scripts/scan-marking-comparison-cli.ts", "src/lib/scan-calibration.ts", "src/lib/scan-photo-image.ts", "src/lib/scan-marking-regions.ts", "src/lib/scan-marking-numbers.ts", "src/lib/scan-observation.ts", "src/lib/workbook-print-contract.ts", "src/lib/ai-openrouter.ts", "src/lib/ai-client.ts", "data/scan-marking-models.json", "data/scan-marking-physical-reviewed-evidence-20261107.json", "supabase/migrations/20261107_scan_marking_physical_evaluation.sql", "package-lock.json"];
 export async function regularBytes(path: string, max = 25 * 1024 * 1024): Promise<Buffer> {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try { const stat = await file.stat(); if (!stat.isFile() || stat.size > max || stat.size < 1) throw Error("unsafe-or-oversized-file"); return await file.readFile(); }
@@ -180,13 +179,6 @@ async function sourceHashes(root: string) {
   for (const file of SOURCE_FILES) await visit(resolve(root, file));
   return Object.fromEntries([...hashes].map(([p, hash]) => [p.slice(resolve(root).length + 1), hash]).sort(([a], [b]) => a.localeCompare(b)));
 }
-/** Saved public metadata only. The saved evidence file predates the Terra option, so Terra has its own. */
-function savedPhysicalState(model: ComparisonModel): PhysicalState {
-  const saved = savedEvidence.snapshots[model.model as keyof typeof savedEvidence.snapshots];
-  const state = saved ? assessComparisonEndpoint(model, saved as EndpointSnapshot, savedEvidence.zdr) : assessComparisonEndpoint(model, savedTerraEvidence.snapshot as EndpointSnapshot, savedTerraEvidence.zdr);
-  if (state.status !== "ready") throw Error(`saved-endpoint:${state.reason}`);
-  return { evidence: state.evidence, maximumMicros: state.maximumMicros };
-}
 /** The saved v7 photos and frames for prompt v8. The copy is the bound input of this run. */
 export async function prepareFixedSet(source: string, out: string): Promise<ComparisonManifest> {
   const folder = await directory(source), bytes = await regularBytes(resolve(folder, "manifest.json"));
@@ -200,7 +192,7 @@ export async function prepareFixedSet(source: string, out: string): Promise<Comp
   return (await loadComparisonAssets(resolve(target, "manifest.json"))).manifest;
 }
 export async function sealPhysicalPlan(out: string, set: PhysicalSet, root: string, maxMicros: number, fixed: ComparisonManifest | null = null) {
-  const states = PHYSICAL_MODELS.map(savedPhysicalState);
+  const states = reviewedPhysicalStates();
   const owner = await json<{ owner: string }>(resolve(out, "owner.json"));
   const plan: PhysicalPlan = { version: PHYSICAL_VERSION, owner: owner.owner, source: await sourceHashes(root), setHash: hashValue(set), settings: physicalSettings(maxMicros), evidences: states.map(s => s.evidence),
     requests: set.photos.map(p => ({ photo: p.photo.id, image: p.photo.image.sha256, request: hashValue(markingRequest(p.photo.frame, new Uint8Array())) })),
@@ -246,7 +238,7 @@ export async function openPreparedPhysical(out: string, root: string) {
   const set = await json<PhysicalSet>(resolve(folder, "set.json")), plan = await json<PhysicalPlan>(resolve(folder, "plan.json"));
   const run = await assertPhysicalOwnership(folder, set, plan, root, true);
   const fixed = plan.fixed ? await json<ComparisonManifest>(resolve(folder, "fixed40/manifest.json")) : null;
-  return { out: folder, set, plan, run, states: PHYSICAL_MODELS.map(savedPhysicalState), fixed };
+  return { out: folder, set, plan, run, states: reviewedPhysicalStates(), fixed };
 }
 
 /** Additive RPC owns the aggregate USD 15 lock; existing RPCs own prices, unknowns and settlement. */
@@ -283,8 +275,12 @@ export async function executePhysical(options: { out: string; set: PhysicalSet; 
   for (const line of physicalEstimateLines(estimate, credit.remainingMicros)) console.log(line);
   await durableJson(resolve(out, "credit-preflight.json"), credit);
   if (!credit.enough) throw Error(`credit-preflight:${credit.reason}`);
-  // A missing ledger credential stops here too, so it does not use up the folder.
+  // A missing ledger credential and a refused price check stop here too, so neither uses up the folder.
   const budget = options.budget();
+  for (const model of PHYSICAL_MODELS) {
+    const state = liveState(model), refreshed = await budget.refresh({ approved: plan.evidences.find(e => e.model === model.model)!, current: state.evidence, maximumMicros: state.maximumMicros });
+    if ("refused" in refreshed) throw Error(`price-refresh:${refreshed.refused}`);
+  }
   // Exclusive irreversible execution marker precedes every ledger and provider request. An exit never grants a retry.
   await durableJson(resolve(out, "execution.json"), { run: preparationRun, owner: plan.owner, state: "started" }, true);
   await mkdir(resolve(out, "journal"), { mode: 0o700 });
@@ -314,10 +310,6 @@ export async function executePhysical(options: { out: string; set: PhysicalSet; 
       await budget.settle(id, cost); accounting.get(id)!.settledMicros = cost;
     }); },
     defer: i => { if (fatal || !budget.defer) throw Error("fatal-or-missing-deferral-ledger"); return protect(() => budget.defer!(i)); } };
-  for (const model of PHYSICAL_MODELS) {
-    const state = liveState(model), refreshed = await protect(() => budget.refresh({ approved: plan.evidences.find(e => e.model === model.model)!, current: state.evidence, maximumMicros: state.maximumMicros }));
-    if ("refused" in refreshed) throw Error(`price-refresh:${refreshed.refused}`);
-  }
   const results: ComparisonResult[] = [], fixedResults: ComparisonResult[] = [];
   const accounting = new Map<string, { id: string; reservedMicros: number; settledMicros: number | null }>();
   const save = async () => {
@@ -458,8 +450,8 @@ export async function physicalMain() {
   await assertPhysicalOwnership(out, set, plan, v["source-root"]!, true);
   const estimate = physicalEstimate(set.photos.length, states, maxMicros, fixed?.photos.length ?? 0);
   for (const line of physicalEstimateLines(estimate)) console.log(line);
-  await durableJson(resolve(out, "estimate.json"), { run, proofClass: "local-estimate", ...estimate, source: savedEvidence.source, snapshotDate: savedEvidence.retrievedAt,
-    currentAggregateLiabilityMicros: null, reason: "The expected cost uses saved public prices. The live ledger is read only at paid admission, and credits only before a paid run. No stored baseline.", limits: plan.settings }, true);
+  await durableJson(resolve(out, "estimate.json"), { run, proofClass: "local-estimate", ...estimate, source: reviewedEvidence.source, snapshotDate: "2026-11-06",
+    currentAggregateLiabilityMicros: null, reason: "The expected cost uses the reviewed prices the ledger has enabled. The live ledger is read only at paid admission, and credits only before a paid run. No stored baseline.", limits: plan.settings }, true);
   await durableJson(resolve(out, "report.json"), physicalReport(set, [], plan.evidences, run));
   if (v.run && estimate.overStop) throw Error("estimate-over-run-stop");
   if (v["fake-http"]) await fakePhysicalHttp(out, set, plan, run, fakeControl, fixed);
