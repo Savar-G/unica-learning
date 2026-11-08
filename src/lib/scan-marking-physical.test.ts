@@ -4,11 +4,9 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import sharp from "sharp";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
-import metadata from "../../data/scan-marking-endpoint-evidence-20261106.json";
-import terraMetadata from "../../data/scan-marking-terra-endpoint-evidence-20261107.json";
 import type { QuestionPackage } from "./question-package";
-import { COMPARISON_FORMATS, SYNTHETIC_IDS, hashBytes, hashValue, labelledOutput, preflightEndpoint, reserveMaximum, validateComparisonManifest, type ComparisonManifest, type ComparisonPhoto, type ComparisonResult, type EndpointSnapshot } from "./scan-marking-comparison";
-import { FROZEN_KIT, PHYSICAL_EXPECTED, PHYSICAL_MODELS, PHYSICAL_PARALLEL_REQUESTS, PHYSICAL_VERSION, parseTruthCsv, physicalCreditPreflight, physicalEstimate, physicalEstimateLines, physicalFixedReport, physicalFixedSideBySide, physicalPhotoId, physicalReport, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalSet } from "./scan-marking-physical";
+import { COMPARISON_FORMATS, SYNTHETIC_IDS, hashBytes, hashValue, labelledOutput, reserveMaximum, validateComparisonManifest, type ComparisonManifest, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence } from "./scan-marking-comparison";
+import { reviewedPhysicalStates, FROZEN_KIT, PHYSICAL_EXPECTED, PHYSICAL_MODELS, PHYSICAL_PARALLEL_REQUESTS, PHYSICAL_VERSION, parseTruthCsv, physicalCreditPreflight, physicalEstimate, physicalEstimateLines, physicalFixedReport, physicalFixedSideBySide, physicalPhotoId, physicalReport, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalSet } from "./scan-marking-physical";
 import { calibratePhysicalPhoto, executePhysical, fakePhysicalHttp, openPreparedPhysical, physicalBudget, regularBytes, replayPhysical, sealPhysicalPlan } from "../../scripts/scan-marking-physical-cli";
 import { durableJson, fileJournal } from "../../scripts/scan-marking-comparison-cli";
 import type { EvaluationBudget, EvaluationJournal } from "./scan-marking-comparison-run";
@@ -22,7 +20,21 @@ const root = process.cwd(), folders: string[] = [];
 afterEach(async () => { for (const p of folders.splice(0)) await rm(p, { recursive: true, force: true }); });
 const temp = async () => { const p = await mkdtemp(resolve(tmpdir(), "robin-phone-proof-")); folders.push(p); return p; };
 const [SONNET, TERRA] = PHYSICAL_MODELS;
-const evidences = () => [preflightEndpoint(SONNET, metadata.snapshots[SONNET.model as keyof typeof metadata.snapshots] as EndpointSnapshot, metadata.zdr), preflightEndpoint(TERRA, terraMetadata.snapshot as EndpointSnapshot, terraMetadata.zdr)];
+const evidences = () => reviewedPhysicalStates().map(s => s.evidence);
+/** The enabled rows of public.scan_marking_evaluation_prices on 2026-11-07 (evidence_hash, maximum_micros). Fixtures, not code. */
+const LEDGER_ENABLED: Record<string, { hash: string; maximumMicros: number }> = {
+  "anthropic/claude-sonnet-5.5": { hash: "caf1ec5580ae81b87df0bcd396c58c594ef3acb67457633c76f05d3352ba6278", maximumMicros: 4_040_960 },
+  "openai/gpt-6.1-terra": { hash: "669916576e5f10e6cff3a77539a98f68f35bbf2452276568e2b02bf6c70bc71e", maximumMicros: 2_335_721 },
+};
+/** Refreshes as refresh_scan_marking_evaluation_price does: only from an enabled reviewed row. */
+function ledgerBudget(mem: ReturnType<typeof memoryBudget>, enabled = LEDGER_ENABLED) {
+  const refreshed: string[] = [];
+  const budget: EvaluationBudget = { ...mem.budget, refresh: async ({ approved }) => {
+    if (enabled[approved.model]?.hash !== hashValue(approved)) return { refused: "reviewed-price-missing" };
+    refreshed.push(approved.model); return { verified: true };
+  } };
+  return { budget, refreshed };
+}
 const FAKE_KEY = "local-fake-no-credential";
 const enough = async () => Response.json({ data: { total_credits: 40, total_usage: 1 } });
 function pages(): PhysicalPage[] {
@@ -396,6 +408,28 @@ describe("cost estimate and credit preflight", () => {
       await expect(executePhysical({ ...execution(input, mem), preflight: async () => states(), budget: () => { throw Error("ledger-credential-required"); } })).rejects.toThrow("ledger-credential-required");
       expect(await readdir(input.out)).not.toContain("execution.json");
       expect(await executePhysical({ ...execution(input, mem), preflight: async () => states() })).toHaveLength(4);
+    } finally { silent.mockRestore(); }
+  });
+  it("seals the plan from the reviewed evidence that the price ledger has enabled", async () => {
+    const input = await setAndPlan(), open = await openPreparedPhysical(input.out, root);
+    for (const state of [...reviewedPhysicalStates(), ...open.states]) {
+      expect(hashValue(state.evidence)).toBe(LEDGER_ENABLED[state.evidence.model].hash);
+      expect(state.maximumMicros).toBe(LEDGER_ENABLED[state.evidence.model].maximumMicros);
+    }
+    const plan = JSON.parse(await readFile(resolve(input.out, "plan.json"), "utf8"));
+    expect(plan.evidences.map((e: EndpointEvidence) => hashValue(e))).toEqual([LEDGER_ENABLED[SONNET.model].hash, LEDGER_ENABLED[TERRA.model].hash]);
+  });
+  it("passes the ledger's price check with the reviewed evidence, and a refused check leaves the folder usable", async () => {
+    const input = await setAndPlan(), mem = memoryBudget(), silent = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      let paid = 0; const fetcher: typeof fetch = async (u, i) => { paid++; return execution(input, mem).fetch(u, i); };
+      const stale = ledgerBudget(mem, { ...LEDGER_ENABLED, [TERRA.model]: { hash: "0".repeat(64), maximumMicros: 1 } });
+      await expect(executePhysical({ ...execution(input, mem), fetch: fetcher, preflight: async () => states(), budget: () => stale.budget })).rejects.toThrow("price-refresh:reviewed-price-missing");
+      expect(paid).toBe(0); expect(await readdir(input.out)).not.toContain("execution.json");
+      expect((await openPreparedPhysical(input.out, root)).run).toBe(input.run);
+      const ledger = ledgerBudget(mem);
+      expect(await executePhysical({ ...execution(input, mem), fetch: fetcher, preflight: async () => states(), budget: () => ledger.budget })).toHaveLength(4);
+      expect(ledger.refreshed).toEqual([SONNET.model, TERRA.model]); expect(paid).toBe(4);
     } finally { silent.mockRestore(); }
   });
   it("reopens a prepared folder only before a run has started", async () => {
