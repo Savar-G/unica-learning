@@ -533,8 +533,10 @@ const CSS = `
 .pg.consistent .q.compact-wide>.n{grid-column:1;grid-row:1}.pg.consistent .q.compact-wide>.qb{grid-column:2;grid-row:1}
 .pg.consistent .q.compact-wide>.full{grid-column:3;grid-row:1;min-width:0;padding:0}.pg.consistent .q.compact-wide>.rgs{grid-column:4;grid-row:1}
 .pg.consistent[data-page-type="practice-2"]:not(:has([data-slot="solve-it-two-ways"])) :is(.two,.cols){row-gap:calc(12px + var(--extra-gap,0px))}
-.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) .ct{gap:6px}
-.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) [data-slot="practice-row"]{gap:4px}
+/* (Its block gap and its practice block's gap grow with the rows' gap, so a section label keeps at least a row gap above
+   it when the page's gaps grow to fill it: issue #745, "SPOT THE ERROR" 6 px under rows 12 px apart.) */
+.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) .ct{gap:calc(6px + var(--extra-gap,0px))}
+.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) [data-slot="practice-row"]{gap:calc(4px + var(--extra-gap,0px))}
 
 .pg.consistent .mxs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 /* Savar, 2026-11-04: a row's cards top-aligned, each number on its text's first line; a story's number on its text's
