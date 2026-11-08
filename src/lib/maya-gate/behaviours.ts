@@ -31,6 +31,8 @@ const partLine = (id: string, line: string) => evaluateLines.help(id).filter((o)
 const PART1_RIGHT = evaluateLines.rightStep("e1").flatMap((o) => o.texts);
 const PART2_ASK = partLine("e2.r1-ones", "step.invite");
 const PART1_WHY = partLine("e1.r1-ones", "step.order");
+/** The first column's H1 line, led by which part it is for ("First, multiply. Look at ..."). */
+const PART1_POINT = partLine("e1.r1-ones", "step.point");
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
 /** The answer to a free-talk turn: back to the question, solved. */
@@ -2126,7 +2128,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }, {}, {}]),
       okay,
       child("4 times 260 is 1040.", { answers: [[1040, "e1", "right"]] }, [{ act: "guide", step: "e2.ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
-      child("450.", { answers: [[450, "result", "right"]] }),
+      child("1040 take away 590 is 450.", { answers: [[450, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
@@ -2171,6 +2173,42 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0, fallbacks: 0 },
       // The child's question gets code's answer, alone, before the part goes on.
       outputs: [{ mayaTurn: 1, lines: [PART1_WHY] }],
+    },
+  },
+  {
+    id: "EV08",
+    title: "Evaluate, full sentences stay on the question: '7360 minus 400 is 6960.', then '6960 divided by 8 is 870.'",
+    fixture: "EV_MISSING",
+    status: "passing",
+    steps: [
+      child("7360 minus 400 is 6960.", { start: "has_work", answers: [[6960, "e1", "right"]] }, [{ act: "guide", step: "e2.thousands", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("6960 divided by 8 is 870.", { answers: [[870, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+      refused: [],
+    },
+  },
+  {
+    id: "EV09",
+    grade: 3,
+    title: "Evaluate at grade 3, 'I'm stuck.' first: the first help line names the part ('First, multiply.') before its column",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", step: "e1.r1-ones", level: 1, lines: ["step.point"], draw: ["part.columns.e1"] }]),
+      child("7 times 640 is 4480.", { answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("7 times 30 is 210, so 4690.", { answers: [[210, "e2", "right"], [4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0, boardBatches: 1 },
+      outputs: [{ mayaTurn: 1, lines: [PART1_POINT] }],
     },
   },
 ];

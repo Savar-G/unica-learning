@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSession, heldReason, lineOffers, drawOffers, nextActs, step, type Proposal } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import {
@@ -11,8 +11,14 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { closeParts, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, partCovered, partEquationSaid, withEvaluateExample } from "./evaluate";
-import { allLineTexts, packageLines } from "./lines";
+import { allLineTexts, packageLines, workbookOpening } from "./lines";
+import { turnWordLimit } from "./session";
+import { createTextSession } from "@/lib/maya-text";
+import { scenarioModel } from "@/lib/maya-gate/gate";
+import { speechWords } from "./speech";
 import { teachSteps } from "./fractions";
+
+vi.mock("server-only", () => ({}));
 
 /** A checked evaluate package: the stored easier example is the generator's "1 + 1 = ?" unless one is given. */
 function evaluatePackage(expr: string, text = `What is ${expr}?`, easier = "1 + 1"): QuestionPackage {
@@ -102,7 +108,7 @@ describe("evaluate parts (Wave A, A2)", () => {
     expect(invite("e1.r1-ones").key).toBe("part.first");
     expect(invite("e1.r1-ones").texts[0]).toBe("Multiply before you add. So start with 7 × 640. What is it?");
     expect(invite("e2.r1-ones").key).toBe("part.next");
-    expect(invite("e2.r1-ones").texts[0]).toBe("Now we have 4480 + 7 × 30. Multiply before you add. What is 7 × 30?");
+    expect(invite("e2.r1-ones").texts[0]).toBe("Multiply before you add. Next, 7 × 30. What is it?");
     expect(invite("e3.ones").key).toBe("part.last");
     expect(invite("e3.ones").texts[0]).toBe("Now we have 4480 + 210. What is it?");
     expect(lines.help("e1.r1-ones").find((o) => o.line === "step.order")!.texts[0]).toBe("Multiply before you add. So 7 × 640 comes first.");
@@ -128,7 +134,7 @@ describe("evaluate parts (Wave A, A2)", () => {
     expect(lines.question()[0].texts[0]).toBe("Today we're working on 8 × ? = 7360 − 400.");
     expect(lines.answerRight()[0].texts[0]).toBe("Yes! (7360 − 400) ÷ 8 = 870.");
     expect(lines.help("e1.ones").find((o) => o.line === "step.invite")!.texts[0]).toBe("Work out the side with only numbers first. So start with 7360 − 400. What is it?");
-    expect(lines.help("e2.thousands").find((o) => o.line === "step.invite")!.texts[0]).toBe("Now we have 8 × ? = 6960. To find the missing number, divide: 6960 ÷ 8. What is it?");
+    expect(lines.help("e2.thousands").find((o) => o.line === "step.invite")!.texts[0]).toBe("Now 8 × ? = 6960. Divide to find it: 6960 ÷ 8. What is it?");
     expect(evaluateFrame(op(evaluatePackage("(8150 − 500) ÷ 9", "? × 9 = 8150 − 500")))).toEqual({ verb: "divide", equation: "? × 9 = 7650", printed: "? × 9 = 8150 − 500" });
     expect(evaluateFrame(op(evaluatePackage("8070 − (80 × 100)", "8070 − ? = 80 × 100")))).toEqual({ verb: "subtract", equation: "8070 − ? = 8000", printed: "8070 − ? = 80 × 100" });
     // A ? code cannot match is held; a ? that ends a question is no blank.
@@ -261,6 +267,51 @@ describe("evaluate parts (Wave A, A2)", () => {
     expect(partCovered(pkg, mixed, "e1.r1-hundreds")).toBe(true);
     // After the answer, Maya asks about a part, never one column of a part.
     expect(packageLines(pkg).explain().map((o) => o.texts[0])).toEqual(["How did you get 7 × 640?", "How did you get 7 × 30?"]);
+  });
+
+  const OPENING_OVER = ["6 × 412 + 8 × 385"];
+  it("fits every evaluate line, and the opening, in the 25-word turn of grade 3, at the longest wording", async () => {
+    const limit = turnWordLimit({ grade: 3 });
+    expect(limit).toBe(25);
+    const shapes: QuestionPackage[] = [
+      FIXTURES.EV_TWO, FIXTURES.EV_STORY, FIXTURES.EV_MISSING,
+      evaluatePackage("9 × 880 + 9 × 40"), evaluatePackage("6 × 412 + 8 × 385"), evaluatePackage("995 × 9 − 60"),
+      evaluatePackage("(8150 − 500) ÷ 9", "9 × ? = 8150 − 500"), evaluatePackage("8070 − (80 × 100)", "8070 − ? = 80 × 100"),
+      evaluatePackage("20 × 350 + 400"), evaluatePackage("30 + 4 × 3"),
+    ];
+    const longest = (xs: string[]) => xs.reduce((a, b) => (speechWords(b) > speechWords(a) ? b : a), "");
+    for (const raw of shapes) {
+      const pkg = { ...op(raw), ref: { source: "workbook" as const, workbookId: "w", page: 18, question: 3 } };
+      const l = packageLines(pkg);
+      const shown = withEvaluateExample(pkg);
+      // The new lines: each part's first column (its question, the lead on every column line, its order), the easier
+      // example's parts, and the lines that name a missing-number question as printed.
+      const firsts = (evaluateSteps(pkg) ?? []).filter((st, i, all) => st.id.includes(".") && (i === 0 || !all[i - 1].id.startsWith(st.id.split(".")[0] + ".")));
+      const offers = [
+        ...firsts.flatMap((st) => l.help(st.id)), ...l.explain(), ...shown.easierExample.steps.flatMap((st) => l.exampleStep(st.id)),
+        ...l.question(), ...l.tryTarget(), ...l.redirect(), ...l.closeSolved("child"), ...l.closeSolved("maya"),
+      ];
+      expect(firsts.length).toBe(withEvaluateExample(pkg).steps.filter((st) => st.kind === "operate").length);
+      for (const o of offers) {
+        const text = longest(o.texts);
+        expect(speechWords(text), `${pkg.id} ${o.key}: ${text}`).toBeLessThanOrEqual(limit);
+      }
+      // The workbook opening, with the question as the page prints it. The fixed opening (WORKBOOK_OPENING, not an
+      // evaluate line) passes 25 words for any question with two 4-digit numbers, of every kind ("5957 − 1699" too):
+      // a known limit of that line, reported, not changed here.
+      const book = workbookOpening(pkg)!;
+      if (!OPENING_OVER.includes(raw.operation!.kind === "evaluate" ? raw.operation!.operands[0] as string : "")) expect(speechWords(book), book).toBeLessThanOrEqual(limit);
+      else expect(speechWords(book)).toBeGreaterThan(limit);
+      // The opening turn as the session assembles it at grade 3 (hello and the question), for many wording seeds.
+      for (let seed = 1; seed <= 12; seed++) {
+        const script = scenarioModel();
+        const t = createTextSession({ callId: `open-${pkg.id}-${seed}`, package: pkg, grade: 3, model: script, random: seed, clock: () => 1000 });
+        script.next([{ act: "open" }], undefined);
+        const out = await t.start();
+        expect(out.say.length, `${pkg.id} seed ${seed}`).toBeGreaterThan(0);
+        for (const text of out.say) expect(speechWords(text), `${pkg.id} seed ${seed}: ${text}`).toBeLessThanOrEqual(limit);
+      }
+    }
   });
 
   it("leaves the generator's checks as they are", () => {

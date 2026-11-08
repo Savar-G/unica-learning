@@ -308,6 +308,8 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | EV05 | EV_STORY | passing | Evaluate, a story's two operations (4 × 260 − 590): cannot start, the same-shape easier example, then the parts | solved, worked_example | |
 | EV06 | EV_TWO | passing | Evaluate, a part's result said with doubt ('Is it 4480?'): one confirm, then acknowledged and on to the next part (J06) | solved, independent | |
 | EV07 | EV_TWO | passing | Evaluate, 'Why do I multiply first?' on the current part: code's reason (step.order) before the part goes on (J06) | solved, hint | |
+| EV08 | EV_MISSING | passing | Evaluate, full sentences stay on the question: '7360 minus 400 is 6960.', then '6960 divided by 8 is 870.' | solved, independent | |
+| EV09 | EV_TWO | passing | Evaluate at grade 3, 'I'm stuck.' first: the first help line names the part ('First, multiply.') before its column | solved, hint | |
 
 | P5 | A | passing | Two numeric sentences require confirmation | checked answer retained | |
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |

@@ -23,7 +23,7 @@ import {
 } from "@/lib/question-package";
 import { simplestWords, teachSteps } from "./fractions";
 import { evaluateFrame, partAt, withEvaluateExample } from "./evaluate";
-import { EVALUATE_TEMPLATES, partEquation, partHelp } from "./evaluate-lines";
+import { EVALUATE_TEMPLATES, partEquation, partHelp, partShow } from "./evaluate-lines";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -595,7 +595,7 @@ function fractionShow(step: WorkedStep): string | null {
 
 /** A worked step in words: a fraction step as fractionShow says it, any other as the shared step text. */
 const showOf = (step: WorkedStep, pkg: OperationPackage, problem: "target" | "example") =>
-  fractionShow(step) ?? stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
+  partShow(step) ?? fractionShow(step) ?? stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
 
 /** The top number of a long multiplication as its rows work it: without its point (2.5 × 1.3 works 25 × 13). */
 function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
