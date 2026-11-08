@@ -39,10 +39,12 @@ export const CLOCK_TEMPLATES = {
     "From {from}, count on {minutes} minutes. The hour stays the same.", "Start at {from}. Count on {minutes} minutes.",
     "The hour stays {hour}. Count on {minutes} minutes from {from}.",
   ],
+  // It asks for the time: only the time a one count reaches is credited, never its minutes, which the question prints
+  // (review of #742, P3-b).
   "operation.count.one": [
-    "{start} + {minutes} = how many minutes past {hour}?", "The minutes start at {start}. Add {minutes}. How many minutes past {hour}?",
-    "What is {start} + {minutes}? That many minutes past {hour}.", "Add {start} and {minutes}. Then say the time.",
-    "Work out {start} + {minutes}. Then say the time after {hour}.",
+    "The minutes start at {start}. Add {minutes}. What time is it?", "Work out {start} + {minutes}. What time does the clock show?",
+    "{start} + {minutes} minutes past {hour}. What time is that?", "Add {minutes} to the {start} minutes. What time do you get?",
+    "Count on {minutes} minutes from {from}. What time is it?",
   ],
 } as const satisfies Record<string, readonly string[]>;
 
@@ -100,9 +102,13 @@ export function clockHelp(pkg: OperationPackage, step: WorkedStep, offer: Offer)
   return [at("step.point", "point.count.one", vars, 1), at("step.operation", "operation.count.one", vars, 2)];
 }
 
-/** The values that answer a count-on step: the minutes it counts, and the time it reaches. */
+/**
+ * The values that answer a count-on step (review of #742, P2-c and P3-b): the count to the next hour by its minutes only
+ * (47), never the hour it reaches, which Maya says ("7:00"); the last count by the time it reaches only (7:03, 9:40):
+ * its minutes are what Maya just said were left, or the question's own number.
+ */
 export const clockAnswers = (step: WorkedStep): AnswerValue[] =>
-  step.kind === "count-on" ? [{ type: "number", value: step.minutes }, step.to] : [];
+  step.kind !== "count-on" ? [] : step.id === "to-hour" ? [{ type: "number", value: step.minutes }] : [step.to];
 
 /** The numbers and times a sentence about a count-on step may name: an hour's 60 minutes, and its start and stop. */
 export const clockValues = (step: WorkedStep): AnswerValue[] =>
