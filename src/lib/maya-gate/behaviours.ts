@@ -448,6 +448,41 @@ export const BEHAVIOURS: Behaviour[] = [
     ],
     expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["redirect", "guide"] },
   },
+  // Review of #741 (P1a): the compare step is heard by code, whatever step the model's reading names for it.
+  {
+    id: "OTC7", title: "Scale claim, J06: '60 plus 20 is 80.' read by the model as part 2, not the compare: code hears the compare, Maya asks for the word, not 60 + 20 again", fixture: "SCALE", status: "passing",
+    steps: [
+      child("2 times 10 is 20.", { start: "has_work", answers: [[20, "e1", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("60 plus 20 is 80.", { answers: [[80, "e2", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"], counts: { hints: 0 }, never: ["redirect", "example_step", "give_answer"] },
+  },
+  {
+    id: "OTC8", title: "Minute-hand claim, J06: '35 plus 3 is 38.' read by the model as the ones of part 2: code hears the compare, Maya asks for the word", fixture: "MINUTE", status: "passing",
+    steps: [
+      child("7 times 5 is 35.", { start: "has_work", answers: [[35, "e1", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("35 plus 3 is 38.", { answers: [[38, "e2.ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"], counts: { hints: 0 }, never: ["redirect", "example_step", "give_answer"] },
+  },
+  {
+    id: "OTC9", title: "Scale claim: a hedged 'Maybe 80.' that the model reads as the compare gets no credit (lesson 6)", fixture: "SCALE", status: "passing",
+    steps: [
+      child("2 times 10 is 20.", { start: "has_work", answers: [[20, "e1", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Maybe 80.", { answers: [[80, "claim", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("60 plus 20 is 80.", { answers: [[80, "claim", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, refused: ["answer_not_committed"], never: ["redirect", "example_step", "give_answer"] },
+  },
   {
     id: "C01",
     title: "Cannot start: the easier example, then back to the question",
