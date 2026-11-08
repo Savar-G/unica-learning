@@ -255,8 +255,9 @@ export const hardFeeling = (childTurn: string | null | undefined): boolean => {
   const text = (childTurn ?? "")
     .replace(/\bi found my lost\b/giu, "i found my")
     .replace(/\bi won the snowball fight\b/giu, "i won the snowball game")
-    .replace(/\bnot (?:sad|sick)(?: anymore)?\b/giu, "well");
-  return HARD_FEELING.test(text);
+    .replace(/\bnot (?:sad|sick)(?: anymore)?\b/giu, "well")
+    .replace(/\bnot (?:sadder|upset|unhappy|worried|scared|afraid|frightened|nervous|angry|mad|ill|hurt|lonely|tired|sleepy|frustrated|annoyed|bored) anymore\b/giu, "well");
+  return HARD_FEELING.test(text) || /\b(?:not (?:happy|good|okay|ok)|(?:don'?t|do not) feel (?:happy|good|okay|ok)|feel(?:ing)? down|nobody likes me|no friends)\b/iu.test(text);
 };
 /**
  * Cheerful wordings that must never answer a hard feeling ("My grandma is in the hospital." must not get "Oh, your grandma!
