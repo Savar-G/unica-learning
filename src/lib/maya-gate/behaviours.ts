@@ -383,12 +383,12 @@ export const BEHAVIOURS: Behaviour[] = [
   {
     id: "OT13", title: "Die 8 at grade 3: help only through the easier example, then 'Maybe 1?' gets a confirm, then 'I'm stuck.': the honest close is the child stopping, not a technical issue (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
     steps: [
-      child("I'm stuck.", { start: "has_work", help: "stuck" }),
-      child("I'm stuck.", { help: "stuck" }),
-      child("I'm stuck.", { help: "stuck" }),
-      child("I'm stuck.", { help: "stuck" }, [{}, {}, {}]),
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "example_step" }, {}, {}]),
       child("Maybe 1?", { unclear: true }, [{ act: "confirm", heard: "1" }]),
-      child("I'm stuck.", { help: "stuck" }),
+      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
     ],
     expect: {
       outcome: { reason: "child_stopped" },
