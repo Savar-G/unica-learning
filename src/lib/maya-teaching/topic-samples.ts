@@ -101,3 +101,24 @@ export function minutePrinted(marks: number, number: number, holds: boolean): Qu
     { answer: "'true' if flip == 0 else 'false'", check: "x >= 2", values: null, derived: [["shown", "k * 5 + x if flip == 0 else k * 5 + x - 1"]], slots: slotsOf({ x: marks, k: number, flip: holds ? 0 : 1 }, 11) },
     holds ? "true" : "false");
 }
+
+const ELAPSED_DERIVED: [string, string][] = [["t", "hr * 60 + mm"], ["e", "t + m"], ["ts", "str((t // 60 - 1) % 12 + 1) + ':' + ('00' if t % 60 == 0 else ('0' + str(t % 60) if t % 60 < 10 else str(t % 60)))"]];
+const two = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * "What time is {minutes} minutes after {h}:{mm}?": the elapsed-time template (4.12-read-analog#3.5) for a start with
+ * minutes, the on-the-hour template (#3.2) for a start on the hour.
+ */
+export function clockPrinted(h: number, mm: number, minutes: number): QuestionPackage {
+  const end = h * 60 + mm + minutes;
+  const answer = `${((Math.floor(end / 60) - 1) % 12) + 1}:${two(end % 60)}`;
+  const text = `What time is ${minutes} minutes after ${h}:${two(mm)}?`;
+  if (mm === 0) {
+    return printed(`sample-clock-${h}-${minutes}`, "4.12-read-analog#3.2:bare", "4.12-read-analog", text,
+      { answer: "str(h) + ':' + (('0' + str(m)) if m < 10 else str(m))", check: null, values: null, derived: [], slots: slotsOf({ h, m: minutes }, 59) },
+      { type: "text", value: answer }, "write-words");
+  }
+  return printed(`sample-clock-${h}-${mm}-${minutes}`, "4.12-read-analog#3.5:bare", "4.12-read-analog", text,
+    { answer: "str((e // 60 - 1) % 12 + 1) + ':' + ('00' if e % 60 == 0 else ('0' + str(e % 60) if e % 60 < 10 else str(e % 60)))", check: null, values: null, derived: ELAPSED_DERIVED, slots: slotsOf({ hr: h, mm, m: minutes }, 59) },
+    { type: "text", value: answer }, "write-words");
+}

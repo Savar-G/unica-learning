@@ -26,6 +26,8 @@ export function topicFrame(text: string, operation: Operation): string | null {
   }
   const claim = claimFrame(text, operation);
   if (claim) return claim;
+  const clock = clockFrame(text, operation);
+  if (clock) return clock;
   const rectangle = readPerimeter(text);
   if (rectangle && same(operation, perimeterOperation(rectangle.length, rectangle.width))) {
     return "A rectangle has 2 lengths and 2 widths. Add one length and one width. Then double it.";
@@ -84,4 +86,46 @@ function claimFrame(text: string, operation: Operation): string | null {
     }
   }
   return null;
+}
+
+/**
+ * An "other-topic" question (C3, C3b, C3c): one with a topic sentence, or a clock-time question (time-add, which only
+ * the session adapter makes). Its way out is the easier example, then the honest close (lessons from review 7 and 10).
+ */
+export const topicQuestion = (text: string, operation: Operation): boolean => topicFrame(text, operation) !== null || operation.kind === "time-add";
+
+const CLOCK = /^What time is (\d+) minutes after (1[0-2]|[1-9]):([0-5]\d)\?$/;
+
+/**
+ * The topic sentence of a clock-time question (C3c), when its time-add is the printed one: count on to the next hour
+ * first when the minutes pass it ("First count on to the next hour, 7:00. Then count the minutes left."), else the
+ * hour stays ("The hour stays 9. Count on the minutes.").
+ */
+function clockFrame(text: string, operation: Operation): string | null {
+  const m = CLOCK.exec(text.trim());
+  if (!m || operation.kind !== "time-add") return null;
+  const [minutes, hours, mm] = [+m[1], +m[2], +m[3]];
+  const [from, d] = operation.operands;
+  if (from.hours !== hours || from.minutes !== mm || d.type !== "quantity" || d.unit !== "min" || d.value !== minutes) return null;
+  if (mm !== 0 && mm + minutes > 60) return `First count on to the next hour, ${hours + 1}:00. Then count the minutes left.`;
+  return mm + minutes < 60 ? `The hour stays ${hours}. Count on the minutes.` : null;
+}
+
+/**
+ * The checked relations a child may say while working a clock-time question, for the scope check (scope.ts,
+ * "Lessons from review" 1): the minutes to the next hour ("13 plus 47 is 60", "60 minus 13 is 47"), the minutes left
+ * ("50 minus 47 is 3"), and the minutes of a one-count question ("0 plus 40 is 40").
+ */
+export function topicRelations(operation: Operation): { op: "add" | "subtract"; operands: number[] }[] {
+  if (operation.kind !== "time-add") return [];
+  const [from, d] = operation.operands;
+  if (d.type !== "quantity" || d.unit !== "min") return [];
+  const toHour = 60 - from.minutes;
+  if (from.minutes !== 0 && from.minutes + d.value > 60) {
+    return [
+      { op: "add", operands: [from.minutes, toHour] }, { op: "subtract", operands: [60, from.minutes] },
+      { op: "subtract", operands: [d.value, toHour] }, { op: "add", operands: [toHour, d.value - toHour] },
+    ];
+  }
+  return [{ op: "add", operands: [from.minutes, d.value] }];
 }

@@ -3,7 +3,7 @@
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
 import { completeExpression, readNumbers } from "./numbers";
-import { topicNumbers } from "./topic-frame";
+import { topicNumbers, topicRelations } from "./topic-frame";
 import { partProblems } from "./evaluate";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
@@ -65,6 +65,8 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
     collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : p.answer);
     // An "other-topic" question's checked counted numbers (topic-frame.ts): the die's odd or even numbers.
     collect(topicNumbers(p.text, p.operation));
+    // A clock-time question's checked minute relations (topic-frame.ts, C3c).
+    for (const r of topicRelations(p.operation)) add(r.op, r.operands.map(num));
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
     const placeTerms = operands.flatMap(v => {
