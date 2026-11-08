@@ -1,19 +1,23 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { CancelPlan, PlanControl } from "@/components/account-plan";
+import { noteGivesCardReason } from "@/components/plan-closed-card";
 import { PlanText, planDay as day } from "@/components/plan-text";
 import { SupportPage } from "@/components/support-page";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import type { FamilyZone } from "@/lib/family-time";
+import type { ClosedPlan } from "@/lib/plan-access";
 import { canCancel, type ParentPlan } from "@/lib/parent-plan";
 import type { familyPlans } from "@/lib/parent-plan-server";
 
 const Email = () => <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>;
 type PlanRow = NonNullable<Awaited<ReturnType<typeof familyPlans>>>[number];
 
-export function ParentPlanView({ plans, zone, controls, pending, control, cancellation, note }: {
+export function ParentPlanView({ plans, zone, controls, pending, control, cancellation, note, closed }: {
   plans: Awaited<ReturnType<typeof familyPlans>>; zone: FamilyZone; controls: boolean;
   note?: ReactNode;
+  /** What `note` says, when it shows. */
+  closed?: ClosedPlan | null;
   control?: (row: PlanRow) => ReactNode;
   cancellation?: (row: PlanRow) => ReactNode;
   pending?: ReadonlyMap<string, "pause" | "restart" | "cancel">;
@@ -28,7 +32,7 @@ export function ParentPlanView({ plans, zone, controls, pending, control, cancel
           <li key={cardId} className="acct-kid acct-plan">
             <div>
               <b>{childName}</b>
-              <PlanText plan={plan} zone={zone} cardUpdate={controls ? "link" : undefined} />
+              <PlanText plan={plan} zone={zone} cardUpdate={controls ? "link" : undefined} reasonInNote={noteGivesCardReason(closed, childName)} />
             </div>
             {!control && (pending?.get(cardId) === "pause" || pending?.get(cardId) === "restart") && <PlanControl cardId={cardId} name={childName} mode={pending?.get(cardId) === "restart" ? "restart" : "pause"} pending />}
             {pending?.get(cardId) === "cancel" && <p role="status">Cancellation is not confirmed. Please email <Email />.</p>}

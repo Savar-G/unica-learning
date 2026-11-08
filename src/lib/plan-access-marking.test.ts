@@ -13,7 +13,7 @@ import { scanChildAccess, scanPagesAccess } from "@/lib/scan-pages-access";
 import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
 
 // Two gates, kept apart. The plan gate decides reaching Scan pages, the dashboard and Explain. src/lib/scan-marking-access.ts
-// decides marking, Send, the photo checks, crops and recovery. An open plan must not grant marking: production stays `test-only`.
+// decides marking, Send, the photo checks, crops and recovery. An open plan grants marking only in `families` mode; production stays `test-only`.
 const parent = "11111111-1111-4111-8111-111111111111", kid = "22222222-2222-4222-8222-222222222222", sibling = "33333333-3333-4333-8333-333333333333", photo = "44444444-4444-4444-8444-444444444444";
 
 type Row = Record<string, unknown>;
@@ -57,10 +57,14 @@ describe("a family whose only access is an open plan", () => {
     expect(await scanChecksAccess(planFamily, parent, env, { photo })).toBe(false);
   });
 
-  it("gains none in families mode either, while the stand-in in scan-marking-access.ts stays: the marking thread swaps it", async () => {
+  it("gains marking, Send and checks in families mode for the child whose plan is open, and only that child", async () => {
     const env = { SCAN_MARKING_ENABLED: "families" };
-    expect(await markingAccess(planFamily, parent, env, { child: kid })).toBe(false);
-    expect(await scanChecksAccess(planFamily, parent, env, { child: kid })).toBe(false);
+    expect(await markingAccess(planFamily, parent, env, { child: kid })).toBe(true);
+    expect(await markingAccess(planFamily, parent, env, { photo })).toBe(true);
+    expect(await scanChecksAccess(planFamily, parent, env, { child: kid })).toBe(true);
+    expect(await scanChecksAccess(planFamily, parent, env, { photo })).toBe(true);
+    expect(await markingAccess(planFamily, parent, env, { child: sibling })).toBe(false);
+    expect(await scanChecksAccess(planFamily, parent, env, { child: sibling })).toBe(false);
   });
 });
 

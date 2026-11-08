@@ -37,6 +37,11 @@ it("restarts with server terms and leaves a pending operation visible",async()=>
  f.restart.mockResolvedValue({ok:false,error:"unconfirmed"});expect((await restart(request({card,action:"confirm",token}))).status).toBe(409);
  f.confirm.mockResolvedValue({ok:false,error:"pending"});expect((await pause(request({card,action:"confirm",weeks:2,token}))).status).toBe(409);
 });
+it("a restart whose plan state write failed still answers as a started plan",async()=>{
+ f.restart.mockResolvedValue({ok:true,state:"started",price:79.99,access:"pending"});
+ const response=await restart(request({card,action:"confirm",token}));
+ expect(response.status).toBe(200);expect(await response.json()).toEqual({ok:true,state:"started",price:79.99,access:"pending"});
+});
 it("maps another family's row to not found",async()=>{
  f.preview.mockResolvedValue({ok:false,error:"not_found"});f.restart.mockResolvedValue({ok:false,error:"not_found"});
  expect((await pause(request({card,action:"preview",weeks:1}))).status).toBe(404);expect((await restart(request({card,action:"preview"}))).status).toBe(404);

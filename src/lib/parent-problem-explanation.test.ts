@@ -27,6 +27,20 @@ it("explains a wrong answer using only stored text, key, reading and code steps;
   expect(payload).toMatchObject({ correctAnswer: "425", readAnswer: "415" }); expect(payload.steps.length).toBeGreaterThan(0);
   expect(JSON.stringify(f.fake.requests)).not.toMatch(/private-photo|private-page|11111111|22222222|33333333|firstName|parentId|qrToken/);
 });
+function twoWaysContext(readAnswer: string): ExplanationContext {
+  const two = structuredClone(pkg), base = packageItem(two);
+  const item = { ...base, format: "two-ways" as const, regions: [{ id: "method-1", kind: "work" as const, label: "Method 1" }, { id: "method-2", kind: "work" as const, label: "Method 2" }, base.regions.find(r => r.kind === "box")!] };
+  two.item = item;
+  return { ...value, package: two, readAnswer, regions: item.regions.map((r, n) => ({ id: r.id, kind: r.kind, box: { x: 10 + n * 110, y: 10, width: 100, height: 50 } })), context: "x" };
+}
+it("tells the model a right two-ways answer with a wrong method is not a wrong answer", () => {
+  const right = explanationInput(twoWaysContext("Answer: 425; Method 1: 400 + 25 = 425; Method 2: Not read"));
+  const data = JSON.parse((right!.request.content[0] as { text: string }).text);
+  expect(data.methodNote).toContain("The final answer is right");
+  expect(right!.request.system).toContain("do not say the answer is wrong");
+  const wrong = explanationInput(twoWaysContext("Answer: 415; Method 1: 400 + 15 = 415; Method 2: Not read"));
+  expect(JSON.parse((wrong!.request.content[0] as { text: string }).text)).not.toHaveProperty("methodNote");
+});
 it("two simultaneous presses make exactly one dispatch", async () => {
   const f = setup(); const results = await Promise.all([f.run(), f.run()]);
   expect(results.map(r => r.status).sort()).toEqual(["busy", "ready"]); expect(f.fake.requests).toHaveLength(1);

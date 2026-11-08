@@ -2,7 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
 import { workbookDeliveryStore } from "./workbook-delivery-store";
-import type { FrozenSourceBook, WorkbookProgressSourceStore } from "./workbook-progress-source";
+import type { Book1SourceReader } from "./workbook-book1-store";
+import type { FrozenSourceBook, WorkbookProgressSourceStore, WorkbookProgressSourceStoreV2 } from "./workbook-progress-source";
 
 const BATCH = 100;
 type Reply<T> = { data: T[] | null; count: number | null; error: unknown };
@@ -28,8 +29,13 @@ async function all<T, K extends string | number>(load: (after: K | null) => Prom
 }
 function one<T>(r: { data: T; error: unknown }): T { if (r.error) throw Error("source-read"); return r.data; }
 
-/** Existing schema only. Session authorization belongs to workbook-preview-server, never this service adapter. */
-export function workbookProgressSourceStore(db: SupabaseClient<Database>): WorkbookProgressSourceStore {
+/**
+ * Existing schema only. Session authorization belongs to workbook-preview-server, never this service adapter. With a
+ * Book 1 reader (#472, bound by root after its migration), the capture is version 2 and holds the baseline sources.
+ */
+export function workbookProgressSourceStore(db: SupabaseClient<Database>): WorkbookProgressSourceStore;
+export function workbookProgressSourceStore(db: SupabaseClient<Database>, book1: Book1SourceReader): WorkbookProgressSourceStoreV2;
+export function workbookProgressSourceStore(db: SupabaseClient<Database>, book1?: Book1SourceReader): WorkbookProgressSourceStoreV2 {
   return { async capture(r) {
     const budget = { rows: 0, requests: 0 };
     const parent = one(await db.from("parents").select("id,deletion_requested_at").eq("id", r.parentId).maybeSingle());
@@ -104,7 +110,8 @@ export function workbookProgressSourceStore(db: SupabaseClient<Database>): Workb
         .eq("parent_id", r.parentId).eq("child_id", r.childId).order("id").limit(BATCH);
       return after === null ? q : q.gt("id", after);
     }, x => x.id, budget);
-    return { version: 1, parentId: r.parentId, childId: r.childId, markingRevision: revision?.revision ?? null,
+    const frozen = { parentId: r.parentId, childId: r.childId, markingRevision: revision?.revision ?? null,
       books, profileReferences: profile ? [profile] : [], assessmentReferences };
+    return book1 ? { version: 2 as const, ...frozen, book1: await book1.read(r) } : { version: 1 as const, ...frozen };
   } };
 }

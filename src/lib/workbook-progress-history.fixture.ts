@@ -58,11 +58,12 @@ export function historyFixture(total = 123, right = 100) {
       evidence_at: firstTime, event_id: event.id, original_event: json({ key: event.idempotency_key, parentId: parent, childId: child, source: "marking",
         question: pkg.ref, skill: pkg.skill, result, occurredAt: firstTime }), model: "synthetic-reader", prompt: "synthetic-prompt" });
   }
-  function parentChange(n: number, result: "right" | "wrong" | "blank", changedAt = "2026-02-01T12:00:00.000Z") {
+  /** A person's mark: the parent's correction, or our team's mark of an unsure item (actor admin, #715). */
+  function parentChange(n: number, result: "right" | "wrong" | "blank", changedAt = "2026-02-01T12:00:00.000Z", actor: "parent" | "admin" = "parent") {
     const row = marks[n], previous = structuredClone(row), o = row.observation as unknown as Observation;
-    const next: Observation = { ...o, state: "parent-checked", method: "parent", actor: "parent", result, resultVersion: row.result_version + 1 };
+    const next: Observation = { ...o, state: "parent-checked", method: "parent", actor, result, resultVersion: row.result_version + 1 };
     changes.push({ id: changes.length + 1, parent_id: parent, child_id: child, item_id: row.id, from_version: row.result_version,
-      to_version: row.result_version + 1, actor: "parent", changed_at: changedAt, previous: json(previous), current: json(next) });
+      to_version: row.result_version + 1, actor, changed_at: changedAt, previous: json(previous), current: json(next) });
     row.observation = json(next); row.result_version++; row.evidence_at = changedAt;
     if (row.original_event === null && next.mastery.eligible) {
       const page = input.books.flatMap(b => b.pages).find(p => p.pageId === row.page_id)!;
