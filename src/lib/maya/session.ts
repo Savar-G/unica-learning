@@ -492,6 +492,15 @@ export function mayaPackageCheck(raw: unknown): PackageCheck {
   return checkMissingNumber(raw, teachingLimits(raw)) ?? checkQuestionPackage(raw, undefined, teachingLimits(raw));
 }
 
+/**
+ * After H3 on a try step, the child says back the one try H3 showed (trial-factor.ts shownTry): a copy of Maya's help,
+ * never a miss (lesson 13). It sets no failure, raises no unlock and forces no given answer.
+ */
+function copiesShownTry(pkg: OperationPackage | null, ladder: Ladder, value: AnswerValue): boolean {
+  const st = pkg ? workSteps(pkg).find((x) => x.id === ladder.step) : undefined;
+  return st?.kind === "try-factor" && ladder.hint >= 3 && value.type === "number" && value.value === shownTry(st);
+}
+
 /** The package Maya teaches from, or why she holds it (the content hold's reason). */
 function teachableOf(raw: unknown): { pkg: OperationPackage | null; held: string | null } {
   const check = mayaPackageCheck(raw);
@@ -875,11 +884,8 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // H3 already showed this step. Another explicit failure or help request ends
   // the loop, without recording the shown work as the child's progress.
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
-  // A try step's H3 shows one wrong try (trial-factor.ts): the child saying it back copies Maya, it is no new miss.
-  const tryStep = s.package ? workSteps(s.package).find((st) => st.id === s.ladder.step && st.kind === "try-factor") : undefined;
-  const copiesTry = (v: AnswerValue) => tryStep?.kind === "try-factor" && v.type === "number" && v.value === shownTry(tryStep);
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
-    reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && !copiesTry(a.value));
+    reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && !copiesShownTry(s.package, s.ladder, a.value));
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
@@ -1178,8 +1184,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     for (const { answer: a, problem } of checked) {
       if (problem !== "target") continue;
       if (a.verdict === "right" && a.step !== "result" && !done.includes(a.step)) done.push(a.step);
-      // An equal fraction is not a failed attempt (#407).
-      if (a.verdict === "wrong" && !(a.step === "result" && isEqualForm(pkg, a.value))) failed = true;
+      // An equal fraction is not a failed attempt (#407), and neither is a copy of the try H3 showed (lesson 13).
+      if (a.verdict === "wrong" && !(a.step === "result" && isEqualForm(pkg, a.value)) && !copiesShownTry(pkg, s.ladder, a.value)) failed = true;
     }
     // An equal fraction shows every work step done: the final step simplifies the child's own fraction (#407).
     if (equal) for (const st of workSteps(pkg)) if (!done.includes(st.id)) done.push(st.id);

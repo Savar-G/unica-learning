@@ -348,6 +348,14 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN2f | M_TRY | passing | 236 × ? = 1416, after H3 shows '236 × 5 = 1180. That is less than 1416.', the child says it back: a copy, answered with 'try a bigger number', never the answer; then 6 is accepted | solved | |
 | MN6b | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '6000 plus 3000 is 9000.' is a check of it, not an outside request | solved, independent | |
 | MN6c | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '3000 plus 6000 is 9000.' is a check of it, not an outside request | solved, independent | |
+| MN2g | M_TRY | passing | 236 × ? = 1416, after H3, '236 times 5 is 1180.' with give_answer proposed: refused (hint_too_high), the copy gets 'try a bigger number'; then 6 is accepted | solved | |
+| MN2h | M_TRY | passing | 236 × ? = 1416, after H3, '5.' with give_answer proposed: refused (hint_too_high); then 6 is accepted | solved | |
+| MN2i | M_TRY | passing | 236 × ? = 1416, after H3, '5.' gets 'try a bigger number', then 'Okay.' with give_answer proposed: refused (hint_too_high); then 6 is accepted | solved | |
+| MN2j | M_TRY | passing | 236 × ? = 1416, after H3, the child copies '5.' three times: each copy gets 'try a bigger number', never the answer; then 6 is accepted (end state documented: no honest close on this base) | solved | |
+| MN7c | M_TRY | passing | 236 × ? = 1416, after the rounding hint, '1400 divided by 200 is 7.': in scope, 7 is multiplied out (too big), then 6 is accepted | solved | |
+| MN8a | M_TRY | passing | 236 × ? = 1416, H3, then a wrong '7.' with a failing model: code's fallback shows H3 again; the next help request gets the base ladder's given answer (#735); never technical_issue | solved, answer_given | the honest close is #735's |
+| MN8b | M_DIVIDE | passing | 30 × ? = 1620, H3, then a wrong '1.' with a failing model: code's fallback shows H3 again; the next help request gets the base ladder's given answer (#735); never technical_issue | solved, answer_given | the honest close is #735's |
+| MN8c | M_SUBTRACT | passing | 9000 − ? = 3000, H3, then a wrong '1.' with a failing model: code's fallback shows H3 again; the next help request gets the base ladder's given answer (#735); never technical_issue | solved, answer_given | the honest close is #735's |
 | MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
 
 ## Pending

@@ -47,7 +47,8 @@ export function missingStepText(step: MissingNumberStep): string {
     case "missing-frame":
       return `To find the missing number, work out ${inverseText(step)}.`;
     case "drop-zeros":
-      return `Take ${zerosText(step.zeros)} off both numbers. ${step.from} ÷ ${step.by} is the same as ${reducedText(step)}.`;
+      // Said in the easier example: the zeros by the number they end, never as a count (lesson 12: "2 zeros" writes a 2).
+      return `Take the zeros of ${step.by} off both numbers. ${step.from} ÷ ${step.by} is the same as ${reducedText(step)}.`;
     // Short enough for a 25-word turn: the try that works. The tries that do not are said when the child makes them.
     case "try-factor":
       return `Try ${step.value}. ${step.factor} × ${step.value} = ${step.total}. So the missing number is ${step.value}.`;

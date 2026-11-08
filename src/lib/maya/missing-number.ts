@@ -155,6 +155,7 @@ export function missingScope(st: WorkedStep): ["add" | "multiply" | "divide" | "
       return [
         ...st.tries.map((t): ["multiply", number[]] => ["multiply", [st.factor, t.value]]),
         ...st.tries.map((t): ["multiply", number[]] => ["multiply", [st.round, t.value]]),
+        ...st.tries.map((t): ["divide", number[]] => ["divide", [st.round * t.value, st.round]]),
         ["divide", [st.total, st.round]],
       ];
     case "missing-frame": {
