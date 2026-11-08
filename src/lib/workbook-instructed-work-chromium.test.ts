@@ -52,4 +52,17 @@ describe.skipIf(!chromium)("instructed work spaces in Chromium", () => {
       }
     }
   }, 120_000);
+
+  it("keep every card and work space the size the label and the shaded card had", async () => {
+    // (The same page at U15 has no question-scoped instruction, so it prints as before: each work space labelled, each
+    // Challenge card shaded throughout. U15 shares U16's band and work minimum.) Only colours may change: #758 review,
+    // where padding under the shaded question shrank page 34's last card from 222 to 211 px.
+    const template = workbookTemplate(await fixedTemplateFonts());
+    const at = (level: number) => [INSTRUCTED_WORK_WORDS, INSTRUCTED_WORK_CHALLENGE].map((p) => ({ ...p, number: p.number + level * 100, content: { ...(p.content as DayContent), level } }));
+    const result = await renderWorkbook({ draft: { ...INSTRUCTED_WORK_BOOK, pages: [...at(16), ...at(15)] }, parentId, template, engine: chromiumPrintEngine() });
+    expect(result.status === "failed" ? result.problems.map((p) => `page ${p.page}: ${p.reason}`) : []).toEqual([]);
+    if (result.status !== "rendered") return;
+    const geometry = (number: number) => result.workbook.pages.find((p) => p.number === number)!.questions.map((q) => ({ number: q.number, card: q.box, regions: q.regions }));
+    for (const page of [INSTRUCTED_WORK_WORDS, INSTRUCTED_WORK_CHALLENGE]) expect(geometry(page.number + 1600)).toEqual(geometry(page.number + 1500));
+  }, 120_000);
 });

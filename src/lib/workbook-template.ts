@@ -565,8 +565,10 @@ const CSS = `
 .pg.consistent .chs.side3 .act .wb{width:100%;min-width:0}
 .pg.consistent .chs.side3 .act .rg{align-self:flex-end}
 .pg.consistent.older-extra .ab{height:88px}
-/* The shading is the question's only: the work space under it is white paper, the card's outline unchanged. */
-.pg.consistent .chc.plain{background:#fff}.pg.consistent .chc.plain>.top{background:#F4F2F0;margin:-12px -12px 0;padding:12px;border-radius:10.5px 10.5px 0 0}
+/* The shading is the question's only: the work space under it is white paper. A layer behind the question paints it,
+   from the card's edge to half the gap under the question, so no box moves: the card and its work space keep their size. */
+.pg.consistent .chc.plain{background:#fff}.pg.consistent .chc.plain>.top{position:relative;z-index:0}
+.pg.consistent .chc.plain>.top::before{content:"";position:absolute;z-index:-1;left:-12px;right:-12px;top:-12px;bottom:-4px;background:#F4F2F0;border-radius:10.5px 10.5px 0 0}
 .pg.consistent .chc.nowork{flex:0 0 auto}.pg.consistent .chc.nowork .act{flex:0 0 auto;align-items:flex-start}
 .pg.consistent [data-slot="word-problems"] .story{flex:1}
 .pg.consistent [data-slot="word-problems"] .story.nowork{flex:0 0 auto}
