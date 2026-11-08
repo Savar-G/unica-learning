@@ -82,7 +82,10 @@ const ANTHROPIC_PRICES: Record<string, Price> = {
 };
 /** The fewest output tokens a Claude API request gets: adaptive thinking counts in them, and a short limit cuts it off. */
 const ANTHROPIC_MIN_TOKENS = 6_000;
-/** With --subscription: the time limit of a Maya, child or validity call (the judge gets twice it), and of a review. */
+/**
+ * With --subscription: the time limit of a Maya, child or validity call, and of a review. The judge reads the whole call
+ * and gets three times it (C38 at 361a05c9 timed out at twice it); a timed-out judge call is asked once more.
+ */
 const SUBSCRIPTION_MAYA_MS = 120_000;
 const SUBSCRIPTION_REVIEW_MS = 60_000;
 
@@ -417,7 +420,7 @@ async function main() {
     maya = aiMayaModel(client("maya"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     simulator = aiChildSimulator(client("simulator"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     validity = aiValidityJudge(client("validity"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
-    judge = aiJudge(client("judge"), { timeoutMs: 2 * SUBSCRIPTION_MAYA_MS });
+    judge = aiJudge(client("judge"), { timeoutMs: 3 * SUBSCRIPTION_MAYA_MS });
     reviewer = o.freeTalk || o.reviewCheck ? aiTalkReviewer(client("reviewer")) : null;
   } else {
     const anthropic = o.provider === "anthropic";

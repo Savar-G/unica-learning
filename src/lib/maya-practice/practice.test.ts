@@ -648,6 +648,41 @@ describe("the validity judge (R386-2-1)", () => {
     expect(judge.inputs).toHaveLength(0);
   });
 
+  // C38 at 361a05c9: a slow judge call timed out. One more try on a time-out; a second time-out or any other failure
+  // stays a failure.
+  const timingOut = <T,>(times: number, error: string, then: () => T) => {
+    let calls = 0;
+    return { get calls() { return calls; }, call: async (): Promise<T> => { calls++; if (calls <= times) throw new Error(error); return then(); } };
+  };
+  it("asks a timed-out validity judge once more, and the run is judged", async () => {
+    const t = timingOut(1, "time is up", () => ({ persona_ok: true, knows_too_much: false, reasons: [], turns: [] }));
+    const { store, report } = await suite([C07], { runs: 1, validity: { ...fakeValidityJudge(), check: t.call } });
+    expect(t.calls).toBe(2);
+    expect(report.runs[0].invalid.map((x) => x.code)).not.toContain("validity_unjudged");
+    expect(JSON.parse(store.load(validityFile("C07-r1"))!)).toMatchObject({ error: null, timeoutRetries: 1 });
+  });
+
+  it.each([["times out twice", 2, "time is up"], ["fails another way", 1, "OpenRouter answered 500"]] as const)("keeps the run invalid when the validity judge %s", async (_name, times, error) => {
+    const t = timingOut(times, error, () => ({ persona_ok: true, knows_too_much: false, reasons: [], turns: [] }));
+    const { report } = await suite([C07], { runs: 1, validity: { ...fakeValidityJudge(), check: t.call } });
+    expect(t.calls).toBe(error === "time is up" ? 2 : 1);
+    expect(report.runs[0].status).toBe("invalid");
+    expect(report.runs[0].invalid.map((x) => x.code)).toContain("validity_unjudged");
+  });
+
+  it("asks a timed-out judge once more; a judge that times out twice leaves the run unjudgeable", async () => {
+    const answer = (input: unknown) => Object.fromEntries((input as { rubric: { id: string }[] }).rubric.map((d) => [d.id, { status: "scored", score: 3, turns: [1], reason: "fine" }]));
+    let last: unknown;
+    const once = timingOut(1, "time is up", () => answer(last));
+    const ok = await suite([C07], { runs: 1, judge: { ...fakeJudge(), judge: async (input) => { last = input; return once.call(); } } });
+    expect(once.calls).toBe(2);
+    expect(ok.report.runs[0].status).toBe("pass");
+    const twice = timingOut(2, "time is up", () => answer(last));
+    const bad = await suite([C07], { runs: 1, judge: { ...fakeJudge(), judge: async (input) => { last = input; return twice.call(); } } });
+    expect(twice.calls).toBe(2);
+    expect(bad.report.runs[0].status).toBe("unjudgeable");
+  });
+
   it("a deleted validity judgement makes the run invalid; a changed one fails it", async () => {
     const a = await suite([C07], { runs: 1 });
     a.store.remove(validityFile("C07-r1"));

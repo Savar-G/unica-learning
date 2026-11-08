@@ -101,6 +101,8 @@ export interface ValidityLog {
   error: TraceError | null;
   /** Why it was not asked: code's checks already made the run invalid. */
   skipped: string | null;
+  /** 1 when the first call timed out and was asked once more (retryOnTimeout). Missing in a log from before: none. */
+  timeoutRetries?: number;
 }
 
 /** The judge's file of one run. */
@@ -114,6 +116,8 @@ export interface JudgeLog {
   error: TraceError | null;
   /** Why the judge was not asked: the run was already invalid or its trace failed. */
   skipped: string | null;
+  /** 1 when the first call timed out and was asked once more (retryOnTimeout). Missing in a log from before: none. */
+  timeoutRetries?: number;
 }
 
 export interface PracticeExecution { channel: "voice" | "chat"; freeTalk: boolean }
@@ -255,7 +259,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   if (pre.invalid.length > 0) validityLog.skipped = "code's checks already make the run invalid";
   else {
     try {
-      validityLog.raw = await deps.validity.check(validityInput(c, trace, log), new AbortController().signal);
+      validityLog.raw = await retryOnTimeout(() => deps.validity.check(validityInput(c, trace, log), new AbortController().signal), deps.capped, () => { validityLog.timeoutRetries = 1; });
     } catch (e) {
       if (e instanceof BudgetReached || deps.capped?.()) cut = true;
       else {
@@ -274,7 +278,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
     judgeLog.skipped = `the run is ${ready.status}`;
   } else {
     try {
-      judgeLog.raw = await deps.judge.judge(judgeInput(c, pkg, trace, execution.channel), new AbortController().signal);
+      judgeLog.raw = await retryOnTimeout(() => deps.judge.judge(judgeInput(c, pkg, trace, execution.channel), new AbortController().signal), deps.capped, () => { judgeLog.timeoutRetries = 1; });
     } catch (e) {
       if (e instanceof BudgetReached || deps.capped?.()) cut = true;
       else {
@@ -293,6 +297,21 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   };
   const record: RunRecord = { kind: "maya-practice-record", version: PRACTICE_VERSION, run: id, plan: hash(PLAN_FILE), files: { trace: hash(traceFile(id))!, child: hash(simFile(id))!, validity: hash(validityFile(id)), judge: hash(judgeFile(id)) } };
   deps.store.save(recordFile(id), JSON.stringify(record, null, 2));
+}
+
+/**
+ * A judge call, asked once more when it timed out (C38 at 361a05c9: "the judge call failed (timeout)" on a slow
+ * subscription call). A slow answer is no verdict, so one more try is fair; a second time-out, or any other failure, is
+ * thrown as before, so the run stays invalid or unjudgeable. Never at the spending cap.
+ */
+async function retryOnTimeout<T>(call: () => Promise<T>, capped: (() => boolean) | undefined, onRetry: () => void): Promise<T> {
+  try {
+    return await call();
+  } catch (e) {
+    if (e instanceof BudgetReached || capped?.() || classifyError(e, "model").code !== "timeout") throw e;
+    onRetry();
+    return await call();
+  }
 }
 
 /** The plan for a suite: each case `runs` times, with a seed per run. */
