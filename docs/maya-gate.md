@@ -373,6 +373,8 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN9c | M_SUBTRACT | passing | 9000 − ? = 3000, H3, then a wrong '1.' (one real miss) and 'I don't know.' twice, with give_answer proposed on every turn: refused each time; the easier example, then the honest close | child_stopped, honest close | |
 | MN10 | M_TRY | passing | 236 × ? = 1416, after H3, two real wrong tries ('7.' then '8.'): 'Not quite' and H3 again after the first, the second reaches the given answer (D-199) | solved, answer_given | |
 | MN10b | M_TRY | passing | 236 × ? = 1416, after H3, one real miss ('7.'), then a copy ('5.'), then 'I'm stuck.': the easier example, then the honest close; never the answer | child_stopped, honest close | |
+| MN11 | M_TRY | passing | 236 × ? = 1416, after H3, 'I'm stuck. Is it 7?' then 'I'm stuck. Is it 8?' (read as help with a wrong number), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
+| MN11b | M_TRY | passing | 236 × ? = 1416, after H3, 'Is it 7?' then 'Is it 8?' (read as wrong numbers), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
 | MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
 
 ## Pending

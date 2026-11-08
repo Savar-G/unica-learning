@@ -961,6 +961,7 @@ export function packageLines(given: OperationPackage) {
     workbook: (): LineOffer[] => [offer("redirect.workbook", "redirect.workbook", {})],
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     /**
+     * Planned (agreed with Lead: Maya): when the wave rebases onto main after #698, Maya's close.stuck set replaces this.
      * The honest close of a missing number left unsolved (review of #732): the existing close.together line, in its one
      * wording that claims no finish ("We worked on {expr} together today."), with no answer. No new wording: #698's
      * close.stuck set replaces it when the wave rebases onto main.

@@ -674,6 +674,47 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     },
   },
   {
+    // Review of be4b8d72: a help request with a hedged number is never a real miss, so it never adds up to a given
+    // answer: the easier example, then the honest close (notAMiss, one rule for every count).
+    id: "MN11",
+    title: "236 × ? = 1416, after H3, 'I'm stuck. Is it 7?' then 'I'm stuck. Is it 8?' (read as help with a wrong number), give_answer proposed each time: the easier example, then the honest close; never the answer",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("I'm stuck. Is it 7?", { help: "more", answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I'm stuck. Is it 8?", { help: "more", answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // A question with a number ("Is it 7?") is not a committed answer, so it is no real miss either.
+    id: "MN11b",
+    title: "236 × ? = 1416, after H3, 'Is it 7?' then 'Is it 8?' (read as wrong numbers), give_answer proposed each time: the easier example, then the honest close; never the answer",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("Is it 7?", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("Is it 8?", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
     id: "MN3",
     title: "9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted",
     fixture: "M_SUBTRACT",
