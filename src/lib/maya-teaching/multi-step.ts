@@ -3,10 +3,10 @@
 // until its teaching lands (A2); this deriver only makes the operation, checked against the printed text, the key and
 // the template. A bare chain ("98378 + 1000 + 100 = ?") is read by the #525 equation reader. Pure TypeScript.
 import type { Operation, QuestionPackage } from "@/lib/question-package";
-import { expressionOperation, FORM_PARTS, printedOperation, printedRelationships, withTeachingOperation, type PrintedForm } from "@/lib/workbook-maya-operation";
+import { expressionOperation, FORM_PARTS, printedOperation, printedRelationships, type PrintedForm } from "@/lib/workbook-maya-operation";
 import { agreedAnswer } from "./agreement";
-import { shapedExamples } from "./examples";
-import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "./limits";
+import { withShapedExample } from "./examples";
+import { MAYA_TEACHING_LIMITS } from "./limits";
 
 const { WORDS, ACTOR, SUBJECT, THINGS, n } = FORM_PARTS;
 const PLACE = `(?<place>${WORDS})`;
@@ -45,5 +45,5 @@ export function deriveMultiStep(printed: QuestionPackage): QuestionPackage | nul
   const operation = multiStepOperation(printed);
   const agreed = operation && agreedAnswer(printed, operation, "result");
   if (!operation || !agreed) return null;
-  return withTeachingOperation(printed, operation, agreed.answer, { source: TEACHING_SOURCE, limits: MAYA_TEACHING_LIMITS, examples: shapedExamples(operation) });
+  return withShapedExample(printed, operation, agreed.answer, MAYA_TEACHING_LIMITS);
 }

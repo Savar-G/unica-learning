@@ -11,7 +11,7 @@ const teach = (stored: QuestionPackage) => teachingPackage(stored) as QuestionPa
 
 describe("rule 1: an easier example of the question's own shape, which Maya can teach", () => {
   it.each([
-    ["10000 − 3615", subtractFromTenThousand("Leo", "stickers", [3, 6, 1, 4]), "1000 − 361 = ?"],
+    ["10000 − 3615", subtractFromTenThousand("Leo", "stickers", [3, 6, 1, 4]), "10 − 3 = ?"],
     ["284 × 7", eachHasStory("crate", 284, "apples", "Nora", 7), "28 × 7 = ?"],
     ["4 × 6 (two single digits)", putsInEachStory("Theo", 4, "shells", "box", "boxes", 6), "3 × 6 = ?"],
     ["16000 + 3000", thousandsSum(16200, 3900), "1600 + 300 = ?"],
@@ -52,7 +52,8 @@ describe("rule 2: the new place words block a step confirm, as the one-word plac
     const model = scenarioModel();
     const session = createTextSession({ callId: "places-confirm", package: pkg, model, clock: () => now, random: 7 });
     await session.start();
-    for (const turn of [...before, ...turns]) {
+    const all: { child: string; read?: Read; maya?: Plan[] }[] = [...before, ...turns];
+    for (const turn of all) {
       now += 4000;
       model.next(turn.maya ?? [], turn.read);
       await session.child(turn.child);
