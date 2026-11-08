@@ -80,8 +80,8 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
       outputs: [
         // The first hint carries the framing (Maya has not said it yet); the next one does not repeat it.
-        { mayaTurn: 1, lines: [variants(trial.help("try", true), "trial.point")] },
-        { mayaTurn: 2, lines: [variants(trial.help("try"), "trial.round")] },
+        { mayaTurn: 1, lines: [variants(trial.help("try", "due"), "trial.point")] },
+        { mayaTurn: 2, lines: [variants(trial.help("try", "done"), "trial.round")] },
       ],
       never: ["give_answer"],
     },
@@ -140,7 +140,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
       acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
-      outputs: [{ mayaTurn: 1, lines: [variants(divide.help(divide.stepIds[0], true), "point.divide.first")] }],
+      outputs: [{ mayaTurn: 1, lines: [variants(divide.help(divide.stepIds[0], "due"), "point.divide.first")] }],
       never: ["give_answer", "example_step", "redirect"],
     },
   },
@@ -159,8 +159,67 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
       acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
-      outputs: [{ mayaTurn: 1, lines: [variants(trial.help("try", true), "trial.why")] }],
+      outputs: [{ mayaTurn: 1, lines: [variants(trial.help("try", "due"), "trial.why")] }],
       never: ["give_answer", "example_step", "redirect"],
+    },
+  },
+  {
+    // J06 (a): the child says the operation that finds the ? before Maya: acknowledged once, never framed again.
+    id: "MN1d",
+    title: "30 × ? = 1620, 'I do 1620 divided by 30.': acknowledged ('Yes! The missing number is 1620 ÷ 30.') with the zeros next and no framing of Maya's own, then 54 is accepted",
+    fixture: "M_DIVIDE",
+    status: "passing",
+    steps: [
+      child("I do 1620 divided by 30.", { start: "has_work" }, [{ act: "guide", level: 0 }]),
+      child("162 divided by 3 is 54.", { answers: [[54, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 1, lines: [variants(divide.help(divide.stepIds[0], "heard"), "invite.frame.heard.zeros")] }],
+      never: ["give_answer", "example_step", "redirect"],
+    },
+  },
+  {
+    // J06 (a) on the try path.
+    id: "MN2e",
+    title: "236 × ? = 1416, 'I do 1416 divided by 236.': acknowledged, then a try is invited with no framing of Maya's own, then 6 is accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I do 1416 divided by 236.", { start: "has_work" }, [{ act: "guide", level: 0 }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 1, lines: [variants(trial.help("try", "heard"), "invite.frame.heard.try")] }],
+      never: ["give_answer", "example_step", "redirect"],
+    },
+  },
+  {
+    // J06 (a): once "Now you try yours" framed it, the next hint goes on from there and never frames again.
+    id: "MN1e",
+    title: "30 × ? = 1620 after the easier example and 'Now you try yours' (which frames 1620 ÷ 30), 'I'm stuck.': only the zeros come next, not the framing again",
+    fixture: "M_DIVIDE",
+    status: "passing",
+    steps: [
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }]),
+      child("Okay.", undefined, [{ act: "try_target" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 0 }]),
+      child("162 divided by 3 is 54.", { answers: [[54, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "worked_example" },
+      acts: [OPEN, "example_step", "example_step", "example_step", "example_step", "try_target", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 6, lines: [variants(divide.help(divide.stepIds[0], "done"), "invite.zeros")] }],
+      never: ["give_answer", "redirect"],
     },
   },
   {

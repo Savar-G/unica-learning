@@ -40,7 +40,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { teachingLimits } from "@/lib/maya-teaching/limits";
-import { checkMissingNumber, frameDue } from "./missing-number";
+import { checkMissingNumber, frameState, type FrameState } from "./missing-number";
 import { trialHeard } from "./trial-factor";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
@@ -2691,7 +2691,8 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
   const main = isTeaching(s.state) ? s.state : s.resume;
   const solved = s.solved ?? (view.rightResult ? "child" : null);
   // A missing number's framing rides on the first step's hint until Maya has said it (missing-number.ts).
-  const framing = frameDue(pkg.steps, s.turns.filter((t) => t.speaker === "maya").map((t) => t.text));
+  const framing = frameState(pkg.steps, s.turns.filter((t) => t.speaker === "maya").map((t) => t.text),
+    [...s.turns.filter((t) => t.speaker === "child").map((t) => t.text), ...(s.turn ? [s.turn.text] : [])]);
   const right = l.stepIds.flatMap(l.rightStep);
   switch (act) {
     case "open":
@@ -2766,7 +2767,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
  * the gentlest invite, so no line names a carried digit before the child hears where it comes from. The regroup line
  * of the column a carry comes from is offered only then (it says that column's sum).
  */
-function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View, framing = false): LineOffer[] {
+function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View, framing: FrameState = "due"): LineOffer[] {
   const pending = (view.regroup ?? []).filter((c) => c.at === id);
   const own = l.help(id, framing);
   // Once said, the line comes again only when the child denies the carry, which makes it pending (regroupAfter).

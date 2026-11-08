@@ -22,7 +22,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { simplestWords, teachSteps } from "./fractions";
-import { frameInvite, frameLead, framedLines, frameWhy, MISSING_TEMPLATES, type FramedLines } from "./missing-number";
+import { frameInvite, frameLead, framedLines, frameWhy, MISSING_TEMPLATES, type FrameState, type FramedLines } from "./missing-number";
 import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
 
 /**
@@ -609,12 +609,13 @@ function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
 }
 
 /** The help lines of one step of the child's question, by hint level: H0 invite, H1 point, H2 give the operation, H3 show. */
-function stepLines(pkg: OperationPackage, step: WorkedStep, frameDue = false): LineOffer[] {
+function stepLines(pkg: OperationPackage, step: WorkedStep, framing: FrameState = "due"): LineOffer[] {
   const slots = { step: step.id };
   const where = whereOf(step);
   // A missing number's first work step says the framing first (missing-number.ts); a try step invites a try.
   const framed = framedLines(pkg.steps);
-  const lead = framed && teachSteps(pkg)[0]?.id === step.id ? frameInvite(framed, where) : null;
+  const first = !!framed && teachSteps(pkg)[0]?.id === step.id;
+  const lead = framed && first ? frameInvite(framed, where, framing) : null;
   const trial = step.kind === "try-factor" ? trialHelp(step) : [];
   const out: LineOffer[] = [lead ? offer("step.invite", lead.key, lead.vars, { slots, level: 0 })
     : trial[0] ? trialOffer(trial[0], slots) : offer("step.invite", "step.invite", { where }, { slots, level: 0 })];
@@ -718,14 +719,14 @@ function stepLines(pkg: OperationPackage, step: WorkedStep, frameDue = false): L
   // A try step's equation holds the answer: its H3 shows the tries on each side, with no board note.
   const eq = step.kind === "try-factor" ? null : equationOf(step, pkg, "target");
   out.push(offer("step.show", "step.show", { show: showOf(step, pkg, "target") }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
-  if (!lead || !framed) return out;
-  // A missing number's first step: why it does what it does (step.why), and, while Maya has not said the framing yet
-  // (frameDue), every hint after the invite starts with it, so the first hint said at any level carries it.
+  if (!first || !framed) return out;
+  // A missing number's first step: why it does what it does (step.why), and, until the framing was said (FrameState),
+  // every hint after the invite starts with it (or with the child's own, acknowledged), so the first hint said at any
+  // level carries it and none repeats it after.
   const why = frameWhy(framed);
   out.push(offer("step.why", why.key, why.vars, { slots, level: 1 }));
-  if (!frameDue) return out;
-  const before = frameLead(framed);
-  return out.map((o) => ((o.level ?? 0) >= 1 ? { ...o, texts: o.texts.map((t) => `${before} ${t}`) } : o));
+  const before = frameLead(framed, framing);
+  return before ? out.map((o) => ((o.level ?? 0) >= 1 ? { ...o, texts: o.texts.map((t) => `${before} ${t}`) } : o)) : out;
 }
 
 /**
@@ -855,10 +856,10 @@ export function packageLines(pkg: OperationPackage) {
      * The help lines of the child's question's step, H0 to H3. The final step ("result", once every work step is done)
      * has one line, an H0 invite to put the whole answer together (#389).
      */
-    help: (id: string, frameDue = false): LineOffer[] => {
+    help: (id: string, framing: FrameState = "due"): LineOffer[] => {
       if (id === "result") return [offer("step.invite", "invite.result", { expr: solved }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
-      return step ? stepLines(pkg, step, frameDue) : [];
+      return step ? stepLines(pkg, step, framing) : [];
     },
     /**
      * The regroup line of the column a carry comes from (the ones of 27 + 39), for a child who plans to write its
@@ -978,7 +979,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
   const offers = [
     ...equalForms.flatMap((v) => [...l.answerRight(v), ...l.writeAnswer(v), ...l.equal(v, simplestWords(pkg)), ...l.simplifyOwn(v)]),
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.help(id, true), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id, "due"), ...l.help(id, "heard"), ...l.help(id, "done"), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.repair(),
     ...l.together(), ...l.guess(),

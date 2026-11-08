@@ -336,6 +336,9 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN1b | M_DIVIDE | passing | 30 × ? = 1620, 'Why do I divide?': the framing line says why (30 times the missing number makes 1620), then 54 is accepted | solved, independent | |
 | MN1c | M_DIVIDE | passing | 30 × ? = 1620, 'I'm stuck.': the first hint (H1) starts with the framing, 'The missing number is 1620 ÷ 30. That is 162 ÷ 3.', then 54 is accepted | solved, hint | |
 | MN2d | M_TRY | passing | 236 × ? = 1416, 'Why do I try numbers?': code's answer (multiplying is easier than dividing by 236), then 6 is accepted | solved, hint | |
+| MN1d | M_DIVIDE | passing | 30 × ? = 1620, 'I do 1620 divided by 30.': acknowledged ('Yes! The missing number is 1620 ÷ 30.') with the zeros next and no framing of Maya's own, then 54 is accepted | solved, independent | |
+| MN2e | M_TRY | passing | 236 × ? = 1416, 'I do 1416 divided by 236.': acknowledged, then a try is invited with no framing of Maya's own, then 6 is accepted | solved, independent | |
+| MN1e | M_DIVIDE | passing | 30 × ? = 1620 after the easier example and 'Now you try yours' (which frames 1620 ÷ 30), 'I'm stuck.': only the zeros come next, not the framing again | solved, worked_example | |
 | MN4 | M_TRY | passing | 236 × ? = 1416, '236 times 5 is 1180.' then '236 times 7 is 1652.': each try is in scope and multiplied out, then 6 is accepted | solved, independent | |
 | MN5 | M_DIVIDE | passing | 30 × ? = 1620, '1620 divided by 30 is 54.' is accepted, and '30 times 54 is 1620.' is a check of it, not an outside request | solved, independent | |
 | MN6 | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '9000 minus 6000 is 3000.' is a check of it, not an outside request | solved, independent | |
