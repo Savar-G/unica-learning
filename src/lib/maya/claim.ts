@@ -5,17 +5,19 @@
 //
 // The word is read by code, never by the model, and only in exact forms (an allow-list over the whole turn):
 // - a committed form, after any Maya turn: "It's true.", "I circle no.", "The answer is yes.", "..., so it's false."
-// - a bare word ("True.", "No, 5220 is less than 5226."), only when Maya's last turn ended with the claim's own
-//   question ("... true or false?", "... Circle yes or no."). A bare yes or no after any other question of Maya's ("Did
-//   you say 5220?") answers that question, not the claim.
-// - "maybe true", "true?", "not true", "true or false" and both words: unclear. Maya asks which word the child circles,
-//   in words that name both choices and never only the one the child did not say.
+// - after Maya's own claim question only (`claimAsked`: her last accepted turn chose the final step's invite, point or
+//   operation line, or confirm.claim): a bare word ("True.", "No, 5220 is less than 5226.") is said back
+//   (confirm.word), and only a plain yes to that commits it; "maybe true", "true?", "not true", "true or false" and both
+//   words get confirm.claim, which names both choices.
+// - after any other question of Maya's ("Did you say 5220?", "Can you show me how you began 870 × 6?"), a bare yes, no,
+//   true or false answers that question: it is no claim turn at all, with no say-back and no confirm.
+// The compare step ("claim") is credited only from a whole-turn template (claimStepHeard), as a column is.
 // The two words come from code (the item's printed choices). Maya never gives the word (no give_answer), and she asks the
 // child to circle it, never to write a number. Pure TypeScript: no clock, network or randomness.
-import { equivalent, operationText, type AnswerValue, type OperationPackage, type WorkedStep } from "@/lib/question-package";
+import { equivalent, operationText, type AnswerValue, type Operation, type OperationPackage, type WorkedStep } from "@/lib/question-package";
 import { claimExample, claimStep, readClaim, type Claim } from "@/lib/maya-teaching/claim";
 import type { Act, ChildAnswer } from "./proposal";
-import type { AnswerRead } from "./numbers";
+import { confirmWordsOnly, plainNumber, wholeTurn, wholeYes, type AnswerRead } from "./numbers";
 import type { LineId, LineOffer, Slots } from "./lines";
 
 /** The claim as a session holds it: read again from the teaching package's steps and item. */
@@ -338,6 +340,13 @@ export interface ClaimTurn {
   heardAsked: boolean;
   /** The bare word Maya said back in her last turn ("You said no. Is no the word you circle?"): a plain yes commits it. */
   wordAsked: string | null;
+  /** Maya's last accepted turn asked the claim itself (claimQuestionAsked). Only then is a bare word a claim turn. */
+  claimAsked?: boolean;
+}
+
+/** The lines that ask the claim itself: the final step's H0 to H2 and "Which word do you circle: yes or no?". */
+export function claimQuestionAsked(chosen: readonly Pick<LineOffer, "line" | "slots">[]): boolean {
+  return chosen.some((o) => o.line === "confirm.claim" || (["step.invite", "step.point", "step.operation"].includes(o.line) && o.slots.step === "result"));
 }
 
 function wordIn(t: ClaimTurn): WordRead {
@@ -347,7 +356,9 @@ function wordIn(t: ClaimTurn): WordRead {
   if (t.wordAsked !== null && !t.heardAsked && c.choices.includes(t.wordAsked) && PLAIN_YES.test(t.text.toLowerCase().replace(/[’]/g, "'").trim())) {
     return { word: t.wordAsked, committed: true };
   }
-  return readClaimWord(t.text, c.choices);
+  const read = readClaimWord(t.text, c.choices);
+  // A bare or unsure word answers the claim only when Maya just asked it; after any other question it is no claim turn.
+  return read && "word" in read && read.committed ? read : t.claimAsked === true ? read : null;
 }
 
 /** The child's committed word as read: the final answer, kept after any numbers of their explanation. */
@@ -433,4 +444,57 @@ export function claimReveals(pkg: OperationPackage, act: Act, texts: readonly st
 export function claimFinal(pkg: OperationPackage | null, text: string, wordAsked: string | null, heardAsked = false): AnswerValue | null {
   const word = committedWord({ pkg, text, heardAsked, wordAsked });
   return word === null ? null : choice(word);
+}
+
+// ---------- The compare step's credit ----------
+
+/** A number in a claim template: digits (a decimal too) or number words. */
+function numberIn(text: string): number | null {
+  const t = text.trim();
+  return /^\d+(?:\.\d+)?$/.test(t) ? Number(t) : plainNumber(t);
+}
+
+/** The words of each operation in "<a> times <b> is <n>", and whether its numbers may come in either order. */
+const OPERATION_WORDS: Partial<Record<Operation["kind"], { words: string; swap: boolean }>> = {
+  add: { words: "plus|and|\\+", swap: true }, "decimal-add": { words: "plus|and|\\+", swap: true },
+  multiply: { words: "times|x|×|multiplied by", swap: true }, "decimal-multiply": { words: "times|x|×|multiplied by", swap: true },
+  subtract: { words: "minus|take away|−|-", swap: false }, "decimal-subtract": { words: "minus|take away|−|-", swap: false },
+  divide: { words: "divided by|÷", swap: false },
+};
+
+/**
+ * The child's whole turn says the claim's result, in one of these forms only (an allow-list, as stepTurnHeard for a
+ * column): the value alone or "it's / it is / i got / that's N"; "<a> times <b> is N" with the operation's own numbers
+ * (either order for + and ×); a plain yes to Maya's own "Did you say N?" (`heardAsked`); or a claim about the child's own
+ * paper ("I wrote N", "N is on my paper"). A question, a hedge, another sentence, another speaker, a copy or any other
+ * word fits none. After H3 (`shown`) only the paper claim counts: the rest copies what Maya showed.
+ */
+export function claimStepHeard(input: { text: string; uncertain: boolean; operation: Operation; value: number; heardAsked: AnswerValue | null; shown: boolean }): boolean {
+  const body = input.uncertain ? null : wholeTurn(input.text);
+  if (body === null) return false;
+  const is = (n: number | null) => n !== null && equivalent({ type: "number", value: n }, { type: "number", value: input.value });
+  const paper = /^(?:i wrote|i have|i've got)\s+(.+?)(?:\s+on my (?:paper|page))?$/.exec(body) ?? /^(.+?)\s+is on my (?:paper|page)$/.exec(body);
+  if (paper && is(numberIn(paper[1]))) return true;
+  if (input.shown) return false;
+  const yes = wholeYes(body);
+  if (yes) return input.heardAsked?.type === "number" && is(input.heardAsked.value) && (yes.value === null || is(yes.value));
+  const bare = /^(?:it's|it is|i got|that's)\s+(.+)$/.exec(body);
+  if (is(numberIn(bare ? bare[1] : body))) return true;
+  const op = OPERATION_WORDS[input.operation.kind];
+  const m = op ? new RegExp(`^(.+?)\\s+(?:${op.words})\\s+(.+?)\\s+(?:is|equals|makes|=)\\s+(.+)$`).exec(body) : null;
+  if (!op || !m || !is(numberIn(m[3]))) return false;
+  const [a, b] = [numberIn(m[1]), numberIn(m[2])];
+  const [x, y] = input.operation.operands as number[];
+  const same = (p: number | null, q: number) => p !== null && equivalent({ type: "number", value: p }, { type: "number", value: q });
+  return (same(a, x) && same(b, y)) || (op.swap && same(a, y) && same(b, x));
+}
+
+/**
+ * A turn about the claim's result that may get the confirm: exactly one number, the result, and only the step confirm's
+ * short list of words beside it ("Maybe 1440.", "I got 1440, I think."). Never a speaker, a verb or "answer" ("My mom said
+ * 1440.", "I copied 1440."): the #698 rule for a column's confirm.
+ */
+export function claimStepConfirmable(text: string, value: number): boolean {
+  const numbers = text.match(/\d+(?:\.\d+)?/g) ?? [];
+  return numbers.length === 1 && Number(numbers[0]) === value && confirmWordsOnly(text.replace(/\d+(?:\.\d+)?/, " "));
 }
