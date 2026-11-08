@@ -88,7 +88,9 @@ export function modelInput(session: Session, repair: ModelInput["repair"] = null
       ? {
           text: pkg.text,
           answer: valueText(pkg.answer.value),
-          steps: pkg.steps.filter((s) => s.kind !== "result").map((s) => ({ id: s.id, text: stepText(s, pkg.operation) })),
+          // A missing number's framing and zeros steps are Maya's to say, not steps to guide (missing-number.ts).
+          steps: pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "missing-frame" && s.kind !== "drop-zeros")
+            .map((s) => ({ id: s.id, text: stepText(s, pkg.operation) })),
           easierExample: pkg.easierExample.text,
         }
       : null,

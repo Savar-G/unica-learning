@@ -11,6 +11,7 @@ import { TEACHING_SOURCE } from "./limits";
 import { deriveOneStep } from "./one-step";
 import { deriveMultiStep } from "./multi-step";
 import { derivePlaceValue } from "./place-value";
+import { deriveMissingNumber } from "./missing-number";
 
 /**
  * Makes a teaching package from a printed workbook question, or null. It gets the printed package: no teaching data,
@@ -20,6 +21,7 @@ export type Deriver = (printed: QuestionPackage) => QuestionPackage | null;
 
 /** Each builder adds one line. The first deriver whose package passes every check below wins. */
 const DERIVERS: readonly Deriver[] = [
+  deriveMissingNumber, // A3: "a × ? = c", "? × a = c", "a − ? = c" (first: only its exact printed forms match)
   deriveOneStep, // A1: one add, subtract or multiply
   deriveMultiStep, // A1: multi-step stories, as evaluate (taught from A2)
   derivePlaceValue, // B1a: place value, the digit and value asks

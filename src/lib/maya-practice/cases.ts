@@ -12,6 +12,7 @@ import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
 import { PLACE_VALUE_PRACTICE } from "./place-value-cases";
 import { ONE_STEP_PRACTICE } from "./one-step-cases";
+import { MISSING_NUMBER_CASES } from "./missing-number-cases";
 
 /** The AI-judge dimensions of the research (section 8, "AI-judge checks"), each scored 0 to 3. */
 export const DIMENSIONS = {
@@ -458,6 +459,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
   },
   ...PLACE_VALUE_PRACTICE,
   ...ONE_STEP_PRACTICE,
+  ...MISSING_NUMBER_CASES,
 ];
 
 /** How many times each case runs (research, section 8: three recorded repetitions). */

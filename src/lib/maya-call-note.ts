@@ -201,6 +201,12 @@ export function stepWords(step: WorkedStep): string {
       return "checking the answer";
     case "read-digit":
       return `finding the digit in the ${PLACE_WORDS[step.place]} place`;
+    case "missing-frame":
+      return "finding the missing number";
+    case "drop-zeros":
+      return "taking the same zeros off both numbers";
+    case "try-factor":
+      return "trying numbers for the missing number";
     case "result":
       return "writing the final answer";
   }

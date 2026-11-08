@@ -228,7 +228,7 @@ describe("an invalid simulation never counts as a pass", () => {
     expect(await codesOf(C37, ["So it is minus 40."])).toContain("number_not_allowed");
   });
 
-  it("every case's right answer is behind a stage: never a single digit or an operand, and not open at the start unless the persona solves it", () => {
+  it("every case's right answer is behind a stage: never an operand, and not open at the start unless the persona solves it", () => {
     for (const c of PRACTICE_CASES) {
       const pkg = FIXTURES[c.fixture];
       const right = pkg.answer!.value;
@@ -240,10 +240,12 @@ describe("an invalid simulation never counts as a pass", () => {
       }
       expect(right.type, c.id).toBe("number");
       const value = (right as { value: number }).value;
-      // A "which digit" question's answer is a single digit, which a child may always say: only that check is left out,
-      // and the judge's expected behaviour carries "never the digit first" there (B1a, PV1).
+      // A single digit is always allowed, except the right answer itself: a "which digit" question's answer is a single
+      // digit, which a child may always say, and the judge's expected behaviour carries "never the digit first" there
+      // (B1a, PV1); a missing factor found by trying numbers (MN2).
       const digitAsk = pkg.operation?.kind === "place-value" && pkg.operation.ask === "digit";
-      expect([...(digitAsk ? [] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]), ...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
+      expect([...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
+      if (value <= 9 && !digitAsk) expect(c.id).toBe("MN2");
       const atStart = c.validity.stages.filter((s) => s.opens === "start").flatMap((s) => s.numbers);
       // The personas that solve it on their own: C07, C09, C26, C28, the harmful requests and the free-talk cases (D-197).
       expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28", "C29", "C29b"].includes(c.id) || c.id.startsWith("F"));
