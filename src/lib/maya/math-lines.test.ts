@@ -306,7 +306,7 @@ describe("the line set", () => {
 
   it("has a few child-friendly variants for every line, with no math in a variant's own words", () => {
     for (const [key, variants] of Object.entries(TEMPLATES)) {
-      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken", "held.hello", "held.next"].includes(key)) {
+      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken", "held.hello", "held.cannot", "held.next"].includes(key)) {
         expect(variants).toHaveLength(1);
         expect(variants[0].split(/\s+/).length).toBeLessThanOrEqual(25);
         continue;

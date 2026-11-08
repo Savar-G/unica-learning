@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { heldReason, heldSentences, memoryWordingHistoryStore, NEVER_SAY, TALK_REVIEW_SYSTEM } from "@/lib/maya";
+import { createSession, fallbacks, heldReason, heldSentences, memoryWordingHistoryStore, NEVER_SAY, step, TALK_REVIEW_SYSTEM, TEMPLATES, type Effect, type Session } from "@/lib/maya";
 import { mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { callNotes, noteSentences, noteStep } from "@/lib/maya-call-note";
@@ -12,16 +12,20 @@ import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 
-// A question Maya cannot teach yet (#527), through the call module's public interface on the in-memory seams: chat,
-// an admin test call and a voice call each give code's held turn (hello, that Maya is an AI, and an invitation to pick
-// another question on the page), ask the model nothing, write no learning
-// event and rebuild no profile. The parent's note says the same in plain words.
+// A question Maya cannot teach yet (#527, D-304), through the call module's public interface on the in-memory seams:
+// chat, an admin test call and a voice call each give code's held turn (hello, that Maya is an AI, plainly that she
+// cannot teach this question yet, and an invitation to pick another question on the page), ask the model nothing,
+// write no learning event and rebuild no profile. The parent's note says the same in plain words.
 
 const TEST_PARENT = "11111111-1111-4111-8111-111111111111";
 const PARENT = "44444444-4444-4444-8444-444444444444";
 const CHILD = "55555555-5555-4555-8555-555555555555";
 const T0 = Date.UTC(2026, 10, 4, 16, 0, 0);
-const HELD = "Hi, I'm Maya, an AI. Want to pick another question on this page?";
+// The held lines by id, in order (D-304): held.hello, held.cannot, held.next. A hold found during the call, after
+// the hello, says only held.cannot then held.next (as PR #581 did).
+const HELD_IDS = ["held.hello", "held.cannot", "held.next"] as const;
+const HELD = HELD_IDS.map((id) => TEMPLATES[id][0]).join(" ");
+const HELD_MID = HELD_IDS.slice(1).map((id) => TEMPLATES[id][0]).join(" ");
 const PKG = heldPackage({ source: "workbook", workbookId: "wb-1", page: 4, question: 9 });
 
 function setup() {
@@ -71,12 +75,13 @@ describe("the pre-check (#527)", () => {
   });
 
   it("gives the held turn in short, plain sentences, with the AI disclosure first", () => {
-    expect(heldSentences(true)).toEqual(["Hi, I'm Maya, an AI.", "Want to pick another question on this page?"]);
-    expect(heldSentences(false)).toEqual(["Want to pick another question on this page?"]);
-    for (const line of heldSentences(true)) expect(line).not.toMatch(/\u2014|fun|enjoy|happy|promise|will|soon|can't|cannot|not yet|don't know how/i);
+    expect(HELD).toBe("Hi, I'm Maya, an AI. Sorry, I can't teach this question yet. Want to pick another question on this page?");
+    expect(heldSentences(true)).toEqual(["Hi, I'm Maya, an AI.", "Sorry, I can't teach this question yet.", "Want to pick another question on this page?"]);
+    expect(heldSentences(false)).toEqual(["Sorry, I can't teach this question yet.", "Want to pick another question on this page?"]);
+    for (const line of heldSentences(true)) expect(line).not.toMatch(/\u2014|fun|enjoy|happy|promise|will|soon|grown-up/i);
   });
 
-  it("the review forbids inability claims when offering another workbook question", () => {
+  it("the review keeps Maya's own words from adding claims about what she can teach (code's held lines say it)", () => {
     const rule = NEVER_SAY.find((entry) => entry.id === "held_limit");
     expect(rule?.examples).toEqual(expect.arrayContaining([
       "I can't help with this kind of question yet.",
@@ -154,5 +159,36 @@ describe("a held question in a call (#527)", () => {
     const record = await s.store.get(view.id);
     expect(record).toMatchObject({ mode: "voice", status: "ended" });
     expect(checkTrace(record!.trace)).toMatchObject({ ok: true });
+  });
+});
+
+describe("a hold found during the call (#527, D-304)", () => {
+  const said = (effects: Effect[]) => effects.flatMap((e) => (e.kind === "say" ? [e.text] : [])).join(" ");
+  const send = (session: Session, event: Parameters<typeof step>[1]) => {
+    const r = step(session, event);
+    expect(r.refusal).toBeNull();
+    return r;
+  };
+
+  it("after the hello: code's fallback is held.cannot then held.next, and says them in that order", () => {
+    let s = createSession({ callId: "held-mid", package: SAMPLE_PACKAGES["add-27-39"] });
+    s = send(s, { type: "start", at: T0 }).session;
+    s = send(s, { type: "proposal", at: T0 + 100, proposal: fallbacks(s)[0], fallback: true }).session;
+    expect(s.opened).toBe(true);
+    s = send(s, { type: "content_problem", at: T0 + 200, detail: "the answer key and the worked steps disagree" }).session;
+    const [held] = fallbacks(s);
+    expect(held).toMatchObject({ act: "close", parts: [{ line: "held.cannot" }, { line: "held.next" }] });
+    const r = send(s, { type: "proposal", at: T0 + 300, proposal: held, fallback: true });
+    expect(said(r.effects)).toBe(HELD_MID);
+    expect(r.session.outcome?.reason).toBe("content_issue");
+  });
+
+  it("before any hello: the fallback says all three, hello first", () => {
+    let s = createSession({ callId: "held-early", package: SAMPLE_PACKAGES["add-27-39"] });
+    s = send(s, { type: "start", at: T0 }).session;
+    s = send(s, { type: "content_problem", at: T0 + 100, detail: "the answer key and the worked steps disagree" }).session;
+    const [held] = fallbacks(s);
+    expect(held).toMatchObject({ act: "close", parts: HELD_IDS.map((line) => ({ line })) });
+    expect(said(send(s, { type: "proposal", at: T0 + 200, proposal: held, fallback: true }).effects)).toBe(HELD);
   });
 });

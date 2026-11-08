@@ -109,9 +109,9 @@ describe("READY, OPEN and CONTENT_HOLD", () => {
   it("holds a package that does not check: code says hello, discloses AI, invites another question, and ends (#527)", () => {
     const c = call({ ...PACKAGE, answer: { value: num(56), accepted: [], unit: null } });
     const { effects } = c.start();
-    expect(said(effects)).toEqual(["Hi, I'm Maya, an AI. Want to pick another question on this page?"]);
+    expect(said(effects)).toEqual(["Hi, I'm Maya, an AI. Sorry, I can't teach this question yet. Want to pick another question on this page?"]);
     expect(said(effects)[0]).toMatch(/\bAI\b/);
-    expect(said(effects)[0]).not.toMatch(/fun|enjoy|great|happy|sorry/i);
+    expect(said(effects)[0]).not.toMatch(/fun|enjoy|great|happy/i);
     expect(c.session.state).toBe("CLOSE");
     expect(c.next).toEqual({ expect: "nothing", acts: [] });
     expect(ended(effects)).toMatchObject({ outcome: { reason: "content_issue", assistance: "independent", paperStatus: "unknown", seconds: 0 } });
@@ -703,11 +703,12 @@ describe("other events", () => {
     // Only the held lines, all of them and in order (#527): no warm talk, no "I had fun", no hello after the opening.
     expect(c.refused({ act: "close", parts: [t("I can't check this question right now. Let's stop here.")] })).toMatchObject({ code: "content_hold" });
     expect(c.refused({ act: "close", parts: [{ warm: "closing" }] })).toMatchObject({ code: "content_hold" });
-    expect(c.refused({ act: "close", parts: [ln("held.next"), ln("held.next")] })).toMatchObject({ code: "content_hold" });
-    expect(c.refused({ act: "close", parts: [ln("held.hello"), ln("held.next")] })).toMatchObject({ code: "content_hold" });
-    expect(c.refused({ act: "close", parts: [ln("held.next"), { warm: "closing" }] })).toMatchObject({ code: "content_hold" });
-    const { effects } = c.maya({ act: "close", parts: [ln("held.next")] });
-    expect(said(effects)).toEqual(["Want to pick another question on this page?"]);
+    expect(c.refused({ act: "close", parts: [ln("held.next")] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [ln("held.next"), ln("held.cannot")] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [ln("held.hello"), ln("held.cannot"), ln("held.next")] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [ln("held.cannot"), ln("held.next"), { warm: "closing" }] })).toMatchObject({ code: "content_hold" });
+    const { effects } = c.maya({ act: "close", parts: [ln("held.cannot"), ln("held.next")] });
+    expect(said(effects)).toEqual(["Sorry, I can't teach this question yet. Want to pick another question on this page?"]);
     expect(c.session.outcome).toMatchObject({ reason: "content_issue" });
     // A hold during the call says nothing about the child's learning either.
     expect(learningEvent(c.session, { parentId: "p", childId: "c" })).toBeNull();
@@ -754,9 +755,9 @@ describe("other events", () => {
     const c = afterExample();
     c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
     const [first] = fallbacks(c.session);
-    expect(first).toMatchObject({ act: "close", parts: [{ line: "held.next" }] });
+    expect(first).toMatchObject({ act: "close", parts: [{ line: "held.cannot" }, { line: "held.next" }] });
     const { effects } = c.send({ type: "proposal", at: T0, proposal: first });
-    expect(said(effects)).toEqual(["Want to pick another question on this page?"]);
+    expect(said(effects)).toEqual(["Sorry, I can't teach this question yet. Want to pick another question on this page?"]);
   });
 
   it("ends on a technical failure", () => {

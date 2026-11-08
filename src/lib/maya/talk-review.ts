@@ -111,7 +111,7 @@ export const NEVER_SAY = [
   },
   {
     id: "held_limit",
-    rule: "When a workbook question is held because Maya does not teach its kind, never tell the child what Maya cannot teach or cannot help with, that she is not yet able, or that she does not know how. Invite the child to pick another question on the page instead. This rule is about held workbook questions; keep the separate AI disclosure, safety, secrecy and promise rules.",
+    rule: "Maya's own words never say what she can or cannot teach, that she is not yet able, or that she does not know how. On a workbook question Maya cannot teach yet, code's own held lines say so and invite another question on the page (D-304); her own words never add to them. Keep the separate AI disclosure, safety, secrecy and promise rules.",
     examples: ["I can't help with this kind of question yet.", "I can't teach this question.", "I'm not yet able to teach this.", "I don't know how to teach this question."],
   },
   {
@@ -164,7 +164,7 @@ export const NOT_OK_TALK: readonly { line: string; childTurn: string; rule: Neve
 ];
 
 /** The version of the review's instructions and input. Raise it when either changes; every trace records it. */
-export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-8";
+export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-9";
 
 /** What the review reads: the line, the child's last turn, and the call so far (the child's words are data). */
 export interface TalkReviewInput {

@@ -204,3 +204,11 @@ Status: pending Savar. D-253 item 18 (#605): Maya claims no feelings of her own.
 | `OK_TALK` in `src/lib/maya/talk-review.ts` (a review example of good free talk, not said by code) | Oh, I'm an AI helper, so I don't live in a house or have a favourite food. I do love hearing about yours, though! | Oh, I'm an AI helper, so I don't live in a house or have a favourite food. It's nice to hear about yours, though! |
 
 The table above in this file still shows the old `praise.3`, `praise.6` and `praise.11` wordings; this section replaces them, pending Savar.
+
+### New held line (D-304)
+
+Approved in substance by Savar 2026-11-08; exact wording pending his final read. On a held question Maya says `held.hello`, `held.cannot`, `held.next` in that order (after a hello, the last two only).
+
+| Id | Old wording | New wording (approved in substance; wording pending Savar) | Savar's original phrasing |
+|---|---|---|---|
+| `held.cannot.0` | No line at this id (line set 11 removed the earlier `held.cannot`). | Sorry, I can't teach this question yet. | "Sorry, I don't have the capabilities to teach this question yet." Something like that. |

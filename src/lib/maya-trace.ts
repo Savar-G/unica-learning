@@ -26,7 +26,8 @@ export interface TraceRefusal {
  * Each records `cancelled`: whether Maya's output was stopped. Version 5 records input obligations and the
  * delivered turn that served each one, or the reason it was dropped. Version 6 adds controller safety output on
  * terminal events. Version 7 adds scope refusal reasons and times. Version 8 (#527) adds controller held output: on a
- * question Maya cannot teach, code's held lines at the start, with no model. `checkTrace` reads all eight versions.
+ * question Maya cannot teach, code's exact held lines at the start (D-304: hello, can't teach, another question), with
+ * no model. `checkTrace` reads all eight versions.
  */
 export const TRACE_VERSION = 8;
 /** The trace versions `checkTrace` reads. */
