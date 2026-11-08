@@ -1,10 +1,16 @@
+import { loadFamilyProvince } from "@/lib/family-time-server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, type DeskView } from "@/lib/desk";
+import { formatInZone, familyZone, type FamilyZone } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
+import { deskChat } from "@/lib/maya-chat-server";
+import { MAYA_NOTICE_DESK_LINE } from "@/lib/maya-notice";
+import { mayaNoticeDue } from "@/lib/maya-notice-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
+import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
 import { workbookStore } from "@/lib/workbook-store";
 import { Desk, type DeskBook } from "@/components/desk";
 
@@ -18,10 +24,14 @@ export const metadata = pageMetadata({
 /** How long the link to a page image works. A new page view makes a new one. */
 const PAGE_URL_SECONDS = 15 * 60;
 
-const sentOn = (w: WorkbookSummary) =>
-  w.shippedAt ? `Sent ${new Date(w.shippedAt).toLocaleDateString("en-CA", { month: "long", day: "numeric", timeZone: "America/Vancouver" })}` : null;
-const book = (w: WorkbookSummary): DeskBook => ({ id: w.id, number: w.number, sent: sentOn(w) });
+const sentOn = (w: WorkbookSummary, timeZone: FamilyZone) =>
+  w.shippedAt ? `Sent ${formatInZone(w.shippedAt, timeZone, { month: "long", day: "numeric" })}` : null;
+const book = (w: WorkbookSummary, timeZone: FamilyZone): DeskBook => ({ id: w.id, number: w.number, sent: sentOn(w, timeZone) });
 const whole = (v: string | string[] | undefined) => (typeof v === "string" && /^\d{1,4}$/.test(v) ? Number(v) : undefined);
+
+async function loadDesk(db: Awaited<ReturnType<typeof sessionClient>>, options: Parameters<typeof deskView>[1]) {
+  return deskView(workbookStore(db), options, workbookDeliveryStore(db), Date.now());
+}
 
 // The child's desk (#301, D-184): open on this device for one child (the desk cookie, src/lib/desk.ts), read with the
 // parent's own session, so row-level security gives only the family's shipped workbooks and their page images. `w`
@@ -35,10 +45,11 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   if (!lock || lock.parentId !== parent) redirect("/account");
 
   const { w, p, q, pick, from } = await searchParams;
-  const [{ data: child }, view] = await Promise.all([
-    db.from("children").select("id, first_name").eq("id", lock.childId).maybeSingle(),
+  const [{ data: child }, { data: family }, view] = await Promise.all([
+    db.from("children").select("id, first_name, grade, province").eq("id", lock.childId).maybeSingle(),
+    db.from("parents").select("postal, time_zone").maybeSingle(),
     // A failed read still shows the desk, with Leave, and says the workbook cannot be shown.
-    deskView(workbookStore(db), {
+    loadDesk(db, {
       parentId: parent, childId: lock.childId, workbookId: typeof w === "string" ? w : undefined, page: whole(p), question: whole(q),
     }).catch((error: unknown): DeskView | null => {
       console.error("[desk] workbook load failed", error instanceof Error ? error.message : error);
@@ -46,12 +57,22 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
     }),
   ]);
   const name = child?.first_name ?? null;
+  const province = await loadFamilyProvince(db, parent);
+  const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province });
 
-  if (!child || !view || view.status === "no-workbook") {
+  // Without a parent's agreement (#529), the desk shows chat as off and says who can turn it on.
+  const noticeDue = child ? await mayaNoticeDue(parent, child.grade, child.id) : false;
+  const chat = child && !noticeDue ? await deskChat(db, parent, child, timeZone) : { usage: null, note: null };
+
+  if (!child || !view || view.status !== "ready") {
     return (
       <Desk
         name={name}
-        problem={view ? `There is no workbook here yet. When ${name ? `${name}'s` : "your"} workbook arrives, its pages show here.`
+        childId={lock.childId}
+        chatUsage={chat.usage}
+        chatNote={chat.note}
+        noticeLine={noticeDue ? MAYA_NOTICE_DESK_LINE : null}
+        problem={view?.status === "awaiting-delivery" ? "Your workbook pages will open here after we confirm delivery." : view ? `There is no workbook here yet. When ${name ? `${name}'s` : "your"} workbook arrives, its pages show here.`
           : "Your workbook cannot be shown right now. Try again in a moment."}
       />
     );
@@ -69,9 +90,13 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
       // A new workbook or page starts the desk again, with the question asked for.
       key={`${workbook.id}-${page.number}`}
       name={name}
+      childId={lock.childId}
+      chatUsage={chat.usage}
+      chatNote={chat.note}
+      noticeLine={noticeDue ? MAYA_NOTICE_DESK_LINE : null}
       notice={view.notice === "not-this-child" ? `That workbook is not on ${name}'s desk, so ${name}'s newest workbook is open.` : null}
-      books={view.workbooks.map(book)}
-      book={book(workbook)}
+      books={view.workbooks.map((w) => book(w, timeZone))}
+      book={book(workbook, timeZone)}
       page={{ number: page.number, dayLabel: page.dayLabel, pages }}
       image={image}
       areas={tapAreas(page)}

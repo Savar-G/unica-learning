@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checked } from "@/lib/assessment/scripted-child";
-import { createSession, finish, learnerProfile, nextQuestion, storedTest, submitAnswer, type ProfileAnswer, type Session } from "@/lib/assessment";
+import { createAdaptiveSession, givenQuestions, lockAdaptiveBlock, createSession, everyQuestion, finish, learnerProfile, nextQuestion, storedTest, submitAnswer, type ProfileAnswer, type Session } from "@/lib/assessment";
 import { EXPORT_DATASETS, exportChunks, type ExportReader, type ExportRequest } from "@/lib/admin-export";
 import { memoryExportReader, type ExportData } from "@/lib/admin-export-memory";
 
@@ -313,10 +313,27 @@ describe("the questions as drawn", () => {
     testFamilies: [uuid(1003)],
   };
 
+  it("exports the adaptive pool and selected block positions", async () => {
+    let session = createAdaptiveSession({ grade: 4, province: "BC" }, 1);
+    for (let i = 0; i < 6; i++) {
+      const q = nextQuestion(session)!;
+      session = submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 });
+    }
+    session = lockAdaptiveBlock(session);
+    const stored = storedTest(session);
+    const rows = await csv({ assessments: [test(1, { route: "stay", test: stored })] }, { dataset: "questions", withTests: true });
+    expect(rows).toHaveLength(stored.adaptive!.pool.length);
+    const selected = rows.filter(r => r.position !== "").sort((a,b) => Number(a.position)-Number(b.position));
+    expect(selected.map(r => r.question_id)).toEqual(givenQuestions(stored, "stay").map(q => q.id));
+    expect(selected.map(r => r.position)).toEqual(Array.from({ length: 12 }, (_,i) => String(i)));
+    expect(selected.map(r => r.stage)).toEqual([...Array(6).fill("1"), ...Array(6).fill("2")]);
+    expect(rows.filter(r => r.position === "").every(r => r.stage === "")).toBe(true);
+  });
+
   it("are one row per question of the stored test, each with its place in the test as the answers number it", async () => {
     const rows = await csv(data, { dataset: "questions", withTests: false });
     const mine = rows.filter((r) => r.assessment_id === uuid(1));
-    const all = [...stored.stage1, ...stored.stage2.up, ...stored.stage2.stay, ...stored.stage2.down];
+    const all = everyQuestion(stored);
     expect(mine).toHaveLength(all.length);
     for (const cell of rows.flatMap((r) => Object.values(r))) expect(cell.length).toBeLessThanOrEqual(CELL_MAX);
     // The questions the child got, in order, carry the answers' positions; the other routes' questions carry none.
@@ -331,6 +348,16 @@ describe("the questions as drawn", () => {
     expect(JSON.parse(first.question)).toEqual(stored.stage1[0]);
     const other = (["up", "stay", "down"] as const).find((r) => r !== route)!;
     expect(mine.find((r) => r.question_id === stored.stage2[other][0].id)).toMatchObject({ stage: "2", route: other, index: "0", position: "" });
+  });
+
+  it("place the third stage the test took after its route, and only that form (D-282)", async () => {
+    const third = { up: stored.stage3!.up.length, down: stored.stage3!.down.length };
+    const direction = third.up ? "up" : "down";
+    const rows = await csv({ assessments: [test(1, { route: direction, stage3_route: direction, test: stored })], testFamilies: [] }, { dataset: "questions", withTests: false });
+    const form = rows.filter((r) => r.stage === "3" && r.route === direction);
+    const start = stored.stage1.length + stored.stage2[direction].length;
+    expect(form.map((r) => r.position)).toEqual(stored.stage3![direction].map((_, i) => String(start + i)));
+    expect(rows.filter((r) => r.stage === "3" && r.route !== direction).every((r) => r.position === "")).toBe(true);
   });
 
   it("have no places before the test chose its route, and leave out the test families' tests unless asked for", async () => {
@@ -379,7 +406,7 @@ describe("a test from before the extra round was removed (#190, D-145)", () => {
   it("lists the questions as drawn for the main test only", async () => {
     const rows = await csv(data, { dataset: "questions", withTests: true });
     expect(rows.map((r) => r.question_id)).not.toContain("x-0");
-    expect(rows).toHaveLength(stored.stage1.length + stored.stage2.up.length + stored.stage2.stay.length + stored.stage2.down.length);
+    expect(rows).toHaveLength(everyQuestion(stored).length);
     expect(Object.keys(rows[0])).not.toContain("round");
   });
 });

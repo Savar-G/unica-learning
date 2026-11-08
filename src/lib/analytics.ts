@@ -3,7 +3,8 @@
 // The banner and the footer trigger never import this file. They write the choice in consent.ts,
 // and this file reacts to the change event (this tab) and the storage event (other tabs).
 import { getConsent, subscribeConsent, type ConsentState } from "@/lib/consent";
-import { redactPathTokens } from "@/lib/url-tokens";
+import { isScanEvent, scanStatus } from "@/lib/scan-events";
+import { adminRoute, scanRoute, redactPathTokens } from "@/lib/url-tokens";
 
 type Props = Record<string, unknown>;
 
@@ -18,6 +19,8 @@ export interface Client {
 
 export interface Deps {
   key: string;
+  /** Fixed scan packets use no SDK identity, batching or retry queue. */
+  sendScan?: (packet: { event: string; properties: { status: string; token: string; distinct_id: string; $process_person_profile: false } }, signal: AbortSignal) => Promise<void>;
   load: () => Promise<Client>;
   getConsent: () => ConsentState;
   subscribe: (onChange: () => void) => () => void;
@@ -29,15 +32,12 @@ export interface Deps {
   path?: () => string;
 }
 
-function adminPath(path: string): boolean {
-  try { path = decodeURIComponent(path); } catch { return true; }
-  return /^\/(?:api\/)?admin(\/|$)/.test(path);
-}
+function adminPath(path: string): boolean { return adminRoute(path) || scanRoute(path); }
 
 function adminEvent(event: Scrubbable): boolean {
   const url = event.properties?.$current_url;
   if (typeof url !== "string") return false;
-  try { return adminPath(new URL(url).pathname); } catch { return false; }
+  return adminPath(url);
 }
 
 // Only anonymous offer and flow fields reach analytics. Name, email, postal code and child grade never do.
@@ -79,12 +79,14 @@ function scrubBag(bag: unknown): void {
   const o = bag as Props;
   // PostHog updates previous-page state before before_send, even when that pageview is dropped.
   // A later public pageview must contain neither the admin record path nor time spent on that page.
-  if (typeof o.$prev_pageview_pathname === "string" && adminPath(o.$prev_pageview_pathname)) {
+  if (Object.entries(o).some(([key, value]) => key.startsWith("$prev_pageview_") && typeof value === "string" && adminPath(value))) {
     for (const key of Object.keys(o)) if (key.startsWith("$prev_pageview_")) delete o[key];
   }
   for (const key of Object.keys(o)) {
     const value = o[key];
+    if (value && typeof value === "object") { scrubBag(value); continue; }
     if (typeof value !== "string") continue;
+    if (scanRoute(value) || adminRoute(value)) { o[key] = redactPathTokens(value); continue; }
     if (key.includes("referrer")) o[key] = referrerOrigin(value);
     else if (key.includes("url")) o[key] = stripUrl(value);
     // A page's QR code holds a token in its path (#301).
@@ -93,6 +95,9 @@ function scrubBag(bag: unknown): void {
 }
 
 interface Scrubbable {
+  event?: string;
+  uuid?: string;
+  timestamp?: string | Date;
   properties?: Props;
   $set?: Props;
   $set_once?: Props;
@@ -103,6 +108,7 @@ const PII_KEYS = ["email", "name", "postal", "grade", "$email", "$name"];
 
 // Removes query strings, hashes and referrer paths from PostHog's own URL fields, and any personal field.
 export function scrubEvent<T extends Scrubbable>(event: T): T {
+  scrubBag(event);
   for (const bag of [event.properties, event.$set, event.$set_once]) {
     scrubBag(bag);
     if (bag) for (const key of PII_KEYS) delete bag[key];
@@ -118,9 +124,11 @@ export function createAnalytics(deps: Deps) {
   let optedOut = false;
   // Bumps on every consent change. A queued capture runs only in the epoch that queued it.
   let epoch = 0;
+  const scanRequests = new Set<AbortController>();
 
   const offPage = () => adminPath(deps.path?.() ?? "");
   const allowed = () => deps.getConsent() === "granted" && !offPage();
+  const scanAllowed = () => deps.getConsent() === "granted" && !adminRoute(deps.path?.() ?? "");
 
   const config: Props = {
     api_host: "/ingest",
@@ -146,7 +154,13 @@ export function createAnalytics(deps: Deps) {
     // Host-only cookie, so revocation can always find and delete it.
     cross_subdomain_cookie: false,
     // Last gate: an event captured after a revoke, or one with a stray field, never leaves the page.
-    before_send: (event: Scrubbable | null) => (event && allowed() && !adminEvent(event) ? scrubEvent(event) : null),
+    before_send: (event: Scrubbable | null) => {
+      if (!event) return null;
+      if (event.event?.startsWith("scan_") && !isScanEvent(event.event)) return null;
+      // Scan events can leave only through the fixed transport below. SDK defaults never cross this boundary.
+      if (event.event && isScanEvent(event.event)) return null;
+      return allowed() && !adminEvent(event) ? scrubEvent(event) : null;
+    },
   };
 
   function start() {
@@ -175,6 +189,8 @@ export function createAnalytics(deps: Deps) {
   }
 
   function revoke() {
+    for (const request of scanRequests) request.abort();
+    scanRequests.clear();
     if (client) {
       try {
         // Reset first: it returns PostHog to its default consent, so the opt-out comes after it.
@@ -186,7 +202,7 @@ export function createAnalytics(deps: Deps) {
     deps.clearStorage();
   }
 
-  function sync() {
+  function sync(startPublic = true) {
     const state = deps.getConsent();
     const prev = lastState;
     if (state !== prev) {
@@ -194,19 +210,29 @@ export function createAnalytics(deps: Deps) {
       epoch += 1;
     }
     if (state === "granted") {
-      if (!offPage()) start();
+      if (startPublic && !offPage()) start();
     } else if (state === "denied" || prev === "granted") revoke();
     // "unset" from the start: nothing is loaded, stored or sent.
   }
 
   // beacon: the page is going away (#72), so send now with sendBeacon, which the browser finishes after the page closes.
-  function track(event: string, props?: Props, options: { beacon?: boolean } = {}) {
-    sync();
+  function track(event: string, props?: Props, options: { beacon?: boolean; current?: () => boolean } = {}) {
+    if (event.startsWith("scan_") && !isScanEvent(event)) return;
+    const scanning = isScanEvent(event);
+    sync(!scanning);
+    if (scanning) {
+      const status = scanStatus(event, props?.status);
+      if (!status || !scanAllowed() || options.current?.() === false || Object.keys(props ?? {}).some((key) => key !== "status") || !deps.sendScan) return;
+      const controller = new AbortController(); scanRequests.add(controller);
+      const packet = { event, properties: { status, token: deps.key, distinct_id: "scan-anonymous", $process_person_profile: false as const } };
+      void deps.sendScan(packet, controller.signal).catch(() => {}).finally(() => scanRequests.delete(controller));
+      return;
+    }
     if (!allowed()) return;
     const clean = sanitizeProps(props);
     const queuedIn = epoch;
     const send = () => {
-      if (!client || epoch !== queuedIn || !allowed()) return;
+      if (!client || epoch !== queuedIn || !allowed() || options.current?.() === false) return;
       if (options.beacon) client.capture(event, clean, { transport: "sendBeacon", send_instantly: true });
       else client.capture(event, clean);
     };
@@ -217,8 +243,8 @@ export function createAnalytics(deps: Deps) {
   function begin() {
     if (started) return;
     started = true;
-    deps.subscribe(sync);
-    deps.whenIdle(sync);
+    deps.subscribe(() => sync());
+    deps.whenIdle(() => sync());
   }
 
   return { begin, sync, track };
@@ -276,6 +302,11 @@ export function getAnalytics() {
   holder.__unicaAnalytics ??= createAnalytics({
     key,
     load: () => import("posthog-js").then((m) => m.default as unknown as Client),
+    sendScan: async (packet, signal) => {
+      if (signal.aborted || getConsent() !== "granted") return;
+      await fetch("/ingest/i/v0/e/?ip=0", { method: "POST", credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store", signal,
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(packet) });
+    },
     getConsent,
     subscribe: subscribeConsent,
     clearStorage: clearPostHogStorage,

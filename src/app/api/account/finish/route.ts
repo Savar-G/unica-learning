@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
+import { after } from "next/server";
 import { isAuthSessionMissingError, type AuthError } from "@supabase/supabase-js";
 import { cleanChild, cleanDetails, fail, validPassword, type AccountResult, type FinishPayload } from "@/lib/account";
-import { createFamily, isPhone, linkOrigin, sendSignInLink } from "@/lib/account-server";
+import { createFamily, isPhone, linkOrigin, sendSignInLink, sendWelcome } from "@/lib/account-server";
 import { adminClient, sessionClient } from "@/lib/supabase-auth";
 
 // The one step that writes a family: the parent row and the first child (#63, #82). The id and the email come from the
@@ -101,6 +102,13 @@ export async function POST(request: Request) {
   if (family.status === "unavailable") return fail("unavailable", 409);
   if (family.status !== "created") return fail("store_failed", 502);
 
-  const linkSent = isPhone(request.headers) && (await sendSignInLink(admin, user.id, family.child, linkOrigin(request))) === "sent";
+  const phone = isPhone(request.headers);
+  const linkSent = phone && (await sendSignInLink(admin, user.id, family.child, linkOrigin(request), { welcome: true })) === "sent";
+  // The founders' welcome (D-225), after the answer so the signup does not wait for it. On a phone the link email above
+  // is the welcome, so the parent gets one email.
+  if (!phone) {
+    const welcome = { name: details.name, email: user.email, childName: child.firstName, childId: family.child, origin: linkOrigin(request) };
+    after(() => sendWelcome(welcome));
+  }
   return Response.json({ ok: true, linkSent } satisfies AccountResult);
 }

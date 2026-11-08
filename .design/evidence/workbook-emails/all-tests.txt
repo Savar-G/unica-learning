@@ -1,0 +1,12 @@
+
+> unica-learning-landing-page@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.11 /Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/workbook-delivery-emails
+
+
+ Test Files  181 passed (181)
+      Tests  9129 passed (9129)
+   Start at  15:40:40
+   Duration  56.24s (transform 10.28s, setup 0ms, import 33.82s, tests 215.34s, environment 9ms)

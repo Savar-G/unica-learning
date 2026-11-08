@@ -1,3 +1,4 @@
+import { formatCalendarDate, formatInZone, localDay, PACIFIC_ZONE } from "@/lib/family-time";
 // The admin dashboard and activity log (D-099) in plain data: every family with its stage, the KPIs of a date range,
 // the daily series, the email log and the activity events. Pure: no network, database or clock (the caller passes
 // `now`), so the pages only fetch (dashboardRows in admin-store) and show. Days are Pacific days.
@@ -19,7 +20,7 @@ export interface RawCard {
   saved_in_stripe_only?: boolean;
 }
 export interface RawWaitlist { id: string; created_at: string; parent_id: string; child_id: string; province: Province }
-export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
+export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
 /** A Stripe subscription of a saved card's customer. Times are ISO. `amount`: the price per unit, in cents. */
 export interface RawSubscription {
   id: string;
@@ -86,7 +87,7 @@ export const STAGE_ACTION: Record<Stage, string> = {
   started: "The continue reminder goes out automatically.",
   finished: "Report sent. Waiting for the parent to choose a plan.",
   card_started: "The parent left the payment page. Consider a personal email.",
-  card_saved: "When the first workbook ships, press \"Workbook shipped: start plan\" under Cards and waitlist.",
+  card_saved: "After you confirm the first workbook has arrived at the family's home, press \"Workbook delivered: start free month\" under Cards and waitlist.",
   trial: "In the free first month. Stripe emails the parent a reminder 7 days before the first charge on day 30.",
   paying: "Nothing to do.",
   cancelled: "The Stripe subscription ended. Consider asking the parent why.",
@@ -109,18 +110,25 @@ export function monthlyAmount(s: RawSubscription): number {
 
 // Emails
 
-export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe";
+export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe";
 export interface EmailKindInfo { kind: EmailKind; label: string; subject: string; to: string; trigger: string }
 /** Every email the site logs. The subjects follow reminder-email.ts and report-email.ts. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = [
-  { kind: "start", label: "Start reminder", subject: "{child} has not started the free math test", to: "Parent", trigger: "Account made, no test started" },
-  { kind: "start_followup", label: "Last start reminder", subject: "Last reminder: {child}'s free math test", to: "Parent", trigger: "Day 3, still no test started" },
-  { kind: "continue", label: "Continue reminder", subject: "{child} can finish the math test", to: "Parent", trigger: "Test started, not finished" },
-  { kind: "come_back", label: "Come back reminder", subject: "{child} can start the math test again", to: "Parent", trigger: "Test expired before the end" },
+  { kind: "start", label: "Start reminder", subject: "{child}'s free math check is ready", to: "Parent", trigger: "Account made, no test started" },
+  { kind: "start_followup", label: "Last start reminder", subject: "A quick question about {child}'s math test", to: "Parent", trigger: "Day 3, still no test started" },
+  { kind: "continue", label: "Continue reminder", subject: "{child}'s math test is saved", to: "Parent", trigger: "Test started, not finished" },
+  { kind: "come_back", label: "Come back reminder", subject: "{child} can start the math test fresh", to: "Parent", trigger: "Test expired before the end" },
   { kind: "report", label: "Report email", subject: "{child}'s math report is ready", to: "Parent", trigger: "Test finished, report built" },
   { kind: "alert", label: "Report alert", subject: "Test finished: {child}, grade {grade}, working at ...", to: "You", trigger: "Test finished, report built" },
   { kind: "unsubscribe", label: "Unsubscribe", subject: "No email: the parent turned reminders off", to: "-", trigger: "Parent clicked unsubscribe" },
+  { kind: "maya_daily", label: "Daily Maya email (retired)", subject: "{child} talked with Maya on ...", to: "Parent", trigger: "Replaced by the weekly Maya email" },
+  { kind: "maya_weekly", label: "Weekly Maya email", subject: "Weekly Maya email", to: "Parent", trigger: "Monday at 7 a.m. family time, after a week with calls" },
+  { kind: "maya_unsubscribe", label: "Maya unsubscribe", subject: "No email: the parent turned Maya emails off", to: "-", trigger: "Parent clicked unsubscribe in a Maya email" },
+  { kind: "monthly_summary", label: "Monthly summary email", subject: "{month} summary: {child}", to: "Parent", trigger: "The 1st of the month at 7 a.m. family time, when a summary is offered" },
+  { kind: "monthly_summary_unsubscribe", label: "Monthly summary unsubscribe", subject: "No email: the parent turned monthly summary emails off", to: "-", trigger: "Parent clicked unsubscribe in a monthly summary email" },
 ];
+/** An unsubscribe row: no email went. */
+export const isUnsubscribe = (kind: EmailKind) => kind === "unsubscribe" || kind === "maya_unsubscribe" || kind === "monthly_summary_unsubscribe";
 export const EMAIL_LABEL = Object.fromEntries(EMAIL_KINDS.map((k) => [k.kind, k.label])) as Record<EmailKind, string>;
 
 /** What Resend said happened to an email after it took it (D-104). */
@@ -140,8 +148,8 @@ export function deliveryLine(e: EmailEvent): { text: string; bad: boolean } | nu
 }
 /** "Clicked 2 times" for an email the parent clicked (D-105), else null. */
 export const clicksText = (e: EmailEvent) => (e.clicks ? `Clicked ${e.clicks.count === 1 ? "once" : `${e.clicks.count} times`}` : null);
-/** The emails a parent can click: every one to the parent with a button (not the alert to Savar, not an unsubscribe). */
-export const clickable = (e: EmailEvent) => e.kind !== "alert" && e.kind !== "unsubscribe";
+/** The emails whose clicks are counted: every one to the parent with a counted button (not the alert to Savar, not an unsubscribe, not the Maya recap, which has no button, not the monthly summary, whose links count no click). */
+export const clickable = (e: EmailEvent) => e.kind !== "alert" && e.kind !== "maya_daily" && e.kind !== "maya_weekly" && e.kind !== "monthly_summary" && !isUnsubscribe(e.kind);
 /** The dot of an email in the lists: failed when it did not reach the parent. */
 export const emailDot = (e: EmailEvent) => (emailFailed(e) ? "failed" : e.status);
 
@@ -279,7 +287,7 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       const grade = e.assessment_id ? (testById.get(e.assessment_id)?.grade ?? null) : null;
       return {
         id: e.id, kind: e.kind, at: e.sent_at ?? e.created_at, familyId: p.id, familyName: p.name, childName: child, attempts: e.attempts, error: e.error,
-        status: e.kind === "unsubscribe" || e.status === "sent" ? "sent" : e.status === "failed" ? "failed" : "pending",
+        status: isUnsubscribe(e.kind) || e.status === "sent" ? "sent" : e.status === "failed" ? "failed" : "pending",
         subject: subjectFor(e.kind, child, grade),
         delivery: deliveryOf.get(e.id) ?? null,
         clicks: e.clicks > 0 && e.first_clicked_at ? { count: e.clicks, first: e.first_clicked_at } : null,
@@ -336,7 +344,7 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       subscription: shown ? { status: shown.status, since: shown.created, endedAt: shown.endedAt, monthly: (paying.length > 0 ? paying : trialing).reduce((n, s) => n + monthlyAmount(s), 0) } : null,
       subscriptions: subs,
       emails,
-      lastEmail: emails.find((e) => e.kind !== "alert" && e.kind !== "unsubscribe") ?? null,
+      lastEmail: emails.find((e) => e.kind !== "alert" && !isUnsubscribe(e.kind)) ?? null,
       unsubscribed,
       nextReminders,
       test: testIds.has(p.id),
@@ -370,7 +378,7 @@ export function activities(families: Family[]): Activity[] {
       if (s.endedAt) add(s.endedAt, "cancelled", "subscription ended in Stripe");
     }
     add(f.reached.waitlist, "waitlist", "joined the waitlist");
-    for (const e of f.emails) add(e.at, "email", e.kind === "unsubscribe" ? "turned reminders off" : `${EMAIL_LABEL[e.kind]}: "${e.subject}"`, e);
+    for (const e of f.emails) add(e.at, "email", e.kind === "unsubscribe" ? "turned reminders off" : e.kind === "maya_unsubscribe" ? "turned Maya emails off" : e.kind === "monthly_summary_unsubscribe" ? "turned monthly summary emails off" : `${EMAIL_LABEL[e.kind]}: "${e.subject}"`, e);
   }
   return out.sort(newestFirst);
 }
@@ -381,9 +389,8 @@ export const RANGES = { today: { label: "Today", days: 1 }, "7d": { label: "7 da
 export type RangeKey = keyof typeof RANGES;
 export const pickRange = (raw: unknown): RangeKey => (typeof raw === "string" && Object.hasOwn(RANGES, raw) ? (raw as RangeKey) : "7d");
 
-const PACIFIC_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" });
 /** The Pacific day of a time, as YYYY-MM-DD. */
-export const dayKey = (iso: string | Date) => PACIFIC_DAY.format(typeof iso === "string" ? new Date(iso) : iso);
+export const dayKey = (iso: string | Date) => localDay(iso, PACIFIC_ZONE);
 /** The day `n` days after `day` (n may be negative). Date arithmetic on the calendar day, so DST never skips one. */
 export function shiftDay(day: string, n: number): string {
   const d = new Date(`${day}T00:00:00Z`);
@@ -441,7 +448,7 @@ const PICK: Record<Exclude<keyof DayCounts, "day">, Pick> = {
   started: (f) => f.tests.map((t) => t.startedAt),
   finished: (f) => f.tests.map((t) => t.completedAt),
   cards: (f) => f.cards.map((c) => c.savedAt),
-  emails: (f) => f.emails.filter((e) => e.status === "sent" && e.kind !== "unsubscribe" && e.kind !== "alert").map((e) => e.at),
+  emails: (f) => f.emails.filter((e) => e.status === "sent" && !isUnsubscribe(e.kind) && e.kind !== "alert").map((e) => e.at),
 };
 const pickSubscriptions: Pick = (f) => f.subscriptions.map((s) => s.created);
 const STUCK_DAYS = 2;
@@ -533,9 +540,8 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
 
 // Words for the pages
 
-const PACIFIC_TIME = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 /** "Oct 12, 6:10 p.m." in Pacific time. */
-export const at = (iso: string | null | undefined) => (iso ? PACIFIC_TIME.format(new Date(iso)) : "-");
+export const at = (iso: string | null | undefined) => (iso ? formatInZone(iso, PACIFIC_ZONE, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "-");
 /** "Last start reminder for Kingston, Oct 18, 1:09 p.m.": a family's next start reminder, or "due now" once its time passed. */
 export const nextReminderText = (r: Family["nextReminders"][number], now: string) =>
   `${EMAIL_LABEL[r.kind]} for ${r.childName}, ${Date.parse(r.at) <= Date.parse(now) ? "due now (the job runs every 15 minutes)" : at(r.at)}`;
@@ -562,7 +568,7 @@ export function progressTestIds(families: readonly Family[], max: number): strin
 }
 export const since = (iso: string | null | undefined, now: string) => ago(iso, now).replace(/ ago$/, "");
 /** "Oct 12" for a YYYY-MM-DD day. */
-export const dayLabel = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-CA", { month: "short", day: "numeric", timeZone: "UTC" });
+export const dayLabel = (day: string) => formatCalendarDate(day, { month: "short", day: "numeric" });
 /** The family's payment in words, for the family panel and page. */
 export function paymentText(f: Family): string {
   const s = f.subscription;

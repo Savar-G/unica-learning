@@ -1,0 +1,217 @@
+# Maya text sessions and the trace format (#322)
+
+A text session runs Maya on one question with text in and text out: no room, no audio. The voice agent (#326), the test bench (#323) and the admin demo (#324) build on it.
+
+## Run one
+
+```sh
+npm run maya:text -- --list
+npm run maya:text -- --question add-27-39 --script scripts/maya-text/no-start.txt
+npm run maya:text -- --question subtract-83-46            # type the child's turns
+npm run maya:text -- --question my-package.json --model openrouter
+npm run maya:text -- --anthropic --script scripts/maya-text/no-start.txt   # Claude API, local key
+```
+
+| Option | Meaning |
+|---|---|
+| `--question <id\|file>` | A sample id (`--list`) or a question package JSON file. Default `add-27-39`. |
+| `--model fake\|openrouter` | `fake` (default): a rule player, no AI. `openrouter`: `AI_MODEL` through OpenRouter. It needs `OPENROUTER_API_KEY` in the environment or in `.env.local`. Without the key the AI is off and the command stops. |
+| `--model anthropic`, `--anthropic` | Maya on `claude-sonnet-5-5` and the free-talk review on `claude-haiku-5-5`, through the Claude API (`src/lib/ai-anthropic.ts`). The key is `ANTHROPIC_API_KEY` or the macOS Keychain item `anthropic-unica-tools`. A local tool only. |
+| `--no-free-talk` | Every word Maya says from code. Free talk is on by default here, as in the admin demo (D-197). |
+| `--script <file>` | Child turns, one per line. Without it, turns come from stdin. |
+| `--runner livekit\|plain` | `livekit` (default): LiveKit Agents for Node in text mode, with no room. `plain`: the text adapter alone. |
+| `--trace <file>` | The trace path. Default `traces/maya/<call id>.json` (not committed). |
+| `--seed <n>`, `--name <name>` | The wording seed and the child's name. |
+
+Script lines: a child turn, `/wait <seconds>` (the clock moves on and the pause policy runs), `/write start`, `/write done`, `/quit` (the child hangs up: the call ends as `child_stopped`). `#` starts a comment. A script or piped input uses a simulated clock (4 seconds a turn, plus each `/wait`). Typed input uses the real clock.
+
+`OPENROUTER_API_KEY` is a Vercel Secret variable, so `vercel env pull` cannot read its value. Put the key in your shell for a real-model run.
+
+## What reaches the child
+
+Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-text.ts`):
+
+1. The model gets the session's offers for this turn: the allowed acts, their code-written lines, the warm groups with their phrases and original pick ids, and the board offers. It returns a version 2 proposal (`src/lib/maya-model.ts`, prompt `PROMPT_VERSION`).
+2. `step` checks the proposal. The board core (`applyBatch`) then checks each board batch the session builds from it.
+3. If either refuses, the model is asked again once, with the refusal's code and reason. With the danger known, it is not: code's guidance follows at once (#589).
+4. If the second proposal is refused too, or the model fails, code replaces it with a fallback (`fallbacks` in `src/lib/maya/session.ts`). A fallback is code lines or a bank phrase from the session's own offers, with no free talk and no board, and `step` checks it like any proposal.
+5. If no fallback is accepted, the call ends as a technical issue and Maya says nothing.
+
+**The fallback keeps what code can check (#389).** Only the model's words are replaced. The fallback carries each answer of the refused proposals' readings that code checks alone, as it checks the answers of an accepted proposal: the child said the number in this turn and kept it, the step is a worked step, a final answer is the last number the child kept outside their explanation (D-199), and the model's verdict is the one the answer key and the worked steps give. An answer whose verdict code does not confirm is dropped, never turned round. So a right step is recorded and said ("Yes! 7 + 9 = 16."), and the help goes on from the first step still not done; a right final answer is accepted. No other field of a refused reading is kept: `paper`, `help`, `writing`, `offTopic`, `unsafeRequest` and `correctsHearing` are the model's word only, and would change the outcome or the help allowed. As before, `step` keeps a refused reading's safety, stop, unclear and no-start fields, which only make Maya more careful (the safety guidance, a close, a confirmation, the easier example).
+
+Three rules of the controller go with it. A checked right answer on the child's question shows they have started: a no-start no longer holds, and the easier example does not start after it. Writing that ends after the answer is solved is the child writing it (`wrote`): the request to write is no longer offered, and neither is it after the reading `paper` was accepted. The final step after the last column ("result") has its own help line, an H0 invite to put the whole answer together (`step.invite` with the step `result`).
+
+## The child's final answer and the final step (D-199)
+
+**Reading the final answer.** Code reads the child's final answer without the answer key (`readAnswer`, `src/lib/maya/numbers.ts`). First the last word that takes something back wins ("no", "wait", "I mean", "actually", "oops"): "65, no, 66" is 66. Then the child's explanation is left out: it runs from "because", "since", "cause" ("'cause"), "cuz" or "coz" to the end of that turn, or to a word that takes something back. The final answer is the last number left, unless it is inside an operation ("27 plus 39") or offered as a choice ("66 or 56?").
+
+| The child says | Final answer |
+|---|---|
+| So I got 66, because six tens and six ones. | 66 |
+| I think it's sixty-six because seven and nine make sixteen. | 66 |
+| 65, no, 66. | 66 |
+| 66 because six tens and six ones. No wait, 65. | 65 |
+| I got 56 because 27 and 39 make 66. | 56 |
+| I got 66 because I added them. | 66 |
+| Because seven and nine make sixteen. | none |
+| Because 7 + 9 is 16, it's 66. | none: Maya asks again |
+
+A number in an explanation is never the final answer, so an explanation that comes first leaves no answer, and Maya asks rather than guess. A step answer may still come from the explanation ("seven and nine make sixteen" is the ones). A number form code cannot read ("three quarters", "66 tens") holds the turn for a confirmation only when it is outside the explanation. A place word after a number from 0 to 19 ("6 tens", "sixteen ones") names a column's digits, as a child says a step (practice corrections): the number is kept as that step's answer, never as the final answer, and needs no confirmation. The behaviour gate judges an accepted answer by the same rule.
+
+Four more rules (practice corrections). A number right after "the", "this" or "that" names a digit the child points at ("I think it's sixty-six. I added the one I carried.", "I wrote the 6"): it is never the final answer, and the sentence of the real final answer is the one checked for plain answer words, so "I would say 66. I added the one I carried." is still confirmed first. A sure, right final answer is never refused as a wrong step ("I think the tens make 66." cannot get "Not yet" for the tens). A wrong final answer the child gave outside their explanation may be judged wrong although a later number is the final one ("I got 56. I did 7 plus 9 is 16, so I wrote the 6. Then 2 plus 3 is 5."), so the steps in the same turn count; never when the final number is right or the answer stands, and never as right. The plain answer words also take where the answer went and how a child ends a turn ("I got 66. I wrote it on my paper.", "I'm done. Thanks, Maya!"): "paper", "page", "board", "sheet", "notebook", "finished", "thanks" ("thank you"), "yay", "hooray", "woohoo", "yippee", "Maya".
+
+**The final step.** Once every work step is done, the final step has one help line, the H0 invite (`step.invite` for "result"). Each checked wrong final answer after that counts (`finalMisses`). After the second, Maya may only give the answer (`give_answer`, or a confirmation): the gentlest help again is refused. Code says two lines: how the parts make the answer (`answer.parts`, filled from the checked answer's digits by place: "6 tens and 6 ones make 66."), then the answer and the request to write it (`answer.give`). Neither comes from the model, and the model may add only a warm phrase before them. The call then goes on as after any given answer: the answer is solved by Maya, the assistance is answer_given, the highest hint is H4, understanding stays uncertain, and the next turn closes. A right final answer is still accepted after one wrong one. Code's fallback gives the answer first on this step. Wrong final answers before every column is done do not count.
+
+## Steps already done, and where a carry comes from (practice corrections)
+
+Practice runs on the Claude subscription (PR #401) found Maya asking for work the child had done, and naming a carried 1 the child never wrote. The controller now holds these rules:
+
+1. **The easier example** starts only for a child who cannot start (`reading.start` is `no_start`, now or before) or asks for help (`reading.help`), and never after the child has done a step of their question. The model is still offered it before it reads the turn; its reading decides.
+2. **"Now you try yours"** (`try_target`) is never said once the child has done a step of their question. After the whole example, a child who goes on with their own question and gets a step right is guided on from the next step (`guide` is allowed in MODEL_EXAMPLE then).
+3. **Once the child's right answer stands**, a reading that repeats what code already found right (the final answer, or a step) is left out, never judged again, and the model's `unclear` does not hold the turn: no "I heard 66. Is that right?" after "That's right: 27 + 39 = 66". A wrong answer is still judged (the child may change their answer), and a number form code cannot read still asks for a confirmation. An explicit withdrawal after acceptance clears the solution, even when the model repeats its old reading. A child who only says they cannot explain does not withdraw the answer.
+4. **The check after the answer** (CHECK) asks only about steps the child did not work out aloud: no `check.explain` for a done step, and no `check.thinking` when every step is done. Once the answer stands, `ask_write` must ask something while the child has not written: the request to write (`write.answer`) or a question about the work; "That's right: 27 + 39 = 66." alone is refused.
+5. **Regrouping in addition.** A column whose regroup is due gets the regroup line (`step.regroup`, template `regroup.add`, H1) before any other help line about it; only the H0 invite stays offered beside it. The line is filled from the column whose sum makes the carry: "7 + 9 = 16. 16 is 1 ten and 6 ones. Write 6 in the ones. Carry 1 ten to the tens." The regroup is due for the column that takes the carry when the child's checked answer for it is its sum without the carry (5 for the tens of 27 + 39), when their checked final answer is the addition worked with no carry (56), or when they say they did not carry or ask what the carried digit is ("What 1? I didn't carry.", "What's a carried one?"). It is due for the column that makes the carry when the child plans to write its two-digit sum there ("I write 16 under the ones"); that column is then not done, whatever the reading says, and its regroup line has the slots `{ step, other: "carry" }`. A write plan must place the entire sum in that column. A note on paper, a negated plan, or a question about writing does not reopen completed work. Each requirement records the carry source, destination, and affected column. Once the line is said, that carry is explained and the usual help lines come back. It does not mark an adjacent carry as explained. When a column has an unexplained incoming carry and an outgoing carry, the incoming carry is explained first. Old column-only explanation records are not proof that either carry was explained. A new denial or two-digit write plan requires the explanation again. The line counts as new help, so a ladder that already said the carry line at H1 twice may still say it. Code's fallback says it first while it is due.
+
+Every regroup wording is new and waits for Savar's approval. See [the line review](maya-practice-lines.md).
+
+## Fractions (D-204, #407)
+
+Maya teaches adding and subtracting two fractions (`fraction-add`, `fraction-subtract`), with like or unlike denominators. A question with a step Maya has no lines for stays held (`content_issue`): a mixed or whole number to add, multiplying, dividing, simplifying alone and equivalent fractions (`TEACHABLE_KINDS`, `TAUGHT_STEP_KINDS`).
+
+**Reading fractions.** In a fraction call only, `readAnswer` and the other readers take `{ fractions: true }` (`readOptionsFor`), which first writes the exact spoken forms code reads (`writtenFractions`, `src/lib/maya/numbers.ts`). Anything else stays unread, so Maya confirms it. In a whole-number call nothing changes: "three quarters" is still confirmed.
+
+| The child says | Read as |
+|---|---|
+| three quarters, three fourths, 3 over 4, 3/4 | 3/4 |
+| fourteen sixteenths, 7 eighths | 14/16, 7/8 |
+| a half, one eighth (at the end of a clause, or before "is", "plus", "because") | 1/2, 1/8 |
+| one and three eighths, 2 and a half, 1 and 3/4, 1 3/8 | 1 3/8, 2 1/2, 1 3/4, 1 3/8 |
+| three quarter, one quarters, 7 8ths, five twenty-fourths, three quarters of 8, six sixty sixteenths | unread: confirmed |
+| a third time, a quarter past 3 | not a fraction |
+
+Each fraction must be one complete expression. The operands must be next to the slash or "over". A sentence end or a new line cannot join them. Maya confirms incomplete or repeated fractions, zero denominators, signed fractions, and mixed forms with an improper fractional part. A separate numeric fragment in the same expression must belong to a supported mixed form. Other words cannot join the fragments; for example, "one whole three eighths" is confirmed without retaining either part. No number part of these forms is scored. Maya also confirms a fraction with an "of" phrase, including "of it", or an "and" inside its number words. Only a fraction call reads a mixed answer as one value.
+
+**Right answers.** `rightForQuestion` (`src/lib/maya/fractions.ts`): the package's rules (`isRightAnswer`: the answer or any simplest form, so 11/8 and 1 3/8 are both right), and an equal fraction in another form (14/16 for 7/8) unless the question asks for the simplest form or lowest terms, or the package lists that form as wrong. Maya says an accepted equal form back as the child said it ("Yes! 3/4 + 1/8 = 14/16.", "Please write 14/16 on your paper.") and does not bring up simplest form. When the question asks for it, an equal fraction is the right amount (`isEqualForm`): not a wrong final answer and not a failed attempt; every work step counts as done; Maya says `check.equal` in the question's own words, and the final step's help adds H1 and H2 lines to simplify the child's own fraction.
+
+For a mixed answer such as `1 2/8`, this help uses the fractional part (`2/8`) and keeps the whole part (`1`). A form listed as wrong does not enable `check.equal` unless the question asks for simplest form. These checks do not change which fraction questions Maya teaches. The fraction lines still need Savar's approval.
+
+Expression grouping uses the existing correction and explanation grammar. It preserves multiword corrections such as "I mean" and every supported explanation word, including "cuz" and "coz". Correction detection uses recognized fraction spans at their original text positions, so "actually a half" and "actually 1/2" follow the same rules. Ordinary connecting words do not become expression boundaries.
+
+An equal-form final answer must be committed before it completes any work step or receives `check.equal`. A doubtful answer such as "Maybe 14/16?" is confirmed first. This check also applies to code fallbacks. An ordinary wrong answer still follows the wrong-answer path.
+
+**Steps.** The package's steps: the common denominator (`3/4 = 6/8`; the child says 6/8 or 6, never 3/4), the numerators (`6 + 1 = 7`), and the simplest form only when the question asks for it (`teachSteps`). The mixed number is never a step. No help line, judged step or shown step says the final fraction: the child puts it together on the final step. Saying back an equal form the child said is not giving the answer away; the answer's own written form is.
+
+**Board.** `question.strips` draws each fraction as a strip (denominators up to 12), the second below the first; `question.common` draws them in the common denominator once that step is done or shown; `example.strips` draws the easier example.
+
+The scripted gate checks these outputs in C38, C38b and C38c. It compares each complete turn exactly against its required code-line variants. The acceptance and writing lines must both use 14/16. The H1 simplification hint must use the `point.simplify` variants filled with 14 and 16. Extra text, substituted lines and changed spacing cannot pass. The gate also reads the strips from each saved turn. Controller sabotage tests cover changed answers, a missing equal-answer explanation, a wrong writing instruction, a repeated explanation instead of an H1 hint, and wrong strip values or placement. Separate sabotage tests check an early final answer and acceptance of a wrong answer. See `docs/maya-gate.md`. These checks use a fake model. A real-model run for fraction teaching and the AI review remains a separate check.
+
+## Free talk (D-197)
+
+With `freeTalk` on (the admin demo, the practice suite, this command line), the model may write its own words (`{ "talk": ... }`) in a turn with no math line. Math, answers, hints and steps never come from them. Each piece is said only when both checks pass:
+
+1. The code guards (`freeTalkProblem`, `src/lib/maya/phrases.ts`): no banned everyday phrase (`PLAIN_LANGUAGE_BANNED`, D-202: "in all", "altogether", "all together", "total", "left over"), an allowed opener, no request, no math, no work word, no pointing back, at most three short sentences (`FREE_TALK_LIMITS`), not the child's name. A few everyday phrases about the conversation pass although a word in them is on a list (`SAFE_PHRASES`: "keep secrets", "secrets to share", "you told me", "thanks for sharing", "you shared it", "right here", "feel that way"), and "I want to" or "I don't want to" is a statement, not a request. The word alone stays refused ("Keep going.", "I told you.", "Share them.", "That's right!").
+2. The review (`src/lib/maya-talk-review.ts`): a separate small AI call (`MAYA_REVIEW_MODEL`, default Claude Haiku 5.5) that judges the line against `NEVER_SAY` (`src/lib/maya/talk-review.ts`): what Maya must never say to a child. It reads the line, the child's last turn and the last turns of the call. A failed call, a time-out (8 seconds) or an answer outside its schema counts as a fail. Brief empathy that names what the child told ("I'm sorry your grandma is sick. That sounds really hard.") passes; asking more about it fails. "A grown-up you trust can help", naming no person, passes only for a child who says they are sad, worried, scared or unsafe; to any other child, or with a named person, it fails (`NOT_OK_TALK`). Check the review with `npm run maya:practice -- --anthropic --review-check`: each `NEVER_SAY` and `NOT_OK_TALK` line must fail and each `OK_TALK` line must pass.
+
+The adapter steps the proposal once with no reviews, to learn which words the session would say. It reviews those (in parallel), then steps the proposal again with the reviews. A piece that fails a check, or has no review, is replaced by a bank phrase of the same purpose (for small talk, a reply that fits any child turn: `FEELING_SMALLTALK` when the child's turn tells a hard feeling, such as "Aw, it sounds hard. I'm glad you told me.", else `NEUTRAL_SMALLTALK`, such as "Thanks for telling me."; neither names a detail of what the child said); the turn never fails for it. A refused proposal (free talk beside a math line, for example) is never reviewed.
+
+**Common requests have code-written replies (practice corrections).** Three bank groups answer what children often ask, and the model picks the phrase by its number (`pick`) instead of writing its own words: `mayafacts` (a question about Maya: "I'm an AI, so I don't live anywhere."), `promises` ("I can't promise a grade. I can help you learn this.") and `praise` ("I can't say who is smartest. I'm glad you're ready to learn."; effort praise only for work the child did in the call). Code offers effort praise only after at least two distinct child turns have checked attempts, right or wrong. Before that, only the existing thank-you and readiness choices are available. The model input lists eligible phrases with their original ids in a parallel `picks` array. The controller enforces the same condition for explicit picks and automatic selection. They are bank phrases, so neither the code guards nor the review read them, and they work with free talk off too. When the model writes its own words for such a request anyway and they fail a check, code picks the reply that answers the child's turn (`replyFor`, `src/lib/maya/phrases.ts`) instead of the neutral phrase, once a turn: a fail-closed choice among those code-written phrases only (a turn that fits none, or two kinds at once, keeps the neutral phrase). Every phrase of the three groups is new and waits for Savar's approval (D-202).
+
+The model ends a free-talk reply with a phrase from the `back` group ("Shall we get back to our question?"), code-written and with no math, so the reply also leads back to the question; the next turn restates it with a line. Maya confirms what she heard at most twice in a row, and never after the answer is accepted. An echo frame never repeats an insult ("dumb", "stupid" ...): code picks a frame with no slot. The easier example starts with its intro line (`example.intro`) in the turn of its first step; a first step without it is refused.
+
+A request for sexual, violent or other harmful content (`reading.unsafeRequest`) gets the decline line `redirect.decline` ("I can't talk about this. I'm here to help with math.", one fixed wording, approved by Savar on 2026-11-01) and no free talk, then the question again.
+
+Board commands do not change with free talk: Maya draws only through code's board offers (`draw`). Only the board core's tests read the model's own commands (`modelBoard`).
+
+For children's calls, free talk follows one setting: `MAYA_FREE_TALK` (`src/lib/maya-free-talk.ts`, on unless it is `off`).
+
+## Plain language (D-202)
+
+Maya follows the plain-language rules of the workbooks (D-201), for children aged 6 to 12:
+
+1. Short sentences, with one idea or action in each ("Multiply 4 × 7. Then add the carried 2.", not "Multiply 4 × 7, then add the carried 2.").
+2. Everyday words. Never "in all", "altogether", "all together", "total" or "left over". A question about a quantity names the thing again ("How many plums does Gus have now?").
+3. The math words the curriculum teaches stay (tens, ones, regroup, ten-frame, take away). Only everyday wording gets simpler.
+4. In any story Maya tells, things only do what they really can (a toy does not feel or talk, a number does not wait).
+
+Every code line (`TEMPLATES`, `src/lib/maya/lines.ts`) follows them, and `src/lib/maya/math-lines.test.ts` checks the banned phrases in every filled line and every shown step, and that no line joins two ideas with ", so", ", then" or ", because". One exception: Savar approved "Now put it all together. What is {expr}?" (`invite.result`) as it is. A changed wording stays at its place in its list, so its id (`key#index`) in the child's wording history (#375) stays. The existing warm-talk phrases keep the newer approved wording from PR #402. The three new reply groups wait for Savar's approval.
+
+For the model's own words, the rules are in the prompt (`SYSTEM_PROMPT`, `maya-text-11`; `maya-text-12` adds the reply groups, the regroup line and the example rule; `maya-text-13` adds the original ids for filtered phrase choices; `maya-text-14` adds the fraction reading, the step forms and `check.equal`) and in the review (`plain_language` in `NEVER_SAY`, `maya-talk-review-5`). Code checks only the exact banned phrases (`plainLanguageProblem`): in free talk and in an echo, a phrase that holds one becomes the bank phrase of the same purpose, and the review is not asked. Most of them were already refused as math words ("in all", "altogether", "left"); "all together" was not.
+
+## Inputs from the voice agent (#396)
+
+The text adapter takes three inputs that only speech brings. The admin demo and the command line do not send them.
+
+| Input | Session event | What happens |
+|---|---|---|
+| `partial(text)` | `child_turn` with `final: false` | The child talks over Maya. Her output stops (`cancelled` in the output: stop the audio and drop board batches not yet shown) and nothing is judged. It returns without waiting for a model call or free-talk review. The interrupted input returns no speech or board batches. Its late result cannot change the session or add a Maya trace turn. Maya does not answer; the full turn comes through `child`. |
+| `mayaSaid(text)` | `maya_said` | What Maya actually said in one utterance from the current output batch. Each report consumes the matching unspoken utterance. Words that are not her approved text stop her output and start `REPAIR_MAYA`: the repair comes first (`repair` act), then the teaching goes on. Her approved text changes nothing. |
+| `contentProblem(detail)` | `content_problem` | The package turns out wrong during the call: the content hold (`CONTENT_HOLD`), no more teaching, a close, outcome `content_issue`. In the safety state the safety path goes on and the outcome stays `safety`. A problem that comes while an input runs is taken before that input's next Maya turn. |
+
+## Safety guidance goes out first (#589)
+
+With `onGuidance` set (the voice call), the session gives accepted safety guidance to that function at once and records it as delivered, then asks the model for the close. The input's own output holds only what comes after. With `channel: "chat"`, the close is code's fallback and no close call is made, the one Maya turn a trace accepts with a fallback and no model attempt. Other callers still get the guidance and the close together. See [Safety guidance goes first](maya-voice.md#safety-guidance-goes-first-589).
+
+## Cancellation and pending work
+
+The version 6 saved record has an initial state, a committed checkpoint, and an ordered `log` after that checkpoint. The checkpoint contains plain controller data and board batches. The tail has fewer than 64 events and fewer than 64 KiB of JSON text. A call has a 256 KiB event-content budget. It ends as a technical issue if the next event would exceed that budget. This also bounds saved trace growth. The 1,000-partial regression requires a saved record below 500 KB and resume below 200 ms. The adapter appends each input at receipt. It also appends each model response with its request id, each review result, each fallback, each output delivery and each recovery. The tail can include late responses and inputs after the call has ended. Each checkpoint replaces the earlier tail. Request ids increase across checkpoints.
+
+`maya-text-log.ts` folds these records through the controller. The adapter caches the fold for the next input. Resume ignores the derived cache and applies the tail to the committed checkpoint. Older records without a checkpoint replay from their initial state. No promise or abort signal enters the fold.
+
+A complete child turn or partial turn supersedes an active request. An explicit terminal event ends that work. A speech report never aborts model work. A matching report consumes its output approval and returns without another provider request. An unmatched report requires repair after the pending request settles. Its late response stays in the log but has no effect. Writing and clock events wait behind the earlier child response, including across a retry or resume. A writing event belongs to that complete turn. It cannot mark a replacement turn as written. A content problem changes the response policy at receipt. It retains the current request's child reading, so a safety disclosure in that reading still takes priority over content. The controller refuses teaching in the content hold.
+
+The fold records accepted speech as pending output. Delivery records consume that output exactly once. Cancellation records discard ordinary pending output. They retain opening, repair and safety duties. A content hold or terminal event retains safety output. The fold rebuilds the controller from the committed controller snapshot and the unsettled controls when an output is discarded. It commits controls before the first output that can still be cancelled. It keeps the priority reading of each discarded proposal. Thus an unspoken example cannot advance the board, hint or example state. The checkpoint keeps the state and trace of earlier inputs and responses. Cancelled output approvals retain their output id and cancellation status. They cannot approve a later speech report. The outcome, end time, and safety message come from the controller state.
+
+A terminal event collects every controller effect, including safety speech. Pending guidance precedes the close. A repeated safety reading does not create another guidance duty. An escalation from concern to immediate requires immediate guidance and replaces any unreturned concern guidance.
+
+The saved state holds an obligation ledger. Its pending entries are a small ordered set:
+
+| Obligation | Completed when |
+|---|---|
+| `start_pending` | The start event changes READY to a started call. This event runs before the model request. |
+| `safety_due(severity)` | Required guidance from a priority reading already received is returned. |
+| `opening_due` | The approved AI disclosure is returned. |
+| `repair_due(utterance)` | The required correction is returned. |
+| `child_turn_pending(text)` | An approved response answers the complete transcript. |
+| `content_problem(detail)` | The content hold closes the call. |
+
+Each response uses this priority order: **safety, content problem, repair, opening, child turn**. The start event is a prerequisite. A child answer received during a cancelled opening stays pending. The adapter returns the opening first. It then judges the answer in the same response. A required repair stays pending until the correction is returned.
+
+A new complete transcript explicitly replaces an unanswered transcript. The ledger records the old entry as `dropped`, with the reason. An ended call also records a reason for each obligation it cannot serve. No cancellation silently removes an obligation.
+
+A partial transcript sets `child_speaking`. Ticks, silence checks, writing events, and ordinary responses cannot produce speech or board output in this state. Only safety and content problems can act. A complete child turn clears this state. The existing ten-minute call limit can also end the call without speech. There is no silence-based speaking timeout.
+
+`saved()` copies the log at invocation. It does not wait for a model response. Pending obligations, deferred writing and clock inputs, accepted stop readings, and `child_speaking` survive JSON save and resume. A recovery record invalidates a lost request only if no response was received. A saved candidate goes through review before any new model request. The resumed session continues from the replayed state. Legacy version 1 saved sessions become the initial state of a new log.
+
+## The trace
+
+`src/lib/maya-trace.ts`, `TRACE_VERSION` 6. Read a saved trace with `checkTrace`; it reads versions 1 to 6. Version 6 adds the `controller` attempt source for exact code-written safety guidance from a terminal event. This source cannot carry teaching, board output or a model proposal. The private event log stays in the saved session; the trace records delivered output. Version 5 adds `obligations`. Each entry has an id, kind, time, status, and any input text. A served entry has `servedBy`, the index of its delivered trace turn. A dropped entry has a reason. An ended trace cannot have pending work. Version 4 (#396) adds three turns for the voice agent's inputs, each with `cancelled` (whether Maya's output stopped): `partial` (a partial transcript of the child, always `cancelled`), `maya_said` (what Maya actually said; `cancelled` when it was not her approved text and a repair started) and `content_problem` (`detail`; `cancelled` when the call went to the content hold, false in the safety state). Version 3 (D-197) adds free talk: `reviewer` (the review's model and prompt version, or null), and on the accepted attempt `talk` (each piece of the model's own words: `proposed`, `code` (null when the code guards passed, else why not), `review` (`pass`, `fail`, `error` or `not_run`), the `rules` and `reason` of a failed review, and `shown`, what was said) and `reviewMs`. `checkTrace` refuses a piece shown as proposed unless both checks passed, a piece not shown as proposed unless it became a bank phrase, a review after failed code guards, and an unknown rule. The admin demo shows these pieces under "Free talk" in a saved call. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose. It is always the last turn, and the call's outcome is `child_stopped` (or safety, a content issue or solved, which come first), never `technical_issue`. A trace holds:
+
+- `model`: the model id and the prompt version. `versions`: the proposal, line set and session versions.
+- `question`: the package id, ref, text and `hash` (`sha256:` of its canonical JSON).
+- `turns`: start, child, tick, writing, technical, hang-up, partial, maya_said, content_problem and Maya turns. A Maya turn holds the state before and after, every attempt (`model`, `repair`, `fallback`) with its proposal and refusal or error, and the `output` that reached the child.
+- `board`: every batch sent, with its turn and commands.
+- `outcome`, and `counts` (refusals, repairs, fallbacks, model errors, silent turns). The bench takes its counts again from `turns`.
+
+`checkTrace` checks every field and every nested record: types, enums, the 64-hex hash, the board links and the counts against the turns. Version 5 obligation checks require text for child turns and content problems, boolean uncertainty, text alternatives, and a severity for safety only. A served obligation has a delivery reference. A dropped obligation has a reason. A pending obligation has neither. It returns the path of the first bad field.
+
+**Every session ends with a trace.** Call `finish()` in a `finally`. If the call has not ended, `finish()` ends it as a technical issue, and starts it first if it never started. `finish({ reason: "child_stopped" })` ends it as a hang-up instead (a `hang_up` turn, the session event `hang_up`): only a real failure records `technical_issue`. An input that throws also ends the call before the error goes on. The command line (`src/lib/maya-text-run.ts`) writes the trace even when the script cannot be read, or when LiveKit does not start or close.
+
+**Errors.** A trace never stores an error's own text. A provider's or a model's message can hold a key in any form, so the trace keeps only a code from `ERROR_MESSAGES` (`http_401`, `http_429`, `http_5xx`, `timeout`, `network`, `bad_json`, `schema_invalid`, `refused_by_provider`, `local`, `unknown`, and others), that code's fixed message, and the HTTP status. `checkTrace` refuses any other code, message or field. The raw text goes only to the `onError` hook; the command line prints it to stderr.
+
+**Child data.** The trace writes the child's profile name as `{name}`. As a second layer, the text fields (child turns, proposals, refusal reasons, technical details) also have key-like text and the configured key values written as `[secret]`. Child turns are kept word for word otherwise, so keep traces local; `traces/` is not committed.
+
+A content problem that arrives during a proposal takes effect before the proposal can close the call. The adapter discards buffered teaching and board changes. The trace records the problem. Safety guidance and the safety outcome keep priority.
+
+**Saving and going on.** `saved()` gives what the session needs to go on later (the initial state and event log, plus a cache of the session, turns, board batches, approved utterances, obligations and child-speaking state, plain JSON), and `resume` starts a session from it; the board scene is built again from the batches. A session saved and resumed between inputs says and records the same as one that never stopped (a test checks it). The admin test calls (#323, `src/lib/maya-call.ts`) save it in the call row between requests and drop it once the call's learning event is written. It holds the child's words and name: never send it to a browser. A saved call is flagged when the SAFETY interrupt fires, or when the model reads a request for harmful content (`reading.unsafeRequest`, #383 C29, at the level `UNSAFE_REQUEST_FLAG` names: `unsafe_request`, approved by Savar on 2026-11-01, D-203), and an internal alert email goes to the team, once per call and flag level (#333, `src/lib/maya-call-alert.ts`). Admin test calls send it too, with "[Test call]" in the subject (decided by Savar on 2026-11-01, D-203).
+
+Samples: `docs/maya-traces/`. A test checks each sample with `checkTrace`.
+
+The behaviour gate (`docs/maya-gate.md`, #324) runs the research's scripted children through this adapter in `npm test` and judges each saved trace.
+
+An explicit answer withdrawal can omit the number. Erasure, deletion, crossing out, and rejection such as "I don't think that's right" clear the accepted solution and its writing status. They also clear an earlier paper confirmation or refusal. A check or writing close returns to guided teaching, including the saved teaching state of an interrupt. The completed steps and help history stay. A statement that the child cannot explain the answer keeps the accepted solution. A later checked answer can resume the work.
+
+A carry denial that names a source or destination selects that carry before the current-step default. Its explanation is available even when its destination column is complete. The explanation does not remove the completed column. After the explanation, guidance returns to the next unfinished column. An incoming carry also has its existing regroup explanation when it is the only term in the highest column.
+
+Every input commits before its response can call the model. This includes start, complete and partial child turns, speech reports, content problems, writing, clock events, and technical failures. An accepted safety reading commits the safety flag and a `safety_due` obligation before any proposal review or later model call. The obligation remains pending until the caller receives the guidance. If the provider fails after resume, the code fallback gives the safety guidance and keeps the safety outcome. No teaching can follow the accepted reading. A rise from concern to immediate discards unreturned concern guidance. The immediate guidance serves the retained obligation.
+
+The deterministic interleaving tests use 2,000 seeds across eight original input schedules and five additional receipt and delivery schedules. The 144-cell input matrix covers 12 input forms, six pending states, and live use or JSON resume. They save at input receipt and resume between steps. They also resume from held requests. A separate reference model checks safety guidance, no teaching after accepted safety, repair service order, obligation status changes, and explicit drop reasons. The schedules include concern and immediate readings, reports during held requests, technical events, writing completion, stop readings, safety repetition and escalation, content holds, partials, provider failures after resume, and late provider resolution or rejection. These tests cover text state and output. They do not test audio interruption or hosted delivery.

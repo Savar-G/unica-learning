@@ -1,7 +1,9 @@
 import "server-only";
+import { loadFamilyChildren } from "@/lib/family-time-server";
+import { familyProvince } from "@/lib/family-time";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { bandFor, testLength, type Grade, type Route } from "@/lib/assessment";
+import { bandFor, testLength, type Grade, type Route, type Stage3Route } from "@/lib/assessment";
 import { toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { saveEmailCopy } from "@/lib/email-copies";
@@ -25,12 +27,15 @@ import { hashToken, startPath } from "@/lib/sign-in-link";
 // loads every child and test that could be due, and keeps the claims in public.email_log (the email log ledger, #152).
 
 export interface LoadedParent extends ReminderParent {
+  province?: string | null;
   name: string;
   postal: string | null;
+  timeZone?: string | null;
 }
 export interface LoadedChild extends ReminderChild {
   firstName: string;
   grade: Grade;
+  province?: string | null;
 }
 /** A test, with how many questions it has and how many the child answered. */
 export type LoadedTest = ReminderTest & { answered: number; total: number };
@@ -70,7 +75,7 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
   }
 }
 
-type TestRow = AttemptRow & { child_id: string; grade: number; route: Route | null };
+type TestRow = AttemptRow & { child_id: string; grade: number; route: Route | null; stage3_route: Stage3Route | null };
 
 export function reminderStore(admin: SupabaseClient<Database>): ReminderStore<LoadedState> {
   return {
@@ -91,19 +96,20 @@ export function reminderStore(admin: SupabaseClient<Database>): ReminderStore<Lo
 
       // Every test of those children: the start screen's rules read all of them.
       const [childRows, testRows] = await Promise.all([
-        inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name, grade, created_at").in("id", ids)),
-        inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, route, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)),
+        inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name, grade, province, created_at").in("id", ids)),
+        inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, route, stage3_route, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)),
       ]);
       const parentIds = [...new Set(childRows.map((c) => c.parent_id))];
-      const [parentRows, logRows, tests] = await Promise.all([
-        inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal").in("id", ids)),
+      const [parentRows, logRows, tests, familyChildren] = await Promise.all([
+        inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal, time_zone").in("id", ids)),
         inChunks(parentIds, (ids) => admin.from("email_log").select("id, created_at, kind, parent_id, child_id, assessment_id, status, attempts").in("parent_id", ids)),
         Promise.all(testRows.map((row) => withAnswers(admin, row))),
+        loadFamilyChildren(admin, parentIds),
       ]);
       return {
-        parents: parentRows.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal })),
+        parents: parentRows.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal, timeZone: p.time_zone, province: familyProvince(familyChildren.filter((c) => c.parent_id === p.id)) })),
         // A check constraint limits grade to 0-9 (0 is Kindergarten, D-156; rows from before hold 1-7).
-        children: childRows.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name, grade: c.grade as Grade, createdAt: Date.parse(c.created_at) })),
+        children: childRows.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name, grade: c.grade as Grade, province: c.province, createdAt: Date.parse(c.created_at) })),
         tests,
         log: logRows.map((e) => ({ id: e.id, kind: e.kind, parentId: e.parent_id, childId: e.child_id, assessmentId: e.assessment_id, status: e.status, attempts: e.attempts, at: Date.parse(e.created_at) })),
       };
@@ -169,7 +175,7 @@ async function lengthOf(admin: SupabaseClient<Database>, row: TestRow): Promise<
   if (!row.route || (row.status !== "in_progress" && row.status !== "expired")) return band;
   const { data, error } = await admin.from("assessments").select("test").eq("id", row.id).maybeSingle();
   if (error) throw new Error(`test load: ${error.message}`);
-  return data?.test ? testLength(data.test, row.route) : band;
+  return data?.test ? testLength(data.test, row.route, row.stage3_route) : band;
 }
 
 /** A test row in the rules' terms. One in progress counts its answers: with every answer in, it waits to be scored. */
@@ -204,7 +210,7 @@ export function reminderMessage(r: DueReminder, token: string, state: LoadedStat
   if (!parent || !child) return null;
 
   const links = reminderLinks(origin, r, token);
-  const common = { parentName: parent.name, childName: child.firstName, url: links.url, unsubscribeUrl: links.unsubscribeUrl, postal: parent.postal };
+  const common = { parentName: parent.name, childName: child.firstName, url: links.url, unsubscribeUrl: links.unsubscribeUrl, postal: parent.postal, timeZone: parent.timeZone, province: parent.province };
   let email: ReturnType<typeof reminderEmail>;
   if (r.kind === "continue") {
     if (!test) return null;
@@ -215,7 +221,7 @@ export function reminderMessage(r: DueReminder, token: string, state: LoadedStat
   }
 
   return {
-    sender: { to: "parent" },
+    sender: email.founders ? { to: "parent", from: "founders" } : { to: "parent" },
     to: parent.email,
     replyTo: SUPPORT_EMAIL,
     subject: email.subject,
@@ -226,42 +232,54 @@ export function reminderMessage(r: DueReminder, token: string, state: LoadedStat
 }
 
 export type UnsubscribeState = "subscribed" | "unsubscribed" | "unknown";
+/**
+ * What a token's link turns off. "reminders": the reminders and emails about our plans (a reminder's or a report
+ * email's token). "maya": only the weekly Maya email (its own token, #332). "monthly": only the monthly summary email
+ * (its own token, #563). Each link stops its own emails.
+ */
+export type UnsubscribeScope = "reminders" | "maya" | "monthly";
+
+const OFF_KIND: Record<UnsubscribeScope, "unsubscribe" | "maya_unsubscribe" | "monthly_summary_unsubscribe"> = { reminders: "unsubscribe", maya: "maya_unsubscribe", monthly: "monthly_summary_unsubscribe" };
+
+const scopeOf = (kind: string): UnsubscribeScope => (kind === "maya_daily" || kind === "maya_weekly" ? "maya" : kind === "monthly_summary" ? "monthly" : "reminders");
 
 /**
- * The parent an unsubscribe token belongs to, or null: a reminder's token (email_log), or a report email's (reports,
- * #80). Both stop the same thing: reminders and emails about our plans.
+ * The parent an unsubscribe token belongs to, and what it turns off, or null: a reminder's, a weekly Maya email's or a
+ * monthly summary email's token (email_log), or a report email's (reports, #80).
  */
-async function tokenParent(admin: SupabaseClient<Database>, token: unknown): Promise<string | null> {
+async function tokenParent(admin: SupabaseClient<Database>, token: unknown): Promise<{ parentId: string; scope: UnsubscribeScope } | null> {
   const hash = hashToken(token);
   if (!hash) return null;
-  const { data, error } = await admin.from("email_log").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle();
+  const { data, error } = await admin.from("email_log").select("parent_id, kind").eq("unsubscribe_hash", hash).maybeSingle();
   if (error) throw new Error(`unsubscribe lookup: ${error.message}`);
-  if (data) return data.parent_id;
+  if (data) return { parentId: data.parent_id, scope: scopeOf(data.kind) };
   const report = await admin.from("reports").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle();
   if (report.error) throw new Error(`unsubscribe lookup: ${report.error.message}`);
-  return report.data?.parent_id ?? null;
+  return report.data ? { parentId: report.data.parent_id, scope: "reminders" } : null;
 }
 
-/** Whether this parent unsubscribed from reminders and emails about our plans. */
-export async function parentUnsubscribed(admin: SupabaseClient<Database>, parentId: string): Promise<boolean> {
-  const { count, error } = await admin.from("email_log").select("id", { count: "exact", head: true }).eq("parent_id", parentId).eq("kind", "unsubscribe");
+async function turnedOff(admin: SupabaseClient<Database>, parentId: string, scope: UnsubscribeScope): Promise<boolean> {
+  const { count, error } = await admin.from("email_log").select("id", { count: "exact", head: true }).eq("parent_id", parentId).eq("kind", OFF_KIND[scope]);
   if (error) throw new Error(`unsubscribe state: ${error.message}`);
   return (count ?? 0) > 0;
 }
 
-/** Whether the parent behind this token still gets reminders. */
-export async function unsubscribeState(admin: SupabaseClient<Database>, token: unknown): Promise<UnsubscribeState> {
-  const parent = await tokenParent(admin, token);
-  if (!parent) return "unknown";
-  return (await parentUnsubscribed(admin, parent)) ? "unsubscribed" : "subscribed";
+/** Whether this parent unsubscribed from reminders and emails about our plans. */
+export const parentUnsubscribed = (admin: SupabaseClient<Database>, parentId: string): Promise<boolean> => turnedOff(admin, parentId, "reminders");
+
+/** Whether the parent behind this token still gets the emails the token's link turns off, and which emails those are. */
+export async function unsubscribeState(admin: SupabaseClient<Database>, token: unknown): Promise<{ state: UnsubscribeState; scope: UnsubscribeScope | null }> {
+  const found = await tokenParent(admin, token);
+  if (!found) return { state: "unknown", scope: null };
+  return { state: (await turnedOff(admin, found.parentId, found.scope)) ? "unsubscribed" : "subscribed", scope: found.scope };
 }
 
-/** Stops every reminder to the parent behind this token. Doing it twice is fine. */
+/** Turns off the emails of this token's link for its parent. Doing it twice is fine. */
 export async function unsubscribe(admin: SupabaseClient<Database>, token: unknown): Promise<"unsubscribed" | "unknown"> {
-  const parent = await tokenParent(admin, token);
-  if (!parent) return "unknown";
-  const { error } = await admin.from("email_log").insert({ parent_id: parent, kind: "unsubscribe" });
-  // One unsubscribe row per parent (unique index): already done.
+  const found = await tokenParent(admin, token);
+  if (!found) return "unknown";
+  const { error } = await admin.from("email_log").insert({ parent_id: found.parentId, kind: OFF_KIND[found.scope] });
+  // One unsubscribe row of each kind per parent (unique index): already done.
   if (error && error.code !== "23505") throw new Error(`unsubscribe: ${error.message}`);
   return "unsubscribed";
 }

@@ -24,6 +24,7 @@ for (const state of ["waiting", "active", "unresolved"] as const) {
           case "claim_family_retention": answer = { state: "ready", reason: "retention", phase: "checking" }; break;
           case "family_retention_cards": answer = cards; break;
           case "family_last_activity": answer = "2020-01-01T00:00:00Z"; break;
+          case "family_deletion_start_customers": answer = []; break;
           case "pending_family_payment_operations": answer = []; break;
           case "decide_family_deletion": expect(args.keep_family).toBe(true); unfrozen = true; answer = true; break;
           case "release_family_deletion": release = true; answer = true; break;
@@ -60,6 +61,24 @@ for (const state of ["waiting", "active", "unresolved"] as const) {
   });
 }
 
+// Review round 5 of PR #593: the claim keeps a family with an open plan start. The worker reports it, and nothing is read, decided or removed.
+for (const retention of [undefined, { endedAt: "2020-01-01T00:00:00Z" }]) {
+  it(`keeps a family with an open plan start on the ${retention ? "retention" : "queue"} claim`, async () => {
+    const calls: string[] = [];
+    const db = createClient("https://database.example.invalid", "synthetic-service-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async (input) => {
+        const url = new URL(input instanceof Request ? input.url : String(input));
+        const name = url.pathname.split("/").at(-1)!;
+        calls.push(name);
+        return new Response(JSON.stringify(name.startsWith("claim_family") ? { state: "plan_start" } : true), { status: 200, headers: { "content-type": "application/json" } });
+      } },
+    });
+    await expect(runFamilyDeletion(db, parent, db, Date.now() + 30_000, undefined, retention)).resolves.toEqual({ state: "plan_start" });
+    expect(calls).toEqual([retention ? "claim_family_retention" : "claim_family_deletion"]);
+  });
+}
+
 // #201: the copy without names goes through the database before any Storage or Auth removal, on every deletion path
 // (a parent's request, the retention worker and the manual route all run runFamilyDeletion).
 describe("the copy without names before a deletion", () => {
@@ -69,7 +88,7 @@ describe("the copy without names before a deletion", () => {
     device: null, answers: [], shows: [{ position: 0, questionId: "s1-0", shownAt: "2026-02-01T09:00:05Z" }], facts: null, profile: null,
     learning: null,
   };
-  function family(missing: boolean) {
+  function family(missing: boolean, phase: "checking" | "deleting" = "deleting") {
     const calls: string[] = [];
     const saved: Record<string, unknown>[] = [];
     let copied = false;
@@ -83,7 +102,10 @@ describe("the copy without names before a deletion", () => {
         const args = JSON.parse(String(init?.body ?? "{}"));
         const json = (answer: unknown, status = 200) => new Response(JSON.stringify(answer), { status, headers: { "content-type": "application/json" } });
         switch (name) {
-          case "claim_family_deletion": return json({ state: "ready", reason: "request", phase: "deleting" });
+          case "claim_family_deletion": return json({ state: "ready", reason: "request", phase });
+          case "family_deletion_start_customers": return json([]);
+          case "pending_family_payment_operations": return json([]);
+          case "decide_family_deletion": expect(args.keep_family).toBe(false); return json(true);
           case "renew_family_deletion": return json(true);
           case "family_copy_sources":
             if (missing) return json({ code: "PGRST202", message: "Could not find the function public.family_copy_sources(p)" }, 404);
@@ -97,6 +119,7 @@ describe("the copy without names before a deletion", () => {
             return json(true);
           case "confirm_family_copies": return json(copied);
           case "POST /storage/v1/object/list/shown-work": return json([]);
+          case "POST /storage/v1/object/list/scan-photos": return json([]);
           // #299: the workbook pages and PDFs, one page image left in a workbook folder.
           case "POST /storage/v1/object/list/workbook-pages":
             return json(args.prefix === parent && !workbookRemoved ? [{ name: "book", id: null }]
@@ -129,6 +152,20 @@ describe("the copy without names before a deletion", () => {
     // The copy holds no id of the family or of the test.
     expect(JSON.stringify(f.saved)).not.toContain(parent);
     expect(JSON.stringify(f.saved)).not.toContain(test.id);
+  });
+
+  // #556: the self-serve path queues with reason `request` and phase `checking`. The plans stopped before the queue, so
+  // the run reads no plan state and a stopped plan cannot keep the family; the copy is still written first.
+  it("a parent's queued request settles its payment records, then writes the copy before Storage and Auth", async () => {
+    const f = family(false, "checking");
+    expect(await runFamilyDeletion(f.db, parent, f.db, Date.now() + 30_000, {
+      signal: new AbortController().signal, renewEveryMs: 60_000, paymentRequestTimeoutMs: 5_000, abortWork() {},
+      payments: new Stripe("sk_test_no_calls", { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async () => { throw Error("A queued request reads nothing from Stripe"); }) }),
+    })).toEqual({ state: "deleted", images: 1, copies: 1 });
+    expect(f.calls.indexOf("decide_family_deletion")).toBeGreaterThan(f.calls.indexOf("pending_family_payment_operations"));
+    expect(f.calls.indexOf("save_family_test_copy")).toBeGreaterThan(f.calls.indexOf("decide_family_deletion"));
+    expect(f.calls.findIndex((c) => c === "save_family_test_copy")).toBeLessThan(f.calls.findIndex((c) => c.includes("/storage/")));
+    expect(f.calls.findIndex((c) => c.includes("/storage/"))).toBeLessThan(f.calls.findIndex((c) => c.includes("/auth/v1/admin/users/")));
   });
 
   it("deletes nothing and keeps the request when the copy's database functions are missing", async () => {

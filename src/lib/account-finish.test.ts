@@ -8,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // change by an admin ends every session of the user, the caller's too. A request with an ended session gets 403
 // session_not_found.
 vi.mock("server-only", () => ({}));
+/** Work the route leaves for after the answer (the founders' welcome, D-225). */
+let afterResponse: (() => unknown)[] = [];
+vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), after: (task: () => unknown) => void afterResponse.push(task) }));
 
 type FakeUser = { id: string; email: string; email_confirmed_at: string | null } | null;
 let user: FakeUser;
@@ -162,7 +165,7 @@ function supabase(world: World) {
   });
 }
 
-const details = { name: "Priya Shah", postal: "V6B 1A1", child: { firstName: "Asha", grade: 4, province: "BC" }, source: { utm_source: "flyer" } };
+const details = { name: "Priya Shah", child: { firstName: "Asha", grade: 4, province: "BC" }, source: { utm_source: "flyer" } };
 
 function finish(body: unknown, ua = LAPTOP) {
   return POST(new Request("https://unica.test/api/account/finish", {
@@ -184,6 +187,7 @@ const FAMILY = "POST /rest/v1/rpc/create_family";
 const parentSignedIn = () => auth.sessions.has(PARENT);
 
 beforeEach(() => {
+  afterResponse = [];
   user = { id: ID, email: "Priya@Family.ca", email_confirmed_at: "2026-10-11T20:00:00Z" };
   methods = ["otp"];
 });
@@ -205,7 +209,7 @@ describe("a password set before the email was proved never reaches a family acco
     // Both changes go through the parent's own session, the one in their cookies.
     expect(calls.filter((c) => `${c.method} ${c.path}` === OWN_PASSWORD).map((c) => c.auth)).toEqual([`Bearer ${accessToken()}`, `Bearer ${accessToken()}`]);
     expect(calls.find((c) => c.path === "/rest/v1/rpc/create_family")?.body).toMatchObject({
-      p_parent: ID, p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: "V6B 1A1", p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
+      p_parent: ID, p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: null, p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
     });
   });
 
@@ -249,7 +253,7 @@ describe("a password set before the email was proved never reaches a family acco
 
   it("is replaced even when the request is not valid", async () => {
     supabase({ earlierPassword: "strangers-password" });
-    const res = await finish({ ...details, postal: "90210", password: "a-long-password" });
+    const res = await finish({ ...details, name: "P", password: "a-long-password" });
     expect(res.status).toBe(400);
     expect(paths()).toEqual([OWN_PASSWORD]);
     expect(auth.password).not.toBe("strangers-password");
@@ -413,14 +417,12 @@ describe("what the database decides (#82, #78)", () => {
 });
 
 describe("finishing on a phone (#63)", () => {
-  it("makes the family from the short phone signup: no postal code and no password (D-134), then emails the link", async () => {
+  it("makes the family from the short phone signup: no password (D-134), then emails the link", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_synthetic");
     vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ id: "email-1" }), { status: 200 }));
     supabase({ earlierPassword: "strangers-password", admission: { status: "created", child: "child-42" } });
-    const { postal: _, ...short } = details;
-    void _;
-    const res = await finish(short, PHONE);
+    const res = await finish(details, PHONE);
     vi.unstubAllGlobals();
     expect(await res.json()).toEqual({ ok: true, linkSent: true });
     expect(calls.find((c) => c.path === "/rest/v1/rpc/create_family")?.body).toMatchObject({ p_postal: null, p_child_name: "Asha" });
@@ -430,12 +432,14 @@ describe("finishing on a phone (#63)", () => {
     expect(parentSignedIn()).toBe(true);
   });
 
-  it("emails the sign-in link for the new child", async () => {
+  it("emails the sign-in link for the new child, as the founders' welcome: one email (D-225)", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_synthetic");
     vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     const sent: string[] = [];
-    vi.stubGlobal("fetch", async (input: unknown) => {
+    const bodies: { from: string; subject: string }[] = [];
+    vi.stubGlobal("fetch", async (input: unknown, init?: RequestInit) => {
       sent.push(String(input));
+      bodies.push(JSON.parse(String(init?.body)));
       return new Response(JSON.stringify({ id: "email-1" }), { status: 200 });
     });
     supabase({ admission: { status: "created", child: "child-42" } });
@@ -444,6 +448,7 @@ describe("finishing on a phone (#63)", () => {
     const link = calls.find((c) => c.method === "POST" && c.path === "/rest/v1/sign_in_links");
     expect(link?.body).toMatchObject({ parent_id: ID, child_id: "child-42" });
     expect(sent).toEqual(["https://api.resend.com/emails"]);
+    expect(bodies[0]).toMatchObject({ from: "Savar & Cedric from Unica Learning <contact@unicalearning.com>", subject: "Welcome to Unica Learning: open this on a laptop or tablet" });
     expect(await res.json()).toEqual({ ok: true, linkSent: true });
   });
 
@@ -471,5 +476,36 @@ describe("finishing on a phone (#63)", () => {
       vi.useRealTimers();
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("the founders' welcome (D-225)", () => {
+  it("goes after the answer to a new family on a laptop, from the founders, with the child's start link", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_synthetic");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
+    const sent: { from: string; to: string[]; subject: string; text: string }[] = [];
+    supabase({ admission: { status: "created", child: "child-42" } });
+    const res = await finish({ ...details, password: "a-long-password" });
+    expect(await res.json()).toEqual({ ok: true, linkSent: false });
+    expect(afterResponse).toHaveLength(1);
+    vi.stubGlobal("fetch", async (_input: unknown, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ id: "email-1" }), { status: 200 });
+    });
+    for (const task of afterResponse) await task();
+    vi.unstubAllGlobals();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ from: "Savar & Cedric from Unica Learning <contact@unicalearning.com>", to: ["Priya@Family.ca"], subject: "Welcome to Unica Learning" });
+    expect(sent[0].text).toContain("Start Asha's test: https://unica.test/account/start/child-42");
+  });
+
+  it("is not sent to a phone signup (it gets the sign-in link) or to an existing family", async () => {
+    supabase({ admission: { status: "created", child: "child-42" } });
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ id: "email-1" }), { status: 200 }));
+    await finish(details, PHONE);
+    vi.unstubAllGlobals();
+    supabase({ existing: true });
+    await finish(details);
+    expect(afterResponse).toHaveLength(0);
   });
 });

@@ -4,6 +4,7 @@
 // tab and counts an ad visit once per tab (keepVisit, src/lib/visit-source.ts; no cookie, no consent needed), counts
 // /start opening as an ad test step (markAdStep, src/lib/ad-visit-steps.ts), and keeps the ad tags in line with the
 // page and the cookie choice (src/lib/ad-tags.ts: after consent only, never on a child's page). Renders nothing.
+import { isParentPreviewPath } from "@/lib/parent-preview-path";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { getAdTags } from "@/lib/ad-tags";
@@ -21,10 +22,12 @@ export function VisitTags() {
   const pathname = usePathname();
 
   useEffect(() => {
+    if (isParentPreviewPath(pathname)) return;
     getAdTags()?.begin();
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
+    if (isParentPreviewPath(pathname)) return;
     let store: Storage | null = null;
     try { store = window.sessionStorage; } catch { /* storage off */ }
     if (store) keepVisit({ search: window.location.search, store, newId, send });

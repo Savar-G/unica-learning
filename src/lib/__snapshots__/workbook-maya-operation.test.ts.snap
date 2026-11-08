@@ -1,0 +1,205 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generated Maya coverage by print band > pins all ten days of U3 and keeps the exact print input 1`] = `
+[
+  {
+    "accepted": 39,
+    "kind": "All",
+    "level": "U3",
+    "operations": 45,
+    "questions": 419,
+  },
+  {
+    "accepted": 0,
+    "kind": "bare",
+    "level": "U3",
+    "operations": 0,
+    "questions": 36,
+  },
+  {
+    "accepted": 0,
+    "kind": "choose",
+    "level": "U3",
+    "operations": 0,
+    "questions": 75,
+  },
+  {
+    "accepted": 0,
+    "kind": "circle",
+    "level": "U3",
+    "operations": 0,
+    "questions": 6,
+  },
+  {
+    "accepted": 0,
+    "kind": "colour-or-shade",
+    "level": "U3",
+    "operations": 0,
+    "questions": 4,
+  },
+  {
+    "accepted": 18,
+    "kind": "missing",
+    "level": "U3",
+    "operations": 18,
+    "questions": 54,
+  },
+  {
+    "accepted": 10,
+    "kind": "story",
+    "level": "U3",
+    "operations": 10,
+    "questions": 130,
+  },
+  {
+    "accepted": 0,
+    "kind": "true-false",
+    "level": "U3",
+    "operations": 0,
+    "questions": 96,
+  },
+  {
+    "accepted": 11,
+    "kind": "write-number",
+    "level": "U3",
+    "operations": 17,
+    "questions": 18,
+  },
+]
+`;
+
+exports[`generated Maya coverage by print band > pins all ten days of U4 and keeps the exact print input 1`] = `
+[
+  {
+    "accepted": 93,
+    "kind": "All",
+    "level": "U4",
+    "operations": 114,
+    "questions": 544,
+  },
+  {
+    "accepted": 0,
+    "kind": "bare",
+    "level": "U4",
+    "operations": 9,
+    "questions": 16,
+  },
+  {
+    "accepted": 13,
+    "kind": "choose",
+    "level": "U4",
+    "operations": 13,
+    "questions": 62,
+  },
+  {
+    "accepted": 0,
+    "kind": "circle",
+    "level": "U4",
+    "operations": 0,
+    "questions": 16,
+  },
+  {
+    "accepted": 0,
+    "kind": "colour-or-shade",
+    "level": "U4",
+    "operations": 0,
+    "questions": 8,
+  },
+  {
+    "accepted": 0,
+    "kind": "compare",
+    "level": "U4",
+    "operations": 0,
+    "questions": 25,
+  },
+  {
+    "accepted": 21,
+    "kind": "missing",
+    "level": "U4",
+    "operations": 29,
+    "questions": 101,
+  },
+  {
+    "accepted": 59,
+    "kind": "story",
+    "level": "U4",
+    "operations": 63,
+    "questions": 156,
+  },
+  {
+    "accepted": 0,
+    "kind": "true-false",
+    "level": "U4",
+    "operations": 0,
+    "questions": 159,
+  },
+  {
+    "accepted": 0,
+    "kind": "write-number",
+    "level": "U4",
+    "operations": 0,
+    "questions": 1,
+  },
+]
+`;
+
+exports[`generated Maya coverage by print band > pins all ten days of U16 and keeps the exact print input 1`] = `
+[
+  {
+    "accepted": 273,
+    "kind": "All",
+    "level": "U16",
+    "operations": 297,
+    "questions": 597,
+  },
+  {
+    "accepted": 34,
+    "kind": "bare",
+    "level": "U16",
+    "operations": 42,
+    "questions": 140,
+  },
+  {
+    "accepted": 0,
+    "kind": "boxes",
+    "level": "U16",
+    "operations": 0,
+    "questions": 1,
+  },
+  {
+    "accepted": 0,
+    "kind": "choose",
+    "level": "U16",
+    "operations": 0,
+    "questions": 3,
+  },
+  {
+    "accepted": 42,
+    "kind": "missing",
+    "level": "U16",
+    "operations": 49,
+    "questions": 127,
+  },
+  {
+    "accepted": 77,
+    "kind": "story",
+    "level": "U16",
+    "operations": 86,
+    "questions": 126,
+  },
+  {
+    "accepted": 0,
+    "kind": "true-false",
+    "level": "U16",
+    "operations": 0,
+    "questions": 80,
+  },
+  {
+    "accepted": 120,
+    "kind": "write-number",
+    "level": "U16",
+    "operations": 120,
+    "questions": 120,
+  },
+]
+`;

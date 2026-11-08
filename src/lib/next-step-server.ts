@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { gradeName, withFamilyCardOperation, type Province } from "@/lib/assessment";
-import { sendEmail } from "@/lib/email-delivery";
+import { emailConfigProblem, sendEmail } from "@/lib/email-delivery";
+import { SUPPORT_EMAIL, BOOKING_URL } from "@/lib/contact";
+import { waitlistEmail } from "@/lib/founder-emails";
 import type { CardCheckResult, CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
@@ -14,6 +16,7 @@ import { adminClient } from "@/lib/supabase-auth";
 import { checkCard, chooseCardPlan, recordSavedCard, type CardEvidence } from "@/lib/saved-card";
 import { savedCards } from "@/lib/saved-card-server";
 import { beginCardOperation, endCardOperation } from "@/lib/family-deletion-store";
+import { sendQueuedWorkbookWelcome } from "@/lib/workbook-email-server";
 
 // The report's next step (#66), on the server. The routes pass the signed-in parent from the session cookie, never
 // from the request body, and every read here is filtered by that parent, so a parent can act only on their own report.
@@ -170,6 +173,10 @@ export async function recordCardSaved(evidence: CardEvidence) {
   if (!admin || !/^[0-9a-f-]{36}$/i.test(evidence.ref)) return;
   const recorded = await recordSavedCard(evidence, savedCards(admin, stripe()));
   if (recorded.state !== "saved") console.error("[next-step] card saved record failed", evidence.ref);
+  else if (!emailConfigProblem()) after(async () => {
+    try { await sendQueuedWorkbookWelcome(admin, evidence.ref); }
+    catch { console.error("[workbook email] welcome remains queued", evidence.ref); }
+  });
 }
 
 /** A parent outside BC joined the waitlist from the report. One row per child: a second click finds the first. */
@@ -188,17 +195,29 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
     return fail("store_failed", 502);
   }
   if (!data?.length) return { ok: true, state: "already" };
+  // The founders' note (D-225): once per child, like the row.
+  const note = waitlistEmail({
+    parentName: parent.name, childName: report.child!.first_name, curriculum: province === "other" ? null : CURRICULA[province],
+    reportUrl: `${origin}${reportPath(report.id)}`, bookingUrl: BOOKING_URL || null,
+  });
+  after(() => sendToParent(parent.email, note, "waitlist"));
   after(() => alertSavar({
     subject: `Waitlist from a report: ${parent.name} (${CURRICULA[province]})`,
     replyTo: parent.email,
     text: [
       `Waitlist (${CURRICULA[province]} curriculum), joined from the report: ${parent.name} <${parent.email}>`,
       `Child: ${report.child!.first_name}, school ${gradeName(report.assessment!.grade)}`,
-      `Postal code: ${parent.postal ?? "not given"}`,
+      ...(parent.postal ? [`Postal code: ${parent.postal}`] : []),
       `Report: ${origin}${reportPath(report.id)}`,
     ].join("\n"),
   }));
   return { ok: true, state: "joined" };
+}
+
+/** A founders' email to a parent, sent without a send key: its caller's row is the guard. Never throws. */
+async function sendToParent(to: string, email: { subject: string; text: string; html: string }, label: string) {
+  const outcome = await sendEmail({ sender: { to: "parent", from: "founders" }, to, replyTo: SUPPORT_EMAIL, ...email });
+  if (outcome.status !== "sent") console.error(`[next-step] ${label} email failed`, outcome.status, outcome.error);
 }
 
 function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption, src: ReportSrc, reason: string, origin: string) {
@@ -210,7 +229,7 @@ function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption
       `Parent: ${setup.name} <${setup.email}>`,
       `Plan: ${option.subject}, ${priceWithOffer(option.price)}`,
       `Child: ${report.child!.first_name}, school ${gradeName(setup.grade)}`,
-      `Postal code: ${setup.postal ?? "not given"}`,
+      ...(setup.postal ? [`Postal code: ${setup.postal}`] : []),
       `Opened from: ${src === "email" ? "the report email" : "the account"}`,
       `Ref (card_setups.id; Stripe metadata ref): ${setup.ref}`,
       `Report: ${origin}${reportPath(report.id)}`,

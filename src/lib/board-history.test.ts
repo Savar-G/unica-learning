@@ -1,0 +1,656 @@
+import { describe, expect, it } from "vitest";
+import { boardPaths, boardView, childInk, type Batch } from "@/lib/board";
+import {
+  BOARD_DRAFT_ROOT,
+  HARD_MAX_DRAFTS,
+  MAX_DRAFTS,
+  OPEN_ROOT,
+  RECENT_MS,
+  boardDraftKey,
+  boardScene,
+  childStrokes,
+  clear,
+  createHistory,
+  decodeHistory,
+  drawStroke,
+  encodeHistory,
+  givePen,
+  historyFromRecording,
+  historyLength,
+  keptStroke,
+  restoreKept,
+  loadDraft,
+  markClosed,
+  markOpen,
+  mayaFinished,
+  mayaWrites,
+  mayaWritingEnds,
+  newestHistory,
+  penHolder,
+  replayFrame,
+  replayOf,
+  saveDraft,
+  takePen,
+  undo,
+  chatBoardView,
+  chatViewKey,
+  historyFromLog,
+  inkLog,
+  withInkLog,
+  refusedBatches,
+  withChildInk,
+  growInkLog,
+  startingChatBoard,
+  type BoardHistory,
+  type Change,
+  type InkStroke,
+} from "@/lib/board-history";
+import { createMemoryDraftStore } from "@/lib/board-history-memory";
+import { boardAt, readStrokes, replayLength, type TimedPoint } from "@/lib/strokes";
+
+// The history of "Our board" (#320): who holds the pen, the child's ink, the draft that brings the board back after a
+// reload, and the replay of a saved board, which also plays the old test whiteboard recordings unchanged.
+
+const QUESTION: Batch = {
+  transactionId: "desk-question",
+  commands: [{ op: "columns", id: "question", operation: "add", operands: [{ id: "top", value: "419" }, { id: "bottom", value: "193" }], place: { region: "main" } }],
+};
+
+function ok(c: Change): BoardHistory {
+  if (!c.ok) throw new Error(`refused: ${c.code} ${c.reason}`);
+  return c.history;
+}
+
+/** A pencil stroke of the child's from (x, y), starting at `t`, one point every 10 ms. */
+const stroke = (x: number, y: number, t: number, extra: Partial<InkStroke> = {}): InkStroke => ({
+  erase: false,
+  w: 3.2,
+  boardWidth: 800,
+  page: 1,
+  pts: [[x, y, t], [x + 0.02, y + 0.01, t + 10], [x + 0.04, y + 0.02, t + 20]],
+  ...extra,
+});
+
+/** Maya writes the question, then the child takes the pen at 2 s. */
+const withPen = () => ok(takePen(ok(mayaWrites(createHistory(), QUESTION, 0)), 2000));
+
+describe("the pen", () => {
+  it("starts with Maya: a stroke of the child's is refused until the child takes the pen", () => {
+    const h = ok(mayaWrites(createHistory(), QUESTION, 0));
+    expect(penHolder(h)).toBe("maya");
+    expect(drawStroke(h, stroke(0.1, 0.3, 1000))).toMatchObject({ ok: false, code: "pen_with_maya" });
+    expect(undo(h, 1000)).toMatchObject({ ok: false, code: "pen_with_maya" });
+    expect(clear(h, 1000)).toMatchObject({ ok: false, code: "pen_with_maya" });
+
+    const taken = ok(takePen(h, 2000));
+    expect(penHolder(taken)).toBe("child");
+    expect(childStrokes(ok(drawStroke(taken, stroke(0.1, 0.3, 2100))))).toHaveLength(1);
+  });
+
+  it("refuses drawing after the pen moves to Maya, also a stroke the child began while holding it", () => {
+    const drawn = ok(drawStroke(withPen(), stroke(0.1, 0.3, 2100)));
+    const back = ok(givePen(drawn, 3000));
+    expect(penHolder(back)).toBe("maya");
+    expect(drawStroke(back, stroke(0.3, 0.3, 3100))).toMatchObject({ ok: false, code: "pen_with_maya" });
+    // Begun at 2.9 s with the pen in hand, finished after it went to Maya at 3 s.
+    expect(drawStroke(back, stroke(0.3, 0.3, 2900))).toMatchObject({ ok: false, code: "pen_with_maya" });
+    // The pen came back at 4 s: a stroke begun before that was drawn while Maya held it.
+    expect(drawStroke(ok(takePen(back, 4000)), stroke(0.3, 0.3, 3500))).toMatchObject({ ok: false, code: "pen_with_maya" });
+    expect(childStrokes(back)).toEqual(childStrokes(drawn));
+  });
+
+  it("lets Maya write only while she holds the pen, and only what the board core accepts", () => {
+    const more: Batch = { transactionId: "b2", commands: [{ op: "write", id: "note", text: "carry", place: { below: "question" } }] };
+    expect(mayaWrites(withPen(), more, 3000)).toMatchObject({ ok: false, code: "pen_with_child" });
+    expect(mayaWrites(ok(givePen(withPen(), 3000)), more, 3000).ok).toBe(true);
+    expect(mayaWrites(createHistory(), { transactionId: "bad", commands: [{ op: "nope" }] }, 0)).toMatchObject({ ok: false, code: "refused" });
+  });
+
+  it("counts each move as a change, and taking a pen already held changes nothing", () => {
+    const h = withPen();
+    const twice = ok(takePen(ok(givePen(h, 2500)), 2600));
+    expect(penHolder(twice)).toBe("child");
+    expect(twice.revision).toBe(h.revision + 2);
+    expect(ok(takePen(h, 2700))).toBe(h);
+  });
+});
+
+describe("a new question (D-184): the pen passes to the child when Maya has finished writing it", () => {
+  const written = () => ok(mayaWrites(createHistory(), QUESTION, 0));
+
+  it("logs an ordinary pen move at the end of Maya's writing, so replay and reload show it", () => {
+    const h = written();
+    const ends = mayaWritingEnds(h);
+    expect(ends).toBeGreaterThan(0);
+    const passed = ok(mayaFinished(h, ends + 40));
+    expect(penHolder(passed)).toBe("child");
+    expect(passed.events.at(-1)).toEqual({ kind: "pen", t: ends + 40, to: "child" });
+    expect(passed.revision).toBe(h.revision + 1);
+    const r = replayOf(passed);
+    expect(replayFrame(r, ends + 39).pen).toBe("maya");
+    expect(replayFrame(r, ends + 40).pen).toBe("child");
+  });
+
+  it("never logs the move before her last stroke is finished", () => {
+    const h = written();
+    expect(ok(mayaFinished(h, 5)).events.at(-1)).toEqual({ kind: "pen", t: mayaWritingEnds(h), to: "child" });
+  });
+
+  it("lets the child write without a tap, but refuses a stroke begun while Maya was still writing", () => {
+    const h = written();
+    const ends = mayaWritingEnds(h);
+    const passed = ok(mayaFinished(h, ends));
+    expect(drawStroke(h, stroke(0.1, 0.3, ends - 100))).toMatchObject({ ok: false, code: "pen_with_maya" });
+    expect(drawStroke(passed, stroke(0.1, 0.3, ends - 100))).toMatchObject({ ok: false, code: "pen_with_maya" });
+    expect(childStrokes(ok(drawStroke(passed, stroke(0.1, 0.3, ends + 10))))).toHaveLength(1);
+  });
+
+  it("changes nothing when the child already has the pen", () => {
+    const taken = ok(takePen(written(), 100));
+    expect(ok(mayaFinished(taken, mayaWritingEnds(taken)))).toBe(taken);
+  });
+
+  it("comes back after a reload with the child holding the pen", () => {
+    const store = createMemoryDraftStore();
+    const key = boardDraftKey("book-1", 2, 3);
+    const passed = ok(mayaFinished(written(), 0));
+    expect(saveDraft(store, key, passed, null, 1_000)).toMatchObject({ status: "saved" });
+    const restored = loadDraft(store, key)!;
+    expect(penHolder(restored)).toBe("child");
+    expect(restored).toEqual(passed);
+  });
+
+  it("still lets Maya take the pen back to show a step, and the child give it back", () => {
+    const passed = ok(mayaFinished(written(), 0));
+    const back = ok(givePen(passed, mayaWritingEnds(passed) + 500));
+    expect(penHolder(back)).toBe("maya");
+    expect(drawStroke(back, stroke(0.1, 0.3, mayaWritingEnds(passed) + 600))).toMatchObject({ ok: false, code: "pen_with_maya" });
+  });
+});
+
+describe("the child's ink", () => {
+  it("undoes and clears the child's own strokes only; Maya's work stays as it was", () => {
+    let h = withPen();
+    const maya = boardPaths(boardScene(h));
+    h = ok(drawStroke(h, stroke(0.1, 0.3, 2100)));
+    h = ok(drawStroke(h, stroke(0.1, 0.4, 2200, { erase: true, w: 26 })));
+    h = ok(drawStroke(h, stroke(0.2, 0.4, 2300)));
+    expect(childStrokes(h).map((s) => s.erase)).toEqual([false, true, false]);
+    h = ok(undo(h, 2400));
+    expect(childStrokes(h).map((s) => s.erase)).toEqual([false, true]);
+    h = ok(clear(h, 2500));
+    expect(childStrokes(h)).toEqual([]);
+    expect(undo(h, 2600)).toMatchObject({ ok: false, code: "nothing_to_undo" });
+    expect(boardPaths(boardScene(h))).toEqual(maya);
+  });
+
+  it("keeps every stroke on the board core, so Maya never covers ink the child drew", () => {
+    const h = ok(drawStroke(withPen(), stroke(0.1, 0.3, 2100)));
+    expect(childInk(boardScene(h))).toHaveLength(1);
+  });
+
+  it("puts point times on the board's clock: never before the last event, never backwards", () => {
+    const h = ok(drawStroke(withPen(), { ...stroke(0.1, 0.3, 0), pts: [[0.1, 0.3, 2100], [0.11, 0.31, 2050], [0.12, 0.32, 2150.6]] }));
+    expect(childStrokes(h)[0].pts.map(([, , t]) => t)).toEqual([2100, 2100, 2151]);
+  });
+
+  it("refuses a stroke that is not one: no points, a bad width, a page the board does not have", () => {
+    const h = withPen();
+    expect(drawStroke(h, { ...stroke(0.1, 0.3, 2100), pts: [] })).toMatchObject({ ok: false, code: "invalid_stroke" });
+    expect(drawStroke(h, stroke(0.1, 0.3, 2100, { w: 0 }))).toMatchObject({ ok: false, code: "invalid_stroke" });
+    expect(drawStroke(h, stroke(0.1, 0.3, 2100, { page: 3 }))).toMatchObject({ ok: false, code: "invalid_stroke" });
+    expect(drawStroke(h, { ...stroke(0.1, 0.3, 2100), pts: [[Number.NaN, 0.3, 2100]] })).toMatchObject({ ok: false, code: "invalid_stroke" });
+  });
+});
+
+describe("the draft: a reload restores the board", () => {
+  const key = boardDraftKey("book-1", 3, 7);
+
+  it("brings back Maya's question, the child's ink and who held the pen", () => {
+    const store = createMemoryDraftStore();
+    const h = ok(drawStroke(withPen(), stroke(0.1, 0.3, 2100)));
+    expect(saveDraft(store, key, h, null, 1_000)).toEqual({ status: "saved", history: h });
+
+    const restored = loadDraft(store, key)!;
+    expect(restored).toEqual(h);
+    expect(penHolder(restored)).toBe("child");
+    expect(childStrokes(restored)).toEqual(childStrokes(h));
+    expect(boardPaths(boardScene(restored))).toEqual(boardPaths(boardScene(h)));
+    // The clock goes on from where the board was left.
+    expect(historyLength(restored)).toBe(2120);
+  });
+
+  it("starts again when there is no draft, or it does not read back", () => {
+    const store = createMemoryDraftStore({ [key]: "1000@{not json" });
+    expect(loadDraft(store, key)).toBeNull();
+    expect(loadDraft(store, boardDraftKey("book-1", 3, 8))).toBeNull();
+    expect(loadDraft(createMemoryDraftStore({ [key]: "no stamp" }), key)).toBeNull();
+  });
+
+  it("an empty board leaves no draft", () => {
+    const store = createMemoryDraftStore();
+    saveDraft(store, boardDraftKey("book-1", 3, null), createHistory(), null, 3_000);
+    expect(store.items.has(boardDraftKey("book-1", 3, null))).toBe(false);
+  });
+
+  it("says when storage is full: the board is still on the screen", () => {
+    const store = createMemoryDraftStore();
+    store.fill();
+    expect(saveDraft(store, key, withPen(), null, 1_000)).toEqual({ status: "failed" });
+  });
+});
+
+describe("the save's safety net: it writes only over what this tab last loaded or saved", () => {
+  const key = boardDraftKey("book-1", 3, 7);
+
+  it("writes nothing over a board it did not load, and returns the stored board to show", () => {
+    const store = createMemoryDraftStore();
+    const start = withPen();
+    saveDraft(store, key, start, null, 1_000);
+    const other = ok(drawStroke(start, stroke(0.5, 0.3, 2150)));
+    saveDraft(store, key, other, start, 1_500);
+    const mine = ok(drawStroke(start, stroke(0.1, 0.3, 2100)));
+    expect(saveDraft(store, key, mine, start, 2_000)).toEqual({ status: "reload", history: other });
+    expect(loadDraft(store, key)).toEqual(other);
+  });
+
+  it("writes over a broken draft: it holds nothing to lose", () => {
+    const store = createMemoryDraftStore({ [key]: "1000@{broken" });
+    expect(saveDraft(store, key, withPen(), null, 2_000).status).toBe("saved");
+  });
+});
+
+describe("old drafts make room, never a board a tab has open (R370-3)", () => {
+  const DAY = RECENT_MS;
+  const k = (i: number) => boardDraftKey("book-1", 1, i);
+  const drafts = (store: ReturnType<typeof createMemoryDraftStore>) => [...store.items.keys()].filter((x) => x.startsWith(BOARD_DRAFT_ROOT));
+
+  it(`keeps at most ${MAX_DRAFTS} drafts not touched for a day: the oldest go first; other keys stay`, () => {
+    const store = createMemoryDraftStore({ "unica-work:t1:q1": "a test draft stays" });
+    const h = withPen();
+    for (let i = 0; i < MAX_DRAFTS + 5; i++) saveDraft(store, k(i), h, null, 1_000 + i * DAY);
+    expect(drafts(store)).toHaveLength(MAX_DRAFTS);
+    expect(drafts(store)).not.toContain(k(0));
+    expect(drafts(store)).toContain(k(MAX_DRAFTS + 4));
+    expect(store.items.get("unica-work:t1:q1")).toBe("a test draft stays");
+  });
+
+  it("keeps a board open in another tab, and recent drafts, going over the cap up to the hard ceiling", () => {
+    const store = createMemoryDraftStore();
+    const h = withPen();
+    const open = boardDraftKey("book-1", 9, 1);
+    saveDraft(store, open, h, null, 0);
+    const now = 3 * DAY;
+    markOpen(store, open, now);
+    // Another tab saves 40 other boards within a few minutes: all recent, so none goes.
+    for (let i = 0; i < 40; i++) saveDraft(store, k(i), h, null, now + i * 1000);
+    expect(drafts(store)).toHaveLength(41);
+    expect(loadDraft(store, open)).toEqual(h);
+    // Past the hard ceiling the oldest go, recent or not; the open board stays.
+    for (let i = 40; i < 80; i++) saveDraft(store, k(i), h, null, now + i * 1000);
+    expect(drafts(store)).toHaveLength(HARD_MAX_DRAFTS);
+    expect(drafts(store)).toContain(open);
+    expect(drafts(store)).not.toContain(k(0));
+  });
+
+  it("lets a board go once its tab has closed (or stopped saying it is open) and it is a day old", () => {
+    const store = createMemoryDraftStore();
+    const h = withPen();
+    const board = boardDraftKey("book-1", 9, 1);
+    saveDraft(store, board, h, null, 0);
+    markOpen(store, board, 0);
+    for (let i = 0; i < MAX_DRAFTS; i++) saveDraft(store, k(i), h, null, 2 * DAY + i);
+    // Its tab last said it was open at 0: long ago, so it is closed, and its draft is two days old.
+    expect(drafts(store)).not.toContain(board);
+    expect(store.items.has(`${OPEN_ROOT}${board}`)).toBe(false);
+    markClosed(store, k(0));
+    expect(drafts(store)).toHaveLength(MAX_DRAFTS);
+  });
+});
+
+describe("copies of a board", () => {
+  it("takes the newest copy of a board by its revision", () => {
+    const older = withPen();
+    const newer = ok(drawStroke(older, stroke(0.1, 0.3, 2100)));
+    expect(newestHistory([encodeHistory(older), encodeHistory(newer), "junk", null])).toEqual(newer);
+    expect(newestHistory([null, "junk"])).toBeNull();
+  });
+
+  it("reads back only a history in time order that replays on an empty board", () => {
+    const h = ok(drawStroke(withPen(), stroke(0.1, 0.3, 2100)));
+    const data = JSON.parse(encodeHistory(h));
+    expect(decodeHistory(JSON.stringify(data))).toEqual(h);
+    expect(decodeHistory(JSON.stringify({ ...data, events: [...data.events].reverse() }))).toBeNull();
+    expect(decodeHistory(JSON.stringify({ ...data, events: [{ kind: "maya", t: 0, batchId: "x", commands: [{ op: "nope" }] }] }))).toBeNull();
+    expect(decodeHistory(JSON.stringify({ ...data, v: 2 }))).toBeNull();
+    expect(decodeHistory(JSON.stringify({ ...data, events: [{ kind: "stroke", erase: false, w: 3, boardWidth: 800, page: 1, pts: [[0.1, 0.1, 5], [0.2, 0.2, 4]] }] }))).toBeNull();
+  });
+});
+
+describe("ink kept by a tab that lost the board (R370-5-1)", () => {
+  it("goes back on as recovered strokes, with their first times, whoever holds the pen; it reads back and replays", () => {
+    const drawn = stroke(0.4, 0.3, 2100);
+    const h = ok(givePen(withPen(), 3000));
+    expect(penHolder(h)).toBe("maya");
+    const { history, refused } = restoreKept(h, [keptStroke(drawn)], 5000);
+    expect(refused).toEqual([]);
+    expect(childStrokes(history)).toEqual([drawn]);
+    expect(history.events.at(-1)).toEqual({ kind: "recovered", t: 5000, ...drawn });
+    expect(penHolder(history)).toBe("maya");
+    expect(decodeHistory(encodeHistory(history))).toEqual(history);
+    const r = replayOf(history);
+    expect(replayFrame(r, 4999).child).toEqual([]);
+    expect(replayFrame(r, 5000).child).toEqual([drawn]);
+  });
+
+  it("refuses a kept stroke the board cannot take, and keeps it out of the history", () => {
+    const bad = keptStroke(stroke(0.4, 0.3, 2100, { page: 4 }));
+    const { history, refused } = restoreKept(withPen(), [bad], 5000);
+    expect(refused).toEqual([bad]);
+    expect(childStrokes(history)).toEqual([]);
+  });
+});
+
+describe("the replay of a saved board", () => {
+  it("R442-1: returns to the saved page after a focus batch with no new strokes", () => {
+    let h = createHistory();
+    for (const [i, id] of ["a", "b", "c", "d"].entries()) {
+      h = ok(mayaWrites(h, { transactionId: id, commands: [{
+        op: "columns", id, operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }],
+        place: i ? { below: ["a", "b", "c"][i - 1] } : { region: "main" },
+      }] }, i * 10000));
+    }
+    const beforeFocus = replayOf(h);
+    expect(replayFrame(beforeFocus, Infinity).page).toBeGreaterThan(1);
+    h = ok(mayaWrites(h, { transactionId: "focus", commands: [{ op: "focus", target: { objectId: "a", part: "whole" } }] }, 40000));
+    const r = replayOf(h);
+    expect(replayFrame(r, 39999).page).toBe(replayFrame(beforeFocus, Infinity).page);
+    expect(replayFrame(r, 40000).page).toBe(1);
+    expect(replayFrame(r, Infinity).page).toBe(boardView(boardScene(h)).page);
+    expect(replayFrame(r, Infinity).maya.map((s) => s.path)).toEqual(boardPaths(boardScene(h)).filter((p) => p.page === 1));
+  });
+
+  const saved = () => {
+    let h = withPen();
+    h = ok(drawStroke(h, stroke(0.1, 0.3, 2100)));
+    h = ok(givePen(h, 2500));
+    return h;
+  };
+
+  it("ends on the board as it was left", () => {
+    const h = saved();
+    const end = replayFrame(replayOf(h), Infinity);
+    expect(end.child).toEqual(childStrokes(h));
+    expect(end.maya.map((s) => s.path)).toEqual(boardPaths(boardScene(h)));
+    expect(end.maya.every((s) => s.progress === 1)).toBe(true);
+    expect(end.pen).toBe("maya");
+  });
+
+  it("draws in order: Maya's question first, then the child's stroke point by point, with the pen where it was", () => {
+    const r = replayOf(saved());
+    const start = replayFrame(r, 0);
+    expect(start.maya).toEqual([]);
+    expect(start.child).toEqual([]);
+    expect(start.pen).toBe("maya");
+
+    const mid = replayFrame(r, 50);
+    expect(mid.maya.length).toBeGreaterThan(0);
+    expect(mid.maya.length).toBeLessThan(boardPaths(boardScene(saved())).length);
+
+    const drawing = replayFrame(r, 2110);
+    expect(drawing.pen).toBe("child");
+    expect(drawing.child[0].pts).toHaveLength(2);
+    expect(replayFrame(r, 2600).pen).toBe("maya");
+    expect(r.durationMs).toBe(Math.max(historyLength(saved()), r.maya.durationMs));
+  });
+});
+
+describe("old test whiteboard recordings", () => {
+  // As stored in the shown-work bucket (#186): a stroke, an eraser stroke, an undo, a clear and a last stroke.
+  const STORED = JSON.stringify({
+    v: 1,
+    width: 812,
+    height: 640,
+    events: [
+      { kind: "stroke", erase: false, w: 3.2, pts: [[0.1, 0.2, 400], [0.15, 0.25, 480], [0.2, 0.27, 520]] },
+      { kind: "stroke", erase: true, w: 26, pts: [[0.12, 0.22, 1000], [0.13, 0.23, 1040]] },
+      { kind: "undo", t: 1500 },
+      { kind: "stroke", erase: false, w: 3.2, pts: [[0.3, 0.3, 1800], [0.32, 0.36, 1900]] },
+      { kind: "clear", t: 2000 },
+      { kind: "stroke", erase: false, w: 3.2, pts: [[0.5, 0.5, 3000], [0.6, 0.6, 3100]] },
+    ],
+  });
+
+  it("still read and replay as before", () => {
+    const rec = readStrokes(JSON.parse(STORED))!;
+    expect(replayLength(rec)).toBe(3100);
+    expect(boardAt(rec, 450)).toEqual([{ erase: false, w: 3.2, pts: [[0.1, 0.2, 400]] }]);
+    expect(boardAt(rec, 1200).map((s) => s.erase)).toEqual([false, true]);
+    expect(boardAt(rec, 1600).map((s) => s.erase)).toEqual([false]);
+    expect(boardAt(rec, 2500)).toEqual([]);
+    expect(boardAt(rec, Infinity)).toEqual([{ erase: false, w: 3.2, pts: [[0.5, 0.5, 3000], [0.6, 0.6, 3100]] }]);
+  });
+
+  it("play through the board replay exactly as the stroke replay shows them, at every moment", () => {
+    const rec = readStrokes(JSON.parse(STORED))!;
+    const r = replayOf(historyFromRecording(rec));
+    for (const t of [0, 399, 400, 450, 480, 500, 1000, 1020, 1499, 1500, 1850, 1999, 2000, 3050, 3100, Infinity]) {
+      const child = replayFrame(r, t).child.map(({ erase, w, pts }) => ({ erase, w, pts }));
+      expect(child, `at ${t} ms`).toEqual(boardAt(rec, t));
+      expect(replayFrame(r, t).maya).toEqual([]);
+    }
+    expect(r.durationMs).toBe(replayLength(rec));
+    expect(replayFrame(r, Infinity).child.every((s) => s.boardWidth === 812)).toBe(true);
+  });
+
+  it("keep their exact points", () => {
+    const rec = readStrokes(JSON.parse(STORED))!;
+    const pts = (historyFromRecording(rec).events.filter((e) => e.kind === "stroke") as { pts: TimedPoint[] }[]).map((e) => e.pts);
+    expect(pts).toEqual(rec.events.filter((e) => e.kind === "stroke").map((e) => (e as { pts: TimedPoint[] }).pts));
+  });
+});
+
+describe("the call's board with the child's ink (#534)", () => {
+  const ok = (c: Change) => { if (!c.ok) throw new Error(c.reason); return c.history; };
+  const batch = (id: string, value: string): Batch => id === "a"
+    ? { ...QUESTION, transactionId: "a" }
+    : { transactionId: id, commands: [{ op: "write", id: `note-${id}`, text: value, place: { below: "question" } }] };
+  const line = (at: number): InkStroke => ({ erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1, 0.8, at], [0.2, 0.85, at + 200]] });
+
+  it("puts the desk's ink on the call's clock, between the batches it came between, with the call's own batches", () => {
+    // The call recorded the batches 3 s later than the desk's board showed them.
+    const call = ok(mayaWrites(ok(mayaWrites(createHistory(), batch("a", "1"), 3000)), batch("b", "2"), 9000));
+    let desk = ok(mayaWrites(createHistory(), batch("a", "1"), 0));
+    desk = ok(takePen(desk, 1000));
+    desk = ok(drawStroke(desk, line(2000)));
+    desk = ok(givePen(desk, 5000));
+    desk = ok(mayaWrites(desk, batch("b", "2"), 6000));
+    const merged = withChildInk(call, desk);
+    expect(merged.events.map((e) => e.kind)).toEqual(["maya", "pen", "stroke", "pen", "maya"]);
+    expect(childStrokes(merged)[0].pts.map((p) => p[2])).toEqual([5000, 5200]);
+    expect(merged.events.filter((e) => e.kind === "maya").map((e) => (e.kind === "maya" ? e.t : -1))).toEqual([3000, 9000]);
+    expect(decodeHistory(encodeHistory(merged))).toEqual({ v: 1, revision: merged.revision, events: merged.events });
+  });
+
+  it("takes only the child's side of the desk's copy: Maya's batches there are not the record", () => {
+    const call = ok(mayaWrites(createHistory(), batch("a", "1"), 0));
+    const desk = ok(mayaWrites(createHistory(), { ...QUESTION, transactionId: "forged" }, 0));
+    expect(withChildInk(call, desk)).toBe(call);
+    expect(withChildInk(call, null)).toBe(call);
+  });
+
+  it("R625-1: keeps the child's ink, and Maya's batch as recorded, when the batch could not be drawn over that ink", () => {
+    const glow: Batch = { transactionId: "glow", commands: [{ op: "mark", id: "onesGlow", target: { objectId: "question", part: "column", column: "ones" }, style: "highlight", ink: "yellow" }] };
+    // On the server the highlight went on (it does not know the ink); on the desk the child had drawn across the sum.
+    const call = ok(mayaWrites(ok(mayaWrites(createHistory(), QUESTION, 0)), glow, 10_000));
+    const digits = boardPaths(boardScene(call)).filter((p) => p.objectId === "question").flatMap((p) => p.pts);
+    const [left, right] = [Math.min(...digits.map((p) => p[0])) - 0.02, Math.max(...digits.map((p) => p[0])) + 0.02];
+    const middle = (Math.min(...digits.map((p) => p[1])) + Math.max(...digits.map((p) => p[1]))) / 2;
+    let desk = ok(mayaWrites(createHistory(), QUESTION, 0));
+    desk = ok(takePen(desk, 1000));
+    desk = ok(drawStroke(desk, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[left, middle, 2000], [right, middle, 2300]] }));
+    const merged = withChildInk(call, desk);
+    expect(childStrokes(merged)).toHaveLength(1);
+    expect(replayFrame(replayOf(merged), Infinity).child).toHaveLength(1);
+    expect(merged.events.flatMap((e) => (e.kind === "maya" ? [[e.batchId, e.t]] : []))).toEqual([["desk-question", 0], ["glow", 10_000]]);
+    expect(refusedBatches(merged)).toEqual(["glow"]);
+    expect(refusedBatches(call)).toEqual([]);
+  });
+
+  it("R625-3: keeps the desk's times inside the call and never moves Maya's batches", () => {
+    const call = ok(mayaWrites(ok(mayaWrites(createHistory(), QUESTION, 0)), batch("b", "2"), 10_000));
+    let desk = ok(mayaWrites(createHistory(), QUESTION, 0));
+    desk = ok(takePen(desk, 1000));
+    desk = ok(drawStroke(desk, line(5000)));
+    // A clock that jumped: a line that ends 31,000 years later.
+    desk = ok(drawStroke(desk, { ...line(6000), pts: [[0.3, 0.8, 6000], [0.4, 0.85, 1e12]] }));
+    const merged = withChildInk(call, desk, { endMs: 60_000 });
+    expect(merged.events.flatMap((e) => (e.kind === "maya" ? [e.t] : []))).toEqual([0, 10_000]);
+    expect(historyLength(merged)).toBeLessThanOrEqual(60_000);
+    expect(childStrokes(merged)).toHaveLength(2);
+    expect(decodeHistory(encodeHistory(merged))).not.toBeNull();
+  });
+
+  it("R625b-6: a chat's board view keeps the child's ink in sight when Maya's work comes after it", () => {
+    let h = ok(takePen(createHistory(), 0));
+    // A line far down the board, before Maya writes anything.
+    h = ok(drawStroke(h, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1, 0.8, 100], [0.4, 0.88, 300]] }));
+    h = ok(givePen(h, 400));
+    h = ok(mayaWrites(h, QUESTION, 500));
+    const [x, y, w, hh] = chatBoardView(h).split(" ").map(Number);
+    for (const [px, py] of [[0.1, 0.8], [0.4, 0.88]]) {
+      expect(px * 1000).toBeGreaterThan(x);
+      expect(px * 1000).toBeLessThan(x + w);
+      expect(py * 1000).toBeGreaterThan(y);
+      expect(py * 1000).toBeLessThan(y + hh);
+    }
+    // Maya's work is in sight too.
+    const maya = boardPaths(boardScene(h)).flatMap((p) => p.pts);
+    expect(Math.min(...maya.map((p) => p[0])) * 1000).toBeGreaterThan(x);
+    expect(Math.max(...maya.map((p) => p[1])) * 1000).toBeLessThan(y + hh);
+  });
+});
+
+describe("the child's ink as an event log (#635)", () => {
+  const ok = (c: Change) => { if (!c.ok) throw Error(c.reason); return c.history; };
+  const stroke = (h: BoardHistory, x: number, at: number) => ok(drawStroke(h, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[x, 0.5, at], [x + 0.05, 0.55, at + 10]] }));
+  const penned = () => ok(takePen(createHistory(), 10));
+
+  it("R639-2: a chat's board starts from the longer of the call's log and the draft, and keeps a draft's line the call never had", () => {
+    const two = stroke(penned(), 0.1, 100);
+    const three = stroke(two, 0.2, 200);
+    expect(startingChatBoard(three, two)).toBe(three);
+    expect(startingChatBoard(two, three)).toBe(three);
+    expect(startingChatBoard(null, two)).toBe(two);
+    expect(startingChatBoard(two, null)).toBe(two);
+    expect(startingChatBoard(null, null)).toBeNull();
+    // The draft went another way: all the call holds stays first, and the draft's own line is added back.
+    const other = stroke(two, 0.9, 150);
+    const started = startingChatBoard(three, other)!;
+    expect(inkLog(started).slice(0, 3)).toEqual(inkLog(three));
+    expect(childStrokes(started).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.9]);
+  });
+
+  it("R639-2: growing a log keeps every sequence it has: a shorter board changes nothing, and a board that went another way adds its new events once", () => {
+    const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
+    const four = inkLog(stroke(stroke(stroke(penned(), 0.1, 100), 0.2, 200), 0.3, 300));
+    expect(growInkLog(three, four)).toEqual(four);
+    expect(growInkLog(three, three.slice(0, 2))).toEqual(three);
+    const other = inkLog(stroke(stroke(penned(), 0.1, 100), 0.9, 150));
+    const grown = growInkLog(three, other);
+    expect(grown).toEqual([...three, other[2]]);
+    expect(growInkLog(grown, other)).toEqual(grown);
+    // Only the call has the first events on this device: they count as the same.
+    expect(growInkLog([null, three[1]], three)).toEqual(three);
+  });
+
+  it("R639b-1: four reloads of a log with an overlapping time add nothing: an event is the same whatever its time", () => {
+    const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
+    const late = inkLog(stroke(penned(), 0.9, 50))[1];
+    let log = [...three, late];
+    let draft: BoardHistory | null = null;
+    for (let reload = 0; reload < 4; reload++) {
+      const call = historyFromLog(log, [])!;
+      const board: BoardHistory = startingChatBoard(call, draft)!;
+      log = growInkLog(log, inkLog(board));
+      draft = board;
+      expect(log, `reload ${reload}`).toHaveLength(4);
+      expect(childStrokes(board).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.9]);
+    }
+  });
+
+  it("R639b-1: real events that look alike still count: a redraw of the same line, and a second clear", () => {
+    const one = stroke(penned(), 0.1, 100);
+    const again = stroke(one, 0.1, 200);
+    expect(growInkLog(inkLog(one), inkLog(again))).toHaveLength(inkLog(again).length);
+    // A board that went another way: its own events go on, once each, however many look like ones the log holds.
+    const log = inkLog(ok(clear(stroke(penned(), 0.5, 100), 200)));
+    const other = inkLog(ok(clear(stroke(stroke(ok(clear(stroke(penned(), 0.5, 100), 200)), 0.1, 300), 0.2, 400), 500)));
+    const theirs = inkLog(stroke(stroke(penned(), 0.7, 100), 0.7, 200));
+    const grown = growInkLog(log, theirs);
+    expect(grown).toHaveLength(log.length + 2);
+    expect(growInkLog(grown, theirs)).toEqual(grown);
+    expect(growInkLog(log, other)).toEqual(other);
+    expect(childStrokes(startingChatBoard(stroke(penned(), 0.7, 100), stroke(stroke(penned(), 0.7, 100), 0.7, 200))!)).toHaveLength(2);
+    const drawnTwice = startingChatBoard(stroke(stroke(penned(), 0.1, 100), 0.2, 200), stroke(stroke(penned(), 0.1, 100), 0.7, 150))!;
+    expect(childStrokes(drawnTwice).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.7]);
+  });
+
+  it("R639-2: a log with an event earlier than the one before it still builds the board, with that event moved up", () => {
+    const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
+    const late = inkLog(stroke(penned(), 0.9, 50))[1];
+    const h = historyFromLog([...three, late], [])!;
+    expect(h).not.toBeNull();
+    expect(childStrokes(h).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.9]);
+  });
+
+  const glow: Batch = { transactionId: "glow", commands: [{ op: "mark", id: "onesGlow", target: { objectId: "question", part: "column", column: "ones" }, style: "highlight", ink: "yellow" }] };
+  const eraser = (at: number): InkStroke => ({ erase: true, w: 28, boardWidth: 800, page: 1, pts: [[0.1, 0.8, at], [0.3, 0.85, at + 100]] });
+  const line = (at: number): InkStroke => ({ erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1, 0.8, at], [0.3, 0.85, at + 100]] });
+
+  it("R635-3: the log rebuilds the board exactly: a clear stays a clear, a redraw after an eraser stays, Maya's batches stay", () => {
+    let h = ok(mayaWrites(createHistory(), QUESTION, 0));
+    h = ok(takePen(h, 1000));
+    h = ok(drawStroke(h, line(1100)));
+    h = ok(clear(h, 1300));
+    h = ok(drawStroke(h, line(1400)));
+    h = ok(drawStroke(h, eraser(1600)));
+    // The same geometry again after the eraser: a new line, not a copy to drop.
+    h = ok(drawStroke(h, line(1800)));
+    h = ok(givePen(h, 2000));
+    h = ok(mayaWrites(h, glow, 2100));
+    const log = inkLog(h);
+    expect(log.map((e) => e.kind)).toEqual(["delivered", "pen", "stroke", "clear", "stroke", "stroke", "stroke", "pen", "delivered"]);
+    const back = historyFromLog(log, [QUESTION, glow])!;
+    expect(back.events).toEqual(h.events);
+    expect(childStrokes(back)).toEqual(childStrokes(h));
+  });
+
+  it("R635-5: a delivery order the call never had is not taken: the call's drawing still shows", () => {
+    const call = ok(mayaWrites(ok(mayaWrites(createHistory(), QUESTION, 0)), glow, 5000));
+    // A forged copy: the highlight "reached the board" and was refused before the question even came.
+    let desk: BoardHistory = { v: 1, revision: 1, events: [{ kind: "skipped", t: 0, batchId: "glow" }] };
+    desk = ok(mayaWrites(desk, QUESTION, 100));
+    desk = ok(takePen(desk, 1000));
+    desk = ok(drawStroke(desk, { ...line(1200), pts: [[0.05, 0.95, 1200], [0.08, 0.97, 1300]] }));
+    const shows = (merged: BoardHistory) => {
+      expect(refusedBatches(merged)).toEqual([]);
+      expect(replayFrame(replayOf(merged), Infinity).maya.some((s) => s.path.objectId === "onesGlow")).toBe(true);
+      expect(childStrokes(merged)).toHaveLength(1);
+    };
+    shows(withChildInk(call, desk));
+    shows(withInkLog(call, inkLog(desk)));
+  });
+
+  it("R635-6: the chat board's view is taken again when ink comes onto it from elsewhere, never under the child's own pen", () => {
+    let h = ok(mayaWrites(createHistory(), QUESTION, 0));
+    h = ok(takePen(h, 1000));
+    const before = chatViewKey(h);
+    expect(chatViewKey(ok(drawStroke(h, line(1100))))).toBe(before);
+    const kept = restoreKept(h, [keptStroke({ ...line(1100), pts: [[0.9, 0.95, 1100], [0.95, 0.97, 1200]] })], 1300).history;
+    expect(chatViewKey(kept)).not.toBe(before);
+    const [x, y, w, hh] = chatBoardView(kept).split(" ").map(Number);
+    expect(0.95 * 1000).toBeLessThan(x + w);
+    expect(0.97 * 1000).toBeLessThan(y + hh);
+  });
+});

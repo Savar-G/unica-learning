@@ -31,7 +31,7 @@
 // Results call: book_call (src report: the parent opened the Calendly booking page from the report). No child data.
 // Report wait: test_report_wait (status opened: the end screen opened the built report; slow: it was not built within 3
 // minutes and the screen points to the email). No time or score.
-// Check your answers (#253): test_check (status stage1 or stage2: "Done checking" locked that part). test_error has
+// Check your answers (#253): test_check (status stage1, stage2 or stage3: "Done checking" locked that part). test_error has
 // status check when it failed.
 // Reminders (#73): reminder_open (status = continue, come_back, start or start_followup: the parent opened the start screen from that
 // reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page
@@ -42,12 +42,19 @@
 // posthog-js is imported on demand so it stays out of the first-load bundle.
 // Ad conversions (D-126, src/lib/ad-tags.ts): account_created, report_open and card_saved also go to Meta Pixel and the
 // Google tag when they are set up, after consent and never on a child's page. No props travel to them.
+import { isScanEvent, scanStatus } from "@/lib/scan-events";
 import { getAdTags } from "@/lib/ad-tags";
 import { getAnalytics } from "@/lib/analytics";
 import { getConsent } from "@/lib/consent";
 
 /** `beacon`: the page is going away (pagehide), so the event goes out at once with sendBeacon. */
-export function track(event: string, props: Record<string, unknown> = {}, options: { beacon?: boolean } = {}) {
+export function track(event: string, props: Record<string, unknown> = {}, options: { beacon?: boolean; current?: () => boolean } = {}) {
+  if (event.startsWith("scan_") && !isScanEvent(event)) return;
+  if (isScanEvent(event)) {
+    if (getConsent() !== "granted" || !scanStatus(event, props.status) || Object.keys(props).some((key) => key !== "status") || options.current?.() === false) return;
+    const analytics = getAnalytics(); analytics?.begin(); analytics?.track(event, props, options);
+    return;
+  }
   getAdTags()?.conversion(event);
   if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) {
     if (process.env.NODE_ENV !== "production") console.info("[track]", getConsent() === "granted" ? "sent" : "dropped (no consent)", event, props, options.beacon ? "(beacon)" : "");

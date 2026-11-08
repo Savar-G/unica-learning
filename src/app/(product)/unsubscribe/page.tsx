@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { pageMetadata } from "@/lib/metadata";
-import { unsubscribeState, type UnsubscribeState } from "@/lib/reminder-store";
+import { unsubscribeState, type UnsubscribeScope, type UnsubscribeState } from "@/lib/reminder-store";
 import { adminClient } from "@/lib/supabase-auth";
 import { TrackOnce } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
@@ -17,6 +17,32 @@ const OFF = (
   <>
     <h1>Reminders are off.</h1>
     <p className="lead">We will not send you more reminders or emails about our plans. Your child&apos;s report stays in your account, and when your child finishes a test, you still get the report by email.</p>
+  </>
+);
+// The daily Maya email's own link (#332) turns off only that email.
+const MAYA_OFF = (
+  <>
+    <h1>Maya emails are off.</h1>
+    <p className="lead">We will not send you more weekly emails about your child&apos;s calls with Maya. Other emails from us do not change.</p>
+  </>
+);
+const MAYA_FAILED = (
+  <>
+    <h1>We could not turn off Maya emails.</h1>
+    <p className="lead">Something went wrong on our side. Try the link again later, or reply to any of our emails and we will turn them off.</p>
+  </>
+);
+// The monthly summary email's own link (#563) turns off only that email.
+const MONTHLY_OFF = (
+  <>
+    <h1>Monthly summary emails are off.</h1>
+    <p className="lead">We will not send you more monthly summary emails. Each summary stays on your child&apos;s Overview page. Other emails from us do not change.</p>
+  </>
+);
+const MONTHLY_FAILED = (
+  <>
+    <h1>We could not turn off monthly summary emails.</h1>
+    <p className="lead">Something went wrong on our side. Try the link again later, or reply to any of our emails and we will turn them off.</p>
   </>
 );
 const FAILED = (
@@ -36,12 +62,45 @@ export default async function UnsubscribePage({ searchParams }: PageProps<"/unsu
   const token = typeof t === "string" ? t : "";
   const admin = adminClient();
   let state: UnsubscribeState | "failed" = "failed";
+  let scope: UnsubscribeScope | null = null;
   try {
-    if (admin) state = await unsubscribeState(admin, token);
+    if (admin) ({ state, scope } = await unsubscribeState(admin, token));
   } catch (e) {
     console.error("[unsubscribe] lookup failed", e instanceof Error ? e.message : e);
   }
 
+  if (state === "subscribed" && scope === "maya") {
+    return (
+      <SupportPage label="Maya emails" title="">
+        <Unsubscribe token={token} done={MAYA_OFF} failed={MAYA_FAILED} working="Turning off Maya emails…" />
+        <noscript>
+          <h1>Turn off Maya emails.</h1>
+          <p className="lead">We will not send you more weekly emails about your child&apos;s calls with Maya. Other emails from us do not change.</p>
+          <form method="post" action="/api/unsubscribe">
+            <input type="hidden" name="t" value={token} />
+            <input type="hidden" name="page" value="1" />
+            <button className="btn" type="submit">Turn off Maya emails <span className="arr">→</span></button>
+          </form>
+        </noscript>
+      </SupportPage>
+    );
+  }
+  if (state === "subscribed" && scope === "monthly") {
+    return (
+      <SupportPage label="Monthly summary emails" title="">
+        <Unsubscribe token={token} done={MONTHLY_OFF} failed={MONTHLY_FAILED} working="Turning off monthly summary emails…" />
+        <noscript>
+          <h1>Turn off monthly summary emails.</h1>
+          <p className="lead">We will not send you more monthly summary emails. Each summary stays on your child&apos;s Overview page. Other emails from us do not change.</p>
+          <form method="post" action="/api/unsubscribe">
+            <input type="hidden" name="t" value={token} />
+            <input type="hidden" name="page" value="1" />
+            <button className="btn" type="submit">Turn off monthly summary emails <span className="arr">→</span></button>
+          </form>
+        </noscript>
+      </SupportPage>
+    );
+  }
   if (state === "subscribed") {
     return (
       <SupportPage label="Reminder emails" title="">
@@ -59,9 +118,9 @@ export default async function UnsubscribePage({ searchParams }: PageProps<"/unsu
     );
   }
   return (
-    <SupportPage label="Reminder emails" title="">
+    <SupportPage label={scope === "maya" ? "Maya emails" : scope === "monthly" ? "Monthly summary emails" : "Reminder emails"} title="">
       <TrackOnce event="unsubscribe_page" props={{ status: state }} />
-      {state === "unsubscribed" && OFF}
+      {state === "unsubscribed" && (scope === "maya" ? MAYA_OFF : scope === "monthly" ? MONTHLY_OFF : OFF)}
       {state === "failed" && FAILED}
       {state === "unknown" && (
         <>

@@ -1,0 +1,42 @@
+{
+  "computer": "Savars-MacBook-Pro-5.local",
+  "date": "2026-11-06",
+  "canonical": "/admin/dashboard",
+  "legacy": {
+    "status": 200,
+    "selectedChild": "Kai",
+    "scenario": "expired",
+    "photoUnavailable": true,
+    "activeBodyControls": 0
+  },
+  "google": {
+    "entry": "http://localhost:3000/sign-in?next=%2Fadmin%2Fdashboard",
+    "callbackStatus": 303,
+    "destinationStatus": 200,
+    "destination": "http://localhost:3000/admin/dashboard"
+  },
+  "positive": {
+    "activeBodyControls": 0,
+    "child": "Kai",
+    "frameHeading": "Page results",
+    "heading": "Parent dashboard",
+    "parentDashboardLink": "/admin/dashboard",
+    "sandbox": "allow-same-origin",
+    "uncertain": true,
+    "url": "http://localhost:3000/admin/dashboard?view=scan_results&scenario=uncertain&size=phone&family=two&child=second"
+  },
+  "negative": {
+    "heading": "This page could not be found.",
+    "previewPresent": false,
+    "url": "http://localhost:3000/admin/dashboard?demo=1",
+    "status": 404
+  },
+  "limits": [
+    "Local dev server with real Google sign-in and hosted Admin authorization.",
+    "No production deployment claimed. No provider, billing, family-release or paid API operation.",
+    "Snapshot capture timed out. No new screenshot was produced.",
+    "Preview body has no active controls. Three head links were the expected stylesheets."
+  ],
+  "openedTabsClosed": true,
+  "ownedDevServersStopped": true
+}

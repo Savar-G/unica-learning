@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" data-look="warm"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maya call round</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/tokens.css">
+<style>
+body { padding: 28px clamp(16px, 3vw, 40px) 64px; background: #fff; }
+h1 { font: 300 34px/1.1 var(--sans); letter-spacing: -.02em; margin: 0 0 8px; }
+h2 { font: 400 22px/1.2 var(--sans); margin: 40px 0 12px; }
+h3 { font: 600 15px/1.2 var(--sans); margin: 22px 0 8px; }
+p, li { font: 400 15px/1.5 var(--sans); color: var(--ink-2); max-width: 78ch; }
+ul { padding-left: 20px; margin: 8px 0; }
+a { color: var(--ink); text-underline-offset: 3px; }
+table { border-collapse: collapse; width: 100%; font: 400 14px/1.4 var(--sans); }
+td, th { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { font-weight: 600; }
+.rec { padding: 14px 18px; border-radius: 12px; background: var(--card); }
+.strip { display: flex; gap: 10px; overflow-x: auto; padding: 4px 0 10px; align-items: flex-end; }
+.strip figure { margin: 0; flex: none; }
+.strip img { display: block; height: 300px; width: auto; border: 1px solid var(--line); border-radius: 8px; background: #f5f5f6; }
+.strip figcaption { margin-top: 5px; font: 400 12px/1.3 var(--mono); color: var(--ink-2); max-width: 420px; }
+.tag { font: 500 12px/1 var(--mono); color: var(--ink-2); }
+</style></head><body>
+<div id="o"></div>
+<script src="board-data.js"></script>
+<script>
+const R = window.ROUND, VPS = ["laptop", "tablet-l", "tablet-p", "phone"];
+const fig = (file, cap, link) => `<figure><a href="${link}"><img loading="lazy" src="${file}" alt="${cap}"></a><figcaption>${cap}</figcaption></figure>`;
+let h = `<h1>Maya call screens, round r337</h1><p>#337 and #336. Mockups only. Click any picture to open the clickable mockup; its bar at the bottom right changes the option and the screen.</p>`;
+h += `<div class="rec"><h3 style="margin-top:0">Savar picked: ${R.recommendation.pick} (D-277). <a href="call.html">Open the picked mockup</a></h3><ul>${R.recommendation.why.map(w => `<li>${w}</li>`).join("")}</ul></div>`;
+h += `<h2>Savar's picks</h2><table><tr><th></th><th>Question</th><th>Answer</th></tr>${R.decided.map(d => `<tr><td>${d.id}</td><td>${d.question}</td><td>${d.answer}</td></tr>`).join("")}</table>`;
+h += `<h2>Still open</h2><ul>${R.open_points.map(p => `<li><b>${p.point}:</b> ${p.note}</li>`).join("")}</ul>`;
+const mix = (st) => ["a-" + st + "-laptop", "a-" + st + "-tablet-l", "b-" + st + "-tablet-p", "b-" + st + "-phone"];
+h += `<h2>The picked mix</h2>`;
+for (const st of R.shots.options.states) h += `<h3>${st}</h3><div class="strip">${mix(st).map(n => fig(`shots/opt-${n}.png`, n, `call.html?state=${st}`)).join("")}</div>`;
+for (const st of R.shots.recommended_more.states) h += `<h3>${st}</h3><div class="strip">${mix(st).map(n => fig(`shots/opt-${n}.png`, n, `call.html?state=${st}`)).join("")}</div>`;
+h += `<h2>The decision</h2><p>${R.decision}</p><table><tr><th>Option</th><th>Bet</th><th>Benefit</th><th>Cost</th><th>Failure risk</th></tr>${R.options.map(o => `<tr><td><a href="${o.artifact}"><b>${o.id}</b> ${o.name}</a></td><td>${o.bet}</td><td>${o.benefit}</td><td>${o.cost}</td><td>${o.risk}</td></tr>`).join("")}</table>`;
+h += `<p>Options as compared before the pick. Option A's screens show the two tabs of D-278; B and C have no tabs in a call.</p>`;
+for (const o of R.options) {
+  h += `<h2>${o.id}: ${o.name}</h2>`;
+  for (const st of R.shots.options.states) {
+    h += `<h3>${st}</h3><div class="strip">${VPS.map(v => fig(`shots/opt-${o.id.toLowerCase()}-${st}-${v}.png`, v, `call.html?opt=${o.id.toLowerCase()}&state=${st}`)).join("")}</div>`;
+  }
+}
+h += `<h2>The flow around the call (same in every option)</h2>`;
+for (const [g, list] of Object.entries(R.shots.flow)) {
+  h += `<h3 style="font-size:18px;margin-top:30px">${g}</h3>`;
+  for (const s of list) h += `<h3>${s.state}: <span style="font-weight:400">${s.what}</span></h3><div class="strip">${["laptop", "tablet-p", "phone"].map(v => fig(`shots/${s.state}-${v}.png`, v, `call.html?state=${s.state}`)).join("")}</div>`;
+}
+h += `<h3 style="font-size:18px;margin-top:30px">Other devices</h3><div class="strip">${fig("shots/mic-refused-android-phone.png", "mic refused, Android", "call.html?state=mic-refused&device=android")}${fig("shots/mic-refused-tablet-l.png", "mic refused, iPad on its side", "call.html?state=mic-refused&device=safari")}${fig("shots/opt-b-listening-phone-landscape.png", "phone on its side", "call.html?opt=b&state=listening")}</div>`;
+h += `<h2>For the build</h2><ul>${R.for_the_build.map(x => `<li>${x}</li>`).join("")}</ul>`;
+document.getElementById("o").innerHTML = h;
+</script></body></html>

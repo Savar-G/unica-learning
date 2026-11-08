@@ -30,9 +30,6 @@ export function ComparePage() {
             <Eyebrow>How we compare</Eyebrow>
             <h1><span className="cmpp-hl">How {BRAND} compares</span> to tutors, learning centres and online learning platforms.</h1>
             <p className="lead">Side by side: how personal each one is, whether there is a plan, who helps when your child is stuck, what you see about their gaps, how much is on a screen, and what it costs.</p>
-            <nav className="cmpp-jump" aria-label="Jump to a comparison">
-              {ONE_BY_ONE.map((o) => <a key={o.id} href={`#${o.id}`}>{o.tag}</a>)}
-            </nav>
           </Rise>
 
           <section className="cmpp-part" aria-labelledby="glanceT">

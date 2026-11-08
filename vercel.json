@@ -1,7 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["sfo1"],
+  "regions": [
+    "sfo1"
+  ],
   "crons": [
-    { "path": "/api/keepalive", "schedule": "0 15 * * *" }
-  ]
+    {
+      "path": "/api/keepalive",
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/child-deletions",
+      "schedule": "15 15 * * *"
+    },
+    {
+      "path": "/api/scan-marking",
+      "schedule": "37 15 * * *"
+    }
+  ],
+  "ignoreCommand": "bash scripts/vercel-ignore-build.sh"
 }

@@ -8,7 +8,7 @@ import { track } from "@/lib/track";
 
 type Status = "idle" | "working" | "done" | "failed";
 
-export function Unsubscribe({ token, done, failed }: { token: string; done: ReactNode; failed: ReactNode }) {
+export function Unsubscribe({ token, done, failed, working = "Turning off reminders…" }: { token: string; done: ReactNode; failed: ReactNode; working?: string }) {
   const [status, setStatus] = useState<Status>("idle");
   const [round, setRound] = useState(0);
 
@@ -33,7 +33,7 @@ export function Unsubscribe({ token, done, failed }: { token: string; done: Reac
   }, [token, round]);
 
   if (status === "idle") return null;
-  if (status === "working") return <h1 role="status">Turning off reminders…</h1>;
+  if (status === "working") return <h1 role="status">{working}</h1>;
   if (status === "done") return <div role="status">{done}</div>;
   return (
     <div role="alert">

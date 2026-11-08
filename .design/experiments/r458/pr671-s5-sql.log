@@ -1,0 +1,41 @@
+CONTROL automatic command body and Send body remain identical
+PASS active public PATCH right -> blank preserves original reading and one attempt
+PASS active public PATCH wrong -> blank preserves original reading and one attempt
+PASS active public PATCH blank -> right preserves original reading and one attempt
+PASS active public PATCH blank -> wrong preserves original reading and one attempt
+PASS active public PATCH right -> wrong preserves original reading and one attempt
+PASS active public PATCH wrong -> right preserves original reading and one attempt
+PASS deleted public PATCH right -> blank preserves original reading and one attempt
+PASS deleted public PATCH wrong -> blank preserves original reading and one attempt
+PASS deleted public PATCH blank -> right preserves original reading and one attempt
+PASS deleted public PATCH blank -> wrong preserves original reading and one attempt
+PASS deleted public PATCH right -> wrong preserves original reading and one attempt
+PASS deleted public PATCH wrong -> right preserves original reading and one attempt
+PASS expired public PATCH right -> blank preserves original reading and one attempt
+PASS expired public PATCH wrong -> blank preserves original reading and one attempt
+PASS expired public PATCH blank -> right preserves original reading and one attempt
+PASS expired public PATCH blank -> wrong preserves original reading and one attempt
+PASS expired public PATCH right -> wrong preserves original reading and one attempt
+PASS expired public PATCH wrong -> right preserves original reading and one attempt
+PASS parent can revise a prior choice; stale retry returns current state with no extra history
+PASS two devices concurrently change the same version: exactly one save, one conflict, one original
+PASS parent check during marking and late extraction/application cannot erase the judgment
+PASS retake with a changed answer cannot replace a finalized parent judgment
+PASS unscored observation preserves eligibility and has no default judgment
+PASS parent observation preserves eligibility and has no default judgment
+PASS code observation preserves eligibility and has no default judgment
+PASS publication failure saves durable intent, recovers after expiry and does not count twice
+[child profile] skill states not recorded 2e4bdf1e-0eab-4ab6-8f02-17217a42d69c synthetic_profile_failure
+PASS profile failure saves durable intent, recovers after expiry and does not count twice
+[child profile] skill states not read 98d6ad83-f209-489d-bea1-d9f07e9d184e synthetic_skill_read_failure
+PASS skill-history read failure commits facts and a durable retry together
+[child profile] skill states not recorded 7a74d60a-4ee8-4cb2-bf0c-15fcf85343ff synthetic_skill_write_failure
+PASS skill-history write failure commits facts and a durable retry together
+PASS a failed canonical result save rolls back its history and revision; retry commits once
+PASS a stale profile or AI findings save cannot replace facts from a parent correction
+PASS paginated history retains more than 100 parent decisions after photo expiry
+PASS another family and mismatched item/version cannot change a result
+PASS family deletion fence refuses parent change and late automatic application
+PASS child deletion fence refuses parent change and late automatic application
+PASS append-only history, service-only grants, RLS and family/child cascades
+{"passed":36,"failures":0,"proof":"synthetic public PATCH, production action/store/projection/rebuild and SQL; local transport/auth seams only"}

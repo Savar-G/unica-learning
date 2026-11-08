@@ -1,0 +1,28 @@
+
+ RUN  v4.1.11 /private/tmp
+
+stdout | pd-controls-bf76-independent.test.ts > old deployed public startPlan sends a second trial under an admitted paid Restart key
+REPRO_OLD_DEPLOYED_RESTART {"trialDays":"30","stored":{"purpose":"restart","state":"started"}}
+
+stdout | pd-controls-bf76-independent.test.ts > a definite paid Restart refusal leaves its route hold after the durable start closes
+REPRO_REFUSED_RESTART_HOLD {"state":"refused","holds":1,"deletion":"busy"}
+
+stdout | pd-controls-bf76-independent.test.ts > the shown cancellation date uses the delayed charge, but cancellation ends at the earlier renewal
+REPRO_CANCEL_DATE {"shown":{"kind":"paying","nextCharge":"2027-01-15T18:00:00.000Z","monthly":79.99},"cancelled":{"ok":true,"changed":true,"endsAt":"2027-01-01T18:00:00.000Z"}}
+
+stdout | pd-controls-bf76-independent.test.ts > SQL and public family-time use the same year and day through dated overrides and fallbacks
+FAMILY_TIME_MATRIX 24 SQL/TypeScript day comparisons; 6 calendar-week shifts
+
+stdout | pd-controls-bf76-independent.test.ts > SQL admission rejects a changed delivery correction and reserves the remaining allowance atomically
+STALE_RECEIPT_AND_ALLOWANCE {"staleReceipt":"refused","wrongYear":"refused","overQuota":"refused","used":8}
+
+ ✓ pd-controls-bf76-independent.test.ts > old deployed public startPlan sends a second trial under an admitted paid Restart key 15ms
+ ✓ pd-controls-bf76-independent.test.ts > a definite paid Restart refusal leaves its route hold after the durable start closes 6ms
+ ✓ pd-controls-bf76-independent.test.ts > the shown cancellation date uses the delayed charge, but cancellation ends at the earlier renewal 2ms
+ ✓ pd-controls-bf76-independent.test.ts > SQL and public family-time use the same year and day through dated overrides and fallbacks 17ms
+ ✓ pd-controls-bf76-independent.test.ts > SQL admission rejects a changed delivery correction and reserves the remaining allowance atomically 5ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  16:41:21
+   Duration  602ms (transform 286ms, setup 0ms, import 484ms, tests 46ms, environment 0ms)

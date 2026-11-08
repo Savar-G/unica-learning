@@ -2,10 +2,10 @@
 
 // Parent account screens for the online assessment (#62, D-082): signup, sign-in, the children list.
 // Server writes go through /api/account/*; the browser holds only the publishable key and the parent's own session.
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
+import { CURRICULA, EMAIL, type CurriculumId } from "@/lib/signup";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel, gradeShort } from "@/lib/assessment/grades";
 import { GRADES, gradeHint, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
@@ -16,6 +16,8 @@ import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { markAdStep } from "@/lib/ad-visit-steps";
 import { SOURCE_STORAGE_KEY, VISIT_STORAGE_KEY, visitSource } from "@/lib/visit-source";
 import { mayActAsParent } from "@/components/desk-guard";
+import type { RetryTime } from "@/lib/family-time";
+import { FamilyTime as When } from "@/components/family-time";
 import { DESK_HOME } from "@/lib/desk";
 
 // The tags are kept for the tab on whichever page the visitor lands (VisitTags in the root layout), so a parent who
@@ -80,11 +82,13 @@ function Field({ id, label, bad, error, hint, children }: { id: string; label: s
 const described = (id: string, bad: boolean | undefined, hint = false) =>
   [hint && `h-${id}`, bad && `e-${id}`].filter(Boolean).join(" ") || undefined;
 
+/** A new family's first child: no province until the parent chooses one (D-234). */
+const FIRST_CHILD: ChildInput = { firstName: "", grade: 4, province: "" as CurriculumId };
+
 /**
- * First name, grade and province of one child. `onPickProvince` runs when the parent chooses a province. An empty
- * province (the short phone signup, D-134: no postal code to guess it from) shows "Choose a province" until one is picked.
+ * First name, grade and province of one child. An empty province shows "Choose a province" until one is picked.
  */
-function ChildFields({ prefix, value, onChange, bad, badProvince, onPickProvince }: { prefix: string; value: ChildInput; onChange: (c: ChildInput) => void; bad?: boolean; badProvince?: boolean; onPickProvince?: () => void }) {
+function ChildFields({ prefix, value, onChange, bad, badProvince }: { prefix: string; value: ChildInput; onChange: (c: ChildInput) => void; bad?: boolean; badProvince?: boolean }) {
   return (
     <>
       <Field id={`${prefix}-first`} label="Child's first name" bad={bad} error="Enter your child's first name.">
@@ -103,10 +107,7 @@ function ChildFields({ prefix, value, onChange, bad, badProvince, onPickProvince
         <select
           id={`${prefix}-province`}
           value={value.province}
-          onChange={(e) => {
-            onPickProvince?.();
-            onChange({ ...value, province: e.target.value as CurriculumId });
-          }}
+          onChange={(e) => onChange({ ...value, province: e.target.value as CurriculumId })}
           aria-invalid={!!badProvince}
           aria-describedby={described(`${prefix}-province`, badProvince, true)}
         >
@@ -126,7 +127,7 @@ function Submit({ busy, children }: { busy: boolean; children: ReactNode }) {
   );
 }
 
-type SignupErrors = Partial<Record<"name" | "email" | "postal" | "password" | "child" | "province", boolean>>;
+type SignupErrors = Partial<Record<"name" | "email" | "password" | "child" | "province", boolean>>;
 
 /** What the email-code step shows under the button (#82). */
 type CodeNote = null | "sent_again" | "wait" | "bad" | "expired" | "too_many" | "check_failed" | "send_failed";
@@ -169,7 +170,7 @@ async function sendCode(email: string): Promise<"sent" | "wait" | "failed"> {
  * whether or not the email already has an account: the owner of an existing account gets a code too, the code signs
  * them in, and their account stays as it was.
  *
- * `phone` (D-134): the short phone signup. No postal code and no password: the test happens later on a laptop or tablet,
+ * `phone` (D-134): the short phone signup. No password: the test happens later on a laptop or tablet,
  * and the sign-in link that /api/account/finish emails to a phone opens it there.
  */
 export function AccountSignup({ phone = false }: { phone?: boolean }) {
@@ -178,13 +179,9 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
   const codeInput = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [postal, setPostal] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  // On a phone there is no postal code to guess the province from, so the parent chooses it (D-134).
-  const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: phone ? ("" as CurriculumId) : "BC" });
-  // Until the parent picks a province, follow the one in their postal code.
-  const [pickedProvince, setPickedProvince] = useState(false);
+  const [child, setChild] = useState<ChildInput>(FIRST_CHILD);
   const [website, setWebsite] = useState("");
   const [errors, setErrors] = useState<SignupErrors>({});
   const [failure, setFailure] = useState<AccountError | null>(null);
@@ -219,7 +216,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
     setBusy(true);
     const res = await post("/api/account/finish", {
       name: name.trim(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
-      ...(phone ? {} : { postal: postal.trim().toUpperCase(), password }),
+      ...(phone ? {} : { password }),
     });
     if (!res.ok) {
       track("account_signup_failed", { code: res.error ?? "unknown" });
@@ -260,14 +257,13 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
     const next: SignupErrors = {
       name: name.trim().length < 2,
       email: !EMAIL.test(email.trim()),
-      postal: !phone && !POSTAL.test(postal.trim()),
       password: !phone && !validPassword(password),
       child: !child.firstName.trim(),
       province: !child.province,
     };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "email", "postal", "password", "child", "province"] as const).find((k) => next[k]);
+    const firstBad = (["name", "email", "password", "child", "province"] as const).find((k) => next[k]);
     if (firstBad) {
       const at = firstBad === "child" ? "c-first" : firstBad === "province" ? "c-province" : firstBad;
       form.current?.querySelector<HTMLElement>(`#a-${at}`)?.focus();
@@ -399,13 +395,6 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
           <input id="a-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={described("a-email", errors.email, true)} />
         </Field>
         {!phone && <>
-          <Field id="a-postal" label="Postal code" bad={errors.postal} error="Enter a Canadian postal code, like V6B 1A1.">
-            <input id="a-postal" autoComplete="postal-code" placeholder="V6B 1A1" value={postal} onChange={(e) => {
-              setPostal(e.target.value);
-              const guess = curriculumFromPostal(e.target.value);
-              if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
-            }} aria-invalid={!!errors.postal} aria-describedby={described("a-postal", errors.postal)} />
-          </Field>
           <Field id="a-password" label="Password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
             <span className="pw">
               <input id="a-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("a-password", errors.password, true)} />
@@ -416,7 +405,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
       </fieldset>
       <fieldset>
         <legend>Your child</legend>
-        <ChildFields prefix="a-c" value={child} onChange={setChild} bad={errors.child} badProvince={errors.province} onPickProvince={() => setPickedProvince(true)} />
+        <ChildFields prefix="a-c" value={child} onChange={setChild} bad={errors.child} badProvince={errors.province} />
       </fieldset>
       <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={website} onChange={(e) => setWebsite(e.target.value)} />
       <Submit busy={busy}>Create account <span className="arr">→</span></Submit>
@@ -682,29 +671,11 @@ export function AddChild({ province }: { province: CurriculumId }) {
   );
 }
 
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const noSubscribe = () => () => {};
-
-/**
- * A moment in the reader's own time zone, for example "5:12 p.m. on Monday, November 9". The server does not know the
- * parent's zone, so the first paint (and a page without JavaScript) shows UTC, labelled; the browser then shows local time.
- */
-function When({ at }: { at: number }) {
-  const local = useSyncExternalStore(noSubscribe, () => true, () => false);
-  const d = new Date(at);
-  const [day, date, month, h, m] = local
-    ? [d.getDay(), d.getDate(), d.getMonth(), d.getHours(), d.getMinutes()]
-    : [d.getUTCDay(), d.getUTCDate(), d.getUTCMonth(), d.getUTCHours(), d.getUTCMinutes()];
-  const clock = `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "a.m." : "p.m."}${local ? "" : " UTC"}`;
-  return <time dateTime={d.toISOString()}>{clock} on {DAYS[day]}, {MONTHS[month]} {date}</time>;
-}
-
 /** The button and the line under it for each start state (#72). `status` goes with test_start_click. */
-function startView(state: Exclude<StartState, { kind: "wait" }>, name: string): { label: string; note: ReactNode; status: string } {
+function startView(state: Exclude<StartState, { kind: "wait" }>, name: string, when: string): { label: string; note: ReactNode; status: string } {
   switch (state.kind) {
     case "resume":
-      return { label: "Continue test", note: <>The answers are saved. {name} can continue until <When at={state.resumeUntil} />.</>, status: "in_progress" };
+      return { label: "Continue test", note: <>The answers are saved. {name} can continue until <When at={state.resumeUntil} text={when} />.</>, status: "in_progress" };
     case "finish":
       return { label: "Finish test", note: <>All of {name}&apos;s answers are in, but the test was not sent. Open it to finish. The report then comes by email.</>, status: "finish" };
     case "expired":
@@ -722,24 +693,24 @@ function startView(state: Exclude<StartState, { kind: "wait" }>, name: string): 
  * a completed test. `report` is the path of the child's newest report (#65): while the child waits it is the button,
  * and in every other state it stays reachable under the button (spec #54, story 32).
  */
-export function StartTest({ childId, name, state, report }: { childId: string; name: string; state: StartState; report?: string }) {
+export function StartTest({ childId, name, state, report, when }: { childId: string; name: string; state: StartState; report?: string; when: string }) {
   const noteId = useId();
   if (state.kind === "wait") {
     if (!report) {
       return (
         <span className="small acct-done">
-          Test done. The report comes by email. The next test opens at <When at={state.opensAt} />.
+          Test done. The report comes by email. The next test opens at <When at={state.opensAt} text={when} />.
         </span>
       );
     }
     return (
       <span className="acct-start">
         <Link className="btn ghost" href={report}>See the report <span className="sr-only">for {name}</span> <span className="arr">→</span></Link>
-        <span className="small">The next test opens at <When at={state.opensAt} />.</span>
+        <span className="small">The next test opens at <When at={state.opensAt} text={when} />.</span>
       </span>
     );
   }
-  const { label, note, status } = startView(state, name);
+  const { label, note, status } = startView(state, name, when);
   return (
     <span className="acct-start">
       <Link className="btn" href={`/account/test/${childId}`} aria-describedby={note ? noteId : undefined} onClick={() => track("test_start_click", { status })}>
@@ -826,11 +797,9 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const [name, setName] = useState(googleName);
-  const [postal, setPostal] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: "BC" });
-  const [pickedProvince, setPickedProvince] = useState(false);
+  const [child, setChild] = useState<ChildInput>(FIRST_CHILD);
   const [errors, setErrors] = useState<SignupErrors>({});
   const [failure, setFailure] = useState<AccountError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -841,20 +810,21 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
     if (busy) return;
     const next: SignupErrors = {
       name: name.trim().length < 2,
-      postal: !POSTAL.test(postal.trim()),
       password: needsPassword && !validPassword(password),
       child: !child.firstName.trim(),
+      province: !child.province,
     };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "postal", "password", "child"] as const).find((k) => next[k]);
+    const firstBad = (["name", "password", "child", "province"] as const).find((k) => next[k]);
     if (firstBad) {
-      form.current?.querySelector<HTMLInputElement>(`#f-${firstBad === "child" ? "c-first" : firstBad}`)?.focus();
+      const at = firstBad === "child" ? "c-first" : firstBad === "province" ? "c-province" : firstBad;
+      form.current?.querySelector<HTMLElement>(`#f-${at}`)?.focus();
       return;
     }
     setBusy(true);
     const res = await post("/api/account/finish", {
-      name: name.trim(), postal: postal.trim().toUpperCase(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
+      name: name.trim(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
       ...(needsPassword ? { password } : {}),
     });
     if (!res.ok) {
@@ -882,13 +852,6 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
         <Field id="f-name" label="Your name" bad={errors.name} error="Enter your name.">
           <input id="f-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={described("f-name", errors.name)} />
         </Field>
-        <Field id="f-postal" label="Postal code" bad={errors.postal} error="Enter a Canadian postal code, like V6B 1A1.">
-          <input id="f-postal" autoComplete="postal-code" placeholder="V6B 1A1" value={postal} onChange={(e) => {
-            setPostal(e.target.value);
-            const guess = curriculumFromPostal(e.target.value);
-            if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
-          }} aria-invalid={!!errors.postal} aria-describedby={described("f-postal", errors.postal)} />
-        </Field>
         {needsPassword && (
           <Field id="f-password" label="Choose a password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters. You sign in with it next time.`}>
             <span className="pw">
@@ -900,7 +863,7 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
       </fieldset>
       <fieldset>
         <legend>Your child</legend>
-        <ChildFields prefix="f-c" value={child} onChange={setChild} bad={errors.child} onPickProvince={() => setPickedProvince(true)} />
+        <ChildFields prefix="f-c" value={child} onChange={setChild} bad={errors.child} badProvince={errors.province} />
       </fieldset>
       <Submit busy={busy}>Finish <span className="arr">→</span></Submit>
       <p className="small">We use your details to run your child&apos;s assessment and to contact you. Read our <Link href="/privacy">privacy policy</Link> and <Link href="/terms">terms</Link>.</p>
@@ -1082,11 +1045,11 @@ export function PinForm({ isSet }: { isSet: boolean }) {
     }
     setBusy(true);
     setError(null);
-    let answer: PinFormResult;
+    let answer: PinFormResult & RetryTime;
     try {
       const res = await fetch("/api/account/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(isSet ? { pin, current } : { pin }) });
       if (res.status === 423) window.location.replace(DESK_HOME);
-      answer = (await res.json()) as PinFormResult;
+      answer = (await res.json()) as PinFormResult & RetryTime;
     } catch {
       answer = { ok: false, error: "unavailable" };
     }
@@ -1102,7 +1065,7 @@ export function PinForm({ isSet }: { isSet: boolean }) {
         setError(`That is not your current PIN. You have ${answer.attemptsLeft} ${answer.attemptsLeft === 1 ? "try" : "tries"} left.`);
         break;
       case "locked":
-        setError(<>Too many wrong tries. Try again after <When at={answer.retryAt} />.</>);
+        setError(<>Too many wrong tries. Try again after <When at={answer.retryAt} text={answer.retryWhen ?? "a few minutes"} />.</>);
         break;
       case "invalid":
         setError("Use exactly 4 digits.");
@@ -1132,4 +1095,14 @@ export function PinForm({ isSet }: { isSet: boolean }) {
       <Submit busy={busy}>{isSet ? "Change PIN" : "Save PIN"} <span className="arr">→</span></Submit>
     </form>
   );
+}
+
+/** Sends the browser's time zone once when the family has none stored (#330: Maya's week starts on the family's Monday). */
+export function SaveTimeZone() {
+  useEffect(() => {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!timeZone) return;
+    void fetch("/api/account/time-zone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ timeZone }) }).catch(() => {});
+  }, []);
+  return null;
 }

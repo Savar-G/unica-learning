@@ -98,6 +98,17 @@ export interface CurriculumSkill {
   requires: readonly string[];
 }
 
+/** The wrong move and its correction, printed together in a Watch out line. */
+export interface WatchOutPair {
+  wrong: string;
+  fix: string;
+  /** Only a separate verifier can mark a pair accepted. Old candidates have no mark. */
+  verified?: boolean;
+  verifierModel?: string;
+  /** Binds acceptance to this step's context and this exact text. */
+  verificationHash?: string;
+}
+
 /** An expected wrong answer on a step. */
 export interface ExpectedMistake {
   answer: string;
@@ -105,9 +116,49 @@ export interface ExpectedMistake {
   kind: "careless" | "conceptual";
   /** A misconception id, from the assessment's misconceptions.ts where one exists. */
   misconception: string | null;
+  /** Present for every coded mistake in the active data. Older imports can omit it. */
+  watchOut?: WatchOutPair;
 }
 
-/** A small increase in difficulty inside a skill. Drafted only for Grade 3 (U10 to U12) so far. */
+export type TemplateDifficulty = "easy" | "medium" | "hard";
+export type SlotValue = number | string;
+/** Inclusive range. decimal_places selects a fixed decimal grid, not a continuous float. */
+export interface NumberRange extends Range {
+  decimal_places?: number;
+  values?: readonly number[];
+}
+export type NumberDomain = NumberRange | readonly SlotValue[];
+export interface StepTemplate {
+  format: "bare" | "missing" | "true-false" | "choose" | "story" | "explain" | "compare" | "picture";
+  difficulty: TemplateDifficulty;
+  text: string;
+  answer: string;
+  /** Inline ranges occur in the source, but fail the named-slot import rule. */
+  slots: Readonly<Record<string, string | NumberDomain>>;
+  check?: string;
+  derived?: Readonly<Record<string, string>> | null;
+}
+export interface TemplateContexts {
+  _note?: string;
+  people: readonly { name: string; they: string; them: string; their: string }[];
+  things: readonly string[];
+  animals: readonly string[];
+  foods: readonly string[];
+  places: readonly string[];
+  containers: readonly string[];
+  units_length: readonly string[];
+  units_mass: readonly string[];
+  units_capacity: readonly string[];
+  money: { currency: string; coins: readonly number[]; bills: readonly number[] };
+}
+export interface StepProgressions {
+  curriculum: CurriculumKey;
+  format: string;
+  contexts: TemplateContexts;
+  steps: readonly CurriculumStep[];
+}
+
+/** A small increase in difficulty inside a skill. */
 export interface CurriculumStep {
   curriculum: CurriculumKey;
   skill: string;
@@ -129,6 +180,12 @@ export interface CurriculumStep {
   spotTheError: { wrong: string; fix: string };
   /** Whether code checked the example's arithmetic, or it has none (a picture or a judgement). */
   arithmetic: "checked" | "none";
+  numbers?: Readonly<Record<string, NumberDomain>>;
+  regrouping?: boolean;
+  values?: readonly SlotValue[];
+  practice?: readonly { problem: string; answer: string; difficulty: TemplateDifficulty }[];
+  templates?: readonly StepTemplate[];
+  calibration?: { result: "matches" | "adjusted"; checkedAgainst: string; note: string; bcScope: string };
 }
 
 /** Internal only: a school grade's budgets, which its levels split. */
@@ -147,4 +204,5 @@ export interface CurriculumData {
   skills: readonly CurriculumSkill[];
   steps: readonly CurriculumStep[];
   grades: readonly GradeBudget[];
+  contexts?: TemplateContexts;
 }

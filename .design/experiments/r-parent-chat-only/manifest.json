@@ -1,0 +1,121 @@
+{
+  "round": "r-parent-chat-only",
+  "date": "2026-11-06",
+  "decision": "D-293",
+  "route": "direct",
+  "job_kind": "fix",
+  "surface": [
+    "product",
+    "component"
+  ],
+  "constraint_mode": "existing-system",
+  "phase": "review",
+  "base": "d4af3d62d5fba25ba3b39441d9cc719b2bf06604",
+  "contract": ".design/experiments/r-parent-chat-only/contract.md",
+  "existing_components": [
+    "ParentOverview",
+    "MayaChatRow",
+    "ChatUsageRow",
+    "NoteCard",
+    "ParentShell",
+    "SupportPage"
+  ],
+  "existing_images_inspected": [
+    ".design/experiments/r553/overview-desktop.png",
+    ".design/experiments/r553/maya-tab-phone.png",
+    ".design/experiments/r419/parent-home-laptop.png"
+  ],
+  "local_evidence": "Focused fake public-interface tests, source ESLint and TypeScript. See the implementation report for results.",
+  "rendered_evidence": [],
+  "rendered_evidence_owner": "root after reduced565 integration",
+  "independent_review": "pending",
+  "family_release": "held for D-236 and D-249 review and approval",
+  "flags_changed": false,
+  "provider_calls": false,
+  "browser_or_print_runs": false,
+  "screenshots": [
+    {
+      "file": ".design/experiments/r-parent-chat-only/overview-active-desktop.png",
+      "bytes": 251399,
+      "sha256": "01ba4442d7930d20c63e219de366e942242c3dee8b828f675f30ce39663dcbd6"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/overview-ended-desktop.png",
+      "bytes": 247139,
+      "sha256": "fdca8036c9b11634ec315b18494250ee71408c2ea93e94204578657b685a56ff"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/overview-empty-desktop.png",
+      "bytes": 188918,
+      "sha256": "6c7e91534a2461ae78ba6588499fa5d80af530bd34e131711333c3a3cadbed6c"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-notes-desktop.png",
+      "bytes": 252685,
+      "sha256": "34b010c555c776bbb63b4f9512ed7cd1b843ca0790a7da8bac0259abc78495d3"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-empty-desktop.png",
+      "bytes": 220833,
+      "sha256": "e6e54dbf6fe8ffe8ccd6221d1c729f961309c63f2bb69397834f150686955159"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-used-desktop.png",
+      "bytes": 253488,
+      "sha256": "e5fcf33c1f843f2139ae13498e765ec51a7d83c2153ef57bb59bfd8eb595cc8e"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-closed-desktop.png",
+      "bytes": 250075,
+      "sha256": "7ba952250e248ab71db6df8fd9b80148355fa39e88feede90857c31396342007"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-ended-desktop.png",
+      "bytes": 240983,
+      "sha256": "551a63e02762c71522821cb7ed47fbb4a007d05d2c226f54afcedb5d62e07b6d"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/overview-active-phone.png",
+      "bytes": 217526,
+      "sha256": "e02250715edc5fbf6b5634055f0eebf2369f929191136ad610272b39e5ced526"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/overview-ended-phone.png",
+      "bytes": 214065,
+      "sha256": "dc674656d87e6f60280593b0b120d5add115146a09b77eee16cc6310c7e20d48"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/overview-empty-phone.png",
+      "bytes": 188066,
+      "sha256": "804c7b4316bb5c817a851daa3a6e5713d0d42ce7f31fcf5994d572b1447392da"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-notes-phone.png",
+      "bytes": 229426,
+      "sha256": "e62c0b16ff99805d8de17f670377bc2abbec991db6547e35221a96eff960c198"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-empty-phone.png",
+      "bytes": 220002,
+      "sha256": "b4449ca5fbb311d95018ae64c455a87cb118d378c8870215ddd194f45f15b274"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-used-phone.png",
+      "bytes": 230286,
+      "sha256": "db309b2b1f5c22db624f645da6e472f0952a564ee3e5e80fac192e17a57b651a"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-closed-phone.png",
+      "bytes": 228228,
+      "sha256": "c378ca4cdd165e8bac573b69be8ec4cc3c612587f223a378ded4496964877b5f"
+    },
+    {
+      "file": ".design/experiments/r-parent-chat-only/maya-ended-phone.png",
+      "bytes": 219576,
+      "sha256": "68bf876e0c28b8de9b10017eafeebe9ba652799d09e16dc1e0105e7c74234f4e"
+    }
+  ],
+  "browser_review": "browser-review.md; local synthetic data, desktop and phone. No real-device or 200-percent-zoom claim.",
+  "source_before_evidence": "f4d39429f80ccf741df2878777ab48a424f6572c",
+  "full_gate": "queued in released serial window"
+}

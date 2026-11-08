@@ -1,0 +1,27 @@
+{
+  "fixture": "synthetic QR workbook page",
+  "photo": "3e03492d-de6e-468c-a091-7d54e0fc0e77",
+  "checks": [
+    "owner: download and single/batch signed URL denied",
+    "admin: download and single/batch signed URL denied",
+    "anonymous: download and single/batch signed URL denied",
+    "owner table read succeeds; other family reads no row; browser mutation RPC denied; owner/admin image route succeeds; other/anonymous image route denied",
+    "deleted-owner: download and single/batch signed URL denied",
+    "deleted-admin: download and single/batch signed URL denied",
+    "terminal deletion with physical file present: owner/admin image routes denied",
+    "late secret-key derivative path refused",
+    "six concurrent admissions: two reserved, four busy; two starts: one active, one busy; no objects"
+  ],
+  "limits": {
+    "singleton": true,
+    "per_ten_minutes": 20,
+    "per_day": 60,
+    "concurrent_uploads": 2,
+    "active_jobs": 1,
+    "queued_jobs": 8,
+    "input_bytes": 20971520,
+    "output_bytes": 20971520,
+    "decoded_pixels": 48000000,
+    "family_bytes": 2147483648
+  }
+}

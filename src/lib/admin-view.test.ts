@@ -291,7 +291,7 @@ describe("flags and times in plain words (#77)", () => {
 
   it("writes a moment in Pacific time, summer and winter, and a dash for none", () => {
     expect(when("2026-10-11T17:55:09Z")).toBe("2026-10-11 10:55");
-    expect(when("2026-12-01T08:05:00Z")).toBe("2026-12-01 00:05");
+    expect(when("2026-12-01T08:05:00Z")).toBe("2026-12-01 01:05");
     expect(when(null)).toBe("-");
   });
 

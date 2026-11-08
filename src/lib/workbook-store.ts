@@ -4,28 +4,34 @@ import { QUESTION_PACKAGE_VERSION } from "@/lib/question-package";
 import {
   isQrToken,
   isUuid,
+  renderingProblem,
+  storedContent,
   storedQuestion,
   workbookProblem,
+  WORKBOOK_FILES_BUCKET,
   type StoredQuestion,
+  type WorkbookFiles,
   type WorkbookPage,
   type WorkbookStore,
   type WorkbookSummary,
   type WorkbookWrite,
 } from "@/lib/workbook-content";
+import { storedPrintContract, type ScanManifest } from "@/lib/workbook-print-contract";
 
 // The workbook store (#299) in Supabase (migration add_workbooks). Writes go through the service-only function
 // write_workbook, so pass a client with the secret key to write; it stores a whole workbook in one transaction or
 // nothing. Reads work with any client: with a parent's session, row-level security gives only that family's workbooks
-// (another family's workbook reads as not found); with an admin's session or the secret key, any workbook. Every read
+// (another family's workbook reads as not found), with stored question packages after confirmed delivery; with an
+// admin's session or the secret key, any workbook. Every read
 // names a workbook or a child. Tests use src/lib/workbook-store-memory.ts and pass the same tests. No Next.js or React.
 
 type BookRow = Tables<"workbooks">;
 type PageRow = Tables<"workbook_pages">;
 type QuestionRow = Tables<"workbook_questions">;
 
-const BOOK_COLUMNS = "id, created_at, parent_id, child_id, number, levels, status, pdf_path, profile_build, approved_at, printed_at, shipped_at";
-const PAGE_COLUMNS = "id, page_number, day_label, page_type, image_path, image_width, image_height, qr_token";
-const QUESTION_COLUMNS = "page_id, question_number, schema_version, package, box_x, box_y, box_width, box_height";
+const BOOK_COLUMNS = "id, created_at, parent_id, child_id, number, levels, status, pdf_path, profile_build, approved_at, printed_at, shipped_at, pdf_sha256, print_manifest, printed_revision";
+const PAGE_COLUMNS = "id, page_number, day_label, page_type, image_path, image_width, image_height, qr_token, print_contract";
+const QUESTION_COLUMNS = "page_id, question_number, schema_version, package, box_x, box_y, box_width, box_height, regions, teaching";
 
 function summary(r: Pick<BookRow, "id" | "created_at" | "parent_id" | "child_id" | "number" | "levels" | "status" | "pdf_path" | "profile_build" | "approved_at" | "printed_at" | "shipped_at">): WorkbookSummary {
   return {
@@ -39,10 +45,10 @@ function summary(r: Pick<BookRow, "id" | "created_at" | "parent_id" | "child_id"
   };
 }
 
-type QuestionFields = Pick<QuestionRow, "question_number" | "schema_version" | "package" | "box_x" | "box_y" | "box_width" | "box_height">;
+type QuestionFields = Pick<QuestionRow, "question_number" | "schema_version" | "package" | "box_x" | "box_y" | "box_width" | "box_height" | "regions" | "teaching">;
 
 const stored = (q: QuestionFields): StoredQuestion => ({
-  number: q.question_number, box: { x: q.box_x, y: q.box_y, width: q.box_width, height: q.box_height }, schemaVersion: q.schema_version, package: q.package,
+  number: q.question_number, box: { x: q.box_x, y: q.box_y, width: q.box_width, height: q.box_height }, schemaVersion: q.schema_version, package: q.package, regions: q.regions, teaching: q.teaching,
 });
 
 /** write_workbook's jsonb answer, checked: a change of its shape fails here, not in a caller. */
@@ -53,13 +59,14 @@ function writeAnswer(data: unknown): WorkbookWrite {
   throw new Error("workbook write: unexpected answer");
 }
 
-function page(workbookId: string, p: Pick<PageRow, "page_number" | "day_label" | "page_type" | "image_path" | "image_width" | "image_height" | "qr_token">,
+function page(workbookId: string, p: Pick<PageRow, "page_number" | "day_label" | "page_type" | "image_path" | "image_width" | "image_height" | "qr_token" | "print_contract">,
   questions: QuestionFields[]): WorkbookPage {
+  const image = p.image_path !== null && p.image_width !== null && p.image_height !== null ? { path: p.image_path, width: p.image_width, height: p.image_height } : null;
   return {
-    number: p.page_number, dayLabel: p.day_label, type: p.page_type,
-    image: p.image_path !== null && p.image_width !== null && p.image_height !== null ? { path: p.image_path, width: p.image_width, height: p.image_height } : null,
+    number: p.page_number, dayLabel: p.day_label, type: p.page_type, image,
     qrToken: p.qr_token,
-    questions: questions.map((q) => storedQuestion(stored(q), { source: "workbook", workbookId, page: p.page_number, question: q.question_number })),
+    questions: questions.map((q) => storedQuestion(stored(q), { source: "workbook", workbookId, page: p.page_number, question: q.question_number }, image)),
+    printContract: p.print_contract === null ? null : storedPrintContract(p.print_contract, { workbookId, page: p.page_number, image }),
   };
 }
 
@@ -70,6 +77,14 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       if (problem) return { status: "refused", reason: problem };
       const { data, error } = await db.rpc("write_workbook", { p_workbook: toJson(input), p_schema_version: QUESTION_PACKAGE_VERSION });
       if (error) throw new Error(`workbook write: ${error.message}`);
+      return writeAnswer(data);
+    },
+
+    async saveRendering(rendering) {
+      const problem = renderingProblem(rendering);
+      if (problem) return { status: "refused", reason: problem };
+      const { data, error } = await db.rpc("save_workbook_rendering", { p_rendering: toJson(rendering) });
+      if (error) throw new Error(`workbook rendering save: ${error.message}`);
       return writeAnswer(data);
     },
 
@@ -85,6 +100,9 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       if (!book.data) return null;
       return {
         ...summary(book.data),
+        pdfSha256: book.data.pdf_sha256,
+        printManifest: book.data.print_manifest as ScanManifest | null,
+        printedRevision: book.data.printed_revision,
         pages: (pages.data ?? []).map((p) => page(id, p, (questions.data ?? []).filter((q) => q.page_id === p.id))),
       };
     },
@@ -115,7 +133,7 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
         .eq("page_id", p.id).eq("question_number", ref.question).maybeSingle();
       if (qError) throw new Error(`workbook question load: ${qError.message}`);
       if (!q) return { status: "not-found" };
-      return storedQuestion(stored(q), ref).content;
+      return storedContent(stored(q), ref);
     },
 
     async pageByToken(token) {
@@ -126,6 +144,22 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       const { data: book, error: bookError } = await db.from("workbooks").select(BOOK_COLUMNS).eq("id", p.workbook_id).maybeSingle();
       if (bookError) throw new Error(`workbook page token load: ${bookError.message}`);
       return book ? { workbook: summary(book), page: p.page_number } : null;
+    },
+  };
+}
+
+/** The workbook bucket in Supabase Storage. Pass a client with the secret key: parents and admins cannot write it. */
+export function workbookFiles(db: SupabaseClient<Database>): WorkbookFiles {
+  const bucket = () => db.storage.from(WORKBOOK_FILES_BUCKET);
+  return {
+    async put(file) {
+      const { error } = await bucket().upload(file.path, file.bytes, { contentType: file.contentType, upsert: false });
+      if (error) throw new Error(`workbook file upload: ${error.message}`);
+    },
+    async remove(paths) {
+      if (paths.length === 0) return;
+      const { error } = await bucket().remove(paths);
+      if (error) throw new Error(`workbook file removal: ${error.message}`);
     },
   };
 }

@@ -1,0 +1,15 @@
+{
+  "templates": 7321,
+  "expressions": 23129,
+  "compiledExpressions": 23129,
+  "rejectedExpressions": 0,
+  "maxExpressionCharacters": 332,
+  "maxExpressionTokens": 97,
+  "maxExpressionDepth": 17,
+  "maxDerivedEntries": 16,
+  "maxSlotEntries": 9,
+  "maxTemplateBytes": 1070,
+  "maxTextCharacters": 184,
+  "maxDomainList": 150,
+  "maxDomainMagnitude": 99999999999
+}

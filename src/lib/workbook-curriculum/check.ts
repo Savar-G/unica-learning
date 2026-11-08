@@ -1,10 +1,8 @@
 // The checks of a curriculum's data (#361), the skeleton's own validation in code. The import script runs them before
 // it writes the data, and the tests run them on the data in the repo. Pure.
 import type { SkillMap } from "@/lib/assessment";
-import type { CurriculumData, CurriculumKey, CurriculumSkill } from "./types";
-
-/** The levels whose steps are drafted; every skill there needs steps. BC: Grade 3 (the skeleton's steps tab). */
-const STEP_LEVELS: Record<CurriculumKey, readonly string[]> = { bc: ["U10", "U11", "U12"] };
+import type { CurriculumData, CurriculumSkill } from "./types";
+import { stepFieldProblems } from "./step-source";
 
 /** Step pages by delivery: warm-up skills live in the daily warm-up, activity skills have one page. */
 function deliveryPagesProblem(s: CurriculumSkill): string | null {
@@ -150,12 +148,13 @@ export function curriculumProblems(data: CurriculumData, map: SkillMap): string[
 
   const stepsOf = groupBy(data.steps, (s) => s.skill);
   for (const id of stepsOf.keys()) if (!skills.has(id)) problems.push(`Steps of ${id}, which is in no level`);
-  const stepLevels = STEP_LEVELS[data.key];
-  const range = `${stepLevels[0]} to ${stepLevels[stepLevels.length - 1]}`;
   for (const s of data.skills) {
     const steps = [...(stepsOf.get(s.id) ?? [])].sort((a, b) => a.number - b.number);
-    if (steps.length === 0 && !stepLevels.includes(s.level)) continue;
-    if (steps.length === 0) problems.push(`${s.id} (${s.level}) has no steps; every skill in ${range} needs them`);
+    if (steps.length === 0) problems.push(`${s.id} (${s.level}) has no steps; every skill in every level needs them`);
+    for (const step of steps) {
+      if (!Number.isSafeInteger(step.pages) || step.pages < 0) problems.push(`${s.id} step ${step.number} pages must be a nonnegative integer`);
+      problems.push(...stepFieldProblems(step, data.contexts));
+    }
     const pages = steps.map((step) => step.pages);
     const sum = pages.reduce((total, n) => total + n, 0);
     if (sum !== s.pages) problems.push(`${s.id} step pages add up to ${sum}, but the skill has ${s.pages}`);

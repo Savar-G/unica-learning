@@ -6,6 +6,8 @@ import { DESK_COOKIE, DESK_HOME, openPageToken, readLock, type PageTokenResult }
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { workbookStore } from "@/lib/workbook-store";
+import { scanChildAccess } from "@/lib/scan-pages-access";
+import { pageCodeTarget, scanPagePath, SCANNING_COOKIE } from "@/lib/scan-tab";
 import { DeskShell } from "@/components/desk-shell";
 
 export const metadata = pageMetadata({
@@ -19,12 +21,18 @@ export const metadata = pageMetadata({
 // finds only the family's shipped workbooks; openPageToken checks the family and the status again. For the owner, an
 // open desk for that child goes to the page; with no desk open, the parent confirms before the desk opens (a link
 // alone never puts a device in desk mode). Anyone else is refused, with the same answer as a token that does not exist.
+// Scan pages (round r565 build note): a parent who was just on Scan pages in this browser goes to Scan pages for this
+// page, and the desk question offers "Scan this page"; both only when scanning is open to the family.
+/** Every button on this page is at least 44 px tall. */
+const TAP_TARGET = { minHeight: 44 };
+
 export default async function PageCode(props: PageProps<"/tutor/p/[token]">) {
   const { token } = await props.params;
   const db = await sessionClient();
   const parent = await parentId(db);
   if (!parent) redirect(`/sign-in?next=${encodeURIComponent(`${DESK_HOME}/p/${token}`)}`);
-  const lock = readLock((await cookies()).get(DESK_COOKIE)?.value);
+  const jar = await cookies();
+  const lock = readLock(jar.get(DESK_COOKIE)?.value);
   const open = lock?.parentId === parent ? lock : null;
   const back = open ? { href: DESK_HOME, label: "Back to the desk" } : { href: "/account", label: "Your account" };
 
@@ -51,6 +59,10 @@ export default async function PageCode(props: PageProps<"/tutor/p/[token]">) {
   const target = `${DESK_HOME}?w=${found.workbookId}&p=${found.page}&from=qr`;
   if (open?.childId === found.childId) redirect(target);
 
+  const scanAccess = !open && await scanChildAccess(parent, found.childId).catch(() => false);
+  const scanThisPage = scanPagePath(found.workbookId, found.page);
+  if (!open && pageCodeTarget({ scanning: jar.get(SCANNING_COOKIE)?.value === "1", scanAccess }) === "scan") redirect(scanThisPage);
+
   const { data: child } = await db.from("children").select("first_name").eq("id", found.childId).maybeSingle();
   const name = child?.first_name ?? "your child";
   if (open) {
@@ -65,7 +77,7 @@ export default async function PageCode(props: PageProps<"/tutor/p/[token]">) {
     <DeskShell back={back} title={`Open ${name}'s desk at page ${found.page}?`}>
       <p className="lead">{name} sees this workbook page and can ask Maya for help. Leaving the desk needs your PIN.</p>
       {pinSet === false ? (
-        <p><Link className="btn" href="/account/pin?desk=1">Set a PIN first</Link></p>
+        <p><Link className="btn" style={TAP_TARGET} href="/account/pin?desk=1">Set a PIN first</Link></p>
       ) : pinSet === null ? (
         <p className="acct-alert">We cannot open the desk right now. Try again in a moment.</p>
       ) : (
@@ -74,9 +86,10 @@ export default async function PageCode(props: PageProps<"/tutor/p/[token]">) {
           <input type="hidden" name="w" value={found.workbookId} />
           <input type="hidden" name="p" value={found.page} />
           <input type="hidden" name="from" value="qr" />
-          <button type="submit" className="btn">Open the desk</button>
+          <button type="submit" className="btn" style={TAP_TARGET}>Open the desk</button>
         </form>
       )}
+      {scanAccess && <p><Link className="btn ghost" style={TAP_TARGET} href={scanThisPage}>Scan this page</Link></p>}
     </DeskShell>
   );
 }

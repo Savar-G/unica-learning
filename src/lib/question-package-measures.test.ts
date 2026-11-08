@@ -8,7 +8,7 @@ import {
   type ClockTime,
   type Duration,
   type Operation,
-  type QuestionPackage,
+  type OperationPackage,
   type Unit,
 } from "@/lib/question-package";
 
@@ -20,7 +20,7 @@ const num = (value: number): AnswerValue => ({ type: "number", value });
 const qty = (value: number, unit: Unit) => ({ type: "quantity" as const, value, unit });
 
 /** A package for an operation, with a hand-written answer; the steps come from workedSteps, pinned by hand below. */
-function packageOf(operation: Operation, answer: AnswerValue, easier: Operation, easierAnswer: AnswerValue, standard: string): QuestionPackage {
+function packageOf(operation: Operation, answer: AnswerValue, easier: Operation, easierAnswer: AnswerValue, standard: string): OperationPackage {
   return {
     id: "wbq-1",
     ref: { source: "workbook", workbookId: "wb-1", page: 4, question: 2 },

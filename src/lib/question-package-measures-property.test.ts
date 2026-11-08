@@ -8,7 +8,7 @@ import {
   type AnswerValue,
   type ClockTime,
   type Operation,
-  type QuestionPackage,
+  type OperationPackage,
   type Unit,
 } from "@/lib/question-package";
 
@@ -392,7 +392,7 @@ const MIN_EQUALITIES: Record<string, number> = { "money-round": 0, "time-add": 0
 const clean = (op: Operation): Operation =>
   Object.fromEntries(Object.entries(op).filter(([key]) => !["tree", "x", "name"].includes(key))) as unknown as Operation;
 
-function packageFor(operation: Operation, easier: Operation): QuestionPackage {
+function packageFor(operation: Operation, easier: Operation): OperationPackage {
   return {
     id: "gen-1",
     ref: { source: "workbook", workbookId: "wb-gen", page: 1, question: 1 },
@@ -436,8 +436,9 @@ describe.each(Object.entries(CASES))("generated %s problems", (kind, c) => {
       if (operationProblem(op) !== null) continue;
       const p = packageFor(op, c.easier);
       const check = checkQuestionPackage(p);
-      // The size rule of the easier example is not what this test checks; a problem as small as the easier one is skipped.
-      if (!check.ok && check.reason === "the easier example is not smaller than the question") continue;
+      // The easier example's rules are not what this test checks: a problem as small as the easier one, or with its
+      // answer, is skipped.
+      if (!check.ok && (check.reason === "the easier example is not smaller than the question" || check.reason === "the easier example has the question's answer")) continue;
       found++;
 
       const result = operationResult(op);

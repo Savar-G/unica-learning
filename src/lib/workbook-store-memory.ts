@@ -2,36 +2,51 @@ import { QUESTION_PACKAGE_VERSION } from "@/lib/question-package";
 import {
   type WorkbookStatus,
   isUuid,
+  renderingProblem,
+  storedContent,
   storedQuestion,
   workbookProblem,
   type PageInput,
   type StoredQuestion,
+  type WorkbookFile,
+  type WorkbookFiles,
   type WorkbookInput,
   type WorkbookPage,
   type WorkbookStore,
   type WorkbookSummary,
 } from "@/lib/workbook-content";
+import { storedPrintContract, type ScanManifest } from "@/lib/workbook-print-contract";
 
 // The workbook store (#299) in memory, for tests: it keeps the database's behaviour. A write is checked whole before
 // anything is kept, so a refused write keeps nothing; the conflicts the database refuses (an unknown child, a file
 // outside the family's folder, a workbook number, id or QR token already used) are refused with the same reasons;
-// what is kept is a copy, as the database keeps JSON. `children`: the children the store knows, with their parent.
-// `setStatus` moves a kept workbook to a status, as the team does in the database (a test of a product that reads only
-// shipped workbooks, like the desk, ships one first); it is not part of the store's interface.
+// what is kept is a copy, as the database keeps JSON. A new rendering (saveRendering) is checked whole the same way.
+// `children`: the children the store knows, with their parent. `setStatus` moves a kept workbook to a status, as the
+// team does in the database (a test of a product that reads only shipped workbooks, like the desk, ships one first); it
+// is not part of the store's interface. Back to draft ends the printed revision, as the database's trigger does.
+// `applyPrintContract` is the approval of a stored draft (apply_workbook_print_contract): a draft takes the book's whole
+// contract, or clears it; any other status, or a call that does not name its pages and questions, throws. Nor is it part
+// of the interface.
 
 interface Kept {
   summary: WorkbookSummary;
+  print: { pdfSha256: string | null; printManifest: ScanManifest | null; printedRevision: string | null };
   pages: (Omit<PageInput, "questions"> & { questions: StoredQuestion[] })[];
 }
 
 export function memoryWorkbookStore(o: { children: readonly { id: string; parentId: string }[]; now: () => Date }): WorkbookStore & {
   setStatus(id: string, status: WorkbookStatus): void;
+  applyPrintContract(workbook: WorkbookInput): void;
 } {
   const books = new Map<string, Kept>();
 
   function readPage(workbookId: string, page: Kept["pages"][number]): WorkbookPage {
-    const { questions, ...rest } = structuredClone(page);
-    return { ...rest, questions: questions.map((q) => storedQuestion(q, { source: "workbook", workbookId, page: page.number, question: q.number })) };
+    const { questions, printContract, ...rest } = structuredClone(page);
+    return {
+      ...rest,
+      questions: questions.map((q) => storedQuestion(q, { source: "workbook", workbookId, page: page.number, question: q.number }, page.image)),
+      printContract: printContract ? storedPrintContract(printContract, { workbookId, page: page.number, image: page.image }) : null,
+    };
   }
 
   return {
@@ -40,7 +55,31 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
       if (!book) throw new Error(`no workbook ${id}`);
       const at = o.now().toISOString();
       const field = ({ draft: null, approved: "approvedAt", printed: "printedAt", shipped: "shippedAt" } as const)[status];
+      if (status === "draft" && book.summary.status !== "draft") book.print.printedRevision = null;
       book.summary = { ...book.summary, status, ...(field ? { [field]: at } : {}) };
+    },
+
+    applyPrintContract(input) {
+      const book = books.get(input.id);
+      if (!book) throw new Error(`no workbook ${input.id}`);
+      // As the database: only a draft takes a contract, and only with exactly its pages and questions.
+      if (book.summary.status !== "draft") throw new Error(`workbook ${input.id} is ${book.summary.status}: its print contract cannot change`);
+      const numbers = (list: { number: number }[]) => list.map((x) => x.number).sort((a, b) => a - b).join(",");
+      if (numbers(input.pages) !== numbers(book.pages)) throw new Error(`workbook ${input.id}: the print contract does not name the workbook's pages`);
+      for (const p of input.pages) {
+        if (numbers(p.questions) !== numbers(book.pages.find((x) => x.number === p.number)!.questions)) throw new Error(`workbook ${input.id}, page ${p.number}: the print contract does not name the page's questions`);
+      }
+      const w = structuredClone(input);
+      book.print = { pdfSha256: w.pdfSha256 ?? null, printManifest: w.printManifest ?? null, printedRevision: w.printedRevision ?? null };
+      for (const p of w.pages) {
+        const page = book.pages.find((x) => x.number === p.number)!;
+        page.printContract = p.printContract ?? null;
+        for (const q of p.questions) {
+          const kept = page.questions.find((x) => x.number === q.number)!;
+          kept.regions = q.regions ?? null;
+          kept.teaching = q.teaching ?? null;
+        }
+      }
     },
 
     async write(input) {
@@ -64,18 +103,52 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
           id: w.id, parentId: child.parentId, childId: w.childId, number: w.number, levels: w.levels, status: "draft", pdfPath: w.pdfPath,
           profileBuild: w.profileBuild, createdAt: o.now().toISOString(), approvedAt: null, printedAt: null, shippedAt: null,
         },
+        print: { pdfSha256: w.pdfSha256 ?? null, printManifest: w.printManifest ?? null, printedRevision: w.printedRevision ?? null },
         pages: [...w.pages].sort((a, b) => a.number - b.number).map((p) => ({
           ...p,
           questions: [...p.questions].sort((a, b) => a.number - b.number)
-            .map((q) => ({ number: q.number, box: q.box, schemaVersion: QUESTION_PACKAGE_VERSION, package: q.package })),
+            .map((q) => ({ number: q.number, box: q.box, schemaVersion: QUESTION_PACKAGE_VERSION, package: q.package, regions: q.regions ?? null, teaching: q.teaching ?? null })),
         })),
       });
       return { status: "written", workbookId: w.id };
     },
 
+    async saveRendering(input) {
+      const problem = renderingProblem(input);
+      if (problem) return { status: "refused", reason: problem };
+      const r = structuredClone(input);
+      const book = books.get(r.workbookId);
+      if (!book) return { status: "refused", reason: "the workbook is not known" };
+      const numbers = (list: { number: number }[]) => list.map((x) => x.number).sort((a, b) => a - b).join(",");
+      if (numbers(r.pages) !== numbers(book.pages)) return { status: "refused", reason: "the pages are not the workbook's pages" };
+      for (const p of r.pages) {
+        if (numbers(p.questions) !== numbers(book.pages.find((x) => x.number === p.number)!.questions)) {
+          return { status: "refused", reason: `page ${p.number}: the questions are not the page's questions` };
+        }
+      }
+      const folder = `${book.summary.parentId}/${r.workbookId}/`;
+      if (![r.pdfPath, ...r.pages.map((p) => p.image.path)].every((path) => path.startsWith(folder))) {
+        return { status: "refused", reason: "a file is not in the family's folder" };
+      }
+      book.summary.pdfPath = r.pdfPath;
+      // New bytes end the printed revision: the rendering's contract applies only after the next approval.
+      book.print = { ...book.print, pdfSha256: r.pdfSha256 ?? null, printedRevision: null };
+      for (const p of r.pages) {
+        const kept = book.pages.find((x) => x.number === p.number)!;
+        kept.image = p.image;
+        kept.printContract = p.printContract ?? null;
+        for (const q of p.questions) {
+          const question = kept.questions.find((x) => x.number === q.number)!;
+          question.box = q.box;
+          question.regions = q.regions ?? null;
+        }
+      }
+      return { status: "written", workbookId: r.workbookId };
+    },
+
     async workbook(id) {
       const book = books.get(id);
-      return book ? { ...structuredClone(book.summary), pages: book.pages.map((p) => readPage(id, p)) } : null;
+      return book ? { ...structuredClone(book.summary), ...structuredClone(book.print), pages: book.pages.map((p) => readPage(id, p)) } : null;
     },
 
     async childWorkbooks(childId) {
@@ -91,7 +164,7 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
     async question(ref) {
       const page = books.get(ref.workbookId)?.pages.find((p) => p.number === ref.page);
       const question = page?.questions.find((q) => q.number === ref.question);
-      return question ? storedQuestion(structuredClone(question), ref).content : { status: "not-found" };
+      return question ? storedContent(structuredClone(question), ref) : { status: "not-found" };
     },
 
     async pageByToken(token) {
@@ -100,6 +173,21 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
         if (page) return { workbook: structuredClone(book.summary), page: page.number };
       }
       return null;
+    },
+  };
+}
+
+/** The workbook bucket in memory, for tests: `files` holds what is stored. */
+export function memoryWorkbookFiles(): WorkbookFiles & { files: Map<string, Omit<WorkbookFile, "path">> } {
+  const files = new Map<string, Omit<WorkbookFile, "path">>();
+  return {
+    files,
+    async put(file) {
+      if (files.has(file.path)) throw new Error("workbook file upload: The resource already exists");
+      files.set(file.path, { contentType: file.contentType, bytes: file.bytes.slice() });
+    },
+    async remove(paths) {
+      paths.forEach((p) => files.delete(p));
     },
   };
 }

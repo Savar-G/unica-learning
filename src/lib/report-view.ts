@@ -24,6 +24,7 @@ import {
   type StrandStatus,
 } from "@/lib/assessment";
 import type { ReportSrc } from "@/lib/next-step";
+import { formatInZone, zoneForProvince, type FamilyZone } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { PLANS, cad, type PlanId } from "@/lib/site";
 
@@ -32,6 +33,8 @@ export interface ReportView {
   id: string;
   childName: string;
   province: Province;
+  /** The family's postal zone. Older saved/demo inputs may have only a province. */
+  timeZone?: FamilyZone;
   /** When the test finished (ISO). */
   completedAt: string;
   /** Questions the child answered. */
@@ -242,6 +245,12 @@ export function reliabilityNote(v: ReportView, retake?: RetakeState): Reliabilit
   };
 }
 
+/**
+ * D-258 (#579): the one sentence in place of the area bars of a test whose report has the reliability note, on the
+ * Overview and in the monthly summary. The report, which this points to, offers the new test.
+ */
+export const unreliableAreasText = (name: string) => `The last test may not show ${name}'s level reliably, so the report offers ${name} a new test with new questions.`;
+
 /** Share right, in whole percent, for the meter. */
 export const sharePercent = (s: { correct: number; total: number }) => (s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0);
 
@@ -300,18 +309,8 @@ export function factsView(v: ReportView, { speed: withSpeed = v.model.level.grad
   };
 }
 
-// The main time zone of each province. "other" is mostly Quebec and the Atlantic provinces.
-const TIME_ZONE: Record<Province, string> = {
-  BC: "America/Vancouver",
-  AB: "America/Edmonton",
-  SK: "America/Regina",
-  MB: "America/Winnipeg",
-  ON: "America/Toronto",
-  other: "America/Toronto",
-};
-
 /** A day in the family's time zone, for example "October 10, 2026". */
-const familyDate = (v: ReportView, at: number) => new Intl.DateTimeFormat("en-CA", { dateStyle: "long", timeZone: TIME_ZONE[v.province] }).format(new Date(at));
+const familyDate = (v: ReportView, at: number) => formatInZone(at, v.timeZone ?? zoneForProvince(v.province), { dateStyle: "long" });
 
 /** The day the test finished, in the family's time zone, for example "October 10, 2026". */
 export const reportDate = (v: ReportView) => familyDate(v, Date.parse(v.completedAt));
@@ -378,14 +377,14 @@ export interface NextStep {
   email: { label: string; step: NextStepKey };
 }
 
-/** Card for BC families (charged on day 30, after the free first month, which starts when the first workbook ships, D-139); the waitlist for every other province (D-082). */
+/** Card for BC families (charged on day 30, after the free first month, which starts when the first workbook arrives at your home, D-139); the waitlist for every other province (D-082). */
 export function nextStep(v: ReportView): NextStep {
   const name = v.childName;
   if (v.model.callToAction === "card") {
     return {
       kind: "card",
       title: `Start ${name}'s books`,
-      text: `Math is CAD ${cad(PLANS.one.price)} a month, delivery included. The first month is free, starting when the first workbook ships. Cancel anytime.`,
+      text: `Math is CAD ${cad(PLANS.one.price)} a month, delivery included. The first month is free, starting when the first workbook arrives at your home. Cancel anytime.`,
       plans: REPORT_PLANS,
       email: { label: `Choose a plan for ${name}`, step: "plan" },
     };

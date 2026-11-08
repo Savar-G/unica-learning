@@ -1,0 +1,15 @@
+{
+  "credential": "Dedicated retention_worker key, retrieved through authenticated Supabase CLI",
+  "result": {
+    "state": "deleted",
+    "images": 1,
+    "copies": 0
+  },
+  "checks": [
+    "Family freeze refuses admission",
+    "Worker removes actual scan photo before Auth",
+    "Scan rows cascade",
+    "Auth user absent",
+    "Family scan folder empty"
+  ]
+}

@@ -5,12 +5,14 @@ import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database";
 import {
-  checkFamilyPayments, deleteFamily, settlePaymentOperations, withDeletionHeartbeat,
+  checkFamilyPayments, deleteFamily, familyCustomers, settlePaymentOperations, withDeletionHeartbeat,
   type FamilyCard, type FamilyDeletionResult, type FamilyDeletionStore, type FamilyPaymentStore, type PaymentOperation, type PaymentProgress,
   type RetentionCandidate, type RetentionCardState, type RetentionClaim, type RetentionFamily,
 } from "@/lib/assessment";
 import { readBookingCustomers, readCustomerPayments } from "@/lib/retention-stripe";
 import { stripe } from "@/lib/stripe";
+import { planNotOver } from "@/lib/card-reconcile";
+import { cancelSubscriptionNow, customerSubscriptions } from "@/lib/stripe-subscriptions";
 
 /** Missing migration permits the existing card path, but no other failure does. Deletion itself never falls back. */
 export async function beginCardOperation(db: SupabaseClient<Database>, parent: string, token: string): Promise<boolean> {
@@ -23,6 +25,18 @@ export async function beginCardOperation(db: SupabaseClient<Database>, parent: s
 export async function endCardOperation(db: SupabaseClient<Database>, token: string): Promise<void> {
   const { error } = await db.rpc("end_family_card_operation", { token });
   if (error) console.error("[deletion] card hold release failed", error.code);
+}
+
+/**
+ * A plan start holds the family across its Stripe call (#556). The hold's id is the card setup's id: a start whose answer
+ * was lost keeps the hold, and a retry with the same Stripe key takes the same hold and ends it. `fenced`: the family asked
+ * for deletion, or its delete has read its plans and is about to ask, so no plan may start.
+ */
+export async function holdPlanStart(db: SupabaseClient<Database>, parent: string, card: string): Promise<"held" | "fenced"> {
+  const { error } = await db.rpc("begin_family_card_operation", { p: parent, token: card });
+  if (!error || error.code === "23505") return "held";
+  if (error.code === "55000") return "fenced";
+  throw new Error("Card operation unavailable");
 }
 
 type Fns = Database["public"]["Functions"];
@@ -89,6 +103,18 @@ const isFamilyCard = (c: unknown): c is FamilyCard => typeof c === "object" && c
   && ((c as FamilyCard).booking === undefined || (c as FamilyCard).booking === null
     || (typeof (c as FamilyCard).booking?.email === "string" && !!(c as FamilyCard).booking?.email
       && typeof (c as FamilyCard).booking?.ref === "string" && !!(c as FamilyCard).booking?.ref));
+
+/**
+ * Every Stripe customer of the family (#556), from the same rows the retention rules read, old bookings too. Throws when
+ * one cannot be found: a plan on that customer could go on charging after the family is gone.
+ */
+export async function familyStripeCustomers(db: SupabaseClient<Database>, s: Stripe, parent: string): Promise<string[]> {
+  const cards: unknown = await rpc(db, "family_retention_cards", { p: parent });
+  if (!Array.isArray(cards) || !cards.every(isFamilyCard)) throw new Error("Family card rows unreadable");
+  const customers = await familyCustomers(cards, (booking) => readBookingCustomers(s, booking, () => ({ timeout: 8000, maxNetworkRetries: 1 })));
+  if (customers === "unknown") throw new Error("Family customer unresolved");
+  return customers;
+}
 
 /** Every family the worker decides (#191): the queue, due free-test families, and every family with Stripe history. */
 export async function retentionCandidates(db: SupabaseClient<Database>): Promise<RetentionCandidate[]> {
@@ -283,13 +309,32 @@ export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: st
   parent = parent.toLowerCase();
   const token = randomUUID();
   const args = { p: parent, token };
-  type Claim = { state: "ready" | "busy" | "excluded"; reason?: "request" | "retention"; phase?: "checking" | "deleting" };
+  type Claim = { state: "ready" | "busy" | "excluded" | "plan_start"; reason?: "request" | "retention"; phase?: "checking" | "deleting" };
   // jsonb: the claim object each function builds, read on its own, so a change of either answer type fails the build.
   const claim = retention
     ? (await rpc(db, "claim_family_retention", { ...args, subscription_ended_at: retention.endedAt })) as Claim
     : (await rpc(db, "claim_family_deletion", args)) as Claim;
   if (claim.state !== "ready") return { state: claim.state };
   const action = async (): Promise<FamilyDeletionResult> => {
+    // An older deployment could queue deletion while a start was open. Recovery may find its subscription later.
+    // Recheck both phases, including a retry already in deleting. No Storage or Auth removal precedes cancellation.
+    const recovered = await rpc(db, "family_deletion_start_customers", { p: parent });
+    if (recovered.length) {
+      const provider = execution?.payments ?? stripe();
+      if (!provider) throw new Error("Payment provider unavailable");
+      const running = async (customer: string) => {
+        const plans = await customerSubscriptions(provider, customer, paymentOptions(deadline, execution));
+        if (plans.some(plan => (typeof plan.customer === "string" ? plan.customer : plan.customer?.id) !== customer)) throw new Error("Subscription scope changed");
+        return plans.filter(plan => planNotOver(plan.status));
+      };
+      for (const { customer } of recovered) {
+        if (!customer) throw new Error("Recovered customer unreadable");
+        for (const plan of await running(customer)) {
+          await cancelSubscriptionNow(provider, plan, paymentOptions(deadline, execution));
+        }
+        if ((await running(customer)).length) throw new Error("Recovered subscription can still charge");
+      }
+    }
     if (claim.phase === "checking") {
       const payments = paymentStore(db, parent, token, deadline, control, execution);
       let keep = false;

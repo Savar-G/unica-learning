@@ -1,9 +1,11 @@
+import { commentFromRow, editFromRow } from "@/lib/workbook-edit-store";
+import type { ReviewComment, WorkbookEdit, EditCheckpoint } from "@/lib/workbook-edit";
 import "server-only";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import type { FactsTest, HelpAnswer, Placement, Province, Route, StoredTest } from "@/lib/assessment";
+import { givenQuestions, type FactsTest, type HelpAnswer, type Placement, type Province, type Route, type Stage3Route, type StoredTest } from "@/lib/assessment";
 import type { ProgressInput } from "@/lib/admin-progress";
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
@@ -12,6 +14,7 @@ import type { TestContextRecord } from "@/lib/admin-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
+import { PLAN_KEY_MS } from "@/lib/card-reconcile";
 import { findSavedCard } from "@/lib/saved-card";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
@@ -20,7 +23,18 @@ import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
+import type { RunActivity } from "@/lib/workbook-run-progress";
 import { workbookStore } from "@/lib/workbook-store";
+import type { WorkbookEmailRecord, WorkbookEmailStatus } from "@/lib/workbook-email";
+import { READABLE_DRAFT_VERSIONS, type GeneratedWorkbook } from "@/lib/workbook-generator";
+import { readPaged, type DraftRendering, type RunSolve, type WorkbookRun } from "@/lib/workbook-job";
+import { RUN_COLUMNS, runFromRow } from "@/lib/workbook-job-store";
+import { summarizeAiCalls, type AiCallSummary } from "@/lib/workbook-ai";
+import { workerOnline } from "@/lib/workbook-worker";
+import type { RenderProblem } from "@/lib/workbook-render";
+import { familyProvince, familyZone, type FamilyZone } from "@/lib/family-time";
+import type { DeliveryReceipt } from "@/lib/workbook-delivery";
+import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -42,8 +56,8 @@ export interface AdminSession {
  * Both checks run at the same time and both must pass, so the gate costs one round trip, not two.
  * #78: a route calls this and answers 404 when it is null.
  */
-export async function adminSession(): Promise<AdminSession | null> {
-  const db = await sessionClient();
+export async function adminSession(signal?: AbortSignal): Promise<AdminSession | null> {
+  const db = await sessionClient(signal);
   const [{ data, error: userError }, { data: admin, error }] = await Promise.all([db.auth.getUser(), db.rpc("is_admin")]);
   if (userError || !data.user) return null;
   if (error) {
@@ -171,6 +185,7 @@ export interface TestRow {
   completed_at: string | null;
   last_answer_at: string | null;
   route: string | null;
+  stage3_route: string | null;
   help: HelpAnswer | null;
   placement: Placement | null;
   answered: number;
@@ -181,7 +196,7 @@ export interface TestRow {
   reportId: string | null;
 }
 
-const TEST_COLUMNS = "id, created_at, status, grade, province, child_id, parent_id, started_at, completed_at, last_answer_at, route, help, placement, answers(count), work_reviews(confidence)";
+const TEST_COLUMNS = "id, created_at, status, grade, province, child_id, parent_id, started_at, completed_at, last_answer_at, route, stage3_route, help, placement, answers(count), work_reviews(confidence)";
 type TestQueryRow = Omit<TestRow, "answered" | "reviews" | "flags" | "child" | "parent" | "reportId"> & {
   answers: { count: number }[];
   work_reviews: { confidence: "high" | "low" }[];
@@ -431,6 +446,29 @@ export interface CardSetupRow {
   price: number;
   stripe_customer_id: string | null;
   card_saved_at: string | null;
+  workbookEmails?: WorkbookEmailRecord[];
+  workbookEmailsReadAt?: number;
+  /** A plan start that needs the team: open, with Stripe's key past its life (#554). */
+  stuckPlanStart?: number | null;
+}
+
+async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promise<CardSetupRow[]> {
+  if (!cards.length) return cards;
+  const emails = await allRows(a.db.from("workbook_emails")
+    .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
+    .in("card_setup_id", cards.map((c) => c.id)).order("created_at").order("id"), "workbook emails");
+  const workbookEmailsReadAt = Date.now();
+  const openStarts = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at")
+    .in("card_setup_id", cards.map((c) => c.id)).eq("state", "open").order("card_setup_id").order("generation"), "plan starts");
+  // The plan start emails: one per generation, on the start's record. They read as ledger rows, with the generation as the number.
+  const planEmails = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, email_send_status, email_claimed_at, email_sent_at, email_subject, email_text")
+    .in("card_setup_id", cards.map((c) => c.id)).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails");
+  const planEmailRecords = planEmails.map((e) => ({
+    id: `plan-${e.card_setup_id}-${e.generation}`, card_setup_id: e.card_setup_id, kind: "plan_start" as const, workbook_number: e.generation,
+    status: e.email_send_status as WorkbookEmailStatus, claimed_at: e.email_claimed_at, sent_at: e.email_sent_at, delivery: {}, subject: e.email_subject, text_body: e.email_text,
+  }));
+  const stuck = new Map(openStarts.filter((s) => workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
+  return cards.map((c) => ({ ...c, workbookEmails: [...emails, ...planEmailRecords].filter((e) => e.card_setup_id === c.id), workbookEmailsReadAt, stuckPlanStart: stuck.get(c.id) ?? null }));
 }
 
 export interface WaitlistRow {
@@ -460,7 +498,7 @@ export async function getParent(a: AdminSession, id: string): Promise<ParentDeta
     allRows<ChildRow>(a.db.rpc("admin_children").select(CHILD_COLUMNS).eq("parent_id", id).order("id"), "children"),
     allRows<TestQueryRow>(a.db.rpc("admin_assessments").select(TEST_COLUMNS).eq("parent_id", id).order("created_at", { ascending: false }).order("id"), "tests")
       .then((rows) => withPeople(a, rows)),
-    allRows<CardSetupRow>(a.db.rpc("admin_card_setups").select("*").eq("parent_id", id).order("id"), "card setups"),
+    allRows<CardSetupRow>(a.db.rpc("admin_card_setups").select("*").eq("parent_id", id).order("id"), "card setups").then((cards) => withWorkbookEmails(a, cards)),
     allRows<WaitlistRow>(a.db.rpc("admin_waitlist_joins").select("*").eq("parent_id", id).order("id"), "waitlist"),
     familyEmails(a, id),
   ]);
@@ -522,9 +560,17 @@ export async function getChildWorkbooks(a: AdminSession, childId: string): Promi
 
 export interface WorkbookDetail {
   workbook: Workbook;
+  delivery: DeliveryReceipt | null;
+  deliveryZone: FamilyZone;
   child: ChildRow | null;
   /** Short-lived URLs of the page images, by path, signed with the admin's session under the bucket's admin policy. */
   images: Record<string, string>;
+  /** Its audit log (#314): the draft it was approved from, its approval, printing and shipping, with who and when. */
+  audit: AuditEntry[];
+  /** The run whose draft it was approved from, or null (a workbook stored another way). */
+  runId: string | null;
+  /** Shipped, and no other workbook of the child was shipped before it: the page leads to start plan (D-140). */
+  firstShipped: boolean;
 }
 
 /** One workbook with its pages, questions and page images, or null. */
@@ -532,14 +578,271 @@ export async function getWorkbook(a: AdminSession, id: string): Promise<Workbook
   const workbook = await workbookStore(a.db).workbook(id);
   if (!workbook) return null;
   const paths = workbook.pages.flatMap((p) => (p.image ? [p.image.path] : []));
-  const [children, signed] = await Promise.all([
+  const [children, signed, audit, runs, shipped, delivery, parents, familyChildren] = await Promise.all([
     childrenById(a, [workbook.childId]),
     paths.length ? a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : Promise.resolve({ data: [], error: null }),
+    a.db.from("workbook_audit").select("id, at, actor_email, action, detail").or(`workbook_id.eq.${workbook.id},draft_id.eq.${workbook.id}`)
+      .order("at").order("id").range(0, 199).then((r) => must<AuditEntry[]>(r, "workbook audit")),
+    a.db.from("workbook_runs").select("id").eq("draft_id", workbook.id).order("created_at", { ascending: false }).limit(1)
+      .then((r) => must<{ id: string }[]>(r, "workbook run")),
+    a.db.from("workbooks").select("id, shipped_at").eq("child_id", workbook.childId).eq("status", "shipped")
+      .then((r) => must<{ id: string; shipped_at: string | null }[]>(r, "shipped workbooks")),
+    workbookDeliveryStore(a.db).receipt(workbook.id),
+    a.db.rpc("admin_parents").select("time_zone, postal").eq("id", workbook.parentId)
+      .then((r) => must<{ time_zone: string | null; postal: string | null }[]>(r, "delivery family")),
+    a.db.rpc("admin_children").select("id, province, created_at").eq("parent_id", workbook.parentId)
+      .then((r) => must<{ id: string; province: string; created_at: string }[]>(r, "family province")),
   ]);
   if (signed.error) console.error("[admin] workbook images sign failed", signed.error.message);
   const images: Record<string, string> = {};
   for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
-  return { workbook, child: children[0] ?? null, images };
+  const at = (w: { shipped_at: string | null }) => (w.shipped_at ? new Date(w.shipped_at).getTime() : Infinity);
+  const mine = shipped.find((w) => w.id === workbook.id);
+  const firstShipped = !!mine && shipped.every((w) => w.id === workbook.id || at(w) > at(mine));
+  const parent = parents[0];
+  const deliveryZone = delivery?.timeZone ?? familyZone({ timeZone: parent?.time_zone, postal: parent?.postal, province: familyProvince(familyChildren) });
+  return { workbook, delivery, deliveryZone, child: children[0] ?? null, images, audit, runId: runs[0]?.id ?? null, firstShipped };
+}
+
+/** A fresh short-lived URL of a stored workbook PDF, signed with the admin's session, or null when there is none. */
+async function signPdf(a: AdminSession, path: string | null | undefined, download?: string): Promise<string | null> {
+  if (!path) return null;
+  const { data, error } = await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrl(path, WORKBOOK_URL_SECONDS, download ? { download } : undefined);
+  if (error) console.error("[admin] workbook pdf sign failed", error.message);
+  return data?.signedUrl ?? null;
+}
+
+/** The PDF of a stored workbook, as a fresh signed URL, or null. `download`: the URL saves the file (for print). */
+export async function workbookPdfUrl(a: AdminSession, id: string, o: { download?: boolean } = {}): Promise<string | null> {
+  if (!isUuid(id)) return null;
+  const [book] = must<{ child_id: string; number: number; pdf_path: string | null }[]>(
+    await a.db.from("workbooks").select("child_id, number, pdf_path").eq("id", id).limit(1), "workbook");
+  if (!book) return null;
+  if (!o.download) return signPdf(a, book.pdf_path);
+  const [child] = await childrenById(a, [book.child_id]);
+  const name = (child?.first_name ?? "child").normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "child";
+  return signPdf(a, book.pdf_path, `unica-${name}-workbook-${book.number}.pdf`);
+}
+
+/** The PDF of a run's draft (its latest revision), as a fresh signed URL, or null. */
+export async function draftPdfUrl(a: AdminSession, runId: string): Promise<string | null> {
+  if (!isUuid(runId)) return null;
+  const [run] = must<{ draft_id: string | null }[]>(await a.db.from("workbook_runs").select("draft_id").eq("id", runId).limit(1), "workbook run");
+  if (!run?.draft_id) return null;
+  const revision = await a.db.from("workbook_draft_revisions").select("revision, rendering, render_problems").eq("draft_id", run.draft_id).order("revision", { ascending: false }).limit(1).maybeSingle()
+    .then((r) => must<{ revision: number; rendering: DraftRendering | null; render_problems: RenderProblem[] } | null>(r, "draft revision"));
+  return signPdf(a, revision?.rendering?.pdfPath);
+}
+
+// Workbook runs and drafts (#312)
+
+/** A draft's check results, from the counts stored beside it. */
+export interface DraftCounts {
+  pages: number;
+  questions: number;
+  failed: number;
+  notChecked: number;
+  failedPages: number;
+}
+
+/** One run in a list, with its draft's check results and how many pages did not render. */
+export interface RunListRow {
+  run: WorkbookRun;
+  counts: DraftCounts | null;
+  notRendered: number | null;
+  /** The draft was stored in an older shape (before the page layouts): the list shows "old draft format". */
+  oldFormat: boolean;
+  /** The saved work of a run being made. */
+  activity?: RunActivity;
+}
+
+/** The saved work of a running run: only the times, never a page's content. A run has at most a few hundred pages. */
+async function runActivity(a: AdminSession, runId: string): Promise<RunActivity> {
+  const newest = (table: "workbook_run_calls" | "workbook_run_solves") => a.db.from(table).select("created_at").eq("run_id", runId).order("created_at", { ascending: false }).limit(1)
+    .then((r) => must<{ created_at: string }[]>(r, table));
+  const [pages, calls, solves, frame, resumed] = await Promise.all([
+    a.db.from("workbook_run_pages").select("created_at").eq("run_id", runId).order("created_at").range(0, 999).then((r) => must<{ created_at: string }[]>(r, "workbook run pages")),
+    newest("workbook_run_calls"),
+    newest("workbook_run_solves"),
+    a.db.from("workbook_run_frames").select("created_at").eq("run_id", runId).limit(1)
+      .then((r) => must<{ created_at: string }[]>(r, "workbook run plan time")),
+    a.db.from("workbook_audit").select("at").eq("run_id", runId).eq("action", "run-resumed").order("at", { ascending: false }).limit(1)
+      .then((r) => must<{ at: string }[]>(r, "workbook run resume time")),
+  ]);
+  const pageTimes = pages.map((p) => p.created_at);
+  const lastWorkAt = [pageTimes.at(-1), calls[0]?.created_at, solves[0]?.created_at].filter((t): t is string => !!t).sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1) ?? null;
+  return { pageTimes, lastWorkAt, writingStartedAt: frame[0]?.created_at ?? null, resumedAt: resumed[0]?.at ?? null };
+}
+
+const DRAFT_COUNT_COLUMNS = "id, schema_version, pages, questions, failed, not_checked, failed_pages, cover:draft->pages->0->content";
+type DraftCountRow = { id: string; schema_version: number; pages: number; questions: number; failed: number; not_checked: number; failed_pages: number; cover: unknown };
+
+/**
+ * A draft this area cannot show: a shape version this code does not read, or one made before the books were laid out
+ * for the templates (its pages have no content). A version 1 draft with content is a version 2 draft (#380): shown.
+ */
+const oldDraft = (version: number, cover: unknown) => !READABLE_DRAFT_VERSIONS.includes(version) || cover === null || cover === undefined;
+const countsOf = (d: DraftCountRow): DraftCounts => ({ pages: d.pages, questions: d.questions, failed: d.failed, notChecked: d.not_checked, failedPages: d.failed_pages });
+
+async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow[]> {
+  const drafts = runs.flatMap((r) => (r.draftId ? [r.draftId] : []));
+  const [counts, revisions] = await Promise.all([
+    byIds<DraftCountRow>(drafts, "workbook drafts", (chunk) => a.db.from("workbook_drafts").select(DRAFT_COUNT_COLUMNS).in("id", chunk)),
+    // One bounded latest-revision read per draft. Do not fetch complete workbook content for a list.
+    Promise.all(drafts.map(id => a.db.from("workbook_draft_revisions")
+      .select("draft_id, counts:content->counts, render_problems").eq("draft_id", id)
+      .order("revision", { ascending: false }).limit(1)
+      .then(r => must<{ draft_id: string; counts: DraftCounts | null; render_problems: RenderProblem[] }[]>(r, "draft revisions"))))
+      .then(parts => parts.flat().map(r => ({ id: r.draft_id, counts: r.counts, render_problems: r.render_problems }))),
+  ]);
+  const byDraft = index(counts);
+  const problems = index(revisions);
+  const activities = new Map(await Promise.all(runs.filter((r) => r.status === "running").map(async (r) => [r.id, await runActivity(a, r.id)] as const)));
+  return runs.map((run) => {
+    const d = run.draftId ? byDraft.get(run.draftId) : undefined;
+    const p = run.draftId ? problems.get(run.draftId) : undefined;
+    return {
+      run, counts: p?.counts ?? (d ? countsOf(d) : null), notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null,
+      oldFormat: !!d && oldDraft(d.schema_version, d.cover), activity: activities.get(run.id),
+    };
+  });
+}
+
+/** Everything in the Workbooks list: the newest runs, the stored workbooks, and their children. */
+export async function listWorkbookArea(a: AdminSession): Promise<{ runs: Page<RunListRow>; workbooks: WorkbookSummary[]; children: Map<string, ChildRow>; deliveredIds: string[] }> {
+  const [runs, books] = await Promise.all([
+    a.db.from("workbook_runs").select(RUN_COLUMNS).order("created_at", { ascending: false }).range(0, LIST_MAX)
+      .then((r) => must<Parameters<typeof runFromRow>[0][]>(r, "workbook runs")),
+    a.db.from("workbooks").select("id, parent_id, child_id, number, levels, status, pdf_path, profile_build, created_at, approved_at, printed_at, shipped_at")
+      .order("created_at", { ascending: false }).range(0, LIST_MAX)
+      .then((r) => must<{ id: string; parent_id: string; child_id: string; number: number; levels: number[]; status: WorkbookSummary["status"]; pdf_path: string | null; profile_build: string | null; created_at: string; approved_at: string | null; printed_at: string | null; shipped_at: string | null }[]>(r, "workbooks")),
+  ]);
+  const cut = page(runs.map(runFromRow));
+  const workbooks: WorkbookSummary[] = books.slice(0, LIST_MAX).map((w) => ({
+    id: w.id, parentId: w.parent_id, childId: w.child_id, number: w.number, levels: w.levels, status: w.status, pdfPath: w.pdf_path,
+    profileBuild: w.profile_build, createdAt: w.created_at, approvedAt: w.approved_at, printedAt: w.printed_at, shippedAt: w.shipped_at,
+  }));
+  const [rows, children] = await Promise.all([
+    runRows(a, cut.rows),
+    childrenById(a, [...cut.rows.map((r) => r.childId), ...workbooks.map((w) => w.childId)]),
+  ]);
+  const deliveredIds: string[] = [];
+  for (let i = 0; i < workbooks.length; i += CHUNK) {
+    const result = await a.db.from("workbook_delivery_receipts").select("workbook_id").in("workbook_id", workbooks.slice(i, i + CHUNK).map((w) => w.id));
+    if (result.error) throw new Error(`[admin] delivery receipts: ${result.error.message}`);
+    deliveredIds.push(...result.data.map((r) => r.workbook_id));
+  }
+  return { runs: { rows, more: cut.more || books.length > LIST_MAX }, workbooks, children: index(children), deliveredIds };
+}
+
+/** A child's runs, newest first, with their check results. */
+export async function getChildRuns(a: AdminSession, childId: string): Promise<RunListRow[]> {
+  if (!isUuid(childId)) return [];
+  const runs = must<Parameters<typeof runFromRow>[0][]>(
+    await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("child_id", childId).order("created_at", { ascending: false }).range(0, 49), "child runs");
+  return runRows(a, runs.map(runFromRow));
+}
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  actor_email: string | null;
+  action: string;
+  detail: Record<string, unknown>;
+}
+
+export interface RunDetail {
+  comments: ReviewComment[];
+  editBatch: WorkbookEdit | null;
+  run: WorkbookRun;
+  child: ChildRow | null;
+  /** The draft the run stored, its revision 1's rendering and what did not render; null until the run is done. */
+  draft: { workbook: GeneratedWorkbook; rendering: DraftRendering | null; problems: RenderProblem[]; revision: number } | null;
+  /** The run's draft is stored in an older shape, which this page does not show (its version). */
+  oldFormat: number | null;
+  /** Short-lived URLs of the page images, by path. */
+  images: Record<string, string>;
+  audit: AuditEntry[];
+  /** The run's solve checks (#380 round 7), oldest first: each printed question the AI worded, read by a separate model. */
+  solves: RunSolve[];
+  /** The run's AI calls by provider (D-200): the Claude subscription or the API, and the API's cost. */
+  aiCalls: AiCallSummary;
+  /** The workbook approved from this run's draft (#314: it keeps the draft's id), or null. */
+  approved: { id: string; status: WorkbookSummary["status"] } | null;
+  /** The saved work of a run being made. */
+  activity?: RunActivity;
+}
+
+/** One run with its draft, page images and audit log, or null. */
+export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDetail | null> {
+  if (!isUuid(id)) return null;
+  const [row] = must<Parameters<typeof runFromRow>[0][]>(await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("id", id).limit(1), "workbook run");
+  if (!row) return null;
+  const run = runFromRow(row);
+  const activity = run.status === "running" ? await runActivity(a, run.id) : undefined;
+  const [children, draftRow, revision, audit, solveRows, callRows, approved, comments, edits, editSolves] = await Promise.all([
+    childrenById(a, [run.childId]),
+    run.draftId
+      ? a.db.from("workbook_drafts").select("schema_version, draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ schema_version: number; draft: GeneratedWorkbook } | null>(r, "workbook draft"))
+      : null,
+    run.draftId
+      ? a.db.from("workbook_draft_revisions").select("revision, content, rendering, render_problems").eq("draft_id", run.draftId).order("revision", { ascending: false }).limit(1).maybeSingle()
+        .then((r) => must<{ revision: number; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] } | null>(r, "draft revision"))
+      : null,
+    a.db.from("workbook_audit").select("id, at, actor_email, action, detail")
+      .or(run.draftId ? `run_id.eq.${run.id},draft_id.eq.${run.draftId}` : `run_id.eq.${run.id}`).order("at").order("id").range(0, 199)
+      .then((r) => must<AuditEntry[]>(r, "workbook audit")),
+    // Every check of the run, in pages of the database's row limit (a book has a few hundred to a few thousand).
+    readPaged(async (from, to) => must<{ question_id: string; model: string; verdict: RunSolve["verdict"]; ms: number; usd: number | null; log: RunSolve["log"] }[]>(
+      await a.db.from("workbook_run_solves").select("question_id, model, verdict, ms, usd, log").eq("run_id", run.id).order("id").range(from, to), "workbook solve checks")),
+    readPaged(async (from, to) => must<{ provider: "subscription" | "api"; outcome: "started" | "answered" | "failed" | "unavailable"; usd: number | null; note: string | null; requests: number | null }[]>(
+      await a.db.from("workbook_run_ai_calls").select("provider, outcome, usd, note, requests").eq("run_id", run.id).order("id").range(from, to), "workbook AI calls")),
+    run.draftId
+      ? a.db.from("workbooks").select("id, status").eq("id", run.draftId).maybeSingle().then((r) => must<{ id: string; status: WorkbookSummary["status"] } | null>(r, "approved workbook"))
+      : null,
+    run.draftId ? a.db.from("workbook_comments").select("*").eq("draft_id", run.draftId).order("created_at").limit(500).then((r) => must(r, "comments")) : [],
+    run.draftId ? a.db.from("workbook_edits").select("*").eq("draft_id", run.draftId).order("created_at", { ascending: false }).limit(1).maybeSingle().then((r) => must(r, "edit batch")) : null,
+    run.draftId ? readPaged(async (from, to) => must(await a.db.from("workbook_edits").select("checkpoints").eq("draft_id", run.draftId!).eq("status", "done").order("created_at").range(from, to), "edit solve checks")) : [],
+  ]);
+  // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.
+  const oldFormat = draftRow && oldDraft(draftRow.schema_version, draftRow.draft.pages[0]?.content) ? draftRow.schema_version : null;
+  const current = oldFormat === null ? draftRow : null;
+  const paths = current ? revision?.rendering?.pages.map((p) => p.image.path) ?? [] : [];
+  const signed = paths.length ? await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : { data: [], error: null };
+  if (signed.error) console.error("[admin] draft images sign failed", signed.error.message);
+  const images: Record<string, string> = {};
+  for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
+  return {
+    run, child: children[0] ?? null, images, audit, oldFormat, approved, activity,
+    comments: comments.map(commentFromRow),
+    editBatch: edits ? editFromRow(edits) : null,
+    aiCalls: summarizeAiCalls(callRows.map((r) => ({ ...r, usd: r.usd === null ? null : Number(r.usd) }))),
+    solves: [...solveRows.map((r) => ({ questionId: r.question_id, model: r.model, verdict: r.verdict, ms: r.ms, usd: r.usd === null ? null : Number(r.usd), log: r.log })),
+      ...editSolves.flatMap((e) => Object.values(e.checkpoints as unknown as Record<string, EditCheckpoint>).flatMap((p) => p.solves ?? []))],
+    draft: current ? { workbook: revision?.content ?? current.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
+  };
+}
+
+/** The workbook worker on Savar's Mac (D-200), as its last heartbeat shows it. */
+export interface WorkerStatus {
+  id: string;
+  online: boolean;
+  seenAt: string;
+  startedAt: string;
+  build: string | null;
+  runId: string | null;
+  primaryAi: "subscription" | "api";
+}
+
+/** The worker seen last, or null when no worker ever wrote a heartbeat. A worker that said it stopped is offline. */
+export async function getWorkbookWorker(a: AdminSession, now = new Date()): Promise<WorkerStatus | null> {
+  const [row] = must<{ id: string; seen_at: string; started_at: string; build: string | null; run_id: string | null; primary_ai: "subscription" | "api"; note: string | null }[]>(
+    await a.db.from("workbook_workers").select("id, seen_at, started_at, build, run_id, primary_ai, note").order("seen_at", { ascending: false }).limit(1), "workbook worker");
+  if (!row) return null;
+  return {
+    id: row.id, seenAt: row.seen_at, startedAt: row.started_at, build: row.build, runId: row.run_id, primaryAi: row.primary_ai,
+    online: row.note !== "stopped" && workerOnline(row.seen_at, now),
+  };
 }
 
 // AI reviews
@@ -576,11 +879,13 @@ export async function listNextSteps(a: AdminSession, offset = 0): Promise<NextSt
     a.db.rpc("admin_waitlist_joins").select("*").order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX).then((r) => page(must<WaitlistRow[]>(r, "waitlist"))),
   ]);
   const all = [...cards.rows, ...waitlist.rows];
-  const [children, parents] = await Promise.all([childrenById(a, all.map((r) => r.child_id)), parentsById(a, all.map((r) => r.parent_id))]);
+  const [children, parents, emailCards] = await Promise.all([
+    childrenById(a, all.map((r) => r.child_id)), parentsById(a, all.map((r) => r.parent_id)), withWorkbookEmails(a, cards.rows),
+  ]);
   const child = index(children);
   const parent = index(parents);
   const people = <T extends { child_id: string; parent_id: string }>(r: T) => ({ ...r, child: child.get(r.child_id) ?? null, parent: parent.get(r.parent_id) ?? null });
-  return { cards: { ...cards, rows: cards.rows.map(people) }, waitlist: { ...waitlist, rows: waitlist.rows.map(people) } };
+  return { cards: { ...cards, rows: emailCards.map(people) }, waitlist: { ...waitlist, rows: waitlist.rows.map(people) } };
 }
 
 export interface EmailRow {
@@ -589,7 +894,7 @@ export interface EmailRow {
   parent_id: string;
   child_id: string | null;
   assessment_id: string | null;
-  kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe";
+  kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe";
   status: "claimed" | "sent" | "failed" | null;
   attempts: number;
   sent_at: string | null;
@@ -809,11 +1114,9 @@ export async function testAccountState(a: AdminSession, parentId: string): Promi
   return { marked: !!marked, admin: team.includes(parentId) };
 }
 
-/** Marks or unmarks a family as a test. Row-level security allows it for admins only. */
+/** Marks or unmarks a family as a test. The admin-session function locks the parent first (#621). */
 export async function setTestAccount(a: AdminSession, parentId: string, test: boolean): Promise<void> {
-  const { error } = test
-    ? await a.db.from("test_accounts").upsert({ parent_id: parentId, marked_by: a.userId }, { onConflict: "parent_id", ignoreDuplicates: true })
-    : await a.db.from("test_accounts").delete().eq("parent_id", parentId);
+  const { error } = await a.db.rpc("admin_set_test_account", { p_parent: parentId, p_test: test });
   if (error) throw new Error(`[admin] test account: ${error.message}`);
 }
 
@@ -874,9 +1177,11 @@ const PROGRESS_CHUNK = 50;
 /** One row of public.admin_test_progress_for() (migration add_admin_test_progress_for). */
 type ProgressQueryRow = {
   id: string; status: AssessmentStatus; route: Route | null;
+  block_lengths?: number[] | null; blocks_locked?: number | null; blocks_complete?: boolean | null;
   started_at: string; last_answer_at: string | null; completed_at: string | null; resume_until: string;
   break_started_at: string | null; break_ended_at: string | null;
-  stage1: number; up: number; stay: number; down: number; answered: number;
+  stage3_route: Stage3Route | null;
+  stage1: number; up: number; stay: number; down: number; stage3_up: number; stage3_down: number; answered: number;
   last_shown_position: number | null; last_shown_at: string | null;
   facts_started_at: string | null; facts_answered: number; facts_tried: number; facts_drawn: number; next_prompt: string | null;
 };
@@ -892,8 +1197,9 @@ export async function progressRows(a: AdminSession, ids: readonly string[]): Pro
   const rows = (await Promise.all(chunks.map(async (chunk) =>
     must<ProgressQueryRow[]>(await a.db.rpc("admin_test_progress_for", { ids: chunk }), "test progress")))).flat();
   return new Map(rows.map((r) => [r.id, {
-    status: r.status, route: r.route, answered: r.answered, nextPrompt: r.next_prompt,
-    lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down },
+    ...(r.block_lengths && { blocks: { lengths: r.block_lengths, locked: r.blocks_locked ?? 0, complete: r.blocks_complete ?? false } }),
+    status: r.status, route: r.route, stage3Route: r.stage3_route, answered: r.answered, nextPrompt: r.next_prompt,
+    lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down, stage3Up: r.stage3_up, stage3Down: r.stage3_down },
     lastShown: r.last_shown_position === null || !r.last_shown_at ? null : { position: r.last_shown_position, at: r.last_shown_at },
     startedAt: r.started_at, lastAnswerAt: r.last_answer_at, completedAt: r.completed_at, resumeUntil: r.resume_until,
     breakStartedAt: r.break_started_at, breakEndedAt: r.break_ended_at,
@@ -907,11 +1213,13 @@ export function detailProgress(d: TestDetail): ProgressInput {
   const route = d.test.route as Route | null;
   const shown = d.shows.reduce<ShownRecord | null>((a, s) => (!a || s.position > a.position ? s : a), null);
   const n = d.answers.length;
-  const onRoute = [...stored.stage1, ...(route ? stored.stage2[route] : [])];
+  const stage3Route = d.test.stage3_route as Stage3Route | null;
+  const onRoute = givenQuestions(stored, route, stage3Route);
   return {
-    status: d.test.status, route, answered: n,
+    ...(stored.adaptive && { blocks: { lengths: stored.adaptive.blocks.map(b => b.questions.length), locked: stored.adaptive.locked, complete: stored.adaptive.complete } }),
+    status: d.test.status, route, stage3Route, answered: n,
     nextPrompt: n < stored.stage1.length || route ? (onRoute[n]?.prompt ?? null) : null,
-    lengths: { stage1: stored.stage1.length, up: stored.stage2.up.length, stay: stored.stage2.stay.length, down: stored.stage2.down.length },
+    lengths: { stage1: stored.stage1.length, up: stored.stage2.up.length, stay: stored.stage2.stay.length, down: stored.stage2.down.length, stage3Up: stored.stage3?.up.length ?? 0, stage3Down: stored.stage3?.down.length ?? 0 },
     lastShown: shown ? { position: shown.position, at: shown.shown_at } : null,
     startedAt: d.test.started_at, lastAnswerAt: d.test.last_answer_at, completedAt: d.test.completed_at, resumeUntil: d.test.resume_until,
     breakStartedAt: d.context.break_started_at, breakEndedAt: d.context.break_ended_at,

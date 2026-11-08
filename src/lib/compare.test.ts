@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { COMPARE_FAQ, COST, ONE_BY_ONE, OPTIONS, ROWS } from "@/lib/compare";
-import { BRAND, PLANS } from "@/lib/site";
+import { BRAND, PLANS, cad } from "@/lib/site";
 
 // The comparison names categories, never a competitor (D-064), and makes no claim about anyone's results.
 const allText = () =>
@@ -21,7 +21,7 @@ describe("the comparison (home table and /compare)", () => {
   });
 
   it("shows our live plan price", () => {
-    expect(COST.us[0]).toBe(`$${PLANS.one.price}`);
+    expect(COST.us[0]).toBe(`CAD ${cad(PLANS.one.price)}`);
   });
 
   it("has one block per other option", () => {

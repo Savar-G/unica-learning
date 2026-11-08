@@ -1,0 +1,20 @@
+{
+  "fixture": "synthetic drawn digits on real Chromium pages",
+  "checks": [
+    "real page, routes and Storage: 12 crops read back as their own drawn digits; 1 questions not supported",
+    "a repeated POST reuses the stored work under the same lease",
+    "old ready result: preview and crops blocked, stack checking, Send empty; POST rechecks under a new lease and restores ready",
+    "a photo with a mark covered is refused: no derived file, and its photo is still served",
+    "a legacy shipped page keeps its photo, with no calibration row and no derived file",
+    "owner, admin and anonymous: download, signed URL, batch signed URLs, list, insert and remove denied for crop, straightened page and photo, with each object present",
+    "the image route serves owner and admin, and refuses another family and anonymous for crop, straightened page and preview",
+    "job rows: owner and another family read none, admin reads them; browser sessions cannot call begin or finish, or change a row",
+    "the fence refuses other names and a lost lease, even with the secret key; a stale finish changes nothing; finish refuses a file that does not exist",
+    "two POSTs at once: one works, one waits, and one set of files exists",
+    "deletion: with the crop's bytes present, every direct call and the routes fail; late crop, finish and retry are refused; repeated cleanup keeps the terminal state",
+    "expiry by the clock alone, before any terminal row: late crop and finish refused, routes refuse, with the crop's bytes present; the scheduled expiry function then records it and cleanup removes every file"
+  ],
+  "admin": "admin",
+  "other": "other",
+  "proofLimit": "No real handwriting, no real camera, no curled page. Hosted database and Storage, local Next dev server."
+}

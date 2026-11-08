@@ -243,7 +243,8 @@ describe("refused commands", () => {
       code: "invalid_command",
       reason: expect.stringMatching(/unknown field "value"/),
     });
-    expect(refusal(scene, { op: "fraction", id: "f" })).toMatchObject({ code: "unsupported" });
+    // A model with no model data is refused, not drawn.
+    expect(refusal(scene, { op: "model", id: "m" })).toMatchObject({ code: "invalid_command" });
     // Columns check the value the model writes, so a put there needs one.
     expect(refusal(scene, { op: "put", target: cell("sum1", "answer", "ones") })).toMatchObject({ code: "invalid_command" });
   });

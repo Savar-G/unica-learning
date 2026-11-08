@@ -5,7 +5,9 @@ import type { ReactNode } from "react";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
-import { ScanShot } from "@/components/scan-shot";
+import { HeroWorkbook } from "@/components/hero-workbook";
+import "@/components/hero-workbook.css";
+import "@/components/statement.css";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
 import { ADDITIONAL_CHILD_PRICE, BRAND, HERO, OFFER_ENDS, PLANS, SOCIAL_LINKS, cad } from "@/lib/site";
@@ -14,7 +16,6 @@ import {
   BeliefList,
   Eyebrow,
   Faq as FaqList,
-  Hero as HeroBlock,
   Highlight,
   IncludedCard,
   Nav as NavBar,
@@ -22,20 +23,11 @@ import {
   PlanGrid,
   Section,
   SectionHeader,
-  StepCard,
-  StepGrid,
-  SwapWord,
   type IconName,
 } from "@/ds";
-import { CompareTable } from "./compare";
+import { HomeCompare } from "./compare";
 import { Knot, Rise, type Vars } from "./drawn";
 
-import heroHome1 from "@/assets/img/hero-home-1.jpg";
-import assessPhoto from "@/assets/img/loop-assess-1.jpg";
-import practice6 from "@/assets/img/loop-practice-6.jpg";
-import deliverPhoto from "@/assets/img/loop-deliver.jpg";
-import adaptPhoto from "@/assets/img/loop-adapt.jpg";
-import repeatPhoto from "@/assets/img/loop-repeat.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
 import heroHome2 from "@/assets/img/hero-home-2.jpg";
 import emo4 from "@/assets/img/emotion-4.jpg";
@@ -58,67 +50,38 @@ export function Nav() {
   return <NavBar brand={BRAND} links={[{ label: "How it works", href: "#how" }, { label: "What's included", href: "/whats-included" }, { label: "Curriculum", href: "/curriculum" }, { label: "Pricing", href: "#price" }, { label: "FAQ", href: "#faq" }]} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
 }
 
-// 8-9 characters only: the chip is as wide as its longest word, so a long topic
-// leaves a gap after every short one.
-const TOPICS = [
-  "fractions", "rounding", "decimals", "perimeter", "division", "equations", "percents", "multiples",
-  "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
-];
+// Hero (D-214, cleaned up in D-215): a plain kicker line, the headline, the lead, the buttons and the facts on the left;
+// the sample workbook on the closing section's grainy field on the right.
+const HERO_FACTS = ["Free assessment", "First month free", "Cancel anytime"];
 
 export function Hero() {
   return (
-    <HeroBlock
-        id="top"
-        className="hero-ink"
-        eyebrow=""
-        kicker={HERO.kicker}
-        title={HERO.title}
-        highlight={HERO.highlight}
-        after={HERO.after}
-        lead={<><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</>}
-        meta={["Free assessment", "First month free", "Available across Canada", "Cancel anytime"]}
-        page={null}
-        report={null}
-        animate
-        actions={
-          <>
-            <GetStarted src="hero" />
-            <Link className="btn ghost" href="/sample-report">See a sample report</Link>
-          </>
-        }
-        media={<Image src={heroHome1} alt="A boy writes in his workbook at a desk at home" sizes="(min-width: 1200px) 1120px, 100vw" placeholder="blur" loading="eager" fetchPriority="high" />}
-      />
+    <header id="top" className="hero hero-wb">
+      <div className="txt">
+        <p className="kicker">{HERO.kicker}</p>
+        <h1>{HERO.title} <span className="mark">{HERO.highlight}</span> {HERO.after}</h1>
+        <p className="lead">{HERO.lead}</p>
+        <div className="ctas">
+          <GetStarted src="hero" />
+          <Link className="btn ghost" href="/sample-report">See a sample report</Link>
+        </div>
+        <ul className="facts">{HERO_FACTS.map((f) => <li key={f}>{f}</li>)}</ul>
+      </div>
+      <HeroWorkbook />
+    </header>
   );
 }
 
-const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
-
-const STEPS = [
-  { n: "01", t: "Assess", d: "Your child takes the free online assessment. The report shows their level and gaps. You choose a plan after.",
-    v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps, with practice built around the math skills they learn at school.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "03", t: "Practice", d: <>Your child works on paper for 15 to 30 minutes a day, 5 days a week, with rewards for every page. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>,
-    v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "04", t: "Scan", d: "Scan the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <ScanShot sizes={STEP_SIZES} />, tone: "photo" as const },
-  { n: "05", t: "Adapt", d: "Each scan updates the program. Missed carrying? You get more of it. Got it? It moves on.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "06", t: "Track and repeat", d: <>Your child&apos;s progress report updates after every scan. The next workbook arrives before this one runs out, built from that progress. <Link href="/sample-report" className="more-link">See a sample report <span aria-hidden="true">→</span></Link></>, v: <Image src={repeatPhoto} alt="A girl starts on her next workbook at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-];
-
-export function How() {
+// The one-line statement after the hero (D-215, after the Spruce quote block): the set program, then what Unica does
+// (in ink), then how. Compares with a category, never a brand (D-064).
+export function Statement() {
   return (
-    <Section id="how" aria-labelledby="howT">
-      <Knot />
-      <Rise>
-        <SectionHeader eyebrow="How it works" title="Start easily. Repeat easily." titleId="howT" lead={<>Every workbook is built from the last one. <Link href="/whats-included" className="more-link">See what&apos;s included <span aria-hidden="true">→</span></Link></>} />
+    <section className="statement" aria-label="How Unica is different">
+      <Rise as="p">
+        Learning centres follow a set program. <strong>Unica personalizes your child&apos;s learning.</strong> Each workbook
+        builds on the last one: more practice where they struggled, and new challenges when they are ready.
       </Rise>
-      <StepGrid>
-        {STEPS.map((s, i) => (
-          <StepCard key={s.n} number={s.n} title={`${s.t}.`} visual={s.v} visualTone={s.tone} className="rise" style={d(i * 0.06)}>
-            {s.d}
-          </StepCard>
-        ))}
-      </StepGrid>
-    </Section>
+    </section>
   );
 }
 
@@ -130,6 +93,7 @@ const DRIFT: [StaticImageData, number, number, number, number, number, number, b
   [emo11, 22, 78, 13, 16, 0.12, -2, true], [emo10, 64, 79, 13, 16, -0.1, 4, true],
 ];
 
+// Hidden from the home page (2026-11-02); kept here to bring back later. Render <Feel /> in landing.tsx to restore.
 export function Feel() {
   return (
     <Section className="feel" aria-labelledby="feelT">
@@ -178,7 +142,7 @@ export function OurPromise() {
         <Rise>
           <Eyebrow>Our promise</Eyebrow>
           <h2 id="promiseT" style={{ margin: "16px 0 20px" }}>Try it with nothing to lose.</h2>
-          <p className="lead">{BRAND} is made in Vancouver by two students who grew up on workbooks. We both did workbook programs for years and tutored other kids. We built the middle: personal, on paper, and affordable.</p>
+          <p className="lead">{BRAND} is made in Vancouver by two students who tutored kids in math and grew up doing learning programs. They saw both sides: learning centres that gave every child the same pages, and tutoring most families could only afford for an hour a week. So they built the middle: personal, on paper, and affordable.</p>
           <p style={{ margin: "18px 0 0" }}>
             <Link href="/our-story" style={{ fontWeight: 500, textUnderlineOffset: 4 }}>Read why we built it →</Link>
           </p>
@@ -223,7 +187,22 @@ export function Pricing() {
           cta={<div className="plan-cta"><GetStarted src="price" /><StartNote /></div>}
         />
       </PlanGrid>
-      <CompareTable />
+    </Section>
+  );
+}
+
+/** How we compare (D-219): its own section after Pricing. The link under the title opens /compare (D-114). */
+export function Compare() {
+  return (
+    <Section id="compare" aria-labelledby="compareT">
+      <Knot />
+      <Rise>
+        <SectionHeader className="hc-head-block" eyebrow="How we compare" title="Tutor, learning centre or Unica?" titleId="compareT" />
+        <Link className="hc-full" href="/compare">See the full comparison <span aria-hidden="true">→</span></Link>
+      </Rise>
+      <Rise>
+        <HomeCompare />
+      </Rise>
     </Section>
   );
 }
@@ -274,7 +253,7 @@ export function ThreadEnd() {
 }
 
 const FOOTER_GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
-  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "What's included", href: "/whats-included" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }, { label: "Curriculum", href: "/curriculum" }] },
+  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "What's included", href: "/whats-included" }, { label: "Pricing", href: "/pricing" }, { label: "Free math assessment", href: "/math-assessment" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }, { label: "Curriculum", href: "/curriculum" }] },
   { title: "Company", links: [{ label: "Our story", href: "/our-story" }, { label: "Rewards", href: "/rewards" }, { label: "Resources", href: "/resources" }, { label: "Blog", href: "/blog" }] },
   { title: "Help", links: [{ label: "Contact us", href: "/contact" }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
 ];

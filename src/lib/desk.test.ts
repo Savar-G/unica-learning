@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DESK_HOME, deskGate, deskView, lockCookie, openPageToken, questionCrop, readLock, tapAreas } from "@/lib/desk";
+import { DESK_HOME, deskGate, deskView as readDeskView, lockCookie, openPageToken, questionCrop, readLock, tapAreas } from "@/lib/desk";
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { memoryWorkbookStore } from "@/lib/workbook-store-memory";
 
@@ -17,6 +17,16 @@ const SECOND = "77777777-7777-4777-8777-777777777777";
 const THIRD = "88888888-8888-4888-8888-888888888888";
 const SIBLINGS_BOOK = "99999999-9999-4999-8999-999999999999";
 const OTHER_BOOK = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+const NOW = Date.parse("2026-11-06T20:00:00Z");
+// Existing desk layout controls use confirmed receipts. Route tests exercise refusal and the waiting component.
+const deskView = (store: Parameters<typeof readDeskView>[0], options: Parameters<typeof readDeskView>[1]) =>
+  readDeskView(store, options, { receipt: async id => ({
+    workbookId: id, parentId: PARENT, childId: CHILD, number: id === SECOND ? 2 : 1,
+    deliveredAt: "2026-11-01T20:00:00Z", localTime: "2026-11-01T12:00", timeZone: "America/Vancouver",
+    recordedAt: "2026-11-01T21:00:00Z", actorId: PARENT, auditId: 1,
+  }) }, NOW);
+
 
 const token = (book: string, page: number) => `${book.slice(0, 8)}-page-${page}`.padEnd(20, "x");
 
@@ -236,7 +246,7 @@ describe("the desk lock", () => {
   });
 
   it("refuses the account and admin APIs while the desk is open", () => {
-    for (const path of ["/api/account/pin", "/api/account/card", "/api/admin/cards/1/start"]) expect(deskGate(path, lock, PARENT), path).toBe("refuse");
+    for (const path of ["/api/account/pin", "/api/account/card", "/api/account/family/delete", "/api/account/family/delete/code", "/api/account/children/child/delete", "/api/account/children/child/delete/code", "/api/admin/cards/1/start"]) expect(deskGate(path, lock, PARENT), path).toBe("refuse");
   });
 
   it("lets the desk, its own APIs and the sign-in callback through", () => {

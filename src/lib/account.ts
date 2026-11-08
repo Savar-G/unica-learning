@@ -1,6 +1,6 @@
 // Parent accounts for the online assessment (#62, D-082). Shared by the account forms (client) and /api/account (server).
 import { isGrade } from "@/lib/assessment/grades";
-import { CURRICULA, POSTAL, clip, cleanSource, type CurriculumId } from "@/lib/signup";
+import { CURRICULA, clip, cleanSource, type CurriculumId } from "@/lib/signup";
 
 export const PASSWORD_MIN = 8;
 /** Stops a script from adding children without end. No family needs more. */
@@ -34,8 +34,6 @@ export interface ChildInput {
  */
 export interface FinishPayload {
   name: string;
-  /** Left out by the short phone signup (D-134); when given, it must be a Canadian postal code. */
-  postal?: string;
   child: ChildInput;
   /** Referrer and UTM tags, so we know which channel brought each parent. */
   source: Record<string, string>;
@@ -77,10 +75,17 @@ export interface Child {
   province: CurriculumId;
 }
 
+/** A child's first name from untrusted input, or null. One rule for signup, adding a child and changing a name (#555). */
+export const cleanFirstName = (raw: unknown): string | null => clip(raw, 60) || null;
+
+/** What /api/account/children/<id> answers when a parent changes a child's first name (#555). */
+export type ChildNameError = "bad_json" | "too_large" | "forbidden" | "signed_out" | "invalid" | "not_found" | "book_in_progress" | "too_many_names" | "unavailable" | "store_failed";
+export type ChildNameResult = { ok: true } | { ok: false; error: ChildNameError };
+
 /** A valid child from untrusted input, or null. */
 export function cleanChild(raw: unknown): ChildInput | null {
   const c = (raw ?? {}) as Partial<Record<keyof ChildInput, unknown>>;
-  const firstName = clip(c.firstName, 60);
+  const firstName = cleanFirstName(c.firstName);
   // 0 is Kindergarten, so a missing or empty grade must not become 0 the way Number(null) and Number("") do.
   const grade = typeof c.grade === "number" ? c.grade : typeof c.grade === "string" && c.grade.trim() !== "" ? Number(c.grade) : NaN;
   const province = typeof c.province === "string" && Object.hasOwn(CURRICULA, c.province) ? (c.province as CurriculumId) : null;
@@ -88,14 +93,10 @@ export function cleanChild(raw: unknown): ChildInput | null {
   return { firstName, grade, province };
 }
 
-/**
- * Name, postal code and source, cleaned, or null when one is not valid. Google gives the email, so this is all a Google
- * parent sends. No postal code (the short phone signup, D-134) is null; a postal code that is given must be Canadian.
- */
+/** Name and source, cleaned, or null when the name is not valid. Google gives the email, so this is all a Google parent sends. */
 export function cleanDetails(raw: Partial<FinishPayload>) {
-  const postal = clip(raw.postal, 7).toUpperCase();
-  const details = { name: clip(raw.name, 120), postal: postal || null, source: cleanSource(raw.source) };
-  return details.name.length >= 2 && (!postal || POSTAL.test(postal)) ? details : null;
+  const details = { name: clip(raw.name, 120), source: cleanSource(raw.source) };
+  return details.name.length >= 2 ? details : null;
 }
 
 /** Supabase Auth hashes at most 72 bytes of a password. */

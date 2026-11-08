@@ -26,7 +26,7 @@ public curriculum page `/curriculum`.
 
 - **One workbook = 10 practice days**, five days a week over a two-week family cycle; one workbook is mailed every two
   weeks. The program runs all year, summer included, and never pauses on its own (section 4.10).
-- **Book order:** cover, How + Plan page, Day 1 to Day 10, back cover (the level map), then blank pages to a multiple
+- **Book order:** cover, How + Plan page, Day 1 to Day 10, blank pages to a multiple
   of 4.
 - **Pages a day (D-186), capped at 8 for now:**
 
@@ -37,13 +37,14 @@ public curriculum page `/curriculum`.
 | U7 to U9 | Early | 8 | Child-led | 20 to 25 min | 20 to 25 min |
 | U10 to U15 | Middle | 8 | Child-led | 25 to 30 min | 30 to 35 min |
 | U16 to U18 | Middle | 8 | Child-led | 25 to 30 min | 35 to 40 min |
-| U19 to U24 | Upper | 6 | Child-led | 30 to 35 min | 40 to 45 min |
-| U25 to U30 | Upper | 6 | Child-led | 30 to 40 min | 45 to 50 min |
+| U19 to U24 | Upper | 6 | Child-led | about 30 min | 40 to 45 min |
+| U25 to U30 | Upper | 6 | Child-led | about 30 min | 45 to 50 min |
 
-  Time targets are typical, not limits; pages times minutes does not match them in most bands, and that stays until
-  real children are timed (skeleton open question 1).
-- **Size of a book:** at 8 a day, cover + plan + 80 day pages + back cover = 83, padded to **84 (the maximum)**; at 6 a
-  day, 63 padded to 64.
+  These are planning estimates. Issue #479 caps generated days at 30 minutes; a generated day is about 30 minutes, and the
+  How it works page says "about 30 minutes" from the book's own estimate (D-229, Savar confirmed 2026-11-03). Real
+  children have not been timed.
+- **Size of a book:** at 8 a day, cover + plan + 80 day pages = 82, padded to **84 (the maximum)**; at 6 a
+  day, 62 padded to 64.
 - **Print and binding (D-191):** US Letter, colour, **saddle stitch**; blank pages go **at the end**.
 - **Workbooks per grade:** Kindergarten 8, Grades 1 and 2: 10, Grades 3 to 5: 12, Grades 6 to 9: 14 (120 in all),
   split across each grade's three levels by page share (2 to 6 per level, usually 3 to 5). Planning averages, not
@@ -53,7 +54,7 @@ public curriculum page `/curriculum`.
 
 - **30 levels, U1 to U30**, from the BC Mathematics curriculum, Kindergarten to Grade 9: K = U1 to U3, Grade 1 = U4 to
   U6, ... Grade 9 = U28 to U30. Written "Level U12", "Levels U1-U9", or "U12" where space is tight.
-- **Never show a school grade** to a child or on any page. Parents may be told once that U1 to U30 cover K to Grade 9,
+- **Never show a school grade** to a child, on any printed page or on the desk. The parent dashboard and report may show it (D-243). Parents may be told once that U1 to U30 cover K to Grade 9,
   and a rough grade range per group of levels on the website.
 - **Layers:** level, unit (one BC standard, e.g. `3.3`), skill (skill-map id, e.g. `3.3-add-within-1000`), step (3 to 5
   small increases in difficulty inside a skill). The BC skill id is the stable key. Position codes (U12.3.2.4 = level
@@ -86,7 +87,7 @@ Every run makes a **draft**. A team member reviews it in admin, fixes or redoes 
 1. **First workbook:** drafted automatically when the parent saves a card after the free assessment report; an admin
    button "Prepare first workbook" also works for any child with a finished test. Built from the assessment, the
    placement rule above and the child profile.
-2. **Every next workbook:** drafted automatically from a **snapshot on calendar day 7** of the current cycle (about 70
+2. **Every next workbook:** drafted automatically from a **snapshot when the required printed Day 7 pages are scanned (D-213)** of the current cycle (about 70
    to 75% through), so it ships before the current one runs out. It reads:
    - **Markings:** scanned and marked pages so far (the first try is the score; errors the child already fixed in the
      app don't carry over to Fix it). Unfinished pages are scanned whenever they are done; unfinished steps carry over.
@@ -192,9 +193,9 @@ Every run makes a **draft**. A team member reviews it in admin, fixes or redoes 
   same weeks. Illness or a busy week: no pause unless asked; the next workbook is built from what was scanned.
 
 ### 4.11 Keeping children going
-- **Back cover:** the level map, 30 squares (no grades); the child colours the current one. The same map is in the app.
+- **Levels:** show the level map in the browser account. Do not print a My levels page (#479).
 - **Certificate:** mailed with the first workbook of a new level, with the level's title.
-- **Cover parent line:** one sentence for the parent: what to ask the child to show them this fortnight.
+- **Cover:** a plain title and three skills under "In this workbook, <name> will learn to:" (#479).
 - **Plan page:** a tick box per day.
 
 ## 5. The day
@@ -210,16 +211,16 @@ The parts of a day, in order (skeleton, "A normal day"), and the levels they app
 | Practice that builds | Faded: a full example, 2 half-finished problems, then problems on their own, getting harder | Every day |
 | Word and picture problems | The same idea in stories and pictures; at least one "How do you know?" | Every day (U19 and up: Math in the world on Days 4 and 9) |
 | Review | Unit B, or an earlier skill on its spaced schedule ("Remember these?") | Every day |
-| Mixed set | 3 to 4 problems where the child chooses the operation: "1 Tick the operation", "2 Write the answer" | Every day from **U10**; Days 5 and 10: Friday 5 instead |
+| Mixed set | 2 problems where the child chooses the operation: "1 Tick the operation", "2 Write the answer" | Every day from **U10**; Days 5 and 10: Friday 5 instead |
 | Friday 5 | Section 4.8 | Days 5 and 10 |
-| Challenge | 1 to 2 challenge problems | Every day |
+| Challenge | 3 challenge problems (Cedric's section 8: 3 to 4) | Every day |
 
 How these parts sit on 8 and 6 pages is in `DESIGN.md` section 7 (from the samples: warm-up, new idea, practice,
 practice 2, word problems, unit B, remember these + mixed set, challenge).
 
 ## 6. Items and answers (what marking and Maya read)
 
-- **Every answer goes in a box** (at least 40 px tall; larger at U1 to U3). Work space is a plain empty box ("SHOW YOUR
+- **Every answer goes in a box** (at least 56 px tall at U1 to U9 and 48 px from U10). Work space is a plain empty box ("SHOW YOUR
   WORK"), never dots. No answer key in the book (the app shows solutions after marking).
 - **Choices are tick boxes**, never pills: 20 px squares in a light grey strip with a printed "Tick one ☑" example. The
   instruction always names the choices ("Tick yes or no.", "Tick prime, composite or neither.").
@@ -276,7 +277,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 | Cover parent line | Log (Oct 28): dropped | Skeleton: one sentence for the parent |
 | Plan page tick boxes | Samples: none | Skeleton: a tick box per day |
 | Writing line spacing | Notes and log: 34 px apart | Skeleton: at least 36 px below the prompt |
-| Challenge count | Samples: 4 cards on page 8 | Skeleton: 1 to 2 a day (Savar) |
+| Challenge count | Samples: 4 cards on page 8 | 3 a day (D-228, Savar confirmed 2026-11-03; Cedric's section 8), was 1 to 2 (skeleton) |
 | Mixed set wording | Log: "Operation:" left, "Answer" right | Skeleton and samples: "1 Tick the operation", "2 Write the answer" |
 | "Mum" | Samples | "Mom" |
 
@@ -285,17 +286,21 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 1. **Early days (default set, Savar to review in the generated books):** the skeleton starts the warm-up at U8 and the
    Mixed set at U10. Below U8, page 1 is a "Remember these?" picture review; below U10, page 7 is "Remember these?" plus
    one-step picture stories.
-2. **Challenge (decided):** 1 to 2 challenge problems a day (skeleton); the samples' four cards were sample-only.
+2. **Challenge (decided, D-228):** 3 challenge problems a day, all harder than that day's practice, starting from the hardest step reached that day (Cedric's section 8 says 3 to 4; adopted as written, #482 review 2026-11-03). It replaces the skeleton's 1 to 2.
 3. **Parent-led days (U1 to U3, kept; Savar 2026-10-30):** no sample shows one. The skeleton's rules: icon instructions plus a short
    line, answers by circling, matching, colouring, drawing a line or writing one numeral, 6 to 10 items a page, large
    boxes.
 4. **Friday 5, Show what you know, the level test, the back cover and the certificate:** no sample page; the generator
    builds them from the skeleton's rules and DESIGN.md, and Savar reviews them in the generated books.
-5. **Markings before the app exists (Savar):** until scanning is built, how do markings reach the day-7 snapshot? A team
-   member enters right or wrong per item in admin, or the first workbooks use only the assessment and Maya.
+5. **Markings (decided, D-193):** scanning is a "Scan pages" section of the web app on the parent's phone, not a native
+   app. The AI marks each numbered item; the parent confirms the items it is unsure of; after a scan the parent picks
+   "Fix mistakes with Maya" or "Just show results". Layout-dependent work starts after Savar approves U4, U14 and U26 samples (D-207, spec #368). S1 private photo storage does not need that approval. Until
+   it ships, book 2 has no markings to read.
 6. **Pages vs minutes:** decide from real children's timing (skeleton open question 1).
 7. **First Peoples context:** who writes or checks the one-per-level context, never AI alone.
 8. **Mrs. Pedersen** (Holy Cross math head) offered to review the context and strategy pages: when?
+9. **Prerequisites (decided, D-194):** the curriculum import refuses a skeleton whose prerequisites differ from the BC
+   skill map; change both together.
 
 ## 11. What exists in code, and what changes
 
@@ -309,3 +314,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 | Level, unit, skill and step data | not in code | the skeleton's Levels and Units & skills tabs become code (with importance, difficulty, delivery, response type, scorable, pages); steps for every grade (only Grade 3 drafted) |
 | Item templates and tags | not in code | number ranges per step, strategy tags, context templates |
 | Placement | partly | the start-level rule (section 2); the Kindergarten "Already know it?" check; the 4-item checks for thin evidence |
+
+## Scan decisions, 2026-11-02
+
+D-207 to D-213 replace earlier sample, marking, retention and calendar defaults. Days follow printed-page progress. A four-day scan gap can produce a reminder. Confirmed delivery plus 21 local calendar days provides the next-book snapshot backstop. Whole-page marking runs on the website server through the API. S1 stores one private normalized photo and makes no model request. Keep answer history until family deletion after photos expire at 90 days.

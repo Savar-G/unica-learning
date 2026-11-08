@@ -49,6 +49,11 @@ describe("scheduled family deletion", () => {
     expect(cursors).toEqual(["family"]);
     expect(attempts).toEqual([24_998]);
   });
+  it("counts a family kept for an open plan start", async () => {
+    const result = await runRetentionBatch(["family"], { cursor: async () => null, advance: async () => {}, run: async () => ({ state: "plan_start" }) }, () => 840_000);
+    expect(result).toMatchObject({ eligible: 1, plan_start: 1, deleted: 0, failed: 0 });
+  });
+
   it("saves progress before a slow failure and starts the next run with later families", async () => {
     let cursor: string | null = null;
     let remaining = 45_000;
@@ -239,6 +244,7 @@ describe("delete a frozen family", () => {
     const files = new Set([
       "shown-work/family/test/q1.png", "workbook-pages/family/book/page-1.png", "workbook-pages/family/book/page-2.png",
       "workbook-pages/family/book/workbook.pdf", "workbook-pages/foreign/book/page-1.png",
+      "scan-photos/family/revision/photo.jpg",
     ]);
     const buckets: string[] = [];
     let authRemoved = false;
@@ -259,9 +265,9 @@ describe("delete a frozen family", () => {
       async removeAuth() { expect([...files]).toEqual(["workbook-pages/foreign/book/page-1.png"]); authRemoved = true; },
       async complete() {},
     };
-    expect(await deleteFamily(store, "family")).toEqual({ images: 4, copies: 0 });
+    expect(await deleteFamily(store, "family")).toEqual({ images: 5, copies: 0 });
     expect(new Set(buckets)).toEqual(new Set(FAMILY_BUCKETS));
-    expect(FAMILY_BUCKETS).toEqual(["shown-work", "workbook-pages"]);
+    expect(FAMILY_BUCKETS).toEqual(["shown-work", "workbook-pages", "scan-photos"]);
     expect(authRemoved).toBe(true);
   });
 

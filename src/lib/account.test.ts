@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { cleanDetails, signInFailure } from "@/lib/account";
 
-const details = { name: " Priya Shah ", postal: "v6b1a1", source: { utm_source: "flyer" } };
+const details = { name: " Priya Shah ", source: { utm_source: "flyer" } };
 
 describe("cleanDetails: finishing an account made with Google", () => {
-  it("cleans the name, postal code and source, and needs no password or email", () => {
-    expect(cleanDetails(details)).toEqual({ name: "Priya Shah", postal: "V6B1A1", source: { utm_source: "flyer" } });
+  it("cleans the name and source, and needs no password or email", () => {
+    expect(cleanDetails(details)).toEqual({ name: "Priya Shah", source: { utm_source: "flyer" } });
   });
   it("keeps only the known source keys, and a visit_id only when it is a random ID", () => {
     const source = {
@@ -20,16 +20,11 @@ describe("cleanDetails: finishing an account made with Google", () => {
     expect(cleanDetails({ ...details, source: { utm_source: "x".repeat(400), fbclid: 5 as unknown as string } })?.source).toEqual({ utm_source: "x".repeat(300) });
     expect(cleanDetails({ ...details, source: "nope" as unknown as Record<string, string> })?.source).toEqual({});
   });
-  it("rejects a short name or a postal code outside Canada", () => {
+  it("rejects a short name", () => {
     expect(cleanDetails({ ...details, name: "P" })).toBeNull();
-    expect(cleanDetails({ ...details, postal: "90210" })).toBeNull();
   });
-  it("takes no postal code from the short phone signup (D-134), but still checks one that is given", () => {
-    const { postal: _, ...noPostal } = details;
-    void _;
-    expect(cleanDetails(noPostal)).toEqual({ name: "Priya Shah", postal: null, source: { utm_source: "flyer" } });
-    expect(cleanDetails({ ...details, postal: "  " })?.postal).toBeNull();
-    expect(cleanDetails({ ...details, postal: "V6B" })).toBeNull();
+  it("ignores a postal code from a form opened before D-224", () => {
+    expect(cleanDetails({ ...details, postal: "90210" } as Parameters<typeof cleanDetails>[0])).toEqual({ name: "Priya Shah", source: { utm_source: "flyer" } });
   });
 });
 

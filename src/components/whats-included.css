@@ -85,25 +85,6 @@
 .wi-rd-nav[disabled] { opacity: .35; cursor: default; }
 .wi-rd-cap { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font: 400 12px var(--ui-mono); letter-spacing: .04em; color: var(--muted); }
 
-/* the Unica mark */
-.wi-mk { display: grid; grid-template-columns: repeat(3, 1fr); }
-.wi-mk i { display: block; aspect-ratio: 1; border: .5px solid #26262b; }
-.wi-mk i:nth-child(1) { background: #f5c518; }
-.wi-mk i:nth-child(3) { background: #2f5be8; }
-.wi-mk i:nth-child(5) { background: #ff6a3d; }
-.wi-mk i:nth-child(7) { background: #1f9d55; }
-
-/* Leah's pages: pencil answers and the app's marks */
-.wi-mp { position: relative; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 24px 50px -24px rgba(20,30,60,.45); }
-.wi-mp > img { display: block; width: 100%; }
-.wi-mp .wi-hw { position: absolute; display: flex; align-items: center; justify-content: center; font-family: var(--pen); font-style: normal; font-weight: 600; color: #30313a; line-height: 1; }
-.wi-mp .wi-pen { position: absolute; font-family: var(--pen); font-style: normal; font-weight: 600; color: #3a3b44; line-height: 1; white-space: nowrap; }
-.wi-mp .wi-ml { position: absolute; inset: 0; pointer-events: none; }
-.wi-mp .wi-tk { position: absolute; font-family: var(--pen); font-weight: 600; font-style: normal; color: #e0412b; line-height: 1; white-space: nowrap; }
-.wi-mp .wi-tk small { margin-left: 2px; }
-.wi-mp .wi-ring { position: absolute; border: 2px solid #e0412b; border-radius: 50%; transform: rotate(-4deg); }
-.wi-mp .wi-score { position: absolute; font-family: var(--pen); font-weight: 600; font-style: normal; color: #e0412b; border: solid #e0412b; border-radius: 50%; line-height: 1.1; transform: rotate(-6deg); }
-
 /* the scan photo (design size 1160 x 830, a crop of the 1280 x 960 photo) */
 /* The white table fades into the white page at the edges. */
 .wi-ov { position: relative; width: 1080px; height: 830px; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent), linear-gradient(180deg, transparent, #000 7%, #000 93%, transparent); -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent), linear-gradient(180deg, transparent, #000 7%, #000 93%, transparent); mask-composite: intersect; }
@@ -235,26 +216,6 @@
 .wi-t.rev { background: #fdf1c8; color: #8a6a00; }
 .wi-cvw { position: relative; z-index: 1; display: grid; justify-items: center; gap: 14px; }
 .wi-cvn { font-size: 14px; color: #55555e; margin: 0; max-width: 340px; text-align: center; }
-
-/* Workbook 04 cover */
-.wi-cv { width: 300px; height: 388px; background: #fff; padding: 22px 24px; position: relative; box-shadow: 0 0 0 1px rgba(0,0,0,.05), 0 30px 60px -24px rgba(20,30,60,.5); text-align: left; color: #0c0c0e; font-family: var(--ui); }
-.wi-cv-top { display: flex; justify-content: space-between; align-items: center; }
-.wi-cv-wm { font-weight: 600; font-size: 12px; }
-.wi-cv-wm i { display: inline-block; width: 3px; height: 3px; background: #ff6a3d; margin-left: 1px; }
-.wi-cv-n { font: 500 7.5px var(--ui-mono); letter-spacing: .06em; text-transform: uppercase; color: #55555e; }
-.wi-cv .wi-cv-mk { width: 40px; height: 40px; margin: 34px 0 18px; }
-.wi-cv-for { font-size: 9px; color: #44444c; margin-bottom: 8px; }
-.wi-cv-t { font-weight: 300; font-size: 30px; line-height: 1.08; letter-spacing: -.02em; }
-.wi-cv-t mark { background: #ffd84d; padding: 0 4px; }
-.wi-cv-box { margin-top: 16px; border: 1px solid #f0c3b2; background: #fdf1ec; border-radius: 4px; padding: 9px 10px; }
-.wi-cv-box > b { font: 500 6.5px var(--ui-mono); letter-spacing: .06em; text-transform: uppercase; }
-.wi-cv-box ul { margin: 6px 0 0; padding-left: 12px; font-size: 8.5px; line-height: 1.5; color: #33343c; }
-.wi-cv-box li::marker { color: #ff6a3d; }
-.wi-cvl { list-style: none; padding: 0 !important; }
-.wi-cvl li { display: flex; align-items: center; gap: 4px; margin: 3px 0; }
-.wi-cvl .wi-t { margin: 0 4px 0 0; font-size: 6.5px; padding: 1px 4px; }
-.wi-cvl li i { font: 500 6.5px var(--ui-mono); font-style: normal; width: 11px; height: 11px; border-radius: 50%; background: #0c0c0e; color: #fff; display: inline-grid; place-items: center; margin-left: 2px; }
-.wi-cvl li i:first-of-type { margin-left: auto; }
 
 /* closing cards */
 .wi-closing { text-align: center; }

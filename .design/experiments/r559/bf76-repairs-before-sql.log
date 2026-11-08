@@ -1,0 +1,40 @@
+[
+  {
+    "case": "definite cancel refusal closed as refused",
+    "cancelled": true,
+    "blocked": false,
+    "prepare": {
+      "code": "55000",
+      "message": "plan_cancelled"
+    }
+  },
+  {
+    "case": "old late pause survives ended plan and paid Restart",
+    "daysSincePause": 60,
+    "weeks": 8,
+    "delayedBook": 3,
+    "prepare": {
+      "code": "55000",
+      "message": "plan_paused"
+    }
+  },
+  {
+    "case": "old initial RPC returns paid Restart as sendable open generation",
+    "purpose": "restart",
+    "state": "open",
+    "generation": 1,
+    "admitted": false
+  },
+  {
+    "case": "matching paid recovery after family fence",
+    "result": "PASS: record closes, no new workbook request"
+  },
+  {
+    "case": "definite pause refusal",
+    "result": "PASS: quota and hold released"
+  },
+  {
+    "case": "card row lock versus paid admission with production triggers",
+    "result": "PASS: serializes without deadlock"
+  }
+]

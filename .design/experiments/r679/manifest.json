@@ -1,0 +1,38 @@
+{
+  "round": "r679",
+  "task": "Parent Schedule #679",
+  "route": "direct",
+  "job_kind": "new",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "contract": ".design/experiments/r679/contract.md",
+  "preview": "/admin/dashboard?view=schedule&scenario=printed&size=desktop",
+  "states": [
+    "printed",
+    "accepted",
+    "partial",
+    "expired",
+    "unknown",
+    "waiting",
+    "unavailable",
+    "ended"
+  ],
+  "sizes": [
+    "desktop",
+    "phone"
+  ],
+  "status": "current main integrated; 314 focused tests passed; independent integration review and final remote checks pending",
+  "screenshots": [
+    "admin-desktop.png",
+    "admin-phone.png",
+    "kai-desktop.png",
+    "kai-phone.png",
+    "leah-desktop.png",
+    "leah-phone.png",
+    "waiting-desktop.png",
+    "waiting-phone.png"
+  ],
+  "release_flags": "unchanged",
+  "decision_row": "D-297",
+  "ui_approval": "Pending the full parent dashboard review page; family switches remain off"
+}

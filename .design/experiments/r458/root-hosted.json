@@ -1,0 +1,29 @@
+{
+  "catalog": {
+    "rls": true,
+    "anon_read": false,
+    "migration": "20261106034512",
+    "browser_rpc": false,
+    "parent_read": false,
+    "service_read": true,
+    "enabled_prices": 0,
+    "probe_families": 0,
+    "browser_qa_auth": 0,
+    "service_wrapper": true,
+    "browser_qa_family": 0,
+    "service_automatic": false,
+    "send_body_preserved": true,
+    "service_direct_write": false,
+    "automatic_body_preserved": true
+  },
+  "probe": {
+    "result": "SCAN_MARK_CHANGES_HOSTED_PROBE_OK",
+    "probe_parents": 0,
+    "enabled_prices": 0
+  },
+  "advisories": {
+    "newWarnings": 0,
+    "newInfo": "RLS enabled without a browser policy is intentional for this service-only history table.",
+    "existingWarningCountsUnchanged": true
+  }
+}

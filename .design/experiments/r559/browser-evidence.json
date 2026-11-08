@@ -1,0 +1,1719 @@
+{
+  "cases": [
+    {
+      "name": "closed-1440",
+      "width": 1440,
+      "scroll": 1440,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\nOverview\nWorkbooks\nProgress\nAssessment\nAccount\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": []
+    },
+    {
+      "name": "pause-early-1440",
+      "width": 1440,
+      "scroll": 1425,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\nOverview\nWorkbooks\nProgress\nAssessment\nAccount\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\n8 weeks. Next charge: January 15, 2027.\n\nNext mailing: January 15, 2027 to February 5, 2027.\n\n0 weeks remain in 2026 after this pause.\n\nConfirm pause\nKeep current plan\nChange weeks\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Confirm pause",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Change weeks",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 8,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pause-success-1440",
+      "width": 1440,
+      "scroll": 1440,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\nOverview\nWorkbooks\nProgress\nAssessment\nAccount\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nThe pause is saved. Your mailing and charge dates have changed.\n\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 8,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 8,
+            "action": "confirm",
+            "token": "pause-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pause-late-1440",
+      "width": 1440,
+      "scroll": 1425,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\nOverview\nWorkbooks\nProgress\nAssessment\nAccount\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\n1 week. Next charge: January 15, 2027.\n\nWe cannot confirm the next mailing range yet.\n\nThe next workbook keeps its mailing range. The pause applies from workbook 4. We will show that mailing range after the next workbook ships.\n\n7 weeks remain in 2026 after this pause.\n\nConfirm pause\nKeep current plan\nChange weeks\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Confirm pause",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Change weeks",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restart-price-1440",
+      "width": 1440,
+      "scroll": 1425,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\nOverview\nWorkbooks\nProgress\nAssessment\nAccount\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nWe charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month.\n\nConfirm restart\nKeep current plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Confirm restart",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restart-declined-1440",
+      "width": 1440,
+      "scroll": 1425,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\nOverview\nWorkbooks\nProgress\nAssessment\nAccount\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nRestart begins a paid plan immediately. Review the price before you confirm. There is no second free month.\n\nReview price\nKeep current plan\n\nYour payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com.\n\nUpdate card\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning",
+      "shells": 1,
+      "alerts": [
+        "Your payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Review price",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "restart-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cancel-1440",
+      "width": 1440,
+      "scroll": 1425,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\nOverview\nWorkbooks\nProgress\nAssessment\nAccount\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nRestart begins a paid plan immediately. Review the price before you confirm. There is no second free month.\n\nReview price\nKeep current plan\n\nYour payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com.\n\nUpdate card\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel Alexandria-Catherine Longfamilyname's plan? The plan ends on January 1, 2027. We will not charge your card again.\n\nYes, cancel plan\nKeep plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning",
+      "shells": 1,
+      "alerts": [
+        "Your payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Review price",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Yes, cancel plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "restart-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "closed-390",
+      "width": 390,
+      "scroll": 375,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": []
+    },
+    {
+      "name": "pause-early-390",
+      "width": 390,
+      "scroll": 375,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\n8 weeks. Next charge: January 15, 2027.\n\nNext mailing: January 15, 2027 to February 5, 2027.\n\n0 weeks remain in 2026 after this pause.\n\nConfirm pause\nKeep current plan\nChange weeks\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Confirm pause",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Change weeks",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 8,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pause-success-390",
+      "width": 390,
+      "scroll": 375,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nThe pause is saved. Your mailing and charge dates have changed.\n\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 8,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 8,
+            "action": "confirm",
+            "token": "pause-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pause-late-390",
+      "width": 390,
+      "scroll": 375,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\n1 week. Next charge: January 15, 2027.\n\nWe cannot confirm the next mailing range yet.\n\nThe next workbook keeps its mailing range. The pause applies from workbook 4. We will show that mailing range after the next workbook ships.\n\n7 weeks remain in 2026 after this pause.\n\nConfirm pause\nKeep current plan\nChange weeks\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Confirm pause",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Change weeks",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restart-price-390",
+      "width": 390,
+      "scroll": 375,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nWe charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month.\n\nConfirm restart\nKeep current plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Confirm restart",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restart-declined-390",
+      "width": 390,
+      "scroll": 375,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nRestart begins a paid plan immediately. Review the price before you confirm. There is no second free month.\n\nReview price\nKeep current plan\n\nYour payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com.\n\nUpdate card\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [
+        "Your payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Review price",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "restart-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cancel-390",
+      "width": 390,
+      "scroll": 375,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nRestart begins a paid plan immediately. Review the price before you confirm. There is no second free month.\n\nReview price\nKeep current plan\n\nYour payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com.\n\nUpdate card\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel Alexandria-Catherine Longfamilyname's plan? The plan ends on January 1, 2027. We will not charge your card again.\n\nYes, cancel plan\nKeep plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [
+        "Your payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Review price",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Yes, cancel plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "restart-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "closed-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": []
+    },
+    {
+      "name": "pause-early-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\n8 weeks. Next charge: January 15, 2027.\n\nNext mailing: January 15, 2027 to February 5, 2027.\n\n0 weeks remain in 2026 after this pause.\n\nConfirm pause\nKeep current plan\nChange weeks\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Confirm pause",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Change weeks",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 8,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pause-success-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nThe pause is saved. Your mailing and charge dates have changed.\n\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 8,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 8,
+            "action": "confirm",
+            "token": "pause-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pause-late-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\n1 week. Next charge: January 15, 2027.\n\nWe cannot confirm the next mailing range yet.\n\nThe next workbook keeps its mailing range. The pause applies from workbook 4. We will show that mailing range after the next workbook ships.\n\n7 weeks remain in 2026 after this pause.\n\nConfirm pause\nKeep current plan\nChange weeks\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Confirm pause",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Change weeks",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restart-price-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nWe charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month.\n\nConfirm restart\nKeep current plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Confirm restart",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restart-declined-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nRestart begins a paid plan immediately. Review the price before you confirm. There is no second free month.\n\nReview price\nKeep current plan\n\nYour payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com.\n\nUpdate card\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [
+        "Your payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Review price",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "restart-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cancel-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nRestart begins a paid plan immediately. Review the price before you confirm. There is no second free month.\n\nReview price\nKeep current plan\n\nYour payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com.\n\nUpdate card\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel Alexandria-Catherine Longfamilyname's plan? The plan ends on January 1, 2027. We will not charge your card again.\n\nYes, cancel plan\nKeep plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [
+        "Your payment did not go through. Please update your card. Then return here to restart the plan. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Review price",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Yes, cancel plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "restart-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "busy-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\nYou can pause for up to eight whole weeks per calendar year after the first delivery.\n\nWeeks to pause \n1\n2\n3\n4\n5\n6\n7\n8\nPlease wait...\nKeep current plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Please wait...",
+          "disabled": true,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": true,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "stale-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\nYou can pause for up to eight whole weeks per calendar year after the first delivery.\n\nWeeks to pause \n1\n2\n3\n4\n5\n6\n7\n8\nReview new dates\nKeep current plan\n\nThe plan or its dates changed. Review the new dates before you confirm. contact@unicalearning.com.\n\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [
+        "The plan or its dates changed. Review the new dates before you confirm. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Review new dates",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "pause-quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "allowance-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\nYou can pause for up to eight whole weeks per calendar year after the first delivery.\n\nWeeks to pause \n1\n2\n3\n4\n5\n6\n7\n8\nReview new dates\nKeep current plan\n\nThis pause exceeds the eight weeks available this calendar year. Choose fewer weeks. contact@unicalearning.com.\n\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [
+        "This pause exceeds the eight weeks available this calendar year. Choose fewer weeks. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Review new dates",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "pause-quote"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unsupported-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\nYou can pause for up to eight whole weeks per calendar year after the first delivery.\n\nWeeks to pause \n1\n2\n3\n4\n5\n6\n7\n8\nReview new dates\nKeep current plan\n\nWe cannot change this plan here yet. Please email us to arrange a pause. contact@unicalearning.com.\n\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [
+        "We cannot change this plan here yet. Please email us to arrange a pause. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Review new dates",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "pause-quote"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "needs_team-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\nYou can pause for up to eight whole weeks per calendar year after the first delivery.\n\nWeeks to pause \n1\n2\n3\n4\n5\n6\n7\n8\nReview new dates\nKeep current plan\n\nWe cannot confirm this change yet. Please email us before you make another change. contact@unicalearning.com.\n\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [
+        "We cannot confirm this change yet. Please email us before you make another change. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Review new dates",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "pause-quote"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "recovery-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause Alexandria-Catherine Longfamilyname's plan\n\nCheck pause\nClose\n\nWe cannot confirm this change yet. Check again before you make another change or delete the account. contact@unicalearning.com.\n\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [
+        "We cannot confirm this change yet. Check again before you make another change or delete the account. contact@unicalearning.com."
+      ],
+      "buttons": [
+        {
+          "text": "Check pause",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Close",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Restart plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/pause",
+          "body": {
+            "card": "card-0",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "keyboard-price-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nRestart Omar's plan\n\nWe charge CAD 79.99 immediately, then CAD 79.99 each month until you cancel. There is no second free month.\n\nConfirm restart\nKeep current plan\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Confirm restart",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Keep current plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restart-success-820",
+      "width": 820,
+      "scroll": 805,
+      "text": "Unica Learning\nA\nAlexandria-Catherine Longfamilyname\nGrade 3 \u00b7 Workbook 2\nOpen the desk\n\u2192\n\nYOUR ACCOUNT\n\nYour plan\nPlans\nAlexandria-Catherine Longfamilyname\n\nCAD 79.99 a month. Next charge: January 15, 2027.\n\nPause plan\nUpdate card\nOmar\n\nThis plan has ended. We will not charge your card.\n\nThe paid plan has restarted. We will prepare the next workbook from the current learning profile.\n\nUpdate card\nInvoices\n\nNo invoices yet.\n\nCancel plan\nResources\nPrivacy\nTerms\nContact us\nCookie settings\n\u00a9 2026 Unica Learning\nOverview\nWorkbooks\nProgress\nAssessment\nAccount",
+      "shells": 1,
+      "alerts": [],
+      "buttons": [
+        {
+          "text": "Pause plan",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Update card",
+          "disabled": false,
+          "height": 48
+        },
+        {
+          "text": "Cancel plan",
+          "disabled": false,
+          "height": 48
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "preview"
+          }
+        },
+        {
+          "path": "/api/account/plan/restart",
+          "body": {
+            "card": "card-1",
+            "weeks": 1,
+            "action": "confirm",
+            "token": "restart-quote"
+          }
+        }
+      ]
+    }
+  ],
+  "focus": {
+    "outline": "2px",
+    "style": "solid"
+  }
+}

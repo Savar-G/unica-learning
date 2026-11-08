@@ -8,7 +8,12 @@ import type { QuestionBoard } from "@/lib/desk-board";
 import type { ForgotPinResult } from "@/lib/parent-pin-server";
 import { track } from "@/lib/track";
 import { AnnounceDesk } from "@/components/desk-guard";
-import { MayaBoard } from "@/components/maya-board";
+import type { RetryTime } from "@/lib/family-time";
+import { FamilyTime } from "@/components/family-time";
+import { Avatar, Icon } from "@/components/desk-icons";
+import { OurBoard } from "@/components/our-board";
+import { useDeskChat, ChatControls, ChatBoard } from "@/components/desk-chat";
+import { chatLimitLabel, type ChatUsage } from "@/lib/maya-chat";
 import "./desk.css";
 
 // The child's desk (#301, D-184), as in the guidance demo video: a slim rail (the desk, the workbooks, progress, and the
@@ -16,14 +21,6 @@ import "./desk.css";
 // and the picked question as a card cut from the printed page), the Chat / Call / Call + board tabs, and the shared
 // board. "Pick from my page" opens the page image with a tap area on each question. Chat (#358) and calls (#337) come
 // later: their controls are here, turned off, with one plain line that says so. Nothing on the desk shows an answer.
-
-const noSubscribe = () => () => {};
-
-/** A time as "3:05 p.m.", in the device's time zone (after hydration; the server renders nothing). */
-function Time({ at }: { at: number }) {
-  const text = useSyncExternalStore(noSubscribe, () => new Date(at).toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" }), () => "");
-  return <>{text || "a few minutes"}</>;
-}
 
 const subscribeMotion = (change: () => void) => {
   const q = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -33,41 +30,6 @@ const subscribeMotion = (change: () => void) => {
 /** True when the device asks for less motion: the board then shows the question at once. */
 // The server and the first render say false: the board starts to draw after hydration, never shows the end first.
 const useStill = () => useSyncExternalStore(subscribeMotion, () => window.matchMedia("(prefers-reduced-motion: reduce)").matches, () => false);
-
-// ---------- icons (24 px grid, drawn with a 1.8 px line) ----------
-
-const ICONS = {
-  home: <><path d="M4 11 12 4l8 7" /><path d="M6 9.5V20h12V9.5" /></>,
-  book: <><path d="M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5Z" /><path d="M12 6.5v13" /></>,
-  chart: <><path d="M5 20h14" /><path d="M8 16v-4" /><path d="M12 16V8" /><path d="M16 16v-6" /></>,
-  lock: <><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></>,
-  sound: <><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" /><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" /><path d="M18 7a7 7 0 0 1 0 10" /></>,
-  chat: <><path d="M5 6h14v9H10l-4 3.5V15H5z" /></>,
-  phone: <><path d="M7 4h3l1.5 4-2 1.5a10 10 0 0 0 5 5l1.5-2 4 1.5v3a2 2 0 0 1-2 2A15 15 0 0 1 5 6a2 2 0 0 1 2-2Z" /></>,
-  board: <><rect x="3.5" y="5" width="17" height="11" rx="1.5" /><path d="m8 13 2.5-3 2 2 3.5-4" /><path d="M9 20h6" /><path d="M12 16v4" /></>,
-  pen: <><path d="M15.5 5.5 18.5 8.5 9 18l-4 1 1-4z" /><path d="m13.5 7.5 3 3" /></>,
-  eraser: <><path d="m9.5 19-4-4a1.5 1.5 0 0 1 0-2l7.5-7.5a1.5 1.5 0 0 1 2 0l4 4a1.5 1.5 0 0 1 0 2L12 19z" /><path d="M9.5 19H19" /><path d="m8.5 10 5.5 5.5" /></>,
-  undo: <><path d="M9 7 5 11l4 4" /><path d="M5 11h9a5 5 0 0 1 0 10h-2" /></>,
-  send: <><path d="M5 12 19 5l-4 14-3-6z" /><path d="m12 13 7-8" /></>,
-  close: <><path d="m6 6 12 12" /><path d="M18 6 6 18" /></>,
-  page: <><path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5A.5.5 0 0 1 6.5 20V4a.5.5 0 0 1 .5-.5Z" /><path d="M14 3.5V8h4" /><path d="M9.5 12.5h5" /><path d="M9.5 16h5" /></>,
-  qr: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2" /></>,
-} as const;
-
-function Icon({ name, size = 22 }: { name: keyof typeof ICONS; size?: number }) {
-  return (
-    <svg className="desk-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {ICONS[name]}
-    </svg>
-  );
-}
-
-/** Maya's picture, from the FigJam board (102:122). */
-function Avatar({ size }: { size: number }) {
-  // A small fixed picture; the image optimizer adds nothing here.
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img className="desk-avatar" src="/desk/maya.webp" alt="" width={size} height={size} />;
-}
 
 // ---------- the desk ----------
 
@@ -90,7 +52,14 @@ export interface DeskCard {
 
 type DeskProps = {
   name: string | null;
+  /** The child this desk is open for: the chat's ink on this device is kept under this child (R639c). */
+  childId: string;
   notice?: string | null;
+  chatUsage?: ChatUsage | null;
+  /** Why this child has no chat (a younger child), in place of "start soon". */
+  /** Why chat is off until a parent agrees to the notice (#529), in place of "start soon". */
+  noticeLine?: string | null;
+  chatNote?: string | null;
 } & (
   | { problem: string; books?: undefined }
   | {
@@ -123,6 +92,7 @@ export function Desk(props: DeskProps) {
   const books = useRef<HTMLDialogElement>(null);
   const talk = useRef<HTMLDivElement>(null);
   const still = useStill();
+  const chat = useDeskChat(props.chatUsage ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked }, props.childId);
 
   useEffect(() => {
     if (ready?.openPicker) picker.current?.showModal();
@@ -133,17 +103,25 @@ export function Desk(props: DeskProps) {
   // A new card goes to the end of the conversation: show it there (the column scrolls on a laptop or tablet only).
   useEffect(() => {
     if (picked !== null && talk.current) talk.current.scrollTop = talk.current.scrollHeight;
-  }, [picked]);
+  }, [picked, chat.chat?.transcript.length]);
 
   const card = ready?.questions.find((q) => q.number === picked) ?? null;
   const where = ready ? `Workbook ${ready.book.number} · ${ready.page.dayLabel ?? `Page ${ready.page.number}`}` : null;
 
-  const pick = (n: number) => {
+  const keepPick = (n: number) => {
     if (!ready) return;
     setPicked(n);
     picker.current?.close();
-    // The address keeps the question, so a reload shows the same card; "pick" and "from" are spent.
     window.history.replaceState(null, "", deskHref({ w: ready.book.id, p: ready.page.number, q: n }));
+  };
+  const pick = (n: number) => {
+    if (!ready) return;
+    if (n === picked) { picker.current?.close(); return; }
+    if (chat.chat && !chat.chat.ended) {
+      void chat.act("end").then((ok) => { if (ok) keepPick(n) });
+      return;
+    }
+    keepPick(n);
   };
 
   const greeting = `Hi${props.name ? ` ${props.name}` : ""}! Which question are you on? Pick it from your page.`;
@@ -170,11 +148,11 @@ export function Desk(props: DeskProps) {
           <div className="desk-who"><h1>Maya</h1>{where && <p>{where}</p>}</div>
           <dl className="desk-limits" aria-label="Help from Maya">
             <div><dt><Icon name="phone" size={14} />Calls</dt><dd>30 min a week</dd></div>
-            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>60 messages a day</dd></div>
+            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null)}</dd></div>
           </dl>
         </header>
 
-        <div ref={talk} className="desk-talk" aria-live="polite">
+        {(chat.usage?.left !== 0 || props.problem) && <div ref={talk} className="desk-talk" aria-live="polite">
           {props.notice && <p className="desk-event warn">{props.notice}</p>}
           {ready?.fromQr && <p className="desk-event"><Icon name="qr" size={15} />Opened from Workbook {ready.book.number} · QR code</p>}
           {props.problem ? (
@@ -183,60 +161,43 @@ export function Desk(props: DeskProps) {
             <p className="desk-bubble">{greeting}</p>
           )}
           {card && ready && <QuestionCard card={card} where={where!} image={ready.image} />}
-        </div>
+          {chat.chat?.transcript.map((line, i) => <p key={`${chat.chat!.id}-${i}`} className={`desk-bubble${line.speaker === "child" ? " desk-child-bubble" : ""}`}><span className="sr-only">{line.speaker === "child" ? "You" : "Maya"}: </span>{line.text}</p>)}
+          {!!chat.chat?.hint && <p className="desk-event">Hint {chat.chat.hint} of 3</p>}
+          {!!chat.chat?.batches.length && <button className="desk-pick" type="button" onClick={() => document.getElementById("chat-board")?.scrollIntoView({ behavior: still ? "instant" : "smooth", block: "center" })}>Show me on the board</button>}
+        </div>}
 
         <footer className="desk-say">
-          {ready && (
+          {ready && chat.usage?.left !== 0 && (
             <button type="button" className="desk-pick" onClick={() => picker.current?.showModal()}>
               <Icon name="page" />{card ? "Pick another question" : "Pick from my page"}
             </button>
           )}
-          <p className="desk-soon">Chat and calls with Maya start soon.</p>
+          {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} /> : <>
+          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat and calls with Maya start soon."}</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>
-          </div>
+          </div></>}
         </footer>
       </section>
 
       <div className="desk-main">
-        <div className="desk-modes" role="group" aria-label="How Maya helps">
-          <button type="button" disabled><Icon name="chat" size={18} />Chat</button>
+        {chat.usage?.left !== 0 && <div className="desk-modes" role="group" aria-label="How Maya helps">
+          <button type="button" disabled={!props.chatUsage} aria-pressed={!!props.chatUsage}><Icon name="chat" size={18} />Chat</button>
           <button type="button" disabled><Icon name="phone" size={18} />Call</button>
-          <button type="button" disabled aria-pressed="true"><Icon name="board" size={18} />Call + board</button>
-        </div>
+          <button type="button" disabled aria-pressed={!props.chatUsage}><Icon name="board" size={18} />Call + board</button>
+        </div>}
 
-        <section className="desk-board" aria-labelledby="desk-board-title">
-          <header>
-            <h2 id="desk-board-title">Our board</h2>
-            <p><Avatar size={22} />Maya draws here in a call</p>
-          </header>
-          <div className="desk-board-body">
-            <div className="desk-canvas">
-              {card?.board ? (
-                <MayaBoard key={card.number} steps={card.board.steps} viewBox={card.board.viewBox} instant={still}
-                  label={`Question ${card.number}${card.text ? `: ${card.text}` : ""}, written in columns`} />
-              ) : null}
-              <p className="desk-caption">
-                {!card ? "Pick a question from your page. It shows here."
-                  : card.board ? `Number ${card.number}, from your page.` : `Number ${card.number} is on your card.`}
-              </p>
-            </div>
-            <div className="desk-tools" role="group" aria-label="Board tools">
-              <button type="button" disabled aria-pressed="true" aria-label="Pen"><Icon name="pen" /></button>
-              <button type="button" disabled aria-label="Eraser"><Icon name="eraser" /></button>
-              <button type="button" disabled aria-label="Undo"><Icon name="undo" /></button>
-              <button type="button" disabled className="desk-clear">Clear</button>
-              <span className="desk-ink maya"><i />Maya</span>
-              <span className="desk-ink you"><i />You</span>
-            </div>
-          </div>
-        </section>
-
-        <div className="desk-pen">
-          <Avatar size={26} /><span>In a call, Maya has the pen</span>
-          <button type="button" disabled>Take the pen</button>
-        </div>
+        {chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
+          restore={chat.callInk?.id === chat.chat.id ? chat.callInk.log : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)} /> : <OurBoard
+          key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}
+          question={card?.board ?? null}
+          at={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
+          still={still}
+          label={card ? `Question ${card.number}${card.text ? `: ${card.text}` : ""}, written in columns` : "Our board"}
+          caption={!ready ? "Our board" : !card ? "Pick a question from your page. It shows here."
+            : card.board ? `Number ${card.number}, from your page.` : `Number ${card.number} is on your card.`}
+        />}
       </div>
       </main>
 
@@ -371,10 +332,10 @@ export function LeaveDesk() {
     }
     setBusy(true);
     setError(null);
-    let answer: LeaveResult;
+    let answer: LeaveResult & RetryTime;
     try {
       const res = await fetch("/api/desk/leave", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }) });
-      answer = (await res.json()) as LeaveResult;
+      answer = (await res.json()) as LeaveResult & RetryTime;
     } catch {
       answer = { ok: false, error: "unavailable" };
     }
@@ -391,7 +352,7 @@ export function LeaveDesk() {
         setError(`That is not the PIN. ${answer.attemptsLeft} ${answer.attemptsLeft === 1 ? "try" : "tries"} left.`);
         break;
       case "locked":
-        setError(<>Too many wrong tries. Try again after <Time at={answer.retryAt} />.</>);
+        setError(<>Too many wrong tries. Try again after <FamilyTime at={answer.retryAt} text={answer.retryTime ?? "a few minutes"} />.</>);
         break;
       case "not_set":
         setError(<>No PIN is set. <Link href="/tutor/forgot-pin">Set a new PIN</Link> with your account password.</>);
@@ -449,10 +410,10 @@ export function ForgotPinForm() {
     }
     setBusy(true);
     setError(null);
-    let answer: ForgotPinResult;
+    let answer: ForgotPinResult & RetryTime;
     try {
       const res = await fetch("/api/desk/forgot-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password, pin }) });
-      answer = (await res.json()) as ForgotPinResult;
+      answer = (await res.json()) as ForgotPinResult & RetryTime;
     } catch {
       answer = { ok: false, error: "unavailable" };
     }
@@ -469,7 +430,7 @@ export function ForgotPinForm() {
         setError(`That password is not right. ${answer.attemptsLeft} ${answer.attemptsLeft === 1 ? "try" : "tries"} left.`);
         break;
       case "locked":
-        setError(<>Too many wrong tries. Try again after <Time at={answer.retryAt} />.</>);
+        setError(<>Too many wrong tries. Try again after <FamilyTime at={answer.retryAt} text={answer.retryTime ?? "a few minutes"} />.</>);
         break;
       case "invalid":
         setError("Enter your account password and a new PIN of exactly 4 digits.");

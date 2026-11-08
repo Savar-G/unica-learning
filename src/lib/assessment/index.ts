@@ -1,6 +1,7 @@
 // The assessment core: the one tested seam (spec #54). Import from "@/lib/assessment" only.
 export * from "./attempt";
 export * from "./certainty";
+export { areaLevels, type AreaAnswer, type AreaBasis, type AreaLabel, type AreaLevel, type AreaLevelInput } from "./area-level";
 export * from "./constants";
 export * from "./grades";
 export * from "./deletion";
@@ -11,6 +12,7 @@ export * from "./rushing";
 export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comparison";
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export {
+  reportCallsUnreliable,
   reportModel,
   storedReportModel,
   type Comparison,
@@ -39,24 +41,29 @@ export {
   type ReviewedWork,
 } from "./ai-checks";
 export { SAMPLE_BANK } from "./sample-bank";
-export { BANKS, GRADE_1_2_BANK, bankFor, wordingOf, type BankTemplate } from "./bank";
+export { BANKS, GRADE_1_2_BANK, bankFor, difficultyOf, wordingOf, type BankTemplate } from "./bank";
 export type { TaggedTemplate } from "./bank/kit";
 export {
   allAnswered,
   breakDue,
   changeAnswer,
   createSession,
+  everyQuestion,
   fillTemplate,
   finish,
   fromRemovedRound,
+  givenQuestions,
   levelFor,
   lockStage1,
+  lockStage2,
   nextQuestion,
   openSection,
   restoreSession,
   scoredAgainst,
+  stage3Due,
   storedTest,
   submitAnswer,
+  testAreaAnswers,
   testLength,
   testStep,
   toPublicQuestion,
@@ -75,9 +82,12 @@ export { BC_LEVEL_STANDARDS, BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type 
 export { SKILL_TAGS, skillTagProblems, tagSkills, templateSkills, type SkillTag, type TemplateSkill } from "./skill-tags";
 // The learner profile (#196): the facts code writes about one finished test.
 export * from "./profile";
+export * from "./skill-state";
 // The learner profile's AI parts (#197): what the AI reads and the checks on what it writes.
 export { PROFILE_AI_SCHEMA, PROFILE_AI_TEXT_MAX, checkProfileAi, profileAiFacts, type ProfileAiCheck, type ProfileAiDrop } from "./profile-ai";
 // What the parent's report shows from the learner profile (#198).
 export * from "./findings";
 // The copy without names (#201): each test of a family, copied before the family is deleted.
 export * from "./anonymous-copy";
+
+export * from "./adaptive";

@@ -11,10 +11,19 @@
 // question text: the operation is stored beside the text. Every operation kind has its computation in
 // question-package-math.ts (#306 added long multiplication and division, decimals and fractions); a kind code cannot
 // compute, or steps of a version it cannot read, are "unsupported", never a pass.
+//
+// A workbook question also has an item (#362, question-package-items.ts): its format (one box, several boxes, tick
+// one, a Mixed set, Solve it two ways, Spot the error, a written reason, a drawing ...), its answer regions (one stored
+// box each) and the checks that give code the right answer of each scored region. A package with no item (every
+// version 1 package) is one answer box that holds its operation's answer. An item with no operation (tens and ones,
+// a drawing) has no answer, steps or easier example of its own. Items code does not mark are "not-checked".
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { decimalRational } from "@/lib/question-package-columns";
+import { defaultItem, itemProblem, type ItemContext, type ItemProblem } from "@/lib/question-package-items";
 import { amountOf, amountValueProblem, conversionProblem, dimensionName, sameSize, unknownUnit } from "@/lib/question-package-measures";
+import type { CoinGiven } from "@/lib/question-package-givens";
+import type { TemplateSource } from "@/lib/question-package-template";
 import {
   computation,
   gcd,
@@ -28,12 +37,14 @@ import {
 } from "@/lib/question-package-math";
 
 export { operationProblem, operationResult, operationText, stepText, valueText, workedSteps } from "@/lib/question-package-math";
+export { coinGiven, type CoinGiven, type CoinGivenSource, type CoinName } from "@/lib/question-package-givens";
 
 /**
  * The version of the QuestionPackage shape. The workbook store keeps it beside each stored package (#299), so a reader
- * can tell a package of an older shape from a broken one. Raise it when the shape changes.
+ * can tell a package of an older shape from a broken one. Raise it when the shape changes, and keep reading the older
+ * versions (checkQuestionPackage). Version 2 (#362) added the item; a version 1 package has none.
  */
-export const QUESTION_PACKAGE_VERSION = 1;
+export const QUESTION_PACKAGE_VERSION = 2;
 
 /** A workbook question: the page number runs through the whole workbook; the question number restarts on each page. */
 export interface WorkbookQuestionRef {
@@ -109,6 +120,9 @@ export interface FractionParts {
 /**
  * A computable operation (question-package-math.ts has the limits of each kind):
  * - add, subtract: whole numbers from 0 to 9999; subtraction never goes below zero.
+ * - missing-addend: a known part and a total ("2 + ? = 5", "How far is 7 from 10?"), whole numbers to 20 with the part
+ *   no larger than the total; the answer is the missing part (3), worked by counting on from the part to the total. It
+ *   is a number bond, so it is not subtraction: a level that has not met subtraction may ask it.
  * - multiply: a whole number to 9999 times a whole number to 999 (long multiplication).
  * - divide: a whole number to 9999 divided by a whole number from 1 to 99 (long division, with a remainder).
  * - decimal-add, decimal-subtract, decimal-multiply: numbers to 9999.999 with at most 3 decimal places.
@@ -129,7 +143,7 @@ export interface FractionParts {
  *   both sides, then checked by putting the solution in.
  */
 export type Operation =
-  | KindsOf<"add" | "subtract" | "multiply" | "divide" | "decimal-add" | "decimal-subtract" | "decimal-multiply", [number, number]>
+  | KindsOf<"add" | "subtract" | "multiply" | "divide" | "decimal-add" | "decimal-subtract" | "decimal-multiply" | "missing-addend", [number, number]>
   | KindsOf<"fraction-add" | "fraction-subtract" | "fraction-multiply" | "fraction-divide", [FractionOperand, FractionOperand]>
   | { kind: "fraction-simplify"; operands: [Extract<AnswerValue, { type: "fraction" }>] }
   | { kind: "fraction-equivalent"; operands: [Extract<AnswerValue, { type: "fraction" }>]; denominator: number }
@@ -275,6 +289,14 @@ export type WorkedStep =
       to: ClockTime;
       minutes: number;
     }
+  | {
+      /** A missing part found by counting on from the known part to the total: each number said, then how many. */
+      id: "count";
+      kind: "count-up";
+      from: number;
+      to: number;
+      said: number[];
+    }
   | { id: "total"; kind: "add-durations"; minutes: number[]; total: number }
   | { id: "clock"; kind: "clock-change"; from: ClockTime; to: ClockTime }
   | {
@@ -349,10 +371,24 @@ export interface QuestionPackage {
   ref: QuestionRef;
   /** The assessment template the question came from, or null. */
   templateId: string | null;
+  /** Human edits require the solve check, including relations and low-level operations. */
+  textSource?: "human" | "code" | "ai";
   /** The question as the child reads it. */
   text: string;
-  answer: PackageAnswer;
-  operation: Operation;
+  /**
+   * How the item is answered on the page: its format, its answer regions and how code checks them (#362). Absent
+   * (every version 1 package): one answer box that holds the operation's answer (packageItem gives it).
+   */
+  item?: Item;
+  /**
+   * The answer, the operation, its worked steps, its wrong answers and its easier example: all null (and no steps and
+   * no wrong answers) for an item with no operation, such as a place-value or a drawing item; a package with no item
+   * always has an operation.
+   */
+  answer: PackageAnswer | null;
+  operation: Operation | null;
+  /** Added after workbook selection and print checks. The renderer uses the original item without teaching data. */
+  operationSource?: "maya";
   /**
    * The shape version of the worked steps here and in the easier example; absent means 1. Code checks only the
    * versions in STEPS_VERSIONS; any other is "unsupported", never a pass.
@@ -365,7 +401,215 @@ export interface QuestionPackage {
   level: number;
   difficulty: Difficulty;
   wrongAnswers: WrongAnswer[];
-  easierExample: EasierExample;
+  easierExample: EasierExample | null;
+}
+
+/** A package with an operation: its answer, worked steps and easier example are there (every version 1 package). */
+export type OperationPackage = QuestionPackage & { answer: PackageAnswer; operation: Operation; easierExample: EasierExample };
+
+/** True when the package has an operation, so its answer, steps and easier example are there. */
+export const hasOperation = (p: QuestionPackage): p is OperationPackage => p.operation !== null;
+
+/**
+ * A checked package's item: its own, or for a package with none (every version 1 package), one answer box that holds
+ * the operation's answer. A package that has neither has not passed the check.
+ */
+export function packageItem(p: QuestionPackage): Item {
+  if (p.item) return p.item;
+  if (!p.answer) throw new Error("packageItem: a package with no item and no answer has not passed the check");
+  return defaultItem(p.answer.value);
+}
+
+/**
+ * How an item is answered on a workbook page (.design/workbooks/CONTEXT.md section 6, DESIGN.md section 4):
+ * - write-number, write-words: one answer box (a number or an amount; words).
+ * - boxes: several answer boxes for one item (tens and ones, ordering, missing numbers, two ways to make 12);
+ *   fill-table: the empty cells of a table, one box each.
+ * - tick-one: tick one of named choices; circle: circle one of named choices.
+ * - tick-and-number: a Mixed set item, "1 Tick the operation", "2 Write the answer", and a work box.
+ * - two-ways: Solve it two ways: Method 1 and Method 2 work boxes, then the answer box; the package checks the answer, and scan marking checks both methods from what the AI reads.
+ * - spot-the-error: a wrong worked solution (its wrong answer and the step where the mistake is), the fix in answer
+ *   boxes, and maybe "Is it right?" and "What did Sam do wrong?".
+ * - show-work: answer boxes with a work box (a story, a challenge).
+ * - written-reason: "How do you know?" writing lines only.
+ * - number-line, colour-or-shade, match, draw: the child marks a picture; number-line may add answer boxes.
+ * - hands-on: work with objects off the page, maybe writing what they found in boxes.
+ */
+export type ItemFormat =
+  | "write-number" | "write-words" | "boxes" | "fill-table" | "tick-one" | "circle" | "tick-and-number" | "two-ways"
+  | "spot-the-error" | "show-work" | "written-reason" | "number-line" | "colour-or-shade" | "match" | "draw" | "hands-on";
+
+/**
+ * An answer region: one place on the page the child writes or marks in, which the renderer measures and stores as one
+ * box (#309). A box or a choice holds an answer: one right answer (the answer key), which code checks against the
+ * item's checks. Where a check takes more than one right answer (the equations of "two ways to make 12"), the key is
+ * one of them, and marking reads the check, not only the key. A work box, writing lines and a picture are never
+ * scored by code.
+ */
+export type AnswerRegion =
+  | { id: string; kind: "box"; label: string | null; answer: AnswerValue | null }
+  | { id: string; kind: "choice"; mark: "tick" | "circle"; label: string | null; choices: string[]; answer: string | null }
+  | { id: string; kind: "work"; label: string }
+  | { id: string; kind: "lines"; label: string }
+  | { id: string; kind: "picture"; label: string | null };
+
+/** A number in an item check: a whole number or a decimal, a fraction or a mixed number. */
+export type NumberValue = Extract<AnswerValue, { type: "number" | "fraction" | "mixed" }>;
+
+/** A term of an equation: a printed number, or an answer box the child fills in. */
+export type Term = NumberValue | { region: string };
+
+/** "left op right = result", as printed with its boxes: "6 × [ ] = 54", "[ ] + [ ] = 12". */
+export interface Equation {
+  left: Term;
+  op: "+" | "−" | "×" | "÷";
+  right: Term;
+  result: Term;
+}
+
+/** A yes-or-no statement code can decide: an equation with no boxes, a factor of a number, or a wrong answer shown. */
+export type Statement =
+  | { kind: "equation"; equation: Equation }
+  | { kind: "factor"; factor: number; of: number }
+  /** The spot-the-error item's shown answer is right: never, so "Is it right?" is no. */
+  | { kind: "shown-answer" };
+
+/**
+ * How code knows the right answers of an item's scored regions. Each scored region is in one check:
+ * - operation: the box holds the question's answer, or one of the other forms the package accepts.
+ * - operation-sign: the choice is the sign of the question's operation (+, −, × or ÷).
+ * - places: each box holds the digit of `number` in its place; the largest place takes the whole number above it
+ *   (347 is 34 tens and 7 ones).
+ * - order: the boxes hold `numbers` from least to greatest ("up") or greatest to least ("down").
+ * - equations: each equation holds when its boxes are filled in; any numbers of the kind `numbers` names that make
+ *   every one hold are right, and with `different`, no two equations may have the same numbers in the same places (two
+ *   ways to make 12). `numbers`: "counting" (1, 2, 3, ...) for counts such as rows of tiles and factor pairs, "whole"
+ *   (0, 1, 2, ...) for whole-number sums and trades, "any" for any number (5.5 + 6.5).
+ * - sequence: the terms go up (or down) by `step` each time; each box holds its term (missing numbers).
+ * - compare: the choice is <, > or = between `left` and `right`.
+ * - yes-no: the choice is `yes` when the statement is true, else `no`.
+ * - relation (#380): the choice is the relation of whole numbers, in words, before the < and > signs are taught:
+ *   less-than (one number, one benchmark: "less than 5" or "not less than 5"), closer (one number, two benchmarks:
+ *   "close to 0" or "close to 10", never halfway), equal (two numbers: "equal" or "not equal"), more and fewer (two
+ *   numbers, each with its label: the label of the larger or the smaller, never a tie). Code writes the choices
+ *   (relationChoices) and the answer.
+ * - count: the box holds the number the item's figure shows (dots, a ten-frame, base-ten blocks or an array).
+ * - pattern: the choice is the shape in the blank of the item's pattern figure.
+ */
+export type ItemCheck =
+  | { kind: "operation"; region: string }
+  | { kind: "operation-sign"; region: string }
+  | { kind: "places"; number: number; parts: { region: string; place: Place }[] }
+  | { kind: "order"; numbers: NumberValue[]; direction: "up" | "down"; regions: string[] }
+  | { kind: "equations"; equations: Equation[]; different: boolean; numbers: "any" | "whole" | "counting" }
+  | { kind: "sequence"; terms: Term[]; step: NumberValue }
+  | { kind: "compare"; left: NumberValue; right: NumberValue; region: string }
+  | { kind: "yes-no"; statement: Statement; region: string; yes: string; no: string }
+  | { kind: "relation"; relation: Relation; numbers: number[]; to: number[]; labels: string[]; region: string }
+  | { kind: "count"; region: string }
+  | { kind: "pattern"; region: string }
+  /** #489: the box holds the answer of the step template the question was filled from, recomputed from its numbers. */
+  | { kind: "template"; region: string; source: TemplateSource }
+  /** #489: the circled choice is the template's answer (true or false, yes or no, a word it names). */
+  | { kind: "template-choice"; region: string; source: TemplateSource }
+  /** #489: Spot the error's "Is it right?": No when the shown answer is not the template's answer, else Yes. */
+  | { kind: "template-shown"; region: string; source: TemplateSource; shown: string };
+
+/** A relation a relation check asks, in words. */
+export const RELATIONS = ["less-than", "closer", "equal", "more", "fewer"] as const;
+export type Relation = (typeof RELATIONS)[number];
+
+/**
+ * A relation check's choices and its answer, or why there are none: the numbers and benchmarks a relation takes
+ * (whole numbers to 1000; one number and one benchmark for less-than, one number and two benchmarks for closer, two
+ * numbers for equal, two numbers with two different labels of letters, at most 16 characters, for more and fewer), and
+ * no tie where one answer is asked (halfway, or two equal numbers for more and fewer).
+ */
+export function relationChoices(r: { relation: string; numbers: unknown; to: unknown; labels: unknown }): { choices: string[]; answer: string } | string {
+  const whole = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) <= 1000;
+  const ns = Array.isArray(r.numbers) && r.numbers.every(whole) ? (r.numbers as number[]) : null;
+  const to = Array.isArray(r.to) && r.to.every(whole) ? (r.to as number[]) : null;
+  if (!ns || !to) return "a relation check needs whole numbers from 0 to 1000";
+  switch (r.relation) {
+    case "less-than": {
+      if (ns.length !== 1 || to.length !== 1) return "a less-than relation needs one number and one benchmark";
+      const choices = [`less than ${to[0]}`, `not less than ${to[0]}`];
+      return { choices, answer: choices[ns[0] < to[0] ? 0 : 1] };
+    }
+    case "closer": {
+      if (ns.length !== 1 || to.length !== 2 || to[0] === to[1]) return "a closer relation needs one number and two different benchmarks";
+      const [a, b] = to;
+      const [da, db] = [Math.abs(ns[0] - a), Math.abs(ns[0] - b)];
+      if (da === db) return `${ns[0]} is halfway between ${a} and ${b}: it is close to neither`;
+      const choices = [`close to ${a}`, `close to ${b}`];
+      return { choices, answer: choices[da < db ? 0 : 1] };
+    }
+    case "equal": {
+      if (ns.length !== 2 || to.length !== 0) return "an equal relation needs two numbers";
+      return { choices: ["equal", "not equal"], answer: ns[0] === ns[1] ? "equal" : "not equal" };
+    }
+    case "more": case "fewer": {
+      const labels = Array.isArray(r.labels) ? r.labels : [];
+      if (ns.length !== 2 || to.length !== 0 || labels.length !== 2) return `a ${r.relation} relation needs two numbers, each with a label`;
+      if (!labels.every((l) => typeof l === "string" && /^[A-Za-z][A-Za-z ]{0,15}$/.test(l)) || labels[0] === labels[1]) {
+        return `a ${r.relation} relation's labels are two different words of letters, at most 16 characters`;
+      }
+      if (ns[0] === ns[1]) return `the two numbers are the same: neither has ${r.relation}`;
+      const bigger = ns[0] > ns[1] ? 0 : 1;
+      return { choices: labels as string[], answer: (labels as string[])[r.relation === "more" ? bigger : 1 - bigger] };
+    }
+    default:
+      return "the relation is not one code checks";
+  }
+}
+
+/** The shapes a pattern figure draws. */
+export const PATTERN_SHAPES = ["circle", "square", "triangle", "star", "heart", "diamond"] as const;
+export type PatternShape = (typeof PATTERN_SHAPES)[number];
+
+/**
+ * A picture the child reads, drawn by code from these numbers (DESIGN.md section 4, visual models), never an image and
+ * never a place to write: the renderer sets its size and place. It is content, so the checker checks it agrees with the
+ * question (or the count or pattern check reads it).
+ * - dots: groups of counters, the last `takenAway` of them crossed out (a picture story's 3 and 4, or 7 take away 2).
+ * - ten-frame: one or two ten-frames filled with counters of one colour for each part (7 and 5).
+ * - number-line: whole numbers from `from` to `to`, a tick every `step`.
+ * - base-ten: hundreds flats, tens rods and ones cubes.
+ * - array: rows and columns of squares.
+ * - pattern: `core` repeated over `length` shapes, the shape at `blank` (from 0) left empty for the child.
+ */
+export type Figure =
+  | { kind: "dots"; groups: number[]; takenAway: number }
+  | { kind: "ten-frame"; counters: number[] }
+  | { kind: "number-line"; from: number; to: number; step: number }
+  | { kind: "base-ten"; hundreds: number; tens: number; ones: number }
+  | { kind: "array"; rows: number; columns: number }
+  | { kind: "pattern"; core: PatternShape[]; length: number; blank: number };
+
+/** The wrong worked solution of a spot-the-error item: a wrong answer of the package and the step of its mistake. */
+export interface ShownError {
+  answer: AnswerValue;
+  step: string | null;
+}
+
+/**
+ * A workbook item: its format, whether the app can mark it from a scan (`scorable`), whether a parent checks it
+ * instead (only when it is not scorable), its answer regions in reading order, and the checks of its scored regions.
+ * A scorable item has a box or a choice, and every box and choice holds an answer. Hands-on, drawing, colouring,
+ * matching and written-reason items are never scorable.
+ */
+export interface Item {
+  format: ItemFormat;
+  scorable: boolean;
+  parentChecked: boolean;
+  regions: AnswerRegion[];
+  checks: ItemCheck[];
+  /** The wrong worked solution: required for a spot-the-error item with an operation, else null. */
+  error: ShownError | null;
+  /** The picture the child reads, drawn by code; absent or null: none (every item before #377 has none). */
+  figure?: Figure | null;
+  /** Code-declared references to exact printed numbers, never inferred from the wording or applied to answers. */
+  givens?: CoinGiven[];
 }
 
 /** Why a question has no trusted package. */
@@ -381,14 +625,16 @@ export type QuestionLookup =
   | { status: "unavailable"; reason: UnavailableReason; detail: string };
 
 /**
- * A package check: "checked" (code recomputed the answer, every step and the easier example), "failed" with the first
- * reason, or "unsupported": code cannot compute the operation or read its steps, so the question is not checked by
- * code. Only "checked" is ok.
+ * A package check: "checked" (code recomputed the answer, every step, the easier example and every scored region),
+ * "failed" with the first reason, "unsupported": code cannot compute the operation, read its steps or check a scored
+ * region, or "not-checked": a sound item that is not scorable or that a parent checks, with its package. Unsupported
+ * and not-checked questions are "not checked by code" for the reviewer. Only "checked" is ok.
  */
 export type PackageCheck =
   | { ok: true; status: "checked"; package: QuestionPackage }
   | { ok: false; status: "failed"; reason: string }
-  | { ok: false; status: "unsupported"; reason: string };
+  | { ok: false; status: "unsupported"; reason: string }
+  | { ok: false; status: "not-checked"; reason: string; package: QuestionPackage };
 
 /** The worked-step shape versions code can check. Version 1 is the shapes of WorkedStep. */
 export const STEPS_VERSIONS: readonly number[] = [1];
@@ -459,8 +705,19 @@ function sameNumber(a: AnswerValue, b: AnswerValue): boolean {
   return p !== null && q !== null && sameSize(p, q);
 }
 
-/** The same written value, or the same number in another form. */
-const equivalent = (a: AnswerValue, b: AnswerValue) => sameValue(a, b) || sameNumber(a, b);
+/** The same written value, or the same number in another form (85, 85.0 and 170/2; 14/16 and 7/8). */
+export const equivalent = (a: AnswerValue, b: AnswerValue) => sameValue(a, b) || sameNumber(a, b);
+
+/**
+ * A value that answers an operation by its kind's rules (the rules checkQuestionPackage holds an answer to): the answer
+ * or one of its accepted forms, or, where the kind takes any simplest form, the exact number in a simplest form (5/4 and
+ * 1 1/4 for 2/3 + 7/12). The operation must be valid.
+ */
+export function isRightAnswer(operation: Operation, answer: PackageAnswer, value: AnswerValue): boolean {
+  if ([answer.value, ...answer.accepted].some((r) => sameValue(r, value))) return true;
+  const rules = computation(operation);
+  return rules.answer === "simplest" && isSimplest(value) && sameNumber(value, rules.exact(operation));
+}
 
 /**
  * A simplest form: a whole number, a fraction in lowest terms with a denominator from 2, or a mixed number in lowest
@@ -566,26 +823,46 @@ function amountProblem(value: AnswerValue, exact: AnswerValue, unit: Unit | null
   return sameSize(given, target) ? null : "is not what its operation gives";
 }
 
-/** How big an operation is: the digits it is written with, then its count of worked steps, then its carries. */
+/**
+ * How big an operation is: the digits it is written with, then its count of worked steps, then its carries, then (for
+ * whole numbers) its numbers.
+ */
 interface Size {
   digits: number;
   steps: number;
   carries: number;
+  /** The numbers of a whole-number +, −, × or ÷, from least to greatest; null for any other kind. */
+  numbers: number[] | null;
+  expressionShape: string | null;
 }
 /** A step that carries, regroups or changes the hours of a clock time: the harder part of a method. */
 const carries = (s: WorkedStep) => ((s.kind === "add-column" || s.kind === "multiply-digit") && s.carryOut > 0)
   || (s.kind === "subtract-column" && s.regrouped) || (s.kind === "clock-change" && s.from.hours !== s.to.hours);
+const WHOLE_KINDS: readonly string[] = ["add", "subtract", "multiply", "divide"];
 function size(operation: Operation): Size {
   const steps = workedSteps(operation);
-  return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length };
+  // A missing part is counted on from the part to the total: its size is the count and the total (9 + ? = 10 counts
+  // 1 to 10, so it is easier than 7 + ? = 10, which counts 3).
+  const numbers = operation.kind === "missing-addend" ? [operation.operands[1] - operation.operands[0], operation.operands[1]].sort((x, y) => x - y)
+    : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
+  const expression = operation.kind === "evaluate" || operation.kind === "solve" ? operation.operands[0] : null;
+  const literals = expression ? operationText(operation).match(/\d+(?:\.\d+)?/g)?.map(Number).sort((a, b) => a - b) ?? null : null;
+  return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length,
+    numbers: numbers ?? literals, expressionShape: expression?.replace(/\d+(?:\.\d+)?/g, "#").replace(/\s/g, "") ?? null };
 }
 /**
  * An easier example has fewer digits, or as many digits and fewer steps (1/5 + 2/5 is easier than 2/3 + 3/4), or as many
- * of both and fewer carries ($1.20 + $0.30 is easier than $4.75 + $2.50: every dollar amount is written to the cent).
+ * of both and fewer carries ($1.20 + $0.30 is easier than $4.75 + $2.50: every dollar amount is written to the cent), or
+ * as many of all three and smaller whole numbers: each no larger, one smaller, from least to greatest (#377: a one-digit
+ * picture story such as 3 + 4 has no example with fewer digits, steps or carries, but 2 + 1 is easier; 38 + 45 is not
+ * easier than 48 + 37). A missing part's numbers are its count and its total: 9 + ? = 10 is easier than 7 + ? = 10.
  */
-const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && (a.steps < b.steps || (a.steps === b.steps && a.carries < b.carries)));
+const fewer = (a: number[] | null, b: number[] | null) =>
+  a !== null && b !== null && a.length === b.length && a.every((x, i) => x <= b[i]) && a.some((x, i) => x < b[i]);
+const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && (a.steps < b.steps || (a.steps === b.steps
+  && (a.carries < b.carries || (a.carries === b.carries && (a.expressionShape === b.expressionShape && fewer(a.numbers, b.numbers)))))));
 
-type Problem = { status: "failed" | "unsupported"; reason: string };
+type Problem = ItemProblem;
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
 
 function packageProblem(p: unknown): Problem | null {
@@ -599,6 +876,7 @@ function packageProblem(p: unknown): Problem | null {
     if (!isWhole(p.stepsVersion, 1)) return failed("the steps version is not a whole number from 1");
     if (!STEPS_VERSIONS.includes(p.stepsVersion)) return { status: "unsupported", reason: `code cannot read worked steps of version ${p.stepsVersion}` };
   }
+  if (p.operation === null && p.item !== undefined) return noOperationProblem(p, p.text);
   const operation = operationCheck(p.operation);
   if (operation?.status === "unsupported") return operation;
   const form = unknownForm(p);
@@ -607,8 +885,18 @@ function packageProblem(p: unknown): Problem | null {
   const easier = operation === null && isObject(p.easierExample) && isObject(p.easierExample.operation)
     && p.easierExample.operation.kind === (p.operation as Operation).kind ? operationCheck(p.easierExample.operation) : null;
   if (easier?.status === "unsupported") return { status: "unsupported", reason: `the easier example: ${easier.reason}` };
-  return failed(contentProblem(p));
+  const content = failed(contentProblem(p));
+  if (content || p.item === undefined) return content;
+  const q = p as unknown as QuestionPackage & { answer: PackageAnswer; operation: Operation };
+  return itemProblem(p.item, {
+    ...VALUE_READERS,
+    text: q.text,
+    computed: { operation: q.operation, answer: q.answer.value, accepted: q.answer.accepted, wrongAnswers: q.wrongAnswers },
+  });
 }
+
+/** The value readers the item check uses. */
+const VALUE_READERS: Omit<ItemContext, "computed" | "text"> = { valueProblem, sameValue, number: rational };
 
 const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "expression", "choice", "text"];
 
@@ -616,11 +904,14 @@ const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remaind
 function unknownForm(p: Record<string, unknown>): string | null {
   const answer = isObject(p.answer) ? p.answer : {};
   const easier = isObject(p.easierExample) ? p.easierExample : {};
+  const item = isObject(p.item) ? p.item : {};
   const values = [
     answer.value,
     ...(Array.isArray(answer.accepted) ? answer.accepted : []),
     ...(Array.isArray(p.wrongAnswers) ? p.wrongAnswers.map((w) => (isObject(w) ? w.value : null)) : []),
     easier.answer,
+    ...(Array.isArray(item.regions) ? item.regions.map((r) => (isObject(r) && r.kind === "box" ? r.answer : null)) : []),
+    isObject(item.error) ? item.error.answer : null,
   ];
   const unknown = values.find((v) => isObject(v) && typeof v.type === "string" && !ANSWER_TYPES.includes(v.type));
   if (unknown) return `code cannot check answers of type ${String((unknown as { type: string }).type)}`;
@@ -660,16 +951,8 @@ function contentProblem(p: Record<string, unknown>): string | null {
   }
   const rightForms = [value, ...answer.accepted] as AnswerValue[];
 
-  if (!isObject(p.skill) || !isText(p.skill.standard) || !Array.isArray(p.skill.skills)) return "the skill needs a standard and a list of skills";
-  const code = p.skill.standard;
-  const standard = BC_SKILL_MAP.standards.find((s) => s.code === code);
-  if (!standard) return `the standard ${code} is not in the BC skill map`;
-  for (const id of p.skill.skills) {
-    if (!standard.skills.some((s) => s.id === id)) return `the skill ${String(id)} is not a skill of standard ${standard.code}`;
-  }
-
-  if (!isWhole(p.level, 1, 30)) return "the level is not U1 to U30";
-  if (p.difficulty !== 1 && p.difficulty !== 2 && p.difficulty !== 3) return "the difficulty is not 1, 2 or 3";
+  const skill = skillProblem(p);
+  if (skill) return skill;
 
   if (!Array.isArray(p.wrongAnswers) || p.wrongAnswers.length === 0) return "the package has no wrong answers";
   const stepIds = (p.steps as WorkedStep[]).map((s) => s.id);
@@ -692,8 +975,38 @@ function contentProblem(p: Record<string, unknown>): string | null {
   if (!isObject(easier.operation) || easier.operation.kind !== target.kind) return "the easier example is not the same operation";
   const easierWork = partProblem(easier.operation, easier.answer, easier.steps, "the easier example");
   if (easierWork) return easierWork;
+  // An easier example that comes to the question's answer, in any form, gives the answer away (review R378-1).
+  const easierAnswer = easier.answer as AnswerValue;
+  if (rightForms.some((r) => equivalent(r, easierAnswer)) || isRight(easierAnswer, rightForms, exact, rules.sameNumberWrong, rules.answer === "amount" ? rules.unit(target) : undefined)) {
+    return "the easier example has the question's answer";
+  }
   if (!smaller(size(easier.operation as Operation), size(target))) return "the easier example is not smaller than the question";
   return null;
+}
+
+/** The skill, the level and the difficulty. */
+function skillProblem(p: Record<string, unknown>): string | null {
+  if (!isObject(p.skill) || !isText(p.skill.standard) || !Array.isArray(p.skill.skills)) return "the skill needs a standard and a list of skills";
+  const code = p.skill.standard;
+  const standard = BC_SKILL_MAP.standards.find((s) => s.code === code);
+  if (!standard) return `the standard ${code} is not in the BC skill map`;
+  for (const id of p.skill.skills) {
+    if (!standard.skills.some((s) => s.id === id)) return `the skill ${String(id)} is not a skill of standard ${standard.code}`;
+  }
+  if (!isWhole(p.level, 1, 30)) return "the level is not U1 to U30";
+  if (p.difficulty !== 1 && p.difficulty !== 2 && p.difficulty !== 3) return "the difficulty is not 1, 2 or 3";
+  return null;
+}
+
+/** A package whose item has no operation: no answer, steps, wrong answers or easier example; the item holds the answers. */
+function noOperationProblem(p: Record<string, unknown>, text: string): Problem | null {
+  const form = unknownForm(p);
+  if (form) return { status: "unsupported", reason: form };
+  if (p.answer !== null || p.easierExample !== null) return failed("a package with no operation has no answer and no easier example: its item holds the answers");
+  if (!Array.isArray(p.steps) || p.steps.length > 0 || !Array.isArray(p.wrongAnswers) || p.wrongAnswers.length > 0) {
+    return failed("a package with no operation has no worked steps and no wrong answers");
+  }
+  return failed(skillProblem(p)) ?? itemProblem(p.item, { ...VALUE_READERS, text, computed: null });
 }
 
 /**
@@ -711,11 +1024,15 @@ function isRight(wrong: AnswerValue, rightForms: AnswerValue[], exact: AnswerVal
 }
 
 /**
- * Checks a package, for example one read from the database: "checked" with the package, "failed" with the first reason,
- * or "unsupported" when code cannot compute its operation or read its steps.
+ * Checks a package of shape `version` (the current one unless given), for example one read from the database:
+ * "checked" with the package, "failed" with the first reason, "unsupported" when code cannot compute its operation,
+ * read its steps or check a scored region, or "not-checked" for a sound item code does not mark.
  */
-export function checkQuestionPackage(candidate: unknown): PackageCheck {
+export function checkQuestionPackage(candidate: unknown, version: number = QUESTION_PACKAGE_VERSION): PackageCheck {
+  if (version !== 1 && version !== QUESTION_PACKAGE_VERSION) return { ok: false, status: "unsupported", reason: `code cannot read question packages of version ${version}` };
+  if (version === 1 && isObject(candidate) && candidate.item !== undefined) return { ok: false, status: "failed", reason: "a version 1 package has no item" };
   const problem = packageProblem(candidate);
   if (!problem) return { ok: true, status: "checked", package: candidate as QuestionPackage };
+  if (problem.status === "not-checked") return { ok: false, status: "not-checked", reason: problem.reason, package: candidate as QuestionPackage };
   return { ok: false, status: problem.status, reason: problem.reason };
 }

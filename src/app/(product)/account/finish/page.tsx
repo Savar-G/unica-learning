@@ -12,7 +12,7 @@ export const metadata = pageMetadata({
 });
 
 // A parent who signed in with Google for the first time has no parent row yet (#63). They give the details Google
-// does not: postal code and the child. A parent with a row goes to their account.
+// does not: the child. A parent with a row goes to their account.
 export default async function Finish() {
   const db = await sessionClient();
   const { data: { user } } = await db.auth.getUser();

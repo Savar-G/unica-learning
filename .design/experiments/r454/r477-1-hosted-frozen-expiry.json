@@ -1,0 +1,20 @@
+{
+  "finding": "R477-1",
+  "scope": "Two synthetic photos in a dedicated test family only",
+  "pendingAgeHours": 25,
+  "savedAgeDays": 91,
+  "states": [
+    "expired",
+    "expired"
+  ],
+  "removed": 2,
+  "repeatCleanup": 0,
+  "checks": [
+    "Expired while deletion was deferred",
+    "Stored bytes retained while objects remained",
+    "Physical cleanup succeeded while frozen",
+    "Admission, restoration and late Storage creation still refused",
+    "Quota released only after confirmed removal"
+  ],
+  "proofLimit": "The delayed body test is separate local evidence; this probe verified actual hosted expiry and physical cleanup."
+}

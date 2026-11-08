@@ -13,6 +13,7 @@ import { RUSH_RUN, paceOf } from "./rushing";
 import { fromRemovedRound } from "./session";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
 import { BC_SKILL_MAP } from "./skill-map";
+import type { SkillTestResult } from "./skill-state";
 import type { Grade, Level, LevelResult, Placement, Province, Question, ReportedStrand, Route, StrandStatus } from "./types";
 
 /** The version of the profile's JSON. A change that a reader of stored profiles must know about adds one. */
@@ -228,7 +229,7 @@ export interface LearnerProfile {
   strengths: ProfileStrength[];
   /** Needs attention first, then developing; each in curriculum order. */
   struggles: ProfileStruggle[];
-  /** Fact fluency (#70): accuracy and speed, as the placement stored them. Null when the child had no facts section. */
+  /** Fact fluency (#70), including optional per-family results within schema 1. Null with no facts section. */
   facts: FactsResult | null;
   behaviour: ProfileBehaviour;
   /** How the child likes to learn and what interests them (the book mix reads these). Empty when not answered. */
@@ -251,6 +252,10 @@ export const curriculumOrder = (a: Pick<ProfileStandard, "code" | "grade">, b: P
   a.grade - b.grade || Number(a.code.match(/\d+$/)?.[0] ?? 0) - Number(b.code.match(/\d+$/)?.[0] ?? 0) || a.code.localeCompare(b.code);
 
 const SEVERITY: Record<StrandStatus, number> = { "needs-attention": 0, developing: 1, secure: 2 };
+
+/** Worst first: needs attention, then developing, then secure; each in curriculum order. */
+export const worstFirst = (a: Pick<ProfileStandard, "code" | "grade" | "status">, b: Pick<ProfileStandard, "code" | "grade" | "status">) =>
+  SEVERITY[a.status] - SEVERITY[b.status] || curriculumOrder(a, b);
 
 const tally = (answers: readonly { correct: boolean }[]): Tally => ({ correct: answers.filter((a) => a.correct).length, total: answers.length });
 
@@ -378,7 +383,7 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
   // D-084: never invent a weakness. A standard above the school grade is not a struggle.
   const struggles = standards
     .filter((s) => !s.aboveGrade && s.status !== "secure")
-    .sort((a, b) => SEVERITY[a.status] - SEVERITY[b.status] || curriculumOrder(a, b))
+    .sort(worstFirst)
     .map((s): ProfileStruggle => {
       const wrong = counted.filter((a) => !a.correct && standardOf(a) === s.code).map((a) => ({
         questionId: a.question.id,
@@ -466,6 +471,15 @@ export function storedProfile(value: unknown): LearnerProfile | null {
     unknowns: { ...profile.unknowns, earlySigns: { ...profile.unknowns.earlySigns, level: certainty === "early-sign" } },
     ...(ai ? { ai } : {}),
   };
+}
+
+/**
+ * What the skill states read from one stored profile (src/lib/assessment/skill-state.ts): its tally of each standard, at
+ * the time its test finished. Nothing else leaves the profile. A profile of another schema version gives nothing.
+ * `unreliable`: the test's stored report calls it unreliable (reportCallsUnreliable), which the caller reads.
+ */
+export function profileSkillResults(profile: unknown, finishedAt: string, unreliable: boolean): SkillTestResult[] {
+  return (storedProfile(profile)?.standards ?? []).map((s) => ({ standard: s.code, correct: s.correct, total: s.total, at: finishedAt, unreliable }));
 }
 
 /** D-145: a stored struggle without its wrong answers to the removed extra round's questions (#190). */

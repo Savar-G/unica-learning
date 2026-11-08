@@ -1,8 +1,8 @@
-// The comparison facts behind the home "How we compare" table (D-097) and the /compare page (D-114).
+// The comparison facts behind the home "How we compare" section (D-219) and the /compare page (D-114).
 // Categories only, never a competitor name (D-064). Every fact is backed by .design/research/competitors-2026-10.md
 // and .design/research/compare-page-2026-10-16.md; re-check them before editing. A full mark is yes, a half mark is
 // partly, an empty mark is no.
-import { BRAND, PLANS } from "@/lib/site";
+import { BRAND, PLANS, cad } from "@/lib/site";
 
 export type Mark = "yes" | "part" | "no";
 export type OptionId = "tutor" | "centre" | "online" | "us";
@@ -87,7 +87,7 @@ export const COST: Record<OptionId, [string, string]> = {
   tutor: ["About $170-$430", "a month, for 1 hour a week"],
   centre: ["About $200", "a month, per subject"],
   online: ["$0-$25", "a month"],
-  us: [`$${PLANS.one.price}`, "a month, delivery included"],
+  us: [`CAD ${cad(PLANS.one.price)}`, "a month, delivery included"],
 };
 
 /** One block per option on /compare: what it does well, what is harder, and what Unica does instead. */
@@ -95,8 +95,8 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
   {
     id: "tutor",
     tag: "vs Private tutors",
-    title: `A tutor teaches live. ${BRAND} explains when they're stuck, and keeps them practising every day.`,
-    summary: `Tutoring is time with a person. ${BRAND} is a plan your child works through at home, 15-30 minutes a day.`,
+    title: `A tutor is there for the session. ${BRAND} is there for the days in between.`,
+    summary: `Practice 15–30 minutes a day at home, built from your child's own work, with the Teaching Assistant to explain a step when they're stuck.`,
     goodTitle: "A tutor is good at",
     good: ["Explaining live and answering questions", "Adjusting to your child each session", "Help with homework and tests"],
     hardTitle: "Harder with a tutor",
@@ -106,8 +106,8 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
   {
     id: "centre",
     tag: "vs Learning centres",
-    title: "Structured like a learning centre, without the drive.",
-    summary: `A centre gives your child a program and a routine. ${BRAND} does too, and builds each set of pages from how they did on the last.`,
+    title: `A learning centre has one path for every child. ${BRAND} builds one from your child's own work.`,
+    summary: "Both give your child a program and a daily routine. Each new workbook brings back what they missed and spends less time on what they already know.",
     goodTitle: "A centre is good at",
     good: ["A set program and a daily habit", "A placement test to start", "Instructors at the centre"],
     hardTitle: "Harder with a centre",

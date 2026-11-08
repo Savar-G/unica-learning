@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checked } from "@/lib/assessment/scripted-child";
+import { checked, beforeThirdStage } from "@/lib/assessment/scripted-child";
 import { createSession, nextQuestion, recordAnswer, restoreSession, startAttempt, storedTest, submitAnswer, type Attempt, type Grade, type Submission } from "@/lib/assessment";
 import { StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
@@ -44,7 +44,7 @@ const ASHA = { grade: 4, province: "BC" } as const;
 
 /** Asha's test, with the first `answered` answers right. */
 function stored(attempt: Attempt, { parent = P1, answered = 0 } = {}): MemoryTest {
-  const test = storedTest(createSession(ASHA, 7));
+  const test = beforeThirdStage(storedTest(createSession(ASHA, 7)));
   let session = restoreSession(test, []);
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q && answers.length < answered; q = nextQuestion(session)) {
@@ -167,6 +167,21 @@ describe("POST /api/account/assessments/[id]/answers (answer a question)", () =>
     }), { params: Promise.resolve({ id }) });
   /** The right answer to the current question in 20 seconds, with `work` if given. */
   const right = (work?: unknown) => ({ questionId: current().id, response: current().answer, timeMs: 20_000, ...(work === undefined ? {} : { work }) });
+
+  it("stores nothing when the screen stopped waiting for the request", async () => {
+    family(stored(startAttempt(TEST, T0)));
+    vi.setSystemTime(T0 + HOUR);
+    const gone = new AbortController();
+    gone.abort();
+    const res = await answerRoute(new Request(`https://unica.test/api/account/assessments/${TEST}/answers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(right()),
+      signal: gone.signal,
+    }), { params: Promise.resolve({ id: TEST }) });
+    expect(await sent(res)).toMatchObject({ status: 503, body: { ok: false, error: "store_failed" } });
+    expect(memory.tests[0].answers).toEqual([]);
+  });
 
   it("stores the answer with its drawing and sends the next question, without its answer", async () => {
     family(stored(startAttempt(TEST, T0)));

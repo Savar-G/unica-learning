@@ -37,13 +37,13 @@ import { fakeChildProfileAi } from "@/lib/child-profile-ai-fake";
 import type { ChildLearnerProfile, ChildProfileFinding } from "@/lib/child-profile";
 import type { LearningEvent } from "@/lib/learning-events";
 import {
+  hasOperation,
   operationResult,
   operationText,
   stepText,
   valueText,
   workedSteps,
   type AnswerValue,
-  type Operation,
   type QuestionLookup,
   type QuestionPackage,
   type QuestionRef,
@@ -129,7 +129,7 @@ const STANDARDS: ReadonlySet<string> = new Set(BC_SKILL_MAP.standards.map((s) =>
 /** The field names of an operation and its values, and the strings code writes in them. */
 const FIELDS = new Set(["kind", "operands", "denominator", "unit", "values", "type", "value", "numerator", "whole", "quotient", "remainder", "parts", "hours", "minutes", "period"]);
 const CODE_WORDS = new Set([
-  "add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply",
+  "add", "subtract", "missing-addend", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply",
   "fraction-add", "fraction-subtract", "fraction-multiply", "fraction-divide", "fraction-simplify", "fraction-equivalent",
   "convert", "quantity-add", "quantity-subtract", "quantity-multiply", "money-round", "elapsed-time", "time-add", "clock-convert", "evaluate", "solve",
   "number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "a.m.", "p.m.", ...UNITS,
@@ -156,11 +156,14 @@ function codeOwned(value: unknown): boolean {
 /** A typed amount as code writes it; null for free text or a unit outside code's list. */
 const amountText = (v: AnswerValue): string | null => (AMOUNTS.has(v.type) && codeOwned(v) ? valueText(v) : null);
 
-/** The question as code writes and computes it, with its steps; null when its operation holds a string code did not write. */
+/**
+ * The question as code writes and computes it, with its steps; null when it has no operation (an item such as a
+ * drawing) or its operation holds a string code did not write.
+ */
 function codeQuestion(p: QuestionPackage) {
-  if (!codeOwned(p.operation)) return null;
+  if (!hasOperation(p) || !codeOwned(p.operation)) return null;
   try {
-    const operation = p.operation as Operation;
+    const operation = p.operation;
     const answer = amountText(operationResult(operation));
     if (answer === null) return null;
     const unit = typeof p.answer.unit === "string" && UNITS.has(p.answer.unit) ? p.answer.unit : null;

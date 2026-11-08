@@ -2,6 +2,7 @@ import "server-only";
 import {
   MISCONCEPTIONS,
   fromRemovedRound,
+  everyQuestion,
   reportFindings,
   storedProfile,
   storedReportModel,
@@ -18,6 +19,7 @@ import {
   type StoredTest,
 } from "@/lib/assessment";
 import type { ReportView } from "@/lib/report-view";
+import { familyZone } from "@/lib/family-time";
 import type { ReviewPiece } from "@/lib/work-review";
 
 // The report-loading module (spec #145). Server only. Two operations:
@@ -47,6 +49,10 @@ export interface ReportRecord {
   assessment: { completedAt: string; province: Province } | null;
   /** The child; null when the reader cannot find them. */
   child: { firstName: string } | null;
+  /** Present in database reads. Optional for older stored/demo inputs. */
+  postal?: string | null;
+  familyProvince?: string | null;
+  timeZone?: string | null;
 }
 
 /** A test as a reader finds it, with its stored test (the questions drawn for it, with their right answers). */
@@ -158,9 +164,8 @@ export async function loadReportInputs(reader: ReportReader, assessmentId: strin
   const a = await reader.assessment(assessmentId);
   if (!a || a.status !== "completed" || !a.completedAt || !a.placement) return null;
   const stored = await reader.answers(a.id);
-  // The question map: every question the test could ask, from stage 1 and the three stage 2 paths.
-  const { stage1, stage2 } = a.test;
-  const questions = new Map([...stage1, ...stage2.up, ...stage2.stay, ...stage2.down].map((q) => [q.id, q]));
+  // The question map: every question the test could ask, from every stage and path.
+  const questions = new Map(everyQuestion(a.test).map((q) => [q.id, q]));
   // D-145: the answers to the removed extra round's questions (#190), which two tests still store, are left out: no
   // report part, learner profile or count reads them.
   const answers = stored.filter((x) => !fromRemovedRound(x.questionId));
@@ -266,6 +271,7 @@ export async function loadReportView(reader: ReportReader, id: string): Promise<
       id: row.id,
       childName: row.child.firstName,
       province: row.assessment.province,
+      timeZone: familyZone({ timeZone: row.timeZone, postal: row.postal, province: row.familyProvince }),
       completedAt: row.assessment.completedAt,
       questions: row.questions,
       minutes: row.minutes,

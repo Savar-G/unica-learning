@@ -1,0 +1,26 @@
+{
+  "round": "r33",
+  "question": "How should How we compare look as its own home section after Pricing?",
+  "route": "/ (section #compare)",
+  "prototype_branch": "prototype/compare-section",
+  "build_branch": "site/compare-section",
+  "decision": "D-219",
+  "reference": "Savar's screenshot: a table with the price row first and a highlighted Unica column (chat 2026-11-02)",
+  "rounds": [
+    { "round": 1, "variants": [
+      { "key": "A", "name": "Reference table", "file": "round1-A-reference-table.png", "verdict": "picked" },
+      { "key": "B", "name": "Price scale", "file": "round1-B-price-scale.png" },
+      { "key": "C", "name": "Three cards", "file": "round1-C-three-cards.png" },
+      { "key": "D", "name": "Head to head", "file": "round1-D-head-to-head.png" }
+    ] },
+    { "round": 2, "question": "Colour of our column and its checks (Savar did not like the peach tint)", "variants": [
+      { "key": "A1", "name": "Peach + tangerine", "file": "round2-A1-peach.png" },
+      { "key": "A2", "name": "Soft grey card + ink", "file": "round2-A2-grey.png" },
+      { "key": "A3", "name": "Grainy colour field", "file": "round2-A3-field.png", "verdict": "picked" },
+      { "key": "A4", "name": "Warm dark + sunflower", "file": "round2-A4-dark.png" },
+      { "key": "A5", "name": "Ink outline + leaf", "file": "round2-A5-outline.png" }
+    ] }
+  ],
+  "final": ["final-1280.png", "final-1024.png", "final-390.png"],
+  "approval": "Savar picked A, then A3 (chat 2026-11-02). The built section still needs his approval on the PR preview."
+}

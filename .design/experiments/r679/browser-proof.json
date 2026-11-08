@@ -1,0 +1,43 @@
+{
+  "machine": "Savars-MacBook-Pro-5.local",
+  "head": "c3ad24e38e87170cf8e35187053c6e20e1b9b8e3",
+  "server": "local production build; actual hosted owned synthetic families and frozen books",
+  "passwordReturn": {
+    "start": "/sign-in?next=%2Faccount%2Fschedule",
+    "authStatus": 200,
+    "automaticReturn": "/account/schedule",
+    "child": "Leah",
+    "errors": []
+  },
+  "ownedChildren": [
+    "Leah",
+    "Kai"
+  ],
+  "phone": {
+    "overflow": false,
+    "labels": [
+      "\"Topic\"",
+      "\"Pages\"",
+      "\"Required time\"",
+      "\"Scanned pages\""
+    ]
+  },
+  "rememberedPlainRoute": "Kai",
+  "waiting": {
+    "tabHidden": true,
+    "message": "No printed workbook yet"
+  },
+  "adminPhone": {
+    "sandbox": "allow-same-origin",
+    "width": 390,
+    "heading": "Kai's schedule",
+    "rows": 10,
+    "labels": [
+      "\"Topic\"",
+      "\"Pages\"",
+      "\"Required time\"",
+      "\"Scanned pages\""
+    ]
+  },
+  "limits": "No customer/public selected book, actual PDF/image bytes or receipt admission proved. Initial dev-session password return was inconclusive; this fresh production-build return passed."
+}

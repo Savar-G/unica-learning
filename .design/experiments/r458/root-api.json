@@ -1,0 +1,54 @@
+{
+  "checks": [
+    {
+      "label": "owner reads results",
+      "status": 200,
+      "bytes": 1200
+    },
+    {
+      "label": "signed out refused",
+      "status": 404,
+      "bytes": 0
+    },
+    {
+      "label": "foreign origin refused",
+      "status": 403,
+      "bytes": 19
+    },
+    {
+      "label": "extra ownership field refused",
+      "status": 400,
+      "bytes": 19
+    },
+    {
+      "label": "missing version refused",
+      "status": 400,
+      "bytes": 19
+    },
+    {
+      "label": "desk lock refused",
+      "status": 423,
+      "bytes": 32
+    },
+    {
+      "label": "unknown photo refused",
+      "status": 404,
+      "bytes": 19
+    },
+    {
+      "label": "revoked original session refused",
+      "status": 404,
+      "bytes": 0
+    }
+  ],
+  "canonical": {
+    "items": 3,
+    "history": 4,
+    "events": 1,
+    "questionOneResult": "blank",
+    "retainedReading": "56",
+    "revision": 5,
+    "profileRevision": 5
+  },
+  "proofLimit": "Synthetic stored readings and no image object. Actual browser requests and hosted database. No recognition, provider, Storage-object or physical-camera proof."
+}

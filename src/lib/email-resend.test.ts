@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EmailMessage } from "@/lib/email-delivery";
-import { resendConfigProblem, resendTransport } from "@/lib/email-resend";
+import { resendConfigProblem, resendFrom, resendTransport } from "@/lib/email-resend";
 
 // The Resend adapter of the mail transport (#149): how each answer from Resend is classified. The network is a stub
 // that records each request and answers as told.
@@ -114,6 +114,15 @@ describe("an answer that leaves the outcome unknown", () => {
 });
 
 describe("the sender", () => {
+  it("of an email the founders sign shows their name on the EMAIL_FROM address (D-225)", async () => {
+    const net = network(answer(200, { id: "e1" }));
+    await resendTransport({ fetch: net.fetch }).send({ ...toParent, sender: { to: "parent", from: "founders" } });
+    expect(net.body()).toMatchObject({ from: "Savar & Cedric from Unica Learning <contact@unicalearning.com>" });
+    vi.stubEnv("EMAIL_FROM", "contact@unicalearning.com");
+    expect(resendFrom({ sender: { to: "parent", from: "founders" } })).toBe("Savar & Cedric from Unica Learning <contact@unicalearning.com>");
+    expect(resendFrom({ sender: { to: "parent" } })).toBe("contact@unicalearning.com");
+  });
+
   it("of an email to Savar is EMAIL_FROM when it is set", async () => {
     const net = network(answer(200, { id: "e1" }));
     await resendTransport({ fetch: net.fetch }).send(toSavar);

@@ -1,0 +1,142 @@
+{
+  "schema_version": 2,
+  "issue": 675,
+  "decision": "D-299",
+  "route": "direct",
+  "job_kind": "new",
+  "surface": [
+    "component",
+    "product"
+  ],
+  "constraint_mode": "existing-system",
+  "base": "356e6f40fc12552fbdedb717a8607f498832f09a",
+  "phase": "review",
+  "contract": ".design/experiments/r675/contract.md",
+  "preview": "/admin/parent-dashboard?view=scan_results&scenario=explain_ready",
+  "states": [
+    "idle",
+    "loading",
+    "ready",
+    "retry",
+    "cap",
+    "stale",
+    "unavailable"
+  ],
+  "references": [
+    "DESIGN.md",
+    "src/components/scan-marking-results.tsx",
+    "src/components/scan-mark-change.tsx",
+    "src/components/scan-pages.css",
+    "src/components/admin-parent-preview.tsx"
+  ],
+  "screenshots": [
+    {
+      "file": ".design/experiments/r675/admin-explain_idle-desktop.png",
+      "bytes": 125972,
+      "sha256": "a086bbbed030467e0f456291f7c427a10893a598358446db8512931403a3be27"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_loading-desktop.png",
+      "bytes": 128603,
+      "sha256": "1ed0cdcd19a978fc4cc03e9e1b112baf99b8424eb7531e156699198232bcb65d"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_ready-desktop.png",
+      "bytes": 150065,
+      "sha256": "f4431dacbd9a72b507e539467be4d13139fc1cd0ea92cdc0d948a1de9458de9d"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_retry-desktop.png",
+      "bytes": 130406,
+      "sha256": "d2ea3d66f71a682a95d51dcb118b7f8feeda4f7217f79422a6f728503dc35a54"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_cap-desktop.png",
+      "bytes": 130595,
+      "sha256": "c63106bb73e3cea347b72222e88d1050e74a7b08a502d245ce476ce3cb3b2b63"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_stale-desktop.png",
+      "bytes": 129808,
+      "sha256": "d1b65f0cca7d753a821291fb77cdfc4c1a8cacff57d9eef77d6b2b0fbd790589"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_unavailable-desktop.png",
+      "bytes": 129953,
+      "sha256": "d90594b2c6acbfe1729aa8e74349f17884bc8a88834bc510f87b2c5eb7bcc6a9"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_ready-phone.png",
+      "bytes": 135597,
+      "sha256": "cf2d249f43ffd1b802a270929ffa67f733f4de72150cc73cffc867826a788f5a"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_cap-phone.png",
+      "bytes": 125311,
+      "sha256": "cf62e4bc129deb37b70ffc9ffbf1f576438f6fbedeae32344217c16e6e486ed1"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_stale-phone.png",
+      "bytes": 124002,
+      "sha256": "acfd5048593406f9ecccccbf0b0069c31b330eb581e1262783a648a2c309db97"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_unavailable-phone.png",
+      "bytes": 124397,
+      "sha256": "363213e53323fab514d4586f6bca435942be40bf409811f11795d10f2f58604b"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_loading-phone.png",
+      "bytes": 124014,
+      "sha256": "57a878602ffe16128391424b80675f9242015bc58731450928c17368b182d7ed"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_retry-phone.png",
+      "bytes": 125181,
+      "sha256": "9bf55922fe76cb4a716b1d5f76e60ef51bab1e3423fbc6e6dd7ee83c8661944b"
+    },
+    {
+      "file": ".design/experiments/r675/admin-explain_idle-phone.png",
+      "bytes": 121588,
+      "sha256": "778cf5976ecb0bea1dafd38212f95c1de285c782a5431569b93eb2fdd6534d37"
+    },
+    {
+      "file": ".design/experiments/r675/ready-desktop.png",
+      "bytes": 111180,
+      "sha256": "65de8161bdf705b28b4005744ee3724cb97d175b750a99fd354395ed82139afa"
+    },
+    {
+      "file": ".design/experiments/r675/ready-phone.png",
+      "bytes": 70180,
+      "sha256": "3ba8f80c8f7976aae12eff28d674a22c7727ac16f5449048cf6aaf7f1cd9e893"
+    },
+    {
+      "file": ".design/experiments/r675/retry-phone.png",
+      "bytes": 69991,
+      "sha256": "bd8eda8b719a8d02bcb9857d5c9e09c2a842eaa11b17878fc6f5a2080c6b8c24"
+    },
+    {
+      "file": ".design/experiments/r675/pending-phone.png",
+      "bytes": 66792,
+      "sha256": "bb2d4d1e17ca5ffabc0092085efd967a9331e59ff4c1f258c842ac644c181ab0"
+    },
+    {
+      "file": ".design/experiments/r675/pending-desktop.png",
+      "bytes": 93134,
+      "sha256": "b81af56e933147442cded485f5760db798f8f720c8c97bd0e00ae64442d48f2a"
+    },
+    {
+      "file": ".design/experiments/r675/comparison-phone.png",
+      "bytes": 56101,
+      "sha256": "e35d330bf9815c2dca769f65a4c672164a4abca34a8d48b9011e050a53ddc953"
+    },
+    {
+      "file": ".design/experiments/r675/corrected-right-phone.png",
+      "bytes": 54850,
+      "sha256": "c5c627612daa11b1e529de6e8ff8c95de4e9fc5ac501d21224cf4a2077fc67b4"
+    }
+  ],
+  "browser_review": "Complete: browser-review.md. Desktop and phone; other device proof remains outside this check.",
+  "independent_review": "APPROVE 4c8935c6. Final dedicated-credential delta review pending.",
+  "release": "off; preserve D236 and D249"
+}

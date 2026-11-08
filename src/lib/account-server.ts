@@ -6,7 +6,8 @@ import type { ChildInput } from "@/lib/account";
 import { SITE_URL } from "@/lib/metadata";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { emailConfigProblem, sendEmail } from "@/lib/email-delivery";
-import { LINK_TTL_MS, MAX_LINKS_PER_HOUR, linkEmail, newToken } from "@/lib/sign-in-link";
+import { LINK_TTL_MS, MAX_LINKS_PER_HOUR, linkEmail, newToken, startPath } from "@/lib/sign-in-link";
+import { phoneWelcomeEmail, welcomeEmail } from "@/lib/founder-emails";
 
 // Server steps shared by the account routes (#62, #63). Every call uses the admin client (secret key).
 
@@ -24,11 +25,11 @@ export type Admission = { status: "created"; child: string } | { status: "exists
 export async function createFamily(
   admin: SupabaseClient<Database>,
   id: string,
-  parent: { name: string; email: string; postal: string | null; source: Record<string, string> },
+  parent: { name: string; email: string; source: Record<string, string> },
   child: ChildInput,
 ): Promise<Admission> {
   const { data, error } = await admin.rpc("create_family", {
-    p_parent: id, p_name: parent.name, p_email: parent.email, p_postal: parent.postal, p_source: parent.source,
+    p_parent: id, p_name: parent.name, p_email: parent.email, p_postal: null, p_source: parent.source,
     p_child_name: child.firstName, p_child_grade: child.grade, p_child_province: child.province,
   });
   if (error) {
@@ -52,14 +53,27 @@ export const isPhone = (headers: Headers) => userAgent({ headers }).device.type 
  * The origin for links in emails. Production uses the public site URL, so a forged Host header cannot put another
  * site in a parent's email. Previews and local dev use the request's own origin, so the link opens the same deployment.
  */
+/**
+ * The founders' welcome (D-225), once: the caller sends it only when create_family made the family. A phone signup gets
+ * the sign-in link email instead. Never throws; a welcome that does not go is logged and not tried again.
+ */
+export async function sendWelcome(p: { name: string; email: string; childName: string; childId: string; origin: string }): Promise<void> {
+  const email = welcomeEmail({ parentName: p.name, childName: p.childName, url: `${p.origin}${startPath(p.childId)}` });
+  const outcome = await sendEmail({ sender: { to: "parent", from: "founders" }, to: p.email, replyTo: SUPPORT_EMAIL, ...email });
+  if (outcome.status !== "sent") console.error("[account] welcome email failed", outcome.status, outcome.error);
+}
+
 export function linkOrigin(request: Request): string {
   return process.env.VERCEL_ENV === "production" ? SITE_URL : new URL(request.url).origin;
 }
 
 export type SendLinkResult = "sent" | "not_found" | "too_many" | "failed";
 
-/** Emails the parent a one-time sign-in link (24 hours) that opens this child's start screen. */
-export async function sendSignInLink(admin: SupabaseClient<Database>, parentId: string, childId: string, origin: string): Promise<SendLinkResult> {
+/**
+ * Emails the parent a one-time sign-in link (24 hours) that opens this child's start screen. `welcome`: the first link
+ * of a phone signup, sent as the founders' welcome (D-225); a link asked for again is the team's plain link email.
+ */
+export async function sendSignInLink(admin: SupabaseClient<Database>, parentId: string, childId: string, origin: string, { welcome = false }: { welcome?: boolean } = {}): Promise<SendLinkResult> {
   // Stop before a token row is written: without the configuration the email cannot go.
   if (emailConfigProblem()) {
     console.error("[account] RESEND_API_KEY or EMAIL_FROM is not set");
@@ -88,9 +102,11 @@ export async function sendSignInLink(admin: SupabaseClient<Database>, parentId: 
   }
 
   const url = `${origin}/sign-in/link?t=${token}`;
-  const email = linkEmail({ parentName: parent.name, childName: child.first_name, url });
+  const link = { parentName: parent.name, childName: child.first_name, url };
+  const email = welcome ? phoneWelcomeEmail(link) : linkEmail(link);
   // The link row is its own guard (the rate limit above), so the email needs no send key.
-  const outcome = await sendEmail({ sender: { to: "parent" }, to: parent.email, replyTo: SUPPORT_EMAIL, ...email });
+  const sender = welcome ? { to: "parent" as const, from: "founders" as const } : { to: "parent" as const };
+  const outcome = await sendEmail({ sender, to: parent.email, replyTo: SUPPORT_EMAIL, ...email });
   if (outcome.status !== "sent") {
     console.error("[account] link email failed", outcome.status, outcome.error);
     return "failed";

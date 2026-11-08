@@ -1,0 +1,17 @@
+/* The Scan pages tab (#564): the desktop screen (the QR code and its words beside the pages from the phone, D-273; stacked
+   on a narrower screen). The phone's stack has its own dock (scan-pages.css). */
+.scan-away { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 40px; align-items: start; margin-top: 8px; }
+.scan-away-qr { width: 196px; padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.scan-away-qr svg { display: block; width: 100%; height: auto; }
+.scan-away-text { display: grid; gap: 16px; }
+.scan-away-text h2 { margin: 4px 0 0; font-size: 20px; font-weight: 500; letter-spacing: -.01em; }
+.support-page .scan-away-text .lead { margin: 0; font-size: 16px; }
+.scan-away-email { display: grid; gap: 12px; justify-items: start; }
+.scan-away-email .btn { min-height: 44px; }
+.scan-away-email .acct-alert { margin: 0; }
+.support-page .scan-away-here { margin: 0; color: var(--ink-2); }
+.scan-away-here a { display: inline-flex; align-items: center; min-height: 44px; }
+.scan-away-stack { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.scan-away-stack > h2 { margin: 0; font-size: 17px; font-weight: 500; }
+@media (max-width: 1099px) { .scan-away { grid-template-columns: minmax(0, 1fr); gap: 28px; } }
+@media (max-width: 600px) { .scan-away-qr { width: 168px; } }

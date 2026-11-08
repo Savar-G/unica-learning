@@ -13,7 +13,7 @@
 //
 // The readers (src/lib/assessment-questions.ts in Supabase, src/lib/assessment-questions-memory.ts in memory) find the
 // stored question and pass it here. Pure TypeScript: no Next.js, React, network, database or clock.
-import { MISCONCEPTIONS, templateSkills, type MisconceptionId, type Question, type Route, type StoredTest } from "@/lib/assessment";
+import { MISCONCEPTIONS, givenQuestions, templateSkills, type MisconceptionId, type Question, type Route, type Stage3Route, type StoredTest } from "@/lib/assessment";
 import {
   checkQuestionPackage,
   operationProblem,
@@ -38,7 +38,7 @@ interface Supported {
   difficulty: Difficulty;
   /** The worked step where each coded wrong answer's mistake happens; null when it is not one step. */
   steps: Partial<Record<MisconceptionId, string | null>>;
-  /** Easier examples in order of preference; the first whose ones differ from the question's is used. */
+  /** Easier examples in order of preference; the first whose ones and answer differ from the question's is used. */
   easier: readonly [number, number][];
 }
 
@@ -56,6 +56,15 @@ const SUPPORTED: Record<string, Supported> = {
     easier: [[42, 7], [53, 8], [31, 4], [64, 9]],
   },
 };
+
+/**
+ * The skill a template tests, in plain words for the admin ("Subtract two-digit numbers within 100"): the first skill
+ * of its tag in the BC skill map, up to the first comma. Null when the template has no tag.
+ */
+export function templateSkillName(templateId: string): string | null {
+  const text = templateSkills(templateId)[0]?.text;
+  return text ? text.split(",")[0].trim() : null;
+}
 
 /** The assessment templates that have full packages. */
 export const SUPPORTED_ASSESSMENT_TEMPLATES: readonly string[] = Object.keys(SUPPORTED);
@@ -84,7 +93,9 @@ export function assessmentQuestionPackage(ref: AssessmentQuestionRef, question: 
     wrongAnswers.push({ value: { type: "number", value: Number(w.value) }, cause: w.misconception, description: MISCONCEPTIONS[w.misconception].description, step });
   }
 
-  const pair = known.easier.find((p) => ones(p) !== ones(operands)) ?? known.easier[0];
+  // Never an easier example with the question's answer: it would give the answer away (review R378-1).
+  const otherAnswer = (p: readonly [number, number]) => !sameValue(operationResult({ kind: known.kind, operands: [...p] }), answer);
+  const pair = known.easier.find((p) => ones(p) !== ones(operands) && otherAnswer(p)) ?? known.easier.find(otherAnswer) ?? known.easier[0];
   const easier: Operation = { kind: known.kind, operands: [...pair] };
   const candidate: QuestionPackage = {
     id: `${ref.assessmentId}:${ref.questionId}`,
@@ -110,15 +121,15 @@ export interface AssessmentQuestionReader {
 }
 
 /**
- * The questions a child was given in a stored test: stage 1, and the stage 2 form of its route once it is routed.
- * The other stage 2 forms are kept in the test but never shown.
+ * The questions a child was given in a stored test: stage 1, the stage 2 form of its route once it is routed, and the
+ * third stage once stage 2 locked into one (D-282). The other forms are kept in the test but never shown.
  */
-function givenQuestion(test: StoredTest, route: Route | null, questionId: string): Question | undefined {
-  return [...test.stage1, ...(route ? test.stage2[route] : [])].find((q) => q.id === questionId);
+function givenQuestion(test: StoredTest, route: Route | null, stage3Route: Stage3Route | null | undefined, questionId: string): Question | undefined {
+  return givenQuestions(test, route, stage3Route).find((q) => q.id === questionId);
 }
 
 /** A reader's answer from a stored test row: the package of a question the child was given, or not found. */
-export function lookupStoredQuestion(ref: AssessmentQuestionRef, row: { test: StoredTest; route: Route | null } | null): QuestionLookup {
-  const question = row && givenQuestion(row.test, row.route, ref.questionId);
+export function lookupStoredQuestion(ref: AssessmentQuestionRef, row: { test: StoredTest; route: Route | null; stage3Route?: Stage3Route | null } | null): QuestionLookup {
+  const question = row && givenQuestion(row.test, row.route, row.stage3Route, ref.questionId);
   return question ? assessmentQuestionPackage(ref, question) : { status: "not-found" };
 }

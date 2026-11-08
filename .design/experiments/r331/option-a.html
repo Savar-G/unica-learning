@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>r331 A · Notes inside the child's card</title><link rel="stylesheet" href="shared.css"><script src="data.js"></script>
+<style>
+.calls h3 { margin-bottom: 4px; }
+.call { border-top: 1px solid var(--line-soft); padding: 18px 0 16px; }
+.call:first-of-type { border-top: 0; }
+.call-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 8px; }
+.call-head .when { font-weight: 500; }
+details summary { cursor: pointer; list-style: none; font-weight: 500; font-size: 15px; margin-top: 8px; text-decoration: underline; text-underline-offset: 3px; }
+details summary::after { content: " ↓"; }
+details[open] summary::after { content: " ↑"; }
+details[open] summary { margin-bottom: 16px; }
+details .txwrap { background: var(--soft); border-radius: 10px; padding: 18px; }
+.more { margin-top: 6px; }
+</style></head><body>
+<header class="nav"><span class="brand">Unica Learning</span><a href="#">Back to home</a></header>
+<main>
+  <div class="kicker">Your account</div>
+  <h1>Hi, Priya.</h1>
+  <div class="child">
+    <div class="child-top"><div><h2>Leah</h2><div class="muted small">Grade 3 · British Columbia</div></div><a class="btn" href="#">See the report →</a></div>
+    <hr class="rule">
+    <h3>Workbook 2</h3>
+    <p class="muted small" style="margin:4px 0 16px">On the desk, Leah sees this workbook. Leaving the desk needs your PIN.</p>
+    <a class="btn dark" href="#">Open the desk →</a>
+    <hr class="rule">
+    <section class="calls">
+      <h3>Calls with Maya</h3>
+      <p class="muted small" style="margin:0 0 6px">A short note after each call, newest first. Open a call to read what Leah and Maya said.</p>
+      <div id="list"></div>
+      <a class="btn more" href="#">Show older calls</a>
+    </section>
+  </div>
+</main>
+<script>
+const openFirst = location.hash === "#call";
+document.getElementById("list").innerHTML = CALLS.filter((c) => c.child === "Leah").map((c, i) => `
+  <article class="call">
+    <div class="call-head"><span class="when">${c.when}</span><span class="chip ${c.finished}">${c.chip}</span></div>
+    <div class="small muted" style="margin-bottom:6px">Page ${c.page}, question ${c.number} · <span class="q">${c.question}</span> · ${c.minutes} min</div>
+    ${noteHtml(c)}
+    <details ${openFirst && i === 0 ? "open" : ""}><summary>${openFirst && i === 0 ? "Hide the call" : "Read the call"}</summary><div class="txwrap">${i === 0 ? txHtml() : ""}<p class="footnote">Maya is an AI teaching assistant. We keep the words of the call, never a recording.</p></div></details>
+  </article>`).join("");
+if (openFirst) setTimeout(() => document.querySelector("details[open]").scrollIntoView(), 50);
+</script></body></html>

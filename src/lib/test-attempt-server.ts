@@ -55,7 +55,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
     },
 
     async load(parent, id) {
-      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, route, break_started_at, break_ended_at, help`)
+      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, route, stage3_route, break_started_at, break_ended_at, help`)
         .eq("id", id).eq("parent_id", parent)
         .maybeSingle();
       if (error) throw new StoreError("load failed", error.message);
@@ -72,6 +72,8 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
         help: row.help,
         // #253: the stored route is the stage 1 lock record.
         route: row.route,
+        // D-282: the stored third stage is the stage 2 lock record.
+        stage3Route: row.stage3_route,
       };
     },
 
@@ -236,8 +238,32 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
       throw new StoreError("route save failed", `unexpected answer ${JSON.stringify(answer)}`);
     },
 
+    // D-282: one database function (migration add_third_stage) takes the test's row lock, as lock_stage1 does, checks that
+    // no record is stored and that the stored answers are the ones the third stage was set from, and stores it.
+    async lockStage2(id, { stage3Route, answers, resumeUntil }) {
+      const { data, error } = await admin.rpc("lock_stage2", {
+        p_assessment: id,
+        p_stage3_route: stage3Route,
+        p_answers: answers.map((a) => [a.questionId, a.response]),
+        p_resume_until: iso(resumeUntil),
+      });
+      if (error) throw new StoreError("stage 2 lock failed", error.message);
+      const answer = data as string | null;
+      if (answer === "up" || answer === "down" || answer === "none" || answer === "changed" || answer === "closed") return answer;
+      throw new StoreError("stage 2 lock failed", `unexpected answer ${JSON.stringify(answer)}`);
+    },
+
     // #249: one database function (migration add_guarded_finish) takes the test's row lock, as change_answer does,
     // checks that the stored answers are the scored ones, and completes the test; "changed" when an answer changed.
+    async lockBlock(id, { expected, adaptive, answers, resumeUntil }) {
+      const { data, error } = await admin.rpc("lock_assessment_block", {
+        p_assessment: id, p_expected: expected, p_adaptive: toJson(adaptive),
+        p_answers: answers.map(a => [a.questionId, a.response, a.timeMs]), p_resume_until: iso(resumeUntil),
+      });
+      if (error) throw new StoreError("block lock failed", error.message);
+      if (data !== "stored" && data !== "changed" && data !== "closed") throw new StoreError("block lock failed", "invalid result");
+      return data;
+    },
     async complete(id, { at, placement, help, answers }) {
       const { data, error } = await admin.rpc("complete_test", {
         p_assessment: id,
@@ -260,6 +286,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
           grade: child.grade,
           province: child.province,
           test,
+          ...(test.adaptive && { route: "stay" as const }),
           started_at: iso(attempt.startedAt),
           resume_until: iso(attempt.resumeUntil),
         })

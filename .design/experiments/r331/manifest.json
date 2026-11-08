@@ -1,0 +1,42 @@
+{
+  "round": "331",
+  "ticket": "#331 (spec #297, M17): parent call notes and transcripts on Parent home",
+  "route": "design skill, explore stage: 3 options; no final UI is built until Savar picks one",
+  "picked": null,
+  "picked_by": "waiting for Savar",
+  "decision_question": "Where do Maya's call notes live on Parent home, and how does a parent open a call's transcript?",
+  "sources": {
+    "binding": "DESIGN.md (warm look D-034, Parent home D-181/D-184, plain language rules), the current /account page (r301 after-account-laptop.png)",
+    "content": "The note sentences are exactly what src/lib/maya-call-note.ts writes for these facts (code-written facts; the italic line is the one warm AI sentence that passed the code check). The transcript is a sample in the shape of noteTranscript."
+  },
+  "note": "Static HTML mockups (option-a.html, option-b.html, option-c.html, shared.css, data.js; '#call' shows the transcript view), served locally and captured in the Aside browser. Sample data: Priya (parent), Leah (grade 3), Sam (grade 1, option B only). The first note sentence ('Leah called Maya about page 23, question 4.') is shown as the row's heading facts, not repeated.",
+  "options": {
+    "A": {
+      "name": "Notes inside each child's card, transcript opens in place",
+      "tradeoff": "Everything stays on one page with no new screen, but the card gets very long once a transcript is open or a child has many calls.",
+      "screens": ["option-a-list-laptop.png", "option-a-list-phone.png", "option-a-call-laptop.png", "option-a-call-phone.png"]
+    },
+    "B": {
+      "name": "One 'Notes from Maya' feed for all children, transcript in a side panel (full screen on phones)",
+      "tradeoff": "Best for scanning several children's calls at once, but it moves notes away from each child's card and the panel needs the most build work (focus, back button, phone sheet).",
+      "screens": ["option-b-list-laptop.png", "option-b-list-phone.png", "option-b-call-laptop.png", "option-b-call-phone.png"]
+    },
+    "C": {
+      "name": "Only the latest note in each child's card, every call on its own page",
+      "tradeoff": "Keeps Parent home short and gives each transcript a full page with a link to share or bookmark, but older notes are one tap away instead of on the home page.",
+      "screens": ["option-c-list-laptop.png", "option-c-list-phone.png", "option-c-call-laptop.png", "option-c-call-phone.png"]
+    }
+  },
+  "invariants": [
+    "A parent sees only their own children's notes (row-level security); admin test calls and test families never have a note",
+    "Every number and math claim in a note is written by code; the AI adds at most one warm sentence from an allowed word list",
+    "Short sentences in everyday words; Maya is named as an AI teaching assistant; no recording is kept",
+    "Notes newest first"
+  ],
+  "viewports": ["1440 x 900 (laptop)", "390 x 844 (phone)"],
+  "open_questions": [
+    "Should the weekly minutes used and left (spec #297) sit beside the notes? Not in these mockups.",
+    "Option C needs a third screen, the list of all calls for one child; not drawn yet.",
+    "Tablet width (768 and 1024) is checked after a pick, as #331 asks."
+  ]
+}

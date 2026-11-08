@@ -12,7 +12,7 @@ import {
   type StoredTest,
   type Submission,
 } from "@/lib/assessment";
-import { checked } from "@/lib/assessment/scripted-child";
+import { checked, beforeThirdStage } from "@/lib/assessment/scripted-child";
 import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, startStates, StoreError, type ChangeInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
@@ -51,7 +51,7 @@ function answersOf(test: StoredTest, count: number, script: Script): Submission[
 
 /** Asha's open test, started at T0, with the first `answered` answers in, the last one at T0 + 1 hour. `route`: the stored route. */
 function openTest(answered: number, { seed = 7, script = allRight, route }: { seed?: number; script?: Script; route?: Route } = {}): MemoryTest {
-  const test = storedTest(createSession(ASHA, seed));
+  const test = beforeThirdStage(storedTest(createSession(ASHA, seed)));
   const at = answered ? { lastAnswerAt: T0 + HOUR, resumeUntil: T0 + HOUR + DAY } : {};
   return { ...startAttempt("a1", T0), ...at, parentId: P1, childId: C1, seed, test, answers: answersOf(test, answered, script), ...(route && { route }) };
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { loadFamilyProvince } from "@/lib/family-time-server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import type { AttemptStatus, Grade, HelpAnswer, Placement, Province, ReportModel, StoredTest } from "@/lib/assessment";
@@ -65,7 +66,7 @@ interface AnswerRow {
   away_ms: number | null;
 }
 
-const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: ChildRow | null): ReportRecord => ({
+const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: ChildRow | null, postal: string | null, timeZone: string | null, familyProvince: string | null): ReportRecord => ({
   id: row.id,
   assessmentId: row.assessment_id,
   childId: row.child_id,
@@ -75,6 +76,9 @@ const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: C
   // A report is only for a finished test, which always has its finish time (assessments_check).
   assessment: assessment?.completed_at ? { completedAt: assessment.completed_at, province: assessment.province } : null,
   child: child ? { firstName: child.first_name } : null,
+  postal,
+  timeZone,
+  familyProvince,
 });
 
 const assessmentRecord = (row: AssessmentRow): AssessmentRecord => ({
@@ -116,9 +120,9 @@ function must<T>({ data, error }: Result<T>, what: string): T {
 async function embeddedReport(db: SupabaseClient<Database>, id: string, what: string): Promise<ReportRecord | null> {
   if (!isUuid(id)) return null;
   const row = must(await db.from("reports")
-    .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name)`)
+    .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name), parent:parents(id, postal, time_zone)`)
     .eq("id", id).maybeSingle(), what);
-  return row ? record(row, row.assessment, row.child) : null;
+  return row ? record(row, row.assessment, row.child, row.parent?.postal ?? null, row.parent?.time_zone ?? null, row.parent?.id ? await loadFamilyProvince(db, row.parent.id) : null) : null;
 }
 
 /** The stored learner profile JSON of a test, as this client may see it, filtered on its parent when given; null when none. */
@@ -142,7 +146,17 @@ async function answerRows(db: SupabaseClient<Database>, assessmentId: string, wh
  */
 export function parentReportReader(db: SupabaseClient<Database>, profiles?: { admin: SupabaseClient<Database> | null; parentId: string }): ReportReader {
   return {
-    report: (id) => embeddedReport(db, id, "parent report load"),
+    async report(id) {
+      if (!isUuid(id)) return null;
+      // reports.parent_id has no parent SELECT grant. Even an embedded parents join needs that grant.
+      const row = must(await db.from("reports")
+        .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name)`)
+        .eq("id", id).maybeSingle(), "parent report load");
+      if (!row) return null;
+      // RLS restricts this separate session read to the signed-in parent's own row.
+      const parent = must(await db.from("parents").select("postal, time_zone").maybeSingle(), "parent report postal load");
+      return record(row, row.assessment, row.child, parent?.postal ?? null, parent?.time_zone ?? null, await loadFamilyProvince(db));
+    },
     // A parent may not read the stored test (its right answers) or the answers: there is no grant, so nothing is read.
     assessment: async () => null,
     answers: async () => [],
@@ -159,12 +173,13 @@ export function adminReportReader({ db }: AdminSession): ReportReader {
       const row = must(await db.rpc("admin_reports").select(REPORT_COLUMNS).eq("id", id).maybeSingle(), "admin report load");
       if (!row) return null;
       const [assessment, child] = await Promise.all([
-        db.rpc("admin_assessments").select("completed_at, province").eq("id", row.assessment_id).maybeSingle()
+        db.rpc("admin_assessments").select("completed_at, province, parent_id").eq("id", row.assessment_id).maybeSingle()
           .then((r) => must(r, "admin report test load")),
         db.rpc("admin_children").select("first_name").eq("id", row.child_id).maybeSingle()
           .then((r) => must(r, "admin report child load")),
       ]);
-      return record(row, assessment, child);
+      const parent = assessment ? must(await db.rpc("admin_parents").select("postal, time_zone").eq("id", assessment.parent_id).maybeSingle(), "admin report parent load") : null;
+      return record(row, assessment, child, parent?.postal ?? null, parent?.time_zone ?? null, assessment ? await loadFamilyProvince(db, assessment.parent_id, true) : null);
     },
     async assessment(id) {
       if (!isUuid(id)) return null;

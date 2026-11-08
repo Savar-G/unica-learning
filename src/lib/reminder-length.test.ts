@@ -35,6 +35,8 @@ function fakeAdmin(tables: Tables): SupabaseClient {
       gte(column: string, value: string) { rows = rows.filter((r) => String(r[column]) >= value); return query; },
       lte(column: string, value: string) { rows = rows.filter((r) => String(r[column]) <= value); return query; },
       order() { return query; },
+      limit(n: number) { rows = rows.slice(0, n); return query; },
+      gt(column: string, value: string) { rows = rows.filter((r) => String(r[column]) > value); return query; },
       range(a: number, b: number) { rows = rows.slice(a, b + 1); return query; },
       returns() { return query; },
       maybeSingle() {
@@ -83,7 +85,7 @@ describe("a stopped test, as the reminder job reads it", () => {
     const { state, due } = await remindersFor(mayaTables("up", 36));
     expect(due).toMatchObject([{ kind: "continue", childId: "c1", assessmentId: "a1" }]);
     const email = reminderMessage(due[0], "tok", state, ORIGIN);
-    expect(email?.text).toContain("after 36 of 42 questions");
+    expect(email?.text).toContain("answered 36 of 42 questions");
   });
 
   it("on the up route with every one of its 42 answers in waits to be scored: no continue reminder", async () => {
@@ -94,6 +96,15 @@ describe("a stopped test, as the reminder job reads it", () => {
   it("falls back to the band length (36 for grade 4) while the route is not chosen", async () => {
     const { state, due } = await remindersFor(mayaTables(null, 10));
     expect(due).toMatchObject([{ kind: "continue" }]);
-    expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("after 10 of 36 questions");
+    expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("answered 10 of 36 questions");
   });
+});
+
+it("R425M-3: a younger child's reminder uses the older inactive sibling's province", async () => {
+  const tables = mayaTables("up", 10);
+  tables.parents[0].postal = null;
+  tables.children[0].province = "BC";
+  tables.children.push({ id: "z-old", parent_id: "p1", first_name: "Older", grade: 5, province: "ON", created_at: "2020-01-01T00:00:00Z" });
+  const { state, due } = await remindersFor(tables);
+  expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("2:00 p.m. on Saturday, October 17");
 });

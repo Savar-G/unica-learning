@@ -14,19 +14,19 @@ describe("the continue your test reminder", () => {
   const e = email({ kind: "continue" });
 
   it("names the child in the subject and greets the parent by first name", () => {
-    expect(e.subject).toBe("Maya can finish the math test");
+    expect(e.subject).toBe("Maya's math test is saved");
     expect(e.text).toMatch(/^Hi Priya,/);
   });
   it("says where the child stopped and until when the test can continue, in the family's time zone", () => {
-    expect(e.text).toContain("Maya stopped the free math placement test after 12 of 36 questions.");
-    expect(e.text).toContain("Maya can continue from the same question until 4:15 p.m. PDT on Monday, October 12.");
+    expect(e.text).toContain("Maya answered 12 of 36 questions on the free math placement test, and those answers are saved.");
+    expect(e.text).toContain("Maya can pick up from the same question until 4:15 p.m. on Monday, October 12.");
     const toronto = email({ kind: "continue", postal: "M5V 2T6" });
-    expect(toronto.text).toContain("until 7:15 p.m. EDT on Monday, October 12.");
+    expect(toronto.text).toContain("until 7:15 p.m. on Monday, October 12.");
     // The short phone signup gives no postal code (D-134): Pacific time.
-    expect(email({ kind: "continue", postal: null }).text).toContain("until 4:15 p.m. PDT on Monday, October 12.");
+    expect(email({ kind: "continue", postal: null }).text).toContain("until 4:15 p.m. on Monday, October 12.");
   });
   it("words a test with no answer yet", () => {
-    expect(email({ kind: "continue", answered: 0 }).text).toContain("Maya opened the free math placement test but did not answer a question yet.");
+    expect(email({ kind: "continue", answered: 0 }).text).toContain("Maya opened the free math placement test but hasn't answered a question yet.");
   });
   it("links to the child's test", () => {
     expect(e.text).toContain(URL);
@@ -38,10 +38,11 @@ describe("the continue your test reminder", () => {
 describe("the come back reminder", () => {
   const e = email({ kind: "come_back", url: URL.replace("continue", "come_back") });
 
-  it("says the 24 hours ran out and the child can start again with new questions", () => {
-    expect(e.subject).toBe("Maya can start the math test again");
-    expect(e.text).toContain("Maya did not finish the free math placement test within 24 hours, so it closed.");
-    expect(e.text).toContain("Maya can start again with 36 new questions.");
+  it("says the 24 hours ran out and the child can start fresh with new questions", () => {
+    expect(e.subject).toBe("Maya can start the math test fresh");
+    expect(e.text).toContain("Maya's free math placement test closed after 24 hours, before Maya finished.");
+    expect(e.text).toContain("Maya can start fresh with a new set of questions.");
+    expect(e.text).toContain("about 20 minutes");
     expect(e.html).toContain("Start again");
   });
 });
@@ -49,10 +50,12 @@ describe("the come back reminder", () => {
 describe("the start your test reminder", () => {
   const e = email({ kind: "start", url: URL.replace("continue", "start") });
 
-  it("says the child has not started, and what the test is", () => {
-    expect(e.subject).toBe("Maya has not started the free math test");
-    expect(e.text).toContain("Maya has not started the free math placement test yet.");
-    expect(e.text).toContain("36 questions");
+  it("says the test is ready, how long it takes, why the child answers alone, and what the report shows", () => {
+    expect(e.subject).toBe("Maya's free math check is ready");
+    expect(e.text).toContain("Maya's free math placement test is ready to go. Just find 20 quiet minutes when Maya can sit down at a laptop or tablet.");
+    expect(e.text).toContain("so the report shows where Maya really is");
+    expect(e.text).toContain("which skills to work on next");
+    expect(e.text).toContain("You may be asked to sign in first.");
     expect(e.html).toContain("Start Maya&#39;s test");
   });
 });
@@ -60,12 +63,13 @@ describe("the start your test reminder", () => {
 describe("the last start reminder", () => {
   const e = email({ kind: "start_followup", url: URL.replace("continue", "start_followup") });
 
-  it("says it is the last reminder, that the test is free with no card, and what the child needs", () => {
-    expect(e.subject).toBe("Last reminder: Maya's free math test");
-    expect(e.text).toContain("Maya has not started the free math placement test yet. This is our last reminder about it.");
-    expect(e.text).toContain("The test is free, and you do not give a card for it.");
-    expect(e.text).toContain("laptop or tablet");
-    expect(e.text).toContain("36 questions");
+  it("is a note from the founders that asks what is in the way, and does not say it is automatic", () => {
+    expect(e.subject).toBe("A quick question about Maya's math test");
+    expect(e.text).toContain("We're Savar and Cedric, the founders of Unica Learning.");
+    expect(e.text).toContain("Is anything getting in the way, like timing, signing in, or questions about how it works?");
+    expect(e.text).toContain("It's free, with no card needed.");
+    expect(e.text).not.toMatch(/automatic|last reminder/i);
+    expect(e.text).not.toContain("I read every email");
     expect(e.html).toContain("Start Maya&#39;s test");
   });
 });
@@ -89,14 +93,15 @@ describe("every reminder", () => {
       expect(e.text).toContain("You get this reminder because you signed up for Maya's free math placement test.");
     }
   });
-  it("uses the chosen logo and team signature for all four reminders", () => {
+  it("uses the chosen logo and a signature above the address in all four reminders (team or founders, D-225)", () => {
     for (const e of all) {
       expect(e.html).toContain("background:#ff6a3d");
+      const signed = e.founders ? "Co-founders, Unica Learning" : "The Unica Learning team";
       for (const body of [e.text, e.html]) {
-        expect(body).toContain("The Unica Learning team");
+        expect(body).toContain(signed);
         expect(body).toContain("Questions? Reply to this email.");
       }
-      expect(e.html.indexOf("The Unica Learning team")).toBeLessThan(e.html.indexOf("16557 87A Ave"));
+      expect(e.html.indexOf(signed)).toBeLessThan(e.html.indexOf("16557 87A Ave"));
     }
   });
   it("escapes names and links in the HTML", () => {
@@ -104,5 +109,20 @@ describe("every reminder", () => {
     expect(html).not.toMatch(/<b>A<\/b>|<i>/);
     expect(html).toContain("Jo &amp; &lt;i&gt;");
     expect(html).toContain('href="https://x.test/?a=1&amp;b=2"');
+  });
+});
+
+describe("who signs a reminder (D-225)", () => {
+  it("the founders sign the last start reminder; the team signs the others", () => {
+    const last = email({ kind: "start_followup" });
+    expect(last.founders).toBe(true);
+    expect(last.text).toContain("Thank you,\nSavar & Cedric\nCo-founders, Unica Learning");
+    expect(last.html).toContain("Savar &amp; Cedric");
+    for (const kind of ["continue", "come_back", "start"] as const) {
+      const e = email({ kind });
+      expect(e.founders).toBe(false);
+      expect(e.text).toContain("The Unica Learning team");
+      expect(e.text).not.toContain("Co-founders");
+    }
   });
 });

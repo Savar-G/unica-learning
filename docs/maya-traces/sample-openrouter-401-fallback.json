@@ -1,0 +1,251 @@
+{
+  "kind": "maya-trace",
+  "version": 1,
+  "callId": "text-2026-10-31T10-31-50-562Z",
+  "runner": "livekit-text",
+  "startedAt": "2026-10-31T10:31:50.562Z",
+  "endedAt": "2026-10-31T10:32:02.562Z",
+  "model": {
+    "id": "anthropic/claude-sonnet-5.5",
+    "promptVersion": "maya-text-1"
+  },
+  "versions": {
+    "proposal": 2,
+    "lines": 1,
+    "session": 4
+  },
+  "question": {
+    "id": "add-27-39",
+    "ref": {
+      "source": "workbook",
+      "workbookId": "sample",
+      "page": 1,
+      "question": 1
+    },
+    "text": "27 + 39 = ?",
+    "hash": "sha256:41220a52685bca2cc5b4b83a5dc0745c7dc8219095706f507634d31084ac1b4e"
+  },
+  "freeTalk": false,
+  "turns": [
+    {
+      "kind": "start",
+      "at": 1793442710562
+    },
+    {
+      "kind": "maya",
+      "at": 1793442710562,
+      "state": "OPEN",
+      "stateAfter": "OPEN",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": null,
+          "refusal": null,
+          "error": {
+            "code": "http_401",
+            "message": "The model service refused the key.",
+            "status": 401
+          },
+          "ms": 0
+        },
+        {
+          "source": "fallback",
+          "proposal": {
+            "version": 2,
+            "act": "open",
+            "parts": [
+              {
+                "line": "open.hello",
+                "slots": {}
+              }
+            ]
+          },
+          "refusal": null
+        }
+      ],
+      "output": {
+        "act": "open",
+        "say": [
+          "Hey! I'm Maya, an AI helper for your workbook."
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442714562,
+      "text": "I got 66. I added the ones first."
+    },
+    {
+      "kind": "maya",
+      "at": 1793442714562,
+      "state": "ASSESS",
+      "stateAfter": "GUIDE_TARGET",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": null,
+          "refusal": null,
+          "error": {
+            "code": "http_401",
+            "message": "The model service refused the key.",
+            "status": 401
+          },
+          "ms": 0
+        },
+        {
+          "source": "fallback",
+          "proposal": {
+            "version": 2,
+            "act": "guide",
+            "parts": [
+              {
+                "line": "step.invite",
+                "slots": {
+                  "step": "ones"
+                }
+              }
+            ],
+            "step": "ones",
+            "level": 0
+          },
+          "refusal": null
+        }
+      ],
+      "output": {
+        "act": "guide",
+        "say": [
+          "Let's look at the ones. What can you do there?"
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442718562,
+      "text": "Seven plus nine is sixteen, so I wrote 6 and carried a ten."
+    },
+    {
+      "kind": "maya",
+      "at": 1793442718562,
+      "state": "GUIDE_TARGET",
+      "stateAfter": "GUIDE_TARGET",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": null,
+          "refusal": null,
+          "error": {
+            "code": "http_401",
+            "message": "The model service refused the key.",
+            "status": 401
+          },
+          "ms": 0
+        },
+        {
+          "source": "fallback",
+          "proposal": {
+            "version": 2,
+            "act": "guide",
+            "parts": [
+              {
+                "line": "step.invite",
+                "slots": {
+                  "step": "ones"
+                }
+              }
+            ],
+            "step": "ones",
+            "level": 0
+          },
+          "refusal": null
+        }
+      ],
+      "output": {
+        "act": "guide",
+        "say": [
+          "Let's go to the ones. What do you think?"
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442722562,
+      "text": "I wrote it on my paper."
+    },
+    {
+      "kind": "maya",
+      "at": 1793442722562,
+      "state": "GUIDE_TARGET",
+      "stateAfter": "GUIDE_TARGET",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": null,
+          "refusal": null,
+          "error": {
+            "code": "http_401",
+            "message": "The model service refused the key.",
+            "status": 401
+          },
+          "ms": 0
+        },
+        {
+          "source": "fallback",
+          "proposal": {
+            "version": 2,
+            "act": "guide",
+            "parts": [
+              {
+                "line": "step.invite",
+                "slots": {
+                  "step": "ones"
+                }
+              }
+            ],
+            "step": "ones",
+            "level": 0
+          },
+          "refusal": null
+        }
+      ],
+      "output": {
+        "act": "guide",
+        "say": [
+          "How about the ones? What can you do there?"
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "technical",
+      "at": 1793442722562,
+      "detail": "the input ended before the call ended"
+    }
+  ],
+  "board": [],
+  "outcome": {
+    "reason": "technical_issue",
+    "assistance": "independent",
+    "paperStatus": "unknown",
+    "understanding": "uncertain",
+    "highestHint": 0,
+    "safetyFlag": false,
+    "safetySeverity": null,
+    "mishearing": {
+      "confirmations": 0,
+      "corrections": 0
+    },
+    "seconds": 12
+  },
+  "counts": {
+    "mayaTurns": 4,
+    "refusals": 0,
+    "repairs": 0,
+    "repairedOk": 0,
+    "fallbacks": 4,
+    "modelErrors": 4,
+    "silent": 0
+  }
+}

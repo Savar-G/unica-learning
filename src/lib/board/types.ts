@@ -19,6 +19,9 @@ export type Target =
   | { objectId: string; part: "row"; rowId: string }
   | { objectId: string; part: "cell"; rowId: string; column: PlaceName }
   | { objectId: string; part: "word"; index: number }
+  | { objectId: string; part: FractionPart }
+  /** A value on a number line, by its exact value: "1/3", "-2", "0.5". The core keeps it in lowest terms ("2/6" is "1/3"). */
+  | { objectId: string; part: "value"; value: string }
   /** A named part of a math model ("ten-3", "row-2", "side-AB"): the core returns the names, the model never makes them up. */
   | { objectId: string; part: "piece"; piece: string };
 
@@ -84,19 +87,67 @@ export interface ModelCommand {
 }
 
 /** Commands that create a new math object with its own layout. Later representations join this union. */
-export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand | ModelCommand;
+export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand | ModelCommand | FractionCommand | NumberLineCommand;
 
 export type Command =
   | CreateCommand
   /** Reveals a value. Division may leave the value out: the core writes the one it works out. Given, it is checked. */
   | { op: "put"; target: Target; value?: string; ink?: Ink }
   | RegroupCommand
+  | JumpCommand
   | { op: "mark"; id: string; target: Target; style: MarkStyle; ink?: Ink }
   | { op: "arrow"; id: string; from: Target; to: Target; ink?: Ink }
   | { op: "remove"; objectId: string }
   | { op: "undo"; transactionId: string }
   | { op: "clear"; page?: number; scope: ClearScope }
   | { op: "focus"; target: Target };
+
+// ---------- fractions and number lines (#317) ----------
+// Numbers are exact text, never coordinates: "3", "-0.5", "2/6", "1 1/2". The core reads them as exact fractions.
+
+/** The parts of a fraction or mixed number; "whole_number" is the 2 of 2 1/3 ("whole" is the whole object). */
+export const FRACTION_PARTS = ["numerator", "denominator", "bar", "whole_number"] as const;
+export type FractionPart = (typeof FRACTION_PARTS)[number];
+/** How a number line writes values that are not whole: 3/2, 1 1/2 or 1.5. */
+export const NUMBER_FORMS = ["fraction", "mixed", "decimal"] as const;
+export type NumberForm = (typeof NUMBER_FORMS)[number];
+/** Which ticks a number line labels when it is drawn; `put` labels the others later. */
+export const LINE_LABELS = ["all", "wholes", "ends", "none"] as const;
+export type LineLabels = (typeof LINE_LABELS)[number];
+
+/** A fraction (3/4) or a mixed number (2 1/3): whole numbers as digits. */
+export interface FractionCommand {
+  op: "fraction";
+  id: string;
+  numerator: string;
+  denominator: string;
+  whole?: string;
+  place: Place;
+  ink?: Ink;
+}
+
+/** A line from `min` to `max` with a tick every `tick`. */
+export interface NumberLineCommand {
+  op: "number_line";
+  id: string;
+  min: string;
+  max: string;
+  tick: string;
+  labels?: LineLabels;
+  form?: NumberForm;
+  place: Place;
+}
+
+/** An arc over a number line from one value to another, in a free lane. A label must be the jump's size ("+1/3"). */
+export interface JumpCommand {
+  op: "jump";
+  id: string;
+  lineId: string;
+  fromValue: string;
+  toValue: string;
+  label?: string;
+  ink?: Ink;
+}
 
 /** One group of commands, applied all or none. Undo names a transaction. */
 export interface Batch {

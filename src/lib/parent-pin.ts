@@ -90,13 +90,13 @@ const derive = (pin: string, salt: Buffer, length: number, params: { N: number; 
   new Promise<Buffer>((resolve, reject) => scrypt(pin, salt, length, params, (error, key) => (error ? reject(error) : resolve(key))));
 
 /** `scrypt$N$r$p$salt$hash`, with the salt and the hash in base64. A new random salt for every hash. */
-async function hashPin(pin: string): Promise<string> {
+export async function hashPin(pin: string): Promise<string> {
   const salt = randomBytes(16);
   const key = await derive(pin, salt, KEY_LENGTH, SCRYPT);
   return ["scrypt", SCRYPT.N, SCRYPT.r, SCRYPT.p, salt.toString("base64"), key.toString("base64")].join("$");
 }
 
-async function matches(pin: string, stored: string): Promise<boolean> {
+export async function matches(pin: string, stored: string): Promise<boolean> {
   const [scheme, n, r, p, salt, key] = stored.split("$");
   if (scheme !== "scrypt" || !salt || !key) return false;
   const expected = Buffer.from(key, "base64");

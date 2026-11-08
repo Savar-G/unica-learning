@@ -1,0 +1,20 @@
+{
+  "name": "unica-maya-voice-worker",
+  "private": true,
+  "description": "Maya's voice worker image (docs/maya-voice-deploy.md). The packages the bundle dist/main.mjs leaves outside, at the root package-lock.json's versions (packaging.test.ts checks both).",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node --conditions=react-server dist/main.mjs start"
+  },
+  "dependencies": {
+    "@livekit/agents": "1.9.5",
+    "@livekit/agents-plugin-assemblyai": "1.9.5",
+    "@livekit/agents-plugin-inworld": "1.9.5",
+    "@livekit/rtc-node": "1.2.1",
+    "@supabase/supabase-js": "2.117.2",
+    "server-only": "0.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

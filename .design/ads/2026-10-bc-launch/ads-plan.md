@@ -5,6 +5,42 @@ Budget: CAD 100 total. Meta CAD 60 (two ad sets, CAD 30 lifetime each). Google S
 Run: 14 days, starting after PR 1 (ad tracking) merges. Location: British Columbia.
 Offer: 30% off the first month (CAD 69.30), then CAD 99 a month. Replaced on 2026-10-24, see Round 2.
 
+## Round 3 (published 2026-11-05, runs 2026-11-06 to 2026-11-13)
+
+Campaign "Unica BC - Round 3 (Nov 2026)". Savar chose B2, B3 and C1, with CA$33.33 lifetime on each ad set (CA$99.99 total, not shared). Round: `.design/experiments/r510/`; final images: `.design/experiments/r510/final/`.
+
+Correction (2026-11-07): the planned B3 did not run. On 2026-11-05 at 3:56 PM, Cedric Tanafranca deleted it and made "B3 - struggling (lead form)" (ad set 120252412992130623). That ad set had a CA$33.33 daily budget, an Instant form, and Advantage+ audience and placements. It started on Nov 6 at 3:37 PM. It was turned off with Savar's approval on 2026-11-07 at about 9:00 AM. It spent CA$36.01 for 1,080 impressions and 0 leads. B2 and C1 stay on, so the test now compares only those two ads. The settings below describe the plan and stay correct for B2 and C1.
+
+Round 2 result: Meta 0 of 101 visits opened `/start`, and Reels took CA$33.97 of CA$36.81. Google 3 of 20 visits opened `/start`, at about CA$8.79 per open.
+
+Test question: which message gets a parent to open the free assessment? Decision rule: an ad wins only with at least 3 opens and at least twice the opens of the next ad. Otherwise it is a tie, and the next step is a test of the home page. CA$100 is a screen, not proof: about 245 visits per ad are necessary to separate 3% from 9%.
+
+Settings on all three ad sets (Leads objective, website, ad set budgets):
+- Schedule: Nov 6, 6:00 AM to Nov 13, 9:01 PM, Vancouver time (Savar moved the start from 9:01 PM on 2026-11-05).
+- Goal: "Opened free assessment (/start)" (custom conversion 1133997208992685, URL contains `unicalearning.com/start`, category Lead). Bid: highest volume.
+- Audience: British Columbia, age 28 to 54 (firm), all genders, English. Detailed targeting: parents of children 3-5, 6-8, 9-12 and 13-17 (Meta treats it as a suggestion). Advantage+ audience and placements off.
+- Placements: Facebook and Instagram Feed, Stories and Reels, and WhatsApp Status. Savar kept the vertical placements, because people use them most. In-stream, search and apps are off.
+- Off: AI images, all creative enhancements, Multi-advertiser, Instant form add-on, location expansion, limited spend on excluded placements.
+- Advertiser and Payer fields: empty, by Savar's decision (2026-11-05).
+- Account spending limit: raised from CA$75 to CA$165 on 2026-11-05, because CA$15.16 remained.
+
+Common to all ads: button "Learn more", description "Free online assessment. First month free.", base URL https://unicalearning.com/, tags `utm_source=meta&utm_medium={{placement}}&utm_campaign=bc-round-3&utm_content=<tag>`. The `{{placement}}` tag separates results by placement; confirm it on the first live visits. Savar kept the word "workbook" on the B2 and C1 images (2026-11-05).
+
+Meta B2, "B2 - right level (static)", tag `right-level`
+- Primary text: In the same grade, one child is still catching up on borrowing while another is ready for multiplication. Most practice is made for the middle of the class. / Unica is a personalized math learning program. It starts with a free online math assessment, then builds practice at your child's level, whether that means closing a gap or getting a challenge, and mails it home. / Ages 5-14, BC curriculum. First month free, then CAD 79.99 a month. Cancel anytime.
+- Headline: Math practice at your child's level
+
+Meta B3, "B3 - struggling (static)", tag `struggling` (deleted before it ran; see the correction above. The lead form ad used different text and no site link.)
+- Primary text: When your child is struggling in math, it's hard to tell where the gap actually is. Is it this year's work, or a skill from a grade or two back? / Unica's free online assessment helps you find out. Your child takes a short test on a laptop or tablet, and you get a report with the level they're working at and the skills to work on next. / If you like it, your child's personalized math learning program is built from that report and mailed home. Ages 5-14, BC curriculum. First month free, then CAD 79.99 a month. Cancel anytime.
+- Headline: Find out where your child is stuck in math
+
+Meta C1, "C1 - all of this (static)", tag `all-of-this`
+- Image changed by Savar on 2026-11-05, before the start: `final/unica-r3-c1-personalized.png`, headline on the image "Personalized math program for your child." It replaces "One free test for your child. Then all of this." It has no QR code: a version with the Nov booth QR code ran in review for a few minutes, and Savar replaced it, because a scan would not count as a Meta visit.
+- Primary text: Here's everything your child gets with Unica's personalized math learning program: a free online math assessment, practice made from it and mailed home, Maya, the AI Teaching Assistant, for when they're stuck, an app that marks each page from a photo, a parent dashboard, and new practice built from all of it. / Ages 5-14, BC curriculum. First month free, then CAD 79.99 a month. Cancel anytime.
+- Headline: Math practice made for your child
+
+Read the result with the query in `docs/ad-tracking.md`, "Reading the result", with `utm_campaign = 'bc-round-3'`. Known gaps: Google sign-in inside the Instagram and Facebook apps is not tested, and the Meta pixel sees only visitors who accept cookies.
+
 ## Round 2 (2026-10-24): first month free
 
 The offer changed to the first month free, then CAD 79.99 a month (D-144). Savar paused both platforms. The old ads were paused, because their text named the old offer. The new ads went into the same ad sets and ad groups, with the same audiences and budgets. Round 1 results stay on the paused ads; compare rounds by utm_content, not by date alone.

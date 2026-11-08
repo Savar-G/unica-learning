@@ -1,0 +1,96 @@
+const qa = await openTab('http://localhost:3559/qa-plan-controls-local');
+const cases = [];
+const check = (ok, message) => { if (!ok) throw Error(message); };
+async function capture(name, screenshot = false) {
+  const snap = await snapshot(qa); console.log(snap.diff || snap.tree);
+  const geometry = await qa.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth,
+    text: document.body.innerText, shells: document.querySelectorAll('.pd-shell').length,
+    alerts: [...document.querySelectorAll('[role="alert"]')].map(x => x.textContent),
+    buttons: [...document.querySelectorAll('main button')].map(x => ({text:x.textContent,disabled:x.disabled,height:x.getBoundingClientRect().height})),
+    requests: window.__qa.requests }));
+  check(geometry.scroll <= geometry.width, name + ' horizontal overflow');
+  check(geometry.shells === 1, name + ' duplicate frame');
+  check(geometry.buttons.every(x => x.height >= 44), name + ' small button');
+  cases.push({ name, ...geometry });
+  if (screenshot && (name.endsWith('-390') || ['closed-1440','pause-early-1440','recovery-820'].includes(name))) {
+    const bytes = await qa.screenshot({fullPage:false});
+    console.log('PNG_EXPORT ' + name + ' ' + bytes.toString('base64'));
+  }
+  return geometry;
+}
+async function reset(query = '') {
+  await qa.goto('http://localhost:3559/qa-plan-controls-local' + query);
+  console.log(await snapshot(qa));
+  if (await qa.getByRole('button',{name:'Reject optional cookies',exact:true}).count()) {
+    await qa.getByRole('button',{name:'Reject optional cookies',exact:true}).click(); console.log((await snapshot(qa)).diff);
+  }
+}
+for (const width of [1440, 390, 820]) {
+  await qa.setViewportSize({width,height:1000}); await reset();
+  await capture('closed-' + width, true);
+  await qa.getByRole('button',{name:'Pause plan for Alexandria-Catherine Longfamilyname',exact:true}).click();
+  console.log((await snapshot(qa)).diff);
+  await qa.getByRole('combobox',{name:'Weeks to pause'}).selectOption('8');
+  console.log((await snapshot(qa)).diff);
+  await qa.getByRole('button',{name:'Review new dates',exact:true}).click();
+  let result = await capture('pause-early-' + width,true);
+  check(result.text.includes('0 weeks remain in 2026'), 'allowance preview');
+  check(result.text.includes('January 15, 2027 to February 5, 2027'), 'mailing range');
+  await qa.getByRole('button',{name:'Confirm pause',exact:true}).click();
+  result = await capture('pause-success-' + width);
+  check(result.text.includes('The pause is saved.'), 'success missing');
+  await reset(); await qa.evaluate(() => { window.__qa.scenario = 'late'; });
+  await qa.getByRole('button',{name:'Pause plan for Alexandria-Catherine Longfamilyname',exact:true}).click(); console.log((await snapshot(qa)).diff);
+  await qa.getByRole('button',{name:'Review new dates',exact:true}).click();
+  result=await capture('pause-late-' + width,true);
+  check(result.text.includes('The next workbook keeps its mailing range.'), 'late cutoff missing');
+  await qa.getByRole('button',{name:'Keep current plan',exact:true}).click(); console.log((await snapshot(qa)).diff);
+  await qa.getByRole('button',{name:'Restart plan for Omar',exact:true}).click(); console.log((await snapshot(qa)).diff);
+  await qa.getByRole('button',{name:'Review price',exact:true}).click();
+  result=await capture('restart-price-' + width,true);
+  check(result.text.includes('We charge CAD 79.99 immediately') && result.text.includes('There is no second free month.'),'paid terms missing');
+  await qa.evaluate(() => { window.__qa.scenario = 'payment_refused'; });
+  await qa.getByRole('button',{name:'Confirm restart',exact:true}).click();
+  result=await capture('restart-declined-' + width,true);
+  check(result.alerts.some(x => x.includes('payment did not go through')), 'decline alert missing');
+  check(result.buttons.some(x => x.text === 'Review price') && result.buttons.filter(x => x.text === 'Update card').length === 3,'card correction or price reset missing');
+  await qa.getByRole('button',{name:'Cancel plan',exact:true}).click();
+  result=await capture('cancel-' + width,true);
+  check(result.text.includes('The plan ends on January 1, 2027.'),'cancel boundary wrong');
+}
+await reset();
+await qa.getByRole('button',{name:'Pause plan for Alexandria-Catherine Longfamilyname',exact:true}).click(); console.log((await snapshot(qa)).diff);
+await qa.evaluate(() => { window.__qa.scenario = 'delay'; });
+await qa.getByRole('button',{name:'Review new dates',exact:true}).click();
+let result=await capture('busy-820',true);
+check(result.buttons.some(x => x.text === 'Please wait...' && x.disabled),'busy button active');
+check(result.requests.length===1,'duplicate request');
+await qa.evaluate(() => { window.__qa.scenario = 'early'; window.__qa.complete(); });
+console.log((await snapshot(qa)).diff);
+await qa.evaluate(() => { window.__qa.scenario = 'stale'; });
+await qa.getByRole('button',{name:'Confirm pause',exact:true}).click();
+result=await capture('stale-820');
+check(result.alerts.some(x=>x.includes('dates changed')) && result.buttons.some(x=>x.text==='Review new dates'),'stale confirmation retained');
+for (const scenario of ['allowance','unsupported','needs_team']) {
+  await qa.evaluate(s => { window.__qa.scenario=s; },scenario);
+  await qa.getByRole('button',{name:'Review new dates',exact:true}).click();
+  result=await capture(scenario+'-820'); check(result.alerts.length===1,scenario+' missing alert');
+}
+await reset('?pending=1');
+await qa.evaluate(() => { window.__qa.scenario='pending'; });
+await qa.getByRole('button',{name:'Check pause for Alexandria-Catherine Longfamilyname',exact:true}).click();
+result=await capture('recovery-820',true); check(result.alerts.length===1,'pending recovery hidden');
+await reset();
+await qa.getByRole('button',{name:'Restart plan for Omar',exact:true}).focus();
+await qa.keyboard.press('Enter'); console.log((await snapshot(qa)).diff);
+await qa.getByRole('button',{name:'Review price',exact:true}).focus();
+const focus=await qa.evaluate(() => ({outline:getComputedStyle(document.activeElement).outlineWidth,style:getComputedStyle(document.activeElement).outlineStyle}));
+check(parseFloat(focus.outline)>=2 && focus.style!=='none','keyboard focus absent');
+await qa.keyboard.press('Enter');
+await qa.getByRole('button',{name:'Confirm restart',exact:true}).waitFor({state:'visible'});
+result=await capture('keyboard-price-820'); check(result.text.includes('We charge CAD 79.99 immediately'),'keyboard review failed');
+await qa.getByRole('button',{name:'Confirm restart',exact:true}).click();
+result=await capture('restart-success-820');check(result.text.includes('paid plan has restarted'),'restart success absent');
+console.log('EVIDENCE_EXPORT ' + JSON.stringify({cases,focus}));
+console.log('BROWSER_QA_OK',cases.length,focus);
+await closeTab(qa);

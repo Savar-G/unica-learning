@@ -1,0 +1,534 @@
+{
+  "run": "79b26f73-da0a-4ac6-90bb-a3ab3d60142c",
+  "source": "f3133376535b3c96f4c81f62f1f8d1cc80322a23 + pause entry operation-key repair",
+  "mode": "test",
+  "checks": [
+    {
+      "label": "account_verified",
+      "account": "acct_1UOOQgGTsggtqumU",
+      "livemode": false,
+      "apiVersion": "2026-09-30.endive"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "paid_pause_resume"
+    },
+    {
+      "label": "pause_applied",
+      "kind": "paid",
+      "subscription": "sub_1UYd4rGTsggtqumULVqPC77f",
+      "previous": "2026-12-06T02:41:25.000Z",
+      "resume": "2026-12-20T02:41:25.000Z"
+    },
+    {
+      "label": "paid_paused_no_renewal_charge",
+      "status": "paused",
+      "invoices": [
+        {
+          "id": "in_1UYd4rGTsggtqumUOKdPSQXM",
+          "status": "paid",
+          "total": 7999,
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_create",
+          "created": 1793932885,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1796524885,
+                "start": 1793932885
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd4oGTsggtqumUZ4WBoNSA",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932885,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524885,
+                "start": 1793932885
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "paid_resume_full_invoice",
+      "status": "active",
+      "anchor": 1797734485,
+      "invoices": [
+        {
+          "id": "in_1UYd59GTsggtqumUq705Ybrm",
+          "status": "paid",
+          "total": 7999,
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_cycle",
+          "created": 1797734485,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1800412885,
+                "start": 1797734485
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd4rGTsggtqumUOKdPSQXM",
+          "status": "paid",
+          "total": 7999,
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_create",
+          "created": 1793932885,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1796524885,
+                "start": 1793932885
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd4oGTsggtqumUZ4WBoNSA",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932885,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524885,
+                "start": 1793932885
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "scenario_passed",
+      "scenario": "paid_pause_resume"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "failed_resume"
+    },
+    {
+      "label": "pause_applied",
+      "kind": "paid",
+      "subscription": "sub_1UYd5NGTsggtqumU7CCMETno",
+      "previous": "2026-12-06T02:41:57.000Z",
+      "resume": "2026-12-20T02:41:57.000Z"
+    },
+    {
+      "label": "failed_resume_remains_paused",
+      "status": "paused",
+      "invoices": [
+        {
+          "id": "in_1UYd5aGTsggtqumU6Ku4j4ri",
+          "status": "open",
+          "total": 7999,
+          "paid": 0,
+          "due": 7999,
+          "reason": "subscription_cycle",
+          "created": 1797734517,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1800412917,
+                "start": 1797734517
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd5NGTsggtqumUrFHa2fjI",
+          "status": "paid",
+          "total": 7999,
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_create",
+          "created": 1793932917,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1796524917,
+                "start": 1793932917
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd5KGTsggtqumUZDnzcWPH",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932917,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524917,
+                "start": 1793932917
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "scenario_passed",
+      "scenario": "failed_resume"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "cancel_scheduled_pause"
+    },
+    {
+      "label": "pause_applied",
+      "kind": "paid",
+      "subscription": "sub_1UYd5oGTsggtqumU5g0Me9Kz",
+      "previous": "2026-12-06T02:42:25.000Z",
+      "resume": "2026-12-20T02:42:25.000Z"
+    },
+    {
+      "label": "cancel_no_later_resume",
+      "status": "canceled",
+      "invoices": [
+        {
+          "id": "in_1UYd5oGTsggtqumU2TBDzWv5",
+          "status": "paid",
+          "total": 7999,
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_create",
+          "created": 1793932945,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1796524945,
+                "start": 1793932945
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd5mGTsggtqumUWn78Bswz",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932945,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524945,
+                "start": 1793932945
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "scenario_passed",
+      "scenario": "cancel_scheduled_pause"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "delete_paused_plan"
+    },
+    {
+      "label": "pause_applied",
+      "kind": "paid",
+      "subscription": "sub_1UYd62GTsggtqumUZmEnwAvT",
+      "previous": "2026-12-06T02:42:38.000Z",
+      "resume": "2026-12-20T02:42:38.000Z"
+    },
+    {
+      "label": "delete_no_final_invoice_or_resume",
+      "invoices": [
+        {
+          "id": "in_1UYd62GTsggtqumUbfH6pnjg",
+          "status": "paid",
+          "total": 7999,
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_create",
+          "created": 1793932958,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1796524958,
+                "start": 1793932958
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd5zGTsggtqumUFEAYewZG",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932958,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524958,
+                "start": 1793932958
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "scenario_passed",
+      "scenario": "delete_paused_plan"
+    },
+    {
+      "label": "scenario_started",
+      "scenario": "paid_restart_retry_decline"
+    },
+    {
+      "label": "paid_restart_immediate_once",
+      "retry": {
+        "ok": false,
+        "error": "already"
+      },
+      "invoices": [
+        {
+          "id": "in_1UYd6IGTsggtqumUorVeBMH7",
+          "status": "paid",
+          "total": 7999,
+          "paid": 7999,
+          "due": 7999,
+          "reason": "subscription_create",
+          "created": 1793932974,
+          "lines": [
+            {
+              "amount": 7999,
+              "proration": false,
+              "period": {
+                "end": 1796524974,
+                "start": 1793932974
+              }
+            }
+          ]
+        },
+        {
+          "id": "in_1UYd6FGTsggtqumUaAI5aVzd",
+          "status": "paid",
+          "total": 0,
+          "paid": 0,
+          "due": 0,
+          "reason": "subscription_create",
+          "created": 1793932974,
+          "lines": [
+            {
+              "amount": 0,
+              "proration": false,
+              "period": {
+                "end": 1796524974,
+                "start": 1793932974
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "paid_restart_decline_no_live_plan",
+      "declined": {
+        "ok": false,
+        "error": "payment_refused"
+      },
+      "subscriptions": [
+        {
+          "id": "sub_1UYd6IGTsggtqumU9KNCS6pA",
+          "status": "canceled",
+          "trial_end": null
+        },
+        {
+          "id": "sub_1UYd6FGTsggtqumUCDIj3JWv",
+          "status": "canceled",
+          "trial_end": 1796524974
+        }
+      ]
+    },
+    {
+      "label": "scenario_passed",
+      "scenario": "paid_restart_retry_decline"
+    }
+  ],
+  "errors": [
+    {
+      "path": "/v1/subscriptions",
+      "status": 402,
+      "type": "card_error",
+      "code": "card_declined",
+      "message": "Your card was declined."
+    }
+  ],
+  "resources": [
+    {
+      "kind": "clock",
+      "id": "clock_1UYd4nGTsggtqumU0pAKmeTd",
+      "label": "paid_pause_resume"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZmegNOoATVNOe",
+      "clock": "clock_1UYd4nGTsggtqumU0pAKmeTd"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd4oGTsggtqumU06DH8WBx"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd4rGTsggtqumUh1MMO6cw"
+    },
+    {
+      "kind": "clock",
+      "id": "clock_1UYd5JGTsggtqumU3auze04X",
+      "label": "failed_resume"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZmeRki3VlKUva",
+      "clock": "clock_1UYd5JGTsggtqumU3auze04X"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd5KGTsggtqumUgy5lyrUe"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd5NGTsggtqumUl5n5CKwF"
+    },
+    {
+      "kind": "clock",
+      "id": "clock_1UYd5lGTsggtqumUEN7JNk3t",
+      "label": "cancel_scheduled_pause"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZmfYsApxIjxZ1",
+      "clock": "clock_1UYd5lGTsggtqumUEN7JNk3t"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd5mGTsggtqumULU05tEtL"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd5oGTsggtqumU3xYSnYxT"
+    },
+    {
+      "kind": "clock",
+      "id": "clock_1UYd5yGTsggtqumUhZKl9wJS",
+      "label": "delete_paused_plan"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZmfufKx4rzuAj",
+      "clock": "clock_1UYd5yGTsggtqumUhZKl9wJS"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd5zGTsggtqumUml92D5wt"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd62GTsggtqumULY1m4Rlv"
+    },
+    {
+      "kind": "clock",
+      "id": "clock_1UYd6EGTsggtqumUkoNMsV6j",
+      "label": "paid_restart_retry_decline"
+    },
+    {
+      "kind": "customer",
+      "id": "cus_VZmfFnw0dL4OnW",
+      "clock": "clock_1UYd6EGTsggtqumUkoNMsV6j"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd6FGTsggtqumU7lSKBQ5G"
+    },
+    {
+      "kind": "price",
+      "id": "price_1UYd6IGTsggtqumUNeYGTXOc"
+    }
+  ],
+  "cleanup": [
+    {
+      "clock": "clock_1UYd4nGTsggtqumU0pAKmeTd",
+      "customer": "cus_VZmegNOoATVNOe",
+      "deleted": true
+    },
+    {
+      "clock": "clock_1UYd5JGTsggtqumU3auze04X",
+      "customer": "cus_VZmeRki3VlKUva",
+      "deleted": true
+    },
+    {
+      "clock": "clock_1UYd5lGTsggtqumUEN7JNk3t",
+      "customer": "cus_VZmfYsApxIjxZ1",
+      "deleted": true
+    },
+    {
+      "clock": "clock_1UYd5yGTsggtqumUhZKl9wJS",
+      "customer": "cus_VZmfufKx4rzuAj",
+      "deleted": true
+    },
+    {
+      "clock": "clock_1UYd6EGTsggtqumUkoNMsV6j",
+      "customer": "cus_VZmfFnw0dL4OnW",
+      "deleted": true
+    }
+  ],
+  "result": "PASS"
+}

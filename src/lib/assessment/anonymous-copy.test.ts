@@ -9,6 +9,8 @@ import {
   copyFamilyTests,
   copyFieldNames,
   copyPreview,
+  createAdaptiveSession,
+  UNKNOWN_RESPONSE,
   createFacts,
   createSession,
   finish,
@@ -86,7 +88,7 @@ function source() {
       workPath: i === 0 ? `${FAMILY}/${TEST}/s1-0-abc.png` : null, workText: i === 0 ? "I counted on my fingers" : null,
       strokesPath: i === 0 ? `${FAMILY}/${TEST}/s1-0-abc.strokes.json` : null,
       shownAt: at(10_000 + 30_000 * i), answeredAt: at(10_000 + 30_000 * i + a.timeMs),
-      changes: [{ value: "1", atMs: 500 }, { value: a.response, atMs: a.timeMs - 100 }],
+      changes: [{ value: questions[i].choices?.[0] ?? "1", atMs: 500 }, { value: a.response, atMs: a.timeMs - 100 }],
       readAloudCount: i === 0 ? 2 : 0, readAloudAtMs: i === 0 ? [300, 900] : [], awayCount: i === 1 ? 1 : 0, awayMs: i === 1 ? 4_000 : 0,
     })),
     // The last question was served once more before the finish; an abandoned test has shown questions with no answer.
@@ -172,6 +174,21 @@ describe("the copy without names", () => {
     expect(anonymousTestCopy({ ...source(), testFamily: "yes" }).testFamily).toBe(false);
   });
 
+  it("keeps explicit unknown responses and changes for both adaptive formats", () => {
+    const session = createAdaptiveSession({ grade: 4, province: "BC" }, 1);
+    const questions = (["choice", "number"] as const).map(format => session.adaptive!.pool.find(q => q.format === format)!);
+    const copy = anonymousTestCopy({ ...source(), grade: 4, stored: storedTest(session), placement: null, profile: null, shows: [],
+      answers: questions.map((q,position) => ({ position, questionId: q.id, templateId: q.templateId, response: UNKNOWN_RESPONSE, correct: false, misconception: null, timeMs: 20_000,
+        changes: [{ value: UNKNOWN_RESPONSE, atMs: 15_000 }, { value: "private words", atMs: 16_000 }],
+      })),
+    });
+    expect(copy.questions).toHaveLength(2);
+    for (const q of copy.questions) {
+      expect(q.response).toBe(UNKNOWN_RESPONSE);
+      expect(q.changes).toEqual([{ value: UNKNOWN_RESPONSE, atMs: 15_000 }, { value: null, atMs: 16_000 }]);
+    }
+  });
+
   it("keeps the test month, the route and every question as shown, with each response, mark and misconception", () => {
     const s = source();
     const copy = anonymousTestCopy(s);
@@ -204,7 +221,7 @@ describe("the copy without names", () => {
     expect(copy.device).toEqual({ deviceClass: "tablet", input: "touch", screenWidth: 820, screenHeight: 1180, browser: "safari" });
     expect(copy.questions[0]).toMatchObject({
       shownAtMs: 10_000, answeredAtMs: 11_000, timeMs: 1_000,
-      changes: [{ value: "1", atMs: 500 }, { value: s.answers[0].response, atMs: 900 }],
+      changes: [{ value: s.answers[0].changes[0].value, atMs: 500 }, { value: s.answers[0].response, atMs: 900 }],
       readAloud: { count: 2, atMs: [300, 900] }, away: { count: 0, ms: 0 },
       work: { required: s.answers[0].workRequired, drawing: true, typed: true, strokes: true },
     });

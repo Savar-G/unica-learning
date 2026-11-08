@@ -1,12 +1,12 @@
 import { isUuid } from "@/lib/assessment-store";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { refusalResponse, testFail, type StepResult } from "@/lib/test-api";
-import { doneChecking } from "@/lib/test-attempt";
+import { doneChecking, type CheckSection } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
 
-// "Done checking" on a "Check your answers" grid (#249, #253): `{ section: "stage1" }` or `{ section: "stage2" }`. It
+// "Done checking" on a "Check your answers" grid (#249, #253): `{ section: "stage1" }`, `"stage2"` or `"stage3"`. It
 // returns the next step: after stage 1 (which it locks), the first question after halfway (the break and quick facts
-// come first); after stage 2, "Did anyone help?" (stage 2 locks with the finish). The test attempt module
+// come first); after stage 2, the third stage or "Did anyone help?" (D-282); after stage 3, "Did anyone help?". The test attempt module
 // (src/lib/test-attempt.ts) runs the rules and the store writes the lock; this route only translates.
 export async function POST(request: Request, ctx: RouteContext<"/api/account/assessments/[id]/check">) {
   const parent = await parentId(await sessionClient());
@@ -22,10 +22,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   } catch {
     return testFail("bad_json", 400);
   }
-  if (body.section !== "stage1" && body.section !== "stage2") return testFail("invalid", 400);
+  if (body.section !== "stage1" && body.section !== "stage2" && body.section !== "stage3" && !(typeof body.section === "string" && /^block-[1-9][0-9]*$/.test(body.section))) return testFail("invalid", 400);
 
   // One clock reading for the whole request, as the other test steps (#72).
-  const result = await doneChecking(attemptStore(admin), parent, id, body.section, Date.now());
+  const result = await doneChecking(attemptStore(admin), parent, id, body.section as CheckSection, Date.now());
   if (!result.ok) return refusalResponse(result);
   return Response.json({ ok: true, step: result.step } satisfies StepResult, { headers: { "Cache-Control": "no-store" } });
 }

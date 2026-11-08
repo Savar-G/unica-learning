@@ -88,6 +88,11 @@ describe("family stage", () => {
   });
 });
 
+it.each(["claimed", "sent", "failed"] as const)("R421W-4: a %s weekly email has a complete admin subject", (status) => {
+  const families = buildFamilies(rows({ parents: [parent("a", ago(10))], emails: [{ ...email("weekly", "a", "maya_weekly", ago(1), status), child_id: null }] }));
+  expect(families[0].emails[0].subject).toBe("Weekly Maya email");
+});
+
 describe("emails", () => {
   const r = rows({
     parents: [parent("a", ago(10))],
@@ -104,7 +109,7 @@ describe("emails", () => {
     expect(f.emails.map((e) => [e.kind, e.status])).toEqual([
       ["report", "failed"], ["alert", "sent"], ["unsubscribe", "sent"], ["continue", "failed"], ["start", "sent"],
     ]);
-    expect(f.emails.find((e) => e.kind === "start")?.subject).toBe("Kid k1 has not started the free math test");
+    expect(f.emails.find((e) => e.kind === "start")?.subject).toBe("Kid k1's free math check is ready");
     expect(f.emails.find((e) => e.kind === "alert")?.subject).toBe("Test finished: Kid k1, grade 3, working at ...");
     expect(f.lastEmail?.kind).toBe("report");
     expect(f.unsubscribed).toBe(true);
@@ -129,9 +134,9 @@ describe("days and ranges", () => {
   it("steps calendar days across a DST change without skipping one", () => {
     expect(shiftDay("2026-11-02", -1)).toBe("2026-11-01");
     expect(shiftDay("2026-03-01", 1)).toBe("2026-03-02");
-    // 23:30 Pacific: stepping back 24 h at a time would land on Nov 1 twice
+    // BC no longer falls back. 07:30 UTC is November 3, not November 2.
     const days = rangeDays("7d", new Date("2026-11-03T07:30:00Z"), null);
-    expect(days).toEqual(["2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"]);
+    expect(days).toEqual(["2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02", "2026-11-03"]);
   });
 
   it("starts all time at the first signup, with at least 14 days", () => {

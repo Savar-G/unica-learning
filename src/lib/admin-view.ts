@@ -1,12 +1,15 @@
+import { UNKNOWN_RESPONSE } from "@/lib/assessment";
 // The admin area (#77) in plain data: the list filters, the test's answers beside its questions, and the words for the
 // flags. Pure: no network, database or clock, so the pages (src/app/(product)/admin) only fetch and show. Server and admin only:
 // it handles correct answers, which a parent's browser must never get.
+import { partsInZone, PACIFIC_ZONE } from "@/lib/family-time";
 import {
   BANKS,
   MISCONCEPTIONS,
   SAMPLE_BANK,
   PAUSE_WINDOW,
   TOO_FAST_MS,
+  everyQuestion,
   fromRemovedRound,
   helpLikely,
   type FactsTest,
@@ -35,6 +38,12 @@ export const adminTestPath = (id: string) => `${ADMIN_PATH}/assessments/${id}`;
 export const adminParentPath = (id: string) => `${ADMIN_PATH}/parents/${id}`;
 /** One workbook as data: its pages, page images and questions (#299). */
 export const adminWorkbookPath = (id: string) => `${ADMIN_PATH}/workbooks/${id}`;
+/** The Workbooks list (#312), and one run's page: its progress, then its draft for review. */
+export const ADMIN_WORKBOOKS_PATH = `${ADMIN_PATH}/workbooks`;
+export const adminWorkbookRunPath = (id: string) => `${ADMIN_PATH}/workbooks/runs/${id}`;
+/** Admin routes that check the admin, then redirect to a fresh signed URL of the PDF (a stored workbook, a run's draft). */
+export const workbookPdfPath = (id: string) => `/api/admin/workbooks/${id}/pdf`;
+export const draftPdfPath = (runId: string) => `/api/admin/workbooks/runs/${runId}/pdf`;
 /** The learner profile of one test (#196). */
 export const adminProfilePath = (id: string) => `${adminTestPath(id)}/profile`;
 /** The current profile of one child, from every source (#303). */
@@ -153,7 +162,7 @@ export interface AnswerLine {
   number: number;
   questionId: string;
   /** Stage 1 (at the school grade) or stage 2 (after the route); null when the question is not in the stored test. */
-  stage: 1 | 2 | null;
+  stage: number | null;
   prompt: string | null;
   level: Level | null;
   strand: Strand | null;
@@ -231,9 +240,11 @@ export const questionNumbers = (answers: readonly Pick<AnswerRecord, "position" 
  * finished, whose score counted every answer.
  */
 export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], reviews: readonly ReviewRecord[], leftOut: readonly string[] = []): AnswerLine[] {
-  const stage = new Map<string, { q: Question; stage: 1 | 2 }>();
+  const stage = new Map<string, { q: Question; stage: number }>();
+  for (const [i, block] of (test.adaptive?.blocks ?? []).entries()) for (const q of block.questions) stage.set(q.id, { q, stage: i + 1 });
   for (const q of test.stage1) stage.set(q.id, { q, stage: 1 });
   for (const q of [...test.stage2.up, ...test.stage2.stay, ...test.stage2.down]) stage.set(q.id, { q, stage: 2 });
+  for (const q of [...(test.stage3?.up ?? []), ...(test.stage3?.down ?? [])]) stage.set(q.id, { q, stage: 3 });
   const reviewed = new Map(reviews.map((r) => [r.question_id, { ...r, score: Number(r.score) }]));
   const ordered = [...answers].sort((a, b) => a.position - b.position);
   const out = new Set(leftOut);
@@ -251,7 +262,7 @@ export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], 
       correct: a.correct,
       misconception: misconceptionText(a.misconception),
       timeMs: a.time_ms,
-      tooFast: a.time_ms < TOO_FAST_MS,
+      tooFast: a.response !== UNKNOWN_RESPONSE && a.time_ms < TOO_FAST_MS,
       leftOut: out.has(a.question_id),
       work: { required: a.work_required, image: a.work_path, text: a.work_text },
       review: reviewed.get(a.question_id) ?? null,
@@ -275,7 +286,7 @@ export interface ShownLine {
 /** The questions the server served that have no answer yet, in test order. */
 export function shownWithoutAnswer(test: StoredTest, shows: readonly ShownRecord[], answers: readonly AnswerRecord[]): ShownLine[] {
   const answered = new Set(answers.map((a) => a.position));
-  const prompts = new Map([...test.stage1, ...test.stage2.up, ...test.stage2.stay, ...test.stage2.down].map((q) => [q.id, q.prompt]));
+  const prompts = new Map(everyQuestion(test).map((q) => [q.id, q.prompt]));
   return [...shows].sort((a, b) => a.position - b.position).filter((s) => !answered.has(s.position))
     .map((s) => ({ number: s.position + 1, questionId: s.question_id, prompt: prompts.get(s.question_id) ?? null, shownAt: s.shown_at }));
 }
@@ -379,25 +390,23 @@ export function contextFacts(c: TestContextRecord): [string, string][] {
   ];
 }
 
-const PACIFIC = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Vancouver",
+const PACIFIC: Intl.DateTimeFormatOptions = {
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
   hourCycle: "h23",
-});
+};
 
 /** A stored moment as "2026-10-11 10:55", Pacific time (Savar and Cedric are in BC); "-" for none. */
 export function when(iso: string | null): string {
   if (!iso) return "-";
-  const part = Object.fromEntries(PACIFIC.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  const part = partsInZone(iso, PACIFIC_ZONE, PACIFIC);
   return `${part.year}-${part.month}-${part.day} ${part.hour}:${part.minute}`;
 }
 
-const PACIFIC_SECONDS = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Vancouver",
+const PACIFIC_SECONDS: Intl.DateTimeFormatOptions = {
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
@@ -405,12 +414,12 @@ const PACIFIC_SECONDS = new Intl.DateTimeFormat("en-CA", {
   minute: "2-digit",
   second: "2-digit",
   hourCycle: "h23",
-});
+};
 
 /** A moment the server stored, to the second, as "2026-10-11 10:55:03" Pacific time (#184); "-" for none. */
 export function whenExact(iso: string | null): string {
   if (!iso) return "-";
-  const part = Object.fromEntries(PACIFIC_SECONDS.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  const part = partsInZone(iso, PACIFIC_ZONE, PACIFIC_SECONDS);
   return `${part.year}-${part.month}-${part.day} ${part.hour}:${part.minute}:${part.second}`;
 }
 

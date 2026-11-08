@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSession,
+  createAdaptiveSession,
   nextQuestion,
   recordAnswer,
   restoreSession,
@@ -13,7 +14,7 @@ import {
   type StoredTest,
   type Submission,
 } from "@/lib/assessment";
-import { allRight, knowsUpTo, takeTest, type Script, checked } from "@/lib/assessment/scripted-child";
+import { allRight, knowsUpTo, takeTest, type Script, checked, beforeThirdStage } from "@/lib/assessment/scripted-child";
 import { answerQuestion, doneChecking, finishTest, nextStep, retakeState, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerFact, readFacts, startFacts } from "@/lib/test-attempt";
@@ -47,7 +48,7 @@ function answersOf(test: StoredTest, count: number, script: Script = allRight): 
 
 /** Asha's stored test (or another grade 4 child's), drawn from `seed`, with the first `answered` answers of a scripted child. */
 function stored(attempt: Attempt, { seed = 7, parent = P1, child = C1, answered = 0 }: { seed?: number; parent?: string; child?: string; answered?: number } = {}): MemoryTest {
-  const test = storedTest(createSession(ASHA, seed));
+  const test = beforeThirdStage(storedTest(createSession(ASHA, seed)));
   return { ...attempt, parentId: parent, childId: child, seed, test, answers: answersOf(test, answered) };
 }
 
@@ -159,7 +160,7 @@ describe("the new test a start request stores", () => {
   it("has the questions drawn from its seed for the child's grade and province, and no answers", async () => {
     const { store, tests: rows } = family();
     await start(store, T0, { restart: false, newSeed: seeds(42) });
-    expect(rows[0].test).toEqual(storedTest(createSession(ASHA, 42)));
+    expect(rows[0].test).toEqual(storedTest(createAdaptiveSession(ASHA, 42)));
     expect(rows[0].answers).toEqual([]);
     expect(await nextStep(store, P1, "a1", T0)).toMatchObject({ ok: true, step: { status: "question", number: 1 } });
   });

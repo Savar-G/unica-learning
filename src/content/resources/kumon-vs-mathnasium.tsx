@@ -11,7 +11,7 @@ export const meta: ResourceMeta = {
     "Kumon vs Mathnasium in BC: subjects, method, time and cost side by side, with Kumon prices as listed in October 2026 and questions to ask both centres.",
   category: "Comparing options",
   lead: "Kumon and Mathnasium both start with an assessment and set a child's own plan, but they differ in subjects, routine and how they publish prices.",
-  updated: "2026-10-09",
+  updated: "2026-11-01",
   faqs: [
     {
       q: "Which costs more, Kumon or Mathnasium?",
@@ -89,6 +89,7 @@ export default function Body() {
           For an estimate of a month at Mathnasium from its own per-session range, read{" "}
           <Link href="/blog/mathnasium-cost-bc">how much Mathnasium costs in BC</Link>.
         </p>
+        <p>Have an hourly quote from a tutor as well? Use the <Link href="/resources/tutor-cost-bc#calculator">free tutoring cost calculator</Link> to include the number of weeks and extra fees. Compare it with <Link href="/pricing">Unica&apos;s current program price and trial terms</Link>. These options provide different kinds of help.</p>
       </Section>
 
       <Section title="Method: how each one teaches" id="method">

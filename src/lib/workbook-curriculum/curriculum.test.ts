@@ -1,8 +1,44 @@
 import { describe, expect, it } from "vitest";
 import { BC_SKILL_MAP } from "@/lib/assessment";
-import { BC_CURRICULUM, curriculumFor, curriculumProblems, type CurriculumData, type CurriculumSkill } from "./index";
+import { BC_CURRICULUM, bcStepProgressions, curriculumFor, curriculumProblems, curriculumVersion, type CurriculumData, type CurriculumSkill } from "./index";
+import { digestOf } from "@/lib/workbook-digest";
+import { withHouseTemplates } from "./house-templates";
+import { DEFAULT_STEPS, planWorkbook } from "@/lib/workbook-plan";
+import { sampleChild, samplePlanInput } from "@/lib/workbook-sample-profiles";
 
-const bc = curriculumFor("bc")!;
+const bc = bcStepProgressions();
+
+describe("progression activation (#489)", () => {
+  it("gives the generator every imported step, template and context", () => {
+    const active = curriculumFor("bc")!;
+    // (Cedric's steps, with Unica's Challenge templates appended to their steps: house-templates.ts.)
+    const withHouse = withHouseTemplates(BC_CURRICULUM);
+    for (const skill of BC_CURRICULUM.skills) expect(active.skillSteps(skill.id)).toEqual(withHouse.steps.filter(s => s.skill === skill.id));
+    expect(active.contexts).toEqual(BC_CURRICULUM.contexts);
+    expect(bcStepProgressions()).toBe(active);
+    expect(active.levels.flatMap(l => active.levelSkills(l.id)!.flatMap(s => active.skillSteps(s.id)!))).toHaveLength(1623);
+    expect(curriculumVersion("bc")).toBe(digestOf(withHouse));
+  });
+
+  it("keeps the coin teaching plan unchanged with the approved three-page budget", () => {
+    const active = curriculumFor("bc")!;
+    const coin = "K11-coin-attributes";
+    expect(active.skill(coin)?.pages).toBe(3);
+    expect(active.skillSteps(coin)).toEqual(BC_CURRICULUM.steps.filter(s => s.skill === coin));
+    for (const kind of ["first", "second", "test"] as const) {
+      for (const passed of [0, 1, 2]) {
+        const input = samplePlanInput(active, sampleChild(active, "U3")!, kind);
+        // Make the coins the only remaining teaching skill so the changed page budget is binding.
+        input.passed = Object.fromEntries(input.level.units.flatMap(u => u.skills.map(s => [s.id, s.id === coin ? passed : DEFAULT_STEPS])));
+        const before = { ...input, level: { ...input.level, units: input.level.units.map(u => ({ ...u, skills: u.skills.map(s => s.id === coin ? { ...s, pages: 2 } : s) })) } };
+        const result = planWorkbook(input);
+        expect(result.ok).toBe(true);
+        expect(result).toEqual(planWorkbook(before));
+        expect(result.ok && result.plan.newSteps.some(s => s.skill === coin)).toBe(true);
+      }
+    }
+  });
+});
 
 describe("levels", () => {
   it("has a map for BC only", () => {
@@ -124,19 +160,19 @@ describe("skills and steps", () => {
 
   it("reads a Grade 3 skill's steps in order, with representation, mistakes and spot-the-error item", () => {
     const steps = bc.skillSteps("3.3-add-within-1000")!;
-    expect(steps.map((s) => s.name)).toEqual(["Add without regrouping", "Regroup ones", "Regroup ones and tens", "Three numbers"]);
+    expect(steps.map((s) => s.name)).toEqual(["Add with no trading", "Trade ones", "Trade ones and tens", "Three numbers", "Easy numbers: change one number, then fix the answer", "Estimate sums"]);
     expect(steps.reduce((sum, s) => sum + s.pages, 0)).toBe(25);
-    expect(steps[0]).toEqual({
+    expect(steps[0]).toMatchObject({
       curriculum: "bc",
       skill: "3.3-add-within-1000",
       number: 1,
       position: "U10.2.1.1",
-      name: "Add without regrouping",
-      change: "First step: no carrying",
+      name: "Add with no trading",
+      change: "Starts with no carrying",
       rules: "Three-digit + three-digit, sums to 999",
       example: { problem: "324 + 152 = ?", answer: "476" },
-      pages: 5,
-      representation: "base-ten blocks (hundreds, tens, ones)",
+      pages: 4,
+      representation: "base-ten blocks",
       mistakes: [
         { answer: "17", why: "Adds all six digits instead of adding by place", kind: "conceptual", misconception: null },
         { answer: "466", why: "Writes 6 for 2 + 5 tens", kind: "careless", misconception: null },
@@ -147,7 +183,7 @@ describe("skills and steps", () => {
   });
 
   it("keeps a misconception id on an expected mistake", () => {
-    expect(bc.skillSteps("3.1-place-value-1000")![1].mistakes[0]).toEqual({
+    expect(bc.skillSteps("3.1-place-value-1000")![1].mistakes[0]).toMatchObject({
       answer: "30 + 5",
       why: "Leaves out the zero that holds the tens place",
       kind: "conceptual",
@@ -155,8 +191,8 @@ describe("skills and steps", () => {
     });
   });
 
-  it("has no steps yet outside Grade 3, and none for an unknown skill", () => {
-    expect(bc.skillSteps("4.5-multiply-1-digit")).toEqual([]);
+  it("has steps outside Grade 3 and none for an unknown skill", () => {
+    expect(bc.skillSteps("4.5-multiply-1-digit")).toHaveLength(4);
     expect(bc.skillSteps("3.3-not-a-skill")).toBeNull();
   });
 });
@@ -197,7 +233,7 @@ describe("budgets", () => {
       expect(sum, level.id).toBe(level.skillPages);
       pages.set(level.schoolGrade, (pages.get(level.schoolGrade) ?? 0) + sum);
     }
-    expect([...pages.values()]).toEqual([360, 765, 880, 810, 810, 810, 588, 546, 546, 546]);
+    expect([...pages.values()]).toEqual([361, 765, 880, 810, 810, 810, 588, 546, 546, 546]);
   });
 
   it("adds level workbooks up to the grade budgets, 120 in all", () => {
@@ -220,7 +256,7 @@ function withSkill(id: string, change: Partial<CurriculumSkill>): CurriculumData
 }
 
 describe("data checks", () => {
-  it("finds no problem in the BC data: every skill once, in the BC skill map, after its prerequisites", () => {
+  it("finds no problem in the imported curriculum: every skill once, in the BC skill map, after its prerequisites", () => {
     expect(curriculumProblems(BC_CURRICULUM, BC_SKILL_MAP)).toEqual([]);
   });
 
@@ -265,7 +301,7 @@ describe("data checks", () => {
 
   it("lists a skill whose steps are not numbered 1 to n", () => {
     const steps = BC_CURRICULUM.steps.map((s) => (s.skill === "3.3-add-within-1000" && s.number === 2 ? { ...s, number: 3 } : s));
-    expect(curriculumProblems({ ...BC_CURRICULUM, steps }, BC_SKILL_MAP)).toEqual(["3.3-add-within-1000 step numbering runs 1, 3, 3, 4, not 1 to 4"]);
+    expect(curriculumProblems({ ...BC_CURRICULUM, steps }, BC_SKILL_MAP)).toEqual(["3.3-add-within-1000 step numbering runs 1, 3, 3, 4, 5, 6, not 1 to 6"]);
   });
 
   it("lists prerequisites that differ from the skill map", () => {
@@ -287,14 +323,14 @@ describe("data checks", () => {
   });
 
   it("lists step pages that do not add up to their skill's pages", () => {
-    const steps = BC_CURRICULUM.steps.map((s) => (s.skill === "3.3-add-within-1000" && s.number === 1 ? { ...s, pages: 6 } : s));
+    const steps = BC_CURRICULUM.steps.map((s) => (s.skill === "3.3-add-within-1000" && s.number === 1 ? { ...s, pages: 5 } : s));
     expect(curriculumProblems({ ...BC_CURRICULUM, steps }, BC_SKILL_MAP)).toContain("3.3-add-within-1000 step pages add up to 26, but the skill has 25");
   });
 
   it("lists a Grade 3 skill whose whole step group is missing (review R364-01)", () => {
     const steps = BC_CURRICULUM.steps.filter((s) => s.skill !== "3.1-count-1000");
     expect(curriculumProblems({ ...BC_CURRICULUM, steps }, BC_SKILL_MAP)).toEqual([
-      "3.1-count-1000 (U10) has no steps; every skill in U10 to U12 needs them",
+      "3.1-count-1000 (U10) has no steps; every skill in every level needs them",
       "3.1-count-1000 step pages add up to 0, but the skill has 17",
     ]);
   });
@@ -302,12 +338,12 @@ describe("data checks", () => {
   it("lists an activity or warm-up skill in U10 to U12 whose steps are missing", () => {
     const activity = BC_CURRICULUM.steps.filter((s) => s.skill !== "3.9-area-square-units");
     expect(curriculumProblems({ ...BC_CURRICULUM, steps: activity }, BC_SKILL_MAP)).toEqual([
-      "3.9-area-square-units (U12) has no steps; every skill in U10 to U12 needs them",
+      "3.9-area-square-units (U12) has no steps; every skill in every level needs them",
       "3.9-area-square-units step pages add up to 0, but the skill has 1",
     ]);
     const warmUp = BC_CURRICULUM.steps.filter((s) => s.skill !== "3.4-recall-addition-20");
     expect(curriculumProblems({ ...BC_CURRICULUM, steps: warmUp }, BC_SKILL_MAP)).toEqual([
-      "3.4-recall-addition-20 (U10) has no steps; every skill in U10 to U12 needs them",
+      "3.4-recall-addition-20 (U10) has no steps; every skill in every level needs them",
     ]);
   });
 
@@ -320,7 +356,7 @@ describe("data checks", () => {
 
   it("allows 0-page steps only on warm-up skills, and on an activity skill before the step with its one page", () => {
     const newStep = BC_CURRICULUM.steps.map((s) =>
-      s.skill === "3.3-add-within-1000" && s.number <= 2 ? { ...s, pages: s.number === 1 ? 0 : 12 } : s,
+      s.skill === "3.3-add-within-1000" && s.number <= 2 ? { ...s, pages: s.number === 1 ? 0 : 8 } : s,
     );
     expect(curriculumProblems({ ...BC_CURRICULUM, steps: newStep }, BC_SKILL_MAP)).toEqual([
       "3.3-add-within-1000 step 1 has 0 pages; only warm-up and activity skills have 0-page steps",
@@ -336,7 +372,7 @@ describe("data checks", () => {
       s.id === "3.4-recall-addition-20" ? { ...s, pages: 1 } : s.id === "3.3-add-within-1000" ? { ...s, pages: 24 } : s,
     );
     const steps = BC_CURRICULUM.steps.map((s) =>
-      s.skill === "3.4-recall-addition-20" && s.number === 1 ? { ...s, pages: 1 } : s.skill === "3.3-add-within-1000" && s.number === 1 ? { ...s, pages: 4 } : s,
+      s.skill === "3.4-recall-addition-20" && s.number === 1 ? { ...s, pages: 1 } : s.skill === "3.3-add-within-1000" && s.number === 1 ? { ...s, pages: 3 } : s,
     );
     expect(curriculumProblems({ ...BC_CURRICULUM, skills, steps }, BC_SKILL_MAP)).toEqual(["3.4-recall-addition-20 is a warm-up skill with 1 pages; warm-up skills have 0"]);
   });

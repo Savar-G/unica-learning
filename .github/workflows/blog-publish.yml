@@ -20,7 +20,8 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Above the sum of its step limits (checkout 2, setup 1, npm ci 5, Chromium 2, tests 35, eslint 5, build 10).
+    timeout-minutes: 65
     permissions:
       contents: read
     outputs:
@@ -53,9 +54,16 @@ jobs:
           git merge --no-ff --no-edit -m "Blog: publish $BRANCH" "$GITHUB_SHA"
       - run: npm ci
         timeout-minutes: 5
+      # Unpack @sparticuz/chromium to /tmp/chromium once, before the tests. Otherwise two Chromium test files unpack it at
+      # the same time in parallel workers, and one starts Chromium while the other still writes it (spawn ETXTBSY).
+      - name: Unpack Chromium
+        run: node -e 'import("@sparticuz/chromium").then(async (m) => console.log(await m.default.executablePath()))'
+        timeout-minutes: 2
       # The 2-core runner is slower than a laptop: the assessment bank tests pass the 5 s default locally but not here.
+      # One job merges and pushes main, so the suite is not sharded here. On 2026-11-08 one full run took over 20 minutes
+      # on this runner type (main CI run 42452867626 timed out at 22); 35 leaves a margin.
       - run: npm test -- --testTimeout=60000
-        timeout-minutes: 10
+        timeout-minutes: 35
       - run: npx eslint src
         timeout-minutes: 5
       - run: npm run build
@@ -68,6 +76,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
+      actions: write
     env:
       BRANCH: ${{ github.ref_name }}
       MAIN_SHA: ${{ needs.validate.outputs.main_sha }}
@@ -94,3 +103,9 @@ jobs:
           git merge --no-ff --no-edit -m "Blog: publish $BRANCH" "$GITHUB_SHA"
           git push origin HEAD:main
           git push origin --delete "$BRANCH"
+      # Vercel promotes a main commit only after its CI `test` check passes. This push used GITHUB_TOKEN, which starts no
+      # workflow, so start CI on main here (workflow_dispatch is allowed from GITHUB_TOKEN).
+      - name: Run CI on the published commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref main

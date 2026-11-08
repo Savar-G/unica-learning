@@ -1,0 +1,17 @@
+{
+  "fixture": "Dedicated synthetic test families only",
+  "notice": [
+    "Acknowledgement persisted in hosted scan_photo_notices",
+    "Full notice stayed closed after browser reload",
+    "More about photos reopened full notice",
+    "Another family could not read the acknowledgement or invoke acknowledgement RPC directly",
+    "The first-save trigger and expiry/family-delete lifecycle passed in the local regression"
+  ],
+  "retake": {
+    "nativeFileChooserEvent": true,
+    "oldPhotoState": "deleted",
+    "replacementPhotoState": "pending",
+    "activePhotoCount": 1
+  },
+  "proofLimit": "Chromium Aside browser and hosted QA data. No physical phone camera test."
+}

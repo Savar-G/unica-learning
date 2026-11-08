@@ -79,6 +79,13 @@ function segmentGap(a: Point, b: Point, c: Point, d: Point): number {
   return Math.min(pointToSegment(a, c, d), pointToSegment(b, c, d), pointToSegment(c, a, b), pointToSegment(d, a, b));
 }
 
+/** True when two polylines cross: a segment of each passes through the other. Touching, or sharing an end, does not count. */
+export function polylinesCross(a: readonly Point[], b: readonly Point[]): boolean {
+  const strict = (p: Point, q: Point, r: Point, s: Point) => cross(p, q, r) * cross(p, q, s) < 0 && cross(r, s, p) * cross(r, s, q) < 0;
+  for (let i = 1; i < a.length; i++) for (let j = 1; j < b.length; j++) if (strict(a[i - 1], a[i], b[j - 1], b[j])) return true;
+  return false;
+}
+
 /** The closest two polylines come. A polyline of one point is a dot. */
 export function polylineGap(a: readonly Point[], b: readonly Point[]): number {
   const segs = (pts: readonly Point[]): [Point, Point][] => (pts.length === 1 ? [[pts[0], pts[0]]] : pts.slice(1).map((p, i) => [pts[i], p]));
@@ -107,6 +114,55 @@ export function traceTouches(a: Trace, b: Trace, clearance = 0): boolean {
   const rb = bounds(b.pts);
   if (ra.x - reach > rb.x + rb.w || rb.x - reach > ra.x + ra.w || ra.y - reach > rb.y + rb.h || rb.y - reach > ra.y + ra.h) return false;
   return polylineGap(a.pts, b.pts) < reach;
+}
+
+/** The pieces of a polyline outside every circle of radius `r` around `centres` (a piece on a circle's edge counts as outside). */
+export function clipOutside(pts: readonly Point[], centres: readonly Point[], r: number): Point[][] {
+  const pieces: Point[][] = [];
+  let piece: Point[] = [];
+  /** True while the piece being built runs on to the start of the next segment. */
+  let open = false;
+  for (let i = 1; i < pts.length; i++) {
+    const [p, q] = [pts[i - 1], pts[i]];
+    const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
+    const at = (t: number): Point => [p[0] + t * dx, p[1] + t * dy];
+    // Where the segment is inside a circle: |p + t(q - p) - c| < r, a quadratic in t.
+    const inside: [number, number][] = [];
+    for (const c of centres) {
+      const [fx, fy] = [p[0] - c[0], p[1] - c[1]];
+      const a = dx * dx + dy * dy;
+      const b = 2 * (fx * dx + fy * dy);
+      const disc = b * b - 4 * a * (fx * fx + fy * fy - r * r);
+      if (a === 0 || disc <= 0) {
+        if (fx * fx + fy * fy < r * r) inside.push([0, 1]);
+        continue;
+      }
+      const [t1, t2] = [(-b - Math.sqrt(disc)) / (2 * a), (-b + Math.sqrt(disc)) / (2 * a)];
+      if (t2 > 0 && t1 < 1) inside.push([Math.max(0, t1), Math.min(1, t2)]);
+    }
+    inside.sort((m, n) => m[0] - n[0]);
+    const kept: [number, number][] = [];
+    let from = 0;
+    for (const [s, e] of inside) {
+      if (s > from) kept.push([from, s]);
+      from = Math.max(from, e);
+    }
+    if (from < 1) kept.push([from, 1]);
+    for (const [s, e] of kept) {
+      if (s === 0 && open) piece.push(at(e));
+      else {
+        if (piece.length) pieces.push(piece);
+        piece = [at(s), at(e)];
+      }
+    }
+    open = kept.length > 0 && kept[kept.length - 1][1] === 1;
+    if (!open && piece.length) {
+      pieces.push(piece);
+      piece = [];
+    }
+  }
+  if (piece.length) pieces.push(piece);
+  return pieces;
 }
 
 /** True when a polyline enters a rectangle (touching its edge counts). */

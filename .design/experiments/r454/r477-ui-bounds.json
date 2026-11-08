@@ -1,0 +1,245 @@
+[
+  {
+    "state": "first-notice",
+    "size": "laptop",
+    "viewport": 1440,
+    "scrollWidth": 1425,
+    "photoButton": {
+      "top": 732.5390625,
+      "bottom": 775.5390625,
+      "height": 43
+    },
+    "viewportHeight": 1000
+  },
+  {
+    "state": "first-notice",
+    "size": "tablet",
+    "viewport": 768,
+    "scrollWidth": 753,
+    "photoButton": {
+      "top": 900.296875,
+      "bottom": 943.296875,
+      "height": 43
+    },
+    "viewportHeight": 1024
+  },
+  {
+    "state": "first-notice",
+    "size": "phone",
+    "viewport": 390,
+    "scrollWidth": 375,
+    "photoButton": {
+      "top": 780,
+      "bottom": 828,
+      "height": 48
+    },
+    "viewportHeight": 844
+  },
+  {
+    "state": "start",
+    "size": "laptop",
+    "scrollY": 0,
+    "viewport": 1440,
+    "scrollWidth": 1425,
+    "photoButton": {
+      "top": 645.5390625,
+      "bottom": 688.5390625,
+      "height": 43
+    },
+    "viewportHeight": 1000
+  },
+  {
+    "state": "start",
+    "size": "tablet",
+    "scrollY": 0,
+    "viewport": 768,
+    "scrollWidth": 768,
+    "photoButton": {
+      "top": 551.796875,
+      "bottom": 594.796875,
+      "height": 43
+    },
+    "viewportHeight": 1024
+  },
+  {
+    "state": "start",
+    "size": "phone",
+    "scrollY": 0,
+    "viewport": 390,
+    "scrollWidth": 375,
+    "photoButton": {
+      "top": 780,
+      "bottom": 828,
+      "height": 48
+    },
+    "viewportHeight": 844
+  },
+  {
+    "state": "photo-details",
+    "size": "laptop",
+    "viewport": 1440,
+    "scrollWidth": 1425,
+    "photoButton": {
+      "top": 732.578125,
+      "bottom": 775.578125,
+      "height": 43
+    },
+    "viewportHeight": 1000
+  },
+  {
+    "state": "photo-details",
+    "size": "tablet",
+    "viewport": 768,
+    "scrollWidth": 753,
+    "photoButton": {
+      "top": 790.8359375,
+      "bottom": 833.8359375,
+      "height": 43
+    },
+    "viewportHeight": 1024
+  },
+  {
+    "state": "photo-details",
+    "size": "phone",
+    "viewport": 390,
+    "scrollWidth": 375,
+    "photoButton": {
+      "top": 780,
+      "bottom": 828,
+      "height": 48
+    },
+    "viewportHeight": 844
+  },
+  {
+    "state": "confirm",
+    "size": "laptop",
+    "scrollY": 427.5,
+    "viewport": 1440,
+    "scrollWidth": 1425,
+    "photoButton": null,
+    "viewportHeight": 1000
+  },
+  {
+    "state": "confirm",
+    "size": "tablet",
+    "scrollY": 334,
+    "viewport": 768,
+    "scrollWidth": 753,
+    "photoButton": null,
+    "viewportHeight": 1024
+  },
+  {
+    "state": "confirm",
+    "size": "phone",
+    "scrollY": 342.5,
+    "viewport": 390,
+    "scrollWidth": 375,
+    "photoButton": null,
+    "viewportHeight": 844
+  },
+  {
+    "state": "saved",
+    "size": "laptop",
+    "scrollY": 526,
+    "viewport": 1440,
+    "scrollWidth": 1425,
+    "photoButton": null,
+    "viewportHeight": 1000
+  },
+  {
+    "state": "saved",
+    "size": "tablet",
+    "scrollY": 432,
+    "viewport": 768,
+    "scrollWidth": 753,
+    "photoButton": null,
+    "viewportHeight": 1024
+  },
+  {
+    "state": "saved",
+    "size": "phone",
+    "scrollY": 441,
+    "viewport": 390,
+    "scrollWidth": 375,
+    "photoButton": null,
+    "viewportHeight": 844
+  },
+  {
+    "state": "delete",
+    "size": "laptop",
+    "scrollY": 11.5,
+    "viewport": 1440,
+    "scrollWidth": 1425,
+    "photoButton": {
+      "top": 634.0390625,
+      "bottom": 677.0390625,
+      "height": 43
+    },
+    "viewportHeight": 1000
+  },
+  {
+    "state": "delete",
+    "size": "tablet",
+    "scrollY": 0,
+    "viewport": 768,
+    "scrollWidth": 768,
+    "photoButton": {
+      "top": 551.796875,
+      "bottom": 594.796875,
+      "height": 43
+    },
+    "viewportHeight": 1024
+  },
+  {
+    "state": "delete",
+    "size": "phone",
+    "scrollY": 169.5,
+    "viewport": 390,
+    "scrollWidth": 375,
+    "photoButton": {
+      "top": 780,
+      "bottom": 828,
+      "height": 48
+    },
+    "viewportHeight": 844
+  },
+  {
+    "state": "refused",
+    "size": "laptop",
+    "scrollY": 13.5,
+    "viewport": 1440,
+    "scrollWidth": 1425,
+    "photoButton": {
+      "top": 632.0390625,
+      "bottom": 675.0390625,
+      "height": 43
+    },
+    "viewportHeight": 1000
+  },
+  {
+    "state": "refused",
+    "size": "tablet",
+    "scrollY": 0,
+    "viewport": 768,
+    "scrollWidth": 768,
+    "photoButton": {
+      "top": 551.796875,
+      "bottom": 594.796875,
+      "height": 43
+    },
+    "viewportHeight": 1024
+  },
+  {
+    "state": "refused",
+    "size": "phone",
+    "scrollY": 171.5,
+    "viewport": 390,
+    "scrollWidth": 375,
+    "photoButton": {
+      "top": 780,
+      "bottom": 828,
+      "height": 48
+    },
+    "viewportHeight": 844
+  }
+]

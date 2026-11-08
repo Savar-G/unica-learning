@@ -1,0 +1,142 @@
+{
+  "issue": 454,
+  "parent": 368,
+  "slice": "S1",
+  "route": "design direct",
+  "constraintMode": "existing-system",
+  "base": "8cca02da2367924df2b121d6ceb59bf6a0cc1dcf",
+  "fixture": "Synthetic Alex page with known QR. No real family data.",
+  "browser": "Aside, account u0, desktop Chromium with viewport resizing",
+  "viewports": {
+    "laptop": [
+      1440,
+      1000
+    ],
+    "tablet": [
+      768,
+      1024
+    ],
+    "phone": [
+      390,
+      844
+    ]
+  },
+  "screenshots": [
+    {
+      "file": "confirm-laptop.png",
+      "state": "confirm",
+      "viewport": "laptop"
+    },
+    {
+      "file": "confirm-phone.png",
+      "state": "confirm",
+      "viewport": "phone"
+    },
+    {
+      "file": "confirm-tablet.png",
+      "state": "confirm",
+      "viewport": "tablet"
+    },
+    {
+      "file": "delete-laptop.png",
+      "state": "delete",
+      "viewport": "laptop"
+    },
+    {
+      "file": "delete-phone.png",
+      "state": "delete",
+      "viewport": "phone"
+    },
+    {
+      "file": "delete-tablet.png",
+      "state": "delete",
+      "viewport": "tablet"
+    },
+    {
+      "file": "first-notice-laptop.png",
+      "state": "first-notice",
+      "viewport": "laptop"
+    },
+    {
+      "file": "first-notice-phone.png",
+      "state": "first-notice",
+      "viewport": "phone"
+    },
+    {
+      "file": "first-notice-tablet.png",
+      "state": "first-notice",
+      "viewport": "tablet"
+    },
+    {
+      "file": "photo-details-laptop.png",
+      "state": "photo-details",
+      "viewport": "laptop"
+    },
+    {
+      "file": "photo-details-phone.png",
+      "state": "photo-details",
+      "viewport": "phone"
+    },
+    {
+      "file": "photo-details-tablet.png",
+      "state": "photo-details",
+      "viewport": "tablet"
+    },
+    {
+      "file": "refused-laptop.png",
+      "state": "refused",
+      "viewport": "laptop"
+    },
+    {
+      "file": "refused-phone.png",
+      "state": "refused",
+      "viewport": "phone"
+    },
+    {
+      "file": "refused-tablet.png",
+      "state": "refused",
+      "viewport": "tablet"
+    },
+    {
+      "file": "saved-laptop.png",
+      "state": "saved",
+      "viewport": "laptop"
+    },
+    {
+      "file": "saved-phone.png",
+      "state": "saved",
+      "viewport": "phone"
+    },
+    {
+      "file": "saved-tablet.png",
+      "state": "saved",
+      "viewport": "tablet"
+    },
+    {
+      "file": "start-laptop.png",
+      "state": "start",
+      "viewport": "laptop"
+    },
+    {
+      "file": "start-phone.png",
+      "state": "start",
+      "viewport": "phone"
+    },
+    {
+      "file": "start-tablet.png",
+      "state": "start",
+      "viewport": "tablet"
+    }
+  ],
+  "approval": "Savar approved the look with the three specified changes; these changes are implemented.",
+  "proofLimits": [
+    "These are viewport checks, not physical iPhone Safari or Android Chrome camera checks.",
+    "The QR fixture is generated, not a camera photograph.",
+    "S1 has no crops, marks or AI calls. Later slices must prove their own lifecycle contracts.",
+    "The cleanup route requires deployment of this branch. Verify hosted invocation after deployment."
+  ],
+  "browserTransport": "Actual browser conversion passed with an 18,030,953-byte synthetic PNG; normalized saved JPEG is 76,720 bytes.",
+  "revision": "Savar look changes and R477-1 fix after 13cf268",
+  "noticeStorage": "Per-parent scan_photo_notices, set by explicit acknowledgement or first saved photo; survives photo expiry/deletion; cascades with family.",
+  "retake": "One Take a different photo action; native picker opens in the click; upload waits for discard."
+}

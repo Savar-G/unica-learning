@@ -60,8 +60,8 @@ describe.each(readers)("the %s assessment question reader", (_name, reader) => {
     if (result.status !== "found") throw new Error(`expected a package, got ${JSON.stringify(result)}`);
     expect(result.package.ref).toEqual(ref("s1-0"));
     expect(result.package.text).toBe("48 + 37 = ?");
-    expect(result.package.answer.value).toEqual({ type: "number", value: 85 });
-    expect(result.package.easierExample.text).toBe("26 + 7 = ?");
+    expect(result.package.answer?.value).toEqual({ type: "number", value: 85 });
+    expect(result.package.easierExample?.text).toBe("26 + 7 = ?");
   });
 
   it("says content unavailable for a question of an unsupported template", async () => {
@@ -75,7 +75,7 @@ describe.each(readers)("the %s assessment question reader", (_name, reader) => {
 
   it("reads a question of the stage 2 form the test was routed to", async () => {
     const result = await reader([{ id: TEST, route: "up", test: grade2Test() }]).question(ref("up-0"));
-    expect(result.status === "found" && result.package.answer.value).toEqual({ type: "number", value: 37 });
+    expect(result.status === "found" && result.package.answer?.value).toEqual({ type: "number", value: 37 });
   });
 
   it("does not find a question of a stage 2 form the child was not given", async () => {

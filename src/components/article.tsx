@@ -72,7 +72,7 @@ export function ArticleLayout({ meta, section, related, children }: { meta: Arti
           <Eyebrow>{meta.category}</Eyebrow>
           <h1>{meta.title}</h1>
           <p className="res-lead">{meta.lead}</p>
-          <p className="res-updated">{dates}</p>
+          <p className="res-updated">Published by <Link href="/our-story">{BRAND}</Link> · {dates}</p>
         </header>
 
         <article className="res-body">{children}</article>
@@ -88,6 +88,7 @@ export function ArticleLayout({ meta, section, related, children }: { meta: Arti
           <h2>See where your child is.</h2>
           <p>Take the free online math assessment on a laptop or tablet. Read the report before you choose a plan. Then each workbook is made for your child and mailed home.</p>
           <StartLink src={`${src}-close`}>{START_LABEL} <span className="arr">→</span></StartLink>
+          <p><Link href="/math-assessment">How the free math assessment works</Link> · <Link href="/sample-report">See a sample report</Link> · <Link href="/pricing">Program pricing and free-month terms</Link></p>
         </Rise>
 
         {related.length ? (

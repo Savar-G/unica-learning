@@ -104,5 +104,20 @@
     "evidence": ".design/evidence/email-design/",
     "review": ".design/reviews/email-design-2026-10-17.md",
     "local_checks": "passed; hosted installation and inbox checks remain pending"
+  },
+  "parent_feedback": {
+    "round": "r680",
+    "route": "direct",
+    "job_kind": "new",
+    "surface": "product",
+    "constraint_mode": "existing-system",
+    "phase": "build",
+    "contract": ".design/experiments/r680/contract.md",
+    "manifest": ".design/experiments/r680/manifest.json",
+    "evidence": "pending with root",
+    "gates": {
+      "direction": "specified by parent",
+      "ship": "pending"
+    }
   }
 }

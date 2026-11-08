@@ -30,9 +30,9 @@ Fonts: **Geist** (words) and **Geist Mono** (numbers, maths, labels, IDs). Line 
 | Role | Font | Size / line height | Colour | Notes |
 |---|---|---|---|---|
 | Cover title | Geist Light | 66 / 118%, letter-spacing −3% | `#0C0C0E` | Two lines; the second sits on a `#FFD23F` highlight block |
-| Page title | Geist Light | 30 / 118% | `#0C0C0E` | "Warm-up", "Factor pairs" |
-| Page subtitle | Geist Regular | 15 | `#44444C` | One line under the title ("Watch one. Finish two. Then do the rest on your own.") |
-| Day label | Geist Mono Medium | 13 / 120%, upper case, letter-spacing 4% | page-type colour (section 3) | "DAY 1 · PAGE 2 OF 8 · FACTOR PAIRS" |
+| Page title | Geist Light | 30 / 118% | `#0C0C0E` | "Warm-up", "Factor pairs". One line of at most 4 words that names what every card on the page practises, written by code (D-201) |
+| Page subtitle | Geist Regular | 15 | `#44444C` | One line under the title ("Read the example, then answer the questions.") |
+| Day label | Geist Mono Medium | 13 / 120%, upper case, letter-spacing 4% | page-type colour (section 3) | "DAY 1 · PAGE 2 OF 8" (D-201: the skill is not repeated here) |
 | Name and Date | Geist Regular | 13 | `#0C0C0E` | With 1 px `#0C0C0E` writing rules |
 | Chip label | Geist Mono Medium | 13 / 120%, upper case, letter-spacing 4% | chip text colour | |
 | Chip side note | Geist Regular | 13 | `#44444C` | "Do as many as you can." beside a chip |
@@ -62,7 +62,7 @@ uses the type's chip colours.
 
 | Page type | Day label | Chip fill | Chip text | Panels |
 |---|---|---|---|---|
-| Warm-up | `#064E32` | `#E3F5EC` | `#064E32` | Fix it box, In your head box |
+| Warm-up | `#064E32` | `#E3F5EC` | `#064E32` | Fix it box |
 | Practice (incl. Practice 2) | `#0B7A4F` | `#E3F5EC` | `#064E32` | Watch one `#E3F5EC` |
 | New idea (and Unit B new step) | `#2453D4` | `#EAF0FF` | `#1B3FA6` | Worked example `#EAF0FF`; Try this first and Now you cards |
 | Word problems, Math in the world | `#C2410C` | `#FFEDE5` | `#7C2D12` | Info cards `#FFEDE5` |
@@ -87,14 +87,12 @@ Other colours:
 | Brand green (counters) | `#16A06A` |
 | Brand yellow (highlight, Mixed set) | `#FFD23F` |
 | Taken-away or unused counters | `#D4D4DA` |
-| Mental maths box | `#F1F1F4` |
 
 ## 4. Components
 
 All radii in px. Strokes are inside the shape.
 
-**Header** (every day page; 688 by 126, vertical, gap 8): a Name and Date row (18 tall: "Name" with a 483 px rule, "Date"
-with a short rule at the right); the day label (28 tall); the page title; the subtitle.
+**Header** (688 wide, vertical, gap 8): on the first page of each day only, a Name and Date row (18 tall) with writing rules. Add 18 px of separation below this row. Then print the day label, page title and one-line instruction.
 
 **Footer** (688 by 42, horizontal, gap 12; D-187): QR code 42 by 42 at the left; then a stack of two lines, gap 3: the
 page ID (`UL·LEAH·W03·D01·P2`) and the book page number ("Page 4", Geist Mono Regular 11, `#44444C`); the wordmark at
@@ -115,7 +113,7 @@ padding 8 by 14, gap 28 between choices; tighter strips 36 to 37 tall with gap 2
 choices.
 
 **Work box** ("SHOW YOUR WORK", "WORK IT HERE", "METHOD 1"): white, 1 px `#D4D4DA` (or `#CCCCD1`), radius 8, padding 10 by 12,
-the label at the top left. Inline height 44 (Mixed set); in cards it fills the card's free space.
+the label at the top left. Inline height 64 (Mixed set); in cards it fills the card's free space.
 
 **Writing lines** ("How do you know?", "First I ...", "Then I ..."): 1 px `#9A9AA2`, the first at least 36 px below its prompt and each
 next one at least 34 px below the last (skeleton), full column
@@ -134,7 +132,7 @@ text at the right (gap 26).
 **Try this first card** and **Now you card**: white, 1.5 px `#3366F0`, radius 12, padding 16 20 18 20, gap 12 to 14.
 Labels in `#1B3FA6`.
 
-**Watch one panel**: `#E3F5EC`, radius 12 (10 in Leah), the worked answer in `#2453D4`.
+**Read the example panel**: `#E3F5EC`, radius 12 (10 in Leah), the worked answer in `#2453D4`.
 
 **Remember panel** (Unit B reminder): `#EAF0FF`, radius 12 to 16, label `#2453D4`.
 
@@ -147,13 +145,9 @@ move is wrong. Find it, then write the fix." Holds the wrong work ("SAM'S WORK")
 **Fix it box**: `#FDECEC`, radius 12, after a "FIX IT" chip; the questions sit in white inner cards (radius 12) or in
 answer boxes with "WORK IT HERE" boxes below.
 
-**In your head box** (mental maths): `#F1F1F4`, radius 10; label "IN YOUR HEAD" or "MENTAL MATH"; one item, its answer
-box, then "How did you work it out?" with writing lines (from U19: "First I ..." and "Then I ..." lines and one worked
-example sentence).
+**Warm-up**: use ordinary fluency facts only, with even spacing. Do not add a separate mental-math box.
 
-**Mixed set item**: the story (Geist 14), then ① "Tick the operation:" with a choice strip of +, − (or +, −, ×, ÷) and
-"Tick one"; then ② "Write the answer:" with an answer box (64 by 40) and an inline work box (44 tall). Items are numbered
-and separated by 1 px `#D4D4DA` rules.
+**Mixed set item**: use the standard's mastered step and its number range. Print the question and its answer region in the same grid as the review. Keep story text in code.
 
 **Challenge card**: `#F4F2F0`, 1.5 px `#2B2622`, radius 12, padding 16; the question at the top left, an answer box
 (88 by 40) at the top right, then a white work box filling the rest. On the 8-page day: 1 or 2 full-width cards (688 wide, gap 16); on the
@@ -178,24 +172,11 @@ the samples say "Sample workbook · 3 days").
 The Unica mark: a 3 by 3 grid of 36 px squares with 1.2 px ink borders; filled cells top-left `#FFD23F`, top-right
 `#3366F0`, centre `#FF6A3D`, bottom-left `#16A06A`.
 
-"Made for <Name> · Level U<n> · <Level title>" (Geist Medium 22, `#44444C`). The cover title in two lines, the second on the
-yellow highlight. Then the **Made from** card: `#FFF1EA`, 1.5 px `#FF6A3D`, radius 10, padding 22 by 24, gap 14; label
-"MADE FROM <NAME>'S ASSESSMENT" (Geist Mono Medium 12); one sentence of what the assessment showed (Geist 17); four
-bullets (8 px `#FF6A3D` squares) of what this workbook does. From workbook 2 the label reads "MADE FROM <NAME>'S LAST
-WORKBOOK" and the sentence uses the snapshot.
+"Made for <Name> · Level U<n>" (Geist Medium 22, `#44444C`). The plain cover title uses two lines with the second line on the yellow highlight. The Made from card keeps its assessment or previous-workbook source label. Under it, print "In this workbook, <name> will learn to:" and three plain skills. Do not print a parent task or a next-page notice. Keep the footer.
 
-Under the card, the **parent line**: one sentence for the parent on what to ask the child to show them this fortnight
-(Geist 15, `#0C0C0E`; not in the samples, from the skeleton).
+## 5a. Binding blanks
 
-Bottom: "How this works and your plan are next. 10 days, <n> pages a day, about <x> minutes a day." (Geist 15,
-`#44444C`), then the footer with the cover's page ID.
-
-## 5a. Back cover
-
-The **level map** (skeleton, "Keeping children going"): the 30 levels as squares, U1 to U30, with no grades; the
-child colours the current one. Uses the Unica mark's square style (1.2 px ink borders, 36 px squares, the brand colours
-for filled examples). The same map is in the app. No sample yet; V7's back cover (`196:734`) is the older draft. Blank
-padding pages come after it.
+Show the level map in the browser account. Do not print a My levels page. Add blank pages at the end to reach a multiple of four.
 
 ## 6. How + Plan page
 
@@ -224,24 +205,25 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 
 | Page | Title, subtitle | Blocks (slots) |
 |---|---|---|
-| 1 Warm-up | "Warm-up"; "Facts to 20. Take your time: there is no timer." (from U16 "Beat your own count") | WARM-UP chip + "Do as many as you can."; fact grid, 3 columns of 213 (gap 24), up to 30 facts (10 rows) or 15 facts plus Fix it; Fix it box (workbook 2 on, Days 1 to 5, up to 3 items); spare room: In your head box |
-| 2 New idea | the step's name; "Before you ..." or "Try it first. Then see how it works." (U19 on) | NEW IDEA chip (+ "Unit A · new step"); Try this first card (U19 on); worked example panel, two ways or figure + "What's going on"; Spot the error card or Now you card (2 to 4 items) |
-| 3 Practice | "Practice: <step>"; "Watch one. Finish two. Then do the rest on your own." | PRACTICE chip + one-line rule; Watch one panel (1 worked item, answer in blue); "FINISH THESE" (2 items, partly filled in blue); "ON YOUR OWN" (3 to 8 items) |
-| 4 Practice 2 | "More practice: <step>" or "On your own"; "Each row is a little harder than the one before." | PRACTICE chip; rows of items getting harder (up to 12 column problems in a 4-column grid, labelled rows such as "TWO DIGITS", "HARDER: THREE DIGITS", "LOOK FIRST: SOME DON'T NEED A TRADE"); one Solve it two ways item (heading "Solve it two ways"; METHOD 1 and METHOD 2 work boxes + Answer box); one Spot the error card |
-| 5 Word problems | "<Step> in stories"; "Read it. Work it out in the box. Write the answer." | 3 stories, each: number, story (up to 3 lines), optional picture (dots, blocks), work box, ANSWER box with unit word; one "How do you know?" or "Did you need to ...? How do you know?" with 2 writing lines. Story number in Geist Light 26; stories separated by full-width 1.5 px `#FF6A3D` rules; answer boxes 80 to 96 by 40 |
-| 6 Unit B | the Unit B topic; "Unit B: <topic>. <one-line rule>." | NEW IDEA or REMEMBER chip + "Unit B · new step" or "From yesterday"; reminder panel (figure + "What's going on"); PRACTICE chip; up to 8 items, "HARDER: TWO MORE EACH" rows last |
-| 7 Remember these + Mixed set | "Remember these?"; "Things you learned before, so they stay fresh." | 8 review items in 2 columns (answer boxes at the right of each column); MIXED SET chip + "Tick + or −, then write the answer."; 3 to 4 Mixed set items |
-| 8 Challenge | "Challenge"; "One to stretch you." or "Two to stretch you." | CHALLENGE chip; 1 or 2 Challenge cards (skeleton: 1 to 2 a day), full width and stacked, each with a large work box; spare room goes to spaced review. The samples' four cards in a 2 by 2 grid were sample-only |
+| 1 Warm-up | "Warm-up"; "Facts to 20. Take your time: there is no timer." (from U16 "Beat your own count") | WARM-UP chip + "Do as many as you can."; fact grid, 3 columns of 213 (gap 24), up to 30 facts (10 rows) or 15 facts plus Fix it; Fix it box (workbook 2 on, Days 1 to 5, up to 3 items); ordinary facts fill the available room |
+| 2 New idea | the skill's short title, or the unit title when skills mix (D-201); "Before you ..." or "Try it first. Then see how it works." (U19 on) | NEW IDEA chip (+ "Unit A · new step"); Try this first card (U19 on); worked example panel, two ways or figure + "What's going on"; Spot the error card or Now you card (2 to 4 items) |
+| 3 Practice | the skill's short title, or the unit title when skills mix (D-201); "Read the example, then answer the questions." | PRACTICE chip + one-line rule; Watch one panel (1 worked item, answer in blue); "FINISH THESE" (2 items, partly filled in blue); "ON YOUR OWN" (3 to 8 items) |
+| 4 Practice 2 | the skill's short title, or the unit title when skills mix (D-201); "Each row is a little harder than the one before." | PRACTICE chip; rows of items getting harder (up to 12 column problems in a 4-column grid, labelled rows such as "TWO DIGITS", "HARDER: THREE DIGITS", "LOOK FIRST: SOME DON'T NEED A TRADE"); one Solve it two ways item (heading "Solve it two ways"; METHOD 1 and METHOD 2 work boxes + Answer box); one Spot the error card |
+| 5 Word problems | "Number stories to <n>" up to U12, "Word problems" from U13 (D-201); "Read it. Work it out in the box. Write the answer." | 3 stories, each: number, story (up to 3 lines), optional picture (dots, blocks), work box, ANSWER box with unit word; one "How do you know?" or "Did you need to ...? How do you know?" with 2 writing lines. Story number in Geist Light 26; stories separated by full-width 1.5 px `#FF6A3D` rules; answer boxes 80 to 96 by 40 |
+| 6 Unit B | the skill's short title, or the Unit B unit title when skills mix (D-201); "Answer the questions. Use the example if you need help." | NEW IDEA or REMEMBER chip + "Unit B · new step" or "From yesterday"; reminder panel (figure + "What's going on"); PRACTICE chip; up to 8 items, "HARDER: TWO MORE EACH" rows last |
+| 7 Remember these + Mixed set | "Remember these?" ("Review and Friday 5" with the Friday 5); "Things you learned before, so they stay fresh." | 8 review items in 2 columns (answer boxes at the right of each column); MIXED SET chip + "Tick + or −, then write the answer."; 3 to 4 Mixed set items |
+| 8 Challenge | "Challenge"; "Test yourself." | CHALLENGE chip; 3 Challenge cards a day (D-228; the skeleton had 1 to 2), full width and stacked, each with a large work box; spare room goes to spaced review. The samples' four cards in a 2 by 2 grid were sample-only |
 
 ### 7.2 Other page counts
 
-- **6-page day (U19 to U30, Ethan):** 1 Warm-up (fact grid up to 27 items, In your head box, Fix it box); 2 New idea (Try
+- **6-page day (U19 to U30, Ethan):** 1 Warm-up (fact grid, Fix it box); 2 New idea (Try
   this first first); 3 Practice (Watch one, Finish these, On your own, Solve it two ways, Spot the error), replaced by **Math in the
   world** on Days 4 and 9 (skeleton: it replaces one practice page; Ethan's Day 3 sample puts it on page 3); 4 Word
   problems; 5 Unit B (reminder + practice); 6 Remember these? (6 items) + Mixed set (2
   items) + 2 Challenge cards side by side.
 - **4 to 6-page parent-led day (U1 to U3):** not in the samples yet. Skeleton rules: the parent reads every instruction
-  aloud; instructions are an icon plus a short line; the child answers by circling, matching, colouring, drawing a line
+  aloud; instructions are a short line, up to 3 lines on a card (D-201: no read-aloud mark; the grown-up line already
+  says to read each line aloud), with a pencil only where the child circles; the child answers by circling, matching, colouring, drawing a line
   or writing one numeral; 6 to 10 items a page; large boxes (at least 56 px). Until Cedric's sample exists, the
   generator does not build these levels (CONTEXT.md, open question 3).
 - **Friday 5 (Days 5 and 10):** replaces the Mixed set block on page 7: a FRIDAY 5 chip (Mixed set colours) with "5
@@ -253,7 +235,7 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 
 ### 7.3 Early levels (U4 to U9, from Ava)
 
-- Bigger maths (Geist Mono 30 to 34 in facts) and fewer items: warm-up 8 facts in 2 columns plus one In your head item.
+- Bigger maths (Geist Mono 30 to 34 in facts) and fewer items: warm-up facts in 2 columns, with no separate mental-math item.
 - A "For the grown-up:" line under the New idea title ("Read the blue box aloud. Show both ways with a finger ...").
 - Pictures carry the stories: dot groups beside every word problem; ten-frames and number lines in practice.
 - The skeleton starts the Warm-up at U8 and the Mixed set at U10 (the samples are for format only). Default until Savar
@@ -303,3 +285,38 @@ From the FigJam stickies beside the Mateo sample:
 - "Tick one what?": every choice strip's instruction names the choices, and Mixed set items show both steps clearly.
 - In a Remember these list, the big box for items 9 to 12 was unclear (each item keeps its own answer box beside it).
 - Spacing issue around one diagram label.
+
+## 9. Plain story language (D-201)
+
+Page titles use the same plain language. A page with one skill uses that skill's short title. A page with several
+skills from one unit uses the unit title. Story and review pages keep their title rules. Each skill title has at most
+4 words, uses sentence case, and differs from the other skill titles in its unit. Code rejects missing titles and
+banned phrases. The print check uses the real font and title size and rejects a title that cannot print on one line.
+
+Every story question at every level uses plain language. This includes picture cards on practice and review pages,
+word problems, picture stories and the Mixed set. Bare number sentences and pure equation cards stay as equations.
+Simplify everyday words and keep the math.
+
+1. A person with a first name and real things: "Gus has 2 plums.", never bare counts such as "2 plums" or "9 dots".
+2. One action per sentence: "He finds 5 more."
+3. The question names the counted thing again and says "now" or asks plainly: "How many plums does Gus have now?".
+   Never "in all", "altogether", "total" or "left over".
+4. Things only do what they really can: "9 frogs. 7 hop away." is fine; "9 dots. 7 hop off." is wrong.
+5. The math words the curriculum teaches stay ("ten-frame", "take away"); only everyday words are simplified.
+
+At U1 to U9 code writes every story (`src/lib/workbook-wording.ts`). From U10 the AI writes them under these rules, and
+code refuses a quantity question on any page with a banned phrase, with no person, or whose question does not name
+the counted thing again when code knows the noun. The question is written again, never printed. The picture uses the
+same counts and colours as the text. The real fit check refuses any card with more than 3 lines at every level.
+
+
+
+## Workbook feedback #479
+
+Issue #479 updates the workbook print contract. Name and Date print only on each day's first page. Keep at least 18 px of extra separation before the day label. Use the same question and answer grid across rows. Story-card answer areas align at the bottom of each row.
+
+Answer boxes are at least 56 px high at U1 to U9 and 48 px from U10. Calculation space is white and sits under the question. Use 32 px for a short calculation with round numbers, 64 px for other multi-digit calculations, and 96 px for multi-step calculations. A digit recall needs no calculation space. Two-method regions include space for their method labels. Larger story and Challenge areas grow into the available room. Calculation pages can use six questions when their work areas require the room. A calculation Practice 2 page with both an error question and a two-method question can use four ordinary questions, for six tasks in total. Other practice pages keep at least eight. A calculation New idea page can keep two practice questions beside its worked example. A calculation practice page can use a short reminder to make room for work. Complete every two-column row. Friday 5 keeps five questions and uses a full-width final row. Add questions while they fit, up to about 33 minutes a day. Every day must stay below 35 minutes. Challenge keeps three cards. Strict overflow checks stay in force.
+
+Every day page has a short, plain instruction. A page with calculation space says "Show your work in the white space under a question." Keep its circle instruction. Adult guidance is only for Kindergarten. Use "Read how it works, then try it." for a new idea and "Test yourself." under "Challenge". The error card shows "SPOT THE ERROR", the worked answer, "Is it right?", Yes and No, then "If it's not right, fix it:" and an answer box. Do not print a person's work label.
+
+The cover has a plain title and three learning skills. It has no parent task or next-page notice. The help page names Maya and browser scanning. Do not print a My levels page. See `docs/workbook-feedback-479.md` for the shared schedule and permanent checks. Savar must approve the new U4 sample before merge.

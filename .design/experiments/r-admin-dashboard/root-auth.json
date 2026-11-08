@@ -1,0 +1,35 @@
+{
+  "checks": [
+    {
+      "role": "admin",
+      "status": 200,
+      "bytes": 37442
+    },
+    {
+      "role": "locked-admin",
+      "status": 307,
+      "location": "/tutor"
+    },
+    {
+      "role": "parent",
+      "status": 404,
+      "bytes": 27757
+    },
+    {
+      "role": "signed-out",
+      "path": "/admin/parent-dashboard",
+      "status": 404,
+      "bytes": 27757
+    },
+    {
+      "role": "signed-out",
+      "path": "/admin/parent-dashboard?demo=1",
+      "status": 404,
+      "bytes": 27796
+    }
+  ],
+  "cleanup": {
+    "deletedAuthUsers": 2,
+    "remainingAdminRows": 0
+  }
+}

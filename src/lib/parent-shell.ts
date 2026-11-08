@@ -1,0 +1,124 @@
+import type { ChildTab } from "@/lib/child-stage";
+import type { ChildView } from "@/lib/parent-view";
+import { schedulePath } from "@/lib/parent-schedule";
+
+// The dashboard shell's rules (spec #544, #551). Pure, and shared by the server and the browser: which child shows, which
+// tabs link where, and the phone navigation. No database, cookie store or clock here.
+
+/** The last child viewed: only an id, read by the server, which checks it against the family's own children. */
+export const LAST_CHILD_COOKIE = "unica_last_child";
+
+export function lastChildCookie(childId: string, secure: boolean): string {
+  return `${LAST_CHILD_COOKIE}=${encodeURIComponent(childId)}; Path=/account; Max-Age=31536000; SameSite=Lax${secure ? "; Secure" : ""}`;
+}
+
+export const ACCOUNT_PATH = "/account/settings";
+
+/** What the Account tab says after a parent comes back from Stripe's card page (`?card=`). */
+export type CardNotice = "updated" | "unchanged" | "unconfirmed" | "failed";
+
+const homePath = (childId: string) => `/account?child=${encodeURIComponent(childId)}`;
+
+/** Sign-in, and back to the child the address named. With none, sign-in goes to the home page as it always did. */
+export const signInPath = (childId: string | null) => (childId ? `/sign-in?next=${encodeURIComponent(homePath(childId))}` : "/sign-in");
+
+/** The child's Workbooks tab (#558). */
+export const workbooksPath = (childId: string) => `/account/workbooks/${encodeURIComponent(childId)}`;
+
+/** The child's Progress tab (#561). */
+export const progressPath = (childId: string) => `/account/progress/${encodeURIComponent(childId)}`;
+
+const LABELS: Record<ChildTab, string> = {
+  overview: "Overview",
+  progress: "Progress",
+  workbooks: "Workbooks",
+  schedule: "Schedule",
+  scan_pages: "Scan pages",
+  maya: "Maya",
+  assessment: "Assessment",
+  account: "Account",
+};
+
+type ShellChild = Pick<ChildView, "id" | "tabs" | "reportIds" | "opensOn">;
+
+/**
+ * Where each tab goes today. Null means the tab has no page yet, so it does not appear.
+ * Assessment (#552) opens the newest report, or the child's home, which holds the test button: also while a new test is
+ * open, because the child's page is then that test.
+ */
+const TAB_PAGE: Record<ChildTab, (child: ShellChild) => string | null> = {
+  overview: (c) => homePath(c.id),
+  progress: (c) => progressPath(c.id),
+  workbooks: (c) => workbooksPath(c.id),
+  schedule: (c) => schedulePath(c.id),
+  scan_pages: () => "/account/scan",
+  maya: (c) => `/account/notes/${c.id}`,
+  assessment: (c) => (c.reportIds[0] && c.opensOn !== "continue_or_wait" ? `/account/report/${c.reportIds[0]}` : homePath(c.id)),
+  account: () => ACCOUNT_PATH,
+};
+
+export interface TabLink {
+  tab: ChildTab;
+  label: string;
+  href: string;
+}
+
+/** The child's tabs that have a page, in the stage's order. A family with no children has only Account. */
+export function tabLinks(child: ShellChild | null): TabLink[] {
+  const shown: ShellChild = child ?? { id: "", tabs: ["account"], reportIds: [], opensOn: "start_test" };
+  return shown.tabs.flatMap((tab) => {
+    const href = TAB_PAGE[tab](shown);
+    return href ? [{ tab, label: LABELS[tab], href }] : [];
+  });
+}
+
+/** The child named by the address, if this page belongs to one child. */
+export function addressChild(pathname: string, queryChild: string | null, children: readonly Pick<ChildView, "id" | "reportIds">[]): string | null {
+  if (pathname === "/account" || pathname === "/account/schedule") return queryChild;
+  const [, , section, id] = pathname.split("/");
+  if (section === "notes" || section === "learning" || section === "workbooks" || section === "progress") return id ?? null;
+  if (section === "report") return children.find((c) => c.reportIds.includes(id))?.id ?? null;
+  return null;
+}
+
+/** The address's child, else the last child viewed, else the oldest. An id that is not this family's counts as none. */
+export function pickChild<T extends { id: string }>(children: readonly T[], fromAddress: string | null, remembered: string | null): T | null {
+  const find = (id: string | null) => children.find((c) => c.id === id);
+  return find(fromAddress) ?? find(remembered) ?? children[0] ?? null;
+}
+
+/** The tab a page belongs to; null when that tab is not shown. */
+export function activeTab(pathname: string, links: readonly TabLink[]): ChildTab | null {
+  const has = (tab: ChildTab) => links.some((l) => l.tab === tab);
+  const section = pathname.split("/")[2];
+  const home = has("overview") ? "overview" : "assessment";
+  const tab: ChildTab | null = !section || section === "learning" ? home
+    : section === "report" ? "assessment"
+    : section === "notes" ? "maya"
+    : section === "workbooks" ? "workbooks"
+    : section === "progress" ? "progress"
+    : section === "schedule" ? "schedule"
+    : section === "scan" ? "scan_pages"
+    : section === "settings" || section === "plan" || section === "pin" || section === "password" ? "account"
+    : null;
+  return tab && has(tab) ? tab : null;
+}
+
+/** Keep Schedule selected across a child switch, including a child still waiting for a printed book. */
+export const childSwitchPath = (pathname: string, child: string) => pathname === "/account/schedule" ? schedulePath(child) : homePath(child);
+
+export type PhoneNav = { kind: "top"; links: TabLink[] } | { kind: "bar"; bar: TabLink[]; more: TabLink[] };
+
+// The phone layout: set 2, option A of round r544 (a bar with More opening a sheet). Savar has not chosen yet: another
+// option changes this function and the two phone parts of src/components/parent-shell.tsx, nothing else.
+const BAR_TABS: readonly ChildTab[] = ["overview", "progress", "scan_pages", "workbooks"];
+
+export function phoneNav(links: readonly TabLink[]): PhoneNav {
+  if (links.every((l) => l.tab === "assessment" || l.tab === "account")) return { kind: "top", links: [...links] };
+  if (links.length <= 5) return { kind: "bar", bar: [...links], more: [] };
+  return {
+    kind: "bar",
+    bar: BAR_TABS.flatMap((tab) => links.filter((l) => l.tab === tab)),
+    more: links.filter((l) => !BAR_TABS.includes(l.tab)),
+  };
+}

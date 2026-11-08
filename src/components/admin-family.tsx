@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { gradeLabel } from "@/lib/assessment/grades";
 import { adminEmailPath, adminParentPath, adminReportPath, adminTestPath } from "@/lib/admin-view";
-import { EMAIL_LABEL, STAGES, clicksText, deliveryLine, emailDot, STAGE_ACTION, STAGE_TEXT, ago, at, nextReminderText, paymentText, type Dashboard, type Stage } from "@/lib/admin-dashboard";
+import { EMAIL_LABEL, STAGES, isUnsubscribe, clicksText, deliveryLine, emailDot, STAGE_ACTION, STAGE_TEXT, ago, at, nextReminderText, paymentText, type Dashboard, type Stage } from "@/lib/admin-dashboard";
 import { stripeCustomerUrl as stripeUrl } from "@/lib/stripe";
 import { StageChip, TestMark, href, type Ctx } from "@/components/admin-dashboard-parts";
 import { ProgressPanel } from "@/components/admin-progress";
@@ -63,7 +63,7 @@ export function FamilyDrawer({ ctx, d, id, progress }: { ctx: Ctx; d: Dashboard;
             {f.emails.map((e) => (
               <li key={e.id}>
                 <span className={`dash-dot is-${emailDot(e)}`} />
-                <div><b>{EMAIL_LABEL[e.kind]}</b>{e.kind !== "unsubscribe" && <> <Link href={adminEmailPath(e.id, ctx.demo)} className="dash-muted">&ldquo;{e.subject}&rdquo;</Link></>}
+                <div><b>{EMAIL_LABEL[e.kind]}</b>{!isUnsubscribe(e.kind) && <> <Link href={adminEmailPath(e.id, ctx.demo)} className="dash-muted">&ldquo;{e.subject}&rdquo;</Link></>}
                   <span className="dash-sub">{e.status === "failed" ? `Failed after ${e.attempts} ${e.attempts === 1 ? "try" : "tries"}: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : (deliveryLine(e)?.text ?? (e.kind === "alert" ? "Sent to you" : "Sent to the parent"))}{clicksText(e) && ` · ${clicksText(e)}`} · {at(e.at)}</span></div>
               </li>
             ))}

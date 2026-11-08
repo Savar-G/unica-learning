@@ -14,6 +14,8 @@ export interface GradeBand {
   length: number;
   /** Stage 1 questions, all at the school grade. */
   stage1: number;
+  /** Questions in the short third stage (D-282): only a child at either end gets one, and it adds to `length`. */
+  stage3: number;
   /** Questions marked show-your-work (#67). Since D-125 the mark is not enforced: it only ranks the work the report shows. */
   whiteboardRequired: number;
   /** True when the whiteboard has a text box beside the drawing. Grades 1-2 draw only (#67). */
@@ -25,10 +27,10 @@ export interface GradeBand {
 export const GRADE_BANDS: Record<GradeBandId, GradeBand> = {
   // Kindergarten to grade 2 report 3 strands: BC teaches fractions from grade 3. Kindergarten (D-156) takes this band:
   // its bank starts at level K, the child draws and does not type, and the test is the shortest.
-  "1-2": { id: "1-2", grades: [0, 1, 2], length: 24, stage1: 12, whiteboardRequired: 5, whiteboardTyping: false, strands: ["number", "algebra", "shapes"] },
-  "3-5": { id: "3-5", grades: [3, 4, 5], length: 36, stage1: 18, whiteboardRequired: 7, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
+  "1-2": { id: "1-2", grades: [0, 1, 2], length: 24, stage1: 12, stage3: 6, whiteboardRequired: 5, whiteboardTyping: false, strands: ["number", "algebra", "shapes"] },
+  "3-5": { id: "3-5", grades: [3, 4, 5], length: 36, stage1: 18, stage3: 8, whiteboardRequired: 7, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
   // Grades 8 and 9 (D-156) take this band: its bank holds levels 5-9; each starts at its school grade (grades.ts, D-158).
-  "6-7": { id: "6-7", grades: [6, 7, 8, 9], length: 42, stage1: 21, whiteboardRequired: 10, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
+  "6-7": { id: "6-7", grades: [6, 7, 8, 9], length: 42, stage1: 21, stage3: 8, whiteboardRequired: 10, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
 };
 
 export function bandFor(grade: Grade): GradeBand {
@@ -44,8 +46,19 @@ export const ROUTE_UP_PERCENT = 80;
 /** A stage 1 score below this percent routes stage 2 down one level. */
 export const ROUTE_DOWN_BELOW_PERCENT = 40;
 
+/** D-282: a child routed up who scores this percent on the higher-grade questions of stage 2 goes up another grade. */
+export const STAGE3_UP_PERCENT = 80;
+/**
+ * D-282: a child routed down who scores below this percent on the lower-grade questions of stage 2 goes down another
+ * grade. It is the working-level bar: under it, no level has cleared, so without the stage the level is only an estimate.
+ */
+export const STAGE3_DOWN_BELOW_PERCENT = 70;
+
 /** Working level = the highest level with this percent correct. */
 export const WORKING_LEVEL_PERCENT = 70;
+
+/** An area's bar (D-243): answers needed at a grade before that grade can end the bar. */
+export const AREA_MINIMUM_ANSWERS = 4;
 
 /** BC selection: questions at or below school grade per reported strand (#188, D-110). */
 export const STRAND_MINIMUM_QUESTIONS = 6;

@@ -1,0 +1,124 @@
+name: CI
+
+# The done gate's test and lint steps on every pull request and every push to main. The tests run in two vitest shards
+# (`unit`, a matrix) beside one `checks` job (lint and the SQL comparison); the final job, named exactly `test`, needs
+# them all and fails if any failed. Vercel lists the `test` job as a
+# Deployment Check (Settings → Build and Deployment), so a main commit whose tests fail is built but not promoted to
+# production. `next build` (the type check) already runs in Vercel's own build.
+# Every main commit needs this check, or its production deploy waits forever. A push made with GITHUB_TOKEN starts no
+# workflow, so the blog publish job (blog-publish.yml) starts this one with workflow_dispatch after it pushes main.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A pull request keeps only its newest run. Each main commit gets its own run: a queued main run must never be dropped.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Half of the vitest files each. The suite outgrew one 22-minute step on the 2-core runner (main run 42452867626,
+  # 2026-11-08), so it runs as two shards in parallel.
+  unit:
+    name: unit (${{ matrix.shard }}/2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    # Supabase uses PostgreSQL 17. This database contains synthetic rows only; it is here in case a test file needs it.
+    services:
+      postgres:
+        image: postgres:17.11-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5
+        env:
+          POSTGRES_PASSWORD: maya-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 4
+        with:
+          persist-credentials: false
+          # Full history: the Book 1 recovery tests (#472) load pinned planners from their own Git commits.
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+        timeout-minutes: 5
+      # The 2-core runner is slower than a laptop: the assessment bank tests can pass the 5 s default locally but not here.
+      - run: npm test -- --testTimeout=60000 --shard=${{ matrix.shard }}/2
+        timeout-minutes: 25
+        env:
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: postgres
+          PGPASSWORD: maya-ci-only
+
+  # Lint (the only place it runs) and the SQL comparison of the family windows.
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17.11-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5
+        env:
+          POSTGRES_PASSWORD: maya-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+        timeout-minutes: 5
+      - run: node scripts/generate-family-zones.mjs --check
+        timeout-minutes: 1
+      - name: Compare family windows and run concurrent quota probes
+        run: npm run test:family-zones
+        timeout-minutes: 10
+        env:
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: postgres
+          PGPASSWORD: maya-ci-only
+      - run: npx eslint src
+        timeout-minutes: 5
+
+  # The required check. Keep this name exactly `test`: Vercel's Deployment Check and branch rules use it.
+  test:
+    needs: [unit, checks]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Both test shards and the checks passed
+        run: |
+          echo "unit: ${{ needs.unit.result }}, checks: ${{ needs.checks.result }}"
+          test "${{ needs.unit.result }}" = "success" && test "${{ needs.checks.result }}" = "success"

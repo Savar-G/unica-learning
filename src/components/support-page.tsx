@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AccountFeedbackLink } from "@/components/account-feedback-link";
 import type { ReactNode } from "react";
 import { BRAND } from "@/lib/site";
 import { CookieSettingsButton } from "@/components/cookie-consent";
@@ -18,6 +19,7 @@ export function SupportPage({ label, title, wide = false, children }: { label: s
         {children}
       </main>
       <footer className="support-footer" aria-label="Site information">
+        <AccountFeedbackLink />
         <Link href="/resources">Resources</Link>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>

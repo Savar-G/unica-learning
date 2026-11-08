@@ -1,3 +1,4 @@
+import { localDay, PACIFIC_ZONE } from "@/lib/family-time";
 // The admin export of the raw test data (#200, spec #181, D-118): one file per dataset, as CSV or JSON. Pure: the rows
 // come through ExportReader (src/lib/admin-store.ts reads the database with the admin's session; the in-memory reader
 // in src/lib/admin-export-memory.ts is for tests and the local demo). The export reads and writes one page at a time,
@@ -75,9 +76,9 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const ROUTES: readonly Route[] = ["up", "stay", "down"];
 
 /**
- * Every question of a stored test (assessments.test), as drawn: stage 1, then stage 2 of each route. `position`: the
- * question's place in the test, as answers.position numbers it, for the questions of stage 1 and of the route the test
- * took; null for the other routes' questions, which the child never got. D-145: not the questions of the removed extra
+ * Every question of a stored test (assessments.test), as drawn: stage 1, stage 2 of each route, then each third stage. `position`: the
+ * question's place in the test, as answers.position numbers it, for the questions of stage 1, the route the test took
+ * and its third stage; null for the other forms' questions, which the child never got. D-145: not the questions of the removed extra
  * round (#190), which two stored tests still hold under `extra`.
  */
 function drawnQuestions(test: ExportRow): ExportRow[] {
@@ -86,13 +87,31 @@ function drawnQuestions(test: ExportRow): ExportRow[] {
   const stage1 = list(stored.stage1);
   const stage2 = isObject(stored.stage2) ? stored.stage2 : {};
   const taken = ROUTES.find((r) => r === test.route);
-  const row = (q: Question, stage: 1 | 2, route: Route | null, index: number, position: number | null): ExportRow => ({
+  const stage3 = isObject(stored.stage3) ? stored.stage3 : {};
+  const onRoute = stage1.length + list(taken && stage2[taken]).length;
+  const row = (q: Question, stage: number | null, route: Route | null, index: number, position: number | null): ExportRow => ({
     assessment_id: test.id, stage, route, index, position,
     question_id: q.id, template_id: q.templateId, level: q.level, strand: q.strand, format: q.format, question: q,
   });
+  if (isObject(stored.adaptive)) {
+    const blocks = Array.isArray(stored.adaptive.blocks) ? stored.adaptive.blocks : [];
+    const selected = new Map<string, { stage: number; index: number; position: number }>();
+    let first = 0;
+    blocks.forEach((block, stage) => {
+      const questions = list(isObject(block) ? block.questions : null);
+      questions.forEach((q, index) => selected.set(q.id, { stage: stage + 1, index, position: first + index }));
+      first += questions.length;
+    });
+    return list(stored.adaptive.pool).map((q, index) => {
+      const place = selected.get(q.id);
+      return row(q, place?.stage ?? null, null, place?.index ?? index, place?.position ?? null);
+    });
+  }
   return [
     ...stage1.map((q, i) => row(q, 1, null, i, i)),
     ...ROUTES.flatMap((r) => list(stage2[r]).map((q, i) => row(q, 2, r, i, taken === r ? stage1.length + i : null))),
+    // D-282: the third stage forms; only the one the stage 2 lock chose has places in the test.
+    ...(["up", "down"] as const).flatMap((r) => list(stage3[r]).map((q, i) => row(q, 3, r, i, test.stage3_route === r ? onRoute + i : null))),
   ];
 }
 
@@ -116,7 +135,7 @@ const DATASETS: readonly Dataset[] = [
     row: "a test: the child, the school grade and curriculum, the status and times, the route, the placement, the help answer, the device and the break.",
     columns: stored<"assessments">([
       "id", "created_at", "parent_id", "child_id", "grade", "province", "status", "seed", "started_at", "last_answer_at",
-      "completed_at", "resume_until", "route", "help", "placement",
+      "completed_at", "resume_until", "route", "stage3_route", "help", "placement",
       // The test context (#185).
       "device", "break_started_at", "break_ended_at", "break_skipped", "break_ms",
     ]),
@@ -128,7 +147,7 @@ const DATASETS: readonly Dataset[] = [
     row: "a question drawn for a test, with its template, values, choices in their order, figure and answer. Position matches the answers; empty for a route the test did not take.",
     // The stored test is longer than a spreadsheet cell, so its questions are rows of their own.
     columns: ["assessment_id", "stage", "route", "index", "position", "question_id", "template_id", "level", "strand", "format", "question"],
-    read: { from: "tests", select: stored<"assessments">(["route", "test"]), rows: drawnQuestions },
+    read: { from: "tests", select: stored<"assessments">(["route", "stage3_route", "test"]), rows: drawnQuestions },
   },
   {
     id: "answers",
@@ -207,7 +226,7 @@ export function exportHref({ dataset: id, format, withTests }: ExportRequest, de
 
 /** "unica-answers-2026-10-16.csv": the dataset and the day of the export in Pacific time, and whether test families are in. */
 export function exportFileName({ dataset: id, format, withTests }: ExportRequest, now: Date): string {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const day = localDay(now, PACIFIC_ZONE);
   return `unica-${id.replaceAll("_", "-")}-${day}${withTests ? "-with-test-families" : ""}.${format}`;
 }
 

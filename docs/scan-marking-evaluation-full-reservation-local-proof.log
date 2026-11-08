@@ -1,0 +1,126 @@
+postgres (PostgreSQL) 18.6 (Homebrew)
+PRIOR_CONTROL unknown remains held and globally blocks; resolution RPC is absent
+MIGRATION_ROLLBACK_OK
+EXISTING_PUBLIC_FUNCTIONS_UNCHANGED
+PASS service RPC stores exact evidence and full charge with one database clock time
+PASS two old clean429 holds and prior charges retain exact USD 1.308144 liability
+PASS full charge remains binding at the run cap; original attempt cannot dispatch again
+PASS full charge and all old holds bind the UTC-month cap
+PASS full charge and all old holds bind the lifetime cap
+PASS resolution rollback restores the hold, stop, and empty audit together
+PASS audit insert failure rolls back the charge atomically
+PASS a separate unknown still blocks checked admission across runs after resolution
+PASS refuse null evidence without accounting changes
+PASS refuse array evidence without accounting changes
+PASS refuse oversized evidence without accounting changes
+PASS refuse wrong run without accounting changes
+PASS refuse wrong attempt key without accounting changes
+PASS refuse wrong model without accounting changes
+PASS refuse nonunknown state without accounting changes
+PASS refuse wrong dispatch without accounting changes
+PASS refuse missing reservation without accounting changes
+PASS refuse zero reservation claim without accounting changes
+PASS refuse changed reservation claim without accounting changes
+PASS refuse string reservation claim without accounting changes
+PASS refuse missing usage without accounting changes
+PASS refuse known zero cost without accounting changes
+PASS refuse known generation without accounting changes
+PASS refuse known tokens without accounting changes
+PASS refuse missing usage field without accounting changes
+PASS refuse short latency without accounting changes
+PASS refuse nonnumeric latency without accounting changes
+PASS refuse non200 response without accounting changes
+PASS refuse known body without accounting changes
+PASS refuse known envelope without accounting changes
+PASS refuse known metadata without accounting changes
+PASS refuse missing response field without accounting changes
+PASS refuse conflicting transport copy without accounting changes
+PASS refuse wrong result run without accounting changes
+PASS refuse wrong result evidence hash without accounting changes
+PASS refuse wrong result photo without accounting changes
+PASS refuse wrong result batch without accounting changes
+PASS refuse missing result attempt without accounting changes
+PASS refuse duplicate result attempt without accounting changes
+PASS refuse conflicting result attempt without accounting changes
+PASS refuse actor null
+PASS refuse actor ""
+PASS refuse actor "   "
+PASS refuse actor "\n\t"
+PASS refuse actor "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+PASS refuse actor "                                                                                                                                                                                                         x"
+PASS refuse invalid durable admission: update scan_marking_spend set reserved_micros=6000001
+PASS refuse invalid durable admission: update scan_marking_spend set reserved_micros=16000000
+PASS refuse invalid durable admission: update scan_marking_evaluation_prices set maximum_micros=5999999
+PASS refuse invalid durable admission: delete from scan_marking_evaluation_prices
+PASS refuse invalid durable admission: update scan_marking_evaluation_attempts set endpoint='wrong'
+PASS refuse invalid durable admission: update scan_marking_evaluation_attempts set evidence_hash=repeat('0',64)
+PASS refuse invalid durable admission: update scan_marking_evaluation_attempts set pixels=1400001
+PASS refuse invalid durable admission: update scan_marking_evaluations set maximum_micros=5999999
+PASS database and resolver refuse invalid reservation 0
+PASS database and resolver refuse invalid reservation -1
+PASS database and resolver refuse invalid reservation null
+PASS a disabled old price still supplies the original known bound
+PASS missing, production-only, wrong identity, settled and classified429 attempts refuse
+PASS browser roles and direct service writes refuse; service read works without BYPASSRLS
+PASS privileged update/delete/truncate and parent cleanup cannot erase the audit
+PASS concurrent resolutions record exactly one permanent full charge
+PASS concurrent later normal settlement cannot lower the full charge
+PASS a normal settlement that wins the lock prevents resolution
+PASS disabled bound refuses without a hold
+PASS unknown cost, idempotency and immutable run cap
+PASS settlement uses explicit transport cost, keeps unknown and refuses invalid or changed charges
+PASS family spend and evaluation share the same UTC month ledger
+PASS key lifetime hold survives UTC month rollover
+PASS two concurrent admissions cannot exceed one run cap
+PASS production global lock blocks evaluation until committed family spend is visible
+PASS browser roles have no admission, settlement, direct table write or read permission
+SCAN_MARKING_EVALUATION_SQL_OK 8 cases
+PASS price-only refresh genuinely dispatches through exact new hash and new bound
+PASS base cache-read liability binds refresh and near-cap admission
+PASS base unknown cache-read tariff cannot enable evidence
+PASS tier cache-read liability binds refresh and near-cap admission
+PASS tier unknown cache-read tariff cannot enable evidence
+PASS disabled or absent reviewed anchor never enables itself
+PASS wrong evidence hash and under-reservation cannot enable a new price
+PASS policy change provider refuses only its new evidence
+PASS policy change tag refuses only its new evidence
+PASS policy change quantization refuses only its new evidence
+PASS policy change zdr refuses only its new evidence
+PASS policy change retention refuses only its new evidence
+PASS policy change schema refuses only its new evidence
+PASS policy change status refuses only its new evidence
+PASS policy change suffix refuses only its new evidence
+PASS policy change context refuses only its new evidence
+PASS tiers, cache writes, image and reasoning prices bind the conservative bound
+PASS unknown liability stops a different run until a real settlement arrives
+PASS refreshed prices preserve run, monthly and lifetime caps
+PASS concurrent refresh and admissions keep exact evidence and global liability serialization
+PASS browser roles cannot use either RPC and service role cannot write tables directly
+SCAN_MARKING_PRICE_REFRESH_SQL_OK 21 cases
+PRIOR_FALSIFIER checked RPC rejects the bounded unknown hold
+PASS validated raw 429 allows a later reservation while both full holds stay counted
+PASS refuse status without releasing the unknown hold
+PASS refuse code without releasing the unknown hold
+PASS refuse usage without releasing the unknown hold
+PASS refuse null-usage without releasing the unknown hold
+PASS refuse generation without releasing the unknown hold
+PASS refuse nested-generation without releasing the unknown hold
+PASS refuse raw-usage without releasing the unknown hold
+PASS refuse body without releasing the unknown hold
+PASS refuse envelope without releasing the unknown hold
+PASS refuse metadata without releasing the unknown hold
+PASS refuse label without releasing the unknown hold
+PASS refuse missing-message without releasing the unknown hold
+PASS run, dispatch and attempt identities must all belong to the same reservation
+PASS duplicate classification is idempotent; changed evidence cannot replace it
+PASS classification rollback cannot authorize an unknown hold
+PASS concurrent checked reservations remain serialized after a clean hold
+PASS multiple classified holds bind the exact run cap and a retry needs a separate reservation
+PASS unknown non429 in a different run stays globally fatal beside clean holds
+PASS classified hold stays in UTC month cap
+PASS classified hold stays in lifetime cap
+PASS no zero settlement is invented; actual later settlement replaces its hold once
+PASS RLS and permissions deny browser access, direct service writes and ledger deletion
+SCAN_MARKING_CLEAN429_SQL_OK 23 cases
+SCAN_MARKING_FULL_RESERVATION_SQL_OK 64 cases
+OWNED_POSTGRES_STOPPED /tmp/pd542-pg-full-rPlNPX

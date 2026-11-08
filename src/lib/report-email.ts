@@ -201,7 +201,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   const unsubscribe = offer
     ? `Unsubscribe to stop reminders and emails about our plans. ${name}'s report stays in your account.`
     : `You unsubscribed from reminders and emails about our plans, so this email has only the report.`;
-  const footer = { why, note: unsubscribe, ...(offer ? { unsubscribe: { url: unsubscribeUrl, label: "Unsubscribe" } } : {}) };
+  const footer = { why, note: unsubscribe, signer: "founders" as const, ...(offer ? { unsubscribe: { url: unsubscribeUrl, label: "Unsubscribe" } } : {}) };
   const origin = new URL(url).origin;
 
   const text = [
@@ -225,8 +225,8 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(offer ? [`How we help: ${help.title}\n${help.text}`] : []),
     ...(step && stepUrl ? [`${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`] : []),
     `See ${name}'s full report: ${url}`,
-    ...(BOOKING_URL ? [`Want to talk through the results? Book a free 15-minute call with one of our founders: ${BOOKING_URL}`] : []),
-    emailSignatureText(),
+    ...(BOOKING_URL ? [`Want to talk through the results? Book a free 15-minute call with one of us: ${BOOKING_URL}`] : []),
+    emailSignatureText(undefined, "founders"),
     emailFooterText(footer),
   ].join("\n\n");
 
@@ -379,7 +379,7 @@ ${button(stepUrl, step.email.label)}
 ${button(url, `See ${name}'s full report`)}
 </td></tr>`}
 ${BOOKING_URL ? `<tr><td style="padding:22px 20px 4px">
-${p(`Want to talk through the results? <a href="${esc(BOOKING_URL)}" style="color:${INK};text-decoration:underline">Book a free 15-minute call</a> with one of our founders.`, "margin:0;font-size:15px")}
+${p(`Want to talk through the results? <a href="${esc(BOOKING_URL)}" style="color:${INK};text-decoration:underline">Book a free 15-minute call</a> with one of us.`, "margin:0;font-size:15px")}
 </td></tr>` : ""}
 ${emailEndHtml(footer, 20)}
 </table>

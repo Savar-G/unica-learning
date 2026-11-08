@@ -1,0 +1,20 @@
+{
+  "credential": "Existing retention_worker key",
+  "result": {
+    "state": "deleted",
+    "images": 0,
+    "copies": 0
+  },
+  "checks": [
+    "Family freeze refuses receipt retries",
+    "Real worker deletes dedicated synthetic family",
+    "Receipt, correction and audit rows cascade",
+    "Auth user absent"
+  ],
+  "proofLimits": [
+    "No image bucket added in this slice. Existing scan storage tests belong to S1. Retention eligibility code is unchanged."
+  ],
+  "finalCleanup": {
+    "remainingQaFamilies": 0
+  }
+}

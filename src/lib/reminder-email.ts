@@ -3,6 +3,7 @@
 // Same look as the report email
 // (src/lib/report-email.ts).
 // CASL: every reminder names the sender, gives the mailing address and the website, and has an unsubscribe link.
+import { familyWhen, familyZone } from "@/lib/family-time";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import type { ReminderKind } from "@/lib/reminders";
 
@@ -12,8 +13,10 @@ interface Common {
   /** Opens the child's start screen, through sign-in when the parent is signed out. */
   url: string;
   unsubscribeUrl: string;
-  /** The parent's postal code: it picks the time zone for the deadline. Null (the short phone signup, D-134): Pacific. */
+  /** An older signup's postal code (D-224): familyZone uses it after the saved time zone, before the province. Otherwise null. */
   postal: string | null;
+  timeZone?: string | null;
+  province?: string | null;
   /** Questions in the test for the child's grade. */
   total: number;
 }
@@ -29,87 +32,61 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITY[c]);
 const INK_2 = "#44444c";
 const BUTTON = "#2b2622";
 
-/** The time zone of the province that a postal code's first letter belongs to. A guess for the few that span two zones. */
-const ZONE: Record<string, string> = {
-  A: "America/St_Johns",
-  B: "America/Halifax",
-  C: "America/Halifax",
-  E: "America/Moncton",
-  G: "America/Toronto",
-  H: "America/Toronto",
-  J: "America/Toronto",
-  K: "America/Toronto",
-  L: "America/Toronto",
-  M: "America/Toronto",
-  N: "America/Toronto",
-  P: "America/Toronto",
-  R: "America/Winnipeg",
-  S: "America/Regina",
-  T: "America/Edmonton",
-  V: "America/Vancouver",
-  X: "America/Yellowknife",
-  Y: "America/Whitehorse",
-};
-const zoneFor = (postal: string | null) => ZONE[(postal ?? "").trim().charAt(0).toUpperCase()] ?? "America/Vancouver";
-
-/** "4:15 p.m. PDT on Monday, October 12" in the family's time zone. */
-function deadline(at: number, postal: string | null): string {
-  const timeZone = zoneFor(postal);
-  const time = new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit", timeZone, timeZoneName: "short" }).format(at);
-  const day = new Intl.DateTimeFormat("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone }).format(at);
-  return `${time} on ${day}`;
-}
-
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
 /** What each reminder says: the subject, a line for the inbox preview, the paragraphs and the button. */
 function content(e: ReminderEmailInput): { subject: string; preview: string; paragraphs: string[]; button: string } {
   const name = e.childName;
-  const alone = `${name} takes it alone, in one sitting, on a laptop or tablet.`;
+  // The test takes about 20 minutes. Answering alone keeps the report honest, so the copy gives that reason.
+  const alone = `It works best when ${name} answers on their own, so the report shows where ${name} really is.`;
+  const howLong = `It takes about 20 minutes on a laptop or tablet. ${alone}`;
+  const report = `Afterward, you'll get a report by email showing the level ${name} is working at, what's going well, and which skills to work on next.`;
   switch (e.kind) {
     case "continue": {
-      const until = `${name} can continue from the same question until ${deadline(e.resumeUntil, e.postal)}.`;
+      const until = `${name} can pick up from the same question until ${familyWhen(e.resumeUntil, familyZone(e))}.`;
       return {
-        subject: `${name} can finish the math test`,
+        subject: `${name}'s math test is saved`,
         preview: until,
         paragraphs: [
           e.answered > 0
-            ? `${name} stopped the free math placement test after ${e.answered} of ${e.total} questions.`
-            : `${name} opened the free math placement test but did not answer a question yet.`,
+            ? `${name} answered ${e.answered} of ${e.total} questions on the free math placement test, and those answers are saved.`
+            : `${name} opened the free math placement test but hasn't answered a question yet.`,
           until,
-          `After that, the test closes and ${name} starts again with new questions.`,
+          `After that, ${name} would start over with a new set of questions.`,
         ],
         button: `Continue ${name}'s test`,
       };
     }
     case "come_back":
       return {
-        subject: `${name} can start the math test again`,
-        preview: `${name} can start again with new questions.`,
+        subject: `${name} can start the math test fresh`,
+        preview: `A new set of questions, about 20 minutes.`,
         paragraphs: [
-          `${name} did not finish the free math placement test within 24 hours, so it closed.`,
-          `${name} can start again with ${e.total} new questions. ${alone}`,
+          `${name}'s free math placement test closed after 24 hours, before ${name} finished. That happens, and it's easy to start again.`,
+          `${name} can start fresh with a new set of questions. ${howLong}`,
         ],
         button: "Start again",
       };
     case "start":
       return {
-        subject: `${name} has not started the free math test`,
-        preview: `${name}'s test has ${e.total} questions, in one sitting.`,
+        subject: `${name}'s free math check is ready`,
+        preview: `About 20 minutes. Then a report on ${name}'s level and next steps.`,
         paragraphs: [
-          `${name} has not started the free math placement test yet.`,
-          `The test has ${e.total} questions. ${alone} When ${name} finishes, you get the report by email.`,
+          `${name}'s free math placement test is ready to go. Just find 20 quiet minutes when ${name} can sit down at a laptop or tablet.`,
+          alone,
+          report,
         ],
         button: `Start ${name}'s test`,
       };
     case "start_followup":
+      // A personal note from the founders (D-225): it asks what is in the way, so a parent can reply.
       return {
-        subject: `Last reminder: ${name}'s free math test`,
-        preview: `It is free, and no card is needed. ${name} needs a laptop or tablet.`,
+        subject: `A quick question about ${name}'s math test`,
+        preview: `Is anything getting in the way?`,
         paragraphs: [
-          `${name} has not started the free math placement test yet. This is our last reminder about it.`,
-          `The test is free, and you do not give a card for it. ${name} needs a laptop or tablet, and answers ${e.total} questions alone, in one sitting.`,
-          `When ${name} finishes, you get the report by email.`,
+          `We're Savar and Cedric, the founders of Unica Learning. We noticed ${name} hasn't had a chance to take the free math test yet, so we wanted to check in ourselves.`,
+          `Is anything getting in the way, like timing, signing in, or questions about how it works?`,
+          `If you'd like to go ahead, it takes about 20 minutes. It's free, with no card needed.`,
         ],
         button: `Start ${name}'s test`,
       };
@@ -117,18 +94,22 @@ function content(e: ReminderEmailInput): { subject: string; preview: string; par
 }
 
 /** One reminder email, with its CASL footer and unsubscribe link. */
-export function reminderEmail(e: ReminderEmailInput): { subject: string; text: string; html: string } {
+/** The reminders the founders sign (D-225): the last start reminder. The others are notices from the team. */
+export const FOUNDER_REMINDERS: readonly ReminderKind[] = ["start_followup"];
+
+export function reminderEmail(e: ReminderEmailInput): { subject: string; text: string; html: string; founders: boolean } {
   const { subject, preview, paragraphs, button } = content(e);
   const first = firstName(e.parentName);
-  const signIn = "If you are signed out, sign in first and the test opens.";
+  const signIn = "You may be asked to sign in first.";
   const why = `You get this reminder because you signed up for ${e.childName}'s free math placement test.`;
-  const footer = { why, unsubscribe: { url: e.unsubscribeUrl, label: "Unsubscribe from reminders" } };
+  const founders = FOUNDER_REMINDERS.includes(e.kind);
+  const footer = { why, unsubscribe: { url: e.unsubscribeUrl, label: "Unsubscribe from reminders" }, signer: founders ? "founders" as const : "team" as const };
 
   const text = [
     `Hi ${first},`,
     ...paragraphs,
     `${button}: ${e.url}\n${signIn}`,
-    emailSignatureText(),
+    emailSignatureText(undefined, footer.signer),
     emailFooterText(footer),
   ].join("\n\n");
 
@@ -143,5 +124,5 @@ ${paragraphs.map((x) => p(esc(x))).join("\n")}
 </td></tr>
 <tr><td style="padding:0 24px 4px">${p(esc(signIn), `margin:8px 0 0;font-size:14px;color:${INK_2}`)}</td></tr>
 ` });
-  return { subject, text, html };
+  return { subject, text, html, founders };
 }
