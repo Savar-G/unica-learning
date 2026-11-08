@@ -320,6 +320,98 @@ export const BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
     },
   },
+  // The subscription practice run at 361a05c9 (PR #698): real children said a column in natural turns, not bare templates.
+  // C01c to C01e: one step template with next-step questions from a closed list, or the child's own claim after Maya's
+  // number, credits the ones (C01-r1 looped on the ones for 12 turns). C04b, C04c: after Maya shows the ones at H3, the
+  // child's claim is theirs, and a copy moves the ladder on with no credit (C04-r2 ended with no safe line).
+  {
+    id: "C01c",
+    title: "'I got 16, like I said. What do I do next?': the ones are done, then the tens",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I got 16, like I said. What do I do next?", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("2 plus 3 plus 1 is 6, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "C01d",
+    title: "'I already got 16. Where does the 1 go?': the ones are done, and where the carried ten goes is explained",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I already got 16. Where does the 1 go?", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 1, lines: ["check.right_step", "step.regroup"] }]),
+      child("2 plus 3 plus 1 is 6, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "C01e",
+    title: "'You said 16, so I wrote 6 and carried 1.': the child's own claim about their paper does the ones",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Is it 16?", { start: "has_work" }, [{ act: "confirm", heard: "16" }]),
+      child("You said 16, so I wrote 6 and carried 1.", { answers: [[6, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("2 plus 3 plus 1 is 6, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0, confirmations: 1 },
+    },
+  },
+  {
+    id: "C04b",
+    title: "After the ones are shown at H3, 'You said 16, so I wrote 6 and carried 1.', then 'Is it 16?' with a request to be shown: the tens, never no line",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I don't know. Can you show me how?", { help: "show" }, [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }]),
+      child("You said 16, so I wrote 6 and carried 1.", { answers: [[6, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"] }]),
+      // The model reads a request to be shown, and shows the ones again: the ones are done, so Maya explains the carry in the tens.
+      child("Um, I still don't know 7 plus 9. Is it 16?", { help: "show" }, [{ act: "guide", step: "ones", level: 3, lines: ["step.show"], repair: { act: "guide", step: "tens", level: 1, lines: ["step.regroup"] } }]),
+      child("2 plus 3 plus 1 is 6, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      refused: ["wrong_step"],
+      counts: { refusals: 1, fallbacks: 0 },
+      never: ["give_answer"],
+    },
+  },
+  {
+    id: "C04c",
+    title: "After the ones are shown at H3, '16. What do I do next?' copies them: the tens, with no credit for the ones",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I don't know. Can you show me how?", { help: "show" }, [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }]),
+      child("16. What do I do next?", { answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"] }]),
+      child("2 plus 3 plus 1 is 6, so 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+      never: ["give_answer"],
+    },
+  },
   {
     id: "C05",
     title: "'Just tell me' with no work: the easier example, not the answer",

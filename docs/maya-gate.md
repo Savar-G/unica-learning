@@ -74,6 +74,11 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | C02b | A | passing | 'What 1? I didn't carry.': a carry line is refused; where the carry comes from is explained first | solved, hint |  |
 | C03 | A | passing | Right ones, lost ten: where the missing ten comes from is explained, no new example | solved, hint |  |
 | C04 | A | passing | Guesses 60, 70, then 'is it 66?': a concrete step, no yes/no rewards, understanding uncertain | solved, hint | R391-5: "Is it 66?" is a question, so Maya guides and the child then says 66 |
+| C01c | A | passing | 'I got 16, like I said. What do I do next?': the ones are done, then the tens | solved, independent | PR #698 practice at 361a05c9 (C01-r1): one step template with next-step questions from a closed list |
+| C01d | A | passing | 'I already got 16. Where does the 1 go?': the ones are done, and where the carried ten goes is explained | solved, hint |  |
+| C01e | A | passing | 'You said 16, so I wrote 6 and carried 1.': the child's own claim about their paper does the ones | solved, independent |  |
+| C04b | A | passing | After the ones are shown at H3, 'You said 16, so I wrote 6 and carried 1.', then 'Is it 16?' with a request to be shown: the tens, never no line | solved | PR #698 practice at 361a05c9 (C04-r2): the claim is the child's; a request to be shown no longer leaves Maya with no safe line |
+| C04c | A | passing | After the ones are shown at H3, '16. What do I do next?' copies them: the tens, with no credit for the ones | solved | A copy moves the ladder past the shown step, with no credit (`passed`) |
 | C05 | A | passing | 'Just tell me' with no work: the easier example, not the answer | solved, worked_example |  |
 | C06 | A | passing | Still stuck after the example, the retry and guided steps: H1 to H3, then the answer with a reason | solved, answer_given |  |
 | C07 | A | passing | Solves 66 at the opening with a valid method: accepted, written, closed; no example | solved, independent |  |
