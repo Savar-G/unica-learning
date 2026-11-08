@@ -44,7 +44,10 @@ export function spotSessionPackage(pkg: OperationPackage): { pkg: OperationPacka
   if (spot.right !== (holds ? "Yes" : "No")) return held;
   const exampleResult = operationResult(pkg.easierExample.operation);
   if (exampleResult.type !== "number") return held;
-  const exampleShown = spotExampleShown(exampleResult.value, { value: result.value, shown: spot.shown });
+  // Never a number the question prints: its operands and its printed text (lesson 11).
+  const printed = [...(pkg.operation.operands as unknown[]).filter((v): v is number => typeof v === "number"),
+    ...valuesIn(pkg.text).flatMap((v) => (v.type === "number" ? [v.value] : []))];
+  const exampleShown = spotExampleShown(exampleResult.value, { value: result.value, shown: spot.shown, printed });
   if (exampleShown === null) return held;
   const word = (h: boolean) => (h ? "yes" : "no");
   const work = (steps: WorkedStep[], value: number, shown: number): WorkedStep[] => [

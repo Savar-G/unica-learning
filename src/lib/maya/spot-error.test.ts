@@ -132,6 +132,16 @@ describe("spot the error in the controller", () => {
     }
   });
 
+  it("never prints a number of the question as the easier example's answer given (lesson 11, review of #743)", () => {
+    // The R2 shape "20 × ? = 7000": its example "30 × ? = 60" (answer 2) once got the answer given 20, the question's factor.
+    const pkg = view(made(spotMissing(20, 350, 35))) as OperationPackage;
+    const ex = pkg.easierExample.steps.find((x) => x.kind === "claim-compare");
+    expect(ex?.kind).toBe("claim-compare");
+    const shown = ex?.kind === "claim-compare" ? ex.shown : null;
+    for (const n of [20, 7000, 350, 35]) expect(shown).not.toBe(n);
+    expect(packageLines(pkg).exampleIntro().flatMap((o) => o.texts).join(" ")).not.toMatch(/answer given is (?:20|7000|350|35)\b/);
+  });
+
   it("carries the check of the answer given in every compare-step help line (lesson 2)", () => {
     const pv = packageLines(view(DIGIT) as OperationPackage).help("claim").filter((o) => o.line !== "chart.open");
     expect(pv.length).toBeGreaterThan(0);

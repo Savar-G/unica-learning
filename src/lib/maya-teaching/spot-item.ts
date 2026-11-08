@@ -45,14 +45,15 @@ const digitsOf = (n: number) => String(n).replace(/^0+/, "");
 
 /**
  * The answer given in the easier example (lesson 11): a wrong worked answer code makes for the example's own result, one
- * zero too few, else one too many, else one more. Never the question's result or shown answer, never one whose times a
+ * zero too few, else one too many, else one, two or three more. Never the question's result or shown answer, never a number the question
+ * prints (its operands and its printed text: "20 × ? = 7000" never gets an answer given of 20), never one whose times a
  * power of 10 is the question's result, and never the first digits of it. Null when none is safe.
  */
-export function spotExampleShown(exampleValue: number, question: { value: number; shown: number }): number | null {
-  const candidates = [exampleValue % 10 === 0 ? exampleValue / 10 : null, exampleValue * 10, exampleValue + 1];
+export function spotExampleShown(exampleValue: number, question: { value: number; shown: number; printed?: readonly number[] }): number | null {
+  const candidates = [exampleValue % 10 === 0 ? exampleValue / 10 : null, exampleValue * 10, exampleValue + 1, exampleValue + 2, exampleValue + 3];
   for (const shown of candidates) {
     if (shown === null || !Number.isSafeInteger(shown) || shown <= 0 || shown === exampleValue) continue;
-    if (shown === question.value || shown === question.shown) continue;
+    if (shown === question.value || shown === question.shown || (question.printed ?? []).includes(shown)) continue;
     if ([0, 1, 2, 3, 4, 5, 6, 7].some((k) => shown * 10 ** k === question.value)) continue;
     if (digitsOf(question.value).startsWith(digitsOf(shown))) continue;
     return shown;

@@ -85,7 +85,7 @@ describe("the spot-the-error deriver", () => {
 });
 
 describe("the easier example's answer given (lessons 11 and 12)", () => {
-  it("is a dropped zero, else an added zero, else one more", () => {
+  it("is a dropped zero, else an added zero, else one, two or three more", () => {
     expect(spotExampleShown(3840, { value: 44800, shown: 4480 })).toBe(384);
     expect(spotExampleShown(384, { value: 4480, shown: 448 })).toBe(3840);
     expect(spotExampleShown(3, { value: 170, shown: 17 })).toBe(30);
@@ -96,8 +96,12 @@ describe("the easier example's answer given (lessons 11 and 12)", () => {
     expect(spotExampleShown(448, { value: 4480, shown: 44 })).toBe(449);
     // 80 is the answer given: 9 is the one left.
     expect(spotExampleShown(8, { value: 8000, shown: 80 })).toBe(9);
+    // A number the question prints, here its own factor 20 in "20 × ? = 7000" (R2, d9p2s2.1), is refused; 3 begins 350,
+    // so the answer given is 4.
+    expect(spotExampleShown(2, { value: 350, shown: 35, printed: [20, 7000] })).toBe(4);
+    expect(spotExampleShown(2, { value: 350, shown: 35 })).toBe(20);
     // Every candidate refused: null, so the question is held.
-    expect(spotExampleShown(4, { value: 40, shown: 5 })).toBeNull();
+    expect(spotExampleShown(4, { value: 40, shown: 5, printed: [6, 7] })).toBeNull();
     for (const [ex, q] of [[384, { value: 4480, shown: 448 }], [3, { value: 170, shown: 17 }], [800, { value: 40000, shown: 4000 }]] as const) {
       const shown = spotExampleShown(ex, q)!;
       expect(shown).not.toBe(q.value);
