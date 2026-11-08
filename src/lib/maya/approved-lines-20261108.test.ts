@@ -8,7 +8,7 @@ import { OK_TALK } from "@/lib/maya/talk-review";
 // docs/maya-practice-lines.md. These tests pin the code to those exact texts, so a later change to any of them fails here
 // and needs his approval again (D-202).
 
-const DOC = readFileSync(join(process.cwd(), "docs/maya-practice-lines.md"), "utf8");
+const DOC = readFileSync(join(process.cwd(), "docs/maya-practice-lines.md"), "utf8").replace(/\r\n/g, "\n");
 
 /** The rows of the first table after a heading, as cells. */
 function table(heading: string): string[][] {
