@@ -49,9 +49,11 @@ describe("repairs from the full subscription practice", () => {
     const c = call();
     c.child("Show me the ones.");
     c.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
-    // The sum Maya just showed is a copy; what the child wrote on their paper is theirs.
+    // The sum Maya just showed is a copy; what the child wrote on their paper is theirs. A copy moves the ladder past the
+    // shown step with no credit, so the line that calls it right is not offered (fault B of the practice run at 361a05c9).
     c.child("7 plus 9 is 16.");
-    expect(c.propose({ act: "guide", step: "tens", level: 0, parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(16, "ones")] } }).refusal).toMatchObject({ code: "answer_not_committed" });
+    expect(c.propose({ act: "guide", step: "tens", level: 0, parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(16, "ones")] } }).refusal).toMatchObject({ code: "line_not_offered" });
+    expect(c.s.done).not.toContain("ones");
     const d = call();
     d.child("Show me the ones.");
     d.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
