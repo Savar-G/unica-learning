@@ -60,6 +60,7 @@ import {
   type WorkbookDraftStore,
 } from "@/lib/workbook-generator";
 import { planNextWorkbook } from "@/lib/workbook-placement";
+import { instructionsEmpty, type WorkbookInstructions } from "@/lib/workbook-instructions";
 import { skillUnits } from "@/lib/workbook-teaching-frame";
 import type { WorkbookPlan, PlanInput } from "@/lib/workbook-plan";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
@@ -230,6 +231,12 @@ export interface ChildInputs {
   /** The current child profile with its revision, or null. */
   profile: { revision: number; profile: ChildLearnerProfile } | null;
   workbooks: { number: number; levels: number[] }[];
+  /**
+   * The admin's book instructions for the child (public.workbook_instructions), read with the child. Only the first job
+   * call of a run plans from them; the plan keeps the exact set (plan.instructions), so a later change never reaches a
+   * run that has a frame.
+   */
+  instructions?: WorkbookInstructions | null;
 }
 
 /** The shape version of a stored RunFrame. */
@@ -285,6 +292,8 @@ export interface RunPlanningCapture {
     device?: import("./workbook-signals").BookSignalsInput["device"];
     workbooks: { number: number; levels: number[] }[];
     number: number;
+    /** The admin's book instructions the plan read; absent when there were none. */
+    instructions?: WorkbookInstructions;
   };
 }
 
@@ -649,11 +658,12 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     inputs = { ...inputs, profile: prepared.profile };
     const assessmentId = inputs.profile?.profile.assessment?.assessmentId;
     const metadata = assessmentId ? await deps.source.planningMetadata?.(assessmentId) : undefined;
+    const instructions = instructionsEmpty(inputs.instructions) ? undefined : inputs.instructions!;
     const placement: RunPlanningCapture["placement"] = structuredClone({ ...metadata, curriculum: { key, version: curriculumVersion(key)! },
-      grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
+      grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number, ...(instructions ? { instructions } : {}) });
     let input: PlanInput | undefined;
     // The capture is a copy taken at the public boundary: it cannot change the plan.
-    const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number }, captured => { input = captured; });
+    const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number, instructions }, captured => { input = captured; });
     if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
     const made: RunFrame = {
       version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,

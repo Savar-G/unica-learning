@@ -5,6 +5,7 @@ import type { Curriculum, CurriculumLevel } from "@/lib/workbook-curriculum";
 import { planLevel, planWorkbook, type WorkbookPlan, type PlanInput } from "@/lib/workbook-plan";
 import { bookSignals, type BookSignals, type BookStandard } from "@/lib/workbook-signals";
 import { workbookWhy } from "@/lib/workbook-why";
+import { difficultyLabel, instructionsEmpty, type InstructionOutcome, type WorkbookInstructions } from "@/lib/workbook-instructions";
 
 export const PLACEMENT_CEILING = 27;
 export interface PlacementInput {
@@ -14,9 +15,12 @@ export interface PlacementInput {
   grade: Grade;
   profile: ChildLearnerProfile | null;
   workbooks: readonly { number: number; levels: readonly number[] }[];
+  /** The admin's book instructions for the child (workbook-instructions.ts); absent or empty: placement as without. */
+  instructions?: WorkbookInstructions | null;
 }
 export interface PlacementTrace {
-  rule: "P0" | "P1" | "P2" | "P3" | "P4" | "P5" | "P9";
+  /** I1: the admin's start level. */
+  rule: "P0" | "P1" | "P2" | "P3" | "P4" | "P5" | "P9" | "I1";
   reason: string;
   level: string;
   home: string;
@@ -53,7 +57,18 @@ function supportFor(levels: readonly CurriculumLevel[], home: CurriculumLevel, s
   return signals.parent.goal === "catch_up" && early.length >= 2 ? early[0].standard.code : null;
 }
 
-/** The first matching placement rule decides the start. Existing workbooks always come first. */
+/** The admin's start level, when it can apply: else the plain reason. Kindergarten keeps U1 (P9); never above U27. */
+export function instructedStart(o: PlacementInput): { level: CurriculumLevel } | { reason: string } | null {
+  const id = o.instructions?.startLevel;
+  if (!id) return null;
+  const level = o.curriculum.level(id);
+  if (!level) return { reason: `The curriculum has no level ${id}.` };
+  if (level.number > PLACEMENT_CEILING) return { reason: `It is above U${PLACEMENT_CEILING}, the highest level a book can start at.` };
+  if (o.grade === 0) return { reason: "Kindergarten starts at U1." };
+  return { level };
+}
+
+/** The first matching placement rule decides the start. An admin start level (I1) comes first, then existing workbooks. */
 export function placeChild(o: PlacementInput): PlacedChild {
   const levels = o.curriculum.levels.filter(l => l.number <= PLACEMENT_CEILING);
   const signals = bookSignals(o);
@@ -63,6 +78,12 @@ export function placeChild(o: PlacementInput): PlacedChild {
     trace: { rule, reason, level: level.id, home: home.id, support, rules: [...new Set([rule, ...(signals.working?.atCeiling && rule === "P5" ? ["P7"] : []), "P8", ...(o.grade === 0 || level.number === PLACEMENT_CEILING ? ["P9"] : [])])] },
   });
   const newest = [...o.workbooks].sort((a,b) => b.number-a.number)[0];
+  const wanted = instructedStart(o);
+  if (wanted && "level" in wanted) {
+    // One level per book (Option A). Weak topics below it get the P6 checks, not the support slot.
+    const inLevel = o.workbooks.filter(w => w.levels.includes(wanted.level.number)).length;
+    return decide(wanted.level, "I1", `Admin instruction: start at ${wanted.level.id}.`, inLevel, !(newest && newest.levels.length > 0));
+  }
   if (newest && newest.levels.length > 0) {
     const at = Math.min(Math.max(...newest.levels), PLACEMENT_CEILING);
     const level = levels.find(l => l.number === at) ?? levels[levels.length-1];
@@ -90,10 +111,35 @@ export function placeChild(o: PlacementInput): PlacedChild {
 
 /** Plans from clear secure results only at the first start level. Legacy input keeps the previous plan unchanged. */
 export function planNextWorkbook(o: PlacementInput & { number: number }, capture?: (input: PlanInput) => void): NextWorkbookResult {
-  const place = placeChild(o);
+  const ins = instructionsEmpty(o.instructions) ? null : o.instructions!;
+  const place = placeChild(ins ? o : { ...o, instructions: null });
   const level = planLevel(o.curriculum, place.level.id);
   if (!level) return { ok: false, reason: `the curriculum has no level ${place.level.id}` };
   const signals = bookSignals({ ...o, allowedStandards: o.curriculum.levels.filter(l => l.number <= place.level.number).flatMap(l => [...l.units]) });
+  const outcomes: InstructionOutcome[] = [];
+  if (ins?.startLevel) {
+    const wanted = instructedStart(o)!;
+    const auto = placeChild({ ...o, instructions: null });
+    outcomes.push("level" in wanted
+      ? { section: "start-level", value: ins.startLevel, applied: true, note: auto.level.id === wanted.level.id
+        ? "Same as the automatic placement." : `Instead of the automatic ${auto.level.id}. Weak topics below it get review checks.` }
+      : { section: "start-level", value: ins.startLevel, applied: false, note: `${wanted.reason} The book uses the automatic ${auto.level.id}.` });
+  }
+  if (ins?.difficulty) {
+    if (!signals.hasAssessment) outcomes.push({ section: "difficulty", value: ins.difficulty, applied: false, note: "It needs a finished assessment: the stretch rules read the test's results." });
+    else {
+      // The admin's choice replaces the automatic stretch (section 4, item 2), inside the same curriculum bounds.
+      signals.adjustments.stretchShift = ins.difficulty === "harder" ? 2 : 0;
+      signals.adjustments.hardChallenge = ins.difficulty === "harder";
+      outcomes.push({ section: "difficulty", value: ins.difficulty, applied: true, note: `${difficultyLabel(ins.difficulty)}: ${ins.difficulty === "harder"
+        ? "the day's numbers and difficulty start 2 days ahead, and the Challenge uses the hardest allowed questions from Day 1." : "no stretch shift, and the Challenge keeps its usual questions."}` });
+    }
+  }
+  // Teach less units the test found secure (clear or early sign), before a first book's own level marks early ones developing.
+  const secureLess = (codes: readonly string[]) => {
+    const found = codes.filter(code => signals.hasAssessment && o.profile?.standards.some(s => s.code === code && s.status === "secure"));
+    return found.length ? { securePerTest: found } : {};
+  };
   const known = new Set((o.profile?.standards ?? []).map(s => s.code));
   const own = new Set(place.level.units);
   const standards = (o.profile?.standards ?? []).map(s => signals.hasAssessment && place.first && own.has(s.code) && s.status === "secure" && s.certainty !== "clear" ? { code: s.code, status: "developing" as const } : s);
@@ -104,6 +150,8 @@ export function planNextWorkbook(o: PlacementInput & { number: number }, capture
     workbook: { number: o.number, inLevel: place.inLevel },
     reviews: [], missedReviews: [], misses: [], pausedWeeks: 0,
     support: place.support, unassessedUnits,
+    ...(ins ? { instructions: { teachMore: [...ins.teachMore], teachLess: [...ins.teachLess], addReview: [...ins.addReview],
+      ...secureLess(ins.teachLess), ...(place.trace.rule === "I1" ? { weakBelowChecks: true } : {}) } } : {}),
   };
   // Capture the exact public planner input. A consumer cannot change the plan through this copy.
   capture?.(structuredClone(planning));
@@ -128,6 +176,18 @@ export function planNextWorkbook(o: PlacementInput & { number: number }, capture
         part.reviewSteps = skills.map(skill => ({ skill, step: null }));
       }
     }
+  }
+  if (ins) {
+    // In the form's order: by section, then as the admin listed them (the lower gaps after the level itself).
+    const sections = ["start-level", "teach-more", "teach-less", "add-review", "difficulty"];
+    const listed = (o: InstructionOutcome) => {
+      const list = o.section === "teach-more" ? ins.teachMore : o.section === "teach-less" ? ins.teachLess : o.section === "add-review" ? ins.addReview : [ins.startLevel, ins.difficulty];
+      const at = list.indexOf(o.value);
+      return at < 0 ? list.length : at;
+    };
+    const all = [...outcomes, ...(plan.instructions?.outcomes ?? [])];
+    plan.instructions = { instructions: structuredClone(ins), outcomes: all.map((o, i) => ({ o, i }))
+      .sort((a, b) => sections.indexOf(a.o.section) - sections.indexOf(b.o.section) || listed(a.o) - listed(b.o) || a.i - b.i).map(x => x.o) };
   }
   if (plan.personal) plan.personal.why = workbookWhy(plan)!;
   return { ok: true, plan, levelId: place.level.id, placement: trace };

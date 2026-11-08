@@ -61,6 +61,7 @@ import type { QuestionRef } from "@/lib/question-package";
 import type { Curriculum, CurriculumLevel, Delivery, Range } from "@/lib/workbook-curriculum";
 import { sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 import type { BookSignals } from "@/lib/workbook-signals";
+import type { InstructionOutcome, InstructionsTrace } from "@/lib/workbook-instructions";
 import type { WorkbookProgressDecision } from "./workbook-progress";
 
 /** Shared ten-day schedule (#479). Apply the range inside each skill's curriculum bound.
@@ -342,6 +343,8 @@ export interface ProgressPlanInput {
 }
 
 export interface WorkbookPlan {
+  /** The admin's book instructions the plan was made with, and what each did; absent without instructions. */
+  instructions?: InstructionsTrace;
   /** Present only when the caller explicitly supplies a versioned progress decision. Intent, not rendered behavior. */
   progress?: ProgressPlanInput & { checkWork: boolean; teachingDays: number[] };
   personal?: BookSignals & {
@@ -389,7 +392,23 @@ export type PlanProfile = {
   standards: readonly Pick<ChildStandard, "code" | "status">[];
 };
 
+/** The admin's book instructions the planner applies (src/lib/workbook-instructions.ts): BC standard codes. */
+export interface PlanInstructions {
+  /** Units of this level that go first and take the extra practice page; a clear secure one is taught too. */
+  teachMore: readonly string[];
+  /** Units of this level that are review only in this book. */
+  teachLess: readonly string[];
+  /** Topics below this level that get the P6 checks. */
+  addReview: readonly string[];
+  /** The start level is the admin's: every weak standard below it, clear or early, gets the P6 checks. */
+  weakBelowChecks?: boolean;
+  /** Teach less units the test found secure, clear or early sign (a first book still teaches an early one, P5a). */
+  securePerTest?: readonly string[];
+}
+
 export interface PlanInput {
+  /** Admin book instructions. Absent: the plan is unchanged. */
+  instructions?: PlanInstructions;
   /** Opt-in pure preview policy. Omit this property for the unchanged production plan. */
   progress?: ProgressPlanInput;
   /** Absent, or without assessment evidence: preserve the previous plan byte for byte. */
@@ -569,6 +588,11 @@ function progressProblem(input: PlanInput): string | null {
 
 /** The child's next two weeks (see the header for the rules), or why it cannot be planned. */
 export function planWorkbook(input: PlanInput): PlanResult {
+  return planWith(input, []);
+}
+
+/** The plan, with the instruction outcomes an earlier pass already decided (a Teach less unit given back to teaching). */
+function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): PlanResult {
   if (input.progress !== undefined) {
     const problem = progressProblem(input);
     if (problem) return { ok: false, reason: problem };
@@ -632,36 +656,78 @@ export function planWorkbook(input: PlanInput): PlanResult {
   // with no assessment evidence counts as secure only after its check. In Kindergarten every unit is checked.
   // Only the starting level's units are checked (the placement rule covers the level the child starts in); others are
   // left out and listed in checksSkipped.
-  const unassessed = new Set(input.unassessedUnits.filter((code) => level.units.some((u) => u.code === code)));
-  const checksSkipped = [...new Set(input.unassessedUnits.filter((code) => !unassessed.has(code)))];
-  const secureUnits = firstWorkbook ? level.units.filter((u) => status.get(u.code) === "secure" && !unassessed.has(u.code) && !parentLed).map((u) => u.code) : [];
+  const unitCodes = new Set(level.units.map((u) => u.code));
+  const unassessedAll = new Set(input.unassessedUnits.filter((code) => unitCodes.has(code)));
+  const checksSkipped = [...new Set(input.unassessedUnits.filter((code) => !unassessedAll.has(code)))];
+  const clearSecure = firstWorkbook ? level.units.filter((u) => status.get(u.code) === "secure" && !unassessedAll.has(u.code) && !parentLed).map((u) => u.code) : [];
+
+  // Admin book instructions (workbook-instructions.ts): each one is applied, or recorded with the reason it was not.
+  const ins = input.instructions;
+  const outcomes: InstructionOutcome[] = [...carried];
+  const taughtUnits = new Set(levelSkills.filter((s) => s.delivery !== "warm-up").map((s) => s.unit));
+  const ofLevel = (section: "teach-more" | "teach-less", codes: readonly string[], other: readonly string[]) => [...new Set(codes)].filter((code) => {
+    const note = other.includes(code) ? "It is set in both Teach more and Teach less."
+      : !unitCodes.has(code) ? `It is not a unit of this book's level, U${n}.`
+      : !taughtUnits.has(code) ? "It is practised in the daily warm-up. It has no steps to teach."
+      : section === "teach-less" && parentLed ? "Kindergarten levels keep every unit and its Already know it? check."
+      : null;
+    if (note) outcomes.push({ section, value: code, applied: false, note });
+    return !note;
+  });
+  const teachMore = new Set(ofLevel("teach-more", ins?.teachMore ?? [], ins?.teachLess ?? []));
+  // Teach less makes a unit review only, so it needs something to review: the test found it secure, or an earlier book
+  // taught some of it. A unit with neither stays taught, with the reason.
+  let teachLess = new Set(ofLevel("teach-less", ins?.teachLess ?? [], ins?.teachMore ?? []).filter((code) => {
+    if (outcomes.some((o) => o.section === "teach-less" && o.value === code)) return false;
+    const known = (personal && (status.get(code) === "secure" || ins?.securePerTest?.includes(code))) || levelSkills.some((s) => s.unit === code && (input.passed[s.id] ?? 0) > 0);
+    if (!known) outcomes.push({ section: "teach-less", value: code, applied: false,
+      note: "Not taught yet, and the test did not find it secure, so there is nothing to review. It is taught as usual." });
+    return known;
+  }));
+  // Teach more teaches a clear secure unit too; Teach less makes a unit review only, as a clear secure one is.
+  let secureUnits = [...new Set([...clearSecure.filter((code) => !teachMore.has(code)), ...teachLess])];
 
   // The steps still to teach, by unit, in the level's order.
   const steps = (input.progression ?? "steps") === "steps";
   const taught = levelSkills.filter((s) => s.delivery !== "warm-up");
-  const remaining = new Map<string, QueuedStep[]>();
   /** How many steps a skill has: its drafted ones, else DEFAULT_STEPS; an activity skill is one page. */
   const stepCount = (s: (typeof levelSkills)[number]) => s.steps.length > 0 ? s.steps.length : s.delivery === "activity" ? 1 : DEFAULT_STEPS;
-  for (const s of taught) {
-    if (held?.skill === s.id) {
-      remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { ...held, pages: s.steps[held.step - 1].pages }]);
-      continue;
+  const stepsLeft = () => {
+    const remaining = new Map<string, QueuedStep[]>();
+    for (const s of taught) {
+      if (held?.skill === s.id) {
+        remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { ...held, pages: s.steps[held.step - 1].pages }]);
+        continue;
+      }
+      if (secureUnits.includes(s.unit)) continue;
+      // An activity skill's one page is on its last step (the skeleton puts it there).
+      if (s.delivery === "activity" && steps) {
+        if ((input.passed[s.id] ?? 0) < stepCount(s)) remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { unit: s.unit, skill: s.id, step: stepCount(s), pages: 1 }]);
+        continue;
+      }
+      const pages = s.delivery === "activity" ? [1] : s.steps.length > 0 ? s.steps.map((x) => Math.max(1, x.pages)) : evenSteps(s.pages, DEFAULT_STEPS);
+      for (let step = Math.min(input.passed[s.id] ?? 0, pages.length) + 1; step <= pages.length; step++) {
+        remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { unit: s.unit, skill: s.id, step, pages: pages[step - 1] }]);
+      }
     }
-    if (secureUnits.includes(s.unit)) continue;
-    // An activity skill's one page is on its last step (the skeleton puts it there).
-    if (s.delivery === "activity" && steps) {
-      if ((input.passed[s.id] ?? 0) < stepCount(s)) remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { unit: s.unit, skill: s.id, step: stepCount(s), pages: 1 }]);
-      continue;
-    }
-    const pages = s.delivery === "activity" ? [1] : s.steps.length > 0 ? s.steps.map((x) => Math.max(1, x.pages)) : evenSteps(s.pages, DEFAULT_STEPS);
-    for (let step = Math.min(input.passed[s.id] ?? 0, pages.length) + 1; step <= pages.length; step++) {
-      remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { unit: s.unit, skill: s.id, step, pages: pages[step - 1] }]);
-    }
+    return remaining;
+  };
+  let remaining = stepsLeft();
+  if (teachLess.size && remaining.size === 0) {
+    // Teach less never empties a book: with nothing left to teach the book would turn into the level test.
+    secureUnits = clearSecure.filter((code) => !teachMore.has(code));
+    const before = stepsLeft();
+    if (before.size > 0) {
+      for (const code of teachLess) outcomes.push({ section: "teach-less", value: code, applied: false, note: "It would leave nothing to teach in this book." });
+      teachLess = new Set();
+      remaining = before;
+    } else secureUnits = [...new Set([...secureUnits, ...teachLess])];
   }
+  const unassessed = new Set([...unassessedAll].filter((code) => !teachLess.has(code)));
   let unitsLeft = level.units.map((u) => u.code).filter((code) => remaining.has(code));
-  if (personal) {
-    // Stable dependency order. A weak unit never moves before a prerequisite unit.
-    const pending = [...unitsLeft].sort(personalOrder);
+  if (personal || teachMore.size) {
+    // Stable dependency order. A Teach more unit, then a weak unit, never moves before a prerequisite unit.
+    const pending = [...unitsLeft].sort((a, b) => Number(!teachMore.has(a)) - Number(!teachMore.has(b)) || personalOrder(a, b));
     unitsLeft = [];
     while (pending.length) {
       const at = pending.findIndex(code => !(remaining.get(code) ?? []).some(s => pending.some(other => other !== code && (remaining.get(other) ?? []).some(r => prerequisites(s.skill).has(r.skill)))));
@@ -915,7 +981,8 @@ export function planWorkbook(input: PlanInput): PlanResult {
   sim = simulate();
   const shapes = shapesFor(sim.startDays);
   const weakPractice = new Map<number, StepRef>();
-  if (personal) for (const code of weak.keys()) {
+  // Teach more units first: the admin asked for them. Then the weak units, as P5 does.
+  if (personal || teachMore.size) for (const code of new Set([...teachMore, ...(personal ? weak.keys() : [])])) {
     const first = sim.starts.find(s => s.unit === code);
     if (!first) continue;
     const story = shapes[first.day - 1].find(s => s.role === "story");
@@ -930,10 +997,26 @@ export function planWorkbook(input: PlanInput): PlanResult {
     const at = level.skillLevels?.[id];
     return at !== undefined ? at < n : standardOf(id).grade < levelGrade;
   });
-  const earlyBelow = personal ? personal.earlyWeak.filter(s => weak.has(s.code)).flatMap(s => {
-    const skills = below(s.code);
-    return skills.length ? [{ unit: s.code, skills }] : [];
-  }) : [];
+  const checkOf = (code: string) => {
+    const skills = below(code);
+    return skills.length ? [{ unit: code, skills }] : [];
+  };
+  const earlyBelow = personal ? personal.earlyWeak.filter(s => weak.has(s.code)).flatMap(s => checkOf(s.code)) : [];
+  // An admin start level: clear weak standards below it get the same checks, after the early ones (Option A: one level).
+  const lowerGaps = personal && ins?.weakBelowChecks ? personal.clearlyWeak.filter(s => weak.has(s.code)).flatMap(s => checkOf(s.code)) : [];
+  // Teach less: the unit's own skills get the same checks, so the book still reviews it (step 1, see personalReviewStep).
+  const lessChecks = [...teachLess].map(code => ({ unit: code, skills: taught.filter(s => s.unit === code).map(s => s.id) })).filter(c => c.skills.length);
+  const reviewAdds = [...new Set(ins?.addReview ?? [])].flatMap(code => {
+    const known = STANDARDS.get(code);
+    const note = !known ? "It is not a BC topic."
+      : !personal ? "It needs a finished assessment: review checks come from the test's results."
+      : [...earlyBelow, ...lowerGaps].some(c => c.unit === code) ? null
+      : below(code).length === 0 ? `It is taught in this book's level, U${n}, or later, so it cannot be review here.`
+      : known.grade > input.grade && status.get(code) !== "secure" ? "It is above the school grade and not secure, so it is never review." : null;
+    if (note) outcomes.push({ section: "add-review", value: code, applied: false, note });
+    if (note || [...earlyBelow, ...lowerGaps].some(c => c.unit === code)) return [];
+    return checkOf(code);
+  });
   const secureBelow = new Set((personal?.secure ?? []).flatMap(s => below(s.code)));
 
   // Spaced reviews, with their step and interval, into the day's Remember these? (2 items each, as many as it holds).
@@ -947,6 +1030,16 @@ export function planWorkbook(input: PlanInput): PlanResult {
     return parentLed ? (shape.role === "challenge" ? 6 : 2) : 4;
   };
   const room = shapes.map((day) => day.reduce((sum, s) => sum + (s.parts.some((p) => p.kind === "remember-these") && !(s.role === "slot" && support) ? rememberItems(s) / REVIEW_ITEMS_EACH : 0), 0));
+  // Admin checks fit in the room the early weak checks leave, last ones dropped first, each with its reason.
+  const fits = (count: number) => count <= FRIDAY_5_ITEMS && [2, 3, 4].every(day => room[day - 1] >= count);
+  const most = Math.min(FRIDAY_5_ITEMS, ...[2, 3, 4].map(day => room[day - 1]));
+  const noRoom = `No room: Days 2 to 4 and the Friday 5 hold at most ${Math.max(0, most)} topic checks.`;
+  while (!fits(earlyBelow.length + lowerGaps.length + lessChecks.length + reviewAdds.length) && reviewAdds.length) outcomes.push({ section: "add-review", value: reviewAdds.pop()!.unit, applied: false, note: noRoom });
+  // A Teach less unit with no room for its checks is given back to teaching below (the plan is made again without it).
+  const lessNoRoom = new Set<string>();
+  while (!fits(earlyBelow.length + lowerGaps.length + lessChecks.length) && lessChecks.length) lessNoRoom.add(lessChecks.pop()!.unit);
+  while (!fits(earlyBelow.length + lowerGaps.length) && lowerGaps.length) outcomes.push({ section: "start-level", value: lowerGaps.pop()!.unit, applied: false, note: `A weak topic below the chosen start is not checked. ${noRoom}` });
+  earlyBelow.push(...lowerGaps, ...lessChecks, ...reviewAdds);
   if (earlyBelow.length && [2, 3, 4].some(day => room[day - 1] < earlyBelow.length)) return { ok: false, reason: "the early weak checks exceed the day's review room" };
   // P6 checks take review room, not another page. Friday reserves one of its five items per standard.
   if (earlyBelow.length > FRIDAY_5_ITEMS) return { ok: false, reason: "the early weak checks exceed the Friday 5" };
@@ -1002,6 +1095,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
     const taught = taughtStep(skill, day);
     const own = levelSkills.find(s => s.id === skill);
     if (taught > 0) return own ? Math.min(taught, stepCount(own)) : taught;
+    if (own && teachLess.has(own.unit)) return 1;
     return at < n ? level.codeReviewSteps?.[skill]?.at(-1) : undefined;
   };
   const rememberAllowed = (skill: string, day: number) => (!personal || personalReviewStep(skill, day) !== undefined)
@@ -1175,7 +1269,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
           const unique = list.filter((x, i) => list.findIndex((y) => key(y) === key(x)) === i)
             .filter(x => !personal || !REVIEWED.has(p.kind) || p.kind === "show-what-you-know"
               || personalReviewStep(x.skill, d.day) !== undefined && x.step !== null && x.step <= personalReviewStep(x.skill, d.day)!
-                && (taughtStep(x.skill, d.day) > 0 || level.codeReviewSteps?.[x.skill]?.includes(x.step)));
+                && (taughtStep(x.skill, d.day) > 0 || level.codeReviewSteps?.[x.skill]?.includes(x.step) || teachLess.has(standardOf(x.skill).code)));
           if (!unique.length && !personal) return p;
           return { ...p, skills: [...new Set(unique.map((x) => x.skill))], reviewSteps: unique };
         });
@@ -1187,7 +1281,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   const reviewFallbacks: ReviewFallback[] = [];
   const notReviewed = personal ? [...new Set([...input.profile.standards.map(s => s.code), ...level.units.map(u => u.code)])].flatMap(unit => {
     const skills = (STANDARDS.get(unit)?.skills ?? []).map(s => s.id).filter(skill => (level.skillLevels?.[skill] ?? 0) >= n
-      && levelSkills.find(s => s.id === skill)?.delivery !== "warm-up" && taughtStep(skill, DAYS + 1) === 0);
+      && levelSkills.find(s => s.id === skill)?.delivery !== "warm-up" && taughtStep(skill, DAYS + 1) === 0 && !teachLess.has(unit));
     return skills.length ? [{ unit, skills, reason: "not reviewed: taught in a later book" as const }] : [];
   }) : [];
   if (personal) {
@@ -1269,6 +1363,32 @@ export function planWorkbook(input: PlanInput): PlanResult {
     }
   }
 
+  if (ins) {
+    // What each instruction did, read from the finished days (a check whose items code cannot print is dropped above).
+    const checked = new Set(days.flatMap(d => d.pages.flatMap(p => p.parts.flatMap(part => (part.weakChecks ?? []).filter(c => c.skills.length).map(c => c.unit)))));
+    const decided = (section: InstructionOutcome["section"], code: string) => outcomes.some(o => o.section === section && o.value === code);
+    // Teach less only counts when its review is in the book: a unit without checks is taught again, in a new plan.
+    const lost = [...teachLess].filter(code => !checked.has(code));
+    if (lost.length) return planWith({ ...input, instructions: { ...ins, teachLess: ins.teachLess.filter(code => !lost.includes(code)) } }, [...carried,
+      ...lost.map((code): InstructionOutcome => ({ section: "teach-less", value: code, applied: false, note: lessNoRoom.has(code)
+        ? `${noRoom} It is taught as usual.` : "The book cannot print review questions for it yet. It is taught as usual." }))]);
+    for (const code of teachLess) outcomes.push({ section: "teach-less", value: code, applied: true,
+      note: "Not taught in this book. Review only: 2 Remember these questions on Days 2 to 4 and 1 Friday 5 question on Day 5." });
+    for (const g of lowerGaps) outcomes.push(checked.has(g.unit)
+      ? { section: "start-level", value: g.unit, applied: true, note: "A weak topic below the chosen start: checked on Days 2 to 4 and in the Friday 5." }
+      : { section: "start-level", value: g.unit, applied: false, note: "A weak topic below the chosen start has no review questions code can print yet." });
+    for (const code of new Set(ins.addReview)) if (!decided("add-review", code)) outcomes.push(checked.has(code)
+      ? { section: "add-review", value: code, applied: true, note: "Remember these on Days 2 to 4 (2 questions a day) and 1 Friday 5 question on Day 5." }
+      : { section: "add-review", value: code, applied: false, note: "It has no review questions code can print yet." });
+    const extraDays = new Map([...weakPractice].map(([day, ref]) => [ref.unit, day]));
+    for (const code of teachMore) {
+      const first = sim.starts.find(st => st.unit === code);
+      outcomes.push(first
+        ? { section: "teach-more", value: code, applied: true, note: `Goes first: taught from Day ${first.day}${extraDays.has(code) ? ", with an extra practice page that day" : ""}.` }
+        : { section: "teach-more", value: code, applied: false, note: remaining.has(code) ? "No room to start it in this book: the units it builds on come first." : "It has no steps left to teach." });
+    }
+  }
+
   // Every part with items has a skill to aim at.
   for (const d of days) {
     for (const page of d.pages) {
@@ -1286,6 +1406,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   return {
     ok: true,
     plan: {
+      ...(ins ? { instructions: { outcomes } } : {}),
       ...(input.progress ? { progress: { ...structuredClone(input.progress), checkWork: progress!.action === "repeat-check-work", teachingDays } } : {}),
       ...(personal ? { personal: { ...personal, ...(timeShortfalls.length ? { timeShortfalls } : {}), ...(notReviewed.length ? { notReviewed } : {}), ...(reviewFallbacks.length ? { reviewFallbacks } : {}) } } : {}),
       level: n,

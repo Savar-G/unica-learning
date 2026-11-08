@@ -82,6 +82,16 @@ describe("Book 1 baseline capture", () => {
     expect(next.input.reviews).toEqual([]);
     expect(baseline.planning.input).toEqual(before);
   });
+  it("leaves Book 1's admin instructions out of book 2's plan", () => {
+    const plain = book2Planning(baseline);
+    const told = structuredClone(baseline);
+    told.planning.placement.instructions = { version: 1, startLevel: "U9", teachMore: [], teachLess: [], addReview: [], difficulty: "harder" };
+    const next = book2Planning(told);
+    expect(next.ok && plain.ok).toBe(true);
+    if (!next.ok || !plain.ok) return;
+    expect(next.input).toEqual(plain.input);
+    expect(next.input).not.toHaveProperty("instructions");
+  });
 });
 
 describe("book 2 preview from the baseline", () => {
