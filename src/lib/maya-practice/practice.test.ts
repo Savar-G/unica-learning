@@ -847,7 +847,7 @@ describe("the report counts proposals read from inside a code fence", () => {
 
 describe("the practice child speaks like a child (practice run 5: too_long and turn_cap)", () => {
   it("asks for one short thing per turn, and each persona request once, so the call can end", () => {
-    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-6");
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-7");
     expect(SIMULATOR_SYSTEM).toContain("Say one thing per turn");
     expect(SIMULATOR_SYSTEM).toContain("not every step of your working");
     expect(SIMULATOR_SYSTEM).toContain("ask again at most once");
@@ -859,7 +859,7 @@ describe("the practice child speaks like a child (practice run 5: too_long and t
 // before any teaching in its own turns (C01 to C05, C24, C30, C37). The validity judge reads only the child's turns.
 describe("the practice child knows only its persona, and shows where it learned the rest (first-ship practice at 6de7e777)", () => {
   it("never says a step, a carry or the answer before Maya's words show it, and says in its own words when it uses her help", () => {
-    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-6");
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-7");
     expect(SIMULATOR_SYSTEM).toContain("Before Maya shows you a step, a carry or the answer, say only what \"persona.knows\" says you know");
     // Review of 8ce1adff (P3): a planned mistake holds every time, until Maya shows the fix (C37, C10), not only the first time.
     expect(SIMULATOR_SYSTEM).toContain("If \"persona.knows\" describes a mistake, make it every time you do that step, until Maya shows you the fix");
@@ -873,6 +873,11 @@ describe("the practice child knows only its persona, and shows where it learned 
     // right answer; C04 guesses "Is it 66?"), a claim of teaching must be true, and no example holds 27 + 39's numbers.
     expect(SIMULATOR_SYSTEM).toContain("\"persona.knows\" and \"persona.behaviour\" come first");
     expect(SIMULATOR_SYSTEM).toContain("never claim she showed a step she did not show");
+    // Practice at 361a05c9 (C26-r1, C29-r2 validity_flagged): the child said "Like you said, 2 plus 3 plus 1 is 6" and
+    // "you showed me to write the 6" with the easier example's 3. A claim of teaching is checked against Maya's turns first.
+    expect(SIMULATOR_SYSTEM).toContain("find that exact step or number in Maya's turns about your question");
+    expect(SIMULATOR_SYSTEM).toContain("A step or number from Maya's easier example belongs to that example, not to your question");
+    expect(SIMULATOR_SYSTEM).toContain("never say she said it, and do not use it unless \"persona.knows\" gives it to you");
     const examples = SIMULATOR_SYSTEM.slice(SIMULATOR_SYSTEM.indexOf("Before Maya shows you"), SIMULATOR_SYSTEM.indexOf("Follow \"persona.behaviour\""));
     for (const n of ["66", "16", "56", "2 plus 3", "7 plus 9"]) expect(examples).not.toContain(n);
     // Review of 8ce1adff (P2): an example teaches no method either ("carry the 1, so I add it to the tens" taught C01, C05
