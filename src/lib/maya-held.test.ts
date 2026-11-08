@@ -10,7 +10,7 @@ import { heldPackage } from "@/lib/maya-held-fixture";
 import type { MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
-import { checkTrace } from "@/lib/maya-trace";
+import { checkTrace, PRE_D304_HELD, TRACE_VERSION, type MayaTrace } from "@/lib/maya-trace";
 
 // A question Maya cannot teach yet (#527, D-304), through the call module's public interface on the in-memory seams:
 // chat, an admin test call and a voice call each give code's held turn (hello, that Maya is an AI, plainly that she
@@ -205,5 +205,39 @@ describe("a hold found during the call (#527, D-304)", () => {
     const [held] = fallbacks(s);
     expect(held).toMatchObject({ act: "close", parts: START_IDS.map(([line]) => ({ line })) });
     expect(said(send(s, { type: "proposal", at: T0 + 200, proposal: held, fallback: true }).effects)).toBe(HELD);
+  });
+});
+
+describe("stored held traces stay readable (D-304, trace version 9)", () => {
+  // A held chat's real trace, rewritten to a version and a held text: the text is in the controller turn's output.
+  async function heldTrace(): Promise<MayaTrace> {
+    const s = setup();
+    const r = ok(await s.calls.start({ kind: "chat", parentId: PARENT, childId: CHILD, childName: "Leah", startedBy: PARENT, package: PKG }));
+    return (await s.store.get(r.view.id))!.trace!;
+  }
+  const rewrite = (trace: MayaTrace, version: number, held: string) => {
+    const json = JSON.parse(JSON.stringify(trace));
+    json.version = version;
+    let n = 0;
+    for (const t of json.turns) if (t.kind === "maya" && t.output?.say?.[0] === HELD) { t.output.say = [held]; n++; }
+    expect(n).toBe(1);
+    return json;
+  };
+
+  it("writes version 9 with the D-304 held text", async () => {
+    const trace = await heldTrace();
+    expect(TRACE_VERSION).toBe(9);
+    expect(trace.version).toBe(9);
+    expect(checkTrace(trace)).toMatchObject({ ok: true });
+  });
+
+  it("reads a version 8 trace that holds the held text from before D-304", async () => {
+    expect(PRE_D304_HELD).toBe("Hi, I'm Maya, an AI. Want to pick another question on this page?");
+    expect(checkTrace(rewrite(await heldTrace(), 8, PRE_D304_HELD))).toMatchObject({ ok: true });
+  });
+
+  it("refuses a version 9 trace that holds the old held text, and a version 8 trace that holds the new one", async () => {
+    expect(checkTrace(rewrite(await heldTrace(), 9, PRE_D304_HELD))).toMatchObject({ ok: false, reason: expect.stringContaining("exact held lines") });
+    expect(checkTrace(rewrite(await heldTrace(), 8, HELD))).toMatchObject({ ok: false, reason: expect.stringContaining("exact held lines") });
   });
 });
