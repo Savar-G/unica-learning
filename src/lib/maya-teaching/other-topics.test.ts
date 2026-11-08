@@ -266,6 +266,21 @@ describe("the honest close (lessons from review 7 and 10)", () => {
     }
   });
 
+  // Pending #735 (the Maya lane's base confirm, not this PR's): another speaker's answer becomes the child's through
+  // "Did you say 4?" and "Yes.". Remove the skip when #735 lands; until then this test fails.
+  it.skip("OT-735: 'My mom said 4.' then 'Yes.' to 'Did you say 4?' is not the child's answer (pending #735)", async () => {
+    const pkg = deriveDieCount(diePrinted(8, "even"))!;
+    const model = scenarioModel();
+    const s = createTextSession({ callId: "ot-735", package: pkg, grade: 5, model, clock: () => 1000 });
+    model.next([{ act: "open" }], undefined);
+    await s.start();
+    model.next([{ act: "accept_answer", repair: { act: "confirm", heard: "4" } }], { start: "has_work", answers: [[4, "result", "right"]] });
+    await s.child("My mom said 4.");
+    model.next([{}], { answers: [[4, "result", "right"]] });
+    await s.child("Yes.");
+    expect(s.session.solved).toBeNull();
+  });
+
   it("is only for other-topic questions: a plain 8 ÷ 2 has no honest close line", () => {
     const die = deriveDieCount(diePrinted(8, "odd")) as OperationPackage;
     expect(packageLines(die).closeHonest()).toHaveLength(1);
