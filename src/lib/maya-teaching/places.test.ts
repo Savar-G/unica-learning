@@ -11,14 +11,25 @@ describe("Maya reads the places of 5- and 6-digit numbers", () => {
   it.each([
     ["6 ten thousands", [6], [true]],
     ["Six ten thousands.", [6], [true]],
-    ["two hundred thousands", [2], [true]],
+    ["2 hundred thousands", [2], [true]],
     ["8 in the hundred thousands", [8], [true]],
     ["I put 9 for the ten thousands", [9], [true]],
     ["I carry 1 to the ten thousands", [1], [false]],
-    ["the ten thousands column", [], []],
+
     ["5 plus 4 is 9 ten thousands, so 393693.", [5, 4, 9, 393693], [false, false, true, false]],
   ])("'%s': a column, never the number 10 or 100", (text, values, notAnswer) => {
     expect(read(text)).toEqual({ values, notAnswer, unreadable: false });
+  });
+
+  // Review of #724 (P3b): only right after a finished number. Elsewhere the words read as they always did.
+  it.each([
+    ["one hundred thousands", { values: [100], notAnswer: [false], unreadable: true }],
+    ["a hundred thousands", { values: [100], notAnswer: [false], unreadable: true }],
+    ["two hundred thousands", { values: [200], notAnswer: [false], unreadable: true }],
+    ["ten thousands", { values: [10], notAnswer: [true], unreadable: false }],
+    ["the ten thousands column", { values: [10], notAnswer: [true], unreadable: false }],
+  ])("'%s' with no finished number before it reads as before: never a column's digit", (text, before) => {
+    expect(read(text)).toEqual(before);
   });
 
   it("reads 5- and 6-digit numbers, in digits and in words", () => {
