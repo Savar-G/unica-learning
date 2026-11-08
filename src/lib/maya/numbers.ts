@@ -1052,10 +1052,95 @@ export function wholeTurn(text: string): string | null {
   return t.replace(/^(?:so|okay|ok|um|oh)\b[,.\s]*/i, "").replace(/[.!]$/, "").trim().toLowerCase() || null;
 }
 
-/** The whole text is one value, alone or in the child's own words: "16", "it's 16", "I got 16". Else null. */
+/**
+ * The whole text is one value, alone or in the child's own words: "16", "it's 16", "I got 16", "I already got 16", "I got
+ * 16, like I said". Else null. "Like you said" is not here: that is Maya's number, not the child's.
+ */
 export function wholeValue(body: string): number | null {
-  const m = /^(?:it's|i got)\s+(.+)$/.exec(body);
+  const m = /^(?:it's|i got|i already got)\s+(.+?)(?:,?\s+like i said)?$/.exec(body) ?? /^(?:it's|i got)\s+(.+)$/.exec(body);
   return plainNumber(m ? m[1] : body);
+}
+
+/** Sentence-level filler before a step sentence or a next-step question: "So", "Okay", "Um", "Oh", "And", "Then". */
+const SENTENCE_LEAD = /^(?:(?:so|okay|ok|um|uh|oh|and|then)\b[,\s]*)*/;
+
+/**
+ * The sentence is one next-step question from a closed list (first-ship practice, C01: "I got 16, like I said. What do I
+ * do next?"): "What do I do next?", "What do I do now?", "What do I do with the 1?", "Where does the 1 go?", "Do I write the
+ * 1 at the top of the tens?", "What about the tens?", "Now what?", "What's next?". The only number it may hold is `carry`,
+ * the step's own carry, as "the 1", "the one" or "the ten" (or "the carried 1"); no other speaker, hedge, negation or check
+ * of a value ("Is it 16?", "Is that right?") is on the list. A step with no carry has only the forms with no number.
+ */
+export function nextStepQuestion(sentence: string, carry: number): boolean {
+  const s = sentence.trim().replace(/’/g, "'").toLowerCase().replace(/[?.!]+$/, "").trim().replace(SENTENCE_LEAD, "").replace(/\s+/g, " ");
+  if (/^(?:what do i do (?:next|now)|what do we do (?:next|now)|now what|then what|what's next|what is next|what about the tens(?: column)?|what do i do with the tens(?: column)?)$/.test(s)) return true;
+  const ref = (phrase: string) => {
+    if (phrase === "the carry") return carry > 0;
+    const m = /^the (?:carried |carry )?(\w+)(?: i carried)?$/.exec(phrase);
+    return !!m && carry > 0 && (m[1] === "ten" || plainNumber(m[1]) === carry);
+  };
+  const what = /^what do i do with (the .+)$/.exec(s);
+  if (what) return ref(what[1]);
+  const where = /^where (?:does|do) (the .+?) go$/.exec(s);
+  if (where) return ref(where[1]);
+  const put = /^do i (?:write|put|carry) (the (?:carried |carry )?\w+)(?: (?:in|at|on|to|into|over) the (?:top(?: of the tens(?: column)?)?|tens(?: column| place)?))?$/.exec(s);
+  return !!put && ref(put[1]);
+}
+
+/**
+ * The one sentence of a turn that may be a step template, as wholeTurn gives it (stepTurnHeard): the whole turn, or, when
+ * the turn also holds next-step questions (nextStepQuestion), the one other sentence beside them. A lone filler sentence
+ * ("Okay.") is no second sentence. Null when two sentences are left, or none, or the turn has more than one line.
+ */
+export function stepTurnBody(text: string, carry: number): string | null {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("\n")) return null;
+  const parts = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (!parts.some((p) => nextStepQuestion(p, carry))) return wholeTurn(t);
+  const rest = parts.filter((p) => !nextStepQuestion(p, carry) && !/^(?:so|okay|ok|um|uh|oh)[.!]?$/i.test(p.trim()));
+  return rest.length === 1 ? wholeTurn(rest[0]) : null;
+}
+
+/**
+ * The text without its next-step questions (nextStepQuestion), for the claim checks: "Do I put the 1 in the tens?" asks,
+ * it claims nothing written. Every other sentence stays as it was.
+ */
+export function withoutNextStepQuestions(text: string, carry: number): string {
+  const parts = text.trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+  return parts.some((p) => nextStepQuestion(p, carry)) ? parts.filter((p) => !nextStepQuestion(p, carry)).join(" ") : text;
+}
+
+/** The turn is only next-step questions (nextStepQuestion), with at most a filler sentence ("Okay. Where does the 1 go?"). */
+export function onlyNextStepQuestions(text: string, carry: number): boolean {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("\n")) return false;
+  const parts = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+  return parts.some((p) => nextStepQuestion(p, carry)) && parts.every((p) => nextStepQuestion(p, carry) || /^(?:so|okay|ok|um|uh|oh)[.!]?$/i.test(p.trim()));
+}
+
+/**
+ * The child's claim about their own paper, after Maya's number: "you said 16, so I wrote 6 and carried 1", "like you said, I
+ * wrote 6 and carried 1". The number Maya said, or null when "like you said" names none, and the claim. Null for any other
+ * text: "You said 16." alone, or "You said 16, so it's 16.", is a copy, and the claim is checked as a claim by its caller.
+ */
+export function echoedClaim(body: string): { said: number | null; claim: string } | null {
+  const m = /^(?:you said\s+(.+?),?\s+so|like you said,?)\s+(i\s.+)$/.exec(body);
+  if (!m) return null;
+  if (m[1] === undefined) return { said: null, claim: m[2] };
+  const said = plainNumber(m[1]);
+  return said === null ? null : { said, claim: m[2] };
+}
+
+/**
+ * A whole turn (as wholeTurn gives it) that only says back what Maya just showed, with the step's total `total`: "You
+ * said 16.", "You said 16, so it's 16.", "Like you said, it's 16.", or a plain "I see", "Got it", "I get it", "I
+ * understand". A bare "yes" or "okay" is not here: it says nothing about what Maya showed.
+ */
+export function echoesShown(body: string, total: number): boolean {
+  if (/^(?:(?:oh|okay|ok)[,\s]+)?(?:i see|got it|i get it(?: now)?|i understand(?: now)?)$/.test(body)) return true;
+  const m = /^(?:you said\s+(.+?)(?:,?\s+so\s+(?:it's|it is)\s+(.+))?|like you said,?\s+(?:it's\s+|it is\s+)?(.+))$/.exec(body);
+  if (!m) return false;
+  return [m[1], m[2], m[3]].filter((x) => x !== undefined).every((x) => plainNumber(x!) === total);
 }
 
 /**

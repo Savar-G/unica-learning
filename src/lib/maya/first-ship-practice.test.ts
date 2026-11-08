@@ -169,7 +169,20 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     expect(model).toMatchObject({ act: "guide", step: "tens" });
   });
 
-  it.each([["7 plus 9 is 16.", 16], ["9 + 7 = 16", 16], ["16.", 16], ["6.", 6]] as const)("treats %j after H3 as a copy on both paths", async (text, value) => {
+  // A copy of the shown total or sum after H3 is no credit, and the ladder goes past the shown step (fault B of the
+  // subscription practice run at 361a05c9, C04-r2: the ones came again until Maya gave the answer). A lone digit is no copy
+  // of the step: Maya stays on it.
+  it.each([["7 plus 9 is 16.", 16], ["9 + 7 = 16", 16], ["16.", 16]] as const)("treats %j after H3 as a copy on both paths, and goes on with no credit", async (text, value) => {
+    for (const step of [down(text), named(text, value, "ones")]) {
+      const { told, outcome } = await play("A", [shown, step]);
+      expect(told[2].lines).not.toContain("check.right_step");
+      expect(told[2].say).not.toMatch(/7 \+ 9 = 16/);
+      expect(told[2]).toMatchObject({ act: "guide", step: "tens" });
+      expect(outcome?.assistance).not.toBe("independent");
+    }
+  });
+
+  it.each([["6.", 6]] as const)("treats %j after H3 as no copy of the step on both paths", async (text, value) => {
     for (const step of [down(text), named(text, value, "ones")]) {
       const told = (await play("A", [shown, step])).told[2];
       expect(told.lines).not.toContain("check.right_step");

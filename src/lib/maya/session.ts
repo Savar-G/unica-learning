@@ -44,7 +44,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
+import { claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -322,6 +322,12 @@ export interface Session {
   retried: boolean;
   /** Target steps the child has done. */
   done: string[];
+  /**
+   * Target steps Maya showed at H3 that the child then only copied or acknowledged (copiedStep; PR #698, C04): the ladder
+   * goes past them, but they are not done, so no line calls them right and the learning event keeps the stuck step. A
+   * saved session from before has no field (none).
+   */
+  passed?: string[];
   ladder: Ladder;
   highestHint: HintLevel | null;
   /** Hints given: guide turns from H1, and a given answer. */
@@ -874,11 +880,12 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   }
   if (rightResult && s.solved === null && acts.includes("accept_answer")) acts = ["accept_answer"];
   // H3 already showed this step. Another explicit failure or help request ends
-  // the loop, without recording the shown work as the child's progress.
+  // the loop, without recording the shown work as the child's progress. A turn that only copies or acknowledges the shown
+  // step, or asks about the next one (copiedStep: "16", "Okay.", "Where does the 1 go?"), is neither: the ladder goes on.
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
     reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
-  if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
+  if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" && copiedStep(s) === null &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
   }
@@ -1179,9 +1186,13 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const scoring = !blocked;
   const ladder = { ...s.ladder };
   const done = [...s.done];
+  const passed = [...(s.passed ?? [])];
   let failed = false;
   let regroup = regroupOf(s);
   if (pkg && scoring) {
+    // A copy of the step Maya showed at H3 moves the ladder on, with no credit (copiedStep).
+    const copied = copiedStep(s);
+    if (copied && !passed.includes(copied)) passed.push(copied);
     for (const { answer: a, problem } of checked) {
       if (problem !== "target") continue;
       if (a.verdict === "right" && a.step !== "result" && !done.includes(a.step)) done.push(a.step);
@@ -1191,7 +1202,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     // An equal fraction shows every work step done: the final step simplifies the child's own fraction (#407).
     if (equal) for (const st of workSteps(pkg)) if (!done.includes(st.id)) done.push(st.id);
     regroup = regroupAfter(s, checked, done);
-    const next = guideStep(pkg, done, regroup);
+    const next = guideStep(pkg, [...done, ...passed], regroup);
     if (next !== ladder.step) Object.assign(ladder, { step: next, hint: -1, unlocked: Math.max(0, ladder.hint - 1), failures: 0 });
     if (failed) {
       ladder.failures += 1;
@@ -1205,7 +1216,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     // A question about the carry ("What do I do with the 1 I carried?") asks for help too: Maya answers it with code's
     // line, never the same invitation again (first-ship practice, C26).
     if (s.turn && asksWhy(s.turn.text) && !rightHere) ladder.unlocked = Math.max(ladder.unlocked, Math.min(4, ladder.hint + 1));
-    if (reading.help === "show") ladder.unlocked = Math.max(ladder.unlocked, 3);
+    // "Show me" again after this step's H3 show is one more request: the given answer may come (C04-r2: the H3 rule allowed
+    // only give_answer while the ladder held it at H3, so Maya had no safe line).
+    if (reading.help === "show") ladder.unlocked = Math.max(ladder.unlocked, ladder.hint >= 3 ? 4 : 3);
     // A lost carry is a located error: its regroup line (H1) is allowed at once.
     if (pendingRegroup(regroup).some((c) => c.at === ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 1);
   }
@@ -1508,6 +1521,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (scoring) {
     if (failed) s.stuckStep ??= ladder.step;
     s.done = done;
+    if (passed.length > 0) s.passed = passed.filter((id) => !done.includes(id));
     s.ladder = ladder;
     s.finalMisses = misses;
   }
@@ -1847,10 +1861,12 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     // step is right only in a turn with no false equation kept, where each sentence holding its value names nothing but
     // that step's own numbers ("7 plus 9 is 16, I wrote 5" is not a right ones step).
     const falseResult = falseResults.some((v) => saidAs(v, a.value));
-    const active = problem === "target" ? steps.find((st) => !s.done.includes(st.id)) ?? at : at;
-    const claims = a.step === "result" ? "right" : checkColumnClaims(pkg, at, steps, active, s.turn.text);
+    const active = problem === "target" ? steps.find((st) => !behind(s).includes(st.id)) ?? at : at;
+    // A next-step question ("Do I put the 1 in the tens?") claims nothing written: the claims are read without it.
+    const own = at.kind === "add-column" ? withoutNextStepQuestions(s.turn.text, at.carryOut) : s.turn.text;
+    const claims = a.step === "result" ? "right" : checkColumnClaims(pkg, at, steps, active, own);
     if (claims === "unclear") return { code: "answer_not_committed", reason: "The written digit or carry is unclear: ask what the child wrote before judging this step." };
-    const stepRight = a.step !== "result" && falseResults.length === 0 && claims === "right" && ownSentences(pkg, at, a.value, s.turn.text) && answersStep(at, a.value);
+    const stepRight = a.step !== "result" && falseResults.length === 0 && claims === "right" && ownSentences(pkg, at, a.value, own) && answersStep(at, a.value);
     const right = !falseResult && (a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : stepRight);
     // A doubtful final answer cannot establish correct work, including an equal
     // fraction that still needs simplest form and therefore carries a "wrong" verdict.
@@ -1860,6 +1876,8 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
     if (a.verdict === "right" && a.step !== "result" && problem === "target" && at.kind === "add-column" && !stepTurnHeard(s, at, a.value)) {
+      // A copy of the step Maya showed at H3 is no credit and no refusal: the ladder goes past it (copiedStep).
+      if (copiedStep(s) === a.step) continue;
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
@@ -2089,10 +2107,12 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
 
 /**
  * A column step is heard only when the child's WHOLE turn is one template (wholeTurn), on the fallback and on a model's
- * reading alike, so the two cannot disagree: the value ("16", "It's 16", "I got 16"), a plain yes to Maya's own "Did you
- * say 16?", the step's own sum with every operand in any order ("9 and 7 make 16"), or a first-person written-digit or
- * carry claim ("I wrote 6 and carried 1"), which checkColumnClaims checks. A question mark, another sentence, another number, another speaker, a hedge or a negation fits
- * none of them. An allow-list over the whole turn, because six review rounds of reading one sentence each left a gap in the
+ * reading alike, so the two cannot disagree: the value ("16", "It's 16", "I got 16", "I already got 16", "I got 16, like I
+ * said"), a plain yes to Maya's own "Did you say 16?", the step's own sum with every operand in any order ("9 and 7 make
+ * 16"), or a first-person written-digit or carry claim ("I wrote 6 and carried 1", also after Maya's number: "You said 16,
+ * so I wrote 6 and carried 1"), which checkColumnClaims checks. Beside the one template the turn may hold only next-step
+ * questions from a closed list (stepTurnBody, nextStepQuestion: "I got 16. Where does the 1 go?"; first-ship practice
+ * C01). Any other question, another sentence, another number, another speaker, a hedge or a negation fits none of them. An allow-list over the whole turn, because six review rounds of reading one sentence each left a gap in the
  * rest of the turn ("7 plus 9 is 16. My mom told me."). After H3 the value and the sum only copy what Maya showed; a claim
  * about the child's own paper is still theirs. A step of any other kind has no templates: its callers keep their own rules.
  */
@@ -2100,10 +2120,10 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   const pkg = s.package;
   if (!pkg || !s.turn || step.kind !== "add-column") return false;
   // A turn code could not hear for sure is no step credit: it gets its confirm first.
-  const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
+  const body = s.turn.uncertain ? null : stepTurnBody(s.turn.text, step.carryOut);
   if (body === null) return false;
-  // Only the first step not done: no tens credit before the ones.
-  if (workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
+  // Only the first step not done or passed: no tens credit before the ones.
+  if (workSteps(pkg).find((st) => !behind(s).includes(st.id))?.id !== step.id) return false;
   const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16).
   const total = saidAs(number(step.total), value);
@@ -2126,6 +2146,10 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
  * stepTurnHeard credits with it.
  */
 function stepForm(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>, value: AnswerValue, body: string): "total" | "claim" | null {
+  // The child's own claim after Maya's number ("You said 16, so I wrote 6 and carried 1.", "Like you said, I wrote 6 and
+  // carried 1."): only a claim about their paper, never the value or the sum ("You said 16, so it's 16." is a copy).
+  const echo = echoedClaim(body);
+  if (echo) return (echo.said === null || echo.said === step.total) && stepForm(pkg, step, value, echo.claim) === "claim" ? "claim" : null;
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16).
   const total = saidAs(number(step.total), value);
   const bare = wholeValue(body);
@@ -2154,6 +2178,30 @@ function stepForm(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-
   return checkColumnClaims(pkg, step, pkg.steps, step, body) === "right" ? "claim" : null;
 }
 
+/** The steps the ladder is past: done by the child, or passed after Maya showed them at H3 (copiedStep). */
+const behind = (s: Session) => (s.passed?.length ? [...s.done, ...s.passed] : s.done);
+
+/**
+ * The step Maya showed at H3 that this turn only copies or acknowledges, so the ladder goes past it with no credit (PR
+ * #698, C04-r2: "You said 16, so I wrote 6" got the ones again until Maya gave the answer). The step is the first one the
+ * ladder is not past, an addition column, and the one Maya showed at H3. The turn is, as a whole (stepTurnBody, with
+ * next-step questions beside it), the step's value or sum ("16.", "7 plus 9 is 16."), Maya's number said back ("You said
+ * 16.", "You said 16, so it's 16."), a plain acknowledgement ("I see.", "Got it."), or only next-step questions ("Where does
+ * the 1 go?"). A bare "Yes." or "Okay." is none of these: a yes moves Maya past nothing she did not ask about (j06-review,
+ * P3). Null for any other turn: a help request or a failure keeps the H3 rule. A claim about the child's own paper is no
+ * copy: it is credited as theirs (stepTurnHeard).
+ */
+function copiedStep(s: Session): string | null {
+  const pkg = s.package;
+  if (!pkg || !s.turn || s.turn.uncertain) return null;
+  const st = workSteps(pkg).find((x) => !behind(s).includes(x.id));
+  if (!st || st.kind !== "add-column" || s.ladder.step !== st.id || s.ladder.hint < 3) return null;
+  if (onlyNextStepQuestions(s.turn.text, st.carryOut)) return st.id;
+  const body = stepTurnBody(s.turn.text, st.carryOut);
+  if (body === null) return null;
+  return stepForm(pkg, st, number(st.total), body) === "total" || echoesShown(body, st.total) ? st.id : null;
+}
+
 /**
  * The turn holds a written digit or carry judged wrong ("7 plus 9 is 16. I wrote 16."), or a plan to write a column's two-digit
  * sum in one column. That is not a hearing problem: asking "Was that 16?" would let a yes pass over it, so Maya does not ask.
@@ -2161,8 +2209,8 @@ function stepForm(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-
 function claimJudgedWrong(s: Session): boolean {
   if (!s.package || !s.turn) return false;
   const pkg = s.package;
-  const st = workSteps(pkg).find((x) => !s.done.includes(x.id));
-  return !!st && (checkColumnClaims(pkg, st, pkg.steps, st, s.turn.text) === "wrong" || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out)));
+  const st = workSteps(pkg).find((x) => !behind(s).includes(x.id));
+  return !!st && (checkColumnClaims(pkg, st, pkg.steps, st, st.kind === "add-column" ? withoutNextStepQuestions(s.turn.text, st.carryOut) : s.turn.text) === "wrong" || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out)));
 }
 
 /** The turn's final answer is right for the question, sure or not: it keeps the final answer's confirm (P11). */
@@ -2173,7 +2221,7 @@ const rightFinalIn = (s: Session) => {
 
 /** The first step not done, when it is a column of an addition. */
 function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" }> | null {
-  const st = s.package ? workSteps(s.package).find((x) => !s.done.includes(x.id)) : undefined;
+  const st = s.package ? workSteps(s.package).find((x) => !behind(s).includes(x.id)) : undefined;
   return st?.kind === "add-column" ? st : null;
 }
 
@@ -2232,7 +2280,7 @@ function heardAnswers(session: Session): ChildAnswer[] {
   if (read.choice) return [];
   const found: ChildAnswer[] = [];
   for (const st of workSteps(pkg)) {
-    if (session.done.includes(st.id)) continue;
+    if (behind(session).includes(st.id)) continue;
     const value = stepAnswers(st).find((v) => stepTurnHeard(session, st, v));
     if (value) {
       found.push({ value, step: st.id, verdict: "right" });
@@ -2311,7 +2359,10 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
     .filter((id) => equal !== null || session.done.includes(id) || checked.some((c) => c.problem === "target" && c.answer.step === id && c.answer.verdict === "right")) : [];
   // As `step` will see it: a write plan takes its column out of `done`, and a lost carry makes the regroup due.
   const regroup = pkg ? regroupAfter(s, checked, done) : { due: [], said: [] };
-  const ladderStep = pkg ? guideStep(pkg, done, regroup) : "result";
+  // As `step` will see it: a copy of the step Maya showed at H3 moves the ladder past it, with no credit (copiedStep).
+  const copied = copiedStep(session);
+  const passed = [...(session.passed ?? []), ...(copied ? [copied] : [])];
+  const ladderStep = pkg ? guideStep(pkg, [...done, ...passed], regroup) : "result";
   const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
   const misses = finalMisses(s, checked);
   const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0, misses)).acts;
