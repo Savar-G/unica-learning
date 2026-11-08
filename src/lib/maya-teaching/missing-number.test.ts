@@ -140,10 +140,15 @@ describe("the lines of a missing number", () => {
     const l = packageLines(pkg);
     expect(l.question()[0].texts[0]).toContain("30 × ? = 1620");
     expect(l.tryTarget()[0].texts[0]).toBe("Now you try yours: 30 × ? = 1620. To find the missing number, work out 1620 ÷ 30.");
-    expect(l.help(l.stepIds[0])[0].texts[0]).toBe("To find the missing number, work out 1620 ÷ 30. Take 1 zero off both numbers. That gives 162 ÷ 3. Let's start with the hundreds.");
+    expect(l.help(l.stepIds[0])[0].texts[0]).toBe("30 times the missing number makes 1620. So the missing number is 1620 ÷ 30. Take 1 zero off both numbers. That gives 162 ÷ 3.");
     expect(l.answerRight()[0].texts[0]).toBe("Yes! 1620 ÷ 30 = 54.");
     expect(l.stepIds).not.toContain("frame");
     expect(l.stepIds).not.toContain("zeros");
+  });
+
+  it("says why first: a subtraction's framing names the missing number taken away", () => {
+    const pkg = teachable(derive({ known: 9000, missing: 6000, sign: "−" })) as OperationPackage;
+    expect(packageLines(pkg).help("ones")[0].texts[0]).toBe("9000 take away the missing number is 3000. So the missing number is 9000 − 3000. Let's start with the ones. What can you do there?");
   });
 
   it("multiplies out a wrong try, and shows the tries on each side at H3 without the answer", () => {
@@ -158,7 +163,7 @@ describe("the lines of a missing number", () => {
     expect(seven.texts[0]).toBe("236 × 7 = 1652. That is more than 1416. Try a smaller number.");
     expect(seven.requires).toEqual({ answer: "wrong", step: "result", heard: "7" });
     expect(l.notYet("result").some((o) => o.slots.heard === "6")).toBe(false);
-    expect(l.rightStep("try")[0].texts[0]).toBe("Yes! 236 × 6 = 1416.");
+    expect(l.rightStep("try")[0].texts[0]).toBe("Yes! 236 times your number makes 1416.");
   });
 });
 

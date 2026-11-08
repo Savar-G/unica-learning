@@ -325,13 +325,15 @@ Fixtures W5, W3 and W6 (`src/lib/maya-gate/one-step-cases.ts`) are the teaching 
 
 ### Missing numbers (Wave A)
 
-Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT` (9000 − ? = 3000) are made by Maya's session adapter (`src/lib/maya-teaching/missing-number.ts`) from synthetic printed packages and checked by `mayaPackageCheck`. The framing step ("To find the missing number, work out 1620 ÷ 30.") and the zeros step are said by Maya: in the easier example, with "Now you try yours" and with the first work step's invite. A 3-digit known factor is found by trying numbers (`src/lib/maya/trial-factor.ts`): each wrong try is multiplied out with code's numbers, and H3 shows the tries on each side, never the answer.
+Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT` (9000 − ? = 3000) are made by Maya's session adapter (`src/lib/maya-teaching/missing-number.ts`) from synthetic printed packages and checked by `mayaPackageCheck`. The framing step ("To find the missing number, work out 1620 ÷ 30.") and the zeros step are said by Maya; the first step's invite says why first ("30 times the missing number makes 1620. So the missing number is 1620 ÷ 30."). The try step is heard only on the child's whole turn, under the #698 rules (`trialHeard`: the number, a yes to Maya's own confirm, or the try's own product): in the easier example, with "Now you try yours" and with the first work step's invite. A 3-digit known factor is found by trying numbers (`src/lib/maya/trial-factor.ts`): each wrong try is multiplied out with code's numbers, and H3 shows the tries on each side, never the answer.
 
 | Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
 |---|---|---|---|---|---|
 | MN1 | M_DIVIDE | passing | 30 × ? = 1620, cannot start: the easier example frames 20 × ? = 40 as 40 ÷ 20 and drops a zero, then 54 is accepted | solved, worked_example | |
 | MN2 | M_TRY | passing | 236 × ? = 1416 by trying numbers: 7 is multiplied out (too big), 5 (too small), then 6 is accepted; no long division | solved, independent | |
 | MN2b | M_TRY | passing | 236 × ? = 1416, stuck: the try hint at H1, the rounding hint at H2, then 6 is accepted | solved, hint | |
+| MN2c | M_TRY | passing | 236 × ? = 1416, '236 times 6 is 1416': the try step is heard on the whole turn and said back without the number (it is the answer), then the final answer is asked and 6 accepted | solved, independent | |
+| MN1b | M_DIVIDE | passing | 30 × ? = 1620, 'Why do I divide?': the framing line says why (30 times the missing number makes 1620), then 54 is accepted | solved, independent | |
 | MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
 
 ## Pending

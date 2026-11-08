@@ -41,6 +41,7 @@ import {
 } from "@/lib/question-package";
 import { teachingLimits } from "@/lib/maya-teaching/limits";
 import { checkMissingNumber } from "./missing-number";
+import { trialHeard } from "./trial-factor";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
@@ -1819,7 +1820,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && at.kind === "add-column" && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "try-factor") && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
@@ -2058,13 +2059,15 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
  */
 function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolean {
   const pkg = s.package;
-  if (!pkg || !s.turn || step.kind !== "add-column") return false;
+  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "try-factor")) return false;
   // A turn code could not hear for sure is no step credit: it gets its confirm first.
   const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
   if (body === null) return false;
   // Only the first step not done: no tens credit before the ones.
   if (workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
   const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
+  // A missing factor's try (trial-factor.ts): its value, a yes to Maya's own confirm, or its own product.
+  if (step.kind === "try-factor") return trialHeard(step, body, value, s.stepAsked ?? null, copy);
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16).
   const total = saidAs(number(step.total), value);
   // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).

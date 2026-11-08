@@ -86,6 +86,44 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     },
   },
   {
+    // J06 (#698 practice): a right try in the child's own words is credited once, said back, and Maya moves on.
+    id: "MN2c",
+    title: "236 × ? = 1416, '236 times 6 is 1416': the try step is heard on the whole turn and said back without the number (it is the answer), then the final answer is asked and 6 accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("236 times 6 is 1416.", { start: "has_work", answers: [[6, "try", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 1, lines: [variants(trial.rightStep("try"), "trial.right"), variants(trial.help("result"), "invite.result")] }],
+      never: ["give_answer", "example_step"],
+    },
+  },
+  {
+    // J06: a child's question about the step gets a code line that answers it: the framing says why it divides.
+    id: "MN1b",
+    title: "30 × ? = 1620, 'Why do I divide?': the framing line says why (30 times the missing number makes 1620), then 54 is accepted",
+    fixture: "M_DIVIDE",
+    status: "passing",
+    steps: [
+      child("Why do I divide?", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("162 divided by 3 is 54.", { answers: [[54, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 1, lines: [variants(divide.help(divide.stepIds[0]), "invite.frame.zeros")] }],
+      never: ["give_answer", "example_step"],
+    },
+  },
+  {
     id: "MN3",
     title: "9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted",
     fixture: "M_SUBTRACT",
