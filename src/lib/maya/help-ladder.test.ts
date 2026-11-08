@@ -158,7 +158,7 @@ describe("real misses keep D-199", () => {
 
 describe("fallback availability after a shown step", () => {
   it("always accepts a fallback after H3 across copies, help requests and misses", () => {
-    for (const first of ["16.", "I need help.", "15."]) for (const next of ["6.", "I need help.", "65."]) {
+    for (const shown of ["ones", "tens"]) for (const first of [shown === "ones" ? "16." : "6.", "I need help.", "15."]) for (const next of ["6.", "I need help.", "65."]) {
       let s = createSession({ callId: "fallback-grid", package: FIXTURES.A });
       let at = 1000;
       const send = (event: SessionEvent) => { const r = step(s, event); s = r.session; return r; };
@@ -171,6 +171,11 @@ describe("fallback availability after a shown step", () => {
       send({ type: "start", at }); fallback();
       send({ type: "child_turn", at: at += 4000, text: "Show me the ones." });
       expect(send({ type: "proposal", at, proposal: { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } } }).refusal).toBeNull();
+      if (shown === "tens") {
+        send({ type: "child_turn", at: at += 4000, text: "16." }); fallback();
+        send({ type: "child_turn", at: at += 4000, text: "Show me the tens." });
+        expect(send({ type: "proposal", at, proposal: { version: 2, act: "guide", step: "tens", level: 3, parts: [{ line: "step.show", slots: { step: "tens" } }], reading: { help: "show" } } }).refusal).toBeNull();
+      }
       for (const text of [first, next, "I need help."]) {
         if (s.outcome) break;
         send({ type: "child_turn", at: at += 4000, text }); fallback();
