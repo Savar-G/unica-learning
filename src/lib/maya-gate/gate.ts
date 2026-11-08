@@ -35,6 +35,7 @@ import {
 } from "@/lib/maya";
 import { gateWordCount } from "./word-count";
 import { packageLines, TEMPLATES } from "@/lib/maya/lines";
+import { patternRows } from "@/lib/maya/pattern";
 import { withEvaluateExample } from "@/lib/maya/evaluate";
 import { FLAG_LEVELS, UNSAFE_REQUEST_FLAG, type AlertState, type AlertStatus, type CallFlag, type CallStatus, type FlagLevel } from "@/lib/maya-call";
 import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
@@ -955,7 +956,7 @@ function lineBoardTexts(op: OperationPackage, heard: readonly AnswerValue[]): Se
     ...l.question(), ...l.exampleIntro(), ...op.easierExample.steps.flatMap((s) => l.exampleStep(s.id)), ...l.tryTarget(),
     ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id)]), ...l.help("result"), ...l.answerRight(),
   ];
-  return new Set(offers.flatMap((o) => (o.board ? [o.board] : [])));
+  return new Set([...offers.flatMap((o) => (o.board ? [o.board] : [])), ...[op, op.easierExample].flatMap(p => [...patternRows(p, false), ...patternRows(p, true)])]);
 }
 
 /** The text a board batch shows: `write` texts, `put` values and column operands. */

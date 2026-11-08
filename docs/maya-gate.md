@@ -11,9 +11,8 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 
 | File | What it holds |
 |---|---|
-| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). |
-| `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6a), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `EV_TWO`, `EV_STORY` and `EV_MISSING`: evaluate questions (Wave A, A2): 7 × 640 + 7 × 30, a story's 4 × 260 − 590, and 8 × ? = 7360 − 400 stored as (7360 − 400) ÷ 8. |
+| `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6a), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -347,6 +346,28 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN5 | M_DIVIDE | passing | 30 × ? = 1620, '1620 divided by 30 is 54.' is accepted, and '30 times 54 is 1620.' is a check of it, not an outside request | solved, independent | |
 | MN6 | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '9000 minus 6000 is 3000.' is a check of it, not an outside request | solved, independent | |
 | MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
+
+### Pattern rules (Wave C, C1)
+
+The cases are in `src/lib/maya-gate/pattern-cases.ts`. Fixtures `PT_MISSING` (starts at 26, adds ?, 3rd term 40), `PT_LONG` (starts at 35, adds ?, 9th term 115), `PT_TERM` (starts at 20, adds 8, 4th term), `PT_PAIR` (starts at 34, adds 9, 8th term plus 2nd term) and `PT_STORY` (32 beads, 9 more each day, after 8 days) are made by the session adapter (`src/lib/maya-teaching/pattern.ts`) from synthetic printed packages. Each is an evaluate question whose parts are the pattern's steps: (40 − 26) ÷ 2, 20 + 3 × 8, (34 + 7 × 9) + (34 + 9). The board writes the pattern's terms in a row and the step under them (`question.pattern`, `example.pattern`); an unknown term and a missing step show as "?" until the child gives the answer.
+
+| Id | Fixture | Status | Behaviour | Expected outcome | Notes |
+|---|---|---|---|---|---|
+| PT1 | PT_MISSING | passing | J06: '40 minus 26 is 14.' before Maya asks: acknowledged once, never asked again, then the division | solved, independent | |
+| PT2 | PT_MISSING | passing | J06: 'Why do I subtract the start?': code's answer (the 3rd term is the start plus 2 equal steps), then 7 is accepted | solved, hint | |
+| PT3 | PT_LONG | passing | Grade 3, 'I'm stuck.' with no start: the same-shape easier pattern, then the target | solved, worked_example | |
+| PT4 | PT_TERM | passing | Full sentences ('20 plus 8 is 28.', '3 times 8 is 24.', '20 plus 24 is 44.') stay in scope | solved, independent | |
+| PT5 | PT_PAIR | passing | The 8th and 2nd terms are found one at a time, then added | solved, independent | |
+| PT6 | PT_STORY | passing | Eight days of 9 more beads after the 32 already there | solved, independent | |
+| PT7 | PT_TERM | passing | Grade 3, 'I'm stuck.' first: the first hint (H1) says why the fourth term takes three steps | solved, hint | |
+| PT8 | PT_MISSING | passing | Stuck on the last part: H1 is its multiplication fact (2 × ? = 14), and '2 times 7 is 14, so 7.' stays in scope | solved, hint | |
+| PT8b | PT_MISSING | passing | Still stuck at H2 on the last part: counts by the divisor, never the answer; the child stops, a kind close | child_stopped, hint | |
+| PT10 | PT_MISSING | passing | Model failing: a wrong answer at the first part's top help (H3), the easier pattern, then on another wrong answer the honest close | child_stopped | |
+| PT11 | PT_MISSING | passing | Model failing: a wrong answer at the last part's top help (H2), the easier pattern, then the honest close | child_stopped, worked_example | |
+| PT12 | PT_MISSING | passing | Model failing: 'I'm stuck.' on every hint of the last part: H1, H2, the easier pattern, then the honest close | child_stopped, worked_example | |
+| PT13 | PT_MISSING | passing | Lesson 13: '14.' only copies what H3 showed: no credit, no miss; give_answer refused there and on the next 'Okay.' | no answer given | |
+| PT14 | PT_MISSING | passing | Lessons 5, 6 and 13, model proposing credit every turn: 'Yes.' first, 'My mom said 14.', 'I copied 14.', 'Maybe 14.', 'Is it 14?' credit nothing | no credit | The final answer's say-back confirm after 'My mom said 7.' is #735's (skipped test in `pattern.test.ts`) |
+| PT9 | PT_MISSING | passing | Hedged and other-speaker steps ('Maybe 14.', 'My mom said 14.') get no credit | solved | |
 
 ## Pending
 

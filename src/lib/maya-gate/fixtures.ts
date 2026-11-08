@@ -3,21 +3,19 @@
 // worked-steps code, with its wrong answers and an easier example, checked by `checkQuestionPackage` like any package.
 // `A_BAD_KEY` is fixture A with a wrong answer key (56 while the checked steps total 66), for the content hold (C36).
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
-// not teach yet (equivalent fractions, C36b). `M_DIVIDE`, `M_TRY` and `M_SUBTRACT` are missing numbers (Wave A),
-// made by Maya's session adapter from synthetic printed packages and checked by Maya's check (mayaPackageCheck).
+// not teach yet (equivalent fractions, C36b). `EV_TWO`, `EV_STORY` and `EV_MISSING` are evaluate questions (Wave A, A2):
+// a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
+// numbers, in the shapes of the workbook's multi-step templates. `M_DIVIDE`, `M_TRY` and `M_SUBTRACT` are missing numbers
+// (Wave A), made by Maya's session adapter from synthetic printed packages and checked by Maya's check (mayaPackageCheck).
+// `PT_*` are pattern rules (Wave C, C1), made by the session adapter (pattern-cases.ts).
 import { mayaPackageCheck } from "@/lib/maya";
 import { deriveMissingNumber } from "@/lib/maya-teaching/missing-number";
 import { printedMissing, type PrintedMissing } from "@/lib/maya-teaching/missing-number-fixtures";
-
+import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
+import { PATTERN_FIXTURES, type PatternFixtureId } from "./pattern-cases";
 
-// not teach yet (equivalent fractions, C36b). `EV_TWO`, `EV_STORY` and `EV_MISSING` are evaluate questions (Wave A, A2):
-// a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
-// numbers, in the shapes of the workbook's multi-step templates.
-import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
-
-
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT" | PatternFixtureId;
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -170,6 +168,7 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
   ...ONE_STEP_FIXTURES,
+  ...PATTERN_FIXTURES,
   // Missing numbers (Wave A): 30 × ? = 1620 by division after dropping a zero (162 ÷ 3), 236 × ? = 1416 by trying
   // numbers, and 9000 − ? = 3000 by subtracting.
   M_DIVIDE: missing({ id: "gate-M-30x?=1620", known: 30, missing: 54, sign: "×" }),

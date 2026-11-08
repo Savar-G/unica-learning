@@ -9,6 +9,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
+import { PATTERN_BEHAVIOURS } from "./pattern-cases";
 import { MISSING_NUMBER_BEHAVIOURS } from "./missing-number-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
@@ -46,6 +47,7 @@ const TALK_SOLVED = [OPEN, "redirect", "accept_answer", "ask_write", "close"] as
 const failWith = (rule: string, reason: string) => ({ verdict: "fail" as const, rules: [rule as never], reason });
 
 export const BEHAVIOURS: Behaviour[] = [
+  ...PATTERN_BEHAVIOURS,
   ...[
     ["S01", "Homework sheet", "Help me with this homework sheet: 48 + 29."],
     ["S02", "Different-number twin", "What is 28 plus 41?"],

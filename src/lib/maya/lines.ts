@@ -21,6 +21,8 @@ import {
   type Place,
   type WorkedStep,
 } from "@/lib/question-package";
+import { patternOf } from "./pattern";
+import { PATTERN_OPENING, PATTERN_TEMPLATES, patternClose, patternExampleShow, patternHelp, patternTopHint } from "./pattern-lines";
 import { simplestWords, teachSteps } from "./fractions";
 import { evaluateFrame, partAt, withEvaluateExample } from "./evaluate";
 import { EVALUATE_TEMPLATES, partEquation, partHelp, partShow } from "./evaluate-lines";
@@ -41,7 +43,7 @@ import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_T
  * Version 14 (Wave A): missing numbers: the framing invites, try.target.frame, and the try-a-number lines; a
  * check.not_yet line may name the wrong try it answers (`heard`).
  */
-export const LINES_VERSION = 14;
+export const LINES_VERSION = 15;
 
 export const LINE_IDS = [
   "about.ai",
@@ -323,6 +325,7 @@ export const TEMPLATES = {
 
   // The parts of an evaluate question (Wave A, A2: evaluate-lines.ts).
   ...EVALUATE_TEMPLATES,
+  ...PATTERN_TEMPLATES,
 
   // Fractions (#407): adding and subtracting fractions, then the simplest form when the question asks for it. Every number is filled
   // from the checked step; no line says the final fraction before the child does. Math words of the curriculum stay:
@@ -619,6 +622,8 @@ function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
 
 /** The help lines of one step of the child's question, by hint level: H0 invite, H1 point, H2 give the operation, H3 show. */
 function stepLines(pkg: OperationPackage, step: WorkedStep, frameDue = false): LineOffer[] {
+  const pattern = patternHelp(pkg, step.id, offer);
+  if (pattern) return pattern;
   const part = partHelp(pkg, step, stepLines, offer);
   if (part) return part;
   const slots = { step: step.id };
@@ -820,7 +825,7 @@ const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+/).map((s) => s.t
 
 /** Controller-owned opening. Only checked operation data is read aloud, never arbitrary workbook prose. */
 export function workbookOpening(pkg: OperationPackage): string | null {
-  return pkg.ref.source === "workbook" ? WORKBOOK_OPENING
+  return pkg.ref.source === "workbook" ? (patternOf(pkg) ? PATTERN_OPENING : WORKBOOK_OPENING)
     .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", questionExpr(pkg)) : null;
 }
 
@@ -838,8 +843,8 @@ export function packageLines(given: OperationPackage) {
   const pkg = withEvaluateExample(given);
   const framed: FramedLines | null = framedLines(pkg.steps);
   const expr = questionExpr(pkg);
-  const asked = evaluateFrame(pkg)?.printed ?? expr;
-  const solved = framed?.inverse ?? expr;
+  const asked = patternOf(pkg) ? (patternOf(pkg)!.missing ? "the missing step" : "the pattern") : evaluateFrame(pkg)?.printed ?? expr;
+  const solved = framed?.inverse ?? operationText(pkg.operation);
   const exampleExpr = framedLines(pkg.easierExample.steps)?.printed ?? operationText(pkg.easierExample.operation);
   const answer = valueText(pkg.answer.value);
   const steps = teachSteps(pkg);
@@ -851,23 +856,24 @@ export function packageLines(given: OperationPackage) {
       ...sentencesOf(pkg.text).map((s, i) => offer("question.read", "question.read", { sentence: s }, { slots: { sentence: i } })),
     ],
     assess: (): LineOffer[] => [offer("assess.ask", "assess.ask", { expr: asked })],
-    exampleIntro: (): LineOffer[] => [offer("example.intro", "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
+    exampleIntro: (): LineOffer[] => [offer("example.intro", patternOf(pkg) ? "pattern.example" : "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
     /** Maya works one step of the easier example. */
     exampleStep: (id: string): LineOffer[] => {
       const step = pkg.easierExample.steps.find((s) => s.id === id);
       if (!step) return [];
-      const show = showOf(step, pkg, "example");
+      const show = patternExampleShow(pkg, step) ?? showOf(step, pkg, "example");
       const eq = equationOf(step, pkg, "example");
       return [offer("example.step", step.kind === "result" ? "example.result" : "example.step", { show }, { slots: { step: id }, ...(eq ? { board: eq } : {}) })];
     },
     tryTarget: (): LineOffer[] => [framed
       ? offer("try.target", "try.target.frame", { expr, inverse: framed.inverse }, { slots: {}, board: expr })
-      : offer("try.target", "try.target", { expr: asked }, { slots: {}, board: asked })],
+      : offer("try.target", patternOf(pkg) ? "pattern.try" : "try.target", { expr: asked }, { slots: {}, board: asked })],
     /**
      * The help lines of the child's question's step, H0 to H3. The final step ("result", once every work step is done)
      * has one line, an H0 invite to put the whole answer together (#389).
      */
     help: (id: string, frameDue = false): LineOffer[] => {
+      if (id === "result" && patternOf(pkg)) return patternHelp(pkg, id, offer)!;
       if (id === "result") return [offer("step.invite", "invite.result", { expr: solved }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
       return step ? stepLines(pkg, step, frameDue) : [];
@@ -919,7 +925,7 @@ export function packageLines(given: OperationPackage) {
     /** "Yes! 3/4 + 1/8 = 7/8.", in the form the child gave when it is an equal form code accepted ("= 14/16", #407). */
     answerRight: (form: AnswerValue = pkg.answer.value): LineOffer[] => {
       const said = valueText(form);
-      return [offer("answer.right", "answer.right", { expr: solved, answer: said }, { slots: {}, board: `${solved} = ${said}` })];
+      return [offer("answer.right", patternOf(pkg) ? "pattern.answer" : "answer.right", { expr: solved, answer: said }, { slots: {}, board: `${solved} = ${said}` })];
     },
     answerGive: (): LineOffer[] => [offer("answer.give", "answer.give", { answer })],
     /** How the parts make the answer ("6 tens and 6 ones make 66."), said before answer.give on the final step (D-199). */
@@ -951,6 +957,10 @@ export function packageLines(given: OperationPackage) {
     redirect: (): LineOffer[] => [offer("redirect.back", "redirect.back", { expr: asked })],
     workbook: (): LineOffer[] => [offer("redirect.workbook", "redirect.workbook", {})],
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
+    /** The honest close of a pattern the child is still stuck on (pattern-lines.ts). */
+    patternClose: (): LineOffer[] => patternClose(pkg, offer),
+    /** A pattern step's top help level, or null for any other kind (pattern-lines.ts). */
+    patternTop: (id: string): number | null => patternTopHint(pkg, id, offer),
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr: asked }) : offer("close.together", "close.together", { expr: asked })],
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
@@ -995,7 +1005,7 @@ export function allLineTexts(given: OperationPackage, heardValues: readonly Answ
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.help(id, true), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.repair(),
-    ...l.together(), ...l.guess(),
+    ...l.together(), ...l.guess(), ...l.patternClose(),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];
   return [...new Set([...offers, ...offers.map(spokenOffer), ...extra].flatMap((o) => o.texts.map(sentence)))];

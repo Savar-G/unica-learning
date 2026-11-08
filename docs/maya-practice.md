@@ -163,6 +163,10 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 | W3 | W3 (284 × 7, an "Each … has" workbook story through the session adapter) | Drops the carries: 1468 | solved |
 | EV1 | EV_TWO (7 × 640 + 7 × 30) | Works from left to right: 640 + 7 = 647, then each part after help (Wave A, A2) | solved |
 | EV2 | EV_STORY (4 × 260 − 590) | Cannot start a two-step story; follows the same-shape easier example, then each part | solved |
+| PTP1 | PT_LONG (starts at 35, adds ?, 9th term 115) | Gives 115 − 35 = 80 first, then asks why it divides by 8 (Wave C, C1, J06) | solved |
+| PTP2 | PT_TERM (starts at 20, adds 8, 4th term) | Says 52 (four steps), asks why three steps; then 3 × 8 and 20 + 24 in full sentences | solved |
+| PTP3 | PT_PAIR (starts at 34, adds 9, 8th term plus 2nd term) | Starts stuck; follows the same-shape easier pattern, then each term | solved |
+| PTP4 | PT_STORY (32 beads, 9 more each day, after 8 days) | Gives 8 × 9 = 72 first, then adds the 32 beads already there | solved |
 
 Not here on purpose: cases that need injected speech-to-text alternatives, exact silences or the clock at a set time (C12 to C18, C21, C35, C39), or a broken package (C36). C38 covers proper-operand fraction addition with typed exact fraction validity. It does not claim all fraction operations or forms. The scripted gate runs those exactly; a model child cannot make them happen on cue. The research's pending items (#383) stay pending here too.
 

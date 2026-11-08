@@ -10,6 +10,7 @@ import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { TEACHING_SOURCE } from "./limits";
 import { deriveOneStep } from "./one-step";
 import { deriveMultiStep } from "./multi-step";
+import { derivePattern } from "./pattern";
 import { deriveMissingNumber } from "./missing-number";
 
 /**
@@ -20,6 +21,7 @@ export type Deriver = (printed: QuestionPackage) => QuestionPackage | null;
 
 /** Each builder adds one line. The first deriver whose package passes every check below wins. */
 const DERIVERS: readonly Deriver[] = [
+  derivePattern, // C1: exact increasing-rule templates and printed forms
   deriveMissingNumber, // A3: "a × ? = c", "? × a = c", "a − ? = c" (first: only its exact printed forms match)
   deriveOneStep, // A1: one add, subtract or multiply
   deriveMultiStep, // A1: multi-step stories, as evaluate (taught from A2)

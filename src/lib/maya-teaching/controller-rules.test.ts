@@ -23,9 +23,11 @@ describe("rule 1: an easier example of the question's own shape, which Maya can 
     expect(heldReason(made)).toBeNull();
   });
 
-  it("gives a multi-step story an example of the same expression shape (held until evaluate is taught)", () => {
+  it("gives a multi-step story an example of the same expression shape", () => {
     expect(teach(boxesThenSells("Mo", 4, 236, "beads")).easierExample?.operation).toEqual({ kind: "evaluate", operands: ["4 × 23 − 46"] });
-    expect(teach(addsThousandChain(73562)).easierExample?.operation).toEqual({ kind: "evaluate", operands: ["7356 + 100 + 10"] });
+    // Evaluate (A2) holds a part above its one-step limits (73562 + 1000), so the adapter keeps the printed package.
+    const chain = addsThousandChain(73562);
+    expect(teach(chain)).toEqual(chain);
   });
 
   it("holds a question when no example of its shape passes, rather than teach a smaller example of another shape", () => {

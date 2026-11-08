@@ -50,6 +50,7 @@ import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FE
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
+import { patternOf, patternRows } from "./pattern";
 import { closeParts, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, withEvaluateExample } from "./evaluate";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -811,6 +812,12 @@ function asksWhy(text: string): boolean {
   return /^\s*why\W*$/i.test(text) || /\b(?:why|where|what|how)\b[^.!\n]*\b(?:carry|carried|regroup\w*|trad\w*|ten|10|one|1)\b/i.test(text);
 }
 
+/** After H3 on a pattern's work step, the child's turn only says back the value Maya showed (no credit, #698): still stuck. */
+function patternCopy(s: Session): boolean {
+  const st = s.package ? workSteps(s.package).find((x) => x.id === s.ladder.step) : undefined;
+  return !!st && s.ladder.hint >= 3 && s.turn !== null && valuesIn(s.turn.text, readOptionsFor(s.package)).some((v) => stepAnswers(st).some((a) => equivalent(a, v)));
+}
+
 function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
   // Maya may check what she heard before she goes on, but not a third time in a row (practice run 6, F06: "16 or
   // 60?" eleven times after the child said 16 each time), and not once the answer is accepted (run 5, F05: "Just
@@ -821,8 +828,8 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // read as unclear, numbers speech heard two ways, a choice, or a final answer the child is not sure of.
   const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && (stepSaidUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
-    const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
-      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
+    const acts: Act[] = (s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
+      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"]).filter((a): a is Act => a !== "give_answer" || !patternOf(s.package));
     return { acts: [...acts, ...confirm], code: "act_not_allowed", reason: "Time is almost up: finish the question and close." };
   }
   // A child who says they wrote it is done writing, whatever the model reads (#605). "I'm writing" keeps its time.
@@ -885,6 +892,16 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
     reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+  // A pattern has no given answer (lessons 7 and 10): a child still stuck at a step's top help (H3, or H2 on the last part),
+  // or who only says back the step Maya showed (lesson 13), gets the easier example, then the honest close (pattern.close).
+  const patternTop = s.package && patternOf(s.package) ? packageLines(s.package).patternTop(s.ladder.step) : null;
+  if (patternTop !== null && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= patternTop &&
+      (needsMore || patternCopy(s))) || (misses >= 2 && FINAL_GIVE_STATES.includes(main)))) {
+    return s.exampleShown < steps
+      ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child is still stuck: show the easier pattern, step by step (example_step). A pattern has no given answer." }
+      : { acts: ["close"], code: "act_not_allowed", reason: "The child is still stuck after the easier pattern: close honestly (pattern.close), never with the answer." };
+  }
+  if (patternOf(s.package)) acts = acts.filter((a) => a !== "give_answer");
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
@@ -1410,6 +1427,12 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     }
     case "close":
+      // A pattern closed as the way out for a stuck child (lessons 7 and 10) says the honest close in code's words, not
+      // only warm talk. A stop, the clock and silence keep their own close.
+      if (patternOf(pkg) && s.solved === null && !s.stopRequested && !reading.stop && s.state !== "TIME_CLOSE" && s.silence !== "close_due" &&
+          !spoken.chosen.some((o) => o.key === "pattern.close")) {
+        return no("line_not_offered", "Close a pattern the child is stuck on with pattern.close.", allowedNow);
+      }
       break;
     case "safety":
       // The guidance is code's policy message, never the model's words.
@@ -2763,7 +2786,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : [];
+      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : l.patternClose();
     case "confirm": {
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));
@@ -3000,6 +3023,17 @@ function boardOffersFor(s: Session, act: Act, view: View, spoken: Pick<Spoken, "
   if (!pkg || !BOARD_ACTS.includes(act)) return [];
   const out: BoardOffer[] = [];
   const at = (c: Command | null, place: Place) => (c ? [{ ...c, place } as Command] : []);
+  // Pattern table rows are code-written. Unknown terms and a missing step stay hidden before acceptance.
+  const role = act === "example_step" ? "example" : "target";
+  const problem = role === "example" ? pkg.easierExample : pkg;
+  const answered = role === "example" ? s.exampleShown >= problem.steps.length - 1 : s.solved !== null || view.rightResult;
+  const pattern = patternOf(problem);
+  const tableId = `${role}-pattern-${answered ? "done" : "start"}`;
+  if (pattern && !Object.hasOwn(s.boardRoles, `${tableId}-terms`)) out.push({
+    id: `${role === "target" ? "question" : "example"}.pattern`, shows: "the pattern terms and equal steps",
+    commands: place => patternRows(problem, answered).map((text, i) => ({ op: "write", id: `${tableId}-${i === 0 ? "terms" : "step"}`, text,
+      place: i === 0 ? place : { below: `${tableId}-terms` } })),
+  });
   // Fraction strips (#407): each fraction of the problem as a strip of equal parts, the second below the first, so the
   // parts line up; for the child's question also the strips in the common denominator, once that step is done or shown.
   const strips = (id: string, of: readonly { numerator: number; denominator: number }[], shows: string) => {
@@ -3121,7 +3155,7 @@ function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoke
     ...[...operandsOf(operation), ...(role === "target" ? partBoards(pkg).flatMap((b) => b.operands) : [])].flatMap((n) => [number(n), ...[...String(n)].filter((c) => /\d/.test(c)).map((c) => number(Number(c)))]),
     ...finished.flatMap((st) => [...stepAnswers(st), ...("carryOut" in st ? [number(st.carryOut)] : [])]),
   ];
-  const fromCode = new Set([...spoken.boards, ...spoken.lines].map((t) => t.trim()));
+  const fromCode = new Set([...spoken.boards, ...spoken.lines, ...patternRows(role === "target" ? pkg : pkg.easierExample, role === "example" ? s.exampleShown >= pkg.easierExample.steps.length - 1 : s.solved !== null || spoken.chosen.some(o => o.line === "answer.right"))].map((t) => t.trim()));
   for (const [key, raw] of boardVisible(board)) {
     const t = raw.trim();
     if (t === "") continue;

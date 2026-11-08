@@ -16,6 +16,8 @@
 // same shape. The easier example Maya works first must be the same shape as the question: when the stored one is not
 // (the generator stores "1 + 1"), code makes one with the same signs and brackets and smaller numbers, and checks it.
 // Pure TypeScript: no clock, network or randomness.
+import { patternOf } from "./pattern";
+import { patternSteps } from "./pattern-lines";
 import {
   checkQuestionPackage,
   operationProblem,
@@ -247,7 +249,7 @@ function teach(pkg: OperationPackage): Worked {
   if (!wholeSteps(steps)) return { held: "Maya teaches evaluate questions only with whole numbers yet" };
   const operates = steps.filter((s): s is OperateStep => s.kind === "operate");
   if (operates.length === 0) return { held: "Maya teaches evaluate questions only with an operation to work" };
-  const frame = frameOf(pkg.text, expr, operates);
+  const frame = patternOf(pkg) ? null : frameOf(pkg.text, expr, operates);
   if (frame === undefined) return { held: "Maya cannot read this missing-number question yet" };
   const parts: EvaluatePart[] = [];
   for (const [i, step] of operates.entries()) {
@@ -272,7 +274,7 @@ function teach(pkg: OperationPackage): Worked {
   return {
     teaching: {
       parts,
-      steps: parts.flatMap((p) => (p.last ? p.columns : [...p.columns, p.step])),
+      steps: patternSteps(pkg) ?? parts.flatMap((p) => (p.last ? p.columns : [...p.columns, p.step])),
       frame,
       example,
     },
@@ -288,7 +290,7 @@ const teachingOf = (pkg: OperationPackage): EvaluateTeaching | null => {
 /** The steps the child does in an evaluate question, without the result; null for any other kind. */
 export function evaluateSteps(pkg: OperationPackage): WorkedStep[] | null {
   if (pkg.operation.kind !== "evaluate") return null;
-  return teachingOf(pkg)?.steps ?? pkg.steps.filter((s) => s.kind !== "result");
+  return patternSteps(pkg) ?? teachingOf(pkg)?.steps ?? pkg.steps.filter((s) => s.kind !== "result");
 }
 
 /** The part a step of the child's question belongs to, and the part's own step it is (null for the part itself). */
