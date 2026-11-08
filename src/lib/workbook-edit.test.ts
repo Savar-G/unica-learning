@@ -53,6 +53,14 @@ describe("workbook comment batches",()=>{
     expect(s.review.batches.size).toBe(0);expect(s.review.snapshot().revision).toBe(1);
     expect(s.renderPage).not.toHaveBeenCalled();
   });
+  for (const runner of ["mac", "server"] as const) it(`applies a question on a page with a layout comment on ${runner}`, async () => {
+    const s = setup(); s.deps.runner = runner; s.comment();
+    s.review.save({draftId:ID, revision:1, page:s.pages[0].number, question:null, x:.5, y:.5, note:"Change the layout", item:null,
+      actor:{id:"admin",email:"admin@example.com"}, createdAt:"2026-11-07T00:00:00Z"});
+    expect(await runWorkbookEdit(s.send(), s.deps)).toBe("done");
+    expect(s.review.comments.map(c => c.status)).toEqual(["done", "pending"]);
+    expect(s.review.comments[1]).toMatchObject({route:"layout", batchId:null, revision:2});
+  });
   it("does not create a revision for an unchanged exact-field request", async () => {
     const s=setup(),q=s.pages[0].questions.find(q=>q.package?.operation)!;
     s.comment(s.pages[0].number,q.number,workbookEditItem(q));
