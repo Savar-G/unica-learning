@@ -172,7 +172,7 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
     if (s.hasAssessment && page.parts.some(p => p.kind === "new-idea")) choices.push(`Picture support stays through Day ${s.adjustments.picturesThrough}.`);
     for (const part of page.parts) {
       if (part.step && s.weak.some(w => w.code === part.step!.unit)) choices.push(`Teach weak topic ${topic(part.step.unit)}, step ${part.step.step}.`);
-      const requested = part.weakChecks?.filter(c => asked?.addReview.includes(c.unit)) ?? [];
+      const requested = part.weakChecks?.filter(c => asked?.addReview.includes(c.unit) || asked?.teachLess.includes(c.unit)) ?? [];
       const gaps = part.weakChecks?.filter(c => !requested.includes(c)) ?? [];
       if (gaps.length) choices.push(`Check early gaps: ${gaps.map(c => `${topic(c.unit)}, ${c.items} questions`).join("; ")}.`);
       if (requested.length) choices.push(`Review the team asked for: ${requested.map(c => `${topic(c.unit)}, ${c.items} questions`).join("; ")}.`);

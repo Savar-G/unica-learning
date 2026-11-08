@@ -63,8 +63,8 @@ export function instructedStart(o: PlacementInput): { level: CurriculumLevel } |
   if (!id) return null;
   const level = o.curriculum.level(id);
   if (!level) return { reason: `The curriculum has no level ${id}.` };
-  if (level.number > PLACEMENT_CEILING) return { reason: `It is above the U${PLACEMENT_CEILING} ceiling (D-153).` };
-  if (o.grade === 0) return { reason: "Kindergarten starts at U1 (P9)." };
+  if (level.number > PLACEMENT_CEILING) return { reason: `It is above U${PLACEMENT_CEILING}, the highest level a book can start at.` };
+  if (o.grade === 0) return { reason: "Kindergarten starts at U1." };
   return { level };
 }
 
@@ -122,7 +122,7 @@ export function planNextWorkbook(o: PlacementInput & { number: number }, capture
     const auto = placeChild({ ...o, instructions: null });
     outcomes.push("level" in wanted
       ? { section: "start-level", value: ins.startLevel, applied: true, note: auto.level.id === wanted.level.id
-        ? `Same as the automatic placement (rule ${auto.trace.rule}).` : `Instead of the automatic ${auto.level.id} (rule ${auto.trace.rule}). Weak topics below it get review checks.` }
+        ? "Same as the automatic placement." : `Instead of the automatic ${auto.level.id}. Weak topics below it get review checks.` }
       : { section: "start-level", value: ins.startLevel, applied: false, note: `${wanted.reason} The book uses the automatic ${auto.level.id}.` });
   }
   if (ins?.difficulty) {
@@ -135,6 +135,11 @@ export function planNextWorkbook(o: PlacementInput & { number: number }, capture
         ? "the day's numbers and difficulty start 2 days ahead, and the Challenge uses the hardest allowed questions from Day 1." : "no stretch shift, and the Challenge keeps its usual questions."}` });
     }
   }
+  // Teach less units the test found secure (clear or early sign), before a first book's own level marks early ones developing.
+  const secureLess = (codes: readonly string[]) => {
+    const found = codes.filter(code => signals.hasAssessment && o.profile?.standards.some(s => s.code === code && s.status === "secure"));
+    return found.length ? { securePerTest: found } : {};
+  };
   const known = new Set((o.profile?.standards ?? []).map(s => s.code));
   const own = new Set(place.level.units);
   const standards = (o.profile?.standards ?? []).map(s => signals.hasAssessment && place.first && own.has(s.code) && s.status === "secure" && s.certainty !== "clear" ? { code: s.code, status: "developing" as const } : s);
@@ -145,7 +150,8 @@ export function planNextWorkbook(o: PlacementInput & { number: number }, capture
     workbook: { number: o.number, inLevel: place.inLevel },
     reviews: [], missedReviews: [], misses: [], pausedWeeks: 0,
     support: place.support, unassessedUnits,
-    ...(ins ? { instructions: { teachMore: [...ins.teachMore], teachLess: [...ins.teachLess], addReview: [...ins.addReview], ...(place.trace.rule === "I1" ? { weakBelowChecks: true } : {}) } } : {}),
+    ...(ins ? { instructions: { teachMore: [...ins.teachMore], teachLess: [...ins.teachLess], addReview: [...ins.addReview],
+      ...secureLess(ins.teachLess), ...(place.trace.rule === "I1" ? { weakBelowChecks: true } : {}) } } : {}),
   };
   // Capture the exact public planner input. A consumer cannot change the plan through this copy.
   capture?.(structuredClone(planning));

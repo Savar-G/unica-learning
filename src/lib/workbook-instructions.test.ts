@@ -84,7 +84,7 @@ describe("book instructions in the plan", () => {
   it("start level stays inside the ceiling and Kindergarten keeps U1", () => {
     const high = plan({ instructions: set({ startLevel: "U28" }) });
     expect(high.level).toBe(16);
-    expect(outcome(high, "start-level", "U28")).toMatchObject({ applied: false, note: expect.stringMatching(/U27 ceiling.*automatic U16/) });
+    expect(outcome(high, "start-level", "U28")).toMatchObject({ applied: false, note: expect.stringMatching(/above U27, the highest level a book can start at.*automatic U16/) });
     const k = planNextWorkbook({ curriculum: BC, grade: 0, profile: null, workbooks: [], number: 1, instructions: set({ startLevel: "U4" }) });
     expect(k.ok && k.plan.level).toBe(1);
     expect(k.ok && k.plan.instructions?.outcomes[0]).toMatchObject({ applied: false, note: expect.stringMatching(/Kindergarten starts at U1/) });
@@ -127,7 +127,7 @@ describe("book instructions in the plan", () => {
     expect(outcome(p, "add-review", "5.5")).toMatchObject({ applied: false, note: expect.stringMatching(/taught in this book's level/) });
     expect(outcome(p, "add-review", "6.1")).toMatchObject({ applied: false, note: expect.stringMatching(/taught in this book's level/) });
     const ahead = plan({ instructions: set({ startLevel: "U19", addReview: ["5.13"] }) });
-    expect(outcome(ahead, "add-review", "5.13")).toMatchObject({ applied: false, note: expect.stringMatching(/D-084/) });
+    expect(outcome(ahead, "add-review", "5.13")).toMatchObject({ applied: false, note: expect.stringMatching(/above the school grade and not secure/) });
     expect(checks(ahead, "5.13")).toEqual([]);
   });
 
@@ -174,16 +174,43 @@ describe("book instructions in the plan", () => {
     expect(p.newSteps).toEqual(plan({}).newSteps);
   });
 
-  it("teach less makes units review only, and never empties the book", () => {
-    const p = plan({ instructions: set({ teachLess: ["5.1", "5.10"] }) });
-    expect(p.newSteps.some(s => s.unit === "5.1" || s.unit === "5.10")).toBe(false);
+  it("teach less: the unit is not taught and keeps its review questions", () => {
+    // The first customer's test found 5.1 secure (early sign), so a first book would teach it; Teach less reviews it instead.
+    const auto = plan({});
+    expect(auto.newSteps.some(s => s.unit === "5.1")).toBe(true);
+    const p = plan({ instructions: set({ teachLess: ["5.1"] }) });
+    expect(p.newSteps.some(s => s.unit === "5.1")).toBe(false);
+    expect(checks(p, "5.1")).toEqual([{ day: 2, kind: "remember-these", items: 2 }, { day: 3, kind: "remember-these", items: 2 }, { day: 4, kind: "remember-these", items: 2 }, { day: 5, kind: "friday-5", items: 1 }]);
+    expect(p.personal?.notReviewed?.some(x => x.unit === "5.1")).toBe(false);
+    expect(outcome(p, "teach-less", "5.1")).toMatchObject({ applied: true, note: expect.stringContaining("Review only") });
     expect(p.testWorkbook).toBe(false);
-    expect(outcome(p, "teach-less", "5.1")?.applied).toBe(true);
+  });
+
+  it("teach less refuses a unit with nothing to review or no room for its checks, and teaches it as usual", () => {
+    // 5.9 is not secure in the first customer's test and has not been taught: there is nothing to review.
     const all = ["5.1", "5.5", "5.9", "5.10", "5.12", "5.17"];
-    const none = plan({ instructions: set({ teachLess: all }) });
-    expect(none.testWorkbook).toBe(false);
-    expect(none.newSteps).toEqual(plan({}).newSteps);
-    for (const c of all) expect(outcome(none, "teach-less", c)).toMatchObject({ applied: false, note: expect.stringMatching(/nothing to teach/) });
+    const p = plan({ instructions: set({ teachLess: all }) });
+    expect(outcome(p, "teach-less", "5.9")).toMatchObject({ applied: false, note: expect.stringMatching(/nothing to review. It is taught as usual/) });
+    expect(outcome(p, "teach-less", "5.17")).toMatchObject({ applied: false, note: expect.stringMatching(/^No room.*taught as usual/) });
+    for (const o of p.instructions!.outcomes) {
+      // Applied means review questions are in the book; not applied means the unit is taught.
+      expect(checks(p, o.value)).toHaveLength(o.applied ? 4 : 0);
+      if (o.applied) expect(p.newSteps.some(s => s.unit === o.value)).toBe(false);
+    }
+    expect(p.instructions!.outcomes.map(o => o.value)).toEqual(all);
+    // Without a test, nothing is known secure: every unit is still taught.
+    const noTest = plan({ profile: null, instructions: set({ teachLess: ["5.1"] }) });
+    expect(outcome(noTest, "teach-less", "5.1")).toMatchObject({ applied: false });
+    expect(noTest.newSteps).toEqual(plan({ profile: null }).newSteps);
+  });
+
+  it("instruction reasons are plain words, with no rule or decision ids", () => {
+    const sets = [set({ startLevel: "U19", addReview: ["5.13", "3.3"], teachLess: ["5.1", "5.9"], difficulty: "harder" }), set({ startLevel: "U28" }), set({ teachMore: ["4.5", "5.8", "5.12"], teachLess: ["5.12"] })];
+    const notes = sets.flatMap(i => plan({ instructions: i }).instructions!.outcomes.map(o => o.note));
+    const k = planNextWorkbook({ curriculum: BC, grade: 0, profile: null, workbooks: [], number: 1, instructions: set({ startLevel: "U4", teachLess: ["K.1"] }) });
+    if (k.ok) notes.push(...(k.plan.instructions?.outcomes.map(o => o.note) ?? []));
+    expect(notes.length).toBeGreaterThan(5);
+    for (const note of notes) expect(note).not.toMatch(/\b(P\d+[a-z]?|I1|D-\d+|rule)\b/);
   });
 
   it("difficulty replaces the automatic stretch", () => {

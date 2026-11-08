@@ -105,7 +105,7 @@ export function WorkbookInstructionsForm({ childId, child, schoolGrade, levels, 
           </span> : <span className="adm-note">Daily warm-up only</span>}
         </li>)}
       </ul>}
-      <p className="adm-note">Teach more: the unit goes first and gets an extra practice page on its first day. Teach less: review only in this book.</p>
+      <p className="adm-note">Teach more: the unit goes first and gets an extra practice page on its first day. Teach less: not taught in this book, only review questions; it needs a test result that found it secure, or an earlier book that taught it.</p>
     </fieldset>
 
     <fieldset>

@@ -8,7 +8,9 @@
 //   level, clear or early, get the P6 review checks.
 // - Teach more: units of the book's level that go first (after their prerequisites) and take the extra practice page
 //   on their first step's day (docs/workbook-personalization.md section 4, item 1). A clear secure unit is taught too.
-// - Teach less: units of the book's level that are review only in this book, as a clear secure unit is.
+// - Teach less: units of the book's level that are not taught in this book and get review checks instead (2 Remember
+//   these items on Days 2 to 4, 1 Friday 5 item on Day 5). Only a unit the test found secure (clear or early sign) or an
+//   earlier book taught has something to review; any other, or one with no room for its checks, is taught as usual.
 // - Add review: topics below the book's level that get the P6 checks: 2 Remember these items on Days 2 to 4 and 1
 //   Friday 5 item on Day 5. Never a topic above the school grade that is not secure (D-084).
 // - Difficulty: "harder" starts the day difficulty 2 days ahead and gives the Challenge its hardest questions from
