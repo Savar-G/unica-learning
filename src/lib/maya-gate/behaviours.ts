@@ -2051,12 +2051,13 @@ export const BEHAVIOURS: Behaviour[] = [
   // yes or the same column again her help moves on, with no credit. `{ throws: true }` repairs leave the turn to code.
   {
     id: "J1",
-    title: "C07: 'I added the ones first. Seven and nine is sixteen.' gets 'You said 16 for the ones' and one short confirm; 'I wrote the 6 and carried the 1 ten.' moves on to the tens",
+    title: "C07: 'I did that part first. Seven and nine is sixteen.' gets one short confirm, never the step again; a bare 'Yes.' moves on to the tens",
     fixture: "A",
     status: "passing",
     steps: [
-      child("I added the ones first. Seven and nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("I wrote the 6 and carried the 1 ten.", { answers: [[6, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
+      // A place word ("I added the ones") gets no stated confirm at all (review of 6eb2b9e3), so this child names none.
+      child("I did that part first. Seven and nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
+      child("Yes.", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
       child("2 plus 3 plus 1 is 6, so 66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
@@ -2084,13 +2085,14 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "J3",
-    title: "C10: 'Oh, 2 plus 3 plus 1 is 6. So 6 tens.' gets one short confirm, and after 'Yes, I got 6.' Maya asks for the whole answer, not the tens again",
+    title: "C10: 'Oh, so 2 plus 3 plus 1 is 6.' gets one short confirm, and after 'Yes.' Maya asks for the whole answer, not the tens again",
     fixture: "A",
     status: "passing",
     steps: [
       child("Okay. 7 plus 9 is 16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
-      child("Oh, 2 plus 3 plus 1 is 6. So 6 tens.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("Yes, I got 6.", undefined, [{ act: "guide", step: "result", level: 0, lines: ["step.invite"] }]),
+      // A place word ("So 6 tens.") gets no stated confirm at all, and only a bare yes moves on (review of 6eb2b9e3).
+      child("Oh, so 2 plus 3 plus 1 is 6.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
+      child("Yes.", undefined, [{ act: "guide", step: "result", level: 0, lines: ["step.invite"] }]),
       child("66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
@@ -2103,12 +2105,12 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "J4",
-    title: "C26: 'I think 7 plus 9 is 16.' gets one short confirm; 'I already got 16!' moves on; 'What do I do with the 1 I carried?' is answered with where the carried 1 goes",
+    title: "C26: 'I think 7 plus 9 is 16.' gets one short confirm; 'Yes.' moves on; 'What do I do with the 1 I carried?' is answered with where the carried 1 goes",
     fixture: "A",
     status: "passing",
     steps: [
       child("I think 7 plus 9 is 16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("Oh, I already got 16! I put the 6 down and carry the 1.", { answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
+      child("Yes.", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
       child("What do I do with the 1 I carried?", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
       child("Oh, 2 plus 3 plus 1 is 6, so 66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
@@ -2177,13 +2179,13 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "J8",
-    title: "F06: after the child carried and added the tens, Maya never goes back to 'Add the ones'",
+    title: "F06: after the child confirmed the ones and added the tens, Maya never goes back to 'Add the ones'",
     fixture: "A",
     status: "passing",
     steps: [
       child("Seven and nine is sixteen, so I put the 6.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("Then I carry the one to the tens.", { answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("Okay, now the tens. Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
+      child("Yes.", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
+      child("Okay. Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
       child("So the answer is sixty-six.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],

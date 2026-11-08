@@ -407,21 +407,16 @@ export const TEMPLATES = {
   ],
   // First-ship practice (J06): the child said a column right in words no crediting template fits ("I think 7 plus 9 is
   // 16."). Maya says back what they said, with no verdict, and asks one short confirm; she does not ask the step again.
-  // Filled only with numbers the child said in that turn. Pending Savar's approval (D-202).
+  // Filled only with numbers the child said in that turn, and never a place: a turn that names one gets no confirm at all
+  // (review of 6eb2b9e3). Pending Savar's approval (D-202).
   "stated.total": [
-    "You said {total} for the {place}. Is that right?", "I heard {total}. Is that your answer for the {place}?",
-    "So the {place} make {total}? Is that what you got?", "Okay, {total}. Is that your number for the {place}?",
-    "You said {total}. Is that what you got for the {place}?",
+    "You said {total}. Is that right?", "I heard {total}. Is that your answer?", "So you got {total}? Is that right?",
+    "Okay, {total}. Is that your number?", "You said {total}. Is that what you got?",
   ],
   "stated.claim": [
     "You wrote {write} and carried {carry}. Is that right?", "So you wrote {write} and carried {carry}?",
-    "I heard you wrote {write} and carried {carry}. Is that right?", "Okay, {write} in the {place} and {carry} carried. Is that what you did?",
-    "You wrote {write} and carried {carry}. Is that what you did?",
-  ],
-  "stated.claim.plain": [
-    "You wrote {write} in the {place}. Is that right?", "So you wrote {write} in the {place}?",
-    "I heard {write} in the {place}. Is that what you wrote?", "Okay, {write} in the {place}. Is that right?",
-    "You wrote {write} in the {place}. Is that what you did?",
+    "I heard you wrote {write} and carried {carry}. Is that right?", "Okay, you wrote {write} and carried {carry}. Is that what you did?",
+    "So {write}, and you carried {carry}? Is that what you did?",
   ],
   "answer.right": [
     "Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}.", "Yes, {expr} = {answer}!",
@@ -868,10 +863,11 @@ export function packageLines(pkg: OperationPackage) {
     stated: (id: string, kinds: readonly ("total" | "claim")[]): LineOffer[] => {
       const step = find(id);
       if (!step || step.kind !== "add-column") return [];
-      const vars = { place: step.place, total: step.total, write: step.write, carry: step.carryOut };
+      const vars = { total: step.total, write: step.write, carry: step.carryOut };
       return kinds.flatMap((kind): LineOffer[] => {
         if (kind === "total") return [offer("check.stated", "stated.total", vars, { slots: { step: id, other: kind } })];
-        return [offer("check.stated", step.carryOut > 0 ? "stated.claim" : "stated.claim.plain", vars, { slots: { step: id, other: kind } })];
+        // A claim is said back only for a column that makes a carry: one that makes none needs its place named.
+        return step.carryOut > 0 ? [offer("check.stated", "stated.claim", vars, { slots: { step: id, other: kind } })] : [];
       });
     },
     /** "Not quite.": only after code checked the child's wrong answer for that step. */
