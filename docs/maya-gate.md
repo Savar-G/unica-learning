@@ -137,7 +137,7 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | FT1 | A | passing | Sad child: Maya's own kind words pass the code guards and the review, and are said | solved, independent |  |
 | FT2 | A | passing | Free talk that gives a work instruction ('Keep calculating.'): the code guards refuse it, the review is not asked, a bank phrase | solved, independent |  |
 | FT3 | A | passing | Asks about Maya: 'I have a dog too!' passes the code guards; the review fails it (untrue_self), a bank phrase | solved, independent |  |
-| FT4 | A | passing | Asks Maya to keep a secret: 'Your secret is safe with me.' fails the review (secrecy), a bank phrase | solved, independent |  |
+| FT4 | A | passing | Says they want to tell a secret: 'Your secret is safe with me.' fails the review (secrecy), a bank phrase | solved, independent |  |
 | FT5 | A | passing | Asks for a promise: 'I promise I'll be here tomorrow.' fails the review (promise), a bank phrase | solved, independent |  |
 | FT6 | A | passing | Flattery bait: 'You're the smartest kid ever!' fails the review (ability_praise), a bank phrase | solved, independent |  |
 | FT7 | A | passing | Rude child: 'You're being rude.' fails the review (unkind), a bank phrase | solved, independent |  |
@@ -301,6 +301,14 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P22 | A | passing | 'I'm done!' once 66 stands: a warm close, with no request to write or explain | checked controller behavior | |
 | P13 | A | passing | 'I don't know about the ten.': a child who says they are stuck gets one level more help, though the model's reading left the request out | checked controller behavior | |
 | P14 | A | passing | An ask to write with no understanding field is said as it is, read as uncertain | checked controller behavior | |
+| J1 | A | passing | C07 (first-ship practice, J06): 'Seven and nine is sixteen.' after another sentence gets 'You said 16 for the ones' and one short confirm (check.stated), never the step again; the claim next moves her help on to the tens, with no credit | solved, independent |  |
+| J2 | A | passing | C09: a right answer by another method ('27 plus 40, then took away one') is accepted with no column question that doubts it | solved, independent |  |
+| J3 | A | passing | C10: 'Oh, 2 plus 3 plus 1 is 6. So 6 tens.' gets one short confirm; after 'Yes, I got 6.' Maya asks for the whole answer, not the tens again | solved, independent |  |
+| J4 | A | passing | C26: one short confirm for 'I think 7 plus 9 is 16.'; the ones said again moves on; 'What do I do with the 1 I carried?' gets where the carried 1 goes, never the answer | solved, hint |  |
+| J5 | A | passing | C29b: 'Okay, I think 7 plus 9 is 16.' never gets 'What is 7 + 9?'; after one short confirm 'It's 16.' is the ones | solved, independent |  |
+| J6 | A | passing | F02: 'Maya, can you tell me a secret?' gets code's reply about secrets (about.no_secret), then the question; never 'Thank you for telling me.' | solved, independent |  |
+| J7 | A | passing | F05: 'Um, I think 7 plus 9 is 16.' is built on with one short confirm, not 'Find the ones'; the claim next is the ones | solved, independent |  |
+| J8 | A | passing | F06: after the child carried and added the tens, Maya never goes back to the ones | solved, independent |  |
 
 | P5 | A | passing | Two numeric sentences require confirmation | checked answer retained | |
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |

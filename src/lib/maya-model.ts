@@ -22,7 +22,7 @@ import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
-export const PROMPT_VERSION = "maya-text-chat-29";
+export const PROMPT_VERSION = "maya-text-chat-30";
 
 /** One act the model may propose now, with everything code offers for it. */
 export interface ActOffer {
@@ -153,6 +153,8 @@ Rules:
 - When every step is done and the child gets the final answer wrong a second time, code offers only "give_answer": use it with no line, at most one warm part from "empathy". Code says how the parts make the answer, then the answer.
 - When the child is not sure of a right answer ("Is it 66?", "Maybe 66"), or code tells you to confirm it, say the offered confirm.heard line with the number they said. If code cannot safely offer a number, use confirm.answer to ask for the final answer alone. Never replace that request with a question reread or a new lesson. A yes to confirm.answer names no number. A yes to confirm.heard gives only the number that line named: put it in reading.answers with your verdict. A wrong answer, sure or not, is not confirmed when you heard it clearly: judge it (check.not_yet) and guide.
 - When the child said the right answer but is not sure of it, or says they guessed, and you already asked "Did you say...?", do not ask again: say "check.guess" (a guess) or "check.together" (doubt), then the first step's line ("step.operation" or "step.invite"), and check the work together. Once the answer stands and the child says they guessed, say "check.guess" with "check.thinking" and keep "understanding" uncertain.
+- When "check.stated" is offered, the child said a column right in their own words, but not in a form code counts: say "check.stated" alone, with no answer for that step in "reading.answers". It says back what they said and asks one short confirm. Do not say the step's line again, ask its sum, or say it is right. When they then say yes or say it again, guide the next step.
+- When the child asks what to do with a carried digit, answer with the offered line about it ("step.point", "step.regroup" or "step.why") before another prompt.
 - When the child asks why a carried digit goes to the next column, or where the traded ten comes from in subtraction, say the offered step.why line before another prompt. It explains the checked place-value change. When a subtraction child takes the smaller from the bigger digit, say step.order. Do not skip an unanswered why question because the child copied a digit.
 - Once the answer stands and the child says they are done ("I'm done"), close warmly: code offers only the close.
 - When the child says they are still writing, and code asks you to wait, wait with a warm part from "pacing", never your own words. A child who says they wrote it is done: set "reading.paper" to "written", not "reading.writing".

@@ -34,8 +34,10 @@ import { simplestWords, teachSteps } from "./fractions";
  * step.order; check.not_yet never praises wrong work.
  * Version 11 (#605): a held question invites another question on the page, without an inability claim.
  * Version 13: answer-only clarification and checked regroup explanations from full practice.
+ * Version 14 (first-ship practice, J06): check.stated, Maya's acknowledgement and one short confirm of a column the child
+ * said right in words that fit no crediting template. It credits nothing.
  */
-export const LINES_VERSION = 13;
+export const LINES_VERSION = 14;
 
 export const LINE_IDS = [
   "about.ai",
@@ -61,6 +63,7 @@ export const LINE_IDS = [
   "check.thinking",
   "check.together",
   "check.guess",
+  "check.stated",
   "step.why",
   "step.order",
   "answer.right",
@@ -401,6 +404,24 @@ export const TEMPLATES = {
     "Lucky guess? Let's check it together.", "A guess is a good start. Let's check it.",
     "Let's see if your guess works. We'll check it together.", "Okay, let's check that guess together.",
     "Guesses can be right! Let's check this one together.",
+  ],
+  // First-ship practice (J06): the child said a column right in words no crediting template fits ("I think 7 plus 9 is
+  // 16."). Maya says back what they said, with no verdict, and asks one short confirm; she does not ask the step again.
+  // Filled only with numbers the child said in that turn. Pending Savar's approval (D-202).
+  "stated.total": [
+    "You said {total} for the {place}. Is that right?", "I heard {total}. Is that your answer for the {place}?",
+    "So the {place} make {total}? Is that what you got?", "Okay, {total}. Is that your number for the {place}?",
+    "You said {total}. Is that what you got for the {place}?",
+  ],
+  "stated.claim": [
+    "You wrote {write} and carried {carry}. Is that right?", "So you wrote {write} and carried {carry}?",
+    "I heard you wrote {write} and carried {carry}. Is that right?", "Okay, {write} in the {place} and {carry} carried. Is that what you did?",
+    "You wrote {write} and carried {carry}. Is that what you did?",
+  ],
+  "stated.claim.plain": [
+    "You wrote {write} in the {place}. Is that right?", "So you wrote {write} in the {place}?",
+    "I heard {write} in the {place}. Is that what you wrote?", "Okay, {write} in the {place}. Is that right?",
+    "You wrote {write} in the {place}. Is that what you did?",
   ],
   "answer.right": [
     "Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}.", "Yes, {expr} = {answer}!",
@@ -838,6 +859,21 @@ export function packageLines(pkg: OperationPackage) {
         ? offer("check.right_step", "check.right_step", { eq }, { slots: { step: id }, requires, board: eq })
         : offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)), where: whereOf(step) }, { slots: { step: id }, requires })];
     },
+    /**
+     * Maya says back a column the child said right in words no crediting template fits, and asks one short confirm
+     * (first-ship practice, J06). `kinds` are what the child's turn holds: the column's total ("16"), or its written digit
+     * with its carry ("wrote 6 and carried 1"). Never the column's equation, which from Maya reads as a verdict. Only an
+     * addition column has these lines.
+     */
+    stated: (id: string, kinds: readonly ("total" | "claim")[]): LineOffer[] => {
+      const step = find(id);
+      if (!step || step.kind !== "add-column") return [];
+      const vars = { place: step.place, total: step.total, write: step.write, carry: step.carryOut };
+      return kinds.flatMap((kind): LineOffer[] => {
+        if (kind === "total") return [offer("check.stated", "stated.total", vars, { slots: { step: id, other: kind } })];
+        return [offer("check.stated", step.carryOut > 0 ? "stated.claim" : "stated.claim.plain", vars, { slots: { step: id, other: kind } })];
+      });
+    },
     /** "Not quite.": only after code checked the child's wrong answer for that step. */
     notYet: (id: string): LineOffer[] => {
       if (id === "result") return [offer("check.not_yet", "check.not_yet", { where: "this answer" }, { slots: { step: id }, requires: { answer: "wrong", step: id } })];
@@ -925,7 +961,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
   const offers = [
     ...equalForms.flatMap((v) => [...l.answerRight(v), ...l.writeAnswer(v), ...l.equal(v, simplestWords(pkg)), ...l.simplifyOwn(v)]),
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id), ...l.stated(id, ["total", "claim"])]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.repair(),
     ...l.together(), ...l.guess(),

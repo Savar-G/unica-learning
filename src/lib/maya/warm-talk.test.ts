@@ -17,6 +17,7 @@ import {
   PHRASE_ACTS,
   PHRASE_GROUPS,
   PHRASES,
+  phraseOffers,
   step,
   talkMath,
   TEMPLATES,
@@ -197,7 +198,7 @@ describe("rule B (freeTalk on): a turn with no math line", () => {
   // A question about Maya gets the code-written reply that answers it (replyFor): "I'm an AI, so I don't have a pet."
   it("replaces refused free talk with a warm reply to a hard feeling that names no detail (D-197, practice runs 4 and 5: not \"I love hearing about it!\" or a cold \"I hear you.\" to a sad child)", () => {
     for (const n of [...NEUTRAL_SMALLTALK, ...FEELING_SMALLTALK]) expect(PHRASES.smalltalk).toContain(n);
-    for (const [child, want] of [["I'm sad today. My grandma is sick.", FEELING_SMALLTALK], ["This is dumb and you're dumb.", FEELING_SMALLTALK], ["I'm worried about my test.", FEELING_SMALLTALK], ["Can you tell me a secret?", NEUTRAL_SMALLTALK], ["Do you have a dog?", [PHRASES.mayafacts[3]]]] as const) {
+    for (const [child, want] of [["I'm sad today. My grandma is sick.", FEELING_SMALLTALK], ["This is dumb and you're dumb.", FEELING_SMALLTALK], ["I'm worried about my test.", FEELING_SMALLTALK], ["Tell me a joke.", NEUTRAL_SMALLTALK], ["Do you have a dog?", [PHRASES.mayafacts[3]]]] as const) {
       expect(hardFeeling(child), child).toBe(want === FEELING_SMALLTALK);
       for (const act of ["clarify", "redirect"] as const) {
         for (let random = 1; random <= 12; random++) {
@@ -210,6 +211,37 @@ describe("rule B (freeTalk on): a turn with no math line", () => {
         }
       }
     }
+  });
+
+  // First-ship practice, F02: "Maya, can you tell me a secret?" got "Thank you for telling me.", which answers nothing.
+  it("answers a question about secrets with code's fixed reply, then the question", () => {
+    for (const child of ["Maya, can you tell me a secret?", "Can you keep a secret? I ate a cookie before dinner."]) {
+      const c = call({ freeTalk: true });
+      c.child(child);
+      expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "smalltalk" }] })?.code).toBe("fixed_reply_first");
+      expect(c.say({ act: "redirect", parts: [{ line: "about.no_secret" }] }).text).toBe(TEMPLATES["about.no_secret"][0]);
+      expect(c.say({ act: "redirect", parts: [{ line: "question.problem" }] }).text).toMatch(/27 \+ 39/);
+    }
+  });
+
+  it("never thanks the child for telling Maya something when they asked a question; a sad child keeps the thank-you", () => {
+    const told = /telling me|told me/i;
+    for (let random = 1; random <= 12; random++) {
+      const c = call({ freeTalk: true, random });
+      c.child("Do you like cake?");
+      const talk = "Oh, I'm a real person!";
+      const said = c.say({ act: "redirect", reading: { offTopic: true }, parts: [{ talk }, { warm: "smalltalk" }] }, [{ text: talk, result: { verdict: "fail", rules: ["untrue_self"], reason: "untrue" } }]);
+      expect(said.text, `${random}`).not.toMatch(told);
+    }
+    const asked = call({ freeTalk: true });
+    asked.child("Do you like cake?");
+    expect(phraseOffers(asked.s, "smalltalk").some((o) => told.test(o.text))).toBe(false);
+    const sad = call({ freeTalk: true });
+    sad.child("I'm sad. Is that okay?");
+    expect(phraseOffers(sad.s, "smalltalk").some((o) => told.test(o.text))).toBe(true);
+    const plain = call({ freeTalk: true });
+    plain.child("I like cake.");
+    expect(phraseOffers(plain.s, "smalltalk").some((o) => told.test(o.text))).toBe(true);
   });
 
   it("replaces free talk that writes the child's name: only code says it", () => {
