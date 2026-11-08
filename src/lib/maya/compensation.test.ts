@@ -56,6 +56,21 @@ describe("(ii) the child's own method, named back", () => {
   });
 
   it.each([
+    "Did I add 40 and take away 1?", "My friend added 40 and took away 1.",
+    "You said to add 40 and take away 1.", "I took away 40 and added 1.",
+  ])("does not name an unclaimed method for %j on either path", async (text) => {
+    for (const next of [down(text), { child: text, maya: [{ act: "ask_write", lines: ["write.answer"] }] } as Step]) {
+      const { told } = await play([{ child: "66.", read: { answers: [[66, "result", "right"]] } }, next]);
+      expect(told.some((t) => named(t.say))).toBe(false);
+    }
+  });
+
+  it("names the short committed form", async () => {
+    const { told } = await play([{ child: "66.", read: { answers: [[66, "result", "right"]] } }, down("I added 40 and took away 1.")]);
+    expect(told.some((t) => named(t.say))).toBe(true);
+  });
+
+  it.each([
     "Because my mom made 39 into 40, then took one away.", "I don't think I made 39 into 40.", "Because I made 39 into 40, then took two away.",
     "Because I made 39 into 40.", "Maybe I made 39 into 40, then took one away.", "Because I did 27 plus 30, then took away one.",
   ])("names no method for %j", async (text) => {

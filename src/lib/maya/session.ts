@@ -1697,16 +1697,29 @@ function methodUnseen(s: Session, done: readonly string[], spoken: Spoken): bool
 function namedMethod(s: Session): LineOffer | null {
   const pkg = s.package;
   if (!pkg || !s.turn) return null;
-  const text = s.turn.text.toLowerCase().replace(/’/g, "'");
-  if (NEGATIVE_OR_OTHER.test(text)) return null;
-  const said = valuesIn(text, readOptionsFor(pkg)).flatMap((v) => (v.type === "number" ? [v.value] : []));
+  const text = s.turn.text.toLowerCase().replace(/’/g, "'").trim();
+  if (text.includes("?") || text.includes("\n")) return null;
+  const number = "([a-z0-9-]+(?: [a-z0-9-]+)?)";
   const forms = compensations(pkg);
   const offers = packageLines(pkg).method();
-  const at = forms.findIndex((m) => said.includes(m.round) && said.includes(m.diff) &&
-    (m.up ? /\b(?:add(?:ed|ing)?|plus|put)\b/ : /\b(?:took|take|taking|subtract(?:ed|ing)?|minus)\b/).test(text));
+  const at = forms.findIndex((m) => {
+    const prefix = `(?:because ${number} is one less than ${number}\\. so )?`;
+    const first = `(?:i added ${number}|i did ${number} plus ${number})`;
+    const second = m.up ? `(?:added ${number}(?: back)?)` : `(?:took away ${number}|took ${number} away)`;
+    const ending = `(?:[,.] (?:and )?i got ${number})?\\.?`;
+    const match = new RegExp(`^${prefix}${first}(?:,? then |\\. then i | and )${second}${ending}$`).exec(text);
+    if (!match) return false;
+    const [, from, to, added, operand, rounded] = match;
+    const correction = m.up ? match[6] : match[6] ?? match[7];
+    const result = m.up ? match[7] : match[8];
+    if (from && (plainNumber(from) !== m.b || plainNumber(to) !== m.round || m.diff !== 1 || m.up)) return false;
+    if (plainNumber(added ?? rounded) !== m.round) return false;
+    if (operand && (pkg.operation.kind !== "add" || !pkg.operation.operands.some((v) => typeof v === "number" && v !== m.b && v === plainNumber(operand)))) return false;
+    if (plainNumber(correction) !== m.diff) return false;
+    return !result || (pkg.answer.value.type === "number" && plainNumber(result) === pkg.answer.value.value);
+  });
   return at >= 0 ? offers[at] : null;
 }
-const NEGATIVE_OR_OTHER = /\b(?:not|never|no|didn'?t|don'?t|doesn'?t|mom|mum|dad|teacher|tutor|sister|brother|she|he|they|maybe|think|guess)\b/;
 
 /** The number a plain yes gives in this turn ("Did you say 66?", "Yes."), or null (#605). */
 function yesValue(s: Session): AnswerValue | null {
