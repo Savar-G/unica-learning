@@ -12,6 +12,7 @@ import { checkQuestionPackage, operationProblem, type OperationPackage, type Que
 import { withWorkbookMayaOperation } from "@/lib/workbook-maya-operation";
 import { countKind, deriveDieCount, dieOperation, exampleDie } from "./die-count";
 import { derivePerimeter } from "./perimeter";
+import { teachingPackage } from "./index";
 import { deriveSymmetry, SYMMETRY_LINES } from "./symmetry";
 import { diePrinted, perimeterPrinted, symmetryPrinted } from "./topic-samples";
 
@@ -106,6 +107,20 @@ describe("lines of symmetry", () => {
     const table = structuredClone(p);
     sourceOf(table).derived[0][1] = "[4, 2, 1, 1, 6, 5]";
     expect(deriveSymmetry(table)).toBeNull();
+  });
+});
+
+describe("the session adapter registers the other-topic derivers", () => {
+  it("teachingPackage gives a stored die count and lines of symmetry their operation; a perimeter stays held until A2", () => {
+    const die = teachingPackage(diePrinted(8, "odd")) as QuestionPackage;
+    expect(die.operation).toEqual(dieOperation(8));
+    expect(heldReason(die)).toBeNull();
+    const shapes = teachingPackage(symmetryPrinted(4, 5)) as QuestionPackage;
+    expect(shapes.operation).toEqual({ kind: "add", operands: [6, 5] });
+    expect(heldReason(shapes)).toBeNull();
+    const perimeter = teachingPackage(perimeterPrinted(245, 126)) as QuestionPackage;
+    expect(perimeter.operation).toEqual({ kind: "evaluate", operands: ["2 × (245 + 126)"] });
+    expect(heldReason(perimeter)).not.toBeNull();
   });
 });
 
