@@ -158,6 +158,8 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 | C37 | B (52 - 28) | Smaller from larger: 36 | solved |
 | W5 | W5 (10000 − 3615, a workbook story through the session adapter) | Stuck on the zeros; regroups across them column by column | solved |
 | W3 | W3 (284 × 7, an "Each … has" workbook story through the session adapter) | Drops the carries: 1468 | solved |
+| EV1 | EV_TWO (7 × 640 + 7 × 30) | Works from left to right: 640 + 7 = 647, then each part after help (Wave A, A2) | solved |
+| EV2 | EV_STORY (4 × 260 − 590) | Cannot start a two-step story; follows the same-shape easier example, then each part | solved |
 
 Not here on purpose: cases that need injected speech-to-text alternatives, exact silences or the clock at a set time (C12 to C18, C21, C35, C39), or a broken package (C36). C38 covers proper-operand fraction addition with typed exact fraction validity. It does not claim all fraction operations or forms. The scripted gate runs those exactly; a model child cannot make them happen on cue. The research's pending items (#383) stay pending here too.
 
