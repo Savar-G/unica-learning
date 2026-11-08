@@ -92,14 +92,15 @@ export interface ModelCommand {
 }
 
 /**
- * A place-value chart for one number: a column for each place, the number written digit by digit under the column names.
- * `build`: the number is made from its parts ("6 wholes and 4 tenths"), so the digit row starts empty and `put` fills it.
+ * A place-value chart. Two forms: `number` ("48461"): the number written digit by digit in its columns. `parts`
+ * ("6 wholes and 4 tenths": the given digits and their places): the chart shows the parts and leaves the digit row empty
+ * for `put`; the command never holds the number the child is asked to make.
  */
 export interface PlaceChartCommand {
   op: "place_chart";
   id: string;
-  number: string;
-  mode?: "read" | "build";
+  number?: string;
+  parts?: { place: ChartPlace; digit: number }[];
   place: Place;
 }
 

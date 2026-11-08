@@ -123,11 +123,20 @@ const bandBottom = (s: PlaceChartState) => rowsOf(s).digits.y + rowsOf(s).digits
 const idx = (s: PlaceChartState, place: ChartPlace) => s.columns.findIndex((c) => c.place === place);
 
 function create(cmd: PlaceChartCommand, ctx: Ctx): { state: PlaceChartState; size: { w: number; h: number } } | RefusalBody {
-  const missing = missingGlyphs(ctx.glyphs, cmd.number + "abcdefghijklmnopqrstuvwxyz,×=<> ");
+  const missing = missingGlyphs(ctx.glyphs, (cmd.number ?? "0123456789") + "abcdefghijklmnopqrstuvwxyz,×=<>? ");
   if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
-  const mode = cmd.mode ?? "read";
-  if (mode === "build" && !cmd.number.includes(".")) return refuse("unsupported", "A chart built from parts needs a decimal number.");
-  const state: PlaceChartState = { mode, number: cmd.number, columns: columnsOf(cmd.number), seq: ctx.seq, digits: {}, values: {}, equation: null, answer: null };
+  const mode = cmd.parts ? "build" : "read";
+  let number = cmd.number ?? "";
+  if (cmd.parts) {
+    const places = cmd.parts.map((p) => p.place);
+    if (new Set(places).size !== places.length) return refuse("invalid_command", "Each part is for a different place.");
+    if (!places.some((p) => (DECIMAL_PLACE_NAMES as readonly string[]).includes(p))) return refuse("unsupported", "A chart built from parts needs a decimal place.");
+    const digitAt = (place: ChartPlace) => String(cmd.parts!.find((p) => p.place === place)?.digit ?? 0);
+    const lastDecimal = Math.max(...places.map((p) => DECIMAL_PLACE_NAMES.indexOf(p as (typeof DECIMAL_PLACE_NAMES)[number])));
+    const top = Math.max(...places.map((p) => PLACE_NAMES.indexOf(p as (typeof PLACE_NAMES)[number])));
+    number = [...Array(Math.max(top, 0) + 1)].map((_, i) => digitAt(PLACE_NAMES[Math.max(top, 0) - i])).join("") + "." + [...Array(lastDecimal + 1)].map((_, i) => digitAt(DECIMAL_PLACE_NAMES[i])).join("");
+  }
+  const state: PlaceChartState = { mode, number, columns: columnsOf(number), seq: ctx.seq, digits: {}, values: {}, equation: null, answer: null };
   if (state.columns.length > 8) return refuse("unsupported", "A place chart has at most 8 columns.");
   if (mode === "read") state.columns.filter((c) => !c.pad).forEach((c) => (state.digits[c.place] = { seq: ctx.seq, ink: "blue" }));
   return { state, size: { w: width(state), h: HEIGHT } };

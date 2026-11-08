@@ -19,7 +19,8 @@ const board = (batches: Cmd[][]): { steps: PlayStep[]; scene: Scene } => {
   });
   return { steps, scene };
 };
-const chart = (id: string, number: string, mode?: "build"): Cmd => ({ op: "place_chart", id, number, ...(mode ? { mode } : {}), place: { region: "main" } });
+const chart = (id: string, number: string): Cmd => ({ op: "place_chart", id, number, place: { region: "main" } });
+const parts = (id: string): Cmd => ({ op: "place_chart", id, parts: [{ place: "ones", digit: "5" }, { place: "tenths", digit: "8" }], place: { region: "main" } });
 const band = (objectId: string, column: string) => ({ objectId, part: "piece", piece: `band-${column}` });
 const cell = (objectId: string, rowId: string, column: string) => ({ objectId, part: "cell", rowId, column });
 const row = (objectId: string, rowId: string) => ({ objectId, part: "row", rowId });
@@ -28,13 +29,13 @@ const SCREENS: { file: string; title: string; maya: string; batches: Cmd[][] }[]
   {
     file: "a-chart-highlight",
     title: "Find the column",
-    maya: "Look at the ten thousands. Which digit is there?",
+    maya: "I colored the ten thousands place. Count the places from the right: ones, tens, hundreds, thousands, ten thousands.",
     batches: [[chart("c", "53172")], [{ op: "mark", id: "m1", target: band("c", "ten_thousands"), style: "highlight" }]],
   },
   {
     file: "b-value-step",
     title: "Digit times place",
-    maya: "5 ten thousands is 5 × 10,000. That makes 50,000.",
+    maya: "Yes! 5 ten thousands is 50,000.",
     batches: [
       [chart("c", "53172")],
       [{ op: "mark", id: "m1", target: band("c", "ten_thousands"), style: "highlight" }],
@@ -44,7 +45,7 @@ const SCREENS: { file: string; title: string; maya: string; batches: Cmd[][] }[]
   {
     file: "c-compare",
     title: "Compare two digits",
-    maya: "Look at 8 and 2. Is 8 bigger than 2?",
+    maya: "Yes, it's true. 8 is bigger than 2.",
     batches: [
       [chart("c", "785243")],
       [{ op: "mark", id: "m1", target: band("c", "ten_thousands"), style: "highlight" }, { op: "mark", id: "m2", target: band("c", "hundreds"), style: "highlight" }],
@@ -54,17 +55,17 @@ const SCREENS: { file: string; title: string; maya: string; batches: Cmd[][] }[]
   {
     file: "d-tenths",
     title: "Wholes and tenths",
-    maya: "The 5 wholes go in the ones place. What goes in the tenths place?",
+    maya: "I wrote 5 in the ones place. The decimal point comes next. What goes in the tenths place?",
     batches: [
-      [chart("c", "5.8", "build")],
-      [{ op: "mark", id: "m1", target: band("c", "ones"), style: "highlight" }],
+      [parts("c")],
+      [{ op: "mark", id: "m1", target: band("c", "tenths"), style: "highlight" }],
       [{ op: "put", target: cell("c", "digits", "ones"), value: "5" }],
     ],
   },
   {
     file: "e-phone",
     title: "Phone width",
-    maya: "Look at the ten thousands. Which digit is there?",
+    maya: "I colored the ten thousands place. Count the places from the right: ones, tens, hundreds, thousands, ten thousands.",
     batches: [[chart("c", "785243")], [{ op: "mark", id: "m1", target: band("c", "ten_thousands"), style: "highlight" }]],
   },
 ];

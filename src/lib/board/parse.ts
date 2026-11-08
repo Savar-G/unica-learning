@@ -112,7 +112,7 @@ function exactValue(v: unknown, what: string): string {
 }
 
 function parse(raw: unknown): Command {
-  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "dividend", "divisor", "model", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope", "numerator", "denominator", "whole", "min", "max", "tick", "labels", "form", "lineId", "fromValue", "toValue", "label", "number", "mode"]);
+  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "dividend", "divisor", "model", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope", "numerator", "denominator", "whole", "min", "max", "tick", "labels", "form", "lineId", "fromValue", "toValue", "label", "number", "parts"]);
   if (LATER.includes(head.op as string)) return fail(`The board cannot draw "${head.op}" yet.`);
   const op = oneOf(head.op, OPS, "op");
   switch (op) {
@@ -208,10 +208,22 @@ function parse(raw: unknown): Command {
       };
     }
     case "place_chart": {
-      const c = object(raw, "place_chart", ["op", "id", "number", "place"], ["mode"]);
-      const number = text(c.number, "place_chart.number", 12);
-      if (!/^(0|[1-9]\d{0,6})(\.\d{1,3})?$/.test(number)) fail("place_chart.number must be a whole number of up to 7 digits, or one with up to 3 decimal places.");
-      return { op, id: id(c.id, "place_chart.id"), number, ...(c.mode === undefined ? {} : { mode: oneOf(c.mode, ["read", "build"] as const, "place_chart.mode") }), place: placement(c.place) };
+      const c = object(raw, "place_chart", ["op", "id", "place"], ["number", "parts"]);
+      if ((c.number === undefined) === (c.parts === undefined)) fail('place_chart needs exactly one of "number" or "parts".');
+      const base = { op, id: id(c.id, "place_chart.id"), place: placement(c.place) };
+      if (c.number !== undefined) {
+        const number = text(c.number, "place_chart.number", 12);
+        if (!/^(0|[1-9]\d{0,6})(\.\d{1,3})?$/.test(number)) fail("place_chart.number must be a whole number of up to 7 digits, or one with up to 3 decimal places.");
+        return { ...base, number };
+      }
+      if (!Array.isArray(c.parts) || c.parts.length < 1 || c.parts.length > 4) fail("place_chart.parts must be a list of 1 to 4 parts.");
+      const parts = (c.parts as unknown[]).map((p, i) => {
+        const part = object(p, `part ${i + 1}`, ["place", "digit"]);
+        const d = text(part.digit, `part ${i + 1} digit`, 1);
+        if (!/^\d$/.test(d)) fail(`part ${i + 1} digit must be one digit.`);
+        return { place: chartPlace(part.place), digit: Number(d) };
+      });
+      return { ...base, parts };
     }
     case "jump": {
       const c = object(raw, "jump", ["op", "id", "lineId", "fromValue", "toValue"], ["label", "ink"]);

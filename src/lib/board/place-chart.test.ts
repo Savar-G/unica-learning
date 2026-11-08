@@ -12,7 +12,9 @@ const refused = (scene: Scene, ...commands: unknown[]) => {
   if (r.ok) throw new Error("expected a refusal");
   return r.refusal;
 };
-const chart = (number: string, mode?: "build") => ({ op: "place_chart", id: "c", number, ...(mode ? { mode } : {}), place: { region: "main" } });
+const chart = (number: string) => ({ op: "place_chart", id: "c", number, place: { region: "main" } });
+/** "5 wholes and 8 tenths": the parts, never the number. */
+const built = (...parts: [string, number][]) => ({ op: "place_chart", id: "c", parts: parts.map(([place, digit]) => ({ place, digit: String(digit) })), place: { region: "main" } });
 const cell = (rowId: string, column: string) => ({ objectId: "c", part: "cell", rowId, column });
 const row = (rowId: string) => ({ objectId: "c", part: "row", rowId });
 const targetsOf = (scene: Scene) => boardTargets(scene);
@@ -50,7 +52,7 @@ describe("place chart", () => {
   });
 
   it("builds a decimal from its parts: the digit row starts empty and only the right digit goes in", () => {
-    const scene = ok(createScene(), chart("5.8", "build"));
+    const scene = ok(createScene(), built(["ones", 5], ["tenths", 8]));
     const digit = (s: Scene, column: string) => targetsOf(s).find((x) => x.target.part === "cell" && x.target.rowId === "digits" && x.target.column === column);
     expect(digit(scene, "ones")).toMatchObject({ value: null, writable: true });
     expect(refused(scene, { op: "put", target: cell("digits", "tenths"), value: "5" })).toMatchObject({ code: "wrong_value" });
@@ -61,14 +63,15 @@ describe("place chart", () => {
   });
 
   it("values of a decimal place are exact", () => {
-    const scene = ok(createScene(), chart("5.8", "build"), { op: "put", target: cell("digits", "tenths"), value: "8" });
+    const scene = ok(createScene(), built(["ones", 5], ["tenths", 8]), { op: "put", target: cell("digits", "tenths"), value: "8" });
     expect(() => ok(scene, { op: "put", target: cell("value", "tenths"), value: "0.8" })).not.toThrow();
   });
 
   it("never writes in a padded column, and refuses a decimal build of a whole number", () => {
     const scene = ok(createScene(), chart("312"));
     expect(refused(scene, { op: "put", target: cell("value", "thousands"), value: "0" })).toMatchObject({ code: "not_writable" });
-    expect(refused(createScene(), chart("312", "build"))).toMatchObject({ code: "unsupported" });
+    expect(refused(createScene(), built(["ones", 5], ["tens", 2]))).toMatchObject({ code: "unsupported" });
+    expect(refused(createScene(), built(["ones", 5], ["ones", 2], ["tenths", 1]))).toMatchObject({ code: "invalid_command" });
   });
 
   it("highlights a column through its band, a rounded stripe inside the chart's frame", () => {
