@@ -700,11 +700,30 @@ describe("the docs", () => {
 
 describe("the practice child speaks like a child (practice run 5: too_long and turn_cap)", () => {
   it("asks for one short thing per turn, and each persona request once, so the call can end", () => {
-    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-3");
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-4");
     expect(SIMULATOR_SYSTEM).toContain("Say one thing per turn");
     expect(SIMULATOR_SYSTEM).toContain("not every step of your working");
     expect(SIMULATOR_SYSTEM).toContain("ask again at most once");
     expect(SIMULATOR_SYSTEM).toContain("wait for Maya to say goodbye");
+  });
+});
+
+// First-ship practice at 6de7e777: 8 of 26 runs were invalid because the practice child said a right answer or a carry
+// before any teaching in its own turns (C01 to C05, C24, C30, C37). The validity judge reads only the child's turns.
+describe("the practice child knows only its persona, and shows where it learned the rest (first-ship practice at 6de7e777)", () => {
+  it("never says a step, a carry or the answer before Maya's words show it, and says in its own words when it uses her help", () => {
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-4");
+    expect(SIMULATOR_SYSTEM).toContain("Before Maya shows you a step, a carry or the answer, say only what \"persona.knows\" says you know");
+    expect(SIMULATOR_SYSTEM).toContain("If \"persona.knows\" describes a mistake, make it the first time you do that step");
+    expect(SIMULATOR_SYSTEM).toContain("say where it came from in your own words");
+    expect(SIMULATOR_SYSTEM).toContain("Someone who reads only your turns");
+    expect(SIMULATOR_SYSTEM).toContain("If Maya gives you the answer, say it as hers");
+    // Independent review of 67dacf9d: the persona card comes first (C07, C09, C38 and the G-solved cases open with the
+    // right answer; C04 guesses "Is it 66?"), a claim of teaching must be true, and no example holds 27 + 39's numbers.
+    expect(SIMULATOR_SYSTEM).toContain("\"persona.knows\" and \"persona.behaviour\" come first");
+    expect(SIMULATOR_SYSTEM).toContain("never claim she showed a step she did not show");
+    const examples = SIMULATOR_SYSTEM.slice(SIMULATOR_SYSTEM.indexOf("Before Maya shows you"), SIMULATOR_SYSTEM.indexOf("Follow \"persona.behaviour\""));
+    for (const n of ["66", "16", "56", "2 plus 3", "7 plus 9"]) expect(examples).not.toContain(n);
   });
 });
 
