@@ -102,6 +102,17 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
         add("multiply", [num(st.quotient), num(p.operation.operands[1])]);
         add("subtract", [num(st.current), num(st.product)]);
       }
+      // A claim's compare (A4, claim.ts): the difference of the result and the printed number, either way round, and for a
+      // claim checked by division ("Mia says 6 × 8 = 56. Check with 56 ÷ 8.") the printed product and the checked one.
+      if (st.kind === "claim-compare") {
+        const [hi, lo] = st.value >= st.shown ? [st.value, st.shown] : [st.shown, st.value];
+        add("subtract", [num(hi), num(lo)]);
+        flip(hi, lo);
+        if (p.operation.kind === "divide") {
+          add("multiply", [num(st.shown), num(p.operation.operands[1])]);
+          add("multiply", [num(st.value), num(p.operation.operands[1])]);
+        }
+      }
       if (st.kind === "combine-numerators") add(st.op, st.numerators.map(num));
       if (st.kind === "common-denominator") for (let i = 0; i < st.from.length; i++) {
         add("multiply", [num(st.from[i].numerator), num(st.factors[i])]);
