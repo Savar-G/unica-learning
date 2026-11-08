@@ -7,6 +7,7 @@ import type { AiCallKind } from "@/lib/workbook-ai";
 import { readPaged, SLOT_ATTEMPTS, STALE_SECONDS, type RunRunner, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 import type { WorkerCandidate, WorkerQueue } from "@/lib/workbook-worker";
 import type { SolveVerdict } from "@/lib/workbook-solve-check";
+import { workbookInstructions } from "@/lib/workbook-instructions";
 
 // The runs' store (#312) in Supabase (migration add_workbook_runs), and the job's read of the child. Pass a client with
 // the secret key: the service role runs the run functions and the progress update; admins only read. The solve checks
@@ -173,17 +174,23 @@ export function workbookJobSource(admin: SupabaseClient<Database>, prepareProfil
         howWeHelp: recommendation === "ahead" || recommendation === "behind" || recommendation === "on-grade" ? recommendation : null } };
     },
     async inputs(childId) {
-      const [child, books] = await Promise.all([
+      const [child, books, told] = await Promise.all([
         admin.from("children").select("parent_id, first_name, grade, province").eq("id", childId).maybeSingle(),
         admin.from("workbooks").select("number, levels").eq("child_id", childId),
+        admin.from("workbook_instructions").select("instructions").eq("child_id", childId).maybeSingle(),
       ]);
       const row = must(child, "child load");
       if (!row) return null;
       if (!isGrade(row.grade)) throw new Error(`workbook run child load: grade ${row.grade} is not K to 9`);
+      const stored = must(told, "book instructions load");
+      // A stored set the code cannot read stops the run: a book made without the admin's instructions would look right.
+      const instructions = stored ? workbookInstructions(stored.instructions) : null;
+      if (stored && !instructions) throw new Error("workbook run child load: the book instructions cannot be read");
       return {
         parentId: row.parent_id, name: row.first_name, grade: row.grade, province: row.province,
         profile: null,
         workbooks: must(books, "workbooks load") ?? [],
+        instructions,
       };
     },
   };

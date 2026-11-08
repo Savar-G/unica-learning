@@ -10,6 +10,7 @@ import { WorkbookStatusChip } from "@/components/admin-workbook";
 import { ChildRunsTable, WorkerLine } from "@/components/admin-workbook-runs";
 import { adminClient } from "@/lib/supabase-auth";
 import { PrepareWorkbook } from "@/components/prepare-workbook";
+import { BookInstructions, loadBookInstructions } from "./book-instructions";
 
 export default async function ChildPage({ params }: PageProps<"/admin/children/[id]">) {
   const admin = await requireAdmin();
@@ -25,6 +26,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
   // the feeling about math, the main goal and the time each week; they do not change the mix.
   const learning = fromRow(c);
   const mix = bookMix(learning);
+  const instructions = await loadBookInstructions(admin, c, workbooks);
   return <AdminFrame email={admin.email} section="children" title={c.first_name}>
     <RecordFacts facts={[["Grade and curriculum", gradeAndPlace(c.grade, c.province)], ["Parent", <Link key="parent" href={adminParentPath(c.parent_id)}>{family.parent.name}</Link>], ["Added (Pacific)", when(c.created_at)], ["Child id", c.id],
       // #303: the current profile from the latest test profile and every learning event.
@@ -49,6 +51,8 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
     {/* #312: drafts made in the background, with their progress and check results. */}
     <h2>Workbook drafts</h2>
     <p><Link className="btn adm-btn" href={`/admin/children/${c.id}/preview-plan`} prefetch={false}>Preview plan</Link></p>
+    <BookInstructions child={c} note={learning?.note ?? ""} data={instructions} />
+    <h3>Make the next workbook</h3>
     {!!requests?.data?.length && <p role="status">Paid Restart: prepare the next workbook from the current child profile. {requests.data.length} request pending. The request stays here until a new preparation run starts.</p>}
     <PrepareWorkbook childId={c.id} child={c.first_name} runner={runner} />
     {runner === "mac" && <p className="adm-note"><WorkerLine worker={worker} /></p>}

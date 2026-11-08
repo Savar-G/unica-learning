@@ -63,6 +63,7 @@ import { planWorkbook } from "@/lib/workbook-plan";
 import { type PrintEngine, type PrintJob, type RenderProblem, type MeasuredElement } from "@/lib/workbook-render";
 import { bookPersona, firstCustomerProfile, sampleChild, samplePlanInput, type BookPersona, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
 import { planNextWorkbook } from "@/lib/workbook-placement";
+import { workbookInstructions } from "@/lib/workbook-instructions";
 import { bookSignals } from "@/lib/workbook-signals";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
@@ -82,7 +83,7 @@ const { values } = parseArgs({
     steps: { type: "string" }, days: { type: "string" }, out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
     replay: { type: "string" }, diff: { type: "string" }, "check-only": { type: "boolean", default: false },
     fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false }, "subscription-only": { type: "boolean", default: false },
-    persona: { type: "string" }, codex: { type: "boolean", default: false },
+    persona: { type: "string" }, codex: { type: "boolean", default: false }, instructions: { type: "string" },
   },
 });
 // G1: --persona plans one first book from a made-up profile with production placement (P0 to P9), not the level sample.
@@ -91,6 +92,10 @@ type PersonaName = (typeof PERSONAS)[number];
 if (values.persona && !PERSONAS.includes(values.persona as PersonaName)) throw new Error(`--persona must be one of ${PERSONAS.join(", ")}`);
 if (values.persona && (values.second || values.test || values["family-only"] || !values["no-store"])) throw new Error("--persona makes one first book with --no-store.");
 if (values.days && (values.second || values.test)) throw new Error("--days is only for first review books.");
+// --instructions <file>: admin book instructions (WorkbookInstructions JSON) for the persona's production placement.
+if (values.instructions && (!values.persona || process.argv.some(a => a === "--levels" || a.startsWith("--levels=")))) throw new Error("--instructions needs --persona without --levels.");
+const bookInstructions = values.instructions ? workbookInstructions(JSON.parse(await readFile(values.instructions, "utf8"))) : null;
+if (values.instructions && !bookInstructions) throw new Error(`${values.instructions}: not a valid set of book instructions`);
 // A local comparison can change only the data while it keeps the generator and plan inputs fixed.
 if (values.steps && !values["no-store"]) throw new Error("--steps requires --no-store");
 const source = values.steps ? parseStepProgressions(JSON.parse(await readFile(values.steps, "utf8"))) : null;
@@ -569,7 +574,7 @@ function personaProfile(persona: PersonaName) {
 }
 /** A persona's first book, placed and planned as the workbook job does (Grade 4, no workbooks yet). */
 function personaPlan(persona: PersonaName) {
-  return planNextWorkbook({ curriculum: BC, grade: 4, profile: personaProfile(persona), workbooks: [], number: 1 });
+  return planNextWorkbook({ curriculum: BC, grade: 4, profile: personaProfile(persona), workbooks: [], number: 1, instructions: bookInstructions });
 }
 /**
  * A forced-level probe (--persona with --levels): the level's sample input with the persona's standards (early-sign
@@ -585,6 +590,15 @@ if (forcedLevel && forcedLevel.length !== 1) throw new Error("--persona with --l
 const personaLevel = values.persona ? forcedLevel?.[0] ?? personaPlan(values.persona as PersonaName).levelId : null;
 if (values.persona && !personaLevel) throw new Error(`persona ${values.persona}: no placement`);
 if (personaLevel) console.log(`persona ${values.persona}: placed at ${personaLevel}`);
+// With --instructions, print what each instruction did and the new steps by day, so a run shows the changed plan even
+// when a later page check stops the book.
+const personaPlanned = values.persona && !forcedLevel ? personaPlan(values.persona as PersonaName) : null;
+if (bookInstructions && personaPlanned?.ok) {
+  for (const o of personaPlanned.plan.instructions?.outcomes ?? []) console.log(`  instruction ${o.section} ${o.value}: ${o.applied ? "applied" : "not applied"}, ${o.note}`);
+  const days = new Map<number, string[]>();
+  for (const s of personaPlanned.plan.newSteps) days.set(s.day, [...days.get(s.day) ?? [], `${s.unit}:${s.skill}#${s.step}`]);
+  console.log(`  new steps: ${[...days].map(([d, steps]) => `D${d} ${steps.join(" ")}`).join(" | ")}`);
+}
 const jobs: { level: string; kind: SampleBookKind }[] = personaLevel ? [{ level: personaLevel, kind: "first" }] : [
   ...levels.map((level) => ({ level, kind: "first" as const })),
   ...list(values.second!).map((level) => ({ level, kind: "second" as const })),

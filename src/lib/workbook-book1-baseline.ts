@@ -262,8 +262,9 @@ export function book2Planning(b: Book1Baseline): Book2PlanningResult {
     const curriculum = curriculumFor(placement.curriculum.key);
     if (!curriculum || curriculumVersion(placement.curriculum.key) !== placement.curriculum.version) return { ok: false, reason: "curriculum-version-changed" };
     const captured: PlanInput[] = [];
-    const { curriculum: _version, workbooks, number, profile: frozenProfile, ...facts } = placement;
-    void _version;
+    // Book 1's admin instructions are not Book 2's: a next run reads the child's current set, so this plan leaves them out.
+    const { curriculum: _version, workbooks, number, profile: frozenProfile, instructions: _book1Instructions, ...facts } = placement;
+    void _version; void _book1Instructions;
     // The frozen Book 1 profile, read by today's reader. Never the child's current profile.
     const profile = frozenProfile === null ? null : storedChildProfile(frozenProfile);
     if (frozenProfile !== null && !profile) return { ok: false, reason: "profile-unreadable" };

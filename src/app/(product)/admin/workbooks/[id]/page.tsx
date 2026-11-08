@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { getWorkbook, requireAdmin } from "@/lib/admin-store";
 import { AdminWorkbook } from "@/components/admin-workbook";
-import { savedWorkbookWhy } from "./saved-why";
+import { savedWorkbookInstructions, savedWorkbookWhy } from "./saved-why";
+import { InstructionsUsed } from "./instructions-used";
 import { WhyThisBook } from "./why-this-book";
 import { getWorkbookEmailPanel } from "@/lib/admin-workbook-emails";
 import { WorkbookEmails } from "@/components/workbook-emails";
@@ -13,13 +14,14 @@ export default async function AdminWorkbookPage({ params }: PageProps<"/admin/wo
   const detail = await getWorkbook(admin, (await params).id);
   if (!detail) notFound();
   const printed = detail.workbook.status === "printed" || detail.workbook.status === "shipped";
-  const [why, panel] = await Promise.all([
+  const [why, instructions, panel] = await Promise.all([
     savedWorkbookWhy(admin, detail.runId),
+    savedWorkbookInstructions(admin, detail.runId),
     printed ? getWorkbookEmailPanel(admin, detail.workbook) : Promise.resolve(null),
   ]);
   const emails = printed ? panel
     ? <WorkbookEmails key={`${panel.cardId}:${detail.workbook.number}`} {...panel} workbookNumber={detail.workbook.number} allowReady={detail.workbook.status === "printed"} />
     : <p className="adm-note">Workbook emails are unavailable because this child has no confirmed saved card.</p>
     : <p className="adm-note">Print this workbook before sending its ready or delivery email.</p>;
-  return <AdminWorkbook email={admin.email} detail={detail} why={<WhyThisBook why={why} />} emails={emails} />;
+  return <AdminWorkbook email={admin.email} detail={detail} why={<><InstructionsUsed trace={instructions} /><WhyThisBook why={why} /></>} emails={emails} />;
 }
