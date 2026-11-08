@@ -326,32 +326,14 @@ describe("the hint ladder", () => {
     expect(c.refused({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: wrong(4, "tens") })).toMatchObject({ code: "same_hint_again" });
     c.maya({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })], reading: wrong(4, "tens") });
     c.child("Can you show me?");
-    expect(c.refused({ act: "give_answer", parts: [ln("step.show", { step: "tens" })], reading: { help: "show" } })).toMatchObject({ code: "hint_too_high" });
+    expect(c.refused({ act: "give_answer", parts: [ln("step.show", { step: "tens" })], reading: { help: "show" } })).toMatchObject({ code: "act_not_allowed" });
     c.maya({ act: "guide", step: "tens", level: 3, parts: [ln("step.show", { step: "tens" })], reading: { help: "show" } });
-    // A miss after H3 gives the answer (help alone leads to the easier example, #735).
+    // A miss after H3 closes without the answer.
     c.child("Still 4.");
-    const given = c.maya({ act: "give_answer", parts: [ln("step.show", { step: "tens" })], reading: wrong(4, "tens") });
-    const [givenText] = said(given.effects);
-    const gives = TEMPLATES["answer.give"].map((x) => x.replaceAll("{answer}", "66"));
-    expect(gives.some((g) => givenText.endsWith(`Add the tens: 2 + 3 + 1 = 6. Write 6. ${g}`))).toBe(true);
-    expect(c.session.state).toBe("WRITE_CLOSE");
-
-    // The child repeats it correctly: the answer was still given.
-    c.child("66, I wrote 66.");
-    const { effects } = c.maya({ act: "close", parts: [t("Well done for sticking with it. Bye!")], reading: { answers: [right66], paper: "written" } });
-    expect(ended(effects)).toMatchObject({ outcome: { reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 } });
-    expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "right_with_help", stuckStep: "ones", mistake: null, hints: 6 });
-  });
-
-  it("keeps answer_given and uncertain understanding after a later correct repeat in CHECK", () => {
-    const c = opened();
-    c.child("Just show me how.");
-    c.maya({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" })], reading: { help: "show" } });
-    c.child("15.");
-    c.maya({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } });
-    c.child("66!");
-    c.maya({ act: "close", parts: [t("Bye for now!")], reading: { answers: [right66] } });
-    expect(c.session.outcome).toMatchObject({ assistance: "answer_given", understanding: "uncertain", paperStatus: "unknown" });
+    const closed = c.maya({ act: "close", parts: [ln("close.stuck"), ln("close.together")], reading: wrong(4, "tens") });
+    expect(said(closed.effects).join(" ")).not.toMatch(/\b66\b/);
+    expect(ended(closed.effects)).toMatchObject({ outcome: { reason: "child_stopped" } });
+    expect(c.session.assistance).not.toContain("answer_given");
   });
 
   it("never steps up on silence alone", () => {
@@ -907,16 +889,14 @@ describe("review follow-up", () => {
     expect(c.session.state).toBe("TIME_CLOSE");
   });
 
-  it("does not count an answer Maya gave as the child's right answer", () => {
+  it("records a shown-step miss as stopped work", () => {
     const c = opened();
     c.child("Just show me how.");
     c.maya({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" })], reading: { help: "show" } });
     c.child("15.");
-    c.maya({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } });
-    c.child("Okay.");
-    c.maya({ act: "close", parts: [t("Bye for now!")] });
-    expect(c.session.outcome).toMatchObject({ reason: "solved", assistance: "answer_given", highestHint: 4 });
-    expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "blank", hints: 2 });
+    c.maya({ act: "close", parts: [ln("close.stuck"), ln("close.together")], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } });
+    expect(c.session.outcome).toMatchObject({ reason: "child_stopped" });
+    expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "blank", stuckStep: "ones" });
   });
 
   it("refuses filling the answer row's last digit before the answer may be given, but not the ones digit", () => {
@@ -1125,8 +1105,6 @@ describe("the child's final answer, with an explanation after it (D-199)", () =>
 describe("the final step after two wrong final answers (D-199)", () => {
   const wrongFinal = (value: number) => ({ answers: [{ value: num(value), step: "result", verdict: "wrong" as const }] });
   const finalHelp: Draft = { act: "guide", step: "result", level: 0, parts: [ln("step.invite", { step: "result" })] };
-  const PARTS = TEMPLATES["answer.parts"].map((w) => w.replaceAll("{parts}", "6 tens and 6 ones").replaceAll("{total}", "66"));
-  const GIVES = TEMPLATES["answer.give"].map((w) => w.replaceAll("{answer}", "66"));
 
   /** A call where the child has done every column: the final step is next, with its help line said once. */
   function columnsDone() {
@@ -1139,42 +1117,31 @@ describe("the final step after two wrong final answers (D-199)", () => {
     return c;
   }
 
-  it("gives the answer after the second wrong final answer: how the parts make it, then the answer, in code's words", () => {
+  it("closes after two wrong final answers without the answer", () => {
     const c = columnsDone();
-    c.child("56.");
-    c.maya({ ...finalHelp, reading: wrongFinal(56) });
+    c.child("56."); c.maya({ ...finalHelp, reading: wrongFinal(56) });
     c.child("65.");
-    // The gentlest help again is not enough, and the model may not add the final question before the answer.
-    expect(c.refused({ ...finalHelp, reading: wrongFinal(65) })).toMatchObject({ code: "act_not_allowed", allowed: ["give_answer"] });
-    expect(c.refused({ act: "give_answer", parts: [ln("step.invite", { step: "result" })], reading: wrongFinal(65) })).toMatchObject({ code: "line_not_offered" });
-    const given = c.maya({ act: "give_answer", parts: [{ warm: "empathy" }], reading: wrongFinal(65) });
-    const [text] = said(given.effects);
-    const parts = PARTS.find((p) => text.includes(p));
-    expect(parts, text).toBeDefined();
-    expect(GIVES.some((g) => text.endsWith(`${parts} ${g}`)), text).toBe(true);
-    // Then the call goes on as after any given answer: a close, with the answer given and understanding uncertain.
-    expect(c.session).toMatchObject({ state: "WRITE_CLOSE", solved: "maya", writeAsked: true, finalMisses: 2 });
-    c.child("Okay.");
-    expect(c.next.acts).toEqual(["close"]);
-    const { effects } = c.maya({ act: "close", parts: [ln("close.together")] });
-    expect(ended(effects)).toMatchObject({ outcome: { reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 } });
+    expect(c.refused({ ...finalHelp, reading: wrongFinal(65) })).toMatchObject({ code: "act_not_allowed", allowed: ["close"] });
+    const closed = c.maya({ act: "close", parts: [ln("close.stuck"), ln("close.together")], reading: wrongFinal(65) });
+    expect(said(closed.effects).join(" ")).not.toMatch(/\b66\b/);
+    expect(ended(closed.effects)).toMatchObject({ outcome: { reason: "child_stopped", understanding: "uncertain" } });
+    expect(c.session.finalMisses).toBe(2);
+    expect(c.session.assistance).not.toContain("answer_given");
     expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "blank", stuckStep: "result" });
   });
 
-  it("keeps D-199 after two wrong finals in the closing minute", () => {
+  it("closes after two wrong finals in the closing minute", () => {
     const c = columnsDone();
-    c.child("67.");
-    c.maya({ ...finalHelp, reading: wrongFinal(67) });
-    c.tick(540);
-    c.child("65.");
-    c.maya({ act: "give_answer", parts: [], reading: wrongFinal(65) });
-    expect(c.session).toMatchObject({ solved: "maya", finalMisses: 2 });
+    c.child("67."); c.maya({ ...finalHelp, reading: wrongFinal(67) });
+    c.tick(540); c.child("65.");
+    c.maya({ act: "close", parts: [ln("close.stuck"), ln("close.together")], reading: wrongFinal(65) });
+    expect(c.session).toMatchObject({ solved: null, finalMisses: 2, outcome: { reason: "child_stopped" } });
   });
 
   it("never gives the answer sooner: not after one wrong final answer, nor before every column is done", () => {
     const one = columnsDone();
     one.child("56.");
-    expect(one.refused({ act: "give_answer", parts: [], reading: wrongFinal(56) })).toMatchObject({ code: "hint_too_high", reason: expect.stringMatching(/two wrong final answers/) });
+    expect(one.refused({ act: "give_answer", parts: [], reading: wrongFinal(56) })).toMatchObject({ code: "act_not_allowed" });
     one.maya({ ...finalHelp, reading: wrongFinal(56) });
     expect(one.session.finalMisses).toBe(1);
     expect(one.next.acts).not.toEqual(["give_answer"]);
@@ -1184,7 +1151,7 @@ describe("the final step after two wrong final answers (D-199)", () => {
     early.child("56.");
     early.maya({ act: "guide", step: "ones", level: 0, parts: [ln("check.not_yet", { step: "result" }), ln("step.invite", { step: "ones" })], reading: wrongFinal(56) });
     early.child("65.");
-    expect(early.refused({ act: "give_answer", parts: [], reading: wrongFinal(65) })).toMatchObject({ code: "hint_too_high" });
+    expect(early.refused({ act: "give_answer", parts: [], reading: wrongFinal(65) })).toMatchObject({ code: "act_not_allowed" });
     early.maya({ act: "guide", step: "ones", level: 1, parts: [ln("step.point", { step: "ones" })], reading: wrongFinal(65) });
     expect(early.session.finalMisses).toBe(0);
   });
@@ -1207,16 +1174,15 @@ describe("the final step after two wrong final answers (D-199)", () => {
     expect(late.session).toMatchObject({ solved: "child", finalMisses: 1 });
   });
 
-  it("puts code's given answer first among the fallbacks once two final answers were wrong", () => {
+  it("puts the honest close first among fallbacks after two wrong finals", () => {
     const c = columnsDone();
-    c.child("56.");
-    c.maya({ ...finalHelp, reading: wrongFinal(56) });
+    c.child("56."); c.maya({ ...finalHelp, reading: wrongFinal(56) });
     c.child("65.");
     const refused = { version: 2, ...finalHelp, reading: wrongFinal(65) };
     const [first] = fallbacks(c.session, [refused, refused]);
-    expect(first).toMatchObject({ act: "give_answer", reading: wrongFinal(65) });
+    expect(first).toMatchObject({ act: "close", reading: wrongFinal(65) });
     const text = said(c.send({ type: "proposal", at: T0, proposal: first }).effects).join(" ");
-    expect(PARTS.some((p) => text.includes(p)), text).toBe(true);
-    expect(c.session.solved).toBe("maya");
+    expect(text).not.toMatch(/\b66\b/);
+    expect(c.session.outcome?.reason).toBe("child_stopped");
   });
 });

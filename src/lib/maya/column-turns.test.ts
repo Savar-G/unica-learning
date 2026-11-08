@@ -118,14 +118,15 @@ describe("fault B: after Maya shows a column at H3", () => {
     expect(told.step ?? "ones").toBe("ones");
   });
 
-  it("leads a new help request about the shown step to the easier example, and a new miss to the answer (#735)", async () => {
+  it("leads a new help request about the shown step to the easier example, and a new miss to the honest close (#735)", async () => {
     for (const text of ["I still don't get it.", "Show me again."]) {
       const { told } = await play([shown, { child: text, read: { help: "more" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"], repair: { throws: true } }] }]);
       expect(told[2].act).toBe("example_step");
       expect(told.map((t) => t.act)).not.toContain("give_answer");
     }
     const { told } = await play([shown, { child: "15.", read: { answers: [[15, "ones", "wrong"]] }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"], repair: { throws: true } }] }]);
-    expect(told[2].act).toBe("give_answer");
+    expect(told[2].act).toBe("close");
+    expect(told[2].say).not.toMatch(/\b66\b/);
   });
 
   it("keeps the stuck step and gives no credit for the copied step", () => {

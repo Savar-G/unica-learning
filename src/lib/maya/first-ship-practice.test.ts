@@ -601,11 +601,12 @@ describe("C04: the fallback path keeps to the hint ladder", () => {
     expect(told.at(-1)!.lines).not.toContain("check.guess");
   });
 
-  it("says no question about a step in the turn that gives the answer (after a miss at H3)", async () => {
+  it("closes without the answer after a miss at H3", async () => {
     // The model reads the miss and shows the step again; that is refused, so code's fallback gives the answer.
     const miss: Step = { child: "15.", read: { answers: [[15, "ones", "wrong"]] }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"], repair: { throws: true } }] };
     const { told } = await play("A", [...C04.slice(0, 13).map(down), miss]);
-    const given = told.find((t) => t.act === "give_answer")!;
-    expect(given.lines).toEqual([]);
+    const close = told.find((t) => t.act === "close")!;
+    expect(close.lines).toEqual(["close.stuck", "close.together"]);
+    expect(close.say).not.toMatch(/\b66\b/);
   });
 });

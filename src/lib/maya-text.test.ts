@@ -358,12 +358,10 @@ describe("the final answer and the final step (D-199)", () => {
     expect(said(once)).not.toMatch(/\b66\b/);
     const out = await session.child("65.");
     expect(lastMaya(session).attempts.map((a) => [a.source, a.refusal?.code ?? null])).toEqual([["model", "act_not_allowed"], ["repair", "act_not_allowed"], ["fallback", null]]);
-    expect(lastMaya(session).output?.act).toBe("give_answer");
-    expect(said(out)).toMatch(/6 tens and 6 ones make 66\./);
-    expect(said(out)).toMatch(/write 66 on your (paper|page)/i);
-    expect(out.say.flatMap(sentences).every((x) => SAFE.has(x))).toBe(true);
-    const end = await session.child("Okay.");
-    expect(end.ended).toMatchObject({ reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 });
+    expect(lastMaya(session).output?.act).toBe("close");
+    expect(said(out)).not.toMatch(/\b66\b/);
+    expect(said(out)).toContain("We worked on");
+    expect(out.ended).toMatchObject({ reason: "child_stopped", understanding: "uncertain" });
     expect(checkTrace(JSON.parse(JSON.stringify(session.trace()))).ok).toBe(true);
   });
 });
@@ -1027,7 +1025,7 @@ describe("the prompt names only real lines and groups (practice runs 6 and 7)", 
     expect(SYSTEM_PROMPT).toMatch(/then the "step\.invite" line for "result"/);
     expect(SYSTEM_PROMPT).not.toMatch(/then a "question" line/);
     // D-199: after two wrong final answers, the model gives the answer and leaves its words to code.
-    expect(SYSTEM_PROMPT).toMatch(/wrong a second time, code offers only "give_answer": use it with no line/);
+    expect(SYSTEM_PROMPT).toContain("close.stuck followed by close.together");
     // D-202: own words follow the plain-language rules, and the code check refuses the banned phrases.
     expect(SYSTEM_PROMPT).toMatch(/plain-language rules \(D-202\).*Never "in all", "altogether", "all together", "total" or "left over": a code check refuses them/);
   });

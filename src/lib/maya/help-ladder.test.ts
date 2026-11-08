@@ -74,13 +74,13 @@ describe("help requests alone: the easier example, then an honest close (#735, d
     const pkg = make();
     const { said } = byCode(pkg, STUCK);
     const close = said.at(-1)!.text;
-    expect(CLOSES.some((c) => close.endsWith(c))).toBe(true);
+    expect(CLOSES.some((c) => close.startsWith(c))).toBe(true);
+    expect(close).toContain("We worked on");
     expect(close).toMatch(/\b(?:hard|tricky|tough)\b/);
     expect(close).toMatch(/\bstop/);
     expect(close).toMatch(/easier one on paper/);
     expect(close).toMatch(/grown-up/);
-    // No number at all: so no answer, no digit of it, no column total.
-    expect(close).not.toMatch(/\d/);
+    // The close names the expression, but not its answer.
     expect(close).not.toMatch(new RegExp(`\\b${answer}\\b`));
     for (const c of CLOSES) expect(c).not.toMatch(/\d|\b(?:two|three|four|five|six|seven|eight|nine|ten)\b/i);
   });
@@ -111,8 +111,8 @@ describe("help requests alone: the easier example, then an honest close (#735, d
     send({ type: "child_turn", at: at += 4000, text: "I'm stuck." });
     expect(send({ type: "proposal", at, proposal: { version: 2, act: "give_answer", parts: [], reading: { help: "more" } } }).refusal).toMatchObject({ allowed: ["close"] });
     expect(send({ type: "proposal", at, proposal: { version: 2, act: "close", parts: [{ warm: "closing" }] } }).refusal).toMatchObject({ code: "line_not_offered" });
-    const closed = ok({ act: "close", parts: [{ line: "close.stuck", slots: {} }] });
-    expect(closed.effects.some((e) => e.kind === "say" && CLOSES.includes(e.text))).toBe(true);
+    const closed = ok({ act: "close", parts: [{ line: "close.stuck", slots: {} }, { line: "close.together", slots: {} }] });
+    expect(closed.effects.some((e) => e.kind === "say" && CLOSES.some((c) => e.text.startsWith(c)))).toBe(true);
     expect(s.outcome).toMatchObject({ reason: "child_stopped" });
   });
 });
@@ -132,9 +132,9 @@ describe("real misses keep D-199", () => {
     send({ type: "child_turn", at: at += 4000, text: "It's 67." });
     ok({ act: "guide", step: "result", level: 0, parts: [{ line: "check.not_yet", slots: { step: "result" } }, { line: "step.invite", slots: { step: "result" } }], reading: { answers: [{ value: num(67), step: "result", verdict: "wrong" }] } });
     send({ type: "child_turn", at: at += 4000, text: "It's 65." });
-    const given = ok({ act: "give_answer", parts: [], reading: { answers: [{ value: num(65), step: "result", verdict: "wrong" }] } });
-    expect(given.effects.some((e) => e.kind === "say" && e.act === "give_answer")).toBe(true);
-    expect(s.assistance).toContain("answer_given");
+    const closed = ok({ act: "close", parts: [{ line: "close.stuck", slots: {} }, { line: "close.together", slots: {} }], reading: { answers: [{ value: num(65), step: "result", verdict: "wrong" }] } });
+    expect(closed.effects.some((e) => e.kind === "say" && e.act === "close" && !/\b66\b/.test(e.text))).toBe(true);
+    expect(s.assistance).not.toContain("answer_given");
   });
 
   it.each([["15.", 15], ["Still 4.", 4]] as const)("gives the answer for %s at the shown step after H3", (text, value) => {
@@ -149,10 +149,9 @@ describe("real misses keep D-199", () => {
     send({ type: "child_turn", at: at += 4000, text });
     const refused = { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { answers: [{ value: num(value), step: "ones", verdict: "wrong" }] } } as Proposal;
     const refusal = send({ type: "proposal", at, proposal: refused }).refusal;
-    if (value === 15) expect(refusal).toMatchObject({ allowed: ["give_answer"] });
-    else expect(refusal?.allowed).toContain("give_answer");
+    expect(refusal?.allowed).toContain("close");
     const r = fallbacks(s, [refused]).map((p) => send({ type: "proposal", at, proposal: p as Proposal })).find((x) => x.refusal === null)!;
-    expect(r.effects.some((e) => e.kind === "say" && e.act === "give_answer")).toBe(true);
+    expect(r.effects.some((e) => e.kind === "say" && e.act === "close" && !/\b66\b/.test(e.text))).toBe(true);
   });
 });
 
@@ -212,9 +211,9 @@ describe("passed columns and final misses", () => {
     expect(s.done).toEqual([]);
     child("67."); fallback(); expect(s.finalMisses).toBe(1);
     child("65.");
-    expect(fallback().effects.some((e) => e.kind === "say" && e.act === "give_answer")).toBe(true);
+    expect(fallback().effects.some((e) => e.kind === "say" && e.act === "close" && !/\b66\b/.test(e.text))).toBe(true);
     expect(s.done).toEqual([]);
-    expect(s.assistance).toContain("answer_given");
+    expect(s.assistance).not.toContain("answer_given");
   });
 });
 

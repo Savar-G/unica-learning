@@ -72,7 +72,8 @@ describe("the behaviour gate", () => {
     const unreachable: SessionState[] = ["READY"];
     for (const s of [...MAIN_STATES, ...INTERRUPTS].filter((x) => !unreachable.includes(x))) expect(states.has(s), s).toBe(true);
     const acts = new Set<Act | null>(all.flatMap((v) => v.acts));
-    for (const a of ACTS) expect(acts.has(a), a).toBe(true);
+    for (const a of ACTS.filter((act) => act !== "give_answer")) expect(acts.has(a), a).toBe(true);
+    expect(acts.has("give_answer")).toBe(false);
     const kinds = new Set(all.flatMap((v) => v.trace!.turns.map((t) => (t.kind === "writing" ? `writing:${t.status}` : t.kind))));
     for (const k of ["start", "child", "tick", "writing:started", "writing:done", "technical", "maya", "partial", "maya_said", "content_problem"]) expect(kinds.has(k), k).toBe(true);
     const reasons = new Set(all.map((v) => v.trace!.outcome!.reason));

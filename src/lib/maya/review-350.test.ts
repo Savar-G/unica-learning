@@ -230,17 +230,15 @@ describe("F8: the learning event follows the learning record's contract", () => 
     expect(await store().append(event)).toMatchObject({ ok: true });
   });
 
-  it("stores a call where Maya gave the answer", async () => {
+  it("stores a stopped call after a shown-step miss", async () => {
     const c = call();
     c.child("show me");
     c.propose(guide({ level: 3, parts: [ln("step.show", { step: "ones" })], reading: { help: "show" } }));
     // A miss after H3 gives the answer (help alone leads to the easier example, #735).
     c.child("15");
-    c.propose({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { answers: [{ value: { type: "number", value: 15 }, step: "ones", verdict: "wrong" }] } });
-    c.child("okay");
-    c.propose({ act: "close", parts: [t("Bye.")] });
+    c.propose({ act: "close", parts: [ln("close.stuck"), ln("close.together")], reading: { answers: [{ value: { type: "number", value: 15 }, step: "ones", verdict: "wrong" }] } });
     const event = learningEvent(c.s, { parentId, childId })!;
-    expect(event).toMatchObject({ result: "blank", hints: 2 });
+    expect(event).toMatchObject({ result: "blank", stuckStep: "ones" });
     expect(await store().append(event)).toMatchObject({ ok: true });
   });
 

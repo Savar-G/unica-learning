@@ -456,7 +456,7 @@ export const BEHAVIOURS: Behaviour[] = [
   {
     // A real miss after H3 keeps the given answer (D-199 is unchanged for misses).
     id: "C06b",
-    title: "A wrong answer after the example, the retry and guided steps H1 to H3: the answer with a reason",
+    title: "A wrong answer after the example and H3: an honest close",
     fixture: "A",
     status: "passing",
     steps: [
@@ -465,13 +465,12 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I don't know.", { help: "more" }, [{ act: "guide", level: 1 }]),
       child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
       child("I don't know.", { help: "more" }, [{ act: "guide", level: 3 }]),
-      child("56.", { answers: [[56, "result", "wrong"]] }, [{ act: "give_answer" }]),
-      child("Okay, I wrote 66.", { paper: "written" }),
+      child("56.", { answers: [[56, "result", "wrong"]] }, [{ act: "close", lines: ["close.stuck", "close.together"] }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given", highestHint: 4, paperStatus: "child_confirmed", understanding: "uncertain" },
-      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "give_answer", "close"],
-      counts: { hints: 4 },
+      outcome: { reason: "child_stopped", highestHint: 3, understanding: "uncertain" },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "close"],
+      counts: { hints: 3 },
     },
   },
   {
@@ -1595,20 +1594,19 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "M14",
-    title: "Two wrong final answers once every column is done: Maya says how the parts make the answer, then the answer, then closes",
+    title: "Two wrong final answers once every column is done: Maya closes honestly",
     fixture: "A",
     status: "passing",
     steps: [
       child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
       child("Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }]),
       child("56.", { answers: [[56, "result", "wrong"]] }, [{ act: "guide", step: "result", level: 0, lines: ["step.invite"] }]),
-      child("65.", { answers: [[65, "result", "wrong"]] }, [{ act: "give_answer", warm: "empathy" }]),
-      okay,
+      child("65.", { answers: [[65, "result", "wrong"]] }, [{ act: "close", lines: ["close.stuck", "close.together"] }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 },
-      acts: [OPEN, "guide", "guide", "guide", "give_answer", "close"],
-      counts: { refusals: 0, hints: 1 },
+      outcome: { reason: "child_stopped", understanding: "uncertain" },
+      acts: [OPEN, "guide", "guide", "guide", "close"],
+      counts: { refusals: 0, hints: 0 },
     },
   },
   {
@@ -1626,7 +1624,7 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
-      refused: ["hint_too_high"],
+      refused: ["act_not_allowed"],
       never: ["give_answer"],
     },
   },

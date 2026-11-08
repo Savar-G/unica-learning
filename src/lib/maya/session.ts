@@ -39,6 +39,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { talkMath } from "./claims";
+import { closeExpressionContainsAnswer } from "./backup-close";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
 import { compensations, findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
@@ -97,9 +98,9 @@ type Teaching = (typeof TEACHING)[number];
 const isTeaching = (s: SessionState): s is Teaching => (TEACHING as readonly SessionState[]).includes(s);
 
 /** Acts that may carry board commands. */
-const BOARD_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "give_answer", "ask_write", "repair"];
+const BOARD_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "ask_write", "repair"];
 /** Acts whose proposal may score the child's answers. Safety, a stop, a confirmation or a wait never scores one. */
-const SCORING_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "give_answer", "ask_write", "close"];
+const SCORING_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "ask_write", "close"];
 
 export type Reason = "solved" | "child_stopped" | "time_limit" | "no_response" | "technical_issue" | "content_issue" | "safety";
 /** Least help first: the outcome keeps the most help used, never less. */
@@ -769,7 +770,7 @@ function gate(s: Session, reading: Reading): Allowed | null {
   return null;
 }
 
-/** The teaching states where the final step's given answer replaces more help (D-199): not after the answer stands. */
+/** Teaching states where two committed final misses lead to the backup close. */
 const FINAL_GIVE_STATES: readonly Teaching[] = ["ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET"];
 
 const MAIN_ACTS: Record<Teaching, Act[]> = {
@@ -777,7 +778,7 @@ const MAIN_ACTS: Record<Teaching, Act[]> = {
   ASSESS: ["accept_answer", "clarify", "example_step", "try_target", "guide"],
   MODEL_EXAMPLE: ["accept_answer", "example_step", "try_target", "guide"],
   TRY_TARGET: ["accept_answer", "guide"],
-  GUIDE_TARGET: ["accept_answer", "guide", "give_answer"],
+  GUIDE_TARGET: ["accept_answer", "guide"],
   CHECK: ["ask_write", "guide"],
   WRITE_CLOSE: ["ask_write", "close"],
 };
@@ -833,7 +834,7 @@ function topHint(s: Session): number {
  * The way out of the help ladder (#735, decision (a); D-199 for misses). A turn that only asks for help ("I'm stuck.",
  * "Show me.", a reading of help), with no answer in it, after Maya gave this step's top hint, never gets the answer: first
  * the easier example ("example"), and once that is worked, an honest close with no answer ("close"). Null for any other
- * turn: a miss (a checked wrong answer) keeps the given answer after H3 and D-199's two wrong final answers, and a copy
+ * turn: a checked wrong answer follows the backup close rule, and a copy
  * of a shown step goes on (copiedStep). A final-only step ends the same way, so its top lines never repeat (8 ÷ 2, 2 + 1).
  */
 function stuckWayOut(s: Session, reading: Reading, rightResult: boolean): "example" | "close" | null {
@@ -860,8 +861,8 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && (stepSaidUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
     const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
-      : rightResult ? ["accept_answer", "close"] : misses >= 2 ? ["give_answer", "close"] : (s.workAttempts ?? 0) > 0 ? ["ask_write", "close"] : ["close"];
-    return { acts: [...acts, ...confirm], code: "act_not_allowed", reason: "Time is almost up: finish the question and close." };
+      : rightResult ? ["accept_answer", "close"] : misses >= 2 ? ["close"] : (s.workAttempts ?? 0) > 0 ? ["ask_write", "close"] : ["close"];
+    return { acts: [...acts, ...confirm], code: "act_not_allowed", reason: s.package && closeExpressionContainsAnswer(s.package.operation, s.package.answer.value) ? "Time is almost up: use close.stuck alone." : "Time is almost up: finish the question and close." };
   }
   // A child who says they wrote it is done writing, whatever the model reads (#605). "I'm writing" keeps its time.
   if (reading.writing && !saysWritten(s.turn?.text ?? "")) return { acts: ["wait"], code: "act_not_allowed", reason: "The child is writing: wait." };
@@ -899,8 +900,6 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
         if (main === "MODEL_EXAMPLE") return s.exampleShown === steps && progress;
         // ...and tries their own question again before guided work.
         return !noStart || s.retried;
-      case "give_answer":
-        return !noStart || s.retried;
       case "ask_write":
         return main === "CHECK" || !s.writeAsked;
       case "close":
@@ -927,21 +926,20 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   if (way === "close") {
     return { acts: ["close"], code: "act_not_allowed", reason: "The child still only asks for help after the top hint and the easier example: close honestly with close.stuck, with no answer." };
   }
-  // H3 already showed this step and the child misses it again (a checked wrong answer): the answer, with code's
-  // explanation, without recording the shown work as the child's progress. A turn that only copies or acknowledges the
+  // H3 already showed this step and the child misses it again: close without the answer. A turn that only copies or acknowledges the
   // shown step, or asks about the next one (copiedStep: "16", "Got it.", "Where does the 1 go?"), is no miss.
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
   const missed = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && committedValue(s, a));
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" && copiedStep(s) === null &&
-      s.ladder.hint >= 3 && missed && (!noStart || s.retried) && acts.includes("give_answer")) {
-    return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child missed it again: give the answer with code's explanation." };
+      s.ladder.hint >= 3 && missed && (!noStart || s.retried)) {
+    return { acts: ["close"], code: "act_not_allowed", reason: "Close honestly without giving the answer." };
   }
   // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
-  // Maya gives the answer, and code says how the parts make it (D-199). Never sooner, and never over a right answer.
+  // Maya closes without the answer (D-306). Never over a right answer.
   if (misses >= 2 && !rightResult && s.solved === null && FINAL_GIVE_STATES.includes(main)) {
     return {
-      acts: ["give_answer", ...confirm], code: "act_not_allowed",
-      reason: "Every step is done and the child gave two wrong final answers: give the answer (give_answer). Code shows how the parts make it and says it.",
+      acts: ["close"], code: "act_not_allowed",
+      reason: "Close honestly without giving the answer.",
     };
   }
   acts = [...acts, ...confirm.filter((a) => !acts.includes(a))];
@@ -1182,6 +1180,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // A plain yes to "Did you say 66?" gives 66, whatever the model reads: code checks it right, then only the accept fits.
   const yes = said.answers?.length ? null : yesAnswer(s);
   const reading: Reading = yes ? { ...said, answers: [yes] } : said;
+  if (p.act === "give_answer") return no("act_not_allowed", "The answer is not offered.", (gate(s, reading) ?? teachingActs(s, reading, false)).acts);
   // Before the words: Maya never asks for what the child said they wrote or would not write (#605).
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
 
@@ -1224,6 +1223,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (progress) s.noStart = false;
   const misses = finalMisses(s, checked);
   const allowedNow = blocked ? blocked.acts : teachingActs(s, reading, rightResult, progress, misses).acts;
+  const backupClose = !blocked && !rightResult && s.solved === null && allowedNow.length === 1 && allowedNow[0] === "close";
   if (!blocked && !allowedNow.includes(p.act)) {
     const allowed = teachingActs(s, reading, rightResult, progress, misses);
     return no(allowed.code, allowed.reason, allowed.acts);
@@ -1263,8 +1263,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     // A question about the carry ("What do I do with the 1 I carried?") asks for help too: Maya answers it with code's
     // line, never the same invitation again (first-ship practice, C26).
     if (s.turn && asksWhy(s.turn.text) && !rightHere) ladder.unlocked = Math.max(ladder.unlocked, Math.min(4, ladder.hint + 1));
-    // "Show me" again after this step's H3 show is one more request: the given answer may come (C04-r2: the H3 rule allowed
-    // only give_answer while the ladder held it at H3, so Maya had no safe line).
+    // "Show me" can unlock the shown step without counting a miss.
     if (reading.help === "show") ladder.unlocked = Math.max(ladder.unlocked, ladder.hint >= 3 ? 4 : 3);
     // A lost carry is a located error: its regroup line (H1) is allowed at once.
     if (pendingRegroup(regroup).some((c) => c.at === ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 1);
@@ -1289,7 +1288,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     : p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, talk: [], segments: [], chosen: [] } : speak(s, p, view, reviews);
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
-  if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
+  if (say === "" && !["wait", "safety"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
   if (s.noBoard && (p.draw?.length || p.board?.length)) return no("board_not_allowed", "The child cannot see the board. Use spoken help.", allowedNow);
   const role: Problem = p.act === "example_step" ? "example" : "target";
   // The board (R374-6-1, D-197): Maya picks board offers by id (`draw`) and code builds every command from the checked
@@ -1309,7 +1308,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (typeof board === "string") return no("board_wrong_problem", board, allowedNow);
     roles = board;
   }
-  const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult || p.act === "give_answer";
+  if (backupClose && pkg && [say, ...boardTexts(pb.board ?? [])].some((text) => valuesIn(text, readOptionsFor(pkg)).some((value) => equivalent(value, pkg.answer.value)))) {
+    return no("reveals_answer", "The close cannot include the answer.", allowedNow);
+  }
+  const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult;
   if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, [forcedOpening ? operationText(pkg.operation) : say, ...boardTexts(pb.board ?? [])])) {
     return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
   }
@@ -1422,40 +1424,6 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       s.solved ??= "child";
       if (s.state !== "TIME_CLOSE") moveTo(s, "CHECK");
       break;
-    case "give_answer": {
-      // The final step (every work step done) has only its H0 help line: two wrong final answers there release the
-      // answer (D-199); any other step needs help up to H3 and another failed attempt or request.
-      const final = ladder.step === "result";
-      if ((s.state === "TIME_CLOSE" ? misses < 2 : (ladder.unlocked < 4 || !checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong" && committedValue(s, c.answer))) && !(final && misses >= 2))) {
-        return no("hint_too_high", final ? "On the final step the answer comes after two wrong final answers."
-          : `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowedNow);
-      }
-      // Code says the answer and asks for it on paper, so both are true. On the final step it first says how the parts
-      // the child did make the answer, from the checked answer (D-199, D-195).
-      const l = packageLines(pkg!);
-      // Code adds math lines, so this turn is a math turn whatever the parts are (CODE_MATH_ACTS).
-      const added = [...(final ? l.answerParts() : []), ...l.answerGive()];
-      for (const [index, rawLine] of added.entries()) {
-        const line = s.noBoard ? spokenOffer(rawLine) : rawLine;
-        const reserve = added.slice(index + 1).reduce((n, o) => n + Math.min(...o.texts.map(speechWords)), 0);
-        const remaining = turnWordLimit(s) - reserve - speechWords(spoken.segments.map((o) => o.text).join(" "));
-        const eligible = line.texts.map((_, i) => i).filter((i) => speechWords(line.texts[i]) <= remaining);
-        const pool = eligible.length ? eligible : line.texts.map((_, i) => i);
-        const pick = pool[chooseWording(s.variety, pool.map((i) => line.wordingIds?.[i] ?? `${line.key}#${i}`), s.now!)];
-        spoken.segments.push({ kind: "math", text: line.texts[pick] });
-      }
-      if (s.solved === null) {
-        s.solved = "maya";
-        s.answerGivenFirst = true;
-      }
-      s.highestHint = 4;
-      s.hints += 1;
-      s.stuckStep ??= ladder.step;
-      s.assistance.push("answer_given");
-      s.writeAsked = true;
-      if (s.state !== "TIME_CLOSE") moveTo(s, "WRITE_CLOSE");
-      break;
-    }
     case "ask_write": {
       // Once the answer stands, the act asks: for the answer on paper, or (in the check) about the work. "That's right"
       // alone asks nothing
@@ -1482,6 +1450,14 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     }
     case "close":
+      if (backupClose) {
+        const alone = pkg !== null && closeExpressionContainsAnswer(pkg.operation, pkg.answer.value);
+        if (p.parts.length !== (alone ? 1 : 2) || !("line" in p.parts[0]) || p.parts[0].line !== "close.stuck" ||
+            (!alone && (!("line" in p.parts[1]) || p.parts[1].line !== "close.together"))) {
+          return no("line_not_offered", alone ? "Close with close.stuck only." : "Close with close.stuck and close.together in order.", allowedNow);
+        }
+      }
+      if (backupClose) s.stuckStep ??= ladder.step;
       // The honest close after help alone (#735): its own line, which holds no answer.
       if ((stuckWayOut(s, reading, rightResult) === "close" || (s.state === "TIME_CLOSE" && !blocked && s.solved === null)) && !spoken.chosen.some((o) => o.line === "close.stuck")) {
         return no("line_not_offered", "Close honestly with close.stuck: this one is hard, it is fine to stop, and what to try next. No answer.", allowedNow);
@@ -1571,7 +1547,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (s.noBoard && /\b(?:board|look|watch|see|show me|follow along)\b/i.test(text)) return no("board_not_allowed", "Use only spoken help. No visual action is available.", allowedNow);
   }
 
-  if (p.act !== "safety" && speechWords(text) > turnWordLimit(s)) {
+  if (p.act !== "safety" && !backupClose && speechWords(text) > turnWordLimit(s)) {
     return no("turn_too_long", `This turn has ${speechWords(text)} spoken words. The limit is ${turnWordLimit(s)}.`, allowedNow);
   }
   if (s.replies?.length && p.act === "redirect") {
@@ -1588,7 +1564,6 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (problem === "target" && a.step === "result" && a.verdict === "right" && pkg) s.answerForm = sameValue(a.value, pkg.answer.value) ? null : a.value;
   }
   if (equal) s.equalForm = equal;
-  if (p.act === "give_answer") s.answerForm = null;
   if (scoring) {
     if (failed) s.stuckStep ??= ladder.step;
     s.done = done;
@@ -1635,7 +1610,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.expect = "maya";
     s.silence = "none";
   } else if (p.act === "close") {
-    end(s, closeCause(base), effects, false);
+    end(s, backupClose ? "child_stopped" : closeCause(base), effects, false);
   } else if (doneAfterAnswer || p.act === "safety" || (p.act === "example_step" && s.exampleShown < pkg!.easierExample.steps.length)) {
     s.expect = "maya";
     s.silence = "none";
@@ -1944,7 +1919,7 @@ export function committedValue(s: Session, a: ChildAnswer): boolean {
   const tokens = normalized.replace(/([a-z])-(?=[a-z])/g, "$1 ").split(/\s+/).filter(Boolean);
   const numericForm = tokens.length > 0 && tokens.every((token) => /^(?:\d+(?:\.\d+)?|\.\d+|\d+\/\d+|\/)$/.test(token) || kindOf(token) !== null || token === "point" || token === "negative");
   const parsed = numericForm ? readAnswer(bare, readOptionsFor(pkg)) : null;
-  if (!addition && !(parsed?.final && parsed.sure && saidAs(parsed.final, a.value))) return false;
+  if (!addition && !(parsed?.final && parsed.sure && valuesIn(normalized, readOptionsFor(pkg)).length === 1 && saidAs(parsed.final, a.value))) return false;
   if ((a.problem ?? "target") === "target") {
     if (workSteps(pkg).some((step) => (s.passed ?? []).includes(step.id) && stepAnswers(step).some((v) => equivalent(v, a.value)))) return false;
     if (s.exampleShown > 0) {
@@ -2206,7 +2181,7 @@ function withoutRepeats(pkg: OperationPackage, reading: Reading): Reading {
 /** Safe acts first; then a checked right answer and the gentlest teaching; giving the answer and closing come last. */
 const FALLBACK_ORDER: readonly Act[] = [
   "safety", "repair", "open", "accept_answer", "guide", "example_step", "try_target", "ask_write", "clarify", "confirm", "check_in", "wait", "redirect",
-  "offer_other_input", "give_answer", "close",
+  "offer_other_input", "close",
 ];
 
 /** The answers a raw proposal's reading names, each read alone: a malformed answer, or a malformed proposal, gives none. */
@@ -2509,14 +2484,12 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const read = session.turn && pkg ? turnRead(session) : null;
   const doubtful = !rightResult && s.solved === null && pkg !== null && read?.final != null && !read.sure && rightForQuestion(pkg, read.final) ? read.final : null;
   // Once the answer stands, the request to write it (or the close) comes before more help on a step. After two wrong
-  // final answers on the final step, the given answer takes the place of more help (D-199).
+  // final answers on the final step, the backup close takes the place of more help (D-306).
   const solved = s.solved !== null || rightResult;
-  const finalGive = ladderStep === "result" && misses >= 2 && !rightResult;
   // A step a model named, in a turn that is not heard: the confirm question comes before more help. Only that refusal: a
   // claim judged wrong is not a hearing problem (review of fec3dac4).
   const unheard = refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
-  const shownMiss = s.ladder.hint >= 3 && s.ladder.step !== "result" && copied === null && checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong" && committedValue(s, c.answer));
-  const rank = (a: Act) => ((shownMiss && a === "give_answer") ? FALLBACK_ORDER.indexOf("guide") - 1 : (solved && a === "ask_write") || (finalGive && a === "give_answer") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : FALLBACK_ORDER.indexOf(a));
+  const rank = (a: Act) => ((solved && a === "ask_write") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : FALLBACK_ORDER.indexOf(a));
   const order = [...new Set(unheard && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({
     version: PROPOSAL_VERSION, act, parts: offers.map((o) => ({ line: o.line, slots: o.slots })), ...extra, ...(reading ? { reading } : {}),
@@ -2567,14 +2540,9 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
         lineSets = [...offers.filter((o) => o.line !== "answer.right"), ...offers.filter((o) => o.line === "answer.right")]
           .map((o) => make(act, [o], { understanding: "uncertain" }));
         break;
-      case "give_answer":
-        // Code adds how the parts make the answer and the answer itself. A line of the step here would ask a question that
-        // the same turn answers (C04-r1: "What can you do there? That makes 66.").
-        lineSets = [];
-        break;
       case "close":
         // A content hold (#527): the held lines together, in order.
-        lineSets = s.state === "CONTENT_HOLD" ? [make(act, offers)] : byLevel(free).map((o) => make(act, [o], o.slots.step ? { step: o.slots.step } : {}));
+        lineSets = s.state === "CONTENT_HOLD" ? [make(act, offers)] : [...(!gate(s, reading ?? {}) && acts.length === 1 && acts[0] === "close" && free.some((o) => o.line === "close.stuck") && free.some((o) => o.line === "close.together") ? [make(act, [free.find((o) => o.line === "close.stuck")!, ...(pkg && closeExpressionContainsAnswer(pkg.operation, pkg.answer.value) ? [] : [free.find((o) => o.line === "close.together")!])])] : []), ...byLevel(free).map((o) => make(act, [o], o.slots.step ? { step: o.slots.step } : {}))];
         break;
       case "confirm":
         // The child's doubtful final answer first (#605), then the number they said last.
@@ -2789,7 +2757,7 @@ interface Segment {
 }
 
 /** Acts where code adds a math line itself (the given answer): they are math turns by definition. */
-const CODE_MATH_ACTS: readonly Act[] = ["give_answer"];
+const CODE_MATH_ACTS: readonly Act[] = [];
 
 /**
  * The one check of a turn's order (D-196), on the assembled turn: when it holds math (a math line, or an act where code
@@ -2982,7 +2950,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       const own = [...candidates.flatMap((v) => l.equal(v, simplestWords(pkg))), ...(simplify ? l.simplifyOwn(simplify) : [])];
       // A right final answer said with doubt or as a guess: a lead-in to check it together, before the step's line (#605).
       // Never once this step was shown at H3: that check asks the step's question at H2 or below, a step back from what the
-      // child saw, and the given answer must follow H3 (first-ship practice, C04-r1, hint_skipped). The help goes on instead.
+      // child saw (first-ship practice, C04-r1, hint_skipped). The help goes on instead.
       const shownHere = view.steps[0] === s.ladder.step && s.ladder.hint >= 3;
       const check = s.solved === null && s.turn && !shownHere ? (saysGuess(s.turn.text) ? l.guess() : doubtfulRight(s) ? l.together() : []) : [];
       return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...l.thinking()];
@@ -2994,9 +2962,6 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       const shown = s.turn !== null && otherMethod(s, s.turn.text);
       return [...l.thinking(), ...l.answerRight(form), ...(shown ? [] : l.explain()), ...right];
     }
-    case "give_answer":
-      // Never the final step's question before code gives its answer (D-199).
-      return [...view.steps.filter((id) => id !== "result").flatMap((id) => regroupHelp(l, id, view)), ...right];
     case "ask_write": {
       // Never a request to write what the child already wrote, or said they wrote or would not write (#389).
       const written = s.wrote === true || s.paper !== "unknown";
@@ -3017,7 +2982,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       // finished it; after a shown step (guided), that their answer is right, not that they worked it out.
       return solved ? (solved === "maya" || s.assistance.includes("answer_given") ? l.closeGiven()
         : s.assistance.includes("guided") ? l.closeSolved("child", false) : l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed"))
-        : (s.state === "TIME_CLOSE" || (s.turn !== null && s.exampleShown >= pkg.easierExample.steps.length)) ? l.closeStuck() : [];
+        : gate(s, {}) ? ((s.state === "TIME_CLOSE" || (s.turn !== null && s.exampleShown >= pkg.easierExample.steps.length)) ? l.closeStuck() : []) : [...l.closeStuck(), ...(closeExpressionContainsAnswer(pkg.operation, pkg.answer.value) ? [] : l.closeGiven())];
     case "confirm": {
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));

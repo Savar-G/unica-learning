@@ -80,13 +80,14 @@ describe("(ii) the child's own method, named back", () => {
 });
 
 describe("(iii) an honest close by how much help the child had", () => {
-  it("says no 'finished together' after Maya gave the answer", async () => {
+  it("says no 'finished together' after the shown-step miss", async () => {
     const { told, outcome } = await play([
       { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] },
       { child: "15.", read: { answers: [[15, "ones", "wrong"]] }, maya: [{ act: "give_answer" }] },
       { child: "I wrote 66.", read: { paper: "written" }, maya: [{ act: "close", lines: ["close.together"] }] },
     ]);
-    expect(outcome?.assistance).toBe("answer_given");
+    expect(outcome?.reason).toBe("child_stopped");
+    expect(outcome?.assistance).not.toBe("answer_given");
     const close = told.at(-1)!;
     expect(close.act).toBe("close");
     expect(close.say).not.toMatch(/finished|got through|worked through|worked out|You solved|You did it/i);
