@@ -69,8 +69,9 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const loadingResult = active && (currentProgress?.status === "done" || currentProgress?.status === "failed");
   const stalled = active && (currentProgress ? currentProgress.phase === "stalled" : detail.editBatch?.stalled);
   const working = active && !stalled;
-  const resultMessage = workbookEditMessage(detail.editBatch, detail.comments);
+  const resultMessage = workbookEditMessage(detail.editBatch, detail.comments, draft.revision);
   const pending = detail.comments.filter((c) => c.status === "pending" || c.status === "failed");
+  const layoutComments = pending.filter(c => workbookCommentRoute(pages.find(p => p.number === c.page), c.note, c.route) === "layout");
   const page = pages.find((p) => p.number === selected)!;
   const rendered = draft.rendering?.pages.find((p) => p.number === selected);
   const comments = detail.comments.filter((c) => c.page === selected);

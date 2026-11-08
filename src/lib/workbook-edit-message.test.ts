@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { workbookEditMessage } from "@/lib/workbook-edit-message";
+import { workbookEditMessage as message } from "@/lib/workbook-edit-message";
 import type { ReviewComment, WorkbookEdit } from "@/lib/workbook-edit";
+const workbookEditMessage = (batch: WorkbookEdit | null, comments: ReviewComment[]) => message(batch, comments, 1);
 const batch = { id: "latest", status: "done" } as WorkbookEdit;
 const comment = (status: ReviewComment["status"], batchId = "latest", error: string | null = null) => ({ status, batchId, error }) as ReviewComment;
 describe("workbook edit result message", () => {
