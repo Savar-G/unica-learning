@@ -36,8 +36,10 @@ import {
   type Operation,
   type OperationKind,
   type OperationPackage,
+  type PackageCheck,
   type WorkedStep,
 } from "@/lib/question-package";
+import { teachingLimits } from "@/lib/maya-teaching/limits";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
@@ -484,9 +486,17 @@ export function createSession(input: {
   };
 }
 
+/**
+ * The package check Maya teaches under: the default check, with Maya's wider operand limits only for a package her
+ * session adapter made (src/lib/maya-teaching, operationSource "maya-teaching"). The adapter checks its output here too.
+ */
+export function mayaPackageCheck(raw: unknown): PackageCheck {
+  return checkQuestionPackage(raw, undefined, teachingLimits(raw));
+}
+
 /** The package Maya teaches from, or why she holds it (the content hold's reason). */
 function teachableOf(raw: unknown): { pkg: OperationPackage | null; held: string | null } {
-  const check = checkQuestionPackage(raw);
+  const check = mayaPackageCheck(raw);
   if (!check.ok) return { pkg: null, held: check.reason };
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
   if (!hasOperation(check.package)) return { pkg: null, held: "Maya cannot teach items with no operation yet" };
