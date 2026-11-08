@@ -45,7 +45,7 @@ import { shownNumbers, trialHeard } from "./trial-factor";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
-import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
+import { findOffer, normalSlots, packageLines, stepEquation, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
@@ -545,13 +545,27 @@ const missMayCount = (s: Session, step: string) => (sessionClaim(s.package) && s
 /**
  * The child's own words hold a number that answers neither the current step nor the question, as code checks them:
  * on a missing number at the top hint, it takes the way out even when no reading of it stands (a number taken back by
- * a negation or a correction: "I'm not stuck, it's 7.", "I'm stuck I mean 7").
+ * a negation or a correction: "I'm not stuck, it's 7.", "I'm stuck I mean 7"). Right work is never stray (round 10 of
+ * #732): a number of a credited step's own equation or its value ("236 times 6 is 1416." again, once the try is
+ * credited) keeps the call on the step Maya asks for.
  */
 function strayNumber(s: Session): boolean {
   const pkg = s.package;
   if (!pkg || !s.turn) return false;
   const st = workSteps(pkg).find((x) => x.id === s.ladder.step);
-  return valuesIn(s.turn.text, readOptionsFor(pkg)).some((v) => !rightForQuestion(pkg, v) && !(st && answersStep(st, v)));
+  const credited = creditedNumbers(s);
+  return valuesIn(s.turn.text, readOptionsFor(pkg)).some((v) => !rightForQuestion(pkg, v) && !(st && answersStep(st, v)) &&
+    !(v.type === "number" && credited.includes(v.value)));
+}
+
+/** The numbers of the child's credited steps, as code writes them: each done step's equation and its values. */
+function creditedNumbers(s: Session): number[] {
+  const pkg = s.package;
+  if (!pkg) return [];
+  return workSteps(pkg).filter((st) => s.done.includes(st.id)).flatMap((st) => [
+    ...(stepEquation(st, pkg)?.match(/\d+(?:\.\d+)?/g) ?? []).map(Number),
+    ...stepAnswers(st).flatMap((v) => (v.type === "number" ? [v.value] : [])),
+  ]);
 }
 
 /** The reading judged a number of the child's question wrong. */

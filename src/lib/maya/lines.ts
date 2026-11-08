@@ -538,6 +538,9 @@ function whereOf(step: WorkedStep): string {
   }
 }
 
+/** A step of the child's question as its equation ("236 × 6 = 1416"), or null: for code's checks in the session. */
+export const stepEquation = (step: WorkedStep, pkg: OperationPackage): string | null => equationOf(step, pkg, "target");
+
 /** The step's equation, as a line says it and the board writes it ("7 + 9 = 16"), or null for a step with none. */
 function equationOf(step: WorkedStep, pkg: OperationPackage, problem: "target" | "example"): string | null {
   const part = partEquation(pkg, step, equationOf);

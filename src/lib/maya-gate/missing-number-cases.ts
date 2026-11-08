@@ -819,6 +819,51 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     },
   },
   {
+    // Round 10 of #732 (review at f6262b16): the numbers of a checked right step equation are never stray. A child who
+    // says the credited try again is asked for the missing number, never sent to the easier example or the close.
+    id: "MN15",
+    title: "236 × ? = 1416, stuck to H2, then '236 times 6 is 1416.' three times: the try is credited once, Maya asks for the missing number each time (no example, no close), then 6 is accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("236 times 6 is 1416.", { answers: [[6, "try", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("236 times 6 is 1416.", undefined, [{ act: "guide", level: 0, lines: ["step.invite"] }]),
+      child("236 times 6 is 1416.", undefined, [{ act: "guide", level: 0, lines: ["step.invite"] }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", highestHint: 2 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [
+        { mayaTurn: 4, lines: [variants(trial.help("result"), "invite.result.try")] },
+        { mayaTurn: 5, lines: [variants(trial.help("result"), "invite.result.try")] },
+      ],
+      never: ["give_answer", "example_step"],
+    },
+  },
+  {
+    // ...while a number that answers neither the step nor the question still takes the way out at the top hint (H0 of
+    // the final step, once the try is credited).
+    id: "MN15b",
+    title: "236 × ? = 1416, the try credited, then 'I'm not stuck, it's 7.' at the final step's top hint (a stray number): the easier example, never a given answer",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("236 times 6 is 1416.", { start: "has_work", answers: [[6, "try", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("I'm not stuck, it's 7.", { answers: [[7, "result", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      never: ["give_answer", "accept_answer"],
+    },
+  },
+  {
     // The allow-list (review of 5ad7cf4b): only a committed answer in an allowed form is a miss; this is none.
     id: "MN13c",
     title: "236 × ? = 1416, after H3, 'I'm not stuck, it's 7.' then 'I'm not stuck, it's 8.' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close",
