@@ -182,9 +182,10 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | OT7 | DIE | passing | Counts in a full sentence ("2, 4, 6 and 8 are even. That's 4."): on topic (the counted numbers are checked scope numbers), one confirm, accepted | solved, independent | |
 | OT8 | SHAPES | passing | "I'm stuck." after a hello-only opening: the first guide says the shapes' facts, then "6 plus 5 is 11." | solved | |
 | OT9 | DIE12 | passing | Grade 3, hello-only opening, says 5: "not yet" (no technical close), then the topic sentence on "I'm stuck.", then 6 | solved | |
-| OT10 | DIE12 | passing | Grade 3, hello-only opening, a right first step ("1 divided by 2 is 0 remainder 1."): acknowledged (J06), then solved | solved | |
+| OT10 | DIE12 | passing | Grade 3, hello-only opening, a right first step ("1 divided by 2 is 0."): acknowledged in code's line with no fallback (J06), then solved | solved | |
 | OT11 | SHAPES_LONG | passing | Grade 3, hello-only opening, longest shape names, says 4: "not yet", then "2 plus 1 is 3." | solved | |
 | OT12 | SHAPES_LONG | passing | Grade 3, hello-only opening, the right sum first: accepted, not taught again (J06) | solved, independent | |
+| OT13 | DIE | passing | Grade 3, help only through the easier example, "Maybe 1?" gets a confirm, then "I'm stuck.": the honest close, as the child stopping (re-review of #731, P1) | child_stopped | |
 
 | S01 | A | passing | Pasted homework sheet: fixed workbook redirect, no teaching or board | solved after return to own question | |
 | S02 | A | passing | Same shape with different numbers: fixed workbook redirect | solved after return | |

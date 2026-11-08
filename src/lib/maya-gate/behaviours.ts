@@ -27,6 +27,7 @@ const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.fil
 const fractionLines = packageLines(FIXTURES.D as OperationPackage);
 const simplestLines = packageLines(FIXTURES.D_SIMPLEST as OperationPackage);
 const dieLines = packageLines(FIXTURES.DIE as OperationPackage);
+const die12Lines = packageLines(FIXTURES.DIE12 as OperationPackage);
 const shapeLines = packageLines(FIXTURES.SHAPES as OperationPackage);
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
@@ -336,16 +337,19 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   {
-    id: "OT10", title: "Die 12 at grade 3, a right first step after a hello-only opening ('1 divided by 2 is 0 remainder 1.'): acknowledged (J06)", fixture: "DIE12", grade: 3, status: "passing",
+    id: "OT10", title: "Die 12 at grade 3, a right first step after a hello-only opening ('1 divided by 2 is 0.'): acknowledged in code's line, with no fallback (J06)", fixture: "DIE12", grade: 3, status: "passing",
     open: [{ act: "open", lines: ["open.hello"] }],
     steps: [
-      child("1 divided by 2 is 0 remainder 1.", { start: "has_work", answers: [[0, "tens", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("1 divided by 2 is 0.", { start: "has_work", answers: [[0, "tens", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
       child("12 divided by 2 is 6.", { answers: [[6, "ones", "right"], [6, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved" },
       acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      // Re-review of #731 (P3): the acknowledgement itself reaches the child, not a fallback that asks about the tens again.
+      outputs: [{ mayaTurn: 1, lines: [variants(die12Lines.rightStep("tens"), "check.right_step"), variants(die12Lines.help("ones"), "step.invite")] }],
+      counts: { fallbacks: 0 },
       never: ["redirect"],
     },
   },
@@ -374,6 +378,23 @@ export const BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "accept_answer", "ask_write", "close"],
       never: ["guide", "example_step", "redirect"],
+    },
+  },
+  {
+    id: "OT13", title: "Die 8 at grade 3: help only through the easier example, then 'Maybe 1?' gets a confirm, then 'I'm stuck.': the honest close is the child stopping, not a technical issue (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "stuck" }),
+      child("I'm stuck.", { help: "stuck" }),
+      child("I'm stuck.", { help: "stuck" }),
+      child("I'm stuck.", { help: "stuck" }, [{}, {}, {}]),
+      child("Maybe 1?", { unclear: true }, [{ act: "confirm", heard: "1" }]),
+      child("I'm stuck.", { help: "stuck" }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "confirm", "close"],
+      outputs: [{ mayaTurn: 8, lines: [variants(dieLines.closeHonest(), "close.honest")] }],
+      never: ["give_answer", "redirect"],
     },
   },
   {

@@ -2392,8 +2392,20 @@ function closeCause(before: Session): Reason {
   if (before.stopRequested) return "child_stopped";
   if (before.silence === "close_due") return "no_response";
   if (before.state === "TIME_CLOSE") return "time_limit";
-  if (before.state === "CONFIRM_HEARD") return "technical_issue";
+  // A hearing that failed twice is a technical issue; the honest close after the easier example is the child stopping,
+  // also when it comes while Maya waits on a confirm ("Maybe 1?", "Was that 1?", "I'm stuck."; re-review of #731, P1).
+  if (before.state === "CONFIRM_HEARD" && !honestCloseDue(before)) return "technical_issue";
   return "child_stopped";
+}
+
+/**
+ * The honest close is due (lessons from review 7 and 10): an "other-topic" question (topic-frame.ts) not solved, the
+ * easier example shown in full, and a child turn that only asks for help.
+ */
+function honestCloseDue(s: Session): boolean {
+  const pkg = s.package;
+  return !!pkg && !!topicFrame(pkg.text, pkg.operation) && s.solved === null && s.turn !== null && asksForHelp(s.turn.text) &&
+    s.exampleShown >= pkg.easierExample.steps.length;
 }
 
 /** When the call ended, or ends now: never after the call's limit. */
