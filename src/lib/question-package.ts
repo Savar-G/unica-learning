@@ -447,7 +447,7 @@ export function packageItem(p: QuestionPackage): Item {
  *   fill-table: the empty cells of a table, one box each.
  * - tick-one: tick one of named choices; circle: circle one of named choices.
  * - tick-and-number: a Mixed set item, "1 Tick the operation", "2 Write the answer", and a work box.
- * - two-ways: Solve it two ways: Method 1 and Method 2 work boxes, then the answer box; only the answer is checked.
+ * - two-ways: Solve it two ways: Method 1 and Method 2 work boxes, then the answer box; the package checks the answer, and scan marking checks both methods from what the AI reads.
  * - spot-the-error: a wrong worked solution (its wrong answer and the step where the mistake is), the fix in answer
  *   boxes, and maybe "Is it right?" and "What did Sam do wrong?".
  * - show-work: answer boxes with a work box (a story, a challenge).
