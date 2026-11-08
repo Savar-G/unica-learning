@@ -397,6 +397,58 @@ export const BEHAVIOURS: Behaviour[] = [
       never: ["give_answer", "redirect"],
     },
   },
+  // Re-review of #731 at b97f3741: one help-only test for the honest close (P1), its line always said (P2, lessons from
+  // review 10), and a question about the step is not work (P3).
+  {
+    id: "OT13b", title: "Die 8 at grade 3: as OT13, but the last turn is 'Help me.' (read as help): the honest close is still the child stopping (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "example_step" }, {}, {}]),
+      child("Maybe 1?", { unclear: true }, [{ act: "confirm", heard: "1" }]),
+      child("Help me.", { help: "more" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "confirm", "close"],
+      outputs: [{ mayaTurn: 8, lines: [variants(dieLines.closeHonest(), "close.honest")] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    id: "OT14", title: "Die 8 at grade 3: the honest close proposed as a goodbye alone (no line) is refused; Maya says the honest close line (re-review of #731, P2)", fixture: "DIE", grade: 3, status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "example_step" }, {}, {}]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close", lines: [] }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
+      outputs: [{ mayaTurn: 7, lines: [variants(dieLines.closeHonest(), "close.honest")] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    id: "OT15", title: "Die 12 at grade 3, 'Why do I divide by 2?' after a hello-only opening: a question is not work, so the guide says the topic sentence (re-review of #731, P3)", fixture: "DIE12", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      // The model picks the step's own help; the refusal offers only the topic sentence, and the model says it.
+      child("Why do I divide by 2?", { start: "has_work" }, [{ act: "guide", level: 0, repair: { act: "guide", level: 0, lines: ["question.problem"] } }]),
+      child("12 divided by 2 is 6.", { answers: [[6, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(die12Lines.question(), "question.framed")] }],
+      counts: { refusals: 1, fallbacks: 0 },
+      never: ["redirect"],
+    },
+  },
   {
     id: "C01",
     title: "Cannot start: the easier example, then back to the question",

@@ -186,6 +186,9 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | OT11 | SHAPES_LONG | passing | Grade 3, hello-only opening, longest shape names, says 4: "not yet", then "2 plus 1 is 3." | solved | |
 | OT12 | SHAPES_LONG | passing | Grade 3, hello-only opening, the right sum first: accepted, not taught again (J06) | solved, independent | |
 | OT13 | DIE | passing | Grade 3, help only through the easier example, "Maybe 1?" gets a confirm, then "I'm stuck.": the honest close, as the child stopping (re-review of #731, P1) | child_stopped | |
+| OT13b | DIE | passing | As OT13, but the last turn is "Help me." (read as help): the same help-only test, so still the child stopping (re-review of #731, P1) | child_stopped | |
+| OT14 | DIE | passing | Grade 3, the honest close proposed as a goodbye with no line: refused, then the honest close line (re-review of #731, P2) | child_stopped | |
+| OT15 | DIE12 | passing | Grade 3, hello-only opening, "Why do I divide by 2?": a question is not work, so the guide says the topic sentence (re-review of #731, P3) | solved | |
 
 | S01 | A | passing | Pasted homework sheet: fixed workbook redirect, no teaching or board | solved after return to own question | |
 | S02 | A | passing | Same shape with different numbers: fixed workbook redirect | solved after return | |

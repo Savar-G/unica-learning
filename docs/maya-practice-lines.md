@@ -139,4 +139,4 @@ The topic sentence (code's facts, `src/lib/maya/topic-frame.ts`) and the honest 
 | `close.honest#3` | That was a hard one, and stopping is okay. Ask a grown-up to look at it with you. | |
 | `close.honest#4` | This question is hard. It's fine to stop. Try the smaller one on paper first. | |
 
-The honest close is said only for an other-topic question, after the easier example, when the child still only asks for help. It holds no number, so it gives nothing of the answer away. The call records the stuck step as a learning event (`result: blank`, `stuckStep`).
+The honest close is said only for an other-topic question, after the easier example, when the child still only asks for help. It holds no number, so it gives nothing of the answer away. The call records the stuck step as a learning event (`result: blank`, `stuckStep`). Maya must say this line: a close with only a goodbye ("Take care!") is refused, and code's fallback says the line. The call ends as the child stopping, also when it comes after a confirm.
