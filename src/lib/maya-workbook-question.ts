@@ -3,6 +3,7 @@
 import { checkQuestionPackage, type QuestionPackage, type WorkbookQuestionRef } from "@/lib/question-package";
 import { isUuid, type WorkbookStore } from "@/lib/workbook-content";
 import { createSession } from "@/lib/maya";
+import { teachingPackage } from "@/lib/maya-teaching";
 
 export const WORKBOOK_REFERENCE_AGAIN = "Type it like: page 4, number 3.";
 export const WORKBOOK_REFERENCE_REFUSED = "I can't find that question in this child's workbook.";
@@ -115,6 +116,6 @@ export async function selectWorkbookQuestion(input: WorkbookSelectionInput, read
   if (!checked.ok) return refuse(`Page ${at.page}, number ${at.question} has invalid saved content.`);
   const saved = checked.package.ref;
   if (saved.source !== "workbook" || saved.workbookId !== ref.workbookId || saved.page !== ref.page || saved.question !== ref.question) return refuse(`The saved content does not match page ${at.page}, number ${at.question}.`);
-  if (!createSession({ callId: "selection-check", package: checked.package }).package) return refuse(`Maya cannot teach page ${at.page}, number ${at.question} yet.`);
+  if (!createSession({ callId: "selection-check", package: teachingPackage(checked.package) }).package) return refuse(`Maya cannot teach page ${at.page}, number ${at.question} yet.`);
   return { ok: true, ref, package: checked.package, parentId, childId, childName, grade };
 }

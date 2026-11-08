@@ -7,6 +7,7 @@ export {
   fallbacks,
   heardWordings,
   heldReason,
+  mayaPackageCheck,
   learningEvent,
   drawOffers,
   lineOffers,
