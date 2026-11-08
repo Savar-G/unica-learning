@@ -69,6 +69,14 @@ export const TRIAL_TEMPLATES = {
     "Exactly! Your number works. {factor} times it makes {total}.",
     "Nice. {factor} times your number is {total}.",
   ],
+  // The final step on the try path (J06): ask for the missing number, not for the division trial.why calls hard.
+  "invite.result.try": [
+    "So what is the missing number?",
+    "Now say the missing number.",
+    "What is the missing number?",
+    "So the missing number is what?",
+    "Tell me the missing number.",
+  ],
   "trial.small": [
     "{factor} × {guess} = {product}. That is less than {total}. Try a bigger number.",
     "{factor} × {guess} = {product}. That is too small. Try a bigger number.",
@@ -113,6 +121,12 @@ export function trialFeedback(step: TrialStep): TrialLine[] {
 
 /** H3: the try next to the missing factor, never the factor itself. */
 export const showTrial = (step: TrialStep): string => bracketText(step);
+
+/** The try H3 shows (bracketText): the one just below the missing factor, or just above for a factor of 1. */
+export const shownTry = (step: TrialStep): number => (step.value > 1 ? step.value - 1 : step.value + 1);
+
+/** The wording of the final step on the try path: the number itself, never the division the try replaced. */
+export const TRIAL_RESULT_KEY = "invite.result.try" as const;
 
 /** The whole text is one product: "a times|×|x b is|equals|makes|make|= c", in digits or words, or null. */
 export function wholeProduct(body: string): { operands: [number, number]; product: number } | null {

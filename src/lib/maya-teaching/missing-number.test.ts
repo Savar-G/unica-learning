@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createSession, mayaPackageCheck } from "@/lib/maya/session";
 import { packageLines } from "@/lib/maya/lines";
 import { speechWords } from "@/lib/maya/speech";
-import { frameState, saysInverse, type FrameStep } from "@/lib/maya/missing-number";
+import { frameState, missingScope, saysInverse, type FrameStep } from "@/lib/maya/missing-number";
 import { checkQuestionPackage, operationProblem, type OperationPackage, type QuestionPackage, type WorkedStep } from "@/lib/question-package";
 import { withWorkbookMayaOperation } from "@/lib/workbook-maya-operation";
 import { deriveMissingNumber, givesAway } from "./missing-number";
@@ -105,6 +105,21 @@ describe("deriveMissingNumber: three agreements, or held", () => {
   it("leaves a package that already has an operation alone", () => {
     const pkg = derive({ known: 24, missing: 7, sign: "×" })!;
     expect(deriveMissingNumber(pkg)).toBeNull();
+  });
+});
+
+describe("missingScope: the child's own math on a missing number stays in scope", () => {
+  it("allows each try, the rounded estimate, the framing and its checks, the zeros", () => {
+    const trial = derive({ known: 236, missing: 6, sign: "×" })!;
+    const t = missingScope(trial.steps[1]);
+    expect(t).toContainEqual(["multiply", [236, 5]]);
+    expect(t).toContainEqual(["multiply", [200, 7]]);
+    expect(t).toContainEqual(["divide", [1416, 200]]);
+    expect(missingScope(trial.steps[0])).toEqual([["divide", [1416, 236]], ["multiply", [236, 6]]]);
+    const sub = derive({ known: 9000, missing: 6000, sign: "−" })!;
+    expect(missingScope(sub.steps[0])).toEqual([["subtract", [9000, 3000]], ["subtract", [9000, 6000]], ["add", [6000, 3000]]]);
+    const zeros = derive({ known: 30, missing: 54, sign: "×" })!;
+    expect(missingScope(zeros.steps[1])).toEqual([["divide", [1620, 30]], ["divide", [162, 3]]]);
   });
 });
 
@@ -240,6 +255,9 @@ describe("the lines of a missing number", () => {
     expect(seven.requires).toEqual({ answer: "wrong", step: "result", heard: "7" });
     expect(l.notYet("result").some((o) => o.slots.heard === "6")).toBe(false);
     expect(l.rightStep("try")[0].texts[0]).toBe("Yes! 236 times your number makes 1416.");
+    // The final step asks for the number, never the division the try replaced (J06).
+    expect(l.help("result")[0].texts[0]).toBe("So what is the missing number?");
+    expect(l.help("result")[0].texts.some((t) => t.includes("÷"))).toBe(false);
   });
 });
 

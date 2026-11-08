@@ -332,7 +332,7 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN1 | M_DIVIDE | passing | 30 × ? = 1620, cannot start: the easier example frames 20 × ? = 40 as 40 ÷ 20 and drops a zero, then 54 is accepted | solved, worked_example | |
 | MN2 | M_TRY | passing | 236 × ? = 1416 by trying numbers: 7 is multiplied out (too big), 5 (too small), then 6 is accepted; no long division | solved, independent | |
 | MN2b | M_TRY | passing | 236 × ? = 1416, stuck: the try hint at H1, the rounding hint at H2, then 6 is accepted | solved, hint | |
-| MN2c | M_TRY | passing | 236 × ? = 1416, '236 times 6 is 1416': the try step is heard on the whole turn and said back without the number (it is the answer), then the final answer is asked and 6 accepted | solved, independent | |
+| MN2c | M_TRY | passing | 236 × ? = 1416, '236 times 6 is 1416': the try step is heard on the whole turn and said back without the number (it is the answer), then 'So what is the missing number?' and 6 accepted | solved, independent | |
 | MN1b | M_DIVIDE | passing | 30 × ? = 1620, 'Why do I divide?': the framing line says why (30 times the missing number makes 1620), then 54 is accepted | solved, independent | |
 | MN1c | M_DIVIDE | passing | 30 × ? = 1620, 'I'm stuck.': the first hint (H1) starts with the framing, 'The missing number is 1620 ÷ 30. That is 162 ÷ 3.', then 54 is accepted | solved, hint | |
 | MN1f | M_DIVIDE | passing | 30 × ? = 1620 at grade 3, 'I'm stuck.': the first hint (H1) is the short framing, 'The missing number is 1620 ÷ 30. That is 162 ÷ 3.', within 25 words; then 54 is accepted | solved, hint | |
@@ -343,6 +343,11 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN4 | M_TRY | passing | 236 × ? = 1416, '236 times 5 is 1180.' then '236 times 7 is 1652.': each try is in scope and multiplied out, then 6 is accepted | solved, independent | |
 | MN5 | M_DIVIDE | passing | 30 × ? = 1620, '1620 divided by 30 is 54.' is accepted, and '30 times 54 is 1620.' is a check of it, not an outside request | solved, independent | |
 | MN6 | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '9000 minus 6000 is 3000.' is a check of it, not an outside request | solved, independent | |
+| MN7 | M_TRY | passing | 236 × ? = 1416, after the rounding hint, '200 times 7 is 1400.': in scope, 7 is multiplied out (too big), then 6 is accepted | solved | |
+| MN7b | M_TRY | passing | 236 × ? = 1416, after the rounding hint, '1416 divided by 200 is 7.': in scope, 7 is multiplied out (too big), then 6 is accepted | solved | |
+| MN2f | M_TRY | passing | 236 × ? = 1416, after H3 shows '236 × 5 = 1180. That is less than 1416.', the child says it back: a copy, answered with 'try a bigger number', never the answer; then 6 is accepted | solved | |
+| MN6b | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '6000 plus 3000 is 9000.' is a check of it, not an outside request | solved, independent | |
+| MN6c | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '3000 plus 6000 is 9000.' is a check of it, not an outside request | solved, independent | |
 | MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
 
 ## Pending

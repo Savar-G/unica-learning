@@ -41,7 +41,7 @@ import {
 } from "@/lib/question-package";
 import { teachingLimits } from "@/lib/maya-teaching/limits";
 import { checkMissingNumber, frameState, type FrameState } from "./missing-number";
-import { trialHeard } from "./trial-factor";
+import { shownTry, trialHeard } from "./trial-factor";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
@@ -875,8 +875,11 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // H3 already showed this step. Another explicit failure or help request ends
   // the loop, without recording the shown work as the child's progress.
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
+  // A try step's H3 shows one wrong try (trial-factor.ts): the child saying it back copies Maya, it is no new miss.
+  const tryStep = s.package ? workSteps(s.package).find((st) => st.id === s.ladder.step && st.kind === "try-factor") : undefined;
+  const copiesTry = (v: AnswerValue) => tryStep?.kind === "try-factor" && v.type === "number" && v.value === shownTry(tryStep);
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
-    reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+    reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && !copiesTry(a.value));
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };

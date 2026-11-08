@@ -144,19 +144,25 @@ export function checkMissingNumber(raw: unknown, limits?: OperationLimits): Pack
 
 /**
  * The expressions a child may say about a missing-number step without leaving the question (scope.ts): each try of
- * a try step (236 × 7), the framing's own operation (1620 ÷ 30) and its check (30 × 54), and a zeros step's division
- * (162 ÷ 3). Every number is the checked step's.
+ * a try step (236 × 7) and its estimate with the rounded factor (200 × 7, 1416 ÷ 200), the framing's own operation
+ * (1620 ÷ 30) and its checks (30 × 54; 9000 − 6000 and 6000 + 3000), and a zeros step's division (162 ÷ 3). Every number
+ * is the checked step's.
  */
-export function missingScope(st: WorkedStep): ["multiply" | "divide" | "subtract", number[]][] {
+export function missingScope(st: WorkedStep): ["add" | "multiply" | "divide" | "subtract", number[]][] {
   switch (st.kind) {
+    // Each try, and the H2 estimate with the rounded factor ("200 times 7 is 1400.", "1416 divided by 200 is 7.").
     case "try-factor":
-      return st.tries.map((t): ["multiply", number[]] => ["multiply", [st.factor, t.value]]);
+      return [
+        ...st.tries.map((t): ["multiply", number[]] => ["multiply", [st.factor, t.value]]),
+        ...st.tries.map((t): ["multiply", number[]] => ["multiply", [st.round, t.value]]),
+        ["divide", [st.total, st.round]],
+      ];
     case "missing-frame": {
       const work = missingWork(st);
       if (!work) return [];
       return st.sign === "×"
         ? [["divide", [st.from, st.by]], ["multiply", [st.known, work.answer]]]
-        : [["subtract", [st.from, st.by]], ["subtract", [st.known, work.answer]]];
+        : [["subtract", [st.from, st.by]], ["subtract", [st.known, work.answer]], ["add", [work.answer, st.total]]];
     }
     case "drop-zeros":
       return [["divide", [st.from, st.by]], ["divide", [st.toFrom, st.toBy]]];

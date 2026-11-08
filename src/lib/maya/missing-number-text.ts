@@ -38,7 +38,7 @@ export function tryText(t: Trial, value: number): string | null {
  * line fits a 25-word turn with 4-digit numbers said in words.
  */
 export function bracketText(t: Trial): string {
-  return tryText(t, t.value > 1 ? t.value - 1 : t.value + 1) ?? "";
+  return tryText(t, t.value > 1 ? t.value - 1 : t.value + 1) ?? ""; // trial-factor.ts shownTry: the same try
 }
 
 /** A missing-number step in words, for a board, a voice and the easier example. The try step says the number. */

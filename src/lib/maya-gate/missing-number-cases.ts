@@ -89,7 +89,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
   {
     // J06 (#698 practice): a right try in the child's own words is credited once, said back, and Maya moves on.
     id: "MN2c",
-    title: "236 × ? = 1416, '236 times 6 is 1416': the try step is heard on the whole turn and said back without the number (it is the answer), then the final answer is asked and 6 accepted",
+    title: "236 × ? = 1416, '236 times 6 is 1416': the try step is heard on the whole turn and said back without the number (it is the answer), then 'So what is the missing number?' and 6 accepted",
     fixture: "M_TRY",
     status: "passing",
     steps: [
@@ -101,7 +101,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
-      outputs: [{ mayaTurn: 1, lines: [variants(trial.rightStep("try"), "trial.right"), variants(trial.help("result"), "invite.result")] }],
+      outputs: [{ mayaTurn: 1, lines: [variants(trial.rightStep("try"), "trial.right"), variants(trial.help("result"), "invite.result.try")] }],
       never: ["give_answer", "example_step"],
     },
   },
@@ -300,6 +300,94 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
       never: ["give_answer", "redirect"],
     },
+  },
+  {
+    // Re-review P1: Maya's own estimate hint (trial.round) leads to the child's estimate; it is the question's math.
+    id: "MN7",
+    title: "236 × ? = 1416, after the rounding hint, '200 times 7 is 1400.': in scope, 7 is multiplied out (too big), then 6 is accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("200 times 7 is 1400.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "7" }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", highestHint: 2 },
+      acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 3, lines: [trial.notYet("try").filter((o) => o.slots.heard === "7").flatMap((o) => o.texts)] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    id: "MN7b",
+    title: "236 × ? = 1416, after the rounding hint, '1416 divided by 200 is 7.': in scope, 7 is multiplied out (too big), then 6 is accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("1416 divided by 200 is 7.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "7" }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", highestHint: 2 },
+      acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 3, lines: [trial.notYet("try").filter((o) => o.slots.heard === "7").flatMap((o) => o.texts)] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // Re-review P2b: H3 shows the try next to the answer; the child saying it back is a copy, not a miss, so no answer is given.
+    id: "MN2f",
+    title: "236 × ? = 1416, after H3 shows '236 × 5 = 1180. That is less than 1416.', the child says it back: a copy, answered with 'try a bigger number', never the answer; then 6 is accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("236 times 5 is 1180.", { answers: [[5, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "5" }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 4, lines: [trial.notYet("try").filter((o) => o.slots.heard === "5").flatMap((o) => o.texts)] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // Re-review P2a: adding back is a check of a subtraction's answer, the question's own math.
+    id: "MN6b",
+    title: "9000 − ? = 3000, 'I got 6000.' is accepted, and '6000 plus 3000 is 9000.' is a check of it, not an outside request",
+    fixture: "M_SUBTRACT",
+    status: "passing",
+    steps: [
+      child("I got 6000.", { start: "has_work", answers: [[6000, "result", "right"]] }),
+      child("6000 plus 3000 is 9000.", undefined, [{ act: "ask_write", understanding: "uncertain" }]),
+      child("I wrote it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], counts: { refusals: 0 }, never: ["give_answer", "redirect"] },
+  },
+  {
+    id: "MN6c",
+    title: "9000 − ? = 3000, 'I got 6000.' is accepted, and '3000 plus 6000 is 9000.' is a check of it, not an outside request",
+    fixture: "M_SUBTRACT",
+    status: "passing",
+    steps: [
+      child("I got 6000.", { start: "has_work", answers: [[6000, "result", "right"]] }),
+      child("3000 plus 6000 is 9000.", undefined, [{ act: "ask_write", understanding: "uncertain" }]),
+      child("I wrote it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], counts: { refusals: 0 }, never: ["give_answer", "redirect"] },
   },
   {
     id: "MN3",

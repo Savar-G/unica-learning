@@ -23,7 +23,7 @@ import {
 } from "@/lib/question-package";
 import { simplestWords, teachSteps } from "./fractions";
 import { frameInvite, frameLead, framedLines, frameWhy, MISSING_TEMPLATES, type FrameState, type FramedLines } from "./missing-number";
-import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
+import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_RESULT_KEY, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -860,7 +860,9 @@ export function packageLines(pkg: OperationPackage) {
      * has one line, an H0 invite to put the whole answer together (#389).
      */
     help: (id: string, framing: FrameState = "due", compact = false): LineOffer[] => {
-      if (id === "result") return [offer("step.invite", "invite.result", { expr: solved }, { slots: { step: "result" }, level: 0 })];
+      // On the try path the final step asks for the number (J06): the child has the try, not a division to do.
+      if (id === "result") return [framed?.trial ? offer("step.invite", TRIAL_RESULT_KEY, {}, { slots: { step: "result" }, level: 0 })
+        : offer("step.invite", "invite.result", { expr: solved }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
       return step ? stepLines(pkg, step, framing, compact) : [];
     },
