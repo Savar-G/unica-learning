@@ -103,6 +103,8 @@ type AnswerNulls = "p_misconception" | "p_read_aloud_count" | "p_read_aloud_at_m
 type NullArgs = KnownArgs<{
   // Saved-preview reads send no new payload or hash.
   workbook_preview_command: "p_payload" | "p_hash";
+  // A Book 1 baseline read sends no payload or hash.
+  workbook_book1_baseline_command: "p_payload" | "p_hash";
   // A first recovery page has no cursor; delivery-only inactivity has no receipt.
   list_workbook_scan_recovery_books: "p_after";
   propose_workbook_scan_inactivity: "p_activity";

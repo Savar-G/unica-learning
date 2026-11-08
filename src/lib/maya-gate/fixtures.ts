@@ -5,13 +5,17 @@
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
 // not teach yet (equivalent fractions, C36b). `M_DIVIDE`, `M_TRY` and `M_SUBTRACT` are missing numbers (Wave A),
 // made by Maya's session adapter from synthetic printed packages and checked by Maya's check (mayaPackageCheck).
+// `EV_TWO`, `EV_STORY` and `EV_MISSING` are evaluate questions (Wave A, A2):
+// a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
+// numbers, in the shapes of the workbook's multi-step templates. `EV_ADD_FIRST` has an addition part that is not last:
+// (47 + 38) × 3 (review of #734).
 import { mayaPackageCheck } from "@/lib/maya";
 import { deriveMissingNumber } from "@/lib/maya-teaching/missing-number";
 import { printedMissing, type PrintedMissing } from "@/lib/maya-teaching/missing-number-fixtures";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "EV_ADD_FIRST" | OneStepFixtureId | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT";
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -129,6 +133,47 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     level: 17,
     wrong: [{ value: frac(11, 12), cause: "F9", description: "Adds the same number to the top and the bottom", step: null }],
     easier: { text: "1/2 = ?/4", operation: { kind: "fraction-equivalent", operands: [frac(1, 2)], denominator: 4 }, answer: frac(2, 4) },
+  }),
+  // Evaluate (Wave A, A2): each part in the order of operations, with an easier example of the same shape.
+  EV_TWO: fixture({
+    id: "gate-EV-7x640+7x30",
+    text: "What is 7 × 640 + 7 × 30?",
+    operation: { kind: "evaluate", operands: ["7 × 640 + 7 × 30"] },
+    answer: num(4690),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(4480), cause: "stops-early", description: "Works out only the first part", step: null }],
+    easier: { text: "2 × 40 + 2 × 5 = ?", operation: { kind: "evaluate", operands: ["2 × 40 + 2 × 5"] }, answer: num(90) },
+  }),
+  EV_STORY: fixture({
+    id: "gate-EV-4x260-590",
+    text: "A shop has 4 boxes with 260 beads in each. It sells 590 beads. How many beads does it have now?",
+    operation: { kind: "evaluate", operands: ["4 × 260 − 590"] },
+    answer: num(450),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(1630), cause: "wrong-operation", description: "Adds the beads sold", step: null }],
+    easier: { text: "3 × 20 − 16 = ?", operation: { kind: "evaluate", operands: ["3 × 20 − 16"] }, answer: num(44) },
+  }),
+  EV_MISSING: fixture({
+    id: "gate-EV-8x?=7360-400",
+    text: "8 × ? = 7360 − 400",
+    operation: { kind: "evaluate", operands: ["(7360 − 400) ÷ 8"] },
+    answer: num(870),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(6960), cause: "stops-early", description: "Works out the other side and stops", step: null }],
+    easier: { text: "(20 − 5) ÷ 3 = ?", operation: { kind: "evaluate", operands: ["(20 − 5) ÷ 3"] }, answer: num(5) },
+  }),
+  EV_ADD_FIRST: fixture({
+    id: "gate-EV-(47+38)x3",
+    text: "What is (47 + 38) × 3?",
+    operation: { kind: "evaluate", operands: ["(47 + 38) × 3"] },
+    answer: num(255),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(161), cause: "O-order", description: "Multiplies before working inside the brackets", step: null }],
+    easier: { text: "(2 + 4) × 2 = ?", operation: { kind: "evaluate", operands: ["(2 + 4) × 2"] }, answer: num(12) },
   }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },

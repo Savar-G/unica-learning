@@ -13,7 +13,7 @@ let host: HTMLDivElement, root: Root, calls: { path: string; init: RequestInit }
 const item = { number: 1, itemId: "original", version: 2, state: "scored" as const, result: "wrong" as const,
   readAnswerText: "56", canChange: true, evidencePhoto: "photo", photoAvailable: false, actor: "system" as const, at: "2026-11-05T00:00:00Z", label: "Wrong" };
 const page: ReturnType<typeof markingPageView> & { photoAvailable: boolean } = { items: [item], photoAvailable: false,
-  completion: { status: "complete", total: 1, finished: 1, items: [] }, counts: { scored: 1, unscored: 0, parentChecks: 0, pending: 0 }, solutionsAvailable: true };
+  completion: { status: "complete", total: 1, finished: 1, items: [] }, counts: { scored: 1, unscored: 0, teamChecks: 0, pending: 0 }, solutionsAvailable: true };
 const click = async (text: string) => { const button = [...host.querySelectorAll("button")].find((b) => b.textContent === text); expect(button).toBeDefined(); await act(async () => button!.click()); };
 const show = async (result = page, parent?: string) => { await act(async () => root.render(createElement(ScanMarkingResults, { result, photo: "photo", parent }))); };
 beforeEach(() => {
@@ -32,9 +32,13 @@ it.each(["Right", "Wrong", "Blank"])("expired saved marks expose explicit %s thr
   expect(JSON.parse(String(calls[0].init.body))).toEqual({ itemId: "original", version: 2, result: label.toLowerCase() });
   expect(host.textContent).toContain("Your mark is saved."); expect(host.textContent).toContain("We read: 56");
 });
-it("a pending check has no selected result and an unscored observation has no score controls", async () => {
-  await show({ ...page, items: [{ ...item, state: "pending", result: null, label: "Please check this answer" }] });
-  await click("Check this answer"); expect(host.querySelector('[aria-pressed="true"], :checked')).toBeNull(); expect(calls).toHaveLength(0);
+it("an answer with no mark yet has no control and asks nothing; an unscored observation has no score controls (#715)", async () => {
+  for (const label of ["Not marked yet", "Our team is checking this answer."]) {
+    // Even an old projection that still says canChange shows no judging control for an answer with no result.
+    await show({ ...page, completion: { ...page.completion, status: "incomplete" }, items: [{ ...item, state: "pending", result: null, label }] });
+    expect(host.querySelector("button")).toBeNull(); expect(host.textContent).toContain(label);
+    expect(host.textContent).not.toMatch(/check this answer|please check/i); expect(calls).toHaveLength(0);
+  }
   await show({ ...page, items: [{ ...item, state: "unscored", result: null, canChange: false, label: "Not scored" }] });
   expect(host.querySelector("button")).toBeNull();
 });
@@ -59,12 +63,25 @@ it("a retake review shows the canonical evidence crop instead of the newer photo
   await click("Blank"); expect(calls[0].path).toBe("/api/account/scans/photo/marking");
 });
 
-it("a delayed parent review cannot update the replacement account or emit its completion event", async () => {
-  const pending = { ...page, completion: { ...page.completion, status: "incomplete" as const }, items: [{ ...item, state: "pending" as const, result: null, label: "Please check this answer" }] };
+it("a delayed parent change cannot update the replacement account or emit its completion event", async () => {
+  const pending = { ...page, completion: { ...page.completion, status: "incomplete" as const } };
   let resume!: (response: Response) => void; vi.stubGlobal("fetch", () => new Promise<Response>((resolve) => { resume = resolve; }));
-  await show(pending, "old-parent"); await click("Check this answer"); await click("Right");
+  await show(pending, "old-parent"); await click("Change this mark"); await click("Right");
   await act(async () => context.auth?.("SIGNED_IN", { user: { id: "new-parent" } }));
   await show({ ...page, items: [{ ...item, version: 100, label: "New account result" }] }, "new-parent");
   await act(async () => resume(answer));
   expect(host.textContent).toContain("New account result"); expect(host.textContent).not.toContain("Your mark is saved"); expect(context.refresh).not.toHaveBeenCalled(); expect(context.events).toEqual([]);
+});
+
+it("a Wrong team mark of an answer the AI read, on a complete page, offers Explain; with no reading it does not (#715)", async () => {
+  const team = { ...item, state: "parent-checked" as const, actor: "admin" as const, result: "wrong" as const, label: "Wrong", readAnswerText: "56" };
+  await show({ ...page, items: [team] });
+  expect(host.textContent).toContain("Our team");
+  expect([...host.querySelectorAll("button")].some((b) => b.textContent?.includes("Explain this problem"))).toBe(true);
+  for (const readAnswerText of [null, "", "   "]) {
+    await show({ ...page, items: [{ ...team, readAnswerText }] });
+    expect(host.textContent).not.toContain("Explain this problem");
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Change this mark"]);
+  }
+  expect(calls).toHaveLength(0);
 });

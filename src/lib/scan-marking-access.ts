@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
+import { childPlanAccess as sharedChildPlanAccess } from "@/lib/plan-access";
 import { markedFamily } from "@/lib/scan-pages-access";
 import { isUuid } from "@/lib/workbook-content";
 
@@ -23,9 +24,8 @@ export type ChildPlanAccessDeps = { db?: SupabaseClient<Database> | null; now?: 
 export type ChildPlanAccess = (input: { parentId: string; childId: string }, deps?: ChildPlanAccessDeps) => Promise<{ open: boolean; reason: ChildPlanReason }>;
 const PLAN_REASONS: readonly ChildPlanReason[] = ["open", "ending_until_end", "no_plan", "ended", "payment_failed", "paused", "unknown", "read_failed"];
 
-// TODO(plan-access): replace with `childPlanAccess` from `@/lib/plan-access` (PR #705) once the dashboard's gate is on main.
-// Until then no real family's plan reads as running, so families mode admits only test families and admins.
-export const childPlanAccess: ChildPlanAccess = async () => ({ open: false, reason: "unknown" });
+// The shared stored child-plan gate (PR #705). In families mode a real family is admitted only for a child whose plan it opens.
+export const childPlanAccess: ChildPlanAccess = sharedChildPlanAccess;
 
 /** Where the work happens: the child named by the page, or the child that owns the photo. */
 export type MarkingScope = Readonly<{ child: string }> | Readonly<{ photo: string }>;

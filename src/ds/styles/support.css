@@ -51,6 +51,11 @@
 .support-page .contact-sent p { margin: 4px 0 0; color: var(--ink-2); }
 .support-page .contact-sent .t { margin: 0; font-weight: 500; color: var(--ink); }
 .acct-alert { margin: 0; padding: 12px 14px; border-radius: 6px; background: var(--card, #f6f4ef); }
+/* The closed plan note: first under the page's heading, on a page with no dashboard frame. */
+.support-page .plan-closed-note { margin-top: 20px; }
+.support-page .plan-closed-note p { margin: 0; }
+.support-page .plan-closed-note p + p { margin-top: 10px; }
+.support-page .plan-closed-note + .acct-alert:not(.acct-saved) { margin-top: 12px; }
 .acct-card { padding: 22px; border: 1px solid var(--line); border-radius: 10px; }
 .support-page .acct-card h2 { margin: 0 0 8px; font-size: 21px; }
 .acct-phone { margin: 24px 0; background: var(--card, #f6f4ef); border: 0; }

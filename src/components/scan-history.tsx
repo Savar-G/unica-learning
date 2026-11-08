@@ -74,13 +74,13 @@ export function ScanHistoryView({ listing = null, state, status = "all", workboo
     <h2>Page history</h2>
     <p>Saved results stay here after a photo expires. A later scan does not change an earlier workbook plan.</p>
     {state !== "unavailable" && <label>Show <select value={status} onChange={event => onStatus?.(event.target.value)}>
-      <option value="all">All pages</option><option value="review">Answers to check</option><option value="failed">Pages that could not be checked</option>
+      <option value="all">All pages</option><option value="review">Our team is checking</option><option value="failed">Pages we could not mark</option>
     </select></label>}
     {state === "unavailable" ? <p role="status">Page history is not available here.</p>
       : state === "failed" ? <p role="alert">We cannot load page history now. Refresh this page to try again.</p>
         : state === "loading" || !listing ? <p role="status">Loading page history...</p> : <>
           {pages.length === 0 ? <p role="status">No saved page results{workbookScoped ? " in this workbook" : ""}{status === "all" ? "" : " for this filter"}.</p>
-            : <p role="status">Showing {pages.length} printed {pages.length === 1 ? "page" : "pages"}. {listing.counts.review ?? 0} {(listing.counts.review ?? 0) === 1 ? "needs" : "need"} a parent check.</p>}
+            : <p role="status">Showing {pages.length} printed {pages.length === 1 ? "page" : "pages"}. {(listing.counts.review ?? 0) > 0 && <>Our team is checking {listing.counts.review === 1 ? "1 page" : `${listing.counts.review} pages`}.</>}</p>}
           {[...groups.values()].map(group => <section key={`${group[0].workbookId}:${group[0].day}`} className="scan-group">
             <h3>Workbook {group[0].book} · {group[0].day}</h3>
             <ul>{group.map(page => <li key={page.id}>
@@ -90,8 +90,8 @@ export function ScanHistoryView({ listing = null, state, status = "all", workboo
               {page.counts.unscored > 0 && <> · {page.counts.unscored} not scored</>}
               {page.photo && !page.photoAvailable && <span> · Photo no longer available</span>}
               {page.photo && <Link className="scan-link" prefetch={false} href={`/account/scan/results/${page.photo}`}
-                aria-label={`${page.status === "review" ? "Continue checking" : "View page results"} for workbook ${page.book}, ${page.day}, page ${page.pageNumber}`}>
-                {page.status === "review" ? "Continue checking" : "View page results"}</Link>}
+                aria-label={`View page results for workbook ${page.book}, ${page.day}, page ${page.pageNumber}`}>
+                View page results</Link>}
             </li>)}</ul>
           </section>)}
           {hasMore && <button className="btn ghost" type="button" onClick={onNext}>More pages</button>}

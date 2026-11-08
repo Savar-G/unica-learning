@@ -4,7 +4,7 @@ import type { RenderProblem } from "@/lib/workbook-render";
 import { workbookCommentRoute } from "@/lib/workbook-comment-route";
 import { pageContentFingerprint, storedPrintContract } from "@/lib/workbook-print-contract";
 import { expectedItems } from "@/lib/scan-observation";
-import { markingRegions, reviewRegions } from "@/lib/scan-marking-regions";
+import { markingRegions } from "@/lib/scan-marking-regions";
 import type { GeneratedPage } from "@/lib/workbook-generator";
 
 export interface LayoutResolution {
@@ -59,7 +59,7 @@ function protectedPage(workbookId: string, source: GeneratedPage, after: DraftRe
     && JSON.stringify(source.questions.map(q => q.number)) === JSON.stringify(after.questions.map(q => q.number));
 }
 
-/** A layout correction must not remove the regions used by the existing marking and method-review paths. */
+/** A layout correction must not remove the regions used by the existing marking paths. */
 export function layoutCoverageProblem(workbookId: string, source: Pick<GeneratedPage, "number" | "questions">, rendered: DraftRendering["pages"][number]): string | null {
   const expected = expectedItems({ workbookId, printedRevision: "layout-check", pageId: `page-${source.number}`,
     questions: source.questions.map(q => ({ number: q.number, package: q.package, teaching: null })) });
@@ -67,8 +67,7 @@ export function layoutCoverageProblem(workbookId: string, source: Pick<Generated
   for (const e of expected) {
     const original = source.questions.find(q => q.number === e.number), printed = rendered.questions.find(q => q.number === e.number);
     const question = { package: original?.package ?? null, regions: printed?.regions ?? null };
-    if (!printed || e.method === "unavailable" || e.method === "code" && !markingRegions(question).length
-      || e.review === "two-ways" && !reviewRegions(question).length) return `Question ${e.number} has no complete marking or method-review region. This comment stays open.`;
+    if (!printed || e.method === "unavailable" || e.method === "code" && !markingRegions(question).length) return `Question ${e.number} has no complete marking region. This comment stays open.`;
   }
   return null;
 }

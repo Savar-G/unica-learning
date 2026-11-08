@@ -160,14 +160,14 @@ describe("a family whose dashboard is closed, on the real plan gate", () => {
   it("serves a started plan with no row yet its page, with no closed note", async () => {
     state.dashboard = null; state.starts = [{ parent_id: "p1", state: "started" }];
     const out = renderToStaticMarkup(await settings());
-    expect(out).not.toContain("Scan pages and Maya are closed");
+    expect(out).not.toContain("Scan pages, Maya and your dashboard are closed");
     expect(out).toContain("Delete your family&#x27;s account");
   });
 
   it("shows a paying family no closed note when its dashboard read failed", async () => {
     state.dashboard = null; state.plans = [row("paying")];
     const out = renderToStaticMarkup(await settings());
-    expect(out).not.toContain("Scan pages and Maya are closed");
+    expect(out).not.toContain("Scan pages, Maya and your dashboard are closed");
     expect(out).toContain("Delete your family&#x27;s account");
   });
 });

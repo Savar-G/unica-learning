@@ -108,7 +108,8 @@ describe("canonical retained history through public reading and preview", () => 
     const f = historyFixture(10, 10);
     f.input.snapshot.priorMastery.passedSteps = 0;
     f.planning.passed = { ...f.planning.passed, [f.input.curriculum.skill.id]: 0 };
-    expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, availability: "unavailable", reason: "invalid-record" });
+    // #472 names this refusal: a printed later step proves no earlier mastery. It was reported as invalid-record before.
+    expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, availability: "unavailable", reason: "mastery-gap" });
   });
   it.each((["outside-days", "outside-sample"] as const).flatMap(reason =>
     (["right", "wrong"] as const).flatMap(result => [0, 1, 2].map(version => ({ reason, result, version }))),
@@ -181,6 +182,28 @@ describe("canonical retained history through public reading and preview", () => 
     f.input.proof.corrections = { reference: "synthetic-complete-empty-corrections", completeThrough: f.input.snapshot.cutoff, rows: [] };
     const past = complete(await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning));
     expect(past.preview.decision.status).toBe("insufficient-evidence");
+  });
+
+  it("reads our team's mark of an unsure item, then a parent's later change, as the journal's readings (#715)", async () => {
+    const f = historyFixture(10, 8), m = f.marks[8];
+    const o = m.observation as unknown as Observation;
+    m.observation = toJson({ ...o, state: "pending", result: null, certainty: "uncertain", readAnswerText: null, regions: [], help: "unknown" });
+    m.original_event = null; m.event_id = null;
+    f.parentChange(8, "wrong", "2026-02-01T12:00:00.000Z", "admin");
+    let r = complete(await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning));
+    let i = r.preview.decision.items.find(i => i.identity.itemId === "item-8")!;
+    expect(i.effective!.observation).toMatchObject({ state: "parent-checked", actor: "admin", result: "wrong" });
+    f.parentChange(8, "right", "2026-02-02T12:00:00.000Z");
+    r = complete(await previewNextWorkbookPlanFromHistory(f.store, f.input, f.planning));
+    i = r.preview.decision.items.find(i => i.identity.itemId === "item-8")!;
+    expect(i.effective!.observation).toMatchObject({ state: "parent-checked", actor: "parent", result: "right" });
+    expect(r.retained.proof.references.filter(p => p.source === "scan_mark_changes" && !p.reference.endsWith(":previous"))).toHaveLength(2);
+  });
+
+  it("refuses a journal row whose actor is not a parent or our team", async () => {
+    const f = historyFixture(10, 8); f.parentChange(8, "right");
+    (f.changes[0] as { actor: string }).actor = "system";
+    expect(await readWorkbookProgressHistory(f.store, f.input)).toMatchObject({ ok: false, reason: "invalid-record" });
   });
 
   it("does not turn an automatic post-cutoff transition into a proved past pending state", async () => {
