@@ -126,6 +126,22 @@ An equal-form final answer must be committed before it completes any work step o
 
 The scripted gate checks these outputs in C38, C38b and C38c. It compares each complete turn exactly against its required code-line variants. The acceptance and writing lines must both use 14/16. The H1 simplification hint must use the `point.simplify` variants filled with 14 and 16. Extra text, substituted lines and changed spacing cannot pass. The gate also reads the strips from each saved turn. Controller sabotage tests cover changed answers, a missing equal-answer explanation, a wrong writing instruction, a repeated explanation instead of an H1 hint, and wrong strip values or placement. Separate sabotage tests check an early final answer and acceptance of a wrong answer. See `docs/maya-gate.md`. These checks use a fake model. A real-model run for fraction teaching and the AI review remains a separate check.
 
+## Multi-step expressions (`evaluate`, Maya coverage Wave A)
+
+Maya teaches an `evaluate` question part by part, in the order of operations (`src/lib/maya/evaluate.ts`). The package's checked worked steps give the parts: one `operate` step each ("9 × 880 + 9 × 40" has 9 × 880, then 9 × 40, then 7920 + 360).
+
+**Steps.** The child's steps are each part's columns, then the part ("e1.r1-ones" to "e1.r1-thousands", then "e1"), then the next part. The last part has no step of its own: its result is the question's answer ("result"). Code works a part's columns with `workedSteps` of its one-step operation (add, subtract, multiply or divide; a product puts the number with more digits that are not 0 on top). A right result for a part counts its columns done, and its columns done count the part done (`closeParts`). Maya never says a column is right when the child gave only its part's result (`partCovered`).
+
+**Lines.** The first column of a part says the part first, at H0: why it comes now, in code's words ("Multiply before you add.", "Work inside the brackets first."), then its question ("So start with 9 × 880. What is it?"). The H1 `step.order` line says the reason again for a child who works another part first. The other lines of a part are the existing column lines and the existing board columns (`part.columns.<part>`, offered only for the part the child is on, never a later part). After the answer, `check.explain` asks about a part, never one column of a part. Every part wording is new and waits for Savar's approval (`src/lib/maya/evaluate-lines.ts`).
+
+**Hearing a part.** A part's result counts only from a whole-turn template, while the child is on that part: the result alone or in the child's own words ("7920", "It's 7920", "I got 7920"), or the part's own equation ("9 times 880 is 7920"; either order for + and ×). A part has no confirm question, so a yes credits no part.
+
+**A missing number.** When the printed text is exactly "a × ? = X", "? × a = X" or "a − ? = X", and the stored expression is "(X) ÷ a" or "a − (X)", Maya names the question as the page prints it and works the side with only numbers first. The last part finds the missing number: "Now we have 9 × ? = 7650. To find the missing number, divide: 7650 ÷ 9." Any other text with a ? standing alone is held.
+
+**The easier example** is the same shape as the question: the same signs and brackets. When the stored example is not (the generator stores "1 + 1"), code makes one in a fixed order (each number its first digit, or a little more or less, never more than it was) and checks it with the package check. The stored package does not change.
+
+**Held.** Unknowns, decimals, negative numbers, a part whose one-step operation code does not check by default (a number above 9999), and a divide part with a 3-digit divisor. `partMethod` in `evaluate.ts` is the seam for the try-factor path of a 3-digit divisor.
+
 ## Free talk (D-197)
 
 With `freeTalk` on (the admin demo, the practice suite, this command line), the model may write its own words (`{ "talk": ... }`) in a turn with no math line. Math, answers, hints and steps never come from them. Each piece is said only when both checks pass:

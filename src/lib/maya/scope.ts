@@ -3,6 +3,7 @@
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
 import { completeExpression, readNumbers } from "./numbers";
+import { partProblems } from "./evaluate";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
@@ -56,9 +57,11 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
       Object.values(v).forEach(collect);
     }
   };
-  for (const p of [pkg, ...(exampleChosen ? [pkg.easierExample] : [])]) {
+  const problems = [pkg, ...(exampleChosen ? [pkg.easierExample] : [])];
+  // An evaluate question's parts are one-step problems of their own (evaluate.ts).
+  for (const p of [...problems, ...problems.flatMap((x) => partProblems(x.operation))]) {
     const op = family(p.operation);
-    collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : pkg.easierExample.answer);
+    collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : p.answer);
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
     const placeTerms = operands.flatMap(v => {

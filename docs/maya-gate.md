@@ -11,7 +11,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 
 | File | What it holds |
 |---|---|
-| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). |
+| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `EV_TWO`, `EV_STORY` and `EV_MISSING`: evaluate questions (Wave A, A2): 7 × 640 + 7 × 30, a story's 4 × 260 − 590, and 8 × ? = 7360 − 400 stored as (7360 − 400) ÷ 8. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -301,6 +301,13 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P22 | A | passing | 'I'm done!' once 66 stands: a warm close, with no request to write or explain | checked controller behavior | |
 | P13 | A | passing | 'I don't know about the ten.': a child who says they are stuck gets one level more help, though the model's reading left the request out | checked controller behavior | |
 | P14 | A | passing | An ask to write with no understanding field is said as it is, read as uncertain | checked controller behavior | |
+| EV01 | EV_TWO | passing | Evaluate, two parts: 7 × 640 + 7 × 30, part 1 given before Maya asks: acknowledged, never asked again, then part 2 (J06) | solved, independent | |
+| EV02 | EV_TWO | passing | Evaluate, stuck on a part: 7 × 30 in its own columns with the existing multiply lines and board columns | solved, hint | |
+| EV03 | EV_MISSING | passing | Evaluate, a missing number: 8 × ? = 7360 − 400, the other side first, then divide to find it | solved, independent | |
+| EV04 | EV_TWO | passing | Evaluate, the wrong part first (640 + 7): why 7 × 640 comes first, from code's order (step.order) | solved, hint | |
+| EV05 | EV_STORY | passing | Evaluate, a story's two operations (4 × 260 − 590): cannot start, the same-shape easier example, then the parts | solved, worked_example | |
+| EV06 | EV_TWO | passing | Evaluate, a part's result said with doubt ('Is it 4480?'): one confirm, then acknowledged and on to the next part (J06) | solved, independent | |
+| EV07 | EV_TWO | passing | Evaluate, 'Why do I multiply first?' on the current part: code's reason (step.order) before the part goes on (J06) | solved, hint | |
 
 | P5 | A | passing | Two numeric sentences require confirmation | checked answer retained | |
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |
