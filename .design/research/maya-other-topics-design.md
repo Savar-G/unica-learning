@@ -38,6 +38,13 @@ question and the fixed workbook opening, and with the easier example's intro:
 - The framed example intro is its own turn (as for a 25-word grade): with the topic sentence, the intro and the first
   example step together pass 45 words. Every framed line fits a 25-word turn (tested for the longest shape names).
 
+- Lessons from review: the fixed workbook opening has no room for the topic sentence in a 25-word turn, so it never
+  carries it. While no turn of Maya's has said the sentence, a guide turn offers only the framed question line
+  (`frameOwed`, session.ts `rawOffersFor`), so the first step line carries it at any hint level ("I'm stuck." first).
+  The die's counted numbers ("2, 4, 6 and 8") are checked scope numbers (`topicNumbers`, scope.ts `allowedMath`), so
+  a child who counts stays on topic. Full-sentence gate cases: "8 divided by 2 is 4.", "6 plus 5 is 11.", the counted
+  sentence.
+
 ### Waits on A2: evaluate
 
 - Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "A rectangle has 2 lengths
@@ -78,7 +85,9 @@ needs: lines for `count-on` (5 to 8 wordings, Savar's approval), step answers as
   `packageLines` when `topicFrame` gives a sentence. The fixed workbook opening (`workbookOpening`) never carries it:
   with it the opening passes a 25-word turn (review of #731); the question and assess lines say it next. Every other question's lines are unchanged
   (tested).
-- `src/lib/maya/session.ts`: one condition in `rawOffersFor`, `example_step`: a framed intro is its own turn.
+- `src/lib/maya/session.ts`: one condition in `rawOffersFor`, `example_step` (a framed intro is its own turn), and
+  one line at the start of its `guide` case (the owed topic sentence first).
+- `src/lib/maya/scope.ts`: one line in `allowedMath` (the die's counted numbers).
 - No change to `question-package.ts`, `fractions.ts`, the generator or `checkQuestionPackage`. The derivers need no
   wider limits. They return the package without `operationSource`: A1's adapter marks it.
 
@@ -92,7 +101,8 @@ template id is not theirs, so the order does not matter.
 
 - Gate (`src/lib/maya-gate`, fixtures `DIE` and `SHAPES`, synthetic): OT1 cannot start (framed example), OT2 and OT5 the
   answer in the child's own words (one confirm, then accepted, no re-teaching: J06), OT3 "why divide by 2?" answered
-  with the topic sentence, OT4 a wrong sum guided.
+  with the topic sentence, OT4 a wrong sum guided, OT6 and OT8 "I'm stuck." after a hello-only opening (the first guide
+  says the topic sentence), OT7 a counted full sentence.
 - Practice (`src/lib/maya-practice/cases.ts`): OT4 and OT5 on `SHAPES` (6 + 5 = 11). A die count has a one-digit answer,
   which a practice case cannot keep behind a stage, so the gate covers it.
 

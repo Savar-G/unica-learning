@@ -194,6 +194,18 @@ describe("a workbook-confirmed call at grade 3 (review of #731)", () => {
     for (const text of [...opening.say, ...next.say]) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
   });
 
+  it.each(packages)("%s: 'I'm stuck.' after the fixed opening gets the topic sentence first", async (_, pkg) => {
+    const model = scenarioModel();
+    const s = createTextSession({ callId: "grade-3-stuck", package: pkg!, grade: 3, confirmWorkbook: true, model, clock: () => 1000 });
+    model.next([{ act: "open" }], undefined);
+    await s.start();
+    model.next([{ act: "guide", level: 0, lines: ["question.problem"] }], { start: "has_work" });
+    const out = await s.child("I'm stuck.");
+    const frame = topicFrame(pkg!.text, pkg!.operation!)!;
+    expect(out.say.join(" ")).toContain(frame);
+    for (const text of out.say) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
+  });
+
   it("perimeter: held until A2, so the call ends at once in the held lines only", async () => {
     const model = scenarioModel();
     const s = createTextSession({ callId: "grade-3-held", package: derivePerimeter(perimeterPrinted(245, 126))!, grade: 3, confirmWorkbook: true, model, clock: () => 1000 });

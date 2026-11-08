@@ -46,6 +46,7 @@ import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FE
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
+import { frameOwed } from "./topic-frame";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -2691,6 +2692,8 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "try_target":
       return [...l.tryTarget(), ...l.question()];
     case "guide": {
+      // An "other-topic" question's topic sentence comes first, with the question, before any step line (topic-frame.ts).
+      if (frameOwed(pkg.text, pkg.operation, s.turns.flatMap((t) => (t.speaker === "maya" ? [t.text] : [])))) return l.question().filter((o) => o.line === "question.problem");
       // An equal fraction when the question asks for the simplest form (#407): the equal-form check for each equal
       // fraction in the child's turn (it needs code to check that one), and the final step's help to simplify it.
       const opts = readOptionsFor(pkg);

@@ -177,6 +177,9 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | OT3 | DIE | passing | "Why do we divide by 2?": answered with code's topic sentence in the question line, then solved | solved, independent | |
 | OT4 | SHAPES | passing | Lines of symmetry (6 + 5 from code's table), says 10: not accepted, guided, then 11 | solved | |
 | OT5 | SHAPES | passing | Lines of symmetry from the facts in the child's own words: one confirm, then accepted, no step repeated (J06) | solved, independent | |
+| OT6 | DIE | passing | "I'm stuck." after a hello-only opening (as a workbook call's fixed opening): the first guide is the framed question line, then "8 divided by 2 is 4." | solved | |
+| OT7 | DIE | passing | Counts in a full sentence ("2, 4, 6 and 8 are even. That's 4."): on topic (the counted numbers are checked scope numbers), one confirm, accepted | solved, independent | |
+| OT8 | SHAPES | passing | "I'm stuck." after a hello-only opening: the first guide says the shapes' facts, then "6 plus 5 is 11." | solved | |
 
 | S01 | A | passing | Pasted homework sheet: fixed workbook redirect, no teaching or board | solved after return to own question | |
 | S02 | A | passing | Same shape with different numbers: fixed workbook redirect | solved after return | |

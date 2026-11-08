@@ -30,3 +30,23 @@ export function topicFrame(text: string, operation: Operation): string | null {
   }
   return null;
 }
+
+/**
+ * The topic sentence Maya still owes on this question: its sentence while no turn of Maya's has said it yet, else null.
+ * The first step line Maya says carries it, at any hint level (brief, "Lessons from review" 2): a workbook call opens
+ * with the fixed opening, which has no room for it in a 25-word turn.
+ */
+export function frameOwed(text: string, operation: Operation, said: readonly string[]): string | null {
+  const frame = topicFrame(text, operation);
+  return frame && !said.some((t) => t.includes(frame)) ? frame : null;
+}
+
+/**
+ * The checked numbers a child may name while working a topic question, beyond the operation's own: the die's odd or
+ * even numbers, counted by code ("1, 3, 5 and 7 are odd"). For the scope check (scope.ts, "Lessons from review" 1).
+ */
+export function topicNumbers(text: string, operation: Operation): number[] {
+  const die = readDieCount(text);
+  if (!die || !same(operation, dieOperation(die.last))) return [];
+  return Array.from({ length: die.last }, (_, i) => i + 1).filter((x) => (x % 2 === 1) === (die.kind === "odd"));
+}

@@ -26,6 +26,7 @@ const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.fil
 const fractionLines = packageLines(FIXTURES.D as OperationPackage);
 const simplestLines = packageLines(FIXTURES.D_SIMPLEST as OperationPackage);
 const dieLines = packageLines(FIXTURES.DIE as OperationPackage);
+const shapeLines = packageLines(FIXTURES.SHAPES as OperationPackage);
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
 /** The answer to a free-talk turn: back to the question, solved. */
@@ -266,6 +267,53 @@ export const BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
       counts: { confirmations: 1, fallbacks: 0 },
       never: ["example_step", "guide"],
+    },
+  },
+  // Lessons from review 1 and 2: the topic sentence comes with the first step line when the opening did not say it (a
+  // hello-only opening, as a workbook call's fixed opening), and a child's counted numbers stay on topic.
+  {
+    id: "OT6", title: "Die count, 'I'm stuck.' after a hello-only opening: the first guide says the topic sentence, then solved", fixture: "DIE", status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("8 divided by 2 is 4.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(dieLines.question(), "question.framed")] }],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "OT7", title: "Die count by counting in a full sentence ('2, 4, 6 and 8 are even. That's 4.'): on topic, confirmed once, accepted", fixture: "DIE", status: "passing",
+    steps: [
+      child("2, 4, 6 and 8 are even. That's 4.", { start: "has_work", answers: [[4, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "4" } }]),
+      child("Yes.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { confirmations: 1, fallbacks: 0 },
+      never: ["redirect", "guide", "example_step"],
+    },
+  },
+  {
+    id: "OT8", title: "Lines of symmetry, 'I'm stuck.' after a hello-only opening: the first guide says the facts, then '6 plus 5 is 11.'", fixture: "SHAPES", status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("6 plus 5 is 11.", { answers: [[11, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(shapeLines.question(), "question.framed")] }],
+      counts: { refusals: 0, fallbacks: 0 },
+      never: ["redirect"],
     },
   },
   {
