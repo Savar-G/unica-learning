@@ -320,7 +320,7 @@ describe("Sonnet and Terra side by side", () => {
   });
   it("prints a side-by-side table with no key or child data", async () => {
     const { report } = await fakeRun(), text = physicalSideBySide(report);
-    for (const row of ["Wrong marks", "Wrong marked right", "Clear unsure", "Two-ways", "Cost per page", "Latency p50", "Latency p95", "Disagreements", "Sonnet", "Terra", "AI-marked 18", "parent 0", `team-marked ${TWO_WAYS_METHOD_MARKS ? 0 : 2}`]) expect(text).toContain(row);
+    for (const row of ["Wrong marks", "Wrong marked right", "Clear unsure", "Two-ways", "Cost per page", "Latency p50", "Latency p95", "Disagreements", "Sonnet", "Terra", "AI-marked 18", "parent 0", `AI-marked 18, of which ${TWO_WAYS_METHOD_MARKS ? 0 : 2} team-marked; parent 0`]) expect(text).toContain(row);
     expect(text).not.toContain(FAKE_KEY);
   });
   it("states on its first line how many items went to the team and why", async () => {
@@ -543,7 +543,7 @@ describe("fixed 40 set in the same paid step", () => {
     expect(report.rows[0].v8).toMatchObject({ clearUnsure: 0, clear: 18 - team, clearUnsureRate: 0, clearUnsureWithTeam: team, clearWithTeam: 18, clearUnsureRateWithTeam: team / 18,
       twoWays: { items: 2, clearItems: 2, clearUnsure: team, clearUnsureRate: TWO_WAYS_METHOD_MARKS ? 0 : 1 } });
     const text = physicalFixedSideBySide(report);
-    for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219", "2W unsure", "Unsure+team", `0/${18 - team}`, `${team}/18`]) expect(text).toContain(piece);
+    for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219", "2W unsure", "Unsure+team", `0/${18 - team} 0.0%`, `${team}/18 ${(team / 18 * 100).toFixed(1)}%`, "1/219 0.5%"]) expect(text).toContain(piece);
     if (!TWO_WAYS_METHOD_MARKS) expect(text).toContain("reads 100% while the method switch is off");
     expect(text.split("\n")[0]).toBe(team ? `${team} items went to the team: two-ways method marking is off.` : "0 items went to the team.");
   });

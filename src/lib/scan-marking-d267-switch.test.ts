@@ -15,8 +15,11 @@ async function withSwitch(on: boolean) {
 }
 afterEach(() => { vi.doUnmock("@/lib/scan-marking"); vi.resetModules(); });
 
-/** One clear photo with a whole-number item and a two-ways item; the model reads the first and is unsure of the second. */
-async function score(on: boolean) {
+/**
+ * One clear photo with a whole-number item and a two-ways item; the model reads the first and is unsure of the second.
+ * `labels` replaces the truth rows' formats, to show that a label never moves an item out of the bar.
+ */
+async function score(on: boolean, labels: ComparisonFormat[] = ["whole", "two-ways"]) {
   const m = await withSwitch(on), model = m.COMPARISON_MODELS[0];
   const formats: ComparisonFormat[] = ["whole", "two-ways"];
   const questions = formats.map((format, i) => {
@@ -27,7 +30,7 @@ async function score(on: boolean) {
   const id = "synthetic-photo-0";
   const photo = { id, clear: true, image: { path: `${id}.jpg`, sha256: m.hashBytes(id), width: 1000, height: 1400, metadataFree: true },
     frame: { parentId: m.SYNTHETIC_IDS.parent, childId: m.SYNTHETIC_IDS.child, workbookId: m.SYNTHETIC_IDS.workbook, pageId: "synthetic-page-3", pageNumber: 3, printedRevision: "a".repeat(28), photo: id, ready: true, questions },
-    truth: questions.map((q, i) => ({ itemId: q.package.id, format: formats[i], result: "right", readings: [] })) } as unknown as ComparisonPhoto;
+    truth: questions.map((q, i) => ({ itemId: q.package.id, format: labels[i], result: "right", readings: [] })) } as unknown as ComparisonPhoto;
   const observations = m.expectedItems(photo.frame).map((e, i) => ({ ...m.firstObservation(e, id), ...(i === 0 ? { state: "scored", result: "right", issue: null } : { result: null, issue: "blurry" }) }));
   const evidence = m.preflightEndpoint(model, structuredClone(publicEvidence.snapshots[model.model as keyof typeof publicEvidence.snapshots]) as EndpointSnapshot, structuredClone(publicEvidence.zdr));
   const result = { run: m.hashBytes("run"), model: model.model, photo: id, status: "complete", failure: null, schemaValid: true,
@@ -48,5 +51,11 @@ describe("D-267 two-ways items follow the marking's own switch", () => {
     const { report, line } = await score(true);
     expect(report).toMatchObject({ teamItems: 0, clearUnsure: 1, clearDenominator: 2, clearUnsureWithTeam: 1, clearDenominatorWithTeam: 2, passed: false });
     expect(line).toBe("0 items went to the team.");
+  });
+  it("the page's own question decides: a whole-number item whose truth row says two-ways is still an AI item", async () => {
+    // Switch off, so only the real two-ways question goes to the team. The mislabelled whole-number item stays in the bar.
+    const { report, line } = await score(false, ["two-ways", "two-ways"]);
+    expect(report).toMatchObject({ teamItems: 1, clearUnsure: 0, clearDenominator: 1, clearDenominatorWithTeam: 2 });
+    expect(line).toBe("1 item went to the team: two-ways method marking is off.");
   });
 });

@@ -292,16 +292,17 @@ const TEAM_REASON_TEXT: Record<TeamReason, string> = { "two-ways-method-marks-of
  * D-267 counts unsure only on the items the AI is meant to mark. An item our team marks by design is not model unsure:
  * one whose method is the team's, and a two-ways item while the method rules are off. That is a temporary state while a
  * format's AI marking is off, not a way around the bar: the switch is read from the marking itself, so once
- * TWO_WAYS_METHOD_MARKS is on every two-ways item is the AI's again, in the count and the total. An item with no
- * expected item is the AI's, so a mismatch can never make the bar easier to pass. Wrong marks and wrong marked right
- * count every item.
+ * TWO_WAYS_METHOD_MARKS is on every two-ways item is the AI's again, in the count and the total. It decides only from
+ * the page's own question (its expected item), never from a truth row, so a label cannot move an item out of the bar.
+ * An item with no expected item is the AI's, so a mismatch can never make the bar easier to pass. Wrong marks and
+ * wrong marked right count every item.
  */
-export function teamReason(e: ExpectedItem | undefined, format: ComparisonFormat): TeamReason | null {
+export function teamReason(e: ExpectedItem | undefined): TeamReason | null {
   if (e === undefined) return null;
   if (e.method !== "code") return "team-method";
-  return (e.twoWays === true || format === "two-ways") && !TWO_WAYS_METHOD_MARKS ? "two-ways-method-marks-off" : null;
+  return e.twoWays === true && !TWO_WAYS_METHOD_MARKS ? "two-ways-method-marks-off" : null;
 }
-export const teamMarked = (e: ExpectedItem | undefined, format: ComparisonFormat) => teamReason(e, format) !== null;
+export const teamMarked = (e: ExpectedItem | undefined) => teamReason(e) !== null;
 export type TeamItems = { items: number; reasons: Partial<Record<TeamReason, number>> };
 /** The items of a set that go to our team, by reason. Each gate report states this on its first line. */
 export function teamItemsOf(photos: readonly ComparisonPhoto[]): TeamItems {
@@ -309,7 +310,7 @@ export function teamItemsOf(photos: readonly ComparisonPhoto[]): TeamItems {
   for (const photo of photos) {
     const items = expectedItems(photo.frame);
     for (const t of photo.truth) {
-      const reason = teamReason(items.find(e => e.identity.itemId === t.itemId), t.format);
+      const reason = teamReason(items.find(e => e.identity.itemId === t.itemId));
       if (reason) { team.items++; team.reasons[reason] = (team.reasons[reason] ?? 0) + 1; }
     }
   }
@@ -332,7 +333,7 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
   const latencies: number[] = [], providers = new Set<string>();
   const acceptedHashes = [evidence, ...history].filter(e => e.model === model.model && hashValue(endpointPolicy(e)) === hashValue(endpointPolicy(evidence))).map(hashValue);
   for (const photo of manifest.photos) {
-    const items = expectedItems(photo.frame), team = new Set(photo.truth.filter(t => teamMarked(items.find(e => e.identity.itemId === t.itemId), t.format)).map(t => t.itemId));
+    const items = expectedItems(photo.frame), team = new Set(photo.truth.filter(t => teamMarked(items.find(e => e.identity.itemId === t.itemId))).map(t => t.itemId));
     parentMethods += items.filter(e => e.method === "parent").length;
     denominator += photo.truth.length; teamItems += team.size;
     if (photo.clear) { clearDenominatorWithTeam += photo.truth.length; clearDenominator += photo.truth.length - team.size; clearTeamItems += team.size; }
