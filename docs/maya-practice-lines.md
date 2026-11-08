@@ -123,9 +123,9 @@ These are the scoped additions and replacements on the chat repair branch. The s
 | held.hello.0 | Hi, I'm Maya, an AI. |
 | held.next.0 | Want to pick another question on this page? |
 
-## Pending Savar, #698 fix round 2026-11-08
+## Approved, #698 fix round 2026-11-08
 
-Status: pending Savar. None of these wordings is approved yet. Values in braces come from the checked question package.
+Status: approved by Savar on 2026-11-08 ("approve maya lines"), exactly as worded here at d68c63c1. A wording that a later fix changes, or a new wording, needs his approval again. Values in braces come from the checked question package.
 
 ### The honest close after help alone (#735, decision (a))
 
@@ -160,11 +160,11 @@ Maya says one of these once in a call, on the accept or after the answer stands,
 
 No new wording. After Maya gave the answer, the close offers only the approved `close.together.4` "We worked on {expr} together today." (before: any `close.together` wording, such as "We finished {expr} together today."). After a shown step (H3), the close offers the approved `close.checked` wordings, such as "Your answer for {expr} is right. Bye for now!" (before: `close.solved`, such as "You worked out {expr} today!").
 
-## Pending Savar, #698 fix round 2026-11-08 (no feeling claims)
+## Approved, #698 fix round 2026-11-08 (no feeling claims)
 
-Status: pending Savar. D-253 item 18 (#605): Maya claims no feelings of her own. She is an AI. Practice run C24-r2 showed "I had fun working with you." passing the code guards and the review. The free-talk guard (`feelingClaim` in `src/lib/maya/phrases.ts`) now refuses own words that claim a feeling, and the review has the rule `feelings`. These bank phrases claimed a feeling, so each one has a new wording. Ids are the group and the phrase position in `PHRASES`, from 1. A plain acknowledgement ("I'm glad you told me") stays. Carried from PR #624.
+Status: approved by Savar on 2026-11-08 ("approve maya lines"), exactly as worded here at d68c63c1. A wording that a later fix changes, or a new wording, needs his approval again. D-253 item 18 (#605): Maya claims no feelings of her own. She is an AI. Practice run C24-r2 showed "I had fun working with you." passing the code guards and the review. The free-talk guard (`feelingClaim` in `src/lib/maya/phrases.ts`) now refuses own words that claim a feeling, and the review has the rule `feelings`. These bank phrases claimed a feeling, so each one has a new wording. Ids are the group and the phrase position in `PHRASES`, from 1. A plain acknowledgement ("I'm glad you told me") stays. Carried from PR #624.
 
-| Id or location | Old wording | New wording (pending Savar) |
+| Id or location | Old wording | New wording (approved 2026-11-08) |
 |---|---|---|
 | `encourage.8` | I love how you're not giving up, {name}. | You're not giving up, and it shows, {name}. |
 | `encourage.11` | I'm proud of how hard you're trying. | Your hard work really shows. |
@@ -203,12 +203,12 @@ Status: pending Savar. D-253 item 18 (#605): Maya claims no feelings of her own.
 | `OK_TALK` in `src/lib/maya/talk-review.ts` (a review example of good free talk, not said by code) | Aw, thanks for asking. I'm an AI helper, so I can't promise about tomorrow, but I'm happy to be here with you now. | Aw, thanks for asking. I'm an AI helper, so I can't promise about tomorrow, but I'm here with you now. |
 | `OK_TALK` in `src/lib/maya/talk-review.ts` (a review example of good free talk, not said by code) | Oh, I'm an AI helper, so I don't live in a house or have a favourite food. I do love hearing about yours, though! | Oh, I'm an AI helper, so I don't live in a house or have a favourite food. It's nice to hear about yours, though! |
 
-The table above in this file still shows the old `praise.3`, `praise.6` and `praise.11` wordings; this section replaces them, pending Savar.
+The table above in this file still shows the old `praise.3`, `praise.6` and `praise.11` wordings; this section replaces them (approved 2026-11-08).
 
 ### New held line (D-304)
 
-Approved in substance by Savar 2026-11-08; exact wording pending his final read. On a held question Maya says `held.hello`, `held.cannot`, `held.next` in that order (after a hello, the last two only).
+Approved by Savar on 2026-11-08 ("approve maya lines"), with the short wording below, not his longer phrasing. On a held question Maya says `held.hello`, `held.cannot`, `held.next` in that order (after a hello, the last two only).
 
-| Id | Old wording | New wording (approved in substance; wording pending Savar) | Savar's original phrasing |
+| Id | Old wording | New wording (approved 2026-11-08) | Savar's original phrasing |
 |---|---|---|---|
 | `held.cannot.0` | No line at this id (line set 11 removed the earlier `held.cannot`). | Sorry, I can't teach this question yet. | "Sorry, I don't have the capabilities to teach this question yet." Something like that. |
