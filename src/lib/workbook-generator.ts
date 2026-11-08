@@ -2972,7 +2972,7 @@ function ownStepFirst(w: PageWork): void {
 function budgetPage(input: GenerateInput, w: PageWork): DraftPage {
   const questions = w.slots.map((s, i) => {
     const c = s.contract;
-    const built = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [c.item.skill] }) : standIn(input, w, s, i);
+    const built = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [c.item.skill] }) : s.existing ? standIn(input, w, s, i) : unapprovedBuild();
     if (built.package && s.place !== "spot-the-error") built.package = withoutSam(built.package, s.planned?.name ?? null);
     return generated(w, i, built, 1);
   });
@@ -3543,12 +3543,14 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         w.slots = lastComplete.slots; w.layout = lastComplete.layout;
         w.page.fillingComplete = true; w.page.atMaximum = true; w.page.extraGap = 0;
         ownStepFirst(w);
-        const questions = w.slots.map((s, i) => {
-          const b = s.contract ? buildPlannedItem(s.contract, s.contract.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [s.contract.item.skill] }) : standIn(input, w, s, i);
-          return generated(w, i, b, 1);
-        });
-        const examples = w.panels.map(p => { const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0); return c ? contractPackage(input, w, c) : null; });
-        const checked = roomFit(await fitCheck.fits(fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples)), { id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild }));
+        const check = async () => roomFit(await fitCheck.fits(budgetPage(input, w), { id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild }));
+        let checked = await check();
+        // The restored grid can have room left even with stretched rows. Spread its existing gaps within the
+        // template's limit, and stop as soon as it fits or a failure other than fullness appears.
+        for (let extra = (w.page.extraGap ?? 0) + 4; !checked.ok && checked.problems.every(p => p.kind === "fullness") && extra <= 48; extra += 4) {
+          w.page.extraGap = extra;
+          checked = await check();
+        }
         if (!checked.ok) return `Page ${w.number}: its last complete grid does not fit: ${checked.problems.map(p => p.reason).join(" ")}`;
       }
       if (!w.page.extraPractice && ["practice", "practice-2", "remember-these", "show-what-you-know"].includes(w.page.type)) {
