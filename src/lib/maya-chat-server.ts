@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { familyClosedPlan, familyOpenPlanChildren } from "@/lib/plan-access";
+import { childPlanRead, familyOpenPlanChildren } from "@/lib/plan-access";
 import { adminClient } from "@/lib/supabase-auth";
 import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
@@ -123,19 +123,25 @@ export async function parentChatChildren(db: DB, parent: string, children: reado
 }
 
 /**
- * What the desk shows for one child: the chat usage, or why a younger child has none, or, when the family's plan stopped, that
- * chat is closed (`planClosed`). The closed line shows exactly when the account page shows its closed-plan note
- * (familyClosedPlan). Nothing when the family never had a plan or a read fails: the desk then says chat starts soon.
+ * What the desk shows for one child: the chat usage, or why a younger child has none, or, when chat is closed to this child, why
+ * (D-304). The reason is this child's own stored plan (childPlanRead), never the family's, so a sibling's plan changes nothing:
+ * a stopped or unreadable plan gives its line (chatPlanClosedLine) and `planClosed`. A child with no plan, or whose plan is open
+ * while chat is closed for another reason (the switch), gets no line: the desk then says chat starts soon. The line is read
+ * only after the gate (chatGate) said closed, so it never shows while this child can chat; a gate that cannot be read counts
+ * as closed, as chat does then.
  */
-export async function deskChat(session: DB, parent: string, child: { id: string; grade: number }, zone: FamilyZone): Promise<{ usage: ChatUsage | null; note: string | null; planClosed: boolean }> {
-  try {
-    const admin = adminClient();
-    const gate = admin ? await chatGate(admin, parent, child.grade, child.id) : "closed";
-    if (gate === "too_young") return { usage: null, note: chatGradeLine(), planClosed: false };
-    if (gate === "open") return { usage: await readChatUsage(session, parent, child.id, zone), note: null, planClosed: false };
-    if (admin && await familyClosedPlan({ parentId: parent }, { db: admin })) return { usage: null, note: chatPlanClosedLine(), planClosed: true };
-  } catch { /* The desk shows chat as not open yet. */ }
-  return { usage: null, note: null, planClosed: false };
+export async function deskChat(session: DB, parent: string, child: { id: string; grade: number }, zone: FamilyZone, now = Date.now()): Promise<{ usage: ChatUsage | null; note: string | null; planClosed: boolean }> {
+  const admin = adminClient();
+  let gate: Awaited<ReturnType<typeof chatGate>> = "closed";
+  try { if (admin) gate = await chatGate(admin, parent, child.grade, child.id); } catch { /* Closed, as chat is when its check fails. */ }
+  if (gate === "too_young") return { usage: null, note: chatGradeLine(), planClosed: false };
+  if (gate === "open") {
+    try { return { usage: await readChatUsage(session, parent, child.id, zone), note: null, planClosed: false }; } catch { /* Chat is open: no closed words. */ }
+    return { usage: null, note: null, planClosed: false };
+  }
+  const { access, resumesOn } = await childPlanRead({ parentId: parent, childId: child.id }, { db: admin, now: () => now });
+  const note = chatPlanClosedLine({ reason: access.reason, resumesOn }, zone, now);
+  return { usage: null, note, planClosed: note !== null };
 }
 
 export interface ChatContext { db: DB; parent: string; child: string; name: string; grade?: number; zone: FamilyZone }

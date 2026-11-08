@@ -91,15 +91,16 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
  * The confirmation when a family's free month starts (card network rules: price, billing terms and how to cancel, sent
  * at enrolment). `firstCharge` is already formatted in the family's time zone. `marking`: automatic marking is open for this
  * child when the email is made (src/lib/scan-marking-access.ts). Without it, step 3 promises no marks and no "Explain this
- * problem", and says the marks come later, as the scan page does.
+ * problem", and says the marks come later, as the scan page does. `explain`: "Explain this problem" can give an explanation
+ * (explanationAvailable); without it, step 3 keeps the marks and drops its Explain sentence.
  */
-export function planStartEmail(p: { parentName: string; childName: string; grade: number; price: number; firstCharge: string; marking: boolean }) {
+export function planStartEmail(p: { parentName: string; childName: string; grade: number; price: number; firstCharge: string; marking: boolean; explain: boolean }) {
   const subject = `Welcome to Unica Learning: how ${p.childName}'s free month works`;
   const steps = [
     `1. Follow the schedule. See which pages ${p.childName} does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.`,
     `2. Scan the finished pages. After ${p.childName} finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.`,
     p.marking === true
-      ? `3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with ${p.childName}.`
+      ? `3. Read the marks. You will see which questions are right and wrong.${p.explain === true ? ` On a wrong answer, press "Explain this problem" for a simple explanation that you can use with ${p.childName}.` : ""}`
       : `3. Marks come later. Scan the pages now. Later, we will use the photos to mark ${p.childName}'s work.`,
     ...(Number.isInteger(p.grade) && p.grade >= 3 && p.grade <= 9 ? [
       `4. Set up Maya. If ${p.childName} gets stuck, ${p.childName} can chat with Maya, our AI Teaching Assistant. Sign in at https://unicalearning.com/account, set a PIN, agree to the Maya notice, then open ${p.childName}'s desk.`,

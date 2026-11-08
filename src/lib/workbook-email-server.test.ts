@@ -189,7 +189,9 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
     expect(f.messages).toHaveLength(1);
   });
 
-  const MARKS = "3. Read the marks. You will see which questions are right and wrong.";
+  const MARKS = '3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with Asha.';
+  const MARKS_ONLY = "3. Read the marks. You will see which questions are right and wrong.";
+  const step3 = (text: string) => text.split("\n").filter((l) => l.startsWith("3. "));
   const LATER = "3. Marks come later. Scan the pages now. Later, we will use the photos to mark Asha's work.";
   const sentAndStored = (f: ReturnType<typeof planFixture>) => {
     expect(f.messages).toHaveLength(1);
@@ -201,11 +203,29 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
   it("promises the marks only when marking is open for the card's own child at send time, and keeps the sent words in the claim", async () => {
     const f = planFixture();
     const read = vi.fn(async () => true);
-    expect((await sendPlanStartEmail(f.db, key(1), f.transport, undefined, read)).status).toBe("sent");
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport, undefined, read, () => true)).status).toBe("sent");
     expect(read).toHaveBeenCalledWith(f.db, "parent-1", "child-1");
+    expect(step3(sentAndStored(f))).toEqual([MARKS]);
+  });
+
+  it("with marking open and no explanation feature, keeps the marks and drops only the Explain sentence", async () => {
+    const f = planFixture();
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport, undefined, async () => true, () => false)).status).toBe("sent");
     const text = sentAndStored(f);
-    expect(text).toContain(MARKS);
-    expect(text).not.toContain(LATER);
+    expect(step3(text)).toEqual([MARKS_ONLY]);
+    expect(text).not.toContain("Explain");
+  });
+
+  it("an explanation check that throws counts as no explanation", async () => {
+    const f = planFixture();
+    await sendPlanStartEmail(f.db, key(1), f.transport, undefined, async () => true, () => { throw Error("no"); });
+    expect(step3(sentAndStored(f))).toEqual([MARKS_ONLY]);
+  });
+
+  it("with marking closed, Explain changes nothing: the marks come later", async () => {
+    const f = planFixture();
+    await sendPlanStartEmail(f.db, key(1), f.transport, undefined, async () => false, () => true);
+    expect(step3(sentAndStored(f))).toEqual([LATER]);
   });
 
   it("says the marks come later when marking is closed for the child", async () => {
@@ -225,16 +245,20 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
     expect(sentAndStored(f)).toContain(LATER);
   });
 
+  // Its own short limit: if the read's time limit is gone, this test fails in 2 s instead of hanging.
   it("fails closed when the marking read does not answer in time", async () => {
     vi.useFakeTimers();
     try {
       const f = planFixture();
-      const sending = sendPlanStartEmail(f.db, key(1), f.transport, undefined, () => new Promise<boolean>(() => {}));
+      let asked = false;
+      const sending = sendPlanStartEmail(f.db, key(1), f.transport, undefined, () => { asked = true; return new Promise<boolean>(() => {}); }, () => true);
+      await vi.waitFor(() => { if (!asked) throw Error("not read yet"); }, { timeout: 1000, interval: 5 });
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
       await vi.advanceTimersByTimeAsync(5000);
       expect((await sending).status).toBe("sent");
-      expect(sentAndStored(f)).toContain(LATER);
+      expect(step3(sentAndStored(f))).toEqual([LATER]);
     } finally { vi.useRealTimers(); }
-  });
+  }, 2000);
 
   it("uses the product's marking rule by default: off, and test-only for a real family, give the later line; test-only for a test family gives the marks", async () => {
     vi.stubEnv("SCAN_MARKING_ENABLED", "");
@@ -245,9 +269,15 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
     f = planFixture();
     await sendPlanStartEmail(f.db, key(1), f.transport);
     expect(sentAndStored(f)).toContain(LATER);
+    // A test family with marking open: without the explanation feature's key, no Explain; with it, the approved step 3.
+    vi.stubEnv("PARENT_EXPLANATION_API_KEY", "");
     f = planFixture(3, true);
     await sendPlanStartEmail(f.db, key(1), f.transport);
-    expect(sentAndStored(f)).toContain(MARKS);
+    expect(step3(sentAndStored(f))).toEqual([MARKS_ONLY]);
+    vi.stubEnv("PARENT_EXPLANATION_API_KEY", "sk-or-synthetic");
+    f = planFixture(3, true);
+    await sendPlanStartEmail(f.db, key(1), f.transport);
+    expect(step3(sentAndStored(f))).toEqual([MARKS]);
     vi.unstubAllEnvs();
   });
 

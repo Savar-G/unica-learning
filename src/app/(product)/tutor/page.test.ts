@@ -6,7 +6,6 @@ import { sampleWorkbook } from "@/lib/workbook-sample";
 import { memoryWorkbookStore } from "@/lib/workbook-store-memory";
 import type { DeliveryReceipt } from "@/lib/workbook-delivery";
 import type { WorkbookStore } from "@/lib/workbook-content";
-import { chatPlanClosedLine } from "@/lib/maya-chat";
 const PARENT = "11111111-1111-4111-8111-111111111111", CHILD = "22222222-2222-4222-8222-222222222222", BOOK = "33333333-3333-4333-8333-333333333333";
 const state = vi.hoisted(() => ({ store: null as WorkbookStore | null, receipt: vi.fn(), sign: vi.fn(), chat: vi.fn(), notice: false }));
 vi.mock("server-only", () => ({}));
@@ -67,8 +66,9 @@ it("returns to awaiting delivery if the receipt is retracted during the content 
 });
 it.each([
   ["never had a plan", { usage: null, note: null, planClosed: false }, "Chat and calls with Maya start soon.", "60 messages a day"],
-  ["closed plan", { usage: null, note: chatPlanClosedLine(), planClosed: true }, chatPlanClosedLine(), "Closed"],
-])("tells the child about chat for a family that %s, on the delivered page and while awaiting delivery", async (_, chat, line, label) => {
+  ["ended", { usage: null, note: "Chat with Maya is closed because your family's plan has ended. Ask a grown-up.", planClosed: true }, "Chat with Maya is closed because your family's plan has ended. Ask a grown-up.", "Closed"],
+  ["payment failed", { usage: null, note: "Chat with Maya is paused because the last payment did not go through. Ask a grown-up.", planClosed: true }, "Chat with Maya is paused because the last payment did not go through. Ask a grown-up.", "Closed"],
+])("tells the child about chat for a family whose plan state is %s, on the delivered page and while awaiting delivery", async (_, chat, line, label) => {
   state.chat.mockResolvedValue(chat);
   for (const receipt of [undefined, null]) {
     if (receipt === null) state.receipt.mockResolvedValue(null);
@@ -82,6 +82,6 @@ it.each([
 it("an open plan shows the chat, with no closed line and no start-soon line", async () => {
   const body = await html();
   expect(body).toContain("<dd>60 left today</dd>");
-  expect(body).not.toContain(chatPlanClosedLine().split(" because")[0]);
+  expect(body).not.toMatch(/Chat with Maya is (closed|paused)/);
   expect(body).not.toContain("start soon");
 });

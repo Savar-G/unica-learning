@@ -9,6 +9,7 @@ import { findSavedCard, recordSavedCard, type SavedCards, type StripeAnswer } fr
 import { savedCards } from "@/lib/saved-card-server";
 import { familyProvince, familyZone, formatInZone } from "@/lib/family-time";
 import { markingAccess } from "@/lib/scan-marking-access";
+import { explanationAvailable } from "@/lib/parent-problem-explanation-ai";
 import { planStartEmail, workbookEmail, type WorkbookDelivery, type WorkbookEmailKind, type WorkbookNoticeKind } from "@/lib/workbook-email";
 
 /** The send key of every email in the ledger. */
@@ -126,9 +127,10 @@ async function markingOpen(read: MarkingRead, db: SupabaseClient<Database>, pare
 /**
  * The confirmation when a free month starts: one per plan start, so a retry cannot send a second copy, and a later start of the same
  * saved card has its own. `inTime`: when it answers false, also after the transport's wait, nothing goes and the claim is given back.
- * Step 3's words follow `marking` for the card's child, read before the claim, so the claim stores the words that are sent.
+ * Step 3's words follow `marking` for the card's child and `explain` (the explanation feature's own availability rule), read
+ * before the claim, so the claim stores the words that are sent. A throw from `explain` counts as no explanation.
  */
-export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; generation: number; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport, inTime: () => boolean = () => true, marking: MarkingRead = productMarking): Promise<TimedDeliveryOutcome> {
+export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; generation: number; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport, inTime: () => boolean = () => true, marking: MarkingRead = productMarking, explain: () => boolean = () => explanationAvailable()): Promise<TimedDeliveryOutcome> {
   const { data: card, error } = await db.from("card_setups").select("parent_id, child_id").eq("id", p.cardId).maybeSingle();
   if (error || !card) throw Error("store_failed");
   const [parent, child] = await Promise.all([
@@ -139,9 +141,11 @@ export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { card
   const zone = familyZone({ timeZone: parent.data.time_zone, postal: parent.data.postal, province: familyProvince([{ id: card.child_id, province: child.data.province }]) });
   const firstCharge = formatInZone(p.firstChargeAt, zone, { year: "numeric", month: "long", day: "numeric" });
   const marks = await markingOpen(marking, db, card.parent_id, card.child_id);
+  let explains = false;
+  try { explains = marks && explain() === true; } catch { explains = false; }
   const message: EmailMessage = {
     sender: { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
-    ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, grade: child.data.grade, price: p.price, firstCharge, marking: marks }),
+    ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, grade: child.data.grade, price: p.price, firstCharge, marking: marks, explain: explains }),
   };
   return sendEmailOnceInTime(planStartEmailLedger(db, message), { cardId: p.cardId, generation: p.generation }, message, { transport, inTime });
 }

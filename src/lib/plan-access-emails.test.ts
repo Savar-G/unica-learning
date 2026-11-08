@@ -38,9 +38,9 @@ const GATE_MODULES = new Set([
 ]);
 
 function resolve(from: string, spec: string): string | null {
-  const base = spec.startsWith("@/") ? path.join("src", spec.slice(2)) : spec.startsWith(".") ? path.join(path.dirname(from), spec) : null;
+  const base = spec.startsWith("@/") ? path.posix.join("src", spec.slice(2)) : spec.startsWith(".") ? path.posix.join(path.posix.dirname(from), spec) : null;
   if (!base) return null;
-  return [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), base].find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
+  return [`${base}.ts`, `${base}.tsx`, path.posix.join(base, "index.ts"), base].find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
 }
 
 /** The code imports of a file, with the names taken. `import type` carries no code. A dynamic import is named "dynamic". */
@@ -85,7 +85,7 @@ function sends(file: string, source: string): boolean {
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const file = path.join(dir, entry.name);
+    const file = path.posix.join(dir, entry.name);
     if (entry.isDirectory()) return sourceFiles(file);
     return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) && !/-memory\.ts$/.test(entry.name) ? [file] : [];
   });
@@ -142,6 +142,14 @@ describe("no email sender reaches the plan gate", () => {
 
   it("finds the senders of the /api/reminders run, the start, the sweep and the parent's presses", () => {
     for (const file of ["src/app/api/reminders/route.ts", "src/lib/reminder-store.ts", "src/lib/maya-weekly-email.ts", "src/lib/maya-weekly-email-store.ts", "src/lib/monthly-summary-email-store.ts", "src/lib/workbook-scan-reminder-send.ts", "src/lib/workbook-scan-maintenance-server.ts", "src/lib/card-sweep-server.ts", "src/lib/workbook-email-server.ts", "src/lib/scan-link.ts", "src/lib/report-job.ts", "src/app/api/admin/cards/[id]/start/route.ts"]) expect(senders).toContain(file);
+  });
+
+  it("writes every path with forward slashes, on every system, so the path literals here match on Windows", () => {
+    const all = sourceFiles("src");
+    expect(all.length).toBeGreaterThan(100);
+    expect(all.filter((f) => f.includes("\\"))).toEqual([]);
+    expect(senders.flatMap((f) => imports(f).map((i) => i.to)).filter((f) => f.includes("\\"))).toEqual([]);
+    expect(readFileSync("src/lib/plan-access-emails.test.ts", "utf8")).not.toMatch(/path\.(join|dirname)\(/);
   });
 
   it.each(senders)("%s", (file) => {
