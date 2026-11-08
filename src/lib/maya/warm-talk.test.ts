@@ -571,6 +571,36 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
       expect(PHRASES.pets.filter((p) => !p.includes("{echo}")).map(bare)).toContain(said.text.replace(/, Leah/, ""));
     });
 
+    const GRANDMA = "My grandma is in the hospital.";
+    const CHEER = /how nice|nice to hear|fun to hear/i;
+    const hard = (random = 1) => {
+      const c = call({ random });
+      c.child(GRANDMA);
+      return c;
+    };
+
+    it.each([1, 2, 3, 4, 5, 6, 7, 8])("never answers a hard feeling with a cheerful wording (seed %i): \"My grandma is in the hospital.\"", (random) => {
+      const howNice = PHRASES.family.indexOf("Oh, {echo}! How nice.") + 1;
+      expect(howNice).toBeGreaterThan(0);
+      expect(phraseOffers(hard(random).s, "family").map((o) => o.text).filter((t) => CHEER.test(t))).toEqual([]);
+      // The model cannot pick it: the cheerful wording is not offered, so the pick is refused.
+      expect(hard(random).refusal({ act: "clarify", parts: [{ warm: "family", echo: "grandma", pick: howNice }] })?.code).toBe("line_not_offered");
+      for (const part of [{ warm: "family", echo: "grandma" }, { warm: "family" }, { warm: "trips" }, { warm: "smalltalk" }]) {
+        expect(hard(random).say({ act: "clarify", parts: [part] }).text, JSON.stringify(part)).not.toMatch(CHEER);
+      }
+    });
+
+    it("reads the new hard-feeling words; a cheerful pick on one is refused", () => {
+      for (const turn of [GRANDMA, "My grandpa had surgery.", "My cat passed away.", "We went to a funeral.", "My parents are getting a divorce.", "I got in a fight.", "Someone bullied me.", "There is a bully at school.", "I lost my dog."]) {
+        expect(hardFeeling(turn), turn).toBe(true);
+      }
+      expect(hard().refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })?.code).toBe("line_not_offered");
+      // The same pick on a happy turn is still offered.
+      const happy = call();
+      happy.child("We went on a trip to the lake!");
+      expect(happy.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })).toBeNull();
+    });
+
     it("never echoes an insult back (practice run 5, F06: \"Feeling dumb is okay.\")", () => {
       for (const echo of ["dumb", "stupid", "so dumb"]) {
         const c = call();

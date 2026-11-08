@@ -42,7 +42,7 @@ import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
 import { compensations, findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
-import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
+import { cheerful, freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
@@ -2777,12 +2777,18 @@ const THANKS_TOLD = /\b(?:telling me|told me|for sharing|you shared)\b/i;
  */
 const askedNow = (session: Session) => !!session.turn && /\?/.test(session.turn.text) && !hardFeeling(session.turn.text) && !session.safety.flagged;
 
+/** The child's words this turn, else their last words in the call. */
+const childTurnText = (session: Session): string | undefined => session.turn?.text ?? [...session.turns].reverse().find((t) => t.speaker === "child")?.text;
+
 export function phraseOffers(session: Session, group: PhraseGroup): { pick: number; text: string }[] {
   const ready = new Set([1, 2, 3, 4, 8, 12]);
   const closingEffort = new Set([2, 7, 10, 13, 14]);
   const asked = askedNow(session);
+  const hard = hardFeeling(childTurnText(session));
   return PHRASES[group].flatMap((text, i) => {
     if (asked && THANKS_TOLD.test(text)) return [];
+    // A hard feeling never gets a cheerful wording ("Oh, your grandma! How nice.").
+    if (hard && cheerful(text)) return [];
     if (group === "praise" && !ready.has(i + 1) && (session.workAttempts ?? 0) < 2) return [];
     if (group === "closing" && closingEffort.has(i + 1) && ((session.workAttempts ?? 0) < 2 || session.done.length === 0)) return [];
     return [{ pick: i + 1, text }];
@@ -3089,9 +3095,12 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
       if (part.pick !== undefined && !phraseOffers(s, part.warm).some((o) => o.pick === part.pick)) {
         return { code: "line_not_offered", reason: "This praise needs observed work in the call. Pick a currently offered phrase." };
       }
-      add("warm", s.mathClaim && part.warm !== "back"
+      const warm = s.mathClaim && part.warm !== "back"
         ? phrase("smalltalk", null, undefined, NEUTRAL_SMALLTALK)
-        : phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo), part.pick));
+        : phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo), part.pick);
+      // A hard feeling gets FEELING_SMALLTALK, never a cheerful wording, whatever the model picked (phraseOffers already
+      // leaves those out; this holds when a group has nothing else left).
+      add("warm", !s.mathClaim && cheerful(warm) && hardFeeling(childTurnText(s)) ? phrase("smalltalk", null, undefined, FEELING_SMALLTALK) : warm);
       continue;
     }
     if ("talk" in part) {
