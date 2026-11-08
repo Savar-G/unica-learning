@@ -13,6 +13,12 @@ export interface HouseTemplates {
   stories?: boolean;
   /** The step's name when these were written: the curriculum test fails when it changes. */
   name: string;
+  /**
+   * These Challenge-only templates still count when the generator chooses a step for a stories page or a Solve it two
+   * ways page, as they did before #744. Only the Grade 5 set that U16 books were reviewed with has it; new Challenge
+   * templates leave it out, so adding one never moves another page to its step.
+   */
+  routes?: boolean;
   /** Extra normal practice forms, separate from this step's Challenge-only templates. */
   practice?: readonly StepTemplate[];
   templates: readonly StepTemplate[];
@@ -24,12 +30,15 @@ const hard = (format: StepTemplate["format"], text: string, answer: string, slot
 /** Unica's Challenge templates are the Challenge's (and Show what you know's): no practice or story page takes one. */
 const CHALLENGE_ONLY = new WeakSet<StepTemplate>();
 export const isChallengeOnly = (t: StepTemplate): boolean => CHALLENGE_ONLY.has(t);
+/** Unica's Challenge-only templates that do not choose a page's step (all but the `routes` set). */
+const NOT_ROUTED = new WeakSet<StepTemplate>();
 /**
- * A step's templates for normal practice and for choosing a page's step (stories, Solve it two ways): every template
- * except Unica's Challenge-only ones, so adding a Challenge template never moves another page to that step (#744).
+ * A step's templates for choosing a page's step (stories, Solve it two ways): every template except Unica's
+ * Challenge-only ones, so adding a Challenge template never moves another page to that step (#744). The Grade 5 set
+ * marked `routes` stays, as before #744.
  */
-export const practiceTemplates = (step: { templates?: readonly StepTemplate[] } | null | undefined): readonly StepTemplate[] =>
-  (step?.templates ?? []).filter((t) => !isChallengeOnly(t));
+export const routingTemplates = (step: { templates?: readonly StepTemplate[] } | null | undefined): readonly StepTemplate[] =>
+  (step?.templates ?? []).filter((t) => !NOT_ROUTED.has(t));
 
 const medium = (text: string, answer: string, slots: Record<string, string>, derived: Record<string, string>, check: string): StepTemplate =>
   ({ format: "story", difficulty: "medium", text, answer, slots, derived, check });
@@ -123,7 +132,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     templates: [medium("{name} has {a} stickers and wants {s}. How many more stickers does {name} need?", "s - a", { u1: "u1", u2: "u2", u3: "u3", u4: "u4", u5: "u5", u6: "u6", u7: "u7", u8: "u8" }, { a: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4", s: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4 + 1000 + u5 * 300 + u6 * 30 + u7 * 3 + u8" }, "s <= 9999")],
   },
   {
-    skill: "5.1-place-value-million", step: 1, name: "Value of a digit to 10 000s",
+    skill: "5.1-place-value-million", step: 1, name: "Value of a digit to 10 000s", routes: true,
     templates: [
       hard("missing", "{n} + 1000 + 100 = __", "n + 1100", { n0: "value" }, { n: "n0" }, "'0' not in str(n) and n >= 50000 and n <= 98899"),
       hard("bare", "In {n}, what is the value of the thousands digit plus the value of the tens digit?", "n // 1000 % 10 * 1000 + n // 10 % 10 * 10", { n0: "value" }, { n: "n0" }, "'0' not in str(n) and n >= 50000"),
@@ -131,7 +140,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     ],
   },
   {
-    skill: "5.1-place-value-million", step: 2, name: "Value of a digit to 100 000s",
+    skill: "5.1-place-value-million", step: 2, name: "Value of a digit to 100 000s", routes: true,
     templates: [
       hard("missing", "{n} + 10000 + 1000 = __", "n + 11000", { n0: "value" }, { n: "n0" }, "'0' not in str(n) and n >= 500000 and n <= 988999"),
       hard("bare", "What is the value of the ten thousands digit of {n} plus the value of its hundreds digit?", "n // 10000 % 10 * 10000 + n // 100 % 10 * 100", { n0: "value" }, { n: "n0" }, "'0' not in str(n) and n >= 500000"),
@@ -139,7 +148,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     ],
   },
   {
-    skill: "5.1-place-value-million", step: 3, name: "Zeros as placeholders",
+    skill: "5.1-place-value-million", step: 3, name: "Zeros as placeholders", routes: true,
     templates: [
       hard("missing", "{n} + 100 + 10 = __", "n + 110", { n0: "value" }, { n: "n0 if '0' in str(n0) else n0 - n0 // (10 ** (1 + n0 % 4)) % 10 * 10 ** (1 + n0 % 4)" }, "n >= 500000 and n <= 999889"),
       hard("bare", "In {n}, what is the value of the hundred thousands digit plus the value of the thousands digit?", "n // 100000 % 10 * 100000 + n // 1000 % 10 * 1000", { n0: "value" }, { n: "n0 if '0' in str(n0) else n0 - n0 // (10 ** (1 + n0 % 4)) % 10 * 10 ** (1 + n0 % 4)" }, "n // 1000 % 10 > 0 and n >= 500000"),
@@ -147,7 +156,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     ],
   },
   {
-    skill: "5.9-multiply-tens", step: 1, name: "One multiple of 10",
+    skill: "5.9-multiply-tens", step: 1, name: "One multiple of 10", routes: true,
     templates: [
       hard("bare", "What is {a} × {b} + {a} × {c}?", "a * (b + c)", { a0: "operand1", b0: "operand2" }, { a: "a0", b: "b0 // 10 * 10", c: "(b0 % 9 + 1) * 10" }, "b0 >= 10 and a >= 2 and a * (b + c) >= 4500 and a * (b + c) <= 9000"),
       hard("missing", "{a} × __ = {p} - {q}", "b", { a0: "operand1", b0: "operand2" }, { a: "a0", b: "b0 // 10 * 10", q: "(a0 % 5 + 1) * 100", p: "a * b + q" }, "b0 >= 10 and a >= 2 and p >= 4500 and p <= 9000"),
@@ -155,7 +164,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     ],
   },
   {
-    skill: "5.9-multiply-tens", step: 2, name: "Two multiples of 10",
+    skill: "5.9-multiply-tens", step: 2, name: "Two multiples of 10", routes: true,
     templates: [
       hard("bare", "What is {a} × {b} - {c}?", "a * b - c", { a0: "operand1", b0: "operand2" }, { a: "a0 // 10 * 10", b: "b0 // 10 * 10", c: "(a0 % 9 + 1) * 100" }, "a0 >= 10 and b0 >= 10 and a * b - c >= 41000"),
       hard("missing", "__ × {a} = {p} + {q}", "b", { a0: "operand1", b0: "operand2" }, { a: "a0 // 10 * 10", b: "b0 // 10 * 10", q: "(b0 % 7 + 1) * 100", p: "a * b - q" }, "a0 >= 10 and b0 >= 10 and a * b - q >= 41000"),
@@ -163,7 +172,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     ],
   },
   {
-    skill: "5.9-multiply-tens", step: 3, name: "Facts that end in zero",
+    skill: "5.9-multiply-tens", step: 3, name: "Facts that end in zero", routes: true,
     templates: [
       hard("bare", "What is {a} × {b} + {c}?", "a * b + c", { a0: "operand1", b0: "operand2" }, { at: "5 if a0 % 2 == 0 else 2 * (a0 // 10 % 4 + 1)", bt: "2 * (1 + b0 // 10 % 45) if a0 % 2 == 0 else 5 * (1 + b0 // 10 % 18)", a: "at * 10", b: "bt * 10", c: "(b0 % 9 + 1) * 100" }, "b0 >= 10 and a * b + c >= 4100 and a * b + c <= 8100"),
       hard("missing", "{p} - __ = {a} × {b}", "c", { a0: "operand1", b0: "operand2" }, { at: "5 if a0 % 2 == 0 else 2 * (a0 // 10 % 4 + 1)", bt: "2 * (1 + b0 // 10 % 45) if a0 % 2 == 0 else 5 * (1 + b0 // 10 % 18)", a: "at * 10", b: "bt * 10", c: "(a0 % 9 + 1) * 10", p: "a * b + c" }, "b0 >= 10 and a * b + c >= 4100 and a * b + c <= 8100"),
@@ -172,7 +181,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     ],
   },
   {
-    skill: "5.9-distributive", step: 1, name: "3-digit × 1-digit with an area model",
+    skill: "5.9-distributive", step: 1, name: "3-digit × 1-digit with an area model", routes: true,
     templates: [
       hard("bare", "What is {a} × {b} - {c}?", "a * b - c", { a0: "operand1", b0: "operand2" }, { a: "a0", b: "b0", c: "(a0 % 9 + 1) * 10" }, "'0' not in str(a0) and a * b - c >= 5000"),
       hard("missing", "{a} × __ = {p} + {q}", "b", { a0: "operand1", b0: "operand2" }, { a: "a0", b: "b0", q: "(a0 % 5 + 1) * 10", p: "a * b - q" }, "'0' not in str(a0) and a * b - q >= 5000"),
@@ -180,7 +189,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     ],
   },
   {
-    skill: "5.9-distributive", step: 2, name: "Zeros and trades",
+    skill: "5.9-distributive", step: 2, name: "Zeros and trades", routes: true,
     templates: [
       hard("bare", "What is {a} × {b} + {c}?", "a * b + c", { a0: "operand1", b0: "operand2" }, { a: "a0 // 100 * 100 + a0 % 10", b: "b0", c: "(a0 % 9 + 1) * 10" }, "a0 >= 100 and a0 % 10 > 0 and a * b + c >= 5000 and a * b + c <= 9999"),
       hard("missing", "__ × {b} = {p} - {q}", "a", { a0: "operand1", b0: "operand2" }, { a: "a0 // 100 * 100 + a0 % 10", b: "b0", q: "(b0 % 5 + 1) * 10", p: "a * b + q" }, "a0 >= 100 and a0 % 10 > 0 and p >= 5000 and p <= 9999"),
@@ -188,7 +197,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     ],
   },
   {
-    skill: "5.10-pattern-rule", step: 1, name: "Increasing rule",
+    skill: "5.10-pattern-rule", step: 1, name: "Increasing rule", routes: true,
     templates: [
       hard("bare", "A pattern starts at {s} and adds {d} each time. What is its 8th term plus its 2nd term?", "2 * s + 8 * d", { s: "start", d: "step" }, {}, "2 * s + 8 * d >= 100 and 2 * s + 8 * d <= 200"),
       hard("missing", "A pattern starts at {s} and adds __ each time. Its 9th term is {t}.", "d", { s: "start", d: "step" }, { t: "s + 8 * d" }, "t >= 100 and t <= 200"),
@@ -250,7 +259,10 @@ export function withHouseTemplates(data: CurriculumData, house: readonly HouseTe
     if (!h) return s;
     if (s.name !== h.name) throw new Error(`Unica templates for ${h.skill} step ${h.step} were written for "${h.name}", not "${s.name}"`);
     found.add(`${s.skill}#${s.number}`);
-    if (!h.stories) for (const t of h.templates) CHALLENGE_ONLY.add(t);
+    if (!h.stories) for (const t of h.templates) {
+      CHALLENGE_ONLY.add(t);
+      if (!h.routes) NOT_ROUTED.add(t);
+    }
     return { ...s, templates: [...(s.templates ?? []), ...(h.practice ?? []), ...h.templates] };
   });
   const missing = [...byKey.keys()].filter((k) => !found.has(k));

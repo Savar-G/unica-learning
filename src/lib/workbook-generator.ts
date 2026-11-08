@@ -85,7 +85,7 @@ import { isNumberStory } from "@/lib/workbook-code-story";
 import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNumber, operationStory, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
-import { isTwoStep, practiceTemplates } from "@/lib/workbook-curriculum/house-templates";
+import { isTwoStep, routingTemplates } from "@/lib/workbook-curriculum/house-templates";
 import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, mixedTemplateSign, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
@@ -115,7 +115,7 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
       if (steps.length) return steps[(review - 1 + Math.floor(attempt / 6)) % steps.length];
     }
     if (slot.place === "solve-it-two-ways") {
-      const sums = (x: { skill: string; step: number }) => practiceTemplates(stepOf(input.curriculum, x.skill, x.step)).some(t => sumTemplate(t) && !templateProblem(t, level));
+      const sums = (x: { skill: string; step: number }) => routingTemplates(stepOf(input.curriculum, x.skill, x.step)).some(t => sumTemplate(t) && !templateProblem(t, level));
       const own = { skill: part.step.skill, step: part.step.step };
       if (!sums(own)) {
         const rank = stepRank(input.curriculum, own.skill, own.step) ?? 0;
@@ -274,7 +274,7 @@ function storySteps(input: GenerateInput, slot: Slot, day: number, level: number
   const at = slot.part.step;
   if (!at || slot.place !== "word-problems") return [];
   // (Not "gets 1 more": one more is a count, not a story to work out; the U4 review.)
-  const sums = (skill: string, n: number | null) => practiceTemplates(stepOf(input.curriculum, skill, n)).some((t) => t.format === "story" && !isTwoStep(t) && sumTemplate(t, true) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
+  const sums = (skill: string, n: number | null) => routingTemplates(stepOf(input.curriculum, skill, n)).some((t) => t.format === "story" && !isTwoStep(t) && sumTemplate(t, true) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
   // The page's own step first when it has such stories; then this book's steps taught by today and the day's reviewed
   // steps, the most advanced first (the U16 review: Grade 5 stories, not "Hana has 9 leaves. She gets 7 more").
   // If this step has no usable story, look backwards within the skill, then through
@@ -363,7 +363,7 @@ function losesStoryKind(input: GenerateInput, w: PageWork, slot: Slot, p: Questi
 /** Whether a template item's step has a story template that prints at this level. */
 function stepHasStory(input: GenerateInput, c: ItemPlan): boolean {
   if (!c.template) return false;
-  return practiceTemplates(stepOf(input.curriculum, c.template.skill, c.template.step)).some((t) => t.format === "story" && !isTwoStep(t) && !templateProblem(t, input.plan.level));
+  return routingTemplates(stepOf(input.curriculum, c.template.skill, c.template.step)).some((t) => t.format === "story" && !isTwoStep(t) && !templateProblem(t, input.plan.level));
 }
 
 /** Whether a page already asks a template twice (outside its Challenge and warm-up): a template is one question stem. */

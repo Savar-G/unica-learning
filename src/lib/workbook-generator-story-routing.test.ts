@@ -47,3 +47,10 @@ it.each([
   expect(withHouse.length).toBeGreaterThan(0);
   expect(withHouse).toEqual(await routedSteps(withoutChallengeOnly, plan, number));
 }, 180_000);
+
+it("only the Grade 5 Challenge-only set from before #744 still chooses a page's step", () => {
+  const routed = HOUSE_TEMPLATES.filter(h => !h.stories && h.routes).map(h => `${h.skill}#${h.step}`);
+  expect(routed).toEqual(["5.1-place-value-million#1", "5.1-place-value-million#2", "5.1-place-value-million#3",
+    "5.9-multiply-tens#1", "5.9-multiply-tens#2", "5.9-multiply-tens#3", "5.9-distributive#1", "5.9-distributive#2",
+    "5.10-pattern-rule#1"]);
+});
