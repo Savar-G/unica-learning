@@ -15,6 +15,18 @@ const CLAIMS = [["MARBLES", "true", "false", "K6", 3], ["AREA_TF", "false", "tru
 const example = (n: number) => Array.from({ length: n }, () => "example_step" as const);
 
 export const C3C_REVIEW_BEHAVIOURS: Behaviour[] = [
+  {
+    id: "OTCLOCKCOPY", title: "A clock count copied after H3 is not credited", fixture: "CLOCK_REVIEW", status: "passing",
+    steps: [guideAt(0), guideAt(1), guideAt(2), child("46.", { answers: [[46, "to-hour", "wrong"]] }, [{ act: "guide", level: 3, lines: ["check.not_yet", "step.show"] }]),
+      child("47.", { answers: [[47, "to-hour", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("Can we stop now?", { stop: true })],
+    expect: { outcome: { reason: "child_stopped" }, refused: ["answer_not_committed"], never: ["give_answer", "accept_answer"] },
+  },
+  {
+    id: "OTAREA8", title: "The other area's 4 times 2 is in scope", fixture: "AREA_REVIEW", status: "passing",
+    steps: [child("4 times 2 is 8.", { start: "has_work" }, [{ act: "guide", level: 0 }]), child("Can we stop now?", { stop: true })],
+    expect: { outcome: { reason: "child_stopped" }, never: ["redirect", "give_answer"] },
+  },
   ...CLAIMS.flatMap(([fixture, wrong, , id, turns]): Behaviour[] => [
     {
       id: `OT${id}a`,

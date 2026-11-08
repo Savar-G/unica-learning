@@ -1947,7 +1947,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate") && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || at.kind === "count-on") && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
@@ -2183,7 +2183,7 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
 }
 
 /**
- * A column step is heard only when the child's WHOLE turn is one template (wholeTurn), on the fallback and on a model's
+ * A column or clock step is heard only when the child's WHOLE turn is one template (wholeTurn), on the fallback and on a model's
  * reading alike, so the two cannot disagree: the value ("16", "It's 16", "I got 16"), a plain yes to Maya's own "Did you
  * say 16?", the step's own sum with every operand in any order ("9 and 7 make 16"), or a first-person written-digit or
  * carry claim ("I wrote 6 and carried 1"), which checkColumnClaims checks. A question mark, another sentence, another number, another speaker, a hedge or a negation fits
@@ -2199,7 +2199,7 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
       resultAsked: s.resultAsked ?? null, shown: s.ladder.step === step.id && s.ladder.hint >= 3 });
   }
   // A part of an evaluate question is a step too: its result is its total (evaluate.ts).
-  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "operate")) return false;
+  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "operate" && step.kind !== "count-on")) return false;
   // A turn code could not hear for sure is no step credit: it gets its confirm first.
   const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
   if (body === null) return false;
@@ -2207,6 +2207,17 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   // of its columns is the first not done (currentPart).
   if (currentColumn(s)?.id !== step.id && workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
   const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
+  if (step.kind === "count-on") {
+    if (copy) return false;
+    const bare = wholeValue(body.replace(/\s+minutes?$/, ""));
+    if (bare !== null) return saidAs(number(bare), value);
+    // A count to the hour can include the addition and the destination in one complete sentence.
+    const m = /^(.+?)\s*,?\s+so\s+(.+?)\s+minutes?\s+to\s+(\d{1,2}:\d{2})$/.exec(body);
+    const sum = m && wholeSum(m[1]);
+    return !!sum && step.id === "to-hour" && sum.sum === 60 && sum.operands.length === 2 &&
+      sum.operands.includes(step.from.minutes) && sum.operands.includes(step.minutes) &&
+      plainNumber(m![2]) === step.minutes && m![3] === `${step.to.hours}:${String(step.to.minutes).padStart(2, "0")}` && saidAs(number(step.minutes), value);
+  }
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16). A part's total is its result.
   const total = saidAs(number(step.kind === "operate" ? step.value : step.total), value);
   // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).

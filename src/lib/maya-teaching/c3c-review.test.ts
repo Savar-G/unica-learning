@@ -55,8 +55,17 @@ describe("compare examples use no printed number (P2-b, lesson 11)", () => {
     for (const n of [...(pkg.easierExample.operation.operands as number[]), compare.value, compare.shown]) expect(own.has(n), `${n} in ${pkg.easierExample.text}`).toBe(false);
   });
 
-  it("an area claim whose every smaller example uses a printed number stays held (5 by 3 against 4 by 2)", () => {
-    expect(deriveTopicClaim(areaClaimPrinted(5, 3, 4, 2))).toBeNull();
+  it("teaches 5 by 3 against 4 by 2 with a fresh example", () => {
+    const printed = areaClaimPrinted(5, 3, 4, 2);
+    const derived = deriveTopicClaim(printed);
+    expect(derived).not.toBeNull();
+    const area = view(derived);
+    expect(sessionClaim(area)).not.toBeNull();
+    expect(scopeReason(area, "4 times 2 is 8.", false)).toBeNull();
+    const own = new Set([2, 3, 4, 5, 8, 15]);
+    const compare = area.easierExample.steps.find((st) => st.kind === "claim-compare")!;
+    if (compare.kind !== "claim-compare") throw new Error("no compare");
+    for (const n of [...(area.easierExample.operation.operands as number[]), compare.value, compare.shown]) expect(own.has(n)).toBe(false);
     const pkg = view(deriveTopicClaim(areaClaimPrinted(6, 3, 4, 4)));
     expect(pkg.easierExample.text).not.toMatch(/\b[3468]\b|16|18/);
   });

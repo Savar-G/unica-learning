@@ -420,6 +420,11 @@ Fixtures W5, W3 and W6 (`src/lib/maya-gate/one-step-cases.ts`) are the teaching 
 
 ## Pending
 
+| Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
+|---|---|---|---|---|---|
+| OTCLOCKCOPY | CLOCK_REVIEW | passing | A clock count copied after H3 is not credited | child stopped | |
+| OTAREA8 | AREA_REVIEW | passing | The other area's 4 times 2 is in scope | child stopped | |
+
 `PENDING` is empty. The partial audio behaviours still state their proof limits above.
 
 ## Spoken help and turn limits (#397, #398, #399)

@@ -18,7 +18,7 @@ import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId
   | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG"
-  | "SCALE" | "MONEY" | "MINUTE" | "CLOCK1" | "CLOCK2" | "MARBLES" | "AREA_TF" | "CLAIM_WIDE";
+  | "SCALE" | "MONEY" | "MINUTE" | "CLOCK1" | "CLOCK2" | "CLOCK_REVIEW" | "MARBLES" | "AREA_TF" | "AREA_REVIEW" | "CLAIM_WIDE";
 
 /** A claim question's teaching package (A4): the stored synthetic package through the session adapter (claimTeaching). */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
@@ -195,11 +195,13 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // is 50 minutes after 4:25?" (35 minutes to 5:00, then 15 more: 5:15).
   CLOCK1: deriveClockTime(clockPrinted(8, 0, 35))!,
   CLOCK2: deriveClockTime(clockPrinted(4, 25, 50))!,
+  CLOCK_REVIEW: deriveClockTime(clockPrinted(6, 13, 50))!,
   // C3c: compare claims through A4's claim session. MARBLES: "with 1 red, 3 blue and 5 green marbles, red is more likely
   // than the other colours together" (3 + 5 = 8, less than 1? false); AREA_TF: "6 by 3 squares is bigger than 4 by 4
   // squares" (6 × 3 = 18, greater than 16? true).
   MARBLES: deriveTopicClaim(marblesPrinted(1, 3, 5))!,
   AREA_TF: deriveTopicClaim(areaClaimPrinted(6, 3, 4, 4))!,
+  AREA_REVIEW: deriveTopicClaim(areaClaimPrinted(5, 3, 4, 2))!,
   // "Is 777 × 7 greater than 4662?": the longest spoken claim shape, for the 25-word turns (#737 review P2).
   CLAIM_WIDE: claimFixture(CLAIM_WIDE),
 };

@@ -27,7 +27,7 @@ const MONEY_EXAMPLES: Operation[] = [[20, 0.5], [20, 0.25], [20, 0.75], [10, 0.5
 
 /**
  * A sum's or a product's easier examples (marbles, area: C3c): two one-digit numbers, with a smaller result, smallest
- * first, none of them a number the question prints or computes (`own`: the red count, the other area's sides, the
+ * first, with products using 1 tried last, none of them a number the question prints or computes (`own`: the red count, the other area's sides, the
  * results and the compared number; lesson 11, review of #742 P2-b). The example's own result and compared number are
  * checked against `own` too, once the claim session makes them (exampleFresh).
  */
@@ -36,14 +36,14 @@ function freshPairs(operation: Operation, own: ReadonlySet<number>): Operation[]
   const [a, b] = operation.operands as [number, number];
   const result = operation.kind === "add" ? a + b : a * b;
   const out: Operation[] = [];
-  // A 1 is a trivial factor, but a fine addend ("5 + 1").
-  const low = operation.kind === "add" ? 1 : 2;
+  // A factor of 1 is useful when the other fresh pairs cannot make a safe example.
+  const low = 1;
   for (let x = low; x <= 9; x++) for (let y = low; y <= x; y++) {
     const got = operation.kind === "add" ? x + y : x * y;
     if (own.has(x) || own.has(y) || own.has(got)) continue;
     if (got < result) out.push({ kind: operation.kind, operands: [x, y] });
   }
-  return out;
+  return operation.kind === "multiply" ? out.sort((a, b) => Number((a.operands as number[]).includes(1)) - Number((b.operands as number[]).includes(1))) : out;
 }
 
 /** Every number a marbles or area claim prints or computes: the printed numbers, its results and its compared number. */
