@@ -70,6 +70,12 @@ async function practiceRequests() {
 }
 
 describe("OpenRouter schema compatibility through public callers and fake HTTP", () => {
+  it("permits the easier example after top help on a later step", async () => {
+    const [request] = await practiceRequests();
+    expect(request.system).toContain("after the top hint on a later step");
+    expect(request.system).not.toContain("Never after the child has done a step");
+  });
+
   it("dispatches the actual Maya 35-union schema once and keeps the complete schema in trusted instructions", async () => {
     const [actual] = await practiceRequests();
     expect(audit(actual.schema)).toMatchObject({ unions: 35, optional: 0 });
@@ -83,7 +89,7 @@ describe("OpenRouter schema compatibility through public callers and fake HTTP",
     expect(wire.messages[0].content).toContain(JSON.stringify(actual.schema));
     expect(wire.messages[1]).toEqual({ role: "user", content: [{ type: "text", text: JSON.stringify(input()) }] });
     expect(wire).toMatchObject({ model: MODEL, stream: false, max_tokens: 4000, provider: { require_parameters: true }, reasoning: { effort: "low", exclude: true } });
-    expect(PROMPT_VERSION).toBe("maya-text-chat-34");
+    expect(PROMPT_VERSION).toBe("maya-text-chat-35");
   });
 
   it("keeps feature routing and admission hooks when the shared schema adapter uses instructions", async () => {
