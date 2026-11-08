@@ -216,6 +216,21 @@ export const MISSING_TEMPLATES = {
     "{Reason}. So work out {inverse}. Guess a number first. Then work out {factor} times it.",
     "{Reason}. We find it with {inverse}. Choose a number. Then multiply it by {factor}.",
   ],
+  // A child's question about the first step (J06): code's answer, from the printed equation. Pending D-202.
+  "frame.why": [
+    "{Reason}. That is why we work out {inverse}.",
+    "{Reason}. So {inverse} gives the missing number.",
+    "Here's why. {Reason}. So we work out {inverse}.",
+    "{Reason}. Working out {inverse} finds the missing number.",
+    "Because {reason}. So the missing number is {inverse}.",
+  ],
+  "trial.why": [
+    "Dividing by {factor} in your head is hard. Multiplying is easier. So we try a number and multiply it by {factor}.",
+    "{Reason}. Multiplying by {factor} is easier than dividing. So we try a number and check it.",
+    "It's hard to divide by {factor}. It's easier to multiply. So we try a number and check {factor} times it.",
+    "We try numbers because multiplying is easier than dividing by {factor}. Each try shows if we need bigger or smaller.",
+    "{Reason}. A try times {factor} shows if the number is too big or too small.",
+  ],
   "try.target.frame": [
     "Now you try yours: {expr}. To find the missing number, work out {inverse}.",
     "Your turn! Try {expr}. Work out {inverse} to find the missing number.",
@@ -226,6 +241,26 @@ export const MISSING_TEMPLATES = {
 } as const satisfies Record<string, readonly string[]>;
 
 export type MissingKey = keyof typeof MISSING_TEMPLATES;
+
+/**
+ * The framing, said before the first step's hint while Maya has not said it yet in the call (frameDue): "The missing
+ * number is 1620 ÷ 30. That is 162 ÷ 3." So a child who starts with "I'm stuck." hears where 162 ÷ 3 comes from.
+ */
+export function frameLead(f: FramedLines): string {
+  return f.zeros ? `The missing number is ${f.inverse}. That is ${reducedText(f.zeros)}.` : `The missing number is ${f.inverse}.`;
+}
+
+/** The framing is still due: the question is a missing number and none of Maya's turns so far said its operation. */
+export function frameDue(steps: readonly WorkedStep[], said: readonly string[]): boolean {
+  const f = framedLines(steps);
+  return f !== null && !said.some((t) => t.includes(f.inverse));
+}
+
+/** Why the first step does what it does (step.why), for "Why do I divide?" or "Why do I try numbers?". */
+export function frameWhy(f: FramedLines): { key: MissingKey; vars: Record<string, string | number> } {
+  const Reason = f.reason[0].toUpperCase() + f.reason.slice(1);
+  return f.trial ? { key: "trial.why", vars: { factor: f.trial.factor, Reason } } : { key: "frame.why", vars: { Reason, reason: f.reason, inverse: f.inverse } };
+}
 
 /** The invite of the first work step of a framed question, H0: it says the framing (and the zeros) first. */
 export function frameInvite(f: FramedLines, where: string): { key: MissingKey; vars: Record<string, string | number> } {

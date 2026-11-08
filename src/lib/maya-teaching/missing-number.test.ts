@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createSession, mayaPackageCheck } from "@/lib/maya/session";
 import { packageLines } from "@/lib/maya/lines";
+import { frameDue } from "@/lib/maya/missing-number";
 import { checkQuestionPackage, operationProblem, type OperationPackage, type QuestionPackage, type WorkedStep } from "@/lib/question-package";
 import { withWorkbookMayaOperation } from "@/lib/workbook-maya-operation";
 import { deriveMissingNumber } from "./missing-number";
@@ -146,6 +147,25 @@ describe("the lines of a missing number", () => {
     expect(l.stepIds).not.toContain("zeros");
   });
 
+  it("puts the framing before the first hint said at any level, only while Maya has not said it", () => {
+    const pkg = teachable(derive({ known: 30, missing: 54, sign: "×" })) as OperationPackage;
+    const l = packageLines(pkg);
+    const first = l.stepIds[0];
+    const h1 = (due: boolean) => l.help(first, due).find((o) => o.level === 1 && o.line === "step.point")!.texts[0];
+    expect(h1(true)).toBe(`The missing number is 1620 ÷ 30. That is 162 ÷ 3. ${h1(false)}`);
+    expect(l.help(first, true).filter((o) => (o.level ?? 0) >= 1).every((o) => o.texts.every((t) => t.startsWith("The missing number is 1620 ÷ 30.")))).toBe(true);
+    expect(l.help(l.stepIds[1], true).some((o) => o.texts.some((t) => t.includes("1620 ÷ 30")))).toBe(false);
+    expect(frameDue(pkg.steps, ["What did you try for 30 × ? = 1620?"])).toBe(true);
+    expect(frameDue(pkg.steps, ["Now you try yours: 30 × ? = 1620. To find the missing number, work out 1620 ÷ 30."])).toBe(false);
+  });
+
+  it("answers why the first step divides or tries numbers (step.why), from the printed equation", () => {
+    const divide = packageLines(teachable(derive({ known: 30, missing: 54, sign: "×" })) as OperationPackage);
+    expect(divide.help(divide.stepIds[0]).find((o) => o.line === "step.why")!.texts[0]).toBe("30 times the missing number makes 1620. That is why we work out 1620 ÷ 30.");
+    const trial = packageLines(teachable(derive({ known: 236, missing: 6, sign: "×" })) as OperationPackage);
+    expect(trial.help("try").find((o) => o.line === "step.why")!.texts[0]).toMatch(/^Dividing by 236 in your head is hard\./);
+  });
+
   it("says why first: a subtraction's framing names the missing number taken away", () => {
     const pkg = teachable(derive({ known: 9000, missing: 6000, sign: "−" })) as OperationPackage;
     expect(packageLines(pkg).help("ones")[0].texts[0]).toBe("9000 take away the missing number is 3000. So the missing number is 9000 − 3000. Let's start with the ones. What can you do there?");
@@ -156,7 +176,7 @@ describe("the lines of a missing number", () => {
     const l = packageLines(pkg);
     expect(l.stepIds).toEqual(["try"]);
     const help = l.help("try");
-    expect(help.map((o) => o.level)).toEqual([0, 1, 2, 3]);
+    expect(help.map((o) => [o.line, o.level])).toEqual([["step.invite", 0], ["step.point", 1], ["step.operation", 2], ["step.show", 3], ["step.why", 1]]);
     expect(help[3].texts[0]).toBe("236 × 5 = 1180. That is less than 1416. 236 × 7 = 1652. That is more than 1416.");
     expect(help[3].board).toBeUndefined();
     const seven = l.notYet("result").find((o) => o.slots.heard === "7")!;
