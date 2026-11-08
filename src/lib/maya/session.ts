@@ -1534,9 +1534,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
   }
 
+  // After the worked example, try_target hands the target back. It has no checking line for a target reading yet.
   if (scoring && checked.some(c => c.problem === "target" && c.answer.verdict === "wrong" &&
         !(c.answer.step === "result" && pkg && isEqualForm(pkg, c.answer.value))) &&
       ["guide", "try_target", "clarify"].includes(p.act) &&
+      !(main === "MODEL_EXAMPLE" && p.act === "try_target") &&
       !spoken.chosen.some(o => ["check.not_yet", "step.point", "step.operation", "step.regroup", "step.why", "step.order"].includes(o.line) ||
         (o.line === "step.invite" && o.slots.step === "result") ||
         (o.line === "check.right_step" && checked.some(c => c.answer.step === o.slots.step && c.answer.verdict === "right")))) {
