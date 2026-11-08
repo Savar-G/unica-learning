@@ -317,7 +317,7 @@ describe("the hint ladder", () => {
     expect(c.refused({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] } }))
       .toMatchObject({ code: "hint_too_high" });
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] } });
-    c.child("Two plus three is 4.");
+    c.child("4.");
     expect(c.refused({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })], reading: wrong(4, "tens") })).toMatchObject({ code: "hint_too_high" });
     c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: wrong(4, "tens") });
     c.child("4.");

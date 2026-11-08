@@ -44,7 +44,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { compensations, findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
+import { kindOf, writtenFractions, claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -843,7 +843,7 @@ function stuckWayOut(s: Session, reading: Reading, rightResult: boolean): "examp
   if (!main || !["ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET"].includes(main)) return null;
   const steps = pkg.easierExample.steps.length;
   if (main === "MODEL_EXAMPLE" && s.exampleShown < steps) return null;
-  if ((reading.answers ?? []).some((a) => (a.problem ?? "target") === "target")) return null;
+  if ((reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && (a.verdict !== "wrong" || committedValue(s, a)))) return null;
   if (reading.help === undefined && !asksForHelp(s.turn.text)) return null;
   if (copiedStep(s) !== null || s.ladder.hint < topHint(s)) return null;
   return s.exampleShown < steps ? "example" : "close";
@@ -931,7 +931,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // explanation, without recording the shown work as the child's progress. A turn that only copies or acknowledges the
   // shown step, or asks about the next one (copiedStep: "16", "Got it.", "Where does the 1 go?"), is no miss.
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
-  const missed = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+  const missed = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && committedValue(s, a));
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" && copiedStep(s) === null &&
       s.ladder.hint >= 3 && missed && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child missed it again: give the answer with code's explanation." };
@@ -1244,7 +1244,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (problem !== "target") continue;
       if (a.verdict === "right" && a.step !== "result" && !done.includes(a.step)) done.push(a.step);
       // An equal fraction is not a failed attempt (#407).
-      if (a.verdict === "wrong" && !(a.step === "result" && isEqualForm(pkg, a.value))) failed = true;
+      if (a.verdict === "wrong" && committedValue(s, a) && !(a.step === "result" && isEqualForm(pkg, a.value))) failed = true;
     }
     // An equal fraction shows every work step done: the final step simplifies the child's own fraction (#407).
     if (equal) for (const st of workSteps(pkg)) if (!done.includes(st.id)) done.push(st.id);
@@ -1360,7 +1360,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // A child with a located error can start at H2 at most; otherwise help rises one level per failure or request.
       // Code's fallback for a child still stuck on this step rises one level per child turn (#605), never on silence.
       const stuck = fallback && s.turn !== null ? Math.min(3, ladder.hint + 1) : -1;
-      const cap = Math.max(stuck, (main === "ASSESS" || main === "TRY_TARGET") && ladder.hint === -1 ? Math.max(ladder.unlocked, 2) : ladder.unlocked);
+      const feedbackHelp = checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong") ? Math.min(3, ladder.hint + 1) : -1;
+      const cap = Math.max(stuck, feedbackHelp, (main === "ASSESS" || main === "TRY_TARGET") && ladder.hint === -1 ? Math.max(ladder.unlocked, 2) : ladder.unlocked);
       // The operation line after the child said this step's own setup ("so 2 plus 3 plus 1?") only says it back: it
       // is allowed at any cap and is no new help (#605 practice run 1: C01-r2, F04-r3).
       // A check of the child's own right answer (check.together, check.guess, #605) may ask the step's question (up to
@@ -1425,7 +1426,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // The final step (every work step done) has only its H0 help line: two wrong final answers there release the
       // answer (D-199); any other step needs help up to H3 and another failed attempt or request.
       const final = ladder.step === "result";
-      if ((s.state === "TIME_CLOSE" ? misses < 2 : ladder.unlocked < 4 && !(final && misses >= 2))) {
+      if ((s.state === "TIME_CLOSE" ? misses < 2 : (ladder.unlocked < 4 || !checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong" && committedValue(s, c.answer))) && !(final && misses >= 2))) {
         return no("hint_too_high", final ? "On the final step the answer comes after two wrong final answers."
           : `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowedNow);
       }
@@ -1927,6 +1928,33 @@ function turnRead(s: Session): AnswerRead {
   return yes ? { kept: [yes], final: yes, choice: false, outside: [yes], sure: true } : readAnswer(s.turn!.text, readOptionsIn(s));
 }
 
+/** Whether this turn commits to a value for counting a miss or releasing an answer. */
+export function committedValue(s: Session, a: ChildAnswer): boolean {
+  if (!s.package || !s.turn || s.turn.uncertain) return false;
+  const pkg = s.package;
+  const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
+  if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return false;
+  const at = problemOf(pkg, a.problem ?? "target").steps.find((step) => step.id === a.step);
+  const addition = at?.kind === "add-column" && stepTurnHeard(s, at, a.value);
+  const body = wholeTurn(s.turn.text);
+  const bare = body?.replace(/^(?:still\s+|i got\s+|it's\s+|the answer is\s+)/, "") ?? "";
+  const normalized = readOptionsFor(pkg).fractions ? writtenFractions(bare, readOptionsFor(pkg)) : bare;
+  const tokens = normalized.replace(/([a-z])-(?=[a-z])/g, "$1 ").split(/\s+/).filter(Boolean);
+  const numericForm = tokens.length > 0 && tokens.every((token) => /^(?:\d+(?:\.\d+)?|\.\d+|\d+\/\d+|\/)$/.test(token) || kindOf(token) !== null || token === "point" || token === "negative");
+  const parsed = numericForm ? readAnswer(bare, readOptionsFor(pkg)) : null;
+  if (!addition && !(parsed?.final && parsed.sure && saidAs(parsed.final, a.value))) return false;
+  if ((a.problem ?? "target") === "target") {
+    if (workSteps(pkg).some((step) => (s.passed ?? []).includes(step.id) && stepAnswers(step).some((v) => equivalent(v, a.value)))) return false;
+    if (s.exampleShown > 0) {
+      const example = pkg.easierExample;
+      const shown = [...valuesIn(example.text), ...example.steps.slice(0, s.exampleShown).flatMap(stepAnswers)];
+      if (s.exampleShown >= example.steps.length) shown.push(example.answer);
+      if (shown.some((v) => equivalent(v, a.value))) return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Checks the child's answers: each was said and kept in this turn (after anything taken back, not offered as a choice;
  * a final answer is the last number kept outside the child's explanations, readAnswer, D-199), and each verdict is what
@@ -2007,7 +2035,7 @@ function finalMisses(s: Session, checked: readonly Checked[]): number {
   const before = s.finalMisses ?? 0;
   const pkg = s.package;
   // An equal fraction is not a wrong final answer (#407).
-  if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && !isEqualForm(pkg, c.answer.value))) return before;
+  if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && committedValue(s, c.answer) && !isEqualForm(pkg, c.answer.value))) return before;
   const done = [...behind(s), ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)];
   return currentStep(pkg, done) === "result" ? before + 1 : before;
 }
@@ -2399,7 +2427,7 @@ function heardAnswers(session: Session): ChildAnswer[] {
   if (session.solved === null && read.final && read.sure && !twoNumbers && !notClear(session, {}) && !saysGuess(session.turn.text) && rightForQuestion(pkg, read.final)) found.push({ value: read.final, step: "result", verdict: "right" });
   // A plain final number on the last step is a committed miss, even when the model is unavailable.
   const copiedValue = read.final && workSteps(pkg).some((st) => (session.passed ?? []).includes(st.id) && stepAnswers(st).some((value) => equivalent(value, read.final!)));
-  if (session.solved === null && session.ladder.step === "result" && body !== null && plainNumber(body) !== null && read.final && read.sure && !copiedValue && !rightForQuestion(pkg, read.final)) {
+  if (session.solved === null && session.ladder.step === "result" && body !== null && plainNumber(body) !== null && read.final && read.sure && !copiedValue && committedValue(session, { value: read.final, step: "result", verdict: "wrong" }) && !rightForQuestion(pkg, read.final)) {
     found.push({ value: read.final, step: "result", verdict: "wrong" });
   }
   return found.filter((a) => checkAnswers(session, [a], []) === null);
@@ -2485,7 +2513,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   // A step a model named, in a turn that is not heard: the confirm question comes before more help. Only that refusal: a
   // claim judged wrong is not a hearing problem (review of fec3dac4).
   const unheard = refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
-  const shownMiss = s.ladder.hint >= 3 && s.ladder.step !== "result" && copied === null && checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong");
+  const shownMiss = s.ladder.hint >= 3 && s.ladder.step !== "result" && copied === null && checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong" && committedValue(s, c.answer));
   const rank = (a: Act) => ((shownMiss && a === "give_answer") ? FALLBACK_ORDER.indexOf("guide") - 1 : (solved && a === "ask_write") || (finalGive && a === "give_answer") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : FALLBACK_ORDER.indexOf(a));
   const order = [...new Set(unheard && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({
