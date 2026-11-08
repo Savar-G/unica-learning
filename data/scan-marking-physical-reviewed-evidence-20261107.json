@@ -1,0 +1,149 @@
+{
+ "source": "The reviewed endpoint evidence behind the enabled rows of public.scan_marking_evaluation_prices, computed from the saved public snapshots: Sonnet from comparison/approved-snapshots-13-makora, Terra from comparison/terra-gemini-v7/snapshots (2026-11-06). Not inference or retention acceptance.",
+ "evidence": {
+  "anthropic/claude-sonnet-5.5": {
+   "model": "anthropic/claude-sonnet-5.5",
+   "endpoint": {
+    "name": "Google | anthropic/claude-sonnet-5.5-20260928",
+    "model_id": "anthropic/claude-sonnet-5.5",
+    "model_name": "Anthropic: Claude Sonnet 5.5",
+    "context_length": 1000000,
+    "pricing": {
+     "prompt": "0.000002",
+     "completion": "0.00001",
+     "web_search": "0.01",
+     "input_cache_read": "0.0000001",
+     "input_cache_write": "0.0000025",
+     "input_cache_write_1h": "0.000004",
+     "discount": 0
+    },
+    "provider_name": "Google",
+    "tag": "google-vertex/global",
+    "service_tier": null,
+    "quantization": "unknown",
+    "max_completion_tokens": 128000,
+    "max_prompt_tokens": null,
+    "supported_parameters": [
+     "reasoning",
+     "include_reasoning",
+     "max_tokens",
+     "response_format",
+     "tool_choice",
+     "tools",
+     "verbosity",
+     "structured_outputs",
+     "stop",
+     "reasoning_effort"
+    ],
+    "supports_tool_choice": {
+     "none": true,
+     "auto": true,
+     "required": false,
+     "function": false
+    },
+    "status": 0,
+    "uptime_last_30m": 100,
+    "uptime_last_5m": 100,
+    "uptime_last_1d": 100,
+    "supports_implicit_caching": false,
+    "native_tools": {
+     "openrouter:bash": {
+      "type": "bash_20250124"
+     }
+    },
+    "supports_voice_cloning": false,
+    "supports_multiple_audio_references": false,
+    "supports_image_reference": false,
+    "supports_diarization": false,
+    "latency_last_30m": null,
+    "throughput_last_30m": null
+   },
+   "excludedEndpoints": [],
+   "zdrListed": true,
+   "safetyRetention": false,
+   "policy": "strict-zdr",
+   "source": "https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5.5/endpoints",
+   "snapshotHash": "6b853cb40519871aade5b4c9bded1477dc2835e04b6c125ad029066a931ba4d7",
+   "zdrHash": "6119a6157bf4d543b6eeb4f750ccd7b8d5508eb69770b1661f6c2360d14f1a19"
+  },
+  "openai/gpt-6.1-terra": {
+   "model": "openai/gpt-6.1-terra",
+   "endpoint": {
+    "name": "Azure | openai/gpt-6.1-terra-20261026",
+    "model_id": "openai/gpt-6.1-terra",
+    "model_name": "OpenAI: GPT-6.1 Terra",
+    "context_length": 1050000,
+    "pricing": {
+     "prompt": "0.000001",
+     "completion": "0.000005",
+     "web_search": "0.01",
+     "input_cache_read": "0.00000005",
+     "input_cache_write": "0.00000125",
+     "discount": 0,
+     "overrides": [
+      {
+       "min_prompt_tokens": 272000,
+       "prompt": "0.000002",
+       "completion": "0.0000075",
+       "input_cache_read": "0.0000001",
+       "input_cache_write": "0.0000025"
+      }
+     ]
+    },
+    "provider_name": "Azure",
+    "tag": "azure",
+    "service_tier": null,
+    "quantization": "unknown",
+    "max_completion_tokens": 128000,
+    "max_prompt_tokens": 922000,
+    "supported_parameters": [
+     "reasoning",
+     "include_reasoning",
+     "max_completion_tokens",
+     "tools",
+     "tool_choice",
+     "verbosity",
+     "response_format",
+     "seed",
+     "structured_outputs",
+     "reasoning_effort"
+    ],
+    "supports_tool_choice": {
+     "none": true,
+     "auto": true,
+     "required": true,
+     "function": true
+    },
+    "status": 0,
+    "uptime_last_30m": 100,
+    "uptime_last_5m": 100,
+    "uptime_last_1d": 100,
+    "supports_implicit_caching": false,
+    "native_tools": {
+     "openrouter:web_search": {
+      "type": "web_search"
+     },
+     "openrouter:apply_patch": {
+      "type": "apply_patch"
+     }
+    },
+    "supports_voice_cloning": false,
+    "supports_multiple_audio_references": false,
+    "supports_image_reference": false,
+    "supports_diarization": false,
+    "latency_last_30m": null,
+    "throughput_last_30m": null
+   },
+   "excludedEndpoints": [
+    "azure/eu",
+    "azure/us"
+   ],
+   "zdrListed": true,
+   "safetyRetention": false,
+   "policy": "strict-zdr",
+   "source": "https://openrouter.ai/api/v1/models/openai/gpt-6.1-terra/endpoints",
+   "snapshotHash": "a83edc48c9fc5609763f8f3d3690e1e7d443578047c00d40a1b6bb4f199565f1",
+   "zdrHash": "605d5a010b6fec7a30bf8872ae0e52f5ab29f1e54fd9c6380f20394e8b4ff582"
+  }
+ }
+}

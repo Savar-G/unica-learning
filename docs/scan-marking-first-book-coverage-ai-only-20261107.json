@@ -1,0 +1,60 @@
+{
+  "label": "Offline supplied-reading coverage, not recognition or print approval",
+  "sha256": "bfc5542e32bb062b88bbd26b4c4326e983b5c2708d543460e8179894e6f055fc",
+  "prompt": "whole-page-scalar-readings-v8",
+  "pages": 84,
+  "questions": 582,
+  "aiMarked": 582,
+  "parent": 0,
+  "suppliedRight": 575,
+  "suppliedNullBlank": 575,
+  "suppliedUnclear": 575,
+  "suppliedWrongMethod": 0,
+  "suppliedMissingMethod": 0,
+  "suppliedDoesNotSolve": 0,
+  "suppliedFilledIn": 0,
+  "suppliedTwoWaysToTeam": 49,
+  "unsupported": 0,
+  "formats": {
+    "circle": 86,
+    "show-work": 60,
+    "spot-the-error": 19,
+    "tick-and-number": 16,
+    "two-ways": 7,
+    "write-number": 388,
+    "write-words": 6
+  },
+  "readingFormats": {
+    "circle": 86,
+    "decimal": 2,
+    "show-work": 60,
+    "spot-the-error": 19,
+    "tick-and-number": 16,
+    "two-ways": 7,
+    "whole": 386,
+    "write-words": 6
+  },
+  "complete": true,
+  "parentJudgingLabels": {
+    "questions": 0,
+    "byPath": {
+      "not-read-yet": {
+        "count": 0,
+        "formats": {},
+        "ids": []
+      },
+      "model-answer-form": {
+        "count": 0,
+        "formats": {},
+        "ids": []
+      },
+      "alternate-form": {
+        "count": 0,
+        "formats": {},
+        "ids": []
+      }
+    },
+    "historyLabelsAskingParent": []
+  },
+  "gaps": []
+}
