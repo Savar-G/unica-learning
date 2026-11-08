@@ -30,7 +30,9 @@ beforeAll(async () => {
     mkdirSync(dir, { recursive: true });
     for (const id of store.ids()) writeFileSync(join(dir, `${id}.json`), store.load(id)!);
   }
-});
+// Every behaviour runs in this one hook: give it CI's test time limit, not the 10 s hook default (the CI runner took over
+// 10 s once the claim behaviours were added; locally it takes about 3 s).
+}, 60_000);
 
 const RESEARCH_IDS = Array.from({ length: 40 }, (_, i) => `C${String(i + 1).padStart(2, "0")}`);
 const baseId = (id: string) => id.replace(/[a-z]$/, "");
