@@ -11,6 +11,7 @@ import { tentative, context, bypasses, confirmationBypasses } from "./scope-case
 import { FIXTURES } from "./fixtures";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
 import { C3C_REVIEW_BEHAVIOURS } from "./c3c-review-cases";
+import { C3B_REVIEW_BEHAVIOURS } from "./c3b-review-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
 const child = (text: string, read?: Read, maya?: Plan[]): Step => ({ child: text, ...(read ? { read } : {}), ...(maya ? { maya } : {}) });
@@ -460,9 +461,9 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"], never: ["redirect"] },
   },
   {
-    id: "OTC5", title: "Money claim in the child's own words ('It's true, because 40 plus 0.50 is 40.50.'): accepted (J06)", fixture: "MONEY", status: "passing",
+    id: "OTC5", title: "Money claim in the child's own words ('It's true, because 40 plus 0.75 is 40.75.'): accepted (J06)", fixture: "MONEY", status: "passing",
     steps: [
-      child("It's true, because 40 plus 0.50 is 40.50.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("It's true, because 40 plus 0.75 is 40.75.", { start: "has_work" }, [{ act: "accept_answer" }]),
       child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
       child("I circled it.", { paper: "written" }),
     ],
@@ -592,6 +593,41 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I circled it.", { paper: "written" }),
     ],
     expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["guide", "redirect"] },
+  },
+  // Review of #741 (P1a): the compare step is heard by code, whatever step the model's reading names for it.
+  {
+    id: "OTC7", title: "Scale claim, J06: '60 plus 20 is 80.' read by the model as part 2, not the compare: code hears the compare, Maya asks for the word, not 60 + 20 again", fixture: "SCALE", status: "passing",
+    steps: [
+      child("2 times 10 is 20.", { start: "has_work", answers: [[20, "e1", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("60 plus 20 is 80.", { answers: [[80, "e2", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"], counts: { hints: 0 }, never: ["redirect", "example_step", "give_answer"] },
+  },
+  {
+    id: "OTC8", title: "Minute-hand claim, J06: '35 plus 3 is 38.' read by the model as the ones of part 2: code hears the compare, Maya asks for the word", fixture: "MINUTE", status: "passing",
+    steps: [
+      child("7 times 5 is 35.", { start: "has_work", answers: [[35, "e1", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("35 plus 3 is 38.", { answers: [[38, "e2.ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"], counts: { hints: 0 }, never: ["redirect", "example_step", "give_answer"] },
+  },
+  {
+    id: "OTC9", title: "Scale claim: a hedged 'Maybe 80.' that the model reads as the compare gets no credit (lesson 6)", fixture: "SCALE", status: "passing",
+    steps: [
+      child("2 times 10 is 20.", { start: "has_work", answers: [[20, "e1", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Maybe 80.", { answers: [[80, "claim", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("60 plus 20 is 80.", { answers: [[80, "claim", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, refused: ["answer_not_committed"], never: ["redirect", "example_step", "give_answer"] },
   },
   {
     id: "OT13", title: "Die 8 at grade 3: help only through the easier example, then 'Maybe 1?' gets a confirm, then 'I'm stuck.': the honest close is the child stopping, not a technical issue (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
@@ -2507,6 +2543,7 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   ...ONE_STEP_BEHAVIOURS,
   ...C3C_REVIEW_BEHAVIOURS,
+  ...C3B_REVIEW_BEHAVIOURS,
   // Evaluate questions (Wave A, A2): each part in the order of operations; the part's columns when the child is stuck.
   {
     id: "EV01",

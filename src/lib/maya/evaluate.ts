@@ -383,11 +383,51 @@ export const partIdOf = (pkg: OperationPackage, stepId: string): string | null =
 export function evaluateModelSteps(pkg: OperationPackage): { id: string; text: string }[] | null {
   const t = teachingOf(pkg);
   if (!t) return null;
-  return t.steps.map((s) => {
+  const parts = t.steps.map((s) => {
     const at = partAt(pkg, s.id);
     if (at?.inner) return { id: s.id, text: `${at.part.expr}: ${stepText(at.inner, at.part.operation)}` };
     return { id: s.id, text: stepText(s, pkg.operation) };
   });
+  // A claim's session package (claim.ts, A4): its compare step follows the parts, as in evaluateSteps, so the model can
+  // name it (review of #741, P1a).
+  return [...parts, ...pkg.steps.filter((s) => s.kind === "claim-compare").map((s) => ({ id: s.id, text: stepText(s, pkg.operation) }))];
+}
+
+/**
+ * The step a claim's compare is heard on (review of #741, P1a): the last part's own equation ("60 plus 20 is 80"), by
+ * partEquationSaid, once every part before it is done. Null for a package that is not an evaluate, or has no compare.
+ */
+export function lastPartStep(pkg: OperationPackage): OperateStep | null {
+  const t = teachingOf(pkg);
+  const last = t?.parts.at(-1);
+  return last && last.last ? last.step : null;
+}
+
+/** The steps of an evaluate question before its last part (the earlier parts and their columns), done first. */
+export function stepsBeforeLastPart(pkg: OperationPackage): string[] {
+  const t = teachingOf(pkg);
+  if (!t) return [];
+  return t.parts.filter((p) => !p.last).flatMap((p) => [...p.columns.map((c) => c.id), p.id]);
+}
+
+/** The sign of a one-step operation of two numbers, for its equation. */
+const ONE_STEP_SIGN: Partial<Record<Operation["kind"], Sign>> = { add: "+", "decimal-add": "+", subtract: "−", "decimal-subtract": "−", multiply: "×", divide: "÷" };
+
+/**
+ * The whole turn is the equation whose result a claim's compare step checks (review of #741, P1a): in an evaluate
+ * question the last part's ("60 plus 20 is 80"), else the question's own one-step operation ("8 times 850 is 6800"),
+ * by partEquationSaid. False for any other package or turn.
+ */
+export function compareEquationSaid(pkg: OperationPackage, body: string, value: number): boolean {
+  if (pkg.operation.kind === "evaluate") {
+    const last = lastPartStep(pkg);
+    return !!last && last.value === value && partEquationSaid(body, last);
+  }
+  const op = ONE_STEP_SIGN[pkg.operation.kind];
+  const [left, right] = pkg.operation.operands;
+  if (!op || pkg.operation.operands.length !== 2 || typeof left !== "number" || typeof right !== "number") return false;
+  const rule = op === "+" || op === "−" ? "add-subtract" : "multiply-divide";
+  return partEquationSaid(body, { id: "claim", kind: "operate", rule, op, left, right, value, rest: String(value) } as OperateStep);
 }
 
 /**

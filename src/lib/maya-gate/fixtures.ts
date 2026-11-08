@@ -186,10 +186,11 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   DIE12: deriveDieCount(diePrinted(12, "odd"))!,
   SHAPES_LONG: deriveSymmetry(symmetryPrinted(1, 2))!,
   // C3b: other-topic claims taught through A4's claim session. SCALE: "A scale's marks are 50, 60, 70. True or false: 2
-  // intervals above 60 is 80." (60 + 2 × 10, an evaluate); MONEY: "True or false: 2 $20 bills and 2 quarters is
-  // $40.50." (40 + 0.5); MINUTE: "True or false: the minute hand 3 marks past the 7 shows 38 minutes." (7 × 5 + 3).
+  // intervals above 60 is 80." (60 + 2 × 10, an evaluate); MONEY: "True or false: 2 $20 bills and 3 quarters is
+  // $40.75." (40 + 0.75; 2 quarters are held, review of #741 P2-1); MINUTE: "True or false: the minute hand 3 marks
+  // past the 7 shows 38 minutes." (7 × 5 + 3).
   SCALE: deriveTopicClaim(scalePrinted(10, 60, 2, true))!,
-  MONEY: deriveTopicClaim(moneyPrinted(2, 2, true))!,
+  MONEY: deriveTopicClaim(moneyPrinted(2, 3, true))!,
   MINUTE: deriveTopicClaim(minutePrinted(3, 7, true))!,
   // C3c: clock times (time-add). CLOCK1: "What time is 35 minutes after 8:00?" (one count, 8:35); CLOCK2: "What time
   // is 50 minutes after 4:25?" (35 minutes to 5:00, then 15 more: 5:15).

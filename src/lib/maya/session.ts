@@ -40,6 +40,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { teachingLimits } from "@/lib/maya-teaching/limits";
+import { partsClaim } from "@/lib/maya-teaching/topic-claim";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
@@ -50,7 +51,7 @@ import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, 
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { frameOwed, topicQuestion } from "./topic-frame";
 import { clockAnswers, clockValues } from "./clock-lines";
-import { closeParts, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, withEvaluateExample } from "./evaluate";
+import { closeParts, compareEquationSaid, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { claimActs, claimAnswers, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -1947,7 +1948,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || at.kind === "count-on") && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || at.kind === "count-on" || (at.kind === "claim-compare" && partsClaim(pkg))) && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
@@ -2193,9 +2194,12 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
  */
 function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolean {
   const pkg = s.package;
-  // A claim's result (claim.ts): its own whole-turn templates; it may come before the columns, as a whole result.
-  if (pkg && s.turn && step.kind === "claim-compare") {
-    return saidAs(number(step.value), value) && claimStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, operation: pkg.operation, value: step.value,
+  // A claim's result (claim.ts). A scale, money or minute-hand claim (C3b, topic-claim.ts partsClaim) is heard from a
+  // whole turn after its earlier parts (compareTurnHeard, review of #741 P1a); any other claim, marbles and area
+  // included, through A4's own whole-turn templates, which may come before the columns, as a whole result.
+  if (step.kind === "claim-compare") {
+    if (pkg && partsClaim(pkg)) return compareTurnHeard(s, step, value);
+    return !!pkg && !!s.turn && saidAs(number(step.value), value) && claimStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, operation: pkg.operation, value: step.value,
       resultAsked: s.resultAsked ?? null, shown: s.ladder.step === step.id && s.ladder.hint >= 3 });
   }
   // A part of an evaluate question is a step too: its result is its total (evaluate.ts).
@@ -2252,6 +2256,28 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   const r = readNumbers(body);
   if (!r.values.some((v) => saidAs(v, value)) || !r.values.every((v) => saidAs(v, value) || (v.type === "number" && carried.some((c) => c.value === v.value)))) return false;
   return checkColumnClaims(pkg, step, pkg.steps, step, body) === "right";
+}
+
+/**
+ * A claim's compare step (claim.ts) is heard from a whole turn only, as a column is (review of #741, P1a): the computed
+ * result alone ("80", "It's 80"), a plain yes to Maya's own "Did you say 80?", or the equation it checks ("60 plus 20 is
+ * 80", compareEquationSaid), once every part before the last is done. A hedge, a question, another speaker or another
+ * sentence fits none. After H3 on the last part or the compare, the value and the equation only copy what Maya showed.
+ */
+function compareTurnHeard(s: Session, step: Extract<WorkedStep, { kind: "claim-compare" }>, value: AnswerValue): boolean {
+  const pkg = s.package;
+  if (!pkg || !s.turn || s.turn.uncertain || s.done.includes(step.id)) return false;
+  const body = wholeTurn(s.turn.text);
+  const before = stepsBeforeLastPart(pkg);
+  if (body === null || before.some((id) => !s.done.includes(id))) return false;
+  const copy = s.ladder.hint >= 3 && !!s.ladder.step && !before.includes(s.ladder.step);
+  const total = saidAs(number(step.value), value);
+  if (copy || !total) return false;
+  const yes = wholeYes(body);
+  if (yes) return !!s.stepAsked && saidAs(s.stepAsked, value) && (yes.value === null || saidAs(number(yes.value), s.stepAsked));
+  const bare = wholeValue(body);
+  if (bare !== null) return saidAs(number(bare), value);
+  return compareEquationSaid(pkg, body, step.value);
 }
 
 /**
@@ -2933,7 +2959,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "try_target": {
       // Checked wrong work after the easier example ("It's true." for a false claim) gets a line that answers it first:
       // the claim's own question again, or "not yet" for any other question. Without one every try_target is refused,
-      // and a call with the model down had no safe line (review of #742, P1-a).
+      // and a call with the model down had no safe line (reviews of #742 P1-a and #741 P1-2).
       const wrong = view.checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong");
       const respond = !wrong ? [] : sessionClaim(pkg) ? l.help("result").filter((o) => o.line === "step.invite") : l.notYet("result");
       return [...respond, ...l.tryTarget(), ...l.question()];

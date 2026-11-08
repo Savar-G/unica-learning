@@ -195,6 +195,8 @@ describe("a workbook-confirmed call at grade 3 (review of #731)", () => {
     ["die 12", deriveDieCount(diePrinted(12, "even"))],
     ["symmetry, longest names", deriveSymmetry(symmetryPrinted(1, 2))],
     ["symmetry, a square and a scalene triangle", deriveSymmetry(symmetryPrinted(0, 3))],
+    // The book's perimeter question: its topic sentence and the question line fit one 25-word turn (review of #741, P1b).
+    ["perimeter 245 by 126", derivePerimeter(perimeterPrinted(245, 126))],
   ];
   it.each(packages)("%s: the fixed opening fits 25 words, and the call leaves OPEN on the child's first turn", async (_, pkg) => {
     expect(pkg).not.toBeNull();
@@ -222,31 +224,43 @@ describe("a workbook-confirmed call at grade 3 (review of #731)", () => {
     for (const text of out.say) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
   });
 
-  it("perimeter (taught with A2's evaluate): the fixed opening fits 25 words, and the call leaves OPEN", async () => {
+  it("perimeter at grade 3 (review of #741, P1b): 'I'm stuck.' gets the topic sentence with a guide, never try_target, and the next 'I'm stuck.' gets help, not silence", async () => {
     const model = scenarioModel();
-    const s = createTextSession({ callId: "grade-3-perimeter", package: derivePerimeter(perimeterPrinted(245, 126))!, grade: 3, confirmWorkbook: true, model, clock: () => 1000 });
+    const pkg = derivePerimeter(perimeterPrinted(245, 126))!;
+    const s = createTextSession({ callId: "grade-3-perimeter", package: pkg, grade: 3, confirmWorkbook: true, model, clock: () => 1000 });
     model.next([{ act: "open" }], undefined);
-    const out = await s.start();
-    expect(s.session.opened).toBe(true);
-    model.next([{ act: "example_step" }], { start: "no_start" });
-    out.say.push(...(await s.child("I don't know how to start.")).say);
-    expect(s.session.state).not.toBe("OPEN");
+    await s.start();
+    const acts = () => s.trace().turns.flatMap((x) => (x.kind === "maya" && x.output ? [x.output.act] : []));
+    model.next([{ act: "guide", level: 0, lines: ["question.problem"] }], { start: "has_work", help: "stuck" } as never);
+    const first = await s.child("I'm stuck.");
+    expect(acts().at(-1)).toBe("guide");
+    expect(first.say.join(" ")).toContain(topicFrame(pkg.text, pkg.operation!)!);
+    model.next([{}], { help: "stuck" } as never);
+    const second = await s.child("I'm stuck.");
+    expect(second.say.length).toBeGreaterThan(0);
+    expect(acts().at(-1)).toBe("guide");
     expect(s.session.outcome).toBeNull();
-    for (const text of out.say) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
+    expect(acts()).not.toContain("try_target");
+    for (const text of [...first.say, ...second.say]) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
   });
 });
 
 describe("the honest close (lessons from review 7 and 10)", () => {
-  const cases: [string, QuestionPackage][] = [
-    ["die 8", deriveDieCount(diePrinted(8, "odd"))!],
-    ["symmetry (1, 2)", deriveSymmetry(symmetryPrinted(1, 2))!],
-    // C3b: a scale claim (an evaluate and A4's compare step); its stuck step is the first column of its first part.
-    ["scale claim", deriveTopicClaim(scalePrinted(10, 60, 2, true))!],
-    // C3c: the compare claims (marbles "less", area "greater").
-    ["marbles claim", deriveTopicClaim(marblesPrinted(1, 3, 5))!],
-    ["area claim", deriveTopicClaim(areaClaimPrinted(6, 3, 4, 4))!],
+  // Each case with the highest hint it reaches before the close and the stuck step it records (review of #741, P3a).
+  const cases: [string, QuestionPackage, number, string][] = [
+    ["die 8", deriveDieCount(diePrinted(8, "odd"))!, 2, "ones"],
+    ["symmetry (1, 2)", deriveSymmetry(symmetryPrinted(1, 2))!, 2, "ones"],
+    // C3b: a scale claim (an evaluate and A4's compare step); its stuck step is the first column of its first part. With
+    // only code's fallbacks, A4's claim path (#737 at fe7a5ff8) shows the easier example at the first "I'm stuck." of a
+    // child who cannot start, and the next closes, so no hint is reached (-1), as decided on #731 (lesson 10).
+    ["scale claim", deriveTopicClaim(scalePrinted(10, 60, 2, true))!, -1, "e1.r1-ones"],
+    // The perimeter (review of #741, P1b): its stuck step is the ones of the brackets' addition.
+    ["perimeter 245 by 126", derivePerimeter(perimeterPrinted(245, 126))!, 2, "e1.ones"],
+    // C3c: the compare claims (marbles "less", area "greater"): A4's claim path too, so the example comes first (-1).
+    ["marbles claim", deriveTopicClaim(marblesPrinted(1, 3, 5))!, -1, "ones"],
+    ["area claim", deriveTopicClaim(areaClaimPrinted(6, 3, 4, 4))!, -1, "r1-ones"],
   ];
-  it.each(cases)("%s: help-only turns reach the easier example, then an honest close with no answer, and the stuck step is recorded", async (_, pkg) => {
+  it.each(cases)("%s: help-only turns reach the easier example, then an honest close with no answer, and the stuck step is recorded", async (_, pkg, maxHint, stuckStep) => {
     for (const grade of [3, 5]) {
       const script = scenarioModel();
       // Code's fallbacks decide every turn (the model's parts are always refused).
@@ -268,7 +282,7 @@ describe("the honest close (lessons from review 7 and 10)", () => {
       expect(acts).not.toContain("give_answer");
       expect(acts).toContain("example_step");
       expect(acts.at(-1)).toBe("close");
-      expect(s.session.ladder.hint).toBeLessThanOrEqual(3);
+      expect(s.session.ladder.hint, `grade ${grade}`).toBe(maxHint);
       const close = said.at(-1)!;
       expect(close).toMatch(/hard/);
       expect(close).toMatch(/stop/);
@@ -276,8 +290,7 @@ describe("the honest close (lessons from review 7 and 10)", () => {
       expect(close).not.toMatch(/\d/);
       for (const text of said) expect(gateWordCount(text), text).toBeLessThanOrEqual(grade <= 3 ? 25 : 45);
       const event = learningEvent(s.session, { parentId: "p", childId: "c" });
-      expect(event).toMatchObject({ result: "blank" });
-      expect(event?.stuckStep).toBeTruthy();
+      expect(event, `grade ${grade}`).toMatchObject({ result: "blank", stuckStep });
     }
   });
 

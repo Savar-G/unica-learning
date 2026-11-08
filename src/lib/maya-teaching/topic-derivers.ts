@@ -18,12 +18,43 @@ import { readTopicQuestion } from "./topic-claims";
 import { claimOperation, claimReading, resultOf } from "./topic-claim";
 import type { Deriver } from "./index";
 
+/** Every number printed in the question's text ("$40.50" is 40.5), for the examples' refusals (lessons 11 and 12). */
+function printedNumbers(text: string): number[] {
+  return [...text.matchAll(/\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+}
+
 /**
- * Money's easier examples, best first: one $20 bill and some quarters, then smaller dollar amounts. The first the
- * package check finds smaller than the question (and the session can teach) wins.
+ * True when an example would give the question away (lessons 11 and 12): one of its numbers, its step value or its
+ * result is a number the question prints or works out (`own`), or its result is the answer times a power of 10 or
+ * begins with the answer's digits (givesAway). 0 is never an example's number.
  */
-const MONEY_EXAMPLES: Operation[] = [[20, 0.5], [20, 0.25], [20, 0.75], [10, 0.5], [2, 0.5], [2, 0.25], [1, 0.5]]
-  .map(([d, q]) => ({ kind: "decimal-add", operands: [d, q] }));
+function examplesGiveAway(numbers: number[], got: number, own: number[], answer: number): boolean {
+  const same = (x: number, y: number) => Math.abs(x - y) < 1e-9;
+  const tenfold = [1, 10, 100, 1000, 10000].some((p) => same(got * p, answer) || same(got, answer * p));
+  return [...numbers, got].some((x) => x <= 0 || own.some((y) => same(x, y))) || tenfold ||
+    givesAway({ type: "number", value: answer }, { type: "number", value: got });
+}
+
+/**
+ * Money's easier examples, of its shape (some dollars plus some quarters, as a decimal addition), best first, made by
+ * code and refused when they reuse a number of the question (review of #741, P2-1): the bill and quarter counts, the
+ * $20, the shown amount, the bills' and the quarters' sums, or the answer (examplesGiveAway). The package check then
+ * takes the first that is smaller than the question.
+ */
+export function moneyExamples(operation: Operation, printed: number[]): Operation[] {
+  if (operation.kind !== "decimal-add") return [];
+  const [d, q] = operation.operands as number[];
+  const answer = d + q;
+  const own = [...printed, d, q, answer];
+  const out: Operation[] = [];
+  // Fewer digits first (every amount is written to the cent, so $5.75 is easier than $40.50 and $10.75 is not).
+  for (const dollars of [5, 4, 3, 2, 1, 10, 30, 50]) for (const quarters of [0.5, 0.75, 0.25]) {
+    const got = Math.round((dollars + quarters) * 100) / 100;
+    if (examplesGiveAway([dollars, quarters], got, own, answer)) continue;
+    out.push({ kind: "decimal-add", operands: [dollars, quarters] });
+  }
+  return out;
+}
 
 /**
  * A sum's or a product's easier examples (marbles, area: C3c): two one-digit numbers, with a smaller result, smallest
@@ -48,7 +79,7 @@ function freshPairs(operation: Operation, own: ReadonlySet<number>): Operation[]
 
 /** Every number a marbles or area claim prints or computes: the printed numbers, its results and its compared number. */
 function claimNumbers(printed: QuestionPackage, reading: NonNullable<ReturnType<typeof claimReading>>): Set<number> {
-  const own = new Set(numbersOf(printed.text));
+  const own = new Set(printedNumbers(printed.text));
   const works = reading.topic === "area" ? reading.work : reading.topic === "marbles" ? [reading.work] : [];
   for (const w of works) { const v = resultOf(w); if (v !== null) own.add(v); }
   if (reading.topic === "marbles") own.add(reading.left);
@@ -63,25 +94,54 @@ function exampleFresh(made: QuestionPackage, own: ReadonlySet<number>): boolean 
   return !own.has(compare.value) && !own.has(compare.shown);
 }
 
-/** The numbers of an expression, as written. */
-const numbersOf = (expr: string) => (expr.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
+/**
+ * The minute hand's easier examples, of its shape ("4 × 5 + 3": a number on the clock times 5, plus the marks past it),
+ * best first: a smaller number on the clock, then a larger one, each with 1 to 4 marks. Refused when the example reuses
+ * a number of the question (review of #741, P2-1): the marks, the number, the shown minutes, the number times 5 or the
+ * answer, as its own numbers, its step value (times 5) or its result (examplesGiveAway). Its single digits leave the
+ * adapter's one-place-smaller examples (examples.ts) none.
+ */
+export function minuteExamples(operation: Operation, printed: number[]): Operation[] {
+  const m = /^(\d+) × 5 \+ (\d+)$/.exec(operation.kind === "evaluate" ? operation.operands[0] : "");
+  if (!m) return [];
+  const [k, x] = [Number(m[1]), Number(m[2])];
+  const answer = k * 5 + x;
+  const own = [...printed, k, x, k * 5, answer];
+  const numbers = [...Array.from({ length: k - 1 }, (_, i) => k - 1 - i), ...Array.from({ length: Math.max(0, 11 - k) }, (_, i) => k + 1 + i)];
+  const out: Operation[] = [];
+  for (const a of numbers) for (const b of [1, 2, 3, 4]) {
+    if (examplesGiveAway([a, b, a * 5], a * 5 + b, own, answer)) continue;
+    out.push({ kind: "evaluate", operands: [`${a} × 5 + ${b}`] });
+  }
+  return out;
+}
 
 /**
- * Easier examples of the claim's shape with none of the question's own numbers (lesson 11), smallest first: the scale's
- * "v + m × k" and the minute hand's "k × 5 + x" (5 is the clock's fact, not a printed number). Each must also pass the
- * package check, the session's rule and the giveaway rule (examples.ts `givesAway`); the first that does wins.
+ * A scale's easier examples, of its shape ("20 + 3 × 5": the mark the count starts at, plus the intervals times the
+ * step), best first, made by code and not from the question's own digits (review of #741, P2: "9 + 3 × 1" for
+ * "90 + 3 × 10" gave 12 for 120). Each is refused when it uses any number of the question (its start, count or step),
+ * the question's answer, a 0 or a 1; when its answer is the question's, or that times a power of 10; and when its
+ * answer's digits begin the question's answer (givesAway; lessons 11 and 12). Its start is a round mark where it can be,
+ * and its step a scale's step (5, 2 or 10) before 3, so it reads as a scale. The package check then takes the first
+ * that is smaller than the question.
  */
-function freshExamples(operation: Operation, topic: "scale" | "minute-hand"): Operation[] {
-  if (operation.kind !== "evaluate") return [];
-  const own = new Set(numbersOf(operation.operands[0]));
-  const fresh = (...ns: number[]) => ns.every((n) => !own.has(n));
-  const out: string[] = [];
-  if (topic === "scale") {
-    for (const v of [3, 4, 6, 7, 8, 9]) for (const m of [2, 3, 4]) for (const k of [3, 4, 5]) if (fresh(v, m, k)) out.push(`${v} + ${m} × ${k}`);
-  } else {
-    for (const k of [1, 2, 3, 6]) for (const x of [1, 2, 3]) if (fresh(k, x)) out.push(`${k} × 5 + ${x}`);
+export function scaleExamples(operation: Operation): Operation[] {
+  const m = /^(\d+) \+ (\d+) × (\d+)$/.exec(operation.kind === "evaluate" ? operation.operands[0] : "");
+  if (!m) return [];
+  const own = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const answer = own[0] + own[1] * own[2];
+  const tenfold = (x: number) => [10, 100, 1000, 10000].some((p) => x * p === answer);
+  const out: Operation[] = [];
+  // A round start first; a 1-digit start after, for a question with few digits (an example must have fewer, as the
+  // package check counts them: "90 + 3 × 2" has 4).
+  for (const start of [10, 20, 30, 40, 4, 6, 8]) for (const step of [5, 2, 10, 3]) for (const count of [2, 3, 4]) {
+    const got = start + count * step;
+    const numbers = [start, count, step];
+    if (numbers.some((x) => x <= 1 || own.includes(x) || x === answer) || got === answer || tenfold(got)) continue;
+    if (givesAway({ type: "number", value: answer }, { type: "number", value: got })) continue;
+    out.push({ kind: "evaluate", operands: [`${start} + ${count} × ${step}`] });
   }
-  return out.map((e) => ({ kind: "evaluate", operands: [e] }));
+  return out;
 }
 
 /** The teaching package of a scale, minute-hand or money claim, or null. */
@@ -96,7 +156,9 @@ export function deriveTopicClaim(printed: QuestionPackage): QuestionPackage | nu
   const answer = { type: "number" as const, value };
   const pairs = reading.topic === "marbles" || reading.topic === "area";
   const own = pairs ? claimNumbers(printed, reading) : new Set<number>();
-  const examples = reading.topic === "money" ? MONEY_EXAMPLES : pairs ? freshPairs(operation, own) : freshExamples(operation, reading.topic);
+  const printedNow = printedNumbers(printed.text);
+  const examples = pairs ? freshPairs(operation, own) : reading.topic === "money" ? moneyExamples(operation, printedNow)
+    : reading.topic === "scale" ? scaleExamples(operation) : minuteExamples(operation, printedNow);
   for (const example of examples) {
     const made = withTeachingOperation(printed, operation, answer, { source: TEACHING_SOURCE, limits: MAYA_TEACHING_LIMITS, examples: [example] });
     if (!made?.easierExample || givesAway(answer, made.easierExample.answer) || heldReason(made) !== null) continue;

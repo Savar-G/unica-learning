@@ -42,6 +42,15 @@ export function claimReading(pkg: QuestionPackage): ClaimReading | null {
   return reading && CLAIM_TOPICS.includes(reading.topic) ? (reading as ClaimReading) : null;
 }
 
+/**
+ * A scale, money or minute-hand claim (C3b) that the session teaches: its compare is heard from a whole turn after its
+ * earlier parts (session.ts compareTurnHeard). The marbles and area claims (C3c) keep A4's own result templates.
+ */
+export function partsClaim(pkg: QuestionPackage): boolean {
+  const reading = claimReading(pkg);
+  return !!reading && (reading.topic === "scale" || reading.topic === "money" || reading.topic === "minute-hand") && topicClaim(pkg) !== null;
+}
+
 /** The number the computed side is compared with, and the relation the claim states. */
 function sideOf(reading: ClaimReading): { shown: number; relation: Claim["relation"] } | null {
   if (reading.topic === "marbles") return { shown: reading.left, relation: "less" };
