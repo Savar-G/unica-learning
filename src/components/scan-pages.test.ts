@@ -27,6 +27,8 @@ let admitted: string[], loseAdmissions: number, saveFailures: number, expired: S
 // Uploads that land and lose their answer; status answers lost; the list down; the children on the page; the ids released.
 let losePuts: number, loseStatus: boolean, listDown: boolean, kids: { id: string; first_name: string }[], released: string[];
 const calls: string[] = [];
+// How many sent pages the fake Send says marking started on; null: an answer from before the field existed.
+let marking: number | null;
 
 const buttons = () => [...document.querySelectorAll("button")];
 const button = (text: string) => buttons().find((b) => b.textContent === text || b.getAttribute("aria-label") === text);
@@ -42,6 +44,7 @@ const text = () => document.body.textContent ?? "";
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  marking = null;
   context.auth = null; context.prepare = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; overlap = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
   losePuts = 0; loseStatus = false; listDown = false; kids = [{ id: "child", first_name: "Leah" }]; released = [];
@@ -63,7 +66,8 @@ beforeEach(() => {
     if (path === "/api/account/scans/send") {
       const ids: string[] = JSON.parse(String(init!.body)).ids;
       for (const pid of ids) { const p = photos.get(pid); if (p && p.check === "ready" && p.state === "saved") p.sentAt = "2026-11-05T12:00:00Z"; }
-      return Response.json({ sent: [...photos.values()].filter((p) => p.sentAt && ids.includes(p.id)).map((p) => p.id) });
+      const sent = [...photos.values()].filter((p) => p.sentAt && ids.includes(p.id)).map((p) => p.id);
+      return Response.json(marking === null ? { sent } : { sent, marking: Math.min(marking, sent.length) });
     }
     // As the database does: only a reservation with no photo yet lets go.
     if (path.endsWith("/release") && id) {
@@ -152,10 +156,43 @@ it("keeps a refused photo first with its reason while the other pages go on, and
   const sent = calls.find((c) => c === "POST /api/account/scans/send");
   expect(sent).toBeDefined();
   expect([...photos.values()].filter((p) => p.sentAt).map((p) => p.pageId)).toEqual(["p10"]);
-  expect(text()).toContain("1 page sent for marking.");
+  expect(text()).toContain("1 page sent for marking. Marking is not ready yet. The pages wait here.");
   expect(text()).toContain("Sent for marking");
   // The refused pages stay in the stack.
   expect(text()).toContain("2 pages need another photo");
+});
+
+it.each([
+  [3, "3 pages sent for marking. Marks show here when they are ready."],
+  [2, "3 pages sent for marking. Marks show here when they are ready."],
+  [0, "3 pages sent for marking. Marking is not ready yet. The pages wait here."],
+])("the Send result says whether marking started (%s of 3 started)", async (started, words) => {
+  marking = started;
+  await render();
+  await choose("library", "p10.jpg", "p11.jpg", "p12.jpg");
+  await act(async () => button("Send 3 pages for marking")!.click()); await settle();
+  expect(text()).toContain(words);
+});
+
+it.each([
+  [1, "1 page sent for marking. Marks show here when they are ready."],
+  [0, "1 page sent for marking. Marking is not ready yet. The pages wait here."],
+])("the Send result for one page (%s started)", async (started, words) => {
+  marking = started;
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => button("Send this page for marking")!.click()); await settle();
+  expect(text()).toContain(words);
+});
+
+it.each([0, 1, 2, 3])("no Send result says \"started\" or \"later\" (%s of 3 started)", async (started) => {
+  marking = started;
+  await render();
+  await choose("library", "p10.jpg", "p11.jpg", "p12.jpg");
+  await act(async () => button("Send 3 pages for marking")!.click()); await settle();
+  // The whole page after Send, so the message cannot hide a promise anywhere on it.
+  expect(text()).toContain("3 pages sent for marking.");
+  expect(text()).not.toMatch(/started|later/i);
 });
 
 it("retakes a refused page: the camera opens in the tap, and the old photo goes only once a new one is chosen", async () => {
