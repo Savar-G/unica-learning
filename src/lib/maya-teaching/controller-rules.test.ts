@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { heldReason } from "@/lib/maya";
-import { scenarioModel, type Plan, type Read } from "@/lib/maya-gate/gate";
+import { memoryTraceStore, runBehaviour, scenarioModel, type Plan, type Read } from "@/lib/maya-gate/gate";
+import { ONE_STEP_BEHAVIOURS } from "@/lib/maya-gate/one-step-cases";
 import { createTextSession } from "@/lib/maya-text";
 import type { QuestionPackage } from "@/lib/question-package";
 import { teachingPackage } from "./index";
@@ -82,5 +83,34 @@ describe("rule 2: the new place words block a step confirm, as the one-word plac
   it("the bare total still gets the step's confirm path, as before: '9.' is heard as the column's total", async () => {
     const told = await play([{ child: "9.", read: { answers: [[9, "ten thousands", "right"]] }, maya: [CREDIT] }]);
     expect(told[5].lines).toContain("check.right_step");
+  });
+});
+
+describe("J06 (#698 practice): a right step is acknowledged, not asked again; a question about the step is answered", () => {
+  async function told(id: string) {
+    const b = ONE_STEP_BEHAVIOURS.find((x) => x.id === id)!;
+    const store = memoryTraceStore();
+    await runBehaviour(b, store);
+    const trace = JSON.parse(store.load(id)!) as { turns: { kind: string; text?: string; output?: { act: string; say: string[] }; attempts?: { proposal?: { step?: string; parts?: { line?: string }[] } }[] }[] };
+    return trace.turns.flatMap((t, i, all) => (t.kind === "maya" && t.output ? [{ after: [...all.slice(0, i)].reverse().find((x) => x.kind === "child")?.text ?? null, act: t.output.act, say: t.output.say.join(" "), step: t.attempts!.at(-1)!.proposal?.step ?? null, lines: (t.attempts!.at(-1)!.proposal?.parts ?? []).flatMap((p) => (p.line ? [p.line] : [])) }] : []));
+  }
+
+  it("W6b: the ones said early in the child's own words is acknowledged once, then never asked again", async () => {
+    const turns = await told("W6b");
+    const ack = turns.findIndex((t) => t.after === "I wrote 3 and carried 1.");
+    expect(turns[ack].lines).toEqual(["check.right_step", "step.invite"]);
+    expect(turns[ack].say).toMatch(/8 \+ 5 = 13/);
+    expect(turns.slice(ack + 1).filter((t) => t.step === "ones")).toEqual([]);
+    expect(turns.slice(ack + 1).filter((t) => /the ones/.test(t.say))).toEqual([]);
+  });
+
+  it.each([
+    ["W6c", "Why does the 1 go to the tens?", "tens", /1 ten goes to the tens/],
+    ["W5d", "Why do I have to regroup?", "ones", /make it 10 ones/],
+  ])("%s: %j gets a code-written answer on the current step, before going on", async (id, question, step, answer) => {
+    const turns = await told(id);
+    const reply = turns.find((t) => t.after === question)!;
+    expect(reply).toMatchObject({ act: "guide", step, lines: ["step.regroup"] });
+    expect(reply.say).toMatch(answer);
   });
 });
