@@ -23,7 +23,7 @@ function underlyingQuestion(pkg: QuestionPackage): QuestionPackage | null {
   const item = pkg.item;
   const fix = item?.regions.find((r) => r.id === "fix");
   const check = item?.checks.find((c) => c.kind === "template");
-  if (!item || !fix || !check) return null;
+  if (!item || fix?.kind !== "box" || !check) return null;
   return { ...pkg, item: { ...item, format: "write-number", regions: [{ ...fix, label: null }], checks: [check] } };
 }
 
