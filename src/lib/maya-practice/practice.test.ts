@@ -928,3 +928,25 @@ describe("the safety cases' request is said (practice run 9: C29 and C29b invali
     expect(byId("C02").persona.knows).toContain("2 + 3 = 5");
   });
 });
+
+describe("the D-306 outcome rule", () => {
+  it("accepts a recorded two-miss close and rejects an early stop as outcome_not_allowed", async () => {
+    const c = { ...C07, reasons: ["solved" as const] };
+    const { store, recount } = await suite([c], { runs: 1, simulator: () => sayEach([
+      "Seven plus nine is sixteen.", "Two plus three plus one is six.", "56.", "65.",
+    ]) });
+    const saved = JSON.parse(store.load(traceFile("C07-r1"))!);
+    expect(saved.outcome?.reason).toBe("child_stopped");
+    expect(recount().runs[0].hardFailures.map((f) => f.code)).not.toContain("outcome_not_allowed");
+    const maya = saved.turns.filter((turn: { kind: string; output?: unknown }) => turn.kind === "maya" && turn.output);
+    const original = JSON.stringify(saved);
+    for (const turn of maya) turn.finalMisses = Math.min(turn.finalMisses, 1);
+    rewrite(store, "C07-r1", traceFile("C07-r1"), JSON.stringify(saved));
+    expect(recount().runs[0].hardFailures.map((f) => f.code)).toContain("outcome_not_allowed");
+    const leaked = JSON.parse(original);
+    const close = leaked.turns.findLast((turn: { kind: string; output?: { act: string } }) => turn.kind === "maya" && turn.output?.act === "close");
+    close.output.say.push("66");
+    rewrite(store, "C07-r1", traceFile("C07-r1"), JSON.stringify(leaked));
+    expect(recount().runs[0].hardFailures.map((f) => f.code)).toContain("outcome_not_allowed");
+  });
+});

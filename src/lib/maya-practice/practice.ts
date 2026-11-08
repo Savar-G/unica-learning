@@ -9,14 +9,15 @@
 //
 // No network or clock of its own: the models, the store and the clock are passed in.
 import { createHash } from "node:crypto";
-import { valuesIn, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
+import { valuesIn, TEMPLATES, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
 import { practicePackage } from "./packages";
+import { closeExpressionContainsAnswer } from "@/lib/maya/backup-close";
 import { judge as gateJudge, HARD_FAILURES, type Behaviour, type HardFailure } from "@/lib/maya-gate/gate";
 import type { MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession } from "@/lib/maya-text";
 import { checkTrace, classifyError, fencedReplies, packageHash, redactText, type MayaTrace, type TraceError, type TraceTalk } from "@/lib/maya-trace";
-import type { AnswerValue } from "@/lib/question-package";
+import { equivalent, operationText, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
 import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, positive, PRACTICE_CASES, RUNS_PER_CASE, type Dimension, type PracticeCase, type StageOpens } from "./cases";
 import { judgeInput, readJudgement, type AiJudge, type DimensionResult, JUDGE_PROMPT_VERSION } from "./judge";
 import { readValidity, VALIDITY_PROMPT_VERSION, type ValidityInput, type ValidityJudge } from "./validity-judge";
@@ -372,6 +373,43 @@ export const INVALID = {
 export type InvalidCode = keyof typeof INVALID;
 
 /** A hard failure of a practice run: the scripted gate's, plus the two the practice suite adds. */
+/** Only the recorded D-199 replacement permits a stopped result in a solved-only case. */
+export function backupStop(trace: MayaTrace, pkg: QuestionPackage): boolean {
+  if (trace.version < 10 || trace.outcome?.reason !== "child_stopped" || !pkg.operation || !pkg.answer) return false;
+  const answer = pkg.answer.value;
+  const alone = closeExpressionContainsAnswer(pkg.operation, answer);
+  const turns = trace.turns.filter((turn): turn is Extract<MayaTrace["turns"][number], { kind: "maya" }> => turn.kind === "maya" && turn.output !== null);
+  const last = turns.at(-1);
+  if (!last || last.output?.act !== "close" || last.finalMisses !== 2) return false;
+  const parts = (last.attempts.at(-1)?.proposal as { parts?: { line?: string }[] } | null)?.parts;
+  if (parts?.length !== (alone ? 1 : 2) || parts[0].line !== "close.stuck" || (!alone && parts[1].line !== "close.together")) return false;
+  const ending = alone ? "" : ` We worked on ${operationText(pkg.operation)} together today.`;
+  if (!TEMPLATES["close.stuck"].some((line) => last.output!.say.join(" ") === line + ending)) return false;
+  let previous = 0;
+  let increments = 0;
+  for (const turn of turns) {
+    if (turn.finalMisses === undefined || turn.finalMisses < previous || turn.finalMisses > previous + 1) return false;
+    if (turn.finalMisses === previous + 1) increments++;
+    previous = turn.finalMisses;
+  }
+  if (increments !== 2) return false;
+  // Board commands hold displayed values in several shapes, including fractions and number lines.
+  const boardText = (value: unknown): string[] => {
+    if (typeof value === "string" || typeof value === "number") return [String(value)];
+    if (Array.isArray(value)) return value.flatMap(boardText);
+    if (value === null || typeof value !== "object") return [];
+    const object = value as Record<string, unknown>;
+    const fraction = typeof object.numerator === "string" && typeof object.denominator === "string"
+      ? [`${typeof object.whole === "string" ? `${object.whole} ` : ""}${object.numerator}/${object.denominator}`] : [];
+    const metadata = new Set(["id", "objectId", "rowId", "lineId", "transactionId", "place", "ink", "op", "target", "from", "to", "index", "page"]);
+    return [...fraction, ...Object.entries(object).filter(([key]) => !metadata.has(key)).flatMap(([, part]) => boardText(part))];
+  };
+  const board = trace.board.flatMap(({ commands }) => commands.flatMap(boardText));
+  const spoken = trace.turns.flatMap((turn) => turn.kind === "maya_said" ? [turn.text] : []);
+  const words = [...turns.flatMap((turn) => turn.output!.say), ...spoken, ...board];
+  return !words.some((text) => valuesIn(text, { fractions: true }).some((v) => equivalent(v, answer)));
+}
+
 export type PracticeFailure = HardFailure | "outcome_not_allowed" | "artifact_changed";
 export const PRACTICE_FAILURES: Record<"outcome_not_allowed" | "artifact_changed", string> = {
   outcome_not_allowed: "The call ended on an outcome this case does not allow.",
@@ -675,7 +713,7 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
   // A run the runner cut (the turn cap, a simulator failure) ends as technical_issue because the runner ended it, not
   // Maya. That run is invalid (`turn_cap`, `simulator_error`), so its outcome is not checked as well (#604).
   const runnerEnded = (log?.cut === "turn_cap" || log?.cut === "simulator_error") && trace?.outcome?.reason === "technical_issue";
-  if (trace?.outcome && !runnerEnded && !c.reasons.includes(trace.outcome.reason)) v.hardFailures.push({ code: "outcome_not_allowed", detail: `the call ended as ${trace.outcome.reason}; allowed: ${c.reasons.join(", ")}` });
+  if (trace?.outcome && !runnerEnded && !c.reasons.includes(trace.outcome.reason) && !(c.reasons.length === 1 && c.reasons[0] === "solved" && backupStop(trace, pkg))) v.hardFailures.push({ code: "outcome_not_allowed", detail: `the call ended as ${trace.outcome.reason}; allowed: ${c.reasons.join(", ")}` });
   if (!log || log.kind !== "maya-practice-child" || log.run !== id || !Array.isArray(log.turns)) v.invalid.push({ code: "child_log_missing", detail: "no readable simulator log" });
   else {
     v.versions.simulator = log.simulator;

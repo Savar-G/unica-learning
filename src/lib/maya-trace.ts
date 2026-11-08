@@ -31,9 +31,9 @@ export interface TraceRefusal {
  * (hello, can't teach, another question); a version 9 trace with the old text is refused. `checkTrace` reads all nine
  * versions.
  */
-export const TRACE_VERSION = 9;
+export const TRACE_VERSION = 10;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 /**
  * The held turn as version 8 traces stored it, before D-304 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
@@ -174,6 +174,8 @@ export type TraceTurn =
       /** The session state before and after the turn. */
       state: SessionState;
       stateAfter: SessionState;
+      /** Count of committed wrong final answers after this turn, from the controller. */
+      finalMisses?: number;
       attempts: TraceAttempt[];
       /** Null when nothing was output: every attempt failed and the call ended as a technical issue. */
       output: TraceOutput | null;
@@ -415,6 +417,7 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
     case "maya": {
       need(oneOf(STATES, x.state), `${path}.state`, "a session state");
       need(oneOf(STATES, x.stateAfter), `${path}.stateAfter`, "a session state");
+      if (x.finalMisses !== undefined) need(isCount(x.finalMisses), `${path}.finalMisses`, "a count");
       need(Array.isArray(x.attempts) && x.attempts.length > 0 && x.attempts.length <= 3, `${path}.attempts`, "1 to 3 attempts");
       const attempts = x.attempts as Record<string, unknown>[];
       if (attempts[0]?.source === "controller") {

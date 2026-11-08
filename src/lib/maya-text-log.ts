@@ -189,7 +189,7 @@ function takeEffects(s: TextFold, effects: Effect[], at: number, attempts: Trace
   const batches = effects.flatMap((e) => e.kind === "board" ? [e.batch] : []);
   if (says.length || attempts.length) {
     const act = says.at(-1)?.act ?? (attempts.at(-1)?.proposal as { act?: Act } | null)?.act ?? "close";
-    const entry: Extract<TraceTurn, { kind: "maya" }> = { kind: "maya", at, state: stateBefore, stateAfter: s.session.state, attempts: attempts.length ? attempts : [{ source: "controller", proposal: null, refusal: null }], output: null };
+    const entry: Extract<TraceTurn, { kind: "maya" }> = { kind: "maya", at, state: stateBefore, stateAfter: s.session.state, finalMisses: s.session.finalMisses ?? 0, attempts: attempts.length ? attempts : [{ source: "controller", proposal: null, refusal: null }], output: null };
     if (says.length || (attempts.length && !attempts.at(-1)?.refusal && !attempts.at(-1)?.error)) {
       const kinds: TraceObligation["kind"][] = act === "open" ? ["opening_due"] : act === "repair" ? ["repair_due"] : act === "safety" ? ["safety_due"] : act === "close" ? ["child_turn_pending", "content_problem"] : s.session.turn === null ? ["child_turn_pending"] : [];
       const ids = s.obligations.filter((o) => o.status === "pending" && kinds.includes(o.kind) && !s.pending.some((p) => p.obligations.includes(o.id))).map((o) => o.id);
