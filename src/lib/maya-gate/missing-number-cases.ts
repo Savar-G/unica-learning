@@ -715,6 +715,67 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     },
   },
   {
+    // Review of af0b4ab6: a help request in the child's own words is never a miss, even beside a number and with no help reading.
+    id: "MN12",
+    title: "236 × ? = 1416, after H3, 'I'm stuck, but it's 7.' then 'I'm stuck, but it's 8.' (read as wrong numbers, no help reading), give_answer proposed each time: the easier example, then the honest close; never the answer",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("I'm stuck, but it's 7.", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I'm stuck, but it's 8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // Review of af0b4ab6: an 'I think' hedge is never a real miss (the controller's one doubt check, hedgedTurn).
+    id: "MN12b",
+    title: "236 × ? = 1416, after H3, 'I think it's 7.' then 'I think it's 8.' (read as wrong numbers, no help reading), give_answer proposed each time: the easier example, then the honest close; never the answer",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("I think it's 7.", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I think it's 8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // D-199 stands for committed numbers in other forms: "It's 7." and a wrong product ("5 times 236 is 1170.").
+    id: "MN10c",
+    title: "236 × ? = 1416, after H3, two committed wrong numbers ('It's 7.' then '5 times 236 is 1170.'): the second reaches the given answer (D-199)",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("It's 7.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 3, lines: ["check.not_yet", "step.show"] }]),
+      child("5 times 236 is 1170.", { answers: [[5, "try", "wrong"]] }, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
+      counts: { refusals: 0 },
+      never: ["example_step", "redirect"],
+    },
+  },
+  {
     id: "MN3",
     title: "9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted",
     fixture: "M_SUBTRACT",

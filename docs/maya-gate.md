@@ -375,6 +375,9 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN10b | M_TRY | passing | 236 × ? = 1416, after H3, one real miss ('7.'), then a copy ('5.'), then 'I'm stuck.': the easier example, then the honest close; never the answer | child_stopped, honest close | |
 | MN11 | M_TRY | passing | 236 × ? = 1416, after H3, 'I'm stuck. Is it 7?' then 'I'm stuck. Is it 8?' (read as help with a wrong number), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
 | MN11b | M_TRY | passing | 236 × ? = 1416, after H3, 'Is it 7?' then 'Is it 8?' (read as wrong numbers), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
+| MN12 | M_TRY | passing | 236 × ? = 1416, after H3, 'I'm stuck, but it's 7.' then 'I'm stuck, but it's 8.' (read as wrong numbers, no help reading), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
+| MN12b | M_TRY | passing | 236 × ? = 1416, after H3, 'I think it's 7.' then 'I think it's 8.' (read as wrong numbers, no help reading), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
+| MN10c | M_TRY | passing | 236 × ? = 1416, after H3, two committed wrong numbers ('It's 7.' then '5 times 236 is 1170.'): the second reaches the given answer (D-199) | solved, answer_given | |
 | MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
 
 ## Pending

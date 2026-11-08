@@ -496,14 +496,15 @@ export function mayaPackageCheck(raw: unknown): PackageCheck {
 }
 
 /**
- * The turn is never a miss, whatever wrong number a model reads in it (lessons 7 and 13, review of #732): it copies what
- * H3 showed (copiesShownTry), or, on a missing number, it asks for help (the model's reading or asksForHelp) or is hedged
- * or a question ("Is it 7?", showsDoubt). The one rule for the scoring loop, realMissNow and the way out.
+ * The turn is never a miss, whatever wrong number a model reads in it (lessons 6, 7 and 13, D-199, review of #732): it
+ * copies what H3 showed (copiesShownTry), or, on a missing number, it asks for help (the model's reading, or a help
+ * request in the child's own words even beside a number: helpInWords) or is hedged or a question ("I think it's 7.",
+ * "Is it 7?": hedgedTurn, the controller's one doubt check). The one rule for every miss count and the way out.
  */
 function notAMiss(s: Session, reading: Reading): boolean {
   if (copiesShownTry(s)) return true;
   if (!isMissingNumber(s.package) || !s.turn) return false;
-  return reading.help !== undefined || asksForHelp(s.turn.text) || showsDoubt(s.turn.text, readOptionsFor(s.package));
+  return reading.help !== undefined || helpInWords(s.turn.text) || hedgedTurn(s);
 }
 
 /** The turn holds a real miss on the child's question: a checked wrong answer in a turn that is a miss (notAMiss). */
@@ -1818,10 +1819,20 @@ function notClear(s: Session, reading: Reading): boolean {
   const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
   if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return true;
   const read = readAnswer(s.turn.text, readOptionsIn(s));
-  // A hedge ("I think it's 66", "maybe", a question) is not clear either, though the reader may find it sure.
-  const hedged = showsDoubt(s.turn.text, readOptionsFor(s.package)) || /\b(?:i think|i guess|i believe|probably|maybe|might be)\b/i.test(s.turn.text);
-  return read.choice || (read.final !== null && (!read.sure || hedged));
+  return read.choice || (read.final !== null && (!read.sure || hedgedTurn(s)));
 }
+
+/** A hedge ("I think it's 66", "maybe", a question) is not clear, though the reader may find it sure: the one doubt check. */
+function hedgedTurn(s: Session): boolean {
+  if (!s.turn) return false;
+  return showsDoubt(s.turn.text, readOptionsFor(s.package)) || /\b(?:i think|i guess|i believe|probably|maybe|might be)\b/i.test(s.turn.text);
+}
+
+/**
+ * The child's own words hold a clear help request, even beside a number ("I'm stuck, but it's 7."): one of the turn's
+ * clauses is a help request by asksForHelp. Decided from the text, never the model's reading.
+ */
+const helpInWords = (text: string) => text.split(/[,;.!?\n]+|\bbut\b/i).some((part) => part.trim() !== "" && asksForHelp(part.trim()));
 
 /** The child's final answer in this turn is this number ("Yes, I said 66. I'm not sure."). */
 function sameFinal(s: Session, value: AnswerValue): boolean {
