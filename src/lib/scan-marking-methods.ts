@@ -17,7 +17,9 @@
 /** The exact templates per shape. Two different templates, each valid, are two ways. */
 export const METHOD_TEMPLATES = {
   "tens-product": ["split-place", "strip-zeros", "round-up"],
-  "missing-factor": ["divide", "build-up", "skip-count", "repeated-subtraction"],
+  // Groups of k: a build-up from multiples of k, a skip count (a build-up in chunks of 1 × k) and repeated subtraction
+  // (the same count going down) are one strategy written three ways (D-302).
+  "missing-factor": ["divide", "groups-of-k"],
 } as const;
 const TEMPLATE_IDS: ReadonlySet<string> = new Set(Object.values(METHOD_TEMPLATES).flat());
 /** Whether two recognized templates are two different ways. Unknown templates never are. */
@@ -359,13 +361,13 @@ function missingFactor(q: Supported & { kind: "missing-factor" }, w: Work): stri
   const counted = w.tail !== null && w.tail.value === answer;
   if (w.list) {
     // Skip count by k from k to t, then the count: 50, 100, ..., 1000, 20 times.
-    return counted && w.list.length === answer && w.list.every((n, i) => n === k * (i + 1)) ? "skip-count" : null;
+    return counted && w.list.length === answer && w.list.every((n, i) => n === k * (i + 1)) ? "groups-of-k" : null;
   }
   const last = eqs.at(-1);
   if (!last) return null;
   if (counted) {
     // Take k away from t down to 0, one line each, then the count.
-    return eqs.length === answer && eqs.every((e, i) => lineIs(e, "-", [t - i * k, k])) && last.result === 0 ? "repeated-subtraction" : null;
+    return eqs.length === answer && eqs.every((e, i) => lineIs(e, "-", [t - i * k, k])) && last.result === 0 ? "groups-of-k" : null;
   }
   if (w.tail) return null;
   if (eqs.length === 1 && last.result === answer) {
@@ -380,7 +382,7 @@ function missingFactor(q: Supported & { kind: "missing-factor" }, w: Work): stri
   const ms = eqs.slice(0, n).map(e => e.ops.length === 1 && e.ops[0] === "×" && e.nums.length === 2 ? e.nums[0] === k ? e.nums[1] : e.nums[1] === k ? e.nums[0] : null : null);
   if (ms.some(m => m === null || m < 2 || m >= answer)) return null;
   const multipliers = ms as number[];
-  return lineIs(eqs[n], "+", multipliers.map(m => k * m)) && eqs[n].result === t && lineIs(last, "+", multipliers) && last.result === answer ? "build-up" : null;
+  return lineIs(eqs[n], "+", multipliers.map(m => k * m)) && eqs[n].result === t && lineIs(last, "+", multipliers) && last.result === answer ? "groups-of-k" : null;
 }
 function asWork(lines: readonly Line[]): Work | null {
   const last = lines.at(-1);

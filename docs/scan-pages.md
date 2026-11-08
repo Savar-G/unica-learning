@@ -186,17 +186,18 @@ Code marks the item with the method rules in `src/lib/scan-marking-methods.ts` (
 | Question shape | Templates |
 | --- | --- |
 | `a × b = ?`, one factor a tens number, no factor 1 or a power of ten (`7 × 360`, `50 × 80`) | split a factor by place value; strip the zeros of a tens factor; round a factor up |
-| `k × ? = t` or `? × k = t`, with k and the answer 2 or more and the answer not k (`8 × ? = 800`) | divide; build up from multiples of k; skip count; repeated subtraction |
+| `k × ? = t` or `? × k = t`, with k and the answer 2 or more and the answer not k (`8 × ? = 800`) | divide; groups of k (build up from multiples of k, skip count or repeated subtraction) |
 
 Each template states every line exactly:
 
 - **Split a factor by place value:** `7 × 300 = 2100`, `7 × 60 = 420`, `2100 + 420 = 2520`. The parts are the factor's place-value parts, largest first.
 - **Strip the zeros of a tens factor:** its core times the other factor, then times 10 to the number of zeros: `36 × 7 = 252`, `252 × 10 = 2520`. When both factors are tens numbers, both may lose their zeros (`5 × 8 = 40`, `40 × 100 = 4000`). These forms are one template. The core is 2 or more.
-- **Round a factor up:** a factor that is not a tens number goes up to the next tens number, and a tens number goes up to the next hundreds number. Then the stated difference is taken off: `10 × 360 = 3600`, `3 × 360 = 1080`, `3600 - 1080 = 2520`. The difference is 2 or more, and it is never a factor of the question or the answer, so rounding 50 up to 100 on `50 × 80` has no template. Rounding down is a split, so it has no template.
+- **Round a factor up:** a factor that is not a tens number goes up to the next tens number, and a tens number goes up to the next hundreds number. Then the stated difference is taken off: `10 × 360 = 3600`, `3 × 360 = 1080`, `3600 - 1080 = 2520`. The difference is 2 or more, and it is not equal to a factor of the question or to the answer, so rounding 50 up to 100 on `50 × 80` has no template. Rounding down is a split, so it has no template.
 - **Divide:** `t ÷ k`, or the same division with the same zeros taken off both numbers (`480 ÷ 6 = 80` for `4800 ÷ 60`), with a divisor of 2 or more. These forms are one template.
-- **Build up:** exact multiples of k, then their sum, then the sum of the multipliers: `8 × 400 = 3200`, `8 × 30 = 240`, `3200 + 240 = 3440`, `400 + 30 = 430`. Each multiplier is 2 or more and less than the answer.
-- **Skip count:** `k, 2k, ..., t`, then the count (`20 times`).
-- **Repeated subtraction:** `t - k`, then each result less k, down to 0, then the count.
+- **Groups of k**, in three exact forms that are one template. A skip count is a build-up in chunks of 1 × k, and repeated subtraction is the same count going down, so two of these forms are one way written twice:
+  - build up: exact multiples of k, then their sum, then the sum of the multipliers: `8 × 400 = 3200`, `8 × 30 = 240`, `3200 + 240 = 3440`, `400 + 30 = 430`. Each multiplier is 2 or more and less than the answer. Build-up adds only: a multiplying form (`8 × 43 = 344`, `344 × 10 = 3440`) is a reverse check with zeros taken off;
+  - skip count: `k, 2k, ..., t`, then the count (`20 times`);
+  - repeated subtraction: `t - k`, then each result less k, down to 0, then the count.
 
 A method that does not match one template exactly is unsure. These bans apply first, each by its exact form:
 
@@ -206,7 +207,7 @@ A method that does not match one template exactly is unsure. These bans apply fi
 - every reverse check: on `a × b` any division, and on a missing factor any product of k and the answer, also with zeros taken off (`8 × 43 = 344` for `8 × ? = 3440`);
 - an extra line, a run-on chain, `?` or `_` in a line, and an arrow chain whose tail is not one bare number.
 
-Two ways means two different templates. An item is Right only when the answer is right, both methods are valid and their templates differ. A false step or `does-not-solve` makes it Wrong, and so does a missing method. Anything else waits for our team ("Our team is checking this answer."). On the 7 two-ways questions of the first book, `7 × 360` has all three product templates, `50 × 80` has strip zeros and round up, and each of the five missing factors has divide and build-up (and skip count and repeated subtraction, which a child is unlikely to write out).
+Two ways means two different templates. An item is Right only when the answer is right, both methods are valid and their templates differ. A false step or `does-not-solve` makes it Wrong, and so does a missing method. Anything else waits for our team ("Our team is checking this answer."). On the 7 two-ways questions of the first book, `7 × 360` has all three product templates, `50 × 80` has strip zeros and round up, and each of the five missing factors has divide and groups of k.
 
 The item keeps one crop of both work areas and the answer box, one canonical result and one event key. It follows its frozen mastery decision. The stored package and print contract stay unchanged. Missing or invalid measured regions make no crop and no reading.
 

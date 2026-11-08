@@ -56,7 +56,10 @@ const GENUINE: Record<string, (q: string, answer: number) => string | null> = {
     return `${Array.from({ length: ans }, (_, i) => `${t - i * k} - ${k} = ${t - (i + 1) * k}`).join("\n")}\n${ans} times`;
   },
 };
-const ALL_TEMPLATES = Object.values(METHOD_TEMPLATES).flat();
+const ALL_TEMPLATES: readonly string[] = Object.values(METHOD_TEMPLATES).flat();
+/** Skip counting is a build-up in chunks of 1 × k, and repeated subtraction is the same count going down: one template. */
+const TEMPLATE_OF: Record<string, string> = { "build-up": "groups-of-k", "skip-count": "groups-of-k", "repeated-subtraction": "groups-of-k" };
+const FORMS = Object.keys(GENUINE), templateOf = (form: string) => TEMPLATE_OF[form] ?? form;
 
 describe("the question's shape", () => {
   it.each([
@@ -67,14 +70,19 @@ describe("the question's shape", () => {
 });
 
 describe("each template on the book's 7 questions", () => {
-  for (const template of ALL_TEMPLATES) {
-    it.each(BOOK)(`${template} on %s (%s)`, (_page, q, answer) => {
-      const text = GENUINE[template](q, Number(answer)), r = rule(q, answer);
+  it("lists exactly the templates the forms below belong to", () => {
+    expect([...new Set(FORMS.map(templateOf))].sort()).toEqual([...ALL_TEMPLATES].sort());
+    expect(METHOD_TEMPLATES["missing-factor"]).toEqual(["divide", "groups-of-k"]);
+  });
+  for (const form of FORMS) {
+    const template = templateOf(form);
+    it.each(BOOK)(`${form} (${template}) on %s (%s)`, (_page, q, answer) => {
+      const text = GENUINE[form](q, Number(answer)), r = rule(q, answer);
       if (text === null) {
         // The template cannot exist on this question: the other templates' work is not it.
-        for (const other of ALL_TEMPLATES) {
+        for (const other of FORMS) {
           const t = GENUINE[other](q, Number(answer));
-          if (t !== null) expect(check(t, r).kind).not.toBe(template);
+          if (t !== null && templateOf(other) !== template) expect(check(t, r).kind).not.toBe(template);
         }
         return;
       }
@@ -84,12 +92,29 @@ describe("each template on the book's 7 questions", () => {
       expect(check(text, r, "does-not-solve").verdict).toBe("invalid");
     });
   }
-  it.each(BOOK)("has a genuine pair of two different templates that is Right on %s (%s)", (_page, q, answer) => {
-    const texts = ALL_TEMPLATES.map(t => GENUINE[t](q, Number(answer))).filter((t): t is string => t !== null);
-    expect(texts.length).toBeGreaterThanOrEqual(2);
-    expect(pairRight(q, answer, texts[0], texts[1])).toBe(true);
+  // The reviewer's probes at ee52ac98: each book question keeps a genuine Right pair.
+  const RIGHT_PAIRS: Record<string, readonly [string, string]> = {
+    p14: ["divide", "build-up"], p22: ["split-place", "strip-zeros"], p38: ["divide", "build-up"], p46: ["divide", "build-up"],
+    p54: ["divide", "build-up"], p70: ["divide", "build-up"], p78: ["strip-zeros", "round-up"],
+  };
+  it.each(BOOK)("has the genuine Right pair on %s (%s)", (page, q, answer) => {
+    const [one, two] = RIGHT_PAIRS[page].map(f => GENUINE[f](q, Number(answer))!);
+    expect(pairRight(q, answer, one, two)).toBe(true);
+    expect(pairRight(q, answer, two, one)).toBe(true);
     // The same template twice is never two ways.
-    expect(pairRight(q, answer, texts[0], texts[0])).toBe(false);
+    expect(pairRight(q, answer, one, one)).toBe(false);
+  });
+  it.each(BOOK.filter(([, q]) => q.includes("?") && !q.endsWith("= ?")))("counts build-up, skip counting and repeated subtraction as one template on %s (%s)", (_page, q, answer) => {
+    const [up, skip, down] = (["build-up", "skip-count", "repeated-subtraction"] as const).map(f => GENUINE[f](q, Number(answer))!);
+    for (const [one, two] of [[skip, up], [skip, down], [up, down]]) {
+      expect(pairRight(q, answer, one, two)).toBe(false);
+      expect(pairRight(q, answer, two, one)).toBe(false);
+    }
+  });
+  it("does not mark the review's skip count and build-up for 50 × ? = 1000 Right", () => {
+    const skip = `${Array.from({ length: 20 }, (_, i) => 50 * (i + 1)).join(", ")}\n20 times`;
+    expect(pairRight("50 × ? = 1000", "20", skip, "50 × 10 = 500\n50 × 10 = 500\n500 + 500 = 1000\n10 + 10 = 20")).toBe(false);
+    expect(pairRight("50 × ? = 1000", "20", skip, "1000 ÷ 50 = 20")).toBe(true);
   });
   it.each(BOOK)("gives %s (%s) two made-up methods of different templates", (_page, q, answer) => {
     const r = rule(q, answer);
@@ -98,7 +123,7 @@ describe("each template on the book's 7 questions", () => {
   it("gives the comparison fixture 8 × ? = 3440 two made-up methods of different templates", () => {
     const r = rule("8 × ? = 3440", "430");
     expect(pairRight("8 × ? = 3440", "430", suppliedMethodText(r, 0), suppliedMethodText(r, 1))).toBe(true);
-    expect(check("8 × 400 = 3200\n8 × 30 = 240\n3200 + 240 = 3440\n400 + 30 = 430", r).kind).toBe("build-up");
+    expect(check("8 × 400 = 3200\n8 × 30 = 240\n3200 + 240 = 3440\n400 + 30 = 430", r).kind).toBe("groups-of-k");
   });
 });
 
