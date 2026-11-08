@@ -225,15 +225,32 @@ export function claimStep(claim: Pick<Claim, "relation" | "value" | "shown" | "h
 
 /**
  * The claim Maya works for the easier example: the same words and relation on the example's own result. Its printed
- * number is code's: for "equal" one more than the result (the claim does not hold), for "greater" one less (it holds),
- * so the example never needs a word the child must find for their own question.
+ * number is code's: for "equal" more than the result (the claim does not hold), for "greater" less (it holds), by the
+ * smallest step of 1 to 4 that is none of the question's step values; with none, no example (the question is held). So
+ * the example never needs a word the child must find for their own question.
  */
+/** The values the question's worked steps say: column totals and written digits, products, quotients, the result. */
+function stepValues(pkg: OperationPackage): Set<number> {
+  const out = new Set<number>();
+  for (const st of pkg.steps as unknown as Record<string, unknown>[]) {
+    for (const key of ["total", "write", "value", "quotient", "product"]) {
+      const v = st[key];
+      if (typeof v === "number") out.add(v);
+      else if (v && typeof v === "object" && (v as { type?: string }).type === "number") out.add((v as { value: number }).value);
+    }
+  }
+  return out;
+}
+
 export function claimExample(claim: Claim, pkg: OperationPackage): Claim | null {
   const result = operationResult(pkg.easierExample.operation);
   if (result.type !== "number") return null;
   const value = result.value;
-  const shown = claim.relation === "equal" ? value + 1 : value - 1;
-  if (shown < 0 || !Number.isSafeInteger(Math.round(shown * 1000))) return null;
+  // The number it prints is never one of the question's step values (lesson 12, #737 review: 8 in "Is 3 × 3 greater than
+  // 8?" is the tens product of 40 × 2): one, two, three or four away from its result, the first that is none of them.
+  const own = stepValues(pkg);
+  const shown = [1, 2, 3, 4].map((k) => Number((claim.relation === "equal" ? value + k : value - k).toFixed(3))).find((n) => n >= 0 && !own.has(n));
+  if (shown === undefined || !Number.isSafeInteger(Math.round(shown * 1000))) return null;
   const holds = claim.relation === "greater";
-  return { ...claim, operation: pkg.easierExample.operation, value, shown: Number(shown.toFixed(3)), holds, word: holds ? claim.choices[0] : claim.choices[1], other: holds ? claim.choices[1] : claim.choices[0] };
+  return { ...claim, operation: pkg.easierExample.operation, value, shown, holds, word: holds ? claim.choices[0] : claim.choices[1], other: holds ? claim.choices[1] : claim.choices[0] };
 }

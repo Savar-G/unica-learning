@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { claimTeaching, exampleGivesAway, readClaim } from "@/lib/maya-teaching/claim";
+import { claimExample, claimTeaching, exampleGivesAway, readClaim, type Claim } from "@/lib/maya-teaching/claim";
 import * as CLAIMS from "@/lib/maya-gate/claim-fixtures";
 import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_RIGHT, CLAIM_TRUE_FALSE } from "@/lib/maya-gate/claim-fixtures";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
-import { checkQuestionPackage, operationProblem, workedSteps, type Operation, type QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, operationProblem, workedSteps, type Operation, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
 import { withWorkbookMayaOperation } from "@/lib/workbook-maya-operation";
 
 const ALL = { CLAIM_TRUE_FALSE, CLAIM_GREATER, CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_RIGHT };
@@ -117,6 +117,16 @@ describe("the easier example never gives the answer away (lesson 11, #724's revi
     // The round product: 2 × 3 = 6 would give 60 away, so the example is another fact.
     const round = claimTeaching(CLAIMS.CLAIM_ROUND)!;
     expect(round.easierExample!.operation).not.toEqual(mul(2, 3));
+  });
+
+  it("prints no number of the question's own steps in the example (lesson 12, #737 review): 8 is the tens of 40 × 2", () => {
+    const pkg = { steps: workedSteps(mul(40, 2)), easierExample: { operation: mul(3, 3) } } as unknown as OperationPackage;
+    const greater = { relation: "greater", choices: ["yes", "no"] } as unknown as Claim;
+    expect(claimExample(greater, pkg)).toMatchObject({ value: 9, shown: 7, holds: true, word: "yes" });
+    const equal = { relation: "equal", choices: ["true", "false"] } as unknown as Claim;
+    const sum = { steps: workedSteps({ kind: "add", operands: [5, 5] }), easierExample: { operation: { kind: "add", operands: [4, 5] } } } as unknown as OperationPackage;
+    // 10 is the sum's result and 1 its tens: the example prints 11.
+    expect(claimExample(equal, sum)).toMatchObject({ value: 9, shown: 11, holds: false, word: "false" });
   });
 });
 
