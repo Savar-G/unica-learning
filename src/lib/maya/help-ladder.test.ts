@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { createSession, fallbacks, learningEvent, step, type Proposal, type Session, type SessionEvent } from "@/lib/maya";
 import { TEMPLATES } from "@/lib/maya/lines";
+import { modelInput } from "@/lib/maya-model";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { checkQuestionPackage, workedSteps, type Operation, type QuestionPackage } from "@/lib/question-package";
 
@@ -215,5 +216,25 @@ describe("numbers in help questions", () => {
     expect(accepted).toBeDefined();
     expect(accepted!.effects.some((e) => e.kind === "say" && e.act === "give_answer")).toBe(false);
     expect(s.assistance).not.toContain("answer_given");
+  });
+});
+
+
+describe("model input after a shown column", () => {
+  it("exposes the passed step and current ladder step without offering passed help", () => {
+    let s = createSession({ callId: "model-passed", package: FIXTURES.A });
+    let at = 1000;
+    const send = (event: SessionEvent) => { const r = step(s, event); s = r.session; return r; };
+    const fallback = () => { const r = fallbacks(s).map((proposal) => send({ type: "proposal", at, proposal })).find((x) => !x.refusal); expect(r).toBeDefined(); };
+    send({ type: "start", at }); fallback();
+    send({ type: "child_turn", at: at += 4000, text: "Show me the ones." });
+    expect(send({ type: "proposal", at, proposal: { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } } }).refusal).toBeNull();
+    send({ type: "child_turn", at: at += 4000, text: "16." }); fallback();
+    send({ type: "child_turn", at: at += 4000, text: "I need help." });
+    const input = modelInput(s);
+    expect(input).toMatchObject({ done: [], passed: ["ones"], ladderStep: "tens" });
+    const guide = input.offers.find((o) => o.act === "guide");
+    expect(guide?.lines.some((o) => o.line === "step.invite" && o.slots.step === "tens")).toBe(true);
+    expect(guide?.lines.some((o) => o.slots.step === "ones")).toBe(false);
   });
 });

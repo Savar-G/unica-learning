@@ -3299,7 +3299,7 @@ export function drawOffers(session: Session): Partial<Record<Act, { id: string; 
   const done = [...session.done];
   const after = regroupAfter(session, [], done);
   const regroup = pendingRegroup(after);
-  const view: View = { steps: openSteps(pkg, done, regroup), done, checked: [], rightResult: false, regroup, regroupSaid: after.said, regroupTimes: after.times };
+  const view: View = { steps: openSteps(pkg, behind(session), regroup).filter((id) => !(session.passed ?? []).includes(id)), done, checked: [], rightResult: false, regroup, regroupSaid: after.said, regroupTimes: after.times };
   return Object.fromEntries(acts.map((act) => [act, [
     ...boardOffersFor(session, act, view, null).map(({ id, shows }) => ({ id, shows })),
     // Only an act that may draw is offered a line's note (#605: the opening offered one, then refused it).
@@ -3377,8 +3377,9 @@ export function lineOffers(session: Session): Partial<Record<Act, LineOffer[]>> 
   const done = [...session.done];
   const after = regroupAfter(session, [], done);
   const regroup = pendingRegroup(after);
-  const view: View = { steps: openSteps(pkg, done, regroup), done, checked: [], rightResult: false, regroup, regroupSaid: after.said, regroupTimes: after.times };
-  return Object.fromEntries(acts.map((act) => [act, offersFor(session, act, act === "accept_answer" ? { ...view, rightResult: true } : view)]));
+  const view: View = { steps: openSteps(pkg, behind(session), regroup).filter((id) => !(session.passed ?? []).includes(id)), done, checked: [], rightResult: false, regroup, regroupSaid: after.said, regroupTimes: after.times };
+  return Object.fromEntries(acts.map((act) => [act, offersFor(session, act, act === "accept_answer" ? { ...view, rightResult: true } : view)
+    .filter((o) => act !== "guide" || o.slots.step === undefined || !(session.passed ?? []).includes(o.slots.step))]));
 }
 
 /** The child said this value: the same number (66 and 66.0), or a fraction or remainder written the same way. */

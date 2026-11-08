@@ -22,7 +22,7 @@ import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
-export const PROMPT_VERSION = "maya-text-chat-32";
+export const PROMPT_VERSION = "maya-text-chat-33";
 
 /** One act the model may propose now, with everything code offers for it. */
 export interface ActOffer {
@@ -48,6 +48,10 @@ export interface ModelInput {
   state: string;
   /** Target steps the child has done. */
   done: string[];
+  /** Steps shown by Maya and copied, without credit. */
+  passed: string[];
+  /** The step the help ladder is on. */
+  ladderStep: string;
   /** The child's words Maya has not answered yet, or null. */
   childTurn: string | null;
   /** The last turns of the call, oldest first. */
@@ -94,6 +98,8 @@ export function modelInput(session: Session, repair: ModelInput["repair"] = null
       : null,
     state: session.state,
     done: [...session.done],
+    passed: [...(session.passed ?? [])],
+    ladderStep: session.ladder.step,
     childTurn: session.turn?.text ?? null,
     transcript: session.turns.slice(-TRANSCRIPT_TURNS).map((t) => ({ speaker: t.speaker, text: t.text })),
     offers: acts.map((act) => ({
@@ -139,12 +145,13 @@ Rules:
 - When the child goes on with their own question after the easier example and gets a step right, record it and guide the next step: never "try.target" then.
 - Regrouping: when the child lost a carry, says they did not carry or asks what the carried digit is ("What 1?"), or plans to write a two-digit sum in one column ("I write 16 under the ones"), say the "step.regroup" line for that column first (it says where the carry comes from). Never a line about a carried digit before it, and never accept the two-digit plan as a done step.
 - A question such as "Should I write 16?" is not completed work. Use the offered source-column step.regroup with its exact step and other slots. Never move it to the next column yourself.
-- After H3 and another failed attempt or help request, use the offered give_answer act. Do not reset help by choosing H0. A shown step is not a step the child independently completed.
+- After H3 and another committed failed attempt, use the offered give_answer act. Help alone follows the offered help ladder. Do not reset help by choosing H0. A shown step is not a step the child independently completed.
 - A checked wrong answer needs a response: use check.not_yet for that answer, or ask a concrete offered step question. Never answer it only with try.target or a generic invitation. When another step in the same turn is correct, acknowledge that checked step and guide the next one. Never invent a value the child did not say.
 - If the child asks for sexual, violent or other harmful content, set "reading.unsafeRequest" and use the act "redirect" with the line "redirect.decline", then "redirect.back". No own words in that turn.
 - "echo" may hold 1 to 3 words copied exactly from the child's last turn (a pet's name, a game) for reply groups such as pets or games; else null.
 - "pick" is the original id in the group's "picks" array, at the same position as the phrase in "phrases", or null. Use only an offered id. The ids can have gaps when a phrase needs observed work.
 - For "guide" and "example_step", set "step" to the step id of the line, and for "guide" set "level" to the line's level.
+- Steps in "passed" were shown and copied, not independently completed. Do not offer help for them again. Start from "ladderStep".
 - Give the gentlest help first: invite before point, point before operation, operation before show. Raise the level only after the child tries and fails, or asks for help.
 - "reading" is what you understood from the child's latest turn ("childTurn"); null when there is none. Put each number the child gave as their answer in "answers", with the step it answers ("result" for the whole question, or a step id) and your verdict ("right" or "wrong") by the checked answer and steps in "question". Never mark a wrong answer right.
 - A line with "requires" needs an answer for that step with that verdict in "reading.answers". "equal" (the line "check.equal") needs the child's final answer read with the verdict "wrong" when it is an equal fraction in a question that asks for the simplest form.
