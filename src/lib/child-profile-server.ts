@@ -1,5 +1,5 @@
 import "server-only";
-import { readChildProfile, rebuildChildProfile, type ChildProfileSeams, type RebuildResult } from "@/lib/child-profile";
+import { childProfileFacts, readChildProfile, rebuildChildProfile, type ChildProfileSeams, type RebuildResult } from "@/lib/child-profile";
 import { learnerProfile, type LearnerProfile } from "@/lib/assessment";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AiClient } from "@/lib/ai-client";
@@ -7,6 +7,9 @@ import type { Database } from "@/lib/database";
 import { assessmentQuestionReader } from "@/lib/assessment-questions";
 import { childProfileAiClient, type QuestionReader } from "@/lib/child-profile-ai";
 import { childProfileStore } from "@/lib/child-profile-store";
+import { learningEvents } from "@/lib/learning-events";
+import { effectiveMarkingEvents } from "@/lib/scan-marking";
+import { WORKBOOK_COUNTS_CALL_EVENTS } from "@/lib/workbook-call-policy";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { SUPABASE_URL } from "@/lib/supabase-public";
 import { workbookStore } from "@/lib/workbook-store";
@@ -113,7 +116,25 @@ export async function prepareChildProfileForWorkbook(childId: string, seams: Wor
         && Date.parse(assessment.completedAt) > Date.parse(after.completedAt);
       if (assessment.assessmentId !== after.assessmentId && !later) return { ok: false };
     }
-    return { ok: true, profile };
+    if (WORKBOOK_COUNTS_CALL_EVENTS || !profile) return { ok: true, profile };
+    // Read a consistent source snapshot. Never save this workbook-only view.
+    const before = await seams.child.profiles.current(childId);
+    if (!before || before.revision !== profile.revision || before.builtAt !== profile.builtAt) return { ok: false };
+    const raw = await learningEvents(seams.child.events).read(childId, { from: "2000-01-01T00:00:00.000Z", to: "9999-01-01T00:00:00.000Z" });
+    if (!raw.some((event) => event.source === "call") && !profile.profile.standards.some((standard) => standard.events.sources.call > 0)) return { ok: true, profile };
+    const source = await seams.child.profiles.inputs(childId);
+    const marks = await seams.child.profiles.marks?.(childId);
+    const events = marks ? effectiveMarkingEvents(raw, marks.items) : raw;
+    const afterProfile = await seams.child.profiles.current(childId);
+    const afterMarks = marks ? await seams.child.profiles.marks!(childId) : undefined;
+    if (!source || afterProfile?.buildToken !== before.buildToken || (marks && marks.revision !== afterMarks?.revision)) return { ok: false };
+    const nonCall = events.filter((event) => event.source !== "call");
+    const facts = childProfileFacts({ ...source, events: nonCall });
+    const nonCallIds = new Set([...raw, ...nonCall].filter((event) => event.source !== "call").map((event) => event.id));
+    const ai = profile.profile.ai;
+    const filteredAi = ai ? { ...ai, findings: ai.findings.filter((finding) =>
+      finding.events.length > 0 && finding.events.every((id) => nonCallIds.has(id))) } : null;
+    return { ok: true, profile: facts ? { ...profile, profile: { ...facts, ai: filteredAi } } : null };
   } catch (e) {
     console.error("[workbook profile] preparation failed", childId, e instanceof Error ? e.message : String(e));
     return { ok: false };

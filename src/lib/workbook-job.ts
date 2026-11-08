@@ -1,3 +1,4 @@
+import { WORKBOOK_COUNTS_CALL_EVENTS } from "@/lib/workbook-call-policy";
 // "Prepare next workbook" (#312, spec #296): the background job that makes a child's next draft workbook, the same
 // pattern as the report job (src/lib/report-job.ts): the admin route starts a run and answers at once, and the job runs
 // after the response. Its state is stored on the run (public.workbook_runs, migrations add_workbook_runs and
@@ -259,6 +260,8 @@ export interface RunFrame {
   grade: Grade;
   /** The child profile revision the plan was made from, or null. */
   profileRevision: number | null;
+  /** Absent on older frames, which counted call events. */
+  countsCallEvents?: boolean;
   /**
    * The planner's exact input, captured at the public planning boundary before it ran, and the placement facts it was
    * made from (#472 Book 1 baseline). Admins read it; it is never shown to a parent. Absent on frames stored before it.
@@ -666,7 +669,7 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number, instructions }, captured => { input = captured; });
     if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
     const made: RunFrame = {
-      version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,
+      version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, countsCallEvents: WORKBOOK_COUNTS_CALL_EVENTS, workbooks: inputs.workbooks,
       ...(input ? { planning: { version: 1 as const, input, placement } } : {}),
       plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan), versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
     };
@@ -679,6 +682,7 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
   }
   // Every call, the first included, checks the stored plan against what this call would make it from.
   if (frame.version !== RUN_FRAME_VERSION || !isGrade(frame.grade) || !frame.plan) throw new Refusal("The run's stored plan is of another shape. Start a new run.");
+  if ((frame.countsCallEvents ?? true) !== WORKBOOK_COUNTS_CALL_EVENTS) throw new Refusal("The workbook call event policy changed. Start a new run.");
   const now = curriculumVersion(frame.curriculum);
   if (!now) throw new Refusal(`There is no workbook curriculum ${frame.curriculum} any more. Start a new run.`);
   if (now !== frame.versions.curriculum) throw changed("the curriculum", frame.versions.curriculum, now);
