@@ -6,6 +6,7 @@
 import type { QuestionPackage } from "@/lib/question-package";
 import { binary, FORM_PARTS, printedOperation, printedRelationships, withTeachingOperation, type PrintedForm } from "@/lib/workbook-maya-operation";
 import { agreedAnswer } from "./agreement";
+import { shapedExamples } from "./examples";
 import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "./limits";
 
 const { WORDS, ACTOR, THINGS, n } = FORM_PARTS;
@@ -37,5 +38,5 @@ export function deriveOneStep(printed: QuestionPackage): QuestionPackage | null 
   if (!operation || !ONE_STEP.includes(operation.kind)) return null;
   const agreed = agreedAnswer(printed, operation, "one-step");
   if (!agreed) return null;
-  return withTeachingOperation(printed, operation, agreed.answer, { source: TEACHING_SOURCE, limits: MAYA_TEACHING_LIMITS });
+  return withTeachingOperation(printed, operation, agreed.answer, { source: TEACHING_SOURCE, limits: MAYA_TEACHING_LIMITS, examples: shapedExamples(operation) });
 }

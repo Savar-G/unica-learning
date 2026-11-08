@@ -310,12 +310,13 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 
 ### One-step workbook questions through the session adapter (Wave A)
 
-Fixtures W5, W3 and W6 (`src/lib/maya-gate/one-step-cases.ts`) are the teaching packages Maya's session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, as a call gets them. W5 (10000 − 3615) and W6 (352418 + 41275) are above today's limits, so they run under Maya's wider limits only: they show her 5- and 6-digit columns, the place names she says, and the child's "ten thousands" and "hundred thousands" read as places, never as 10 or 100.
+Fixtures W5, W3 and W6 (`src/lib/maya-gate/one-step-cases.ts`) are the teaching packages Maya's session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, as a call gets them. Each easier example has the question's own shape, one place smaller (`examples.ts`: 1000 − 361 for 10000 − 3615). W5 (10000 − 3615) and W6 (352418 + 41275) are above today's limits, so they run under Maya's wider limits only: they show her 5- and 6-digit columns, the place names she says, and the child's "ten thousands" and "hundred thousands" read as places, never as 10 or 100.
 
 | Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
 |---|---|---|---|---|---|
 | W5a | W5 | passing | 10000 − 3615 story, says 7615 (smaller from larger): regrouping across the zeros is guided column by column | solved, hint | |
 | W5b | W5 | passing | 10000 − 3615 story, solved at the opening in words: 'six thousand three hundred eighty five' is accepted | solved, independent | |
+| W5c | W5 | passing | 10000 − 3615 story, cannot start: the easier example of the same shape (1000 − 361), then back to the question | solved, worked_example | |
 | W3a | W3 | passing | 284 × 7 'Each crate has' story, says 1488 (drops the carries): each row digit with its carry is guided | solved, hint | |
 | W6a | W6 | passing | 352418 + 41275: a 6-digit sum, column by column to the hundred thousands, with the question's six columns on the board; '3 hundred thousands' is a column, not 300 | solved | |
 

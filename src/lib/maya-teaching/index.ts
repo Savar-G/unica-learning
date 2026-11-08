@@ -5,7 +5,7 @@
 // and easier example); code computes and checks all of it (D-195). Maya's wider operand limits hold only for the
 // packages made here (limits.ts). Pure TypeScript.
 import { checkQuestionPackage, hasOperation, type QuestionPackage } from "@/lib/question-package";
-import { mayaPackageCheck } from "@/lib/maya";
+import { heldReason, mayaPackageCheck, TEACHABLE_KINDS } from "@/lib/maya";
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { TEACHING_SOURCE } from "./limits";
 import { deriveOneStep } from "./one-step";
@@ -40,9 +40,19 @@ export function teachingPackage(stored: unknown): unknown {
     const made = derive(structuredClone(printed));
     if (!made) continue;
     const teaching: QuestionPackage = { ...made, operationSource: TEACHING_SOURCE };
-    if (samePrinted(teaching, printed) && hasOperation(teaching) && mayaPackageCheck(teaching).ok) return teaching;
+    if (samePrinted(teaching, printed) && hasOperation(teaching) && mayaPackageCheck(teaching).ok && exampleFits(teaching)) return teaching;
   }
   return base;
+}
+
+/**
+ * Controller rule 1: the easier example is of the question's kind, and a question of a kind Maya teaches is teachable
+ * with it (the session's own rule, session.ts teachableOf, which also checks the example). A kind she does not teach
+ * yet (evaluate, until A2) stays held by the session.
+ */
+function exampleFits(p: QuestionPackage): boolean {
+  if (!p.operation || !p.easierExample || p.easierExample.operation.kind !== p.operation.kind) return false;
+  return !TEACHABLE_KINDS.includes(p.operation.kind) || heldReason(p) === null;
 }
 
 const marked = (raw: unknown) => typeof raw === "object" && raw !== null && (raw as { operationSource?: unknown }).operationSource === TEACHING_SOURCE;

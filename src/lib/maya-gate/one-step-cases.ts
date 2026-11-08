@@ -50,6 +50,16 @@ export const ONE_STEP_BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], counts: { refusals: 0 } },
   },
   {
+    id: "W5c", title: "10000 − 3615 story, cannot start: the easier example of the same shape (1000 − 361), then back to the question", fixture: "W5", status: "passing",
+    steps: [
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step", draw: ["example.columns"] }, {}, {}, {}, {}]),
+      child("Okay.", undefined, [{}, {}, {}, {}]),
+      child("I did it the same way. It's 6385.", { answers: [[6385, "result", "right"]] }),
+      ...solvedEnd,
+    ],
+    expect: { outcome: { reason: "solved", assistance: "worked_example" }, acts: [OPEN, "example_step", "example_step", "example_step", "example_step", "example_step", "try_target", "accept_answer", "ask_write", "close"], counts: { refusals: 0 } },
+  },
+  {
     id: "W3a", title: "284 × 7 'Each crate has' story, says 1488 (drops the carries): each row digit with its carry is guided", fixture: "W3", status: "passing",
     steps: [
       child("I got 1488.", { start: "has_work", answers: [[1488, "result", "wrong"]] }, [{ act: "guide", step: "r1-ones", level: 1 }]),

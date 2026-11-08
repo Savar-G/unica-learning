@@ -158,21 +158,22 @@ export function withWorkbookMayaOperation(pkg: QuestionPackage): QuestionPackage
 /**
  * The package with checked teaching data for `operation` (its answer, worked steps, one wrong answer and an easier
  * example), or null when no candidate passes the package check. The caller has checked that the operation fits the
- * printed question and its key. `source` and `limits`: only Maya's session adapter passes them ("maya-teaching", its
- * wider limits); generation passes neither, so the #525 output is as before.
+ * printed question and its key. `source`, `limits` and `examples`: only Maya's session adapter passes them
+ * ("maya-teaching", its wider limits, and easier examples of the question's own shape, tried instead of the list
+ * below); generation passes none, so the #525 output is as before.
  */
 export function withTeachingOperation(pkg: QuestionPackage, operation: Operation, answer: AnswerValue,
-  options: { source?: "maya" | "maya-teaching"; limits?: OperationLimits } = {}): QuestionPackage | null {
+  options: { source?: "maya" | "maya-teaching"; limits?: OperationLimits; examples?: readonly Operation[] } = {}): QuestionPackage | null {
   // All examples use the same operation kind. The package checker must confirm a smaller example with a different
   // answer, correct worked steps and a valid wrong answer. Minimal targets with no such example stay unchanged.
-  const examples: Operation[] = operation.kind === "evaluate" ? [{ kind: "evaluate", operands: ["1 + 1"] }, { kind: "evaluate", operands: ["1 + 2"] }]
+  const examples: readonly Operation[] = options.examples ?? (operation.kind === "evaluate" ? [{ kind: "evaluate", operands: ["1 + 1"] }, { kind: "evaluate", operands: ["1 + 2"] }]
     : operation.kind.startsWith("fraction-") ? [2, 3, 1].flatMap(d => [2, 3, 1].map(e => ({ ...operation, operands: [
       { type: "fraction", numerator: 1, denominator: d }, { type: "fraction", numerator: 1, denominator: e },
     ] }) as Operation))
       : [...[0, 1, 2, 3].flatMap(a => [1, 2, 3].map(b => ({ ...operation, operands: [a, b] }) as Operation)),
-        { ...operation, operands: [0, 0] } as Operation];
+        { ...operation, operands: [0, 0] } as Operation]);
   for (const example of examples) {
-    if (operationProblem(example)) continue;
+    if (operationProblem(example, options.limits)) continue;
     const candidate: QuestionPackage = {
       ...pkg, operationSource: options.source ?? "maya", operation,
       answer: { value: answer, accepted: [], unit: null }, steps: workedSteps(operation),
