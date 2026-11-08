@@ -4,8 +4,9 @@
 // A reusable module: the missing-number path (missing-number.ts) uses it, and so can any step that divides by a
 // 3-digit number when the quotient is one digit, such as (8763 + 30) ÷ 977. Code computes every number here; the
 // words are code lines (lines.ts fills them), approved wording pending (D-202). Pure TypeScript.
-import type { MissingNumberStep } from "@/lib/question-package";
+import type { AnswerValue, MissingNumberStep } from "@/lib/question-package";
 import { bracketText } from "./missing-number-text";
+import { plainNumber, wholeValue, wholeYes } from "./numbers";
 
 export type TrialStep = Extract<MissingNumberStep, { kind: "try-factor" }>;
 
@@ -60,6 +61,14 @@ export const TRIAL_TEMPLATES = {
     "{factor} × {guess} = {product}. {product} is bigger than {total}. Try a smaller number.",
     "Let's check: {factor} × {guess} = {product}. That is too big. Try a smaller number.",
   ],
+  // A right try, before the child says it as the final answer: never the number itself (it is the answer).
+  "trial.right": [
+    "Yes! {factor} times your number makes {total}.",
+    "That's right. Your number times {factor} makes {total}.",
+    "Yes, that works. {factor} times it is {total}.",
+    "Exactly! Your number works. {factor} times it makes {total}.",
+    "Nice. {factor} times your number is {total}.",
+  ],
   "trial.small": [
     "{factor} × {guess} = {product}. That is less than {total}. Try a bigger number.",
     "{factor} × {guess} = {product}. That is too small. Try a bigger number.",
@@ -74,7 +83,7 @@ type Vars = Record<string, string | number>;
 
 /** A line the try step offers, for lines.ts to fill: its id, wording key, numbers, hint level and the answer it needs. */
 export interface TrialLine {
-  line: "step.invite" | "step.point" | "step.operation" | "check.not_yet";
+  line: "step.invite" | "step.point" | "step.operation" | "check.not_yet" | "check.right_step";
   key: TrialKey;
   vars: Vars;
   level?: 0 | 1 | 2;
@@ -104,6 +113,37 @@ export function trialFeedback(step: TrialStep): TrialLine[] {
 
 /** H3: the tries on each side of the missing factor, never the factor itself. */
 export const showTrial = (step: TrialStep): string => bracketText(step);
+
+/** The whole text is one product: "a times|×|x b is|equals|makes|make|= c", in digits or words, or null. */
+export function wholeProduct(body: string): { operands: [number, number]; product: number } | null {
+  const m = /^(.+?)\s*(?:\s(?:is|equals|makes|make)\s|=)\s*(.+)$/.exec(body);
+  if (!m) return null;
+  const operands = m[1].split(/\s*[×*]\s*|\s+(?:times|x)\s+/).map(plainNumber);
+  const product = plainNumber(m[2]);
+  return product !== null && operands.length === 2 && operands.every((n) => n !== null) ? { operands: operands as [number, number], product } : null;
+}
+
+/**
+ * The try step is heard on the child's WHOLE turn only, under the #698 rules for a column (session.ts stepTurnHeard,
+ * which calls this for the first step not done, with a turn heard for sure; `body` is wholeTurn's): the missing factor
+ * alone or in the child's own words ("6", "It's 6", "I got 6"), a plain yes to Maya's own "Did you say 6?" (`asked`), or
+ * the try's own product with both factors in any order ("236 times 6 is 1416"). After H3 (`copy`) none of them counts.
+ */
+export function trialHeard(step: TrialStep, body: string, value: AnswerValue, asked: AnswerValue | null, copy: boolean): boolean {
+  if (copy || value.type !== "number" || value.value !== step.value) return false;
+  const yes = wholeYes(body);
+  if (yes) return asked?.type === "number" && asked.value === step.value && (yes.value === null || yes.value === step.value);
+  const bare = wholeValue(body);
+  if (bare !== null) return bare === step.value;
+  const product = wholeProduct(body);
+  if (!product) return false;
+  const [a, b] = [...product.operands].sort((x, y) => x - y);
+  const [c, d] = [step.factor, step.value].sort((x, y) => x - y);
+  return a === c && b === d && product.product === step.total;
+}
+
+/** The line for a right try, with no number the child must still say: "Yes! 236 times your number makes 1416." */
+export const trialRight = (step: TrialStep): TrialLine => ({ line: "check.right_step", key: "trial.right", vars: { factor: step.factor, total: step.total } });
 
 /** The try's own equation, once the child found it: "244 × 6 = 1464". */
 export const trialEquation = (step: TrialStep): string => `${step.factor} × ${step.value} = ${step.total}`;

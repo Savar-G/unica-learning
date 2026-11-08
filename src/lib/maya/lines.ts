@@ -23,7 +23,7 @@ import {
 } from "@/lib/question-package";
 import { simplestWords, teachSteps } from "./fractions";
 import { frameInvite, framedLines, MISSING_TEMPLATES, type FramedLines } from "./missing-number";
-import { showTrial, trialEquation, trialFeedback, trialHelp, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
+import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -868,8 +868,13 @@ export function packageLines(pkg: OperationPackage) {
     rightStep: (id: string): LineOffer[] => {
       const step = find(id);
       if (!step) return [];
-      const eq = equationOf(step, pkg, "target");
       const requires = { answer: "right" as const, step: id };
+      // A right try is the answer itself: said back without the number until the child gives it as the answer.
+      if (step.kind === "try-factor") {
+        const t = trialRight(step);
+        return [offer(t.line, t.key, t.vars, { slots: { step: id }, requires })];
+      }
+      const eq = equationOf(step, pkg, "target");
       return [eq
         ? offer("check.right_step", "check.right_step", { eq }, { slots: { step: id }, requires, board: eq })
         : offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)), where: whereOf(step) }, { slots: { step: id }, requires })];
