@@ -323,6 +323,11 @@ describe("Sonnet and Terra side by side", () => {
     for (const row of ["Wrong marks", "Wrong marked right", "Clear unsure", "Two-ways", "Cost per page", "Latency p50", "Latency p95", "Disagreements", "Sonnet", "Terra", "AI-marked 18", "parent 0", `team-marked ${TWO_WAYS_METHOD_MARKS ? 0 : 2}`]) expect(text).toContain(row);
     expect(text).not.toContain(FAKE_KEY);
   });
+  it("states on its first line how many items went to the team and why", async () => {
+    const { report } = await fakeRun(), first = physicalSideBySide(report).split("\n")[0];
+    expect(report.team).toEqual(TWO_WAYS_METHOD_MARKS ? { items: 0, reasons: {} } : { items: 2, reasons: { "two-ways-method-marks-off": 2 } });
+    expect(first).toBe(TWO_WAYS_METHOD_MARKS ? "0 items went to the team." : "2 items went to the team: two-ways method marking is off.");
+  });
   it("keeps the same side-by-side result in saved replay", async () => {
     const { input, report } = await fakeRun(), parent = await temp(), out = resolve(parent, "replay");
     await replayPhysical(input.out, out, root);
@@ -540,6 +545,7 @@ describe("fixed 40 set in the same paid step", () => {
     const text = physicalFixedSideBySide(report);
     for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219", "2W unsure", "Unsure+team", `0/${18 - team}`, `${team}/18`]) expect(text).toContain(piece);
     if (!TWO_WAYS_METHOD_MARKS) expect(text).toContain("reads 100% while the method switch is off");
+    expect(text.split("\n")[0]).toBe(team ? `${team} items went to the team: two-ways method marking is off.` : "0 items went to the team.");
   });
   it("runs the fixed set after Robin in one serial queue, under one credit check, and replays both", async () => {
     const input = await withFixed(), mem = memoryBudget(), printed = vi.spyOn(console, "log").mockImplementation(() => {});

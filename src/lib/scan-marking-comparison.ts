@@ -285,13 +285,42 @@ export function assertComparisonResultIdentity(manifest: ComparisonManifest, res
     seen.add(key);
   }
 }
+/** Why an item goes to our team instead of the AI. */
+export type TeamReason = "two-ways-method-marks-off" | "team-method";
+const TEAM_REASON_TEXT: Record<TeamReason, string> = { "two-ways-method-marks-off": "two-ways method marking is off", "team-method": "its method is our team's" };
 /**
  * D-267 counts unsure only on the items the AI is meant to mark. An item our team marks by design is not model unsure:
- * one whose method is the team's, and a two-ways item while the method rules are off. An item with no expected item is
- * the AI's, so a mismatch can never make the bar easier to pass. Wrong marks and wrong marked right count every item.
+ * one whose method is the team's, and a two-ways item while the method rules are off. That is a temporary state while a
+ * format's AI marking is off, not a way around the bar: the switch is read from the marking itself, so once
+ * TWO_WAYS_METHOD_MARKS is on every two-ways item is the AI's again, in the count and the total. An item with no
+ * expected item is the AI's, so a mismatch can never make the bar easier to pass. Wrong marks and wrong marked right
+ * count every item.
  */
-export function teamMarked(e: ExpectedItem | undefined, format: ComparisonFormat): boolean {
-  return e !== undefined && (e.method !== "code" || ((e.twoWays === true || format === "two-ways") && !TWO_WAYS_METHOD_MARKS));
+export function teamReason(e: ExpectedItem | undefined, format: ComparisonFormat): TeamReason | null {
+  if (e === undefined) return null;
+  if (e.method !== "code") return "team-method";
+  return (e.twoWays === true || format === "two-ways") && !TWO_WAYS_METHOD_MARKS ? "two-ways-method-marks-off" : null;
+}
+export const teamMarked = (e: ExpectedItem | undefined, format: ComparisonFormat) => teamReason(e, format) !== null;
+export type TeamItems = { items: number; reasons: Partial<Record<TeamReason, number>> };
+/** The items of a set that go to our team, by reason. Each gate report states this on its first line. */
+export function teamItemsOf(photos: readonly ComparisonPhoto[]): TeamItems {
+  const team: TeamItems = { items: 0, reasons: {} };
+  for (const photo of photos) {
+    const items = expectedItems(photo.frame);
+    for (const t of photo.truth) {
+      const reason = teamReason(items.find(e => e.identity.itemId === t.itemId), t.format);
+      if (reason) { team.items++; team.reasons[reason] = (team.reasons[reason] ?? 0) + 1; }
+    }
+  }
+  return team;
+}
+/** "3 items went to the team: two-ways method marking is off", or "0 items went to the team". */
+export function teamLine(team: TeamItems): string {
+  if (!team.items) return "0 items went to the team.";
+  const reasons = (Object.entries(team.reasons) as [TeamReason, number][]).filter(([, n]) => n > 0);
+  const why = reasons.map(([r, n]) => reasons.length > 1 ? `${TEAM_REASON_TEXT[r]} (${n})` : TEAM_REASON_TEXT[r]).join("; ");
+  return `${team.items} item${team.items === 1 ? "" : "s"} went to the team: ${why}.`;
 }
 const percentile = (values: number[], p: number) => values.length ? [...values].sort((a, b) => a - b)[Math.max(0, Math.ceil(values.length * p) - 1)] : null;
 export function scoreComparison(manifest: ComparisonManifest, model: ComparisonModel, results: readonly ComparisonResult[], evidence: EndpointEvidence, history: readonly EndpointEvidence[] = []) {
