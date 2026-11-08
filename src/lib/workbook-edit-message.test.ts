@@ -8,12 +8,12 @@ describe("workbook edit result message", () => {
     expect(workbookEditMessage(batch, [comment("failed"), comment("done"), comment("failed", "old")])).toBe("1 comment couldn't be applied. The rest are done.");
     expect(workbookEditMessage(batch, [comment("pending", "latest", "limit reached"), comment("done")])).toBe("1 comment couldn't be applied. The rest are done.");
   });
-  it("reports no changes once when all comments failed", () => {
-    expect(workbookEditMessage({ ...batch, status: "failed", error: "old repeated text" }, [comment("failed")])).toBe("No comments could be applied. The workbook is unchanged.");
+  it("reports the reason when all comments failed", () => {
+    expect(workbookEditMessage({ ...batch, status: "failed", error: "old repeated text" }, [comment("failed")])).toBe("1 comment couldn't be applied: Please review the comment and try again.");
   });
-  it("uses plural counts and hides the failure message during work or full success", () => {
+  it("uses plural counts and hides the result during work", () => {
     expect(workbookEditMessage(batch, [comment("failed"), comment("failed"), comment("done")])).toBe("2 comments couldn't be applied. The rest are done.");
-    expect(workbookEditMessage(batch, [comment("done")])).toBeNull();
+    expect(workbookEditMessage(batch, [comment("done")])).toBe("1 comment applied.");
     expect(workbookEditMessage({ ...batch, status: "running" }, [comment("sent")])).toBeNull();
   });
 });
