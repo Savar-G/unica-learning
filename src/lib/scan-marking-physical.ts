@@ -1,6 +1,6 @@
 // Physical photos of the frozen, made-up Robin kit. This is not the fixed40 set.
 import reviewedEvidence from "../../data/scan-marking-physical-reviewed-evidence-20261107.json";
-import { COMPARISON_ALLOWED_MODELS, COMPARISON_SETTINGS, COMPARISON_DEFERRAL_POLICY, SYNTHETIC_IDS, comparisonItemFormat, hashValue, labelledOutput, reserveMaximum, scoreComparison, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type TruthRow } from "@/lib/scan-marking-comparison";
+import { COMPARISON_ALLOWED_MODELS, COMPARISON_SETTINGS, COMPARISON_DEFERRAL_POLICY, SYNTHETIC_IDS, comparisonItemFormat, hashValue, labelledOutput, reserveMaximum, scoreComparison, teamMarked, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence, type TruthRow } from "@/lib/scan-marking-comparison";
 import { expectedItems, READING_ISSUES, type ReadingIssue } from "@/lib/scan-observation";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { markingRequest, readMarkingOutput, TWO_WAYS_METHOD_MARKS, validMarkingOutput, type MarkingFrame } from "@/lib/scan-marking";
@@ -175,7 +175,7 @@ function modelReport(set: PhysicalSet, model: ComparisonModel, results: readonly
   const latencies = own.filter(r => r.attempts.length).map(r => r.attempts.reduce((n, a) => n + a.latencyMs, 0)).sort((a, b) => a - b);
   const latency = (p: number) => latencies.length ? latencies[Math.max(0, Math.ceil(latencies.length * p) - 1)] : null;
   const complete = score.complete && inputsComplete;
-  return { ...score, complete, passed: complete && score.passed, clearUnsureRate: rate(score.clearUnsure, score.clearDenominator), twoWays: twoWaysTally(set.photos.map(p => p.photo), own), latencyP50Ms: latency(.5), latencyP95Ms: latency(.95), unsureReasons: reasons,
+  return { ...score, complete, passed: complete && score.passed, clearUnsureRate: rate(score.clearUnsure, score.clearDenominator), clearUnsureRateWithTeam: rate(score.clearUnsureWithTeam, score.clearDenominatorWithTeam), twoWays: twoWaysTally(set.photos.map(p => p.photo), own), latencyP50Ms: latency(.5), latencyP95Ms: latency(.95), unsureReasons: reasons,
     measuredUsage: own.flatMap(r => r.attempts.map(a => ({ photo: r.photo, latencyMs: a.latencyMs, ...a.usage }))) };
 }
 export function physicalReport(set: PhysicalSet, results: ComparisonResult[], evidences: readonly EndpointEvidence[], run: string, replay = false) {
@@ -185,7 +185,8 @@ export function physicalReport(set: PhysicalSet, results: ComparisonResult[], ev
   const items = set.photos.flatMap(p => expectedItems(p.photo.frame));
   return { version: PHYSICAL_VERSION, run, setHash: hashValue(set), proofClass: replay ? "saved-reader-replay" : set.proofClass === "local-fake" ? "local-fake" : results.length ? "physical-provider" : "physical-preparation",
     realHandwritingProven: false, familyRelease: false, selectedModel: null, d267: { wrongDefinitePercentMaximum: 1, wrongAsRightMaximum: 0, clearUnsurePercentMaximum: 5 },
-    counts: { photos: set.photos.length, itemLabels: set.photos.reduce((n, p) => n + p.photo.truth.length, 0), aiMarked: items.filter(e => e.method === "code").length, parent: items.filter(e => e.method === "parent").length }, expectedCounts: PHYSICAL_EXPECTED,
+    counts: { photos: set.photos.length, itemLabels: set.photos.reduce((n, p) => n + p.photo.truth.length, 0), aiMarked: items.filter(e => e.method === "code").length, parent: items.filter(e => e.method === "parent").length,
+      teamMarked: set.photos.reduce((n, p) => n + p.photo.truth.filter(t => teamMarked(expectedItems(p.photo.frame).find(e => e.identity.itemId === t.itemId), t.format)).length, 0) }, expectedCounts: PHYSICAL_EXPECTED,
     complete: models.every(m => m.complete), passed: models.every(m => m.passed), models, disagreements: modelDisagreements(set, results),
     totalPhotos: set.photos.length, refusedPhotos: refused.length, incompletePhotos: incomplete.length, missingPhotos: set.missing,
     inputs: set.photos.map(p => ({ file: p.mapping.file, rawSha256: p.rawSha256, normalizedSha256: p.normalizedSha256, status: p.status, reason: p.reason })),
@@ -194,6 +195,8 @@ export function physicalReport(set: PhysicalSet, results: ComparisonResult[], ev
   };
 }
 const percent = (r: number | null) => r === null ? "none" : `${(r * 100).toFixed(1)}%`;
+/** Our team marks two-ways items while the method switch is off, so their unsure rate reads 100% and D-267 leaves them out. */
+const TWO_WAYS_NOTE = TWO_WAYS_METHOD_MARKS ? "D-267 at most 5%" : "reads 100% while the method switch is off, as our team marks these";
 const usd = (micros: number | null, digits = 2) => micros === null ? "unknown" : `USD ${(micros / 1e6).toFixed(digits)}`;
 /** The report as a plain table, with each model in its own column. */
 export function physicalSideBySide(report: ReturnType<typeof physicalReport>): string {
@@ -202,8 +205,9 @@ export function physicalSideBySide(report: ReturnType<typeof physicalReport>): s
     ["Wrong marks", m => `${m.wrongMarks}/${m.wrongMarkDenominator}`],
     ["Wrong marked right", m => String(m.wrongAsRight)],
     ["Clear unsure", m => `${m.clearUnsure}/${m.clearDenominator}`],
-    ["Clear unsure rate", m => `${percent(m.clearUnsureRate)} (D-267 at most 5%)`],
-    ["Two-ways unsure (clear)", m => `${m.twoWays.clearUnsure}/${m.twoWays.clearItems} (${percent(m.twoWays.clearUnsureRate)}; D-267 at most 5%)`],
+    ["Clear unsure rate", m => `${m.clearUnsure}/${m.clearDenominator} (${percent(m.clearUnsureRate)}; D-267 at most 5%, AI-markable items only)`],
+    ["Clear unsure with team", m => `${m.clearUnsureWithTeam}/${m.clearDenominatorWithTeam} (${percent(m.clearUnsureRateWithTeam)}; with ${m.clearTeamItems} team item${m.clearTeamItems === 1 ? "" : "s"})`],
+    ["Two-ways unsure (clear)", m => `${m.twoWays.clearUnsure}/${m.twoWays.clearItems} (${percent(m.twoWays.clearUnsureRate)}; ${TWO_WAYS_NOTE})`],
     ["Two-ways", m => `${m.twoWays.right} right, ${m.twoWays.wrong} wrong, ${m.twoWays.blank} blank, ${m.twoWays.unsure} unsure of ${m.twoWays.items}; ${m.twoWays.wrongMarks} wrong marks`],
     ["Cost per page", m => m.costPerPageUsd === null ? "unknown" : `USD ${m.costPerPageUsd.toFixed(6)}`],
     ["Latency p50", m => m.latencyP50Ms === null ? "unknown" : `${m.latencyP50Ms} ms`],
@@ -215,7 +219,7 @@ export function physicalSideBySide(report: ReturnType<typeof physicalReport>): s
   const col = Math.max(...rows.map(([, f]) => f(left).length), name(left).length) + 2;
   const c = report.counts;
   return [
-    `Robin phone test (${report.proofClass}). Photos ${c.photos}, item labels ${c.itemLabels}, AI-marked ${c.aiMarked}, parent ${c.parent}. Real handwriting proven: ${report.realHandwritingProven ? "yes" : "no"}.`,
+    `Robin phone test (${report.proofClass}). Photos ${c.photos}, item labels ${c.itemLabels}, AI-marked ${c.aiMarked}, parent ${c.parent}, team-marked ${c.teamMarked}. Real handwriting proven: ${report.realHandwritingProven ? "yes" : "no"}.`,
     `${"".padEnd(25)}${name(left).padEnd(col)}${name(right)}`,
     ...rows.map(([label, f]) => `${label.padEnd(25)}${f(left).padEnd(col)}${f(right)}`),
     `Disagreements: ${report.disagreements.length}`,
@@ -296,16 +300,18 @@ export function physicalFixedReport(manifest: ComparisonManifest, results: reado
   const rows = PHYSICAL_MODELS.map(model => {
     const s = scoreComparison(manifest, model, results, evidences.find(e => e.model === model.model) ?? fail("physical-evidence-required"));
     const complete = s.complete && manifest.photos.length === FIXED40_PHOTOS;
-    return { model: model.model, endpoint: model.endpoint, v7: FIXED40_V7_ROWS[model.model], v8: { prompt: COMPARISON_SETTINGS.promptVersion, complete, passed: complete && s.passed, wrongMarks: s.wrongMarks, definite: s.wrongMarkDenominator, wrongAsRight: s.wrongAsRight, clearUnsure: s.clearUnsure, clear: s.clearDenominator, clearUnsureRate: rate(s.clearUnsure, s.clearDenominator), twoWays: twoWaysTally(manifest.photos, results.filter(r => r.model === model.model)), schemaFailures: s.schemaFailures, costPerPageUsd: s.costPerPageUsd, latencyP50Ms: s.latencyP50Ms, latencyP95Ms: s.latencyP95Ms, missingRuns: s.missingRuns } };
+    return { model: model.model, endpoint: model.endpoint, v7: FIXED40_V7_ROWS[model.model], v8: { prompt: COMPARISON_SETTINGS.promptVersion, complete, passed: complete && s.passed, wrongMarks: s.wrongMarks, definite: s.wrongMarkDenominator, wrongAsRight: s.wrongAsRight, clearUnsure: s.clearUnsure, clear: s.clearDenominator, clearUnsureRate: rate(s.clearUnsure, s.clearDenominator),
+      clearUnsureWithTeam: s.clearUnsureWithTeam, clearWithTeam: s.clearDenominatorWithTeam, clearUnsureRateWithTeam: rate(s.clearUnsureWithTeam, s.clearDenominatorWithTeam), twoWays: twoWaysTally(manifest.photos, results.filter(r => r.model === model.model)), schemaFailures: s.schemaFailures, costPerPageUsd: s.costPerPageUsd, latencyP50Ms: s.latencyP50Ms, latencyP95Ms: s.latencyP95Ms, missingRuns: s.missingRuns } };
   });
   return { version: PHYSICAL_VERSION, set: "fixed-40-synthetic", run, proofClass, realHandwritingProven: false, selectedModel: null, photos: manifest.photos.length, rows };
 }
 export function physicalFixedSideBySide(report: ReturnType<typeof physicalFixedReport>): string {
   const cost = (v: number | null) => v === null ? "unknown" : `USD ${v.toFixed(6)}`, ms = (v: number | null) => v === null ? "unknown" : `${v}`;
-  const line = (name: string, p: string, r: { wrongMarks: number; definite: number; wrongAsRight: number; clearUnsure: number; clear: number; schemaFailures: number; costPerPageUsd: number | null; latencyP50Ms: number | null; latencyP95Ms: number | null; twoWays?: TwoWaysTally }, pass: string) =>
-    `${name.padEnd(12)}${p.padEnd(5)}${`${r.wrongMarks}/${r.definite}`.padEnd(8)}${String(r.wrongAsRight).padEnd(7)}${`${r.clearUnsure}/${r.clear}`.padEnd(8)}${(r.twoWays ? `${r.twoWays.clearUnsure}/${r.twoWays.clearItems} ${percent(r.twoWays.clearUnsureRate)}` : "parent").padEnd(14)}${String(r.schemaFailures).padEnd(8)}${cost(r.costPerPageUsd).padEnd(14)}${`${ms(r.latencyP50Ms)}/${ms(r.latencyP95Ms)}`.padEnd(13)}${pass}`;
-  return [`Fixed ${report.photos} synthetic photos (${report.proofClass}): prompt v8 next to the saved v7 result. v7 scored 4 fewer rows: the two-ways rows were parent rows. D-267 allows at most 5% unsure on clear photos, for the page and for two-ways.`,
-    `${"".padEnd(12)}${"".padEnd(5)}${"Wrong".padEnd(8)}${"W->R".padEnd(7)}${"Unsure".padEnd(8)}${"2W unsure".padEnd(14)}${"Schema".padEnd(8)}${"Cost/page".padEnd(14)}${"p50/p95 ms".padEnd(13)}D-267`,
+  const line = (name: string, p: string, r: { wrongMarks: number; definite: number; wrongAsRight: number; clearUnsure: number; clear: number; clearUnsureWithTeam?: number; clearWithTeam?: number; schemaFailures: number; costPerPageUsd: number | null; latencyP50Ms: number | null; latencyP95Ms: number | null; twoWays?: TwoWaysTally }, pass: string) =>
+    `${name.padEnd(12)}${p.padEnd(5)}${`${r.wrongMarks}/${r.definite}`.padEnd(8)}${String(r.wrongAsRight).padEnd(7)}${`${r.clearUnsure}/${r.clear}`.padEnd(8)}${(r.clearWithTeam === undefined ? "parent" : `${r.clearUnsureWithTeam}/${r.clearWithTeam}`).padEnd(13)}${(r.twoWays ? `${r.twoWays.clearUnsure}/${r.twoWays.clearItems} ${percent(r.twoWays.clearUnsureRate)}` : "parent").padEnd(14)}${String(r.schemaFailures).padEnd(8)}${cost(r.costPerPageUsd).padEnd(14)}${`${ms(r.latencyP50Ms)}/${ms(r.latencyP95Ms)}`.padEnd(13)}${pass}`;
+  return [`Fixed ${report.photos} synthetic photos (${report.proofClass}): prompt v8 next to the saved v7 result. v7 scored 4 fewer rows: the two-ways rows were parent rows.`,
+    `D-267 allows at most 5% unsure on clear photos, counting only items the AI is meant to mark ("Unsure"). "Unsure+team" adds the items our team marks by design. Two-ways: ${TWO_WAYS_NOTE}.`,
+    `${"".padEnd(12)}${"".padEnd(5)}${"Wrong".padEnd(8)}${"W->R".padEnd(7)}${"Unsure".padEnd(8)}${"Unsure+team".padEnd(13)}${"2W unsure".padEnd(14)}${"Schema".padEnd(8)}${"Cost/page".padEnd(14)}${"p50/p95 ms".padEnd(13)}D-267`,
     ...report.rows.flatMap(r => [line(MODEL_NAMES[r.model] ?? r.model, "v8", r.v8, r.v8.passed ? "pass" : r.v8.complete ? "fail" : "not complete"), line("", "v7", r.v7, "pass (saved)")])].join("\n");
 }
 export function physicalPhotoId(file: string) { return `synthetic-physical-${hashValue(file).slice(0, 24)}`; }

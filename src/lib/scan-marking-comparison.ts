@@ -4,7 +4,7 @@ import models from "../../data/scan-marking-models.json";
 import evaluationModels from "../../data/scan-marking-evaluation-models.json";
 import type { OpenRouterProvider } from "@/lib/ai-openrouter";
 import { markingRequest, MARKING_MAX_TOKENS, MARKING_PROMPT_VERSION, readMarkingOutput, TWO_WAYS_METHOD_MARKS, type MarkingFrame } from "@/lib/scan-marking";
-import { expectedItems, READING_ISSUES, type Observation, type ReadingIssue } from "@/lib/scan-observation";
+import { expectedItems, READING_ISSUES, type ExpectedItem, type Observation, type ReadingIssue } from "@/lib/scan-observation";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import type { MethodJudgment } from "@/lib/scan-marking-methods";
 import { isPrintedRevision } from "@/lib/workbook-print-contract";
@@ -285,16 +285,28 @@ export function assertComparisonResultIdentity(manifest: ComparisonManifest, res
     seen.add(key);
   }
 }
+/**
+ * D-267 counts unsure only on the items the AI is meant to mark. An item our team marks by design is not model unsure:
+ * one whose method is the team's, and a two-ways item while the method rules are off. An item with no expected item is
+ * the AI's, so a mismatch can never make the bar easier to pass. Wrong marks and wrong marked right count every item.
+ */
+export function teamMarked(e: ExpectedItem | undefined, format: ComparisonFormat): boolean {
+  return e !== undefined && (e.method !== "code" || ((e.twoWays === true || format === "two-ways") && !TWO_WAYS_METHOD_MARKS));
+}
 const percentile = (values: number[], p: number) => values.length ? [...values].sort((a, b) => a - b)[Math.max(0, Math.ceil(values.length * p) - 1)] : null;
 export function scoreComparison(manifest: ComparisonManifest, model: ComparisonModel, results: readonly ComparisonResult[], evidence: EndpointEvidence, history: readonly EndpointEvidence[] = []) {
   let wrongMarks = 0, wrongAsRight = 0, unsure = 0, clearUnsure = 0, denominator = 0, wrongMarkDenominator = 0, clearDenominator = 0, parentMethods = 0;
+  // The D-267 bar is clearUnsure / clearDenominator, on AI-markable items. The "with team" pair is reported beside it.
+  let teamItems = 0, clearTeamItems = 0, clearUnsureWithTeam = 0, clearDenominatorWithTeam = 0;
   let failures = 0, schemaFailures = 0, schemaUnvalidated = 0, missingRuns = 0, invalidRuns = 0, missingCosts = 0, measuredMicros = 0, heldMicros = 0, missingHoldBounds = 0, deferredAttempts = 0, retries = 0, completedPhotos = 0;
   const failureReasons: Record<string, number> = {};
   const latencies: number[] = [], providers = new Set<string>();
   const acceptedHashes = [evidence, ...history].filter(e => e.model === model.model && hashValue(endpointPolicy(e)) === hashValue(endpointPolicy(evidence))).map(hashValue);
   for (const photo of manifest.photos) {
-    parentMethods += expectedItems(photo.frame).filter(e => e.method === "parent").length;
-    denominator += photo.truth.length; if (photo.clear) clearDenominator += photo.truth.length;
+    const items = expectedItems(photo.frame), team = new Set(photo.truth.filter(t => teamMarked(items.find(e => e.identity.itemId === t.itemId), t.format)).map(t => t.itemId));
+    parentMethods += items.filter(e => e.method === "parent").length;
+    denominator += photo.truth.length; teamItems += team.size;
+    if (photo.clear) { clearDenominatorWithTeam += photo.truth.length; clearDenominator += photo.truth.length - team.size; clearTeamItems += team.size; }
     const found = results.filter(r => r.model === model.model && r.photo === photo.id), result = found.length === 1 ? found[0] : null;
     const actual = result?.attempts.filter(a => !deferredAttempt(a)) ?? [];
     const usable = result?.status === "complete" && result.schemaValid && actual.length > 0 && actual.every(a => a.usage.provider === model.providerName && a.usage.model === model.model && a.usage.generationId !== null && a.usage.costMicros !== null && a.usage.inputTokens !== null && a.usage.outputTokens !== null && a.usage.reasoningTokens !== null) && result.photoHash === photo.image.sha256 && acceptedHashes.includes(result.evidenceHash) && result.requestHash === hashValue(markingRequest(photo.frame, new Uint8Array()));
@@ -320,7 +332,7 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
       const observations = usable ? result!.observations.filter(o => o.identity.itemId === truth.itemId && o.identity.workbookId === photo.frame.workbookId && o.identity.printedRevision === photo.frame.printedRevision && o.identity.pageId === photo.frame.pageId) : [];
       const o = observations.length === 1 ? observations[0] : null;
       if (usable && (!o || !["right", "wrong", "blank", null].includes(o.result))) failures++;
-      if (!o || o.result === null) { unsure++; if (photo.clear) clearUnsure++; }
+      if (!o || o.result === null) { unsure++; if (photo.clear) { clearUnsureWithTeam++; if (!team.has(truth.itemId)) clearUnsure++; } }
       else { wrongMarkDenominator++; if (o.result !== truth.result) { wrongMarks++; if (truth.result === "wrong" && o.result === "right") wrongAsRight++; } }
       if (truth.result === "uncertain" && o?.result != null) failures++;
       if (o?.result === null && (!o.issue || !READING_ISSUES.includes(o.issue))) failures++;
@@ -328,7 +340,7 @@ export function scoreComparison(manifest: ComparisonManifest, model: ComparisonM
   }
   const complete = completedPhotos === manifest.photos.length && results.filter(r => r.model === model.model).length === manifest.photos.length;
   const passed = complete && failures === 0 && wrongMarkDenominator > 0 && clearDenominator > 0 && wrongMarks * 100 <= wrongMarkDenominator && wrongAsRight === 0 && clearUnsure * 20 <= clearDenominator && missingCosts === 0 && providers.size === 1 && providers.has(model.providerName);
-  return { model: model.model, host: model.host, endpoint: model.endpoint, policy: evidence.policy, passed, complete, wrongMarks, wrongMarkDenominator, denominator, aiMarked: denominator - parentMethods, wrongAsRight, unsure, clearUnsure, clearDenominator, parentMethods, failures, missingRuns, invalidRuns, schemaFailures, schemaUnvalidated, refusals: failureReasons.refusal ?? 0, failureReasons, missingCosts,
+  return { model: model.model, host: model.host, endpoint: model.endpoint, policy: evidence.policy, passed, complete, wrongMarks, wrongMarkDenominator, denominator, aiMarked: denominator - parentMethods, wrongAsRight, unsure, clearUnsure, clearDenominator, teamItems, clearTeamItems, clearUnsureWithTeam, clearDenominatorWithTeam, parentMethods, failures, missingRuns, invalidRuns, schemaFailures, schemaUnvalidated, refusals: failureReasons.refusal ?? 0, failureReasons, missingCosts,
     measuredMicros, heldMicros, missingHoldBounds, deferredAttempts, spentOrHeldMicros: missingHoldBounds ? null : measuredMicros + heldMicros, costPerPageUsd: missingCosts || !complete ? null : measuredMicros / manifest.photos.length / 1e6,
     latencyP50Ms: percentile(latencies, 0.5), latencyP95Ms: percentile(latencies, 0.95), retries, providers: [...providers] };
 }
