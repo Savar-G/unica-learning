@@ -2211,6 +2211,38 @@ export const BEHAVIOURS: Behaviour[] = [
       outputs: [{ mayaTurn: 1, lines: [PART1_POINT] }],
     },
   },
+  {
+    id: "EV10",
+    title: "Evaluate, a missing number checked in the printed equation: '8 times 870 is 6960, so 870.' stays on the question",
+    fixture: "EV_MISSING",
+    status: "passing",
+    steps: [
+      child("6960.", { start: "has_work", answers: [[6960, "e1", "right"]] }, [{ act: "guide", step: "e2.thousands", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("8 times 870 is 6960, so 870.", { answers: [[870, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "EV11",
+    title: "Evaluate, an addition part first: (47 + 38) × 3, '47 plus 38 is 85.' credits the part, not its ones column (J06)",
+    fixture: "EV_ADD_FIRST",
+    status: "passing",
+    steps: [
+      child("47 plus 38 is 85.", { start: "has_work", answers: [[85, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("85 times 3 is 255.", { answers: [[255, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */

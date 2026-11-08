@@ -46,7 +46,7 @@ import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FE
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
-import { closeParts, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, withEvaluateExample } from "./evaluate";
+import { closeParts, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, withEvaluateExample } from "./evaluate";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -2060,9 +2060,9 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
   if (body === null) return false;
   // Only the first step not done: no tens credit before the ones. A part is its own columns' step: it is first while one
-  // of its columns is the first not done (currentPart).
-  if (currentColumn(s)?.id !== step.id && workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
-  const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
+  // of its columns is the first not done, whatever the column's kind (currentPart).
+  if (!currentSteps(s).some((st) => st.id === step.id)) return false;
+  const copy = shownStep(s, step);
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16). A part's total is its result.
   const total = saidAs(number(step.kind === "operate" ? step.value : step.total), value);
   // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
@@ -2117,13 +2117,35 @@ const rightFinalIn = (s: Session) => {
 };
 
 /**
- * The first step not done, when it is a column of an addition; else, in an evaluate question, the part whose column is
- * the first step not done (its result is a step answer with the same rules, evaluate.ts).
+ * The steps a whole-turn template may credit now: the first step not done when it is a column of an addition, and in an
+ * evaluate question the part whose column is the first step not done, of any kind (its result is a step answer with the
+ * same rules, evaluate.ts). The part comes first: "85" for (47 + 38) × 3 is the part, never the ones column.
  */
-function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" | "operate" }> | null {
+function currentSteps(s: Session): Extract<WorkedStep, { kind: "add-column" | "operate" }>[] {
   const st = s.package ? workSteps(s.package).find((x) => !s.done.includes(x.id)) : undefined;
-  if (st?.kind === "add-column") return st;
-  return st && s.package ? currentPart(s.package, st.id) : null;
+  if (!st || !s.package) return [];
+  const part = currentPart(s.package, st.id);
+  return [...(part ? [part] : []), ...(st.kind === "add-column" ? [st] : [])];
+}
+
+/**
+ * Maya showed this step at H3: the ladder is on it, or, for a part of an evaluate question, on one of its columns (a
+ * row's show says the part's result: "The tens row: 160 × 50 = 8000."). A value or a yes after it only copies her.
+ */
+const shownStep = (s: Session, step: WorkedStep) =>
+  s.ladder.hint >= 3 && (s.ladder.step === step.id || (step.kind === "operate" && !!s.package && partIdOf(s.package, s.ladder.step) === step.id));
+
+/** The total a step's confirm asks about: a column's total, or a part's result. */
+const totalOf = (st: Extract<WorkedStep, { kind: "add-column" | "operate" }>) => number(st.kind === "operate" ? st.value : st.total);
+
+/** The current step whose total is the turn's one number, with that total, for the step confirm. */
+function confirmTarget(s: Session): { step: Extract<WorkedStep, { kind: "add-column" | "operate" }>; total: AnswerValue } | null {
+  if (!s.turn || !s.package) return null;
+  const opts = readOptionsFor(s.package);
+  const values = valuesIn(s.turn.text, opts);
+  if (values.length !== 1 || readAnswer(s.turn.text, opts).kept.length !== 1 || !confirmWordsOnly(s.turn.text)) return null;
+  const step = currentSteps(s).find((st) => saidAs(values[0], totalOf(st)));
+  return step ? { step, total: totalOf(step) } : null;
 }
 
 /**
@@ -2133,12 +2155,7 @@ function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" | "
  * will not credit, and a claim about a column cannot pass as a hearing problem. Reviews of 6528f2ca and 66491fd5.
  */
 function stepConfirmable(s: Session): AnswerValue | null {
-  const st = currentColumn(s);
-  if (!st || !s.turn || !s.package) return null;
-  const opts = readOptionsFor(s.package);
-  const values = valuesIn(s.turn.text, opts);
-  const total = number(st.kind === "operate" ? st.value : st.total);
-  return values.length === 1 && readAnswer(s.turn.text, opts).kept.length === 1 && saidAs(values[0], total) && confirmWordsOnly(s.turn.text) ? total : null;
+  return confirmTarget(s)?.total ?? null;
 }
 
 /**
@@ -2146,9 +2163,8 @@ function stepConfirmable(s: Session): AnswerValue | null {
  * not a right final answer the child is sure of (that is judged as the answer).
  */
 function stepSaidUnheard(s: Session): boolean {
-  const st = currentColumn(s);
-  const total = stepConfirmable(s);
-  if (!st || !total || !s.turn || s.ladder.hint >= 3 && s.ladder.step === st.id || stepTurnHeard(s, st, total)) return false;
+  const target = confirmTarget(s);
+  if (!target || !s.turn || shownStep(s, target.step) || stepTurnHeard(s, target.step, target.total)) return false;
   const read = turnRead(s);
   return !(read.final && read.sure && rightForQuestion(s.package!, read.final));
 }
@@ -2159,12 +2175,12 @@ function stepSaidUnheard(s: Session): boolean {
  * (P11, P15); a yes to that credits no step, because only stepAsked does.
  */
 function stepOnlyTurn(s: Session): boolean {
-  const st = currentColumn(s);
-  if (!st || !s.turn || !s.package || stepSaidUnheard(s)) return false;
+  const steps = currentSteps(s);
+  if (steps.length === 0 || !s.turn || !s.package || stepSaidUnheard(s)) return false;
   const opts = readOptionsFor(s.package);
   if (columnClaims(s.turn.text).length > 0) return !rightFinalIn(s);
   const final = readAnswer(s.turn.text, opts).final;
-  return final ? answersStep(st, final) && !rightForQuestion(s.package, final) : valuesIn(s.turn.text, opts).some((v) => answersStep(st, v));
+  return final ? steps.some((st) => answersStep(st, final)) && !rightForQuestion(s.package, final) : valuesIn(s.turn.text, opts).some((v) => steps.some((st) => answersStep(st, v)));
 }
 
 /**

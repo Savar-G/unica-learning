@@ -422,3 +422,20 @@ export function partCovered(pkg: OperationPackage, done: readonly string[], step
   const part = done.indexOf(at.part.id);
   return part >= 0 && done.indexOf(stepId) > part;
 }
+
+/**
+ * The missing-number frame's own relation, for the scope check: the child checks the missing number in the printed
+ * equation ("8 times 870 is 6960." for 8 × ? = 6960; "8070 minus 70 is 8000." for 8070 − ? = 8000). A product takes
+ * either order there. Empty without a frame.
+ */
+export function frameProblems(pkg: OperationPackage): EasierExample[] {
+  const t = teachingOf(pkg);
+  const last = t?.parts.at(-1);
+  if (!t?.frame || !last) return [];
+  const { left, right, value } = last.step;
+  const operation: Operation = t.frame.verb === "divide" ? { kind: "multiply", operands: [right, value] } : { kind: "subtract", operands: [left, value] };
+  if (operationProblem(operation) !== null) return [];
+  const steps = workedSteps(operation);
+  const result = steps.at(-1);
+  return result?.kind === "result" ? [{ text: t.frame.equation, operation, answer: result.value, steps }] : [];
+}

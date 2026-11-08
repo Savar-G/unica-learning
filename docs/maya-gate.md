@@ -11,7 +11,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 
 | File | What it holds |
 |---|---|
-| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `EV_TWO`, `EV_STORY` and `EV_MISSING`: evaluate questions (Wave A, A2): 7 × 640 + 7 × 30, a story's 4 × 260 − 590, and 8 × ? = 7360 − 400 stored as (7360 − 400) ÷ 8. |
+| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `EV_TWO`, `EV_STORY` and `EV_MISSING`: evaluate questions (Wave A, A2): 7 × 640 + 7 × 30, a story's 4 × 260 − 590, and 8 × ? = 7360 − 400 stored as (7360 − 400) ÷ 8. `EV_ADD_FIRST`: (47 + 38) × 3, an addition part that is not last. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -310,6 +310,8 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | EV07 | EV_TWO | passing | Evaluate, 'Why do I multiply first?' on the current part: code's reason (step.order) before the part goes on (J06) | solved, hint | |
 | EV08 | EV_MISSING | passing | Evaluate, full sentences stay on the question: '7360 minus 400 is 6960.', then '6960 divided by 8 is 870.' | solved, independent | |
 | EV09 | EV_TWO | passing | Evaluate at grade 3, 'I'm stuck.' first: the first help line names the part ('First, multiply.') before its column | solved, hint | |
+| EV10 | EV_MISSING | passing | Evaluate, a missing number checked in the printed equation: '8 times 870 is 6960, so 870.' stays on the question | solved, independent | |
+| EV11 | EV_ADD_FIRST | passing | Evaluate, an addition part first: (47 + 38) × 3, '47 plus 38 is 85.' credits the part, not its ones column (J06) | solved, independent | |
 
 | P5 | A | passing | Two numeric sentences require confirmation | checked answer retained | |
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |

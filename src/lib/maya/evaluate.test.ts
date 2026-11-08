@@ -12,6 +12,7 @@ import {
 } from "@/lib/question-package";
 import { closeParts, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, partCovered, partEquationSaid, withEvaluateExample } from "./evaluate";
 import { allLineTexts, packageLines, workbookOpening } from "./lines";
+import { scopeReason } from "./scope";
 import { turnWordLimit } from "./session";
 import { createTextSession } from "@/lib/maya-text";
 import { scenarioModel } from "@/lib/maya-gate/gate";
@@ -312,6 +313,56 @@ describe("evaluate parts (Wave A, A2)", () => {
         for (const text of out.say) expect(speechWords(text), `${pkg.id} seed ${seed}: ${text}`).toBeLessThanOrEqual(limit);
       }
     }
+  });
+
+  it("allows the missing-number frame's own relation in the scope check (review of #734)", () => {
+    const missing = op(FIXTURES.EV_MISSING);
+    expect(scopeReason(missing, "8 times 870 is 6960.", false)).toBeNull();
+    expect(scopeReason(missing, "870 times 8 is 6960.", false)).toBeNull();
+    expect(scopeReason(missing, "8 times 871 is 6968.", false)).toBe("changed_problem");
+    const minus = op(evaluatePackage("8070 − (80 × 100)", "8070 − ? = 80 × 100"));
+    expect(scopeReason(minus, "8070 minus 70 is 8000.", false)).toBeNull();
+    expect(scopeReason(minus, "8070 minus 71 is 7999.", false)).toBe("changed_problem");
+    // With no frame there is no such relation.
+    expect(scopeReason(op(evaluatePackage("8070 − (80 × 100)")), "8070 minus 70 is 8000.", false)).toBe("changed_problem");
+    expect(scopeReason(missing, "8 times 870 is 6960, so 870.", false)).toBeNull();
+  });
+
+  it("credits an addition part that is not last before its ones column (review of #734)", () => {
+    const pkg = op(FIXTURES.EV_ADD_FIRST);
+    const next = evaluateSteps(pkg)!.find((st) => st.id.startsWith("e2."))!.id;
+    for (const text of ["85", "47 plus 38 is 85", "It's 85."]) expect(partTurn(pkg, [], text, 85, "e1", next).done, text).toContain("e1");
+    // The ones column keeps its own total.
+    expect(partTurn(pkg, [], "15", 15, "e1.ones", "e1.tens").done).toContain("e1.ones");
+    // "Is it 85?" gets the step confirm, and a plain yes credits the part.
+    let s = opened(pkg);
+    s = step(s, { type: "child_turn", text: "Is it 85?", at: 3000 }).session;
+    expect(nextActs(s).acts).toContain("confirm");
+    s = step(s, { type: "proposal", at: 4000, proposal: { version: 2, act: "confirm", parts: [{ line: "confirm.heard", slots: { heard: "85" } }] } }).session;
+    s = step(s, { type: "child_turn", text: "yes", at: 5000 }).session;
+    const yes = step(s, { type: "proposal", at: 6000, proposal: guide(next, 85, "e1") });
+    expect(yes.refusal ?? null).toBeNull();
+    expect(yes.session.done).toContain("e1");
+  });
+
+  it("gives no part credit for a value Maya showed at H3 on one of the part's columns (review of #734)", () => {
+    const pkg = op(evaluatePackage("50 × 160 + 100"));
+    expect(evaluateSteps(pkg)!.map((st) => st.id).slice(0, 5)).toEqual(["e1.r2-ones", "e1.r2-tens", "e1.r2-hundreds", "e1.r2", "e1"]);
+    let s = opened(pkg);
+    let at = 2000;
+    for (const [text, value, id, nextId] of [["0.", 0, "e1.r2-ones", "e1.r2-tens"], ["30.", 30, "e1.r2-tens", "e1.r2-hundreds"], ["8.", 8, "e1.r2-hundreds", "e1.r2"]] as const) {
+      s = step(s, { type: "child_turn", text, at: at++ }).session;
+      const r = step(s, { type: "proposal", at: at++, proposal: guide(nextId, value, id) });
+      expect(r.refusal ?? null, text).toBeNull();
+      s = r.session;
+    }
+    s = step(s, { type: "child_turn", text: "Show me.", at: at++ }).session;
+    const shown = step(s, { type: "proposal", at: at++, proposal: { version: 2, act: "guide", step: "e1.r2", level: 3, parts: [{ line: "step.show", slots: { step: "e1.r2" } }], reading: { help: "show" } } as Proposal });
+    expect(shown.refusal ?? null).toBeNull();
+    s = step(shown.session, { type: "child_turn", text: "8000.", at: at++ }).session;
+    const copy = step(s, { type: "proposal", at: at++, proposal: guide("e2.ones", 8000, "e1") });
+    expect(copy.refusal?.code).toBe("answer_not_committed");
+    expect(copy.session.done).not.toContain("e1");
   });
 
   it("leaves the generator's checks as they are", () => {

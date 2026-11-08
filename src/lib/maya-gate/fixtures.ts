@@ -5,10 +5,11 @@
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
 // not teach yet (equivalent fractions, C36b). `EV_TWO`, `EV_STORY` and `EV_MISSING` are evaluate questions (Wave A, A2):
 // a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
-// numbers, in the shapes of the workbook's multi-step templates.
+// numbers, in the shapes of the workbook's multi-step templates. `EV_ADD_FIRST` has an addition part that is not last:
+// (47 + 38) × 3 (review of #734).
 import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "EV_TWO" | "EV_STORY" | "EV_MISSING";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "EV_ADD_FIRST";
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -149,6 +150,16 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     level: 16,
     wrong: [{ value: num(6960), cause: "stops-early", description: "Works out the other side and stops", step: null }],
     easier: { text: "(20 − 4) ÷ 8 = ?", operation: { kind: "evaluate", operands: ["(20 − 4) ÷ 8"] }, answer: num(2) },
+  }),
+  EV_ADD_FIRST: fixture({
+    id: "gate-EV-(47+38)x3",
+    text: "What is (47 + 38) × 3?",
+    operation: { kind: "evaluate", operands: ["(47 + 38) × 3"] },
+    answer: num(255),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(161), cause: "O-order", description: "Multiplies before working inside the brackets", step: null }],
+    easier: { text: "(2 + 3) × 2 = ?", operation: { kind: "evaluate", operands: ["(2 + 3) × 2"] }, answer: num(10) },
   }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
