@@ -27,7 +27,7 @@ The math of these questions is one operation Maya teaches, once a code fact name
 two code-written sentences that say why (`src/lib/maya/topic-frame.ts`), said with the question line, the first
 question and the fixed workbook opening, and with the easier example's intro:
 
-- Die count (`4.17-predict-outcome#3.2:story`): "From 1 to 8, odd and even numbers take turns. So half of them are odd."
+- Die count (`4.17-predict-outcome#3.2:story`): "From 1 to 8, odd and even take turns. So half are odd."
   Then `8 ÷ 2`. Code counts the kind one number at a time and checks the count against the key and the division. The
   template must be exactly `s // 2` with the check `s % 2 == 0`. The easier example is a smaller die (1 to 4 or 1 to 6)
   none of whose numbers is the question's answer, so the example never says it (the controller refuses that).
@@ -36,12 +36,12 @@ question and the fixed workbook opening, and with the easier example's intro:
   table is code-computed. The template's lists must be code's table in code's order, and its slots `i`, `j` the printed
   shapes. The easier example is another pair from the table with a smaller sum.
 - The framed example intro is its own turn (as for a 25-word grade): with the topic sentence, the intro and the first
-  example step together pass 45 words.
+  example step together pass 45 words. Every framed line fits a 25-word turn (tested for the longest shape names).
 
 ### Waits on A2: evaluate
 
 - Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "A rectangle has 2 lengths
-  and 2 widths. Add the length and the width, then multiply by 2." Built and hooked; held on the `operate` step until
+  and 2 widths. Add one length and one width. Then double it." Built and hooked; held on the `operate` step until
   A2's evaluate teaching lands. No change needed then.
 
 ### Waits on A4: the claim path (22 true/false, 3 word answers)

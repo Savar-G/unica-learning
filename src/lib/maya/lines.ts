@@ -145,8 +145,8 @@ export const TEMPLATES = {
   // An "other-topic" question (Wave C, topic-frame.ts): code's topic sentence before the operation it gives. Pending
   // Savar's approval (D-202).
   "question.framed": [
-    "{frame} Our question is {expr}.", "{frame} So our question is {expr}.", "{frame} That makes our question {expr}.",
-    "{frame} So we work on {expr}.", "{frame} So this one is {expr}.", "{frame} Here's our question: {expr}.",
+    "{frame} Our question is {expr}.", "{frame} So our question is {expr}.", "{frame} So we work on {expr}.",
+    "{frame} So this one is {expr}.", "{frame} Here's our question: {expr}.",
   ],
   "question.read": [
     "The question says: {sentence}", "Let's read it again: {sentence}", "Here's the question: {sentence}", "It says: {sentence}",
@@ -158,8 +158,8 @@ export const TEMPLATES = {
   ],
   // The first question of an "other-topic" call (Wave C): code's topic sentence, then the usual question.
   "assess.framed": [
-    "{frame} What did you try for {expr}?", "{frame} How did you start {expr}?", "{frame} What have you done on {expr} so far?",
-    "{frame} How far did you get with {expr}?", "{frame} Tell me what you did on {expr} so far.",
+    "{frame} What did you try for {expr}?", "{frame} How did you start {expr}?", "{frame} What have you done on {expr}?",
+    "{frame} What did you do for {expr}?", "{frame} How did you begin {expr}?",
   ],
   "example.intro": [
     "Let's try an easier one first: {expr}.", "Here's a smaller one to warm up: {expr}.", "Let me show you an easier one: {expr}.",
@@ -167,9 +167,8 @@ export const TEMPLATES = {
   ],
   // The easier example of an "other-topic" question (Wave C): its own topic sentence, then its operation.
   "example.framed": [
-    "Let's try an easier one first. {frame} So we work on {expr}.", "Here's a smaller one to warm up. {frame} So it is {expr}.",
-    "Let me show you an easier one. {frame} So it is {expr}.", "First, a smaller one. {frame} So we work on {expr}.",
-    "I'll show you an easier one first. {frame} So it is {expr}.",
+    "Easier one. {frame} It is {expr}.", "A smaller one. {frame} It is {expr}.", "An easier one. {frame} It is {expr}.",
+    "Smaller one first. {frame} It is {expr}.", "Warm-up. {frame} It is {expr}.",
   ],
   "example.step": ["{show}", "Watch this. {show}", "Here's how. {show}", "Look. {show}", "Follow along. {show}", "Like this. {show}"],
   "example.result": ["So {show}.", "And that's it: {show}.", "There we go: {show}.", "All done: {show}.", "So in the end, {show}."],

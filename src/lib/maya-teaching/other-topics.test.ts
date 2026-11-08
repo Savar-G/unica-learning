@@ -127,7 +127,7 @@ describe("the topic sentence", () => {
   const shapes = deriveSymmetry(symmetryPrinted(4, 2)) as OperationPackage;
 
   it("says why the question is its operation, from code", () => {
-    expect(topicFrame(die.text, die.operation)).toBe("From 1 to 10, odd and even numbers take turns. So half of them are odd.");
+    expect(topicFrame(die.text, die.operation)).toBe("From 1 to 10, odd and even take turns. So half are odd.");
     expect(topicFrame(shapes.text, shapes.operation)).toBe("A regular hexagon has 6 lines of symmetry. An isosceles triangle has 1.");
     expect(topicFrame(die.text, { kind: "divide", operands: [10, 5] })).toBeNull();
     expect(topicFrame("27 + 39 = ?", { kind: "add", operands: [27, 39] })).toBeNull();
@@ -137,18 +137,19 @@ describe("the topic sentence", () => {
     const l = packageLines(die);
     const problem = l.question().find((o) => o.line === "question.problem")!;
     expect(problem.key).toBe("question.framed");
-    for (const t of problem.texts) expect(t.startsWith("From 1 to 10, odd and even numbers take turns.") && t.endsWith("10 ÷ 2.")).toBe(true);
+    for (const t of problem.texts) expect(t.startsWith("From 1 to 10, odd and even take turns.") && t.endsWith("10 ÷ 2.")).toBe(true);
     const intro = l.exampleIntro()[0];
     expect(intro.key).toBe("example.framed");
-    for (const t of intro.texts) expect(t).toContain("From 1 to 4, odd and even numbers take turns. So half of them are odd.");
+    for (const t of intro.texts) expect(t).toContain("From 1 to 4, odd and even take turns. So half are odd.");
     expect(exampleDie(10)).toBe(4);
-    expect(workbookOpening(die)).toMatch(/: 10 ÷ 2\. From 1 to 10, odd and even numbers take turns\. So half of them are odd\.$/);
+    expect(workbookOpening(die)).toMatch(/: 10 ÷ 2\. From 1 to 10, odd and even take turns\. So half are odd\.$/);
   });
 
-  it("fits a grade 4 turn", () => {
-    for (const pkg of [die, shapes]) {
+  it("fits a 25-word turn, for the longest shape names too", () => {
+    const longest = deriveSymmetry(symmetryPrinted(1, 2)) as OperationPackage;
+    for (const pkg of [die, shapes, longest, deriveDieCount(diePrinted(12, "even")) as OperationPackage]) {
       const l = packageLines(pkg);
-      for (const t of [...l.question()[0].texts, ...l.exampleIntro()[0].texts]) expect(speechWords(t), t).toBeLessThanOrEqual(45);
+      for (const t of [...l.question()[0].texts, ...l.assess()[0].texts, ...l.exampleIntro()[0].texts]) expect(speechWords(t), t).toBeLessThanOrEqual(25);
     }
   });
 

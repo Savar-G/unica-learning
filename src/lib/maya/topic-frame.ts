@@ -17,7 +17,7 @@ const lines = (n: number) => `${n} ${n === 1 ? "line" : "lines"} of symmetry`;
 export function topicFrame(text: string, operation: Operation): string | null {
   const die = readDieCount(text);
   if (die && same(operation, dieOperation(die.last))) {
-    return `From 1 to ${die.last}, odd and even numbers take turns. So half of them are ${die.kind}.`;
+    return `From 1 to ${die.last}, odd and even take turns. So half are ${die.kind}.`;
   }
   const shapes = readSymmetry(text);
   if (shapes && same(operation, symmetryOperation(...shapes))) {
@@ -26,7 +26,7 @@ export function topicFrame(text: string, operation: Operation): string | null {
   }
   const rectangle = readPerimeter(text);
   if (rectangle && same(operation, perimeterOperation(rectangle.length, rectangle.width))) {
-    return "A rectangle has 2 lengths and 2 widths. Add the length and the width, then multiply by 2.";
+    return "A rectangle has 2 lengths and 2 widths. Add one length and one width. Then double it.";
   }
   return null;
 }
