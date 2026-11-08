@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
@@ -194,28 +195,152 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
 }
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
 
-describe("first-book two-ways parent review", () => {
-  it("requires both methods to be checked without dispatching or scoring a read final answer", async () => {
-    const f = twoWaysFrame(), s = new Store(f);
-    const e = expectedItems(f)[0];
-    expect(e.method).toBe("parent");
-    expect(e.mastery).toEqual({ eligible: false, reason: "parent-checked" });
-    const o = readMarkingOutput(f, output(["66"]))[0];
-    expect(o).toMatchObject({ state: "parent-pending", method: "parent", result: null, regions: [] });
-    expect(observationProblem(o)).toBeNull();
-    expect(await run(s, f.photo, () => { throw Error("parent review must not dispatch"); })).toBe("finished");
-    const view = markingPageView(await s.effective(P, C));
-    expect(view.completion).toMatchObject({ status: "incomplete", finished: 0 });
-    expect(view.items[0].label).toBe("Our team is checking this answer.");
-    expect(s.spend.size).toBe(0); expect(s.imageReads).toBe(0); expect(s.events).toHaveLength(0);
+const FROZEN_PROMPT_SHA256 = "d911e7f08fa22d79c80fe91adfbb0059f43ba40c59065630d7547463f374a894";
+const FROZEN_CONTENT_SHA256 = "803ea308db4014ebdb55c9c685cb27ca84b4ce050edd81be7ccb0ef13553fb52";
+const GOOD_ONE = "27 + 30 = 57\n57 + 9 = 66", GOOD_TWO = "39 + 30 = 69\n69 - 3 = 66";
+type Verdict = "solves" | "does-not-solve" | "unsure" | null;
+const reading = (region: string, text: string | null, issue: string | null = null, verdict: Verdict = null) => ({ item: "i1", region, text, state: text === "" ? "blank" : text === null ? "uncertain" : "written", issue, verdict, reason: verdict ? "made-up model reason" : null });
+const twoWaysOutput = (one: string | null, two: string | null, answer: string | null, issue: string | null = null, verdicts: readonly [Verdict, Verdict] = ["solves", "solves"]) => ({ readings: [
+  reading("r1", one, one === null ? issue ?? "blurry" : null, one ? verdicts[0] : null), reading("r1-2", two, two === null ? issue ?? "blurry" : null, two ? verdicts[1] : null), reading("r1-3", answer, answer === null ? issue ?? "blurry" : null)] });
+const twoWaysMark = (f: MarkingFrame, o: Observation): EffectiveMark => ({ expected: expectedItems(f)[0], observation: o, originalEvent: null, eventId: null, at: "2026-11-07T12:00:00Z", model: null, prompt: null });
+/** The reviewer's question: 36 + 47 = ?, answer 83. */
+function sumFrame(text = "36 + 47 = ?", operation: Operation = { kind: "add", operands: [36, 47] }, answer = 83): MarkingFrame {
+  const f = twoWaysFrame(), q = f.questions[0], pkg = q.package!;
+  pkg.text = text; pkg.operation = operation; pkg.answer = { value: { type: "number", value: answer }, accepted: [], unit: null }; pkg.steps = workedSteps(operation);
+  pkg.wrongAnswers = [{ value: { type: "number", value: answer + 10 }, cause: "O3", description: "Made-up slip", step: (pkg.steps[0] as unknown as { id: string }).id }];
+  const easy: Record<string, [Operation, number]> = { add: [{ kind: "add", operands: [18, 5] }, 23], subtract: [{ kind: "subtract", operands: [9, 4] }, 5], multiply: [{ kind: "multiply", operands: [2, 3] }, 6], divide: [{ kind: "divide", operands: [6, 3] }, 2] };
+  const [easier, easierAnswer] = easy[operation.kind];
+  pkg.easierExample = { text: "Made-up easier question", operation: easier, steps: workedSteps(easier), answer: { type: "number", value: easierAnswer } };
+  const box = pkg.item!.regions.find(r => r.kind === "box")!; if (box.kind === "box") box.answer = { type: "number", value: answer };
+  const check = checkQuestionPackage(pkg);
+  expect(check.ok ? "" : JSON.stringify(check)).toBe("");
+  return f;
+}
+
+// PR A: the AI reads every two-ways item, and every one goes to our team until the method rules ship (TWO_WAYS_METHOD_MARKS).
+const teamLabel = "Our team is checking this answer.";
+describe("two-ways AI reading, marked by our team", () => {
+  it("keeps the switch off, so no two-ways item is marked by code", () => {
+    expect(TWO_WAYS_METHOD_MARKS).toBe(false);
   });
-  it.each(["right", "wrong", "blank"] as const)("a parent's explicit %s finishes one item without changing frozen mastery eligibility", result => {
+  it("routes a two-ways item through the AI path, with no parent method or parent state", () => {
     const f = twoWaysFrame(), e = expectedItems(f)[0];
-    const observation: Observation = { ...firstObservation(e, null), state: "parent-checked", method: "parent", result, actor: "parent", resultVersion: 2 };
-    const view = markingPageView([{ expected: e, observation, originalEvent: null, eventId: null, at: "2026-11-06T12:00:00Z", model: null, prompt: null }]);
-    expect(view.completion).toMatchObject({ status: "complete", finished: 1, total: 1 });
-    expect(markingEvent(e, observation)).toEqual({ publish: false, reason: "parent-checked" });
-    expect(f.questions[0].teaching!.eligibility).toMatchObject({ scorable: true, parentChecked: false, mastery: true });
+    expect(e.method).toBe("code");
+    expect(e).not.toHaveProperty("review");
+    expect(e.scoredRegions).toEqual(["method-1", "method-2", "answer"]);
+    expect(e.mastery).toEqual({ eligible: true, reason: null });
+    expect(firstObservation(e, f.photo)).toMatchObject({ state: "pending", method: "code", result: null });
+  });
+  it("asks the AI to read both methods and judge each one, with the question and no answer key in the request", () => {
+    const f = twoWaysFrame(), request = markingRequest(f, new Uint8Array([1]));
+    const part = request.content[0];
+    expect(part.type).toBe("text");
+    const items = JSON.parse((part as { text: string }).text).items;
+    expect(items.map((i: { region: string; kind: string }) => [i.region, i.kind])).toEqual([["r1", "method"], ["r1-2", "method"], ["r1-3", "number"]]);
+    expect(items[0].question).toBe("27 + 39 = ?"); expect(items[2]).not.toHaveProperty("question");
+    expect(JSON.stringify(items)).not.toContain("66");
+    expect(request.system).toContain("method region");
+    expect(request.system).toMatch(/does-not-solve/);
+    const props = (request.schema as { properties: { readings: { items: { required: string[] } } } }).properties.readings.items;
+    expect(props.required).toEqual(expect.arrayContaining(["verdict", "reason"]));
+  });
+  it("keeps the prompt and the output schema frozen for the paid run", () => {
+    const request = markingRequest(twoWaysFrame(), new Uint8Array([1]));
+    // Changing either needs the controller's approval: the paid run is valid only for what ships.
+    expect(createHash("sha256").update(JSON.stringify({ system: request.system, schema: request.schema, effort: request.effort, maxTokens: request.maxTokens })).digest("hex")).toBe(FROZEN_PROMPT_SHA256);
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
+  });
+  it("also pins the request name and the item content the model sees", () => {
+    const request = markingRequest(twoWaysFrame(), new Uint8Array([1]));
+    expect(createHash("sha256").update(JSON.stringify({ name: request.name, content: request.content[0] })).digest("hex")).toBe(FROZEN_CONTENT_SHA256);
+  });
+  it("tells the AI to report a step it cannot read and never to leave out or tidy a step", () => {
+    const system = markingRequest(twoWaysFrame(), new Uint8Array([1])).system!;
+    expect(system).toMatch(/any step cannot be read exactly, report uncertain with issue unreadable/);
+    expect(system).toMatch(/never leave out or tidy a step/);
+    expect(system).toMatch(/An inverse operation on the question's numbers is a way to solve it/);
+    expect(system).toMatch(/final line/);
+  });
+  it("accepts a verdict only on a method region in strict output", () => {
+    const f = twoWaysFrame(), good = twoWaysOutput(GOOD_ONE, GOOD_TWO, "66");
+    expect(validMarkingOutput(f, good)).toBe(true);
+    const onAnswer = structuredClone(good); onAnswer.readings[2].verdict = "solves";
+    expect(validMarkingOutput(f, onAnswer)).toBe(false);
+    const missing = structuredClone(good); missing.readings[0].verdict = null;
+    expect(validMarkingOutput(f, missing)).toBe(false);
+    const made = structuredClone(good); (made.readings[0] as { verdict: unknown }).verdict = "maybe";
+    expect(validMarkingOutput(f, made)).toBe(false);
+    const long = structuredClone(good); long.readings[0].reason = "x".repeat(121);
+    expect(validMarkingOutput(f, long)).toBe(false);
+  });
+  // Every reading goes to our team: valid pairs, the review cases, wrong work and empty work alike. None is ever Right.
+  it.each([
+    ["valid split and compensation", "36 + 40 = 76\n76 + 7 = 83", "36 + 50 = 86\n86 - 3 = 83", "83", ["solves", "solves"]],
+    ["valid partial sums and split", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83", "36 + 40 = 76\n76 + 7 = 83", "83", ["solves", "solves"]],
+    ["the question copied and its check", "36 + 47 = 83", "83 - 47 = 36", "83", ["solves", "solves"]],
+    ["the same method twice", "36 + 40 + 7 = 83", "36 + 40 = 76\n76 + 7 = 83", "83", ["solves", "solves"]],
+    ["padding on a copy", "36 + 47 - 0 = 83", "47 + 36 × 1 = 83", "83", ["solves", "solves"]],
+    ["a false step", "36 + 40 = 77\n77 + 6 = 83", "36 + 50 = 86\n86 - 3 = 83", "83", ["solves", "solves"]],
+    ["a method the AI says does not solve", "36 + 47 = 83", "36 + 50 = 86\n86 - 3 = 83", "83", ["does-not-solve", "solves"]],
+    ["a wrong final answer", "36 + 40 = 76\n76 + 7 = 83", "36 + 50 = 86\n86 - 3 = 83", "84", ["solves", "solves"]],
+    ["a missing method", "", "36 + 50 = 86\n86 - 3 = 83", "83", [null, "solves"]],
+    ["nothing written", "", "", "", [null, null]],
+  ] as const)("sends %s to our team, never Right", (_name, one, two, answer, verdicts) => {
+    const f = sumFrame(), o = readMarkingOutput(f, twoWaysOutput(one, two, answer, null, verdicts))[0];
+    expect(observationProblem(o)).toBeNull();
+    expect(o).toMatchObject({ state: "pending", method: "code", result: null });
+    const m = twoWaysMark(f, o), view = markingPageView([m]);
+    expect(waitsForTeam(m)).toBe(true);
+    expect(view.items[0]).toMatchObject({ label: teamLabel, result: null, canChange: false });
+    expect(view.counts.teamChecks).toBe(1);
+    expect(view.completion.status).toBe("incomplete");
+    expect(markingEvent(expectedItems(f)[0], o).publish).toBe(false);
+  });
+  it("sends the review's 50 × 80 escape to our team", () => {
+    const f = sumFrame("50 × 80 = ?", { kind: "multiply", operands: [50, 80] }, 4000);
+    const o = readMarkingOutput(f, twoWaysOutput("5 × 8 = 40\n40 × 100 = 4000", "80 × 100 = 8000\n80 × 50 = 4000\n8000 - 4000 = 4000", "4000"))[0];
+    expect(o).toMatchObject({ state: "pending", result: null });
+    expect(markingPageView([twoWaysMark(f, o)]).items[0].label).toBe(teamLabel);
+  });
+  it("adds the retake to the team label only for a blurry or cut-off part", () => {
+    const f = sumFrame(), blurry = readMarkingOutput(f, twoWaysOutput(null, GOOD_TWO, "83", "blurry"))[0];
+    expect(PHOTO_ISSUES).toContain("blurry");
+    expect(markingPageView([twoWaysMark(f, blurry)]).items[0].label).toBe(`${teamLabel} The photo is blurry here. You can also send a new photo of this page.`);
+    const words = readMarkingOutput(f, twoWaysOutput("I added tens", GOOD_TWO, "83"))[0];
+    expect(markingPageView([twoWaysMark(f, words)]).items[0].label).toBe(teamLabel);
+  });
+  it("keeps the AI's verdict and reason as evidence, never in a label", () => {
+    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(GOOD_ONE, GOOD_TWO, "66", null, ["does-not-solve", "solves"]))[0];
+    expect(o.regions[0]).toMatchObject({ verdict: "does-not-solve", verdictReason: "made-up model reason" });
+    expect(markingPageView([twoWaysMark(f, o)]).items[0].label).not.toContain("made-up");
+  });
+  it("gives an unread two-ways item a plain label", () => {
+    const f = twoWaysFrame(), view = markingPageView([twoWaysMark(f, firstObservation(expectedItems(f)[0], f.photo))]);
+    expect(view.items[0]).toMatchObject({ label: "Not marked yet", state: "pending" });
+  });
+  it("shows the answer first in the reading our team sees, within the limit", () => {
+    const f = twoWaysFrame(), long = `27 + 39 = 66\n${"1 + 1 = 2\n".repeat(17)}`.trim();
+    const o = readMarkingOutput(f, twoWaysOutput(long, GOOD_TWO, "66"))[0];
+    expect(o.readAnswerText!.startsWith("Answer: 66; Method 1: 27 + 39 = 66")).toBe(true);
+    expect(o.readAnswerText!.length).toBeLessThanOrEqual(200);
+  });
+  it("runs one paid reading, then leaves the item for our team with no event", async () => {
+    const f = twoWaysFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(twoWaysOutput(GOOD_ONE, GOOD_TWO, "66"), requests, 1000))).toBe("finished");
+    expect(requests).toHaveLength(1); expect(s.spend.size).toBe(1);
+    const marks = await s.effective(P, C);
+    expect(marks[0].observation).toMatchObject({ state: "pending", result: null });
+    expect(s.events).toHaveLength(0);
+    expect(markingPageView(marks).items[0]).toMatchObject({ label: teamLabel, canChange: false });
+  });
+  it("lets our team's mark finish the item, and a parent can change it afterwards", () => {
+    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(GOOD_ONE, GOOD_TWO, "66"))[0];
+    const team: Observation = { ...o, state: "parent-checked", method: "parent", actor: "admin", result: "right", resultVersion: 3 };
+    expect(observationProblem(team)).toBeNull();
+    const view = markingPageView([twoWaysMark(f, team)]);
+    expect(view.items[0]).toMatchObject({ label: "Right", state: "parent-checked", canChange: true, actor: "admin" });
+    expect(view.completion).toMatchObject({ status: "complete", finished: 1 });
+    expect(markingEvent(expectedItems(f)[0], team)).toMatchObject({ publish: true, result: "right" });
   });
   it("crops both measured work areas and the answer, and refuses missing or duplicate method geometry", () => {
     const f = twoWaysFrame();
@@ -349,7 +474,11 @@ describe("#715: no screen asks a parent to judge an answer", () => {
       expect(label).not.toMatch(ASKS_PARENT);
     });
   it("an item waiting for a person (an old parent-checked format) is our team's, not the parent's", () => {
-    const f = twoWaysFrame(), e = expectedItems(f)[0];
+    // A format a person checks: an item the package marks parentChecked, with no automatic score.
+    const f = twoWaysFrame(), item = f.questions[0].package!.item!;
+    item.scorable = false; item.parentChecked = true;
+    const e = expectedItems(f)[0];
+    expect(e.method).toBe("parent");
     const v = view(f, firstObservation(e, f.photo), null);
     expect(v.items[0]).toMatchObject({ label: "Our team is checking this answer.", canChange: false });
     expect(v.counts).toMatchObject({ teamChecks: 1 });
@@ -507,7 +636,7 @@ describe("S4 whole-page readings", () => {
     const items = JSON.parse(part.text).items as { item: string; region: string }[];
     const normalized: Observation[] = [];
     for (const text of [null, ""]) {
-      const response = { readings: items.map(a => ({ item: a.item, region: a.region, state: "blank", text, issue: null })) };
+      const response = { readings: items.map(a => ({ item: a.item, region: a.region, state: "blank", text, issue: null, verdict: null, reason: null })) };
       expect(validMarkingOutput(f, response)).toBe(true);
       const [o] = readMarkingOutput(f, response);
       expect(o).toMatchObject({ state: "scored", result: "blank", certainty: "certain", issue: null, readAnswerText: "" });
@@ -550,7 +679,7 @@ describe("S4 whole-page readings", () => {
   });
   // These fixtures exercise the request and returned readings, not image recognition.
   it.each([
-    { evidence: "visible readable empty box", state: "blank", text: "", issue: null, result: "blank", reason: "Blank", rule: /entire answer box or choice area is plainly visible, readable and empty/ },
+    { evidence: "visible readable empty box", state: "blank", text: "", issue: null, result: "blank", reason: "Blank", rule: /entire answer box, method area or choice area is plainly visible, readable and empty/ },
     { evidence: "unreadable symbol", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /Not being able to read a symbol does not make an area blank/ },
     { evidence: "blurred marks", state: "uncertain", text: null, issue: "blurry", result: null, reason: "The photo is blurry here.", rule: /If blur could hide writing or marks, report uncertain with issue blurry/ },
     { evidence: "dark answer", state: "uncertain", text: null, issue: "unreadable", result: null, reason: "We cannot read this answer.", rule: /If darkness, shadow or covering prevents reading the evidence, report uncertain with issue unreadable/ },
@@ -562,7 +691,7 @@ describe("S4 whole-page readings", () => {
     { evidence: "readable written wrong answer", state: "written", text: "8", issue: null, result: "wrong", reason: "Wrong", rule: /Never solve a question/ },
   ] as const)("delivers the shared rule and preserves the returned reading for $evidence", async fixture => {
     const f = frame("photo-a", [7]), s = new Store(f), requests: AiJsonRequest[] = [];
-    const response = { readings: [{ item: "i1", region: "r1", state: fixture.state, text: fixture.text, issue: fixture.issue }] };
+    const response = { readings: [{ item: "i1", region: "r1", state: fixture.state, text: fixture.text, issue: fixture.issue, verdict: null, reason: null }] };
     expect(validMarkingOutput(f, response)).toBe(true);
     expect(await run(s, f.photo, client(response, requests))).toBe("finished");
     expect(requests).toHaveLength(1);
@@ -578,7 +707,7 @@ describe("S4 whole-page readings", () => {
   });
   it.each([frame, tickFrame, circleFrame])("uses one versioned empty-area rule for number, tick and circle requests", makeFrame => {
     const request = markingRequest(makeFrame(), new Uint8Array([1, 2, 3]));
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v7");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
     expect(request.system).toMatch(/Blank requires positive visual evidence/);
     expect(request.system).toMatch(/Check for faint writing or marks before reporting blank with empty text/);
     expect(request.system).toMatch(/Never report blank for these conditions/);

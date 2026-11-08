@@ -19,7 +19,7 @@ Do not release before sample approval, S3a #637, provider privacy verification, 
 
 Upload processing, calibration and marking share the configured family active-job count under the same family lock. Accepted unsent photos and reservations also count toward the bounded future queue. A worker stores dispatch intent before each transport attempt. It stores validated extraction before applying observations. It resumes stored extraction without another request. Two transport attempts and two job dispatches are the same shared limit, not multiplied limits. A cost with no verified maximum stops dispatch. No enabled production price bound ships in this change.
 
-The request contains one metadata-free whole normalized page and local item/region aliases with measured boxes. It contains no separate account, workbook, child or family identifiers, answer keys, printed examples, stored question text, or model authority to score. Code checks the one-box whole-number format against trusted packages. Other formats keep explicit pending, parent-check or unscored observations.
+The request contains one metadata-free whole normalized page and local item/region aliases with measured boxes. It contains no separate account, workbook, child or family identifiers, answer keys, printed examples, stored question text, or model authority to score. The one exception is a two-ways method region: it carries the question text, so the model can say whether the work solves it. It never carries the answer. Code checks each reading against trusted packages. An item that code cannot check stays pending or unscored. A two-ways item is marked from both methods and the answer; see [Two-ways marking](scan-pages.md).
 
 ## Effective results and follow-on slices
 
