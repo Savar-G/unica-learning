@@ -18,6 +18,7 @@
 // Pure TypeScript: no clock, network or randomness.
 import { patternOf } from "./pattern";
 import { patternSteps } from "./pattern-lines";
+import { topicFrame } from "./topic-frame";
 import {
   checkQuestionPackage,
   operationProblem,
@@ -249,6 +250,9 @@ function teach(pkg: OperationPackage): Worked {
   if (!wholeSteps(steps)) return { held: "Maya teaches evaluate questions only with whole numbers yet" };
   const operates = steps.filter((s): s is OperateStep => s.kind === "operate");
   if (operates.length === 0) return { held: "Maya teaches evaluate questions only with an operation to work" };
+  // An "other-topic" evaluate (C3's perimeter, 2 × (l + w)) stays held: its topic sentence was never reviewed with these
+  // part lines. Lifting it is C3's, with gate cases (merge of wave-c into C1).
+  if (topicFrame(pkg.text, op)) return { held: "Maya cannot teach an operate step of evaluate questions in another topic yet" };
   const frame = patternOf(pkg) ? null : frameOf(pkg.text, expr, operates);
   if (frame === undefined) return { held: "Maya cannot read this missing-number question yet" };
   const parts: EvaluatePart[] = [];

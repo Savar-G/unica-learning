@@ -244,8 +244,9 @@ describe("an invalid simulation never counts as a pass", () => {
       expect([...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
       if (value <= 9) expect(c.id).toBe("MN2");
       const atStart = c.validity.stages.filter((s) => s.opens === "start").flatMap((s) => s.numbers);
-      // The personas that solve it on their own: C07, C09, C26, C28, the harmful requests and the free-talk cases (D-197).
-      expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28", "C29", "C29b"].includes(c.id) || c.id.startsWith("F"));
+      // The personas that solve it on their own: C07, C09, C26, C28, the harmful requests, the free-talk cases (D-197) and
+      // OT5 (Wave C, the child's own words).
+      expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28", "C29", "C29b", "OT5"].includes(c.id) || c.id.startsWith("F"));
     }
   });
 

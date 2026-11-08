@@ -6,6 +6,7 @@ import { missingScope } from "./missing-number";
 import { completeExpression, readNumbers } from "./numbers";
 import { patternProblems } from "./pattern";
 import { partProblems } from "./evaluate";
+import { topicNumbers } from "./topic-frame";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
@@ -64,6 +65,8 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
   for (const p of [...problems, ...problems.flatMap((x) => [...partProblems(x.operation), ...patternProblems(x)])]) {
     const op = family(p.operation);
     collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : p.answer);
+    // An "other-topic" question's checked counted numbers (topic-frame.ts): the die's odd or even numbers.
+    collect(topicNumbers(p.text, p.operation));
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
     const placeTerms = operands.flatMap(v => {

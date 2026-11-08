@@ -159,6 +159,8 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 | MN2 | M_TRY (236 × ? = 1416) | Tries 7, then 5, then 6; each try multiplied out | solved |
 | MN3 | M_SUBTRACT (9000 − ? = 3000) | Adds to get 12000, then subtracts 9000 − 3000 | solved |
 | C37 | B (52 - 28) | Smaller from larger: 36 | solved |
+| OT4 | SHAPES (lines of symmetry, 6 + 5) | Wave C "other-topic": a hexagon and a pentagon, first says 10 | solved |
+| OT5 | SHAPES (lines of symmetry, 6 + 5) | Wave C "other-topic": gives 6, 5 and 11 in their own words; no re-teaching (J06) | solved |
 | W5 | W5 (10000 − 3615, a workbook story through the session adapter) | Stuck on the zeros; regroups across them column by column | solved |
 | W3 | W3 (284 × 7, an "Each … has" workbook story through the session adapter) | Drops the carries: 1468 | solved |
 | EV1 | EV_TWO (7 × 640 + 7 × 30) | Works from left to right: 640 + 7 = 647, then each part after help (Wave A, A2) | solved |

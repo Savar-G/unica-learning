@@ -12,6 +12,9 @@ import { deriveOneStep } from "./one-step";
 import { deriveMultiStep } from "./multi-step";
 import { derivePattern } from "./pattern";
 import { deriveMissingNumber } from "./missing-number";
+import { deriveDieCount } from "./die-count";
+import { derivePerimeter } from "./perimeter";
+import { deriveSymmetry } from "./symmetry";
 
 /**
  * Makes a teaching package from a printed workbook question, or null. It gets the printed package: no teaching data,
@@ -25,6 +28,9 @@ const DERIVERS: readonly Deriver[] = [
   deriveMissingNumber, // A3: "a × ? = c", "? × a = c", "a − ? = c" (first: only its exact printed forms match)
   deriveOneStep, // A1: one add, subtract or multiply
   deriveMultiStep, // A1: multi-step stories, as evaluate (taught from A2)
+  deriveDieCount, // C3 (#731): "How many of the numbers 1 to 8 are odd?" as 8 ÷ 2
+  deriveSymmetry, // C3 (#731): lines of symmetry of two shapes, from code's table
+  derivePerimeter, // C3 (#731): a rectangle's perimeter as 2 × (l + w), held until A2 teaches evaluate
 ];
 
 /** The fields a deriver may add. Every other field must stay exactly as stored. */

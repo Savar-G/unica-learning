@@ -11,7 +11,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 
 | File | What it holds |
 |---|---|
-| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `EV_TWO`, `EV_STORY` and `EV_MISSING`: evaluate questions (Wave A, A2): 7 × 640 + 7 × 30, a story's 4 × 260 − 590, and 8 × ? = 7360 − 400 stored as (7360 − 400) ÷ 8. |
+| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `EV_TWO`, `EV_STORY` and `EV_MISSING`: evaluate questions (Wave A, A2): 7 × 640 + 7 × 30, a story's 4 × 260 − 590, and 8 × ? = 7360 − 400 stored as (7360 − 400) ÷ 8. `DIE` and `SHAPES`: Wave C "other-topic" questions made by the derivers in `src/lib/maya-teaching` from synthetic printed packages (a die count as 8 ÷ 2, lines of symmetry as 6 + 5), with code's topic sentence (`src/lib/maya/topic-frame.ts`). |
 | `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6c, with the J06 cases W5d, W6b and W6c), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
@@ -173,6 +173,22 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | C34b | A | passing | Identity alone: the fixed AI reply, then the question | solved | |
 | C40b | F | passing | 28 square centimetres: accepted with no confirmation | solved | |
 | C40c | F | passing | 28 squared: confirmed before scoring | solved | |
+| OT1 | DIE | passing | Die count (Wave C "other-topic", 8 ÷ 2), cannot start: the framed easier example (6 ÷ 2) as its own turn, then the question | solved, worked_example | |
+| OT2 | DIE | passing | Die count in the child's own words at the opening ("half of 8. That's 4."): one confirm, then accepted, not taught again (J06) | solved, independent | |
+| OT3 | DIE | passing | "Why do we divide by 2?": answered with code's topic sentence in the question line, then solved | solved, independent | |
+| OT4 | SHAPES | passing | Lines of symmetry (6 + 5 from code's table), says 10: not accepted, guided, then 11 | solved | |
+| OT5 | SHAPES | passing | Lines of symmetry from the facts in the child's own words: one confirm, then accepted, no step repeated (J06) | solved, independent | |
+| OT6 | DIE | passing | "I'm stuck." after a hello-only opening (as a workbook call's fixed opening): the first guide is the framed question line, then "8 divided by 2 is 4." | solved | |
+| OT7 | DIE | passing | Counts in a full sentence ("2, 4, 6 and 8 are even. That's 4."): on topic (the counted numbers are checked scope numbers), one confirm, accepted | solved, independent | |
+| OT8 | SHAPES | passing | "I'm stuck." after a hello-only opening: the first guide says the shapes' facts, then "6 plus 5 is 11." | solved | |
+| OT9 | DIE12 | passing | Grade 3, hello-only opening, says 5: "not yet" (no technical close), then the topic sentence on "I'm stuck.", then 6 | solved | |
+| OT10 | DIE12 | passing | Grade 3, hello-only opening, a right first step ("1 divided by 2 is 0."): acknowledged in code's line with no fallback (J06), then solved | solved | |
+| OT11 | SHAPES_LONG | passing | Grade 3, hello-only opening, longest shape names, says 4: "not yet", then "2 plus 1 is 3." | solved | |
+| OT12 | SHAPES_LONG | passing | Grade 3, hello-only opening, the right sum first: accepted, not taught again (J06) | solved, independent | |
+| OT13 | DIE | passing | Grade 3, help only through the easier example, "Maybe 1?" gets a confirm, then "I'm stuck.": the honest close, as the child stopping (re-review of #731, P1) | child_stopped | |
+| OT13b | DIE | passing | As OT13, but the last turn is "Help me." (read as help): the same help-only test, so still the child stopping (re-review of #731, P1) | child_stopped | |
+| OT14 | DIE | passing | Grade 3, the honest close proposed as a goodbye with no line: refused, then the honest close line (re-review of #731, P2) | child_stopped | |
+| OT15 | DIE12 | passing | Grade 3, hello-only opening, "Why do I divide by 2?": a question is not work, so the guide says the topic sentence (re-review of #731, P3) | solved | |
 
 | S01 | A | passing | Pasted homework sheet: fixed workbook redirect, no teaching or board | solved after return to own question | |
 | S02 | A | passing | Same shape with different numbers: fixed workbook redirect | solved after return | |

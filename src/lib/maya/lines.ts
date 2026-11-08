@@ -28,6 +28,7 @@ import { evaluateFrame, partAt, withEvaluateExample } from "./evaluate";
 import { EVALUATE_TEMPLATES, partEquation, partHelp, partShow } from "./evaluate-lines";
 import { frameInvite, frameLead, framedLines, frameWhy, MISSING_TEMPLATES, type FramedLines } from "./missing-number";
 import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
+import { topicFrame } from "./topic-frame";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -149,6 +150,12 @@ export const TEMPLATES = {
     "Today we're working on {expr}.", "Our question is {expr}.", "Let's work on {expr} together.", "We're doing {expr} today.",
     "This one is {expr}.", "Here's our question: {expr}.",
   ],
+  // An "other-topic" question (Wave C, topic-frame.ts): code's topic sentence before the operation it gives. Pending
+  // Savar's approval (D-202).
+  "question.framed": [
+    "{frame} Our question is {expr}.", "{frame} So our question is {expr}.", "{frame} So we work on {expr}.",
+    "{frame} So this one is {expr}.", "{frame} Here's our question: {expr}.",
+  ],
   "question.read": [
     "The question says: {sentence}", "Let's read it again: {sentence}", "Here's the question: {sentence}", "It says: {sentence}",
     "Let's read it together: {sentence}", "Here's what it says: {sentence}",
@@ -157,9 +164,19 @@ export const TEMPLATES = {
     "What did you try for {expr}?", "How did you start {expr}?", "Tell me what you did on {expr} so far.", "What have you done on {expr} so far?",
     "How far did you get with {expr}?", "Can you show me how you began {expr}?",
   ],
+  // The first question of an "other-topic" call (Wave C): code's topic sentence, then the usual question.
+  "assess.framed": [
+    "{frame} What did you try for {expr}?", "{frame} How did you start {expr}?", "{frame} What have you done on {expr}?",
+    "{frame} What did you do for {expr}?", "{frame} How did you begin {expr}?",
+  ],
   "example.intro": [
     "Let's try an easier one first: {expr}.", "Here's a smaller one to warm up: {expr}.", "Let me show you an easier one: {expr}.",
     "Let's warm up with an easier one: {expr}.", "First, a smaller one: {expr}.", "I'll show you an easier one first: {expr}.",
+  ],
+  // The easier example of an "other-topic" question (Wave C): its own topic sentence, then its operation.
+  "example.framed": [
+    "Easier one. {frame} It is {expr}.", "A smaller one. {frame} It is {expr}.", "An easier one. {frame} It is {expr}.",
+    "Smaller one first. {frame} It is {expr}.", "Warm-up. {frame} It is {expr}.",
   ],
   "example.step": ["{show}", "Watch this. {show}", "Here's how. {show}", "Look. {show}", "Follow along. {show}", "Like this. {show}"],
   "example.result": ["So {show}.", "And that's it: {show}.", "There we go: {show}.", "All done: {show}.", "So in the end, {show}."],
@@ -460,6 +477,16 @@ export const TEMPLATES = {
     "We checked your answer for {expr}. Bye for now!", "Your answer for {expr} is checked. See you next time!",
     "Your answer for {expr} is right. Bye for now!", "The answer you gave for {expr} is right. See you next time!",
     "We've checked your answer for {expr}. Goodbye for now!",
+  ],
+  // The honest close of an "other-topic" question left unsolved after the easier example (lessons from review 10,
+  // controller decision (a)): this one is hard, it is fine to stop, and one next step. No number, so no hint at the
+  // answer. Pending Savar's approval (D-202).
+  "close.honest": [
+    "This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up to help.",
+    "This is a hard one. It's fine to stop here. You can ask a grown-up to try it with you.",
+    "This one is hard. It's okay to stop for now. Try the easier one on your paper.",
+    "That was a hard one, and stopping is okay. Ask a grown-up to look at it with you.",
+    "This question is hard. It's fine to stop. Try the smaller one on paper first.",
   ],
   "close.together": [
     "We worked through {expr} together.", "We finished {expr} together today.", "We got through {expr} together.",
@@ -832,7 +859,10 @@ export function workbookOpening(pkg: OperationPackage): string | null {
 /** The question as Maya names it: a missing number's printed equation ("30 × ? = 16200"), else its operation. */
 const questionExpr = (pkg: OperationPackage) => framedLines(pkg.steps)?.printed ?? evaluateFrame(pkg)?.printed ?? operationText(pkg.operation);
 
-/** One fixed confirmation, outside the model's selectable wordings. */
+/**
+ * One fixed confirmation, outside the model's selectable wordings. It never carries an "other-topic" topic sentence
+ * (topic-frame.ts): with it the opening passes a 25-word turn; the question and assess lines say it next.
+ */
 export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page}, number {number}: {expr}.";
 
 /**
@@ -846,17 +876,21 @@ export function packageLines(given: OperationPackage) {
   const asked = patternOf(pkg) ? (patternOf(pkg)!.missing ? "the missing step" : "the pattern") : evaluateFrame(pkg)?.printed ?? expr;
   const solved = framed?.inverse ?? operationText(pkg.operation);
   const exampleExpr = framedLines(pkg.easierExample.steps)?.printed ?? operationText(pkg.easierExample.operation);
+  const frame = topicFrame(pkg.text, pkg.operation);
+  const exampleFrame = frame ? topicFrame(pkg.easierExample.text, pkg.easierExample.operation) : null;
   const answer = valueText(pkg.answer.value);
   const steps = teachSteps(pkg);
   const find = (id: string) => steps.find((s) => s.id === id);
   return {
     hello: (): LineOffer[] => [offer("open.hello", "open.hello", {})],
     question: (): LineOffer[] => [
-      offer("question.problem", "question.problem", { expr: asked }, { slots: {}, board: asked }),
+      frame ? offer("question.problem", "question.framed", { frame, expr }, { slots: {}, board: expr }) : offer("question.problem", "question.problem", { expr: asked }, { slots: {}, board: asked }),
       ...sentencesOf(pkg.text).map((s, i) => offer("question.read", "question.read", { sentence: s }, { slots: { sentence: i } })),
     ],
-    assess: (): LineOffer[] => [offer("assess.ask", "assess.ask", { expr: asked })],
-    exampleIntro: (): LineOffer[] => [offer("example.intro", patternOf(pkg) ? "pattern.example" : "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
+    assess: (): LineOffer[] => [frame ? offer("assess.ask", "assess.framed", { frame, expr }) : offer("assess.ask", "assess.ask", { expr: asked })],
+    exampleIntro: (): LineOffer[] => [exampleFrame
+      ? offer("example.intro", "example.framed", { frame: exampleFrame, expr: exampleExpr }, { slots: {}, board: exampleExpr })
+      : offer("example.intro", patternOf(pkg) ? "pattern.example" : "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
     /** Maya works one step of the easier example. */
     exampleStep: (id: string): LineOffer[] => {
       const step = pkg.easierExample.steps.find((s) => s.id === id);
@@ -962,6 +996,8 @@ export function packageLines(given: OperationPackage) {
     /** A pattern step's top help level, or null for any other kind (pattern-lines.ts). */
     patternTop: (id: string): number | null => patternTopHint(pkg, id, offer),
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr: asked }) : offer("close.together", "close.together", { expr: asked })],
+    /** The honest close of an "other-topic" question left unsolved after the easier example: never the answer. */
+    closeHonest: (): LineOffer[] => (frame ? [offer("close.together", "close.honest", {})] : []),
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
     stepIds: steps.map((s) => s.id),
@@ -1004,7 +1040,7 @@ export function allLineTexts(given: OperationPackage, heardValues: readonly Answ
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.help(id, true), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.repair(),
+    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeHonest(), ...l.repair(),
     ...l.together(), ...l.guess(), ...l.patternClose(),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];

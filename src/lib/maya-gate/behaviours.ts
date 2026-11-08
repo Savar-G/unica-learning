@@ -36,6 +36,9 @@ const PART2_ASK = partLine("e2.r1-ones", "step.invite");
 const PART1_WHY = partLine("e1.r1-ones", "step.order");
 /** The first column's H1 line, led by which part it is for ("First, multiply. Look at ..."). */
 const PART1_POINT = partLine("e1.r1-ones", "step.point");
+const dieLines = packageLines(FIXTURES.DIE as OperationPackage);
+const die12Lines = packageLines(FIXTURES.DIE12 as OperationPackage);
+const shapeLines = packageLines(FIXTURES.SHAPES as OperationPackage);
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
 /** The answer to a free-talk turn: back to the question, solved. */
@@ -207,6 +210,256 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved" }, counts: { confirmations: 1 } },
   },
 
+  // Wave C "other-topic" (src/lib/maya-teaching, topic-frame.ts): a die count taught as 8 ÷ 2 and lines of symmetry as
+  // 6 + 5, each with code's topic sentence. OT1 to OT5.
+  {
+    id: "OT1", title: "Die count, cannot start: the framed easier example (6 ÷ 2), then the question", fixture: "DIE", status: "passing",
+    steps: [
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }, {}, {}]),
+      okay,
+      child("8 divided by 2 is 4.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "worked_example" },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(dieLines.exampleIntro(), "example.framed")] }],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "OT2", title: "Die count in the child's own words at the opening: one confirm, then accepted, not taught again (J06)", fixture: "DIE", status: "passing",
+    steps: [
+      child("They take turns, so half of 8. That's 4.", { start: "has_work", answers: [[4, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "4" } }]),
+      child("Yes.", { answers: [[4, "result", "right"]] }),
+      child("Because 2, 4, 6 and 8 are even.", undefined, [{ act: "ask_write", understanding: "evidence_observed" }]),
+      wroteIt,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", highestHint: null },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { confirmations: 1, fallbacks: 0 },
+      never: ["example_step", "guide"],
+    },
+  },
+  {
+    id: "OT3", title: "Die count, 'why divide by 2?': answered with code's topic sentence, then solved", fixture: "DIE", status: "passing",
+    steps: [
+      child("Why do we divide by 2?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("Oh. Then it's 4.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(dieLines.question(), "question.framed")] }],
+    },
+  },
+  {
+    id: "OT4", title: "Lines of symmetry, says 10: not accepted; guided, then 11", fixture: "SHAPES", status: "passing",
+    steps: [
+      child("10.", { start: "has_work", answers: [[10, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("6 plus 5 is 11.", { answers: [[11, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
+  {
+    id: "OT5", title: "Lines of symmetry from the facts in the child's own words: one confirm, then accepted, no step repeated (J06)", fixture: "SHAPES", status: "passing",
+    steps: [
+      child("The hexagon has 6 and the pentagon has 5, so 11.", { start: "has_work", answers: [[11, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "11" } }]),
+      child("Yes.", { answers: [[11, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { confirmations: 1, fallbacks: 0 },
+      never: ["example_step", "guide"],
+    },
+  },
+  // Lessons from review 1 and 2: the topic sentence comes with the first step line when the opening did not say it (a
+  // hello-only opening, as a workbook call's fixed opening), and a child's counted numbers stay on topic.
+  {
+    id: "OT6", title: "Die count, 'I'm stuck.' after a hello-only opening: the first guide says the topic sentence, then solved", fixture: "DIE", status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("8 divided by 2 is 4.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(dieLines.question(), "question.framed")] }],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "OT7", title: "Die count by counting in a full sentence ('2, 4, 6 and 8 are even. That's 4.'): on topic, confirmed once, accepted", fixture: "DIE", status: "passing",
+    steps: [
+      child("2, 4, 6 and 8 are even. That's 4.", { start: "has_work", answers: [[4, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "4" } }]),
+      child("Yes.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { confirmations: 1, fallbacks: 0 },
+      never: ["redirect", "guide", "example_step"],
+    },
+  },
+  {
+    id: "OT8", title: "Lines of symmetry, 'I'm stuck.' after a hello-only opening: the first guide says the facts, then '6 plus 5 is 11.'", fixture: "SHAPES", status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("6 plus 5 is 11.", { answers: [[11, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(shapeLines.question(), "question.framed")] }],
+      counts: { refusals: 0, fallbacks: 0 },
+      never: ["redirect"],
+    },
+  },
+  // Review of #731 (P1): after a hello-only opening the topic sentence is still owed, but a first turn with work in it
+  // gets the normal guide ("not yet", or the right step acknowledged); the sentence comes on the next help-only turn.
+  {
+    id: "OT9", title: "Die 12 at grade 3, says 5 after a hello-only opening: not yet, then the topic sentence on 'I'm stuck.', then solved", fixture: "DIE12", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("5.", { start: "has_work", answers: [[5, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", undefined, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("12 divided by 2 is 6.", { answers: [[6, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 2, lines: [variants(packageLines(FIXTURES.DIE12 as OperationPackage).question(), "question.framed")] }],
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "OT10", title: "Die 12 at grade 3, a right first step after a hello-only opening ('1 divided by 2 is 0.'): acknowledged in code's line, with no fallback (J06)", fixture: "DIE12", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("1 divided by 2 is 0.", { start: "has_work", answers: [[0, "tens", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("12 divided by 2 is 6.", { answers: [[6, "ones", "right"], [6, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      // Re-review of #731 (P3): the acknowledgement itself reaches the child, not a fallback that asks about the tens again.
+      outputs: [{ mayaTurn: 1, lines: [variants(die12Lines.rightStep("tens"), "check.right_step"), variants(die12Lines.help("ones"), "step.invite")] }],
+      counts: { fallbacks: 0 },
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "OT11", title: "Longest shape names at grade 3, says 4 after a hello-only opening: not yet, then '2 plus 1 is 3.'", fixture: "SHAPES_LONG", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("4.", { start: "has_work", answers: [[4, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("2 plus 1 is 3.", { answers: [[3, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "OT12", title: "Longest shape names at grade 3, the right sum first after a hello-only opening ('2 plus 1 is 3.'): accepted, not taught again (J06)", fixture: "SHAPES_LONG", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("2 plus 1 is 3.", { start: "has_work", answers: [[3, "result", "right"]] }, [{ act: "accept_answer" }]),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      never: ["guide", "example_step", "redirect"],
+    },
+  },
+  {
+    id: "OT13", title: "Die 8 at grade 3: help only through the easier example, then 'Maybe 1?' gets a confirm, then 'I'm stuck.': the honest close is the child stopping, not a technical issue (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "example_step" }, {}, {}]),
+      child("Maybe 1?", { unclear: true }, [{ act: "confirm", heard: "1" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "confirm", "close"],
+      outputs: [{ mayaTurn: 8, lines: [variants(dieLines.closeHonest(), "close.honest")] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  // Re-review of #731 at b97f3741: one help-only test for the honest close (P1), its line always said (P2, lessons from
+  // review 10), and a question about the step is not work (P3).
+  {
+    id: "OT13b", title: "Die 8 at grade 3: as OT13, but the last turn is 'Help me.' (read as help): the honest close is still the child stopping (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "example_step" }, {}, {}]),
+      child("Maybe 1?", { unclear: true }, [{ act: "confirm", heard: "1" }]),
+      child("Help me.", { help: "more" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "confirm", "close"],
+      outputs: [{ mayaTurn: 8, lines: [variants(dieLines.closeHonest(), "close.honest")] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    id: "OT14", title: "Die 8 at grade 3: the honest close proposed as a goodbye alone (no line) is refused; Maya says the honest close line (re-review of #731, P2)", fixture: "DIE", grade: 3, status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "example_step" }, {}, {}]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close", lines: [] }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
+      outputs: [{ mayaTurn: 7, lines: [variants(dieLines.closeHonest(), "close.honest")] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    id: "OT15", title: "Die 12 at grade 3, 'Why do I divide by 2?' after a hello-only opening: a question is not work, so the guide says the topic sentence (re-review of #731, P3)", fixture: "DIE12", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      // The model picks the step's own help; the refusal offers only the topic sentence, and the model says it.
+      child("Why do I divide by 2?", { start: "has_work" }, [{ act: "guide", level: 0, repair: { act: "guide", level: 0, lines: ["question.problem"] } }]),
+      child("12 divided by 2 is 6.", { answers: [[6, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(die12Lines.question(), "question.framed")] }],
+      counts: { refusals: 1, fallbacks: 0 },
+      never: ["redirect"],
+    },
+  },
   {
     id: "C01",
     title: "Cannot start: the easier example, then back to the question",
