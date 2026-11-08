@@ -33,9 +33,11 @@ import {
   operationText,
   valueText,
   workedSteps,
+  type OperationLimits,
   type SameNumberWrongRule,
 } from "@/lib/question-package-math";
 
+export type { OperationLimits } from "@/lib/question-package-math";
 export { operationProblem, operationResult, operationText, stepText, valueText, workedSteps } from "@/lib/question-package-math";
 export { coinGiven, type CoinGiven, type CoinGivenSource, type CoinName } from "@/lib/question-package-givens";
 
@@ -391,8 +393,12 @@ export interface QuestionPackage {
    */
   answer: PackageAnswer | null;
   operation: Operation | null;
-  /** Added after workbook selection and print checks. The renderer uses the original item without teaching data. */
-  operationSource?: "maya";
+  /**
+   * Added after workbook selection and print checks ("maya", #525), or by Maya's session adapter from the stored
+   * package when a call starts ("maya-teaching", src/lib/maya-teaching; never stored in a workbook). The renderer uses
+   * the original item without teaching data.
+   */
+  operationSource?: "maya" | "maya-teaching";
   /**
    * The shape version of the worked steps here and in the easier example; absent means 1. Code checks only the
    * versions in STEPS_VERSIONS; any other is "unsupported", never a pass.
@@ -789,8 +795,8 @@ function valueProblem(value: unknown, what: string): string | null {
 }
 
 /** A part (the question or its easier example): its operation is valid, and its answer and steps are what it gives. */
-function partProblem(operation: unknown, answer: unknown, steps: unknown, what: string): string | null {
-  const problem = operationProblem(operation);
+function partProblem(operation: unknown, answer: unknown, steps: unknown, what: string, limits?: OperationLimits): string | null {
+  const problem = operationProblem(operation, limits);
   if (problem) return what === "the question" ? problem : `${what}: ${problem}`;
   const value = valueProblem(answer, `${what}'s answer`);
   if (value) return value;
@@ -869,7 +875,7 @@ const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.dig
 type Problem = ItemProblem;
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
 
-function packageProblem(p: unknown): Problem | null {
+function packageProblem(p: unknown, limits?: OperationLimits): Problem | null {
   if (!isObject(p)) return failed("the package is not an object");
   if (!isText(p.id)) return failed("the package has no id");
   const ref = refProblem(p.ref);
@@ -881,15 +887,15 @@ function packageProblem(p: unknown): Problem | null {
     if (!STEPS_VERSIONS.includes(p.stepsVersion)) return { status: "unsupported", reason: `code cannot read worked steps of version ${p.stepsVersion}` };
   }
   if (p.operation === null && p.item !== undefined) return noOperationProblem(p, p.text);
-  const operation = operationCheck(p.operation);
+  const operation = operationCheck(p.operation, limits);
   if (operation?.status === "unsupported") return operation;
   const form = unknownForm(p);
   if (form) return { status: "unsupported", reason: form };
   // Only an easier example of the question's (valid) operation kind can be beyond code; another kind fails later.
   const easier = operation === null && isObject(p.easierExample) && isObject(p.easierExample.operation)
-    && p.easierExample.operation.kind === (p.operation as Operation).kind ? operationCheck(p.easierExample.operation) : null;
+    && p.easierExample.operation.kind === (p.operation as Operation).kind ? operationCheck(p.easierExample.operation, limits) : null;
   if (easier?.status === "unsupported") return { status: "unsupported", reason: `the easier example: ${easier.reason}` };
-  const content = failed(contentProblem(p));
+  const content = failed(contentProblem(p, limits));
   if (content || p.item === undefined) return content;
   const q = p as unknown as QuestionPackage & { answer: PackageAnswer; operation: Operation };
   return itemProblem(p.item, {
@@ -924,10 +930,10 @@ function unknownForm(p: Record<string, unknown>): string | null {
 }
 
 /** The answer, the steps and everything after them, for a package whose operation code can compute. */
-function contentProblem(p: Record<string, unknown>): string | null {
+function contentProblem(p: Record<string, unknown>, limits?: OperationLimits): string | null {
   const answer = p.answer;
   if (!isObject(answer)) return "the answer is missing";
-  const work = partProblem(p.operation, answer.value, p.steps, "the question");
+  const work = partProblem(p.operation, answer.value, p.steps, "the question", limits);
   if (work) return work;
   const target = p.operation as Operation;
   const rules = computation(target);
@@ -977,7 +983,7 @@ function contentProblem(p: Record<string, unknown>): string | null {
   if (!isObject(easier)) return "the package has no easier example";
   if (!isText(easier.text)) return "the easier example has no text";
   if (!isObject(easier.operation) || easier.operation.kind !== target.kind) return "the easier example is not the same operation";
-  const easierWork = partProblem(easier.operation, easier.answer, easier.steps, "the easier example");
+  const easierWork = partProblem(easier.operation, easier.answer, easier.steps, "the easier example", limits);
   if (easierWork) return easierWork;
   // An easier example that comes to the question's answer, in any form, gives the answer away (review R378-1).
   const easierAnswer = easier.answer as AnswerValue;
@@ -1030,12 +1036,13 @@ function isRight(wrong: AnswerValue, rightForms: AnswerValue[], exact: AnswerVal
 /**
  * Checks a package of shape `version` (the current one unless given), for example one read from the database:
  * "checked" with the package, "failed" with the first reason, "unsupported" when code cannot compute its operation,
- * read its steps or check a scored region, or "not-checked" for a sound item code does not mark.
+ * read its steps or check a scored region, or "not-checked" for a sound item code does not mark. `limits`: wider
+ * whole-number limits, only for a caller that passes them explicitly (Maya's session adapter); none keeps today's.
  */
-export function checkQuestionPackage(candidate: unknown, version: number = QUESTION_PACKAGE_VERSION): PackageCheck {
+export function checkQuestionPackage(candidate: unknown, version: number = QUESTION_PACKAGE_VERSION, limits?: OperationLimits): PackageCheck {
   if (version !== 1 && version !== QUESTION_PACKAGE_VERSION) return { ok: false, status: "unsupported", reason: `code cannot read question packages of version ${version}` };
   if (version === 1 && isObject(candidate) && candidate.item !== undefined) return { ok: false, status: "failed", reason: "a version 1 package has no item" };
-  const problem = packageProblem(candidate);
+  const problem = packageProblem(candidate, limits);
   if (!problem) return { ok: true, status: "checked", package: candidate as QuestionPackage };
   if (problem.status === "not-checked") return { ok: false, status: "not-checked", reason: problem.reason, package: candidate as QuestionPackage };
   return { ok: false, status: problem.status, reason: problem.reason };

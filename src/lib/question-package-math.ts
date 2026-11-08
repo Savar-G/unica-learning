@@ -466,16 +466,41 @@ export function computation(op: Operation): Computation {
   return { ...rules, statement: rules.statement ?? rules.text, exact: rules.exact ?? rules.result, unit: rules.unit ?? (() => null) };
 }
 
+/**
+ * Wider whole-number limits that a caller passes explicitly (Maya's session adapter, src/lib/maya-teaching). With none,
+ * every check keeps today's limits. They only let through a whole-number +, −, × or ÷ that today's limits refuse as
+ * beyond code: an operation that fails for any other reason fails the same way.
+ */
+export interface OperationLimits {
+  /** The largest result of a whole-number +, − or × (and its numbers), and the largest dividend of a ÷. */
+  readonly wholeResult: number;
+  /** The largest divisor of a whole-number ÷; none keeps today's 99. */
+  readonly divisor?: number;
+}
+
+/** Within the wider limits: the kind's own other rules (a multiplier to 999, a divisor from 1 to 99, no result below zero). */
+const WIDER: Partial<Record<OperationKind, (a: number, b: number, limits: OperationLimits) => boolean>> = {
+  add: (a, b, { wholeResult }) => a + b <= wholeResult,
+  subtract: (a, b, { wholeResult }) => a <= wholeResult && b <= a,
+  multiply: (a, b, { wholeResult }) => b <= MAX_MULTIPLIER && a * b <= wholeResult,
+  divide: (a, b, { wholeResult, divisor }) => a <= wholeResult && b >= 1 && b <= (divisor ?? MAX_DIVISOR),
+};
+
 /** What is wrong with an operation, or null: "failed" for a wrong operation, "unsupported" for one beyond code. */
-export function operationCheck(operation: unknown): OperationProblem | null {
+export function operationCheck(operation: unknown, limits?: OperationLimits): OperationProblem | null {
   if (typeof operation !== "object" || operation === null || Array.isArray(operation)) return fail("the operation is missing");
   const op = operation as Fields;
   if (!isOperationKind(op.kind)) return typeof op.kind === "string" ? beyond(`code cannot check the operation ${op.kind}`) : fail("the operation has no kind");
-  return KINDS[op.kind].problem(op);
+  const problem = KINDS[op.kind].problem(op);
+  const wider = WIDER[op.kind];
+  // Only "beyond code" can be widened, and only for two whole numbers (anything else failed before the size check).
+  if (problem?.status !== "unsupported" || !limits || !wider || !isTwo(op.operands) || !op.operands.every(isCount)) return problem;
+  const [a, b] = op.operands as [number, number];
+  return wider(a, b, limits) ? null : problem;
 }
 
-/** What is wrong with an operation, or null. */
-export const operationProblem = (operation: unknown): string | null => operationCheck(operation)?.reason ?? null;
+/** What is wrong with an operation, or null. `limits`: only for a caller that passes wider limits explicitly. */
+export const operationProblem = (operation: unknown, limits?: OperationLimits): string | null => operationCheck(operation, limits)?.reason ?? null;
 
 /** The value an operation gives. The operation must be valid (operationProblem). */
 export const operationResult = (operation: Operation): AnswerValue => computation(operation).result(operation);
