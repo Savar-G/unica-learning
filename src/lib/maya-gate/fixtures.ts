@@ -10,6 +10,11 @@ import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
 import { diePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
 
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES";
+import { mayaPackageCheck } from "@/lib/maya";
+import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
+
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId;
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -127,12 +132,14 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // 6 + 5 lines of symmetry from code's table.
   DIE: deriveDieCount(diePrinted(8, "even"))!,
   SHAPES: deriveSymmetry(symmetryPrinted(4, 5))!,
+  ...ONE_STEP_FIXTURES,
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */
 export function fixtureProblems(): string[] {
   return (Object.entries(FIXTURES) as [FixtureId, QuestionPackage][]).flatMap(([id, pkg]) => {
-    const check = checkQuestionPackage(pkg);
+    // Maya's own check: her wider limits hold for the adapter-made fixtures (W5, W3, W6) only.
+    const check = mayaPackageCheck(pkg);
     if (id === "A_BAD_KEY") return check.ok ? [`${id}: the bad key passed the package check`] : [];
     return check.ok ? [] : [`${id}: ${check.reason}`];
   });

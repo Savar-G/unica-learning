@@ -10,6 +10,7 @@ import type { Reason } from "@/lib/maya";
 import { valuesIn } from "@/lib/maya";
 import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
+import { ONE_STEP_PRACTICE } from "./one-step-cases";
 
 /** The AI-judge dimensions of the research (section 8, "AI-judge checks"), each scored 0 to 3. */
 export const DIMENSIONS = {
@@ -478,6 +479,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [6, 5, 11] }] },
     fakeScript: ["The hexagon has 6 and the pentagon has 5, so I got 11.", "Because 6 and 5 make 11.", "I wrote it."],
   },
+  ...ONE_STEP_PRACTICE,
 ];
 
 /** How many times each case runs (research, section 8: three recorded repetitions). */
