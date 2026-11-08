@@ -1928,6 +1928,9 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
   const falseResults = falseEquationResults(s.turn.text, readOptionsFor(pkg));
   for (const a of answers) {
     const problem = a.problem ?? "target";
+    if (a.verdict === "wrong" && (s.turn.text.includes("?") || asksForHelp(s.turn.text))) {
+      return { code: "answer_not_committed", reason: "A question or request for help does not commit to a wrong answer." };
+    }
     const { operation, steps, answer } = problemOf(pkg, problem);
     const at = steps.find((x) => x.id === a.step);
     if (!at) return { code: "wrong_step", reason: `The ${problem} has no step "${a.step}".` };

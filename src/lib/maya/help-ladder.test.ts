@@ -194,3 +194,26 @@ describe("passed columns and final misses", () => {
     expect(s.assistance).toContain("answer_given");
   });
 });
+
+describe("numbers in help questions", () => {
+  it.each(["Can you show me 7 plus 9?", "Is 9 right?"])("refuses a wrong reading of %s and keeps a safe fallback", (text) => {
+    let s = createSession({ callId: "help-question", package: FIXTURES.A });
+    let at = 1000;
+    const send = (event: SessionEvent) => { const r = step(s, event); s = r.session; return r; };
+    send({ type: "start", at });
+    send({ type: "proposal", at, proposal: { version: 2, act: "open", parts: [{ line: "open.hello", slots: {} }, { line: "question.problem", slots: {} }] } });
+    send({ type: "child_turn", at: at += 4000, text: "Show me the ones." });
+    expect(send({ type: "proposal", at, proposal: { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } } }).refusal).toBeNull();
+    send({ type: "child_turn", at: at += 4000, text });
+    const proposal: Proposal = { version: 2, act: "give_answer", parts: [], reading: { help: "show", answers: [{ value: num(9), step: "ones", verdict: "wrong" }] } };
+    expect(send({ type: "proposal", at, proposal }).refusal).not.toBeNull();
+    let accepted: ReturnType<typeof step> | undefined;
+    for (const p of fallbacks(s, [proposal])) {
+      const r = send({ type: "proposal", at, proposal: p });
+      if (!r.refusal) { accepted = r; break; }
+    }
+    expect(accepted).toBeDefined();
+    expect(accepted!.effects.some((e) => e.kind === "say" && e.act === "give_answer")).toBe(false);
+    expect(s.assistance).not.toContain("answer_given");
+  });
+});
