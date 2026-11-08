@@ -5,6 +5,7 @@ import { ONE_STEP_BEHAVIOURS } from "@/lib/maya-gate/one-step-cases";
 import { createTextSession } from "@/lib/maya-text";
 import type { QuestionPackage } from "@/lib/question-package";
 import { teachingPackage } from "./index";
+import { givesAway } from "./examples";
 import { addsThousandChain, bareSum, boxesThenSells, eachHasStory, putsInEachStory, subtractFromTenThousand, thousandsSum } from "./samples";
 
 // The Maya lane's controller rules (wave-a-brief, 2026-11-07), for what the adapter adds.
@@ -15,7 +16,8 @@ describe("rule 1: an easier example of the question's own shape, which Maya can 
     ["10000 − 3615", subtractFromTenThousand("Leo", "stickers", [3, 6, 1, 4]), "10 − 3 = ?"],
     ["284 × 7", eachHasStory("crate", 284, "apples", "Nora", 7), "28 × 7 = ?"],
     ["4 × 6 (two single digits)", putsInEachStory("Theo", 4, "shells", "box", "boxes", 6), "3 × 6 = ?"],
-    ["16000 + 3000", thousandsSum(16200, 3900), "1600 + 300 = ?"],
+    // 1600 + 300 = 1900 would give 19000 away (review of #724): a changed digit instead.
+    ["16000 + 3000", thousandsSum(16200, 3900), "1500 + 300 = ?"],
     ["352418 + 41275", bareSum(352418, 41275), "35241 + 4127 = ?"],
   ])("%s", (_, stored, example) => {
     const made = teach(stored);
@@ -24,9 +26,37 @@ describe("rule 1: an easier example of the question's own shape, which Maya can 
     expect(heldReason(made)).toBeNull();
   });
 
+  // Review of #724 (P2): taking a place off round numbers keeps the answer's digits, a giveaway.
+  it.each([
+    ["17000 + 3000 (a story)", thousandsSum(17700, 12800, { name: "Rui", things: "tickets" }), 20000, "1700 + 300", "1600 + 300 = ?"],
+    ["18000 + 2000", thousandsSum(18500, 6700), 20000, "1800 + 200", "1700 + 200 = ?"],
+    ["352410 + 41270", bareSum(352410, 41270), 393680, "35241 + 4127", "35242 + 4127 = ?"],
+    ["16000 + 3000", thousandsSum(16200, 3900), 19000, "1600 + 300", "1500 + 300 = ?"],
+  ])("%s: no example whose answer's digits begin the answer", (_, stored, answer, refused, example) => {
+    const made = teach(stored);
+    expect(made.answer?.value).toEqual({ type: "number", value: answer });
+    expect(made.easierExample?.text).toBe(example);
+    expect(made.easierExample?.text).not.toBe(`${refused} = ?`);
+    expect(givesAway(made.answer!.value, made.easierExample!.answer)).toBe(false);
+    expect(heldReason(made)).toBeNull();
+  });
+
+  it("refuses an answer's leading digits and its tenfold, and only those", () => {
+    const n = (value: number) => ({ type: "number" as const, value });
+    expect(givesAway(n(20000), n(2000))).toBe(true);
+    expect(givesAway(n(393680), n(39368))).toBe(true);
+    expect(givesAway(n(880), n(88))).toBe(true);
+    expect(givesAway(n(6385), n(63))).toBe(true);
+    expect(givesAway(n(20000), n(1900))).toBe(false);
+    expect(givesAway(n(6385), n(7))).toBe(false);
+    expect(givesAway(n(1988), n(196))).toBe(false);
+  });
+
   it("gives a multi-step story an example of the same expression shape (held until evaluate is taught)", () => {
-    expect(teach(boxesThenSells("Mo", 4, 236, "beads")).easierExample?.operation).toEqual({ kind: "evaluate", operands: ["4 × 23 − 46"] });
-    expect(teach(addsThousandChain(73562)).easierExample?.operation).toEqual({ kind: "evaluate", operands: ["7356 + 100 + 10"] });
+    // "4 × 23 − 46" = 46 would give 460 away: its first number changed instead.
+    expect(teach(boxesThenSells("Mo", 4, 236, "beads")).easierExample?.operation).toEqual({ kind: "evaluate", operands: ["3 × 23 − 46"] });
+    // "7356 + 100 + 10" = 7466 would give 74662 away.
+    expect(teach(addsThousandChain(73562)).easierExample?.operation).toEqual({ kind: "evaluate", operands: ["7355 + 100 + 10"] });
   });
 
   it("holds a question when no example of its shape passes, rather than teach a smaller example of another shape", () => {
