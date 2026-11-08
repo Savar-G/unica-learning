@@ -2721,7 +2721,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       // child saw, and the given answer must follow H3 (first-ship practice, C04-r1, hint_skipped). The help goes on instead.
       const shownHere = view.steps[0] === s.ladder.step && s.ladder.hint >= 3;
       const check = s.solved === null && s.turn && !shownHere ? (saysGuess(s.turn.text) ? l.guess() : doubtfulRight(s) ? l.together() : []) : [];
-      return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...l.thinking()];
+      return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing, turnWordLimit(s) === 25)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...l.thinking()];
     }
     case "accept_answer": {
       const form = view.checked.find((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right")?.answer.value ?? s.answerForm ?? undefined;
@@ -2729,7 +2729,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     }
     case "give_answer":
       // Never the final step's question before code gives its answer (D-199).
-      return [...view.steps.filter((id) => id !== "result").flatMap((id) => regroupHelp(l, id, view, framing)), ...right];
+      return [...view.steps.filter((id) => id !== "result").flatMap((id) => regroupHelp(l, id, view, framing, turnWordLimit(s) === 25)), ...right];
     case "ask_write": {
       // Never a request to write what the child already wrote, or said they wrote or would not write (#389).
       const written = s.wrote === true || s.paper !== "unknown";
@@ -2756,7 +2756,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "redirect":
       return [...l.decline(), ...l.redirect(), ...l.question()];
     case "repair":
-      return [...l.repair(), ...l.question(), ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing)).filter((o) => (o.level ?? 0) <= Math.max(0, s.ladder.hint))];
+      return [...l.repair(), ...l.question(), ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing, turnWordLimit(s) === 25)).filter((o) => (o.level ?? 0) <= Math.max(0, s.ladder.hint))];
     default:
       return [];
   }
@@ -2767,9 +2767,9 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
  * the gentlest invite, so no line names a carried digit before the child hears where it comes from. The regroup line
  * of the column a carry comes from is offered only then (it says that column's sum).
  */
-function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View, framing: FrameState = "due"): LineOffer[] {
+function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View, framing: FrameState = "due", compact = false): LineOffer[] {
   const pending = (view.regroup ?? []).filter((c) => c.at === id);
-  const own = l.help(id, framing);
+  const own = l.help(id, framing, compact);
   // Once said, the line comes again only when the child denies the carry, which makes it pending (regroupAfter).
   const said = (view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= 1;
   // The second way (step.why, #605) comes only after the regroup line, for "why?" or when the first did not land.

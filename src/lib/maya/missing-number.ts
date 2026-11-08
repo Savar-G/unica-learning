@@ -202,6 +202,7 @@ export const MISSING_TEMPLATES = {
     "{Reason}. That means the missing number is {inverse}. Start with {where}. What do you think?",
     "{Reason}. So work out {inverse} to find it. First, {where}. What would you do?",
     "{Reason}. We find the missing number with {inverse}. Start with {where}.",
+    "The missing number is {inverse}. Start with {where}.",
   ],
   "invite.frame.zeros": [
     "{Reason}. So the missing number is {inverse}. Take {zeros} off both numbers. That gives {reduced}.",
@@ -209,6 +210,7 @@ export const MISSING_TEMPLATES = {
     "{Reason}. That means the missing number is {inverse}. Take {zeros} off both to get {reduced}.",
     "{Reason}. So work out {inverse}. Take {zeros} off both numbers. That makes {reduced}.",
     "{Reason}. We find it with {inverse}. Take {zeros} off both numbers. We get {reduced}.",
+    "The missing number is {inverse}. That is {reduced}.",
   ],
   "invite.frame.try": [
     "{Reason}. So the missing number is {inverse}. Try a number for it. What is {factor} times your number?",
@@ -216,6 +218,7 @@ export const MISSING_TEMPLATES = {
     "{Reason}. That means the missing number is {inverse}. Let's try a number. What do you get for {factor} times it?",
     "{Reason}. So work out {inverse}. Guess a number first. Then work out {factor} times it.",
     "{Reason}. We find it with {inverse}. Choose a number. Then multiply it by {factor}.",
+    "The missing number is {inverse}. Try a number for it.",
   ],
   // A child's question about the first step (J06): code's answer, from the printed equation. Pending D-202.
   "frame.why": [
@@ -239,6 +242,7 @@ export const MISSING_TEMPLATES = {
     "Yes, {inverse} finds it. Start with {where}. What do you think?",
     "Good thinking: {inverse}. First, {where}. What would you do?",
     "Yes! We work out {inverse}. Start with {where}.",
+    "Yes! The missing number is {inverse}. Start with {where}.",
   ],
   "invite.frame.heard.zeros": [
     "Yes! The missing number is {inverse}. Take {zeros} off both numbers. That gives {reduced}.",
@@ -246,6 +250,7 @@ export const MISSING_TEMPLATES = {
     "Yes, {inverse} finds it. Take {zeros} off both numbers to get {reduced}.",
     "Good thinking: {inverse}. Take {zeros} off both numbers. That makes {reduced}.",
     "Yes! We work out {inverse}. Take {zeros} off both numbers. We get {reduced}.",
+    "Yes! The missing number is {inverse}. That is {reduced}.",
   ],
   "invite.frame.heard.try": [
     "Yes! The missing number is {inverse}. Try a number for it. What is {factor} times your number?",
@@ -253,6 +258,7 @@ export const MISSING_TEMPLATES = {
     "Yes, {inverse} finds it. Let's try a number. What do you get for {factor} times it?",
     "Good thinking: {inverse}. Guess a number first. Then work out {factor} times it.",
     "Yes! We work out {inverse}. Choose a number. Then multiply it by {factor}.",
+    "Yes! The missing number is {inverse}. Try a number for it.",
   ],
   // Maya said the framing already: only the zeros, never the framing again.
   "invite.zeros": [

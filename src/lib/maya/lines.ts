@@ -609,7 +609,7 @@ function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
 }
 
 /** The help lines of one step of the child's question, by hint level: H0 invite, H1 point, H2 give the operation, H3 show. */
-function stepLines(pkg: OperationPackage, step: WorkedStep, framing: FrameState = "due"): LineOffer[] {
+function stepLines(pkg: OperationPackage, step: WorkedStep, framing: FrameState = "due", compact = false): LineOffer[] {
   const slots = { step: step.id };
   const where = whereOf(step);
   // A missing number's first work step says the framing first (missing-number.ts); a try step invites a try.
@@ -716,7 +716,7 @@ function stepLines(pkg: OperationPackage, step: WorkedStep, framing: FrameState 
     default:
       break;
   }
-  // A try step's equation holds the answer: its H3 shows the tries on each side, with no board note.
+  // A try step's equation holds the answer: its H3 shows the try next to it, with no board note.
   const eq = step.kind === "try-factor" ? null : equationOf(step, pkg, "target");
   out.push(offer("step.show", "step.show", { show: showOf(step, pkg, "target") }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
   if (!first || !framed) return out;
@@ -726,7 +726,10 @@ function stepLines(pkg: OperationPackage, step: WorkedStep, framing: FrameState 
   const why = frameWhy(framed);
   out.push(offer("step.why", why.key, why.vars, { slots, level: 1 }));
   const before = frameLead(framed, framing);
-  return before ? out.map((o) => ((o.level ?? 0) >= 1 ? { ...o, texts: o.texts.map((t) => `${before} ${t}`) } : o)) : out;
+  if (!before) return out;
+  // step.why says the framing itself. In a 25-word turn (compact) the framing is the whole first hint; else it leads it.
+  return out.map((o) => ((o.level ?? 0) >= 1 && o.line !== "step.why"
+    ? { ...o, texts: compact ? [before] : o.texts.map((t) => `${before} ${t}`), ...(compact ? { wordingIds: [`${o.key}#frame`] } : {}) } : o));
 }
 
 /**
@@ -856,10 +859,10 @@ export function packageLines(pkg: OperationPackage) {
      * The help lines of the child's question's step, H0 to H3. The final step ("result", once every work step is done)
      * has one line, an H0 invite to put the whole answer together (#389).
      */
-    help: (id: string, framing: FrameState = "due"): LineOffer[] => {
+    help: (id: string, framing: FrameState = "due", compact = false): LineOffer[] => {
       if (id === "result") return [offer("step.invite", "invite.result", { expr: solved }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
-      return step ? stepLines(pkg, step, framing) : [];
+      return step ? stepLines(pkg, step, framing, compact) : [];
     },
     /**
      * The regroup line of the column a carry comes from (the ones of 27 + 39), for a child who plans to write its
@@ -979,7 +982,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
   const offers = [
     ...equalForms.flatMap((v) => [...l.answerRight(v), ...l.writeAnswer(v), ...l.equal(v, simplestWords(pkg)), ...l.simplifyOwn(v)]),
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id, "due"), ...l.help(id, "heard"), ...l.help(id, "done"), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id, "due"), ...l.help(id, "heard"), ...l.help(id, "done"), ...l.help(id, "due", true), ...l.help(id, "heard", true), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.repair(),
     ...l.together(), ...l.guess(),

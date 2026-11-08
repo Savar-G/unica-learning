@@ -33,11 +33,12 @@ export function tryText(t: Trial, value: number): string | null {
 }
 
 /**
- * The tries on each side of the missing factor, never the factor itself: "244 × 5 = 1220. That is less than 1464. 244 ×
- * 7 = 1708. That is more than 1464." Maya shows it at H3, so the child still finds the number between them.
+ * The try next to the missing factor, never the factor itself: the one just below ("244 × 5 = 1220. That is less than
+ * 1464."), or just above for a factor of 1. Maya shows it at H3, so the child still finds the number. One try, so the
+ * line fits a 25-word turn with 4-digit numbers said in words.
  */
 export function bracketText(t: Trial): string {
-  return [t.value - 1, t.value + 1].map((v) => (v >= 1 ? tryText(t, v) : null)).filter((x): x is string => x !== null).join(" ");
+  return tryText(t, t.value > 1 ? t.value - 1 : t.value + 1) ?? "";
 }
 
 /** A missing-number step in words, for a board, a voice and the easier example. The try step says the number. */

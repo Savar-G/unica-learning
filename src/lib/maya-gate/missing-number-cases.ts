@@ -145,6 +145,26 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     },
   },
   {
+    // Lessons 2 and 3: at grade 3 (25-word turns) the first hint after "I'm stuck." is the framing alone, short enough.
+    id: "MN1f",
+    grade: 3,
+    title: "30 × ? = 1620 at grade 3, 'I'm stuck.': the first hint (H1) is the short framing, 'The missing number is 1620 ÷ 30. That is 162 ÷ 3.', within 25 words; then 54 is accepted",
+    fixture: "M_DIVIDE",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("162 divided by 3 is 54.", { answers: [[54, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 1, lines: [["The missing number is 1620 ÷ 30. That is 162 ÷ 3."]] }],
+      never: ["give_answer", "example_step", "redirect"],
+    },
+  },
+  {
     // J06 (b): a question about the current step gets code's answer (step.why), not the invite again.
     id: "MN2d",
     title: "236 × ? = 1416, 'Why do I try numbers?': code's answer (multiplying is easier than dividing by 236), then 6 is accepted",

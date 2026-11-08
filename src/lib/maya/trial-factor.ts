@@ -91,7 +91,7 @@ export interface TrialLine {
   heard?: string;
 }
 
-/** The help lines of the try step, H0 to H2 (H3 shows the tries on each side: showTrial). */
+/** The help lines of the try step, H0 to H2 (H3 shows the try next to the factor: showTrial). */
 export function trialHelp(step: TrialStep): TrialLine[] {
   const { factor, total, round } = step;
   return [
@@ -111,7 +111,7 @@ export function trialFeedback(step: TrialStep): TrialLine[] {
   }));
 }
 
-/** H3: the tries on each side of the missing factor, never the factor itself. */
+/** H3: the try next to the missing factor, never the factor itself. */
 export const showTrial = (step: TrialStep): string => bracketText(step);
 
 /** The whole text is one product: "a times|×|x b is|equals|makes|make|= c", in digits or words, or null. */

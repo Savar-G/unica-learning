@@ -38,6 +38,17 @@ export function templateAgrees(source: TemplateSource, printed: Printed, answer:
   });
 }
 
+/**
+ * The example gives the question away (lesson 11, #724's review): its answer times a power of 10 is the question's
+ * answer (2 for 20, 200), its answer is the first digits of the question's (5 for 54, 54 for 540), or it uses a number
+ * the question prints (20 × ? = 40 for 40 × ? = 13200).
+ */
+export function givesAway(question: Printed, answer: number, example: Printed, exampleAnswer: number): boolean {
+  for (let n = exampleAnswer; n > 0 && n <= answer; n *= 10) if (n === answer) return true;
+  if (exampleAnswer === answer || String(answer).startsWith(String(exampleAnswer))) return true;
+  return [example.known, example.total].some((v) => v === question.known || v === question.total);
+}
+
 /** Easier examples of the same method, simplest first; the package check keeps the first that is smaller. */
 function exampleCandidates(method: MissingMethod, target: Printed): Printed[] {
   const small = [2, 3, 4, 5, 6, 7, 8, 9];
@@ -80,7 +91,7 @@ export function deriveMissingNumber(printed: QuestionPackage): QuestionPackage |
   const answer = { type: "number" as const, value: work.answer };
   for (const candidate of exampleCandidates(work.method, frame)) {
     const example = missingWork(candidate);
-    if (!example || example.method !== work.method || example.answer === work.answer) continue;
+    if (!example || example.method !== work.method || givesAway(frame, work.answer, candidate, example.answer)) continue;
     const pkg: QuestionPackage = {
       ...printed,
       operationSource: TEACHING_SOURCE,
