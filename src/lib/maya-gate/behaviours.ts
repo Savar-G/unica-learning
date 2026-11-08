@@ -1176,21 +1176,20 @@ export const BEHAVIOURS: Behaviour[] = [
     status: "passing",
     steps: [
       child("I got 56.", { start: "has_work", answers: [[56, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
-      { at: 541, maya: [{ act: "close" }] },
+      { at: 541, maya: [{ act: "close", lines: ["close.stuck"] }] },
     ],
     expect: { outcome: { reason: "time_limit", assistance: "independent" }, acts: [OPEN, "guide", "close"] },
   },
   {
     id: "C35b",
-    title: "540 s: Maya gives the answer to close; the outcome says answer_given",
+    title: "540 s: one missed answer closes without giving it",
     fixture: "A",
     status: "passing",
     steps: [
       child("I got 56.", { start: "has_work", answers: [[56, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
-      { at: 541, maya: [{ act: "give_answer" }] },
-      okay,
+      { at: 541, maya: [{ act: "close", lines: ["close.stuck"] }] },
     ],
-    expect: { outcome: { reason: "solved", assistance: "answer_given", understanding: "uncertain" }, acts: [OPEN, "guide", "give_answer", "close"] },
+    expect: { outcome: { reason: "time_limit", assistance: "independent" }, acts: [OPEN, "guide", "close"] },
   },
   {
     id: "C35c",

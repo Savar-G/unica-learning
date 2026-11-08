@@ -646,6 +646,19 @@ describe("REPAIR_MAYA", () => {
 });
 
 describe("TIME_CLOSE and the end", () => {
+  it("closes honestly at the deadline without a committed attempt (#749)", () => {
+    for (const help of [false, true]) {
+      const c = opened();
+      if (help) c.child("I'm stuck.");
+      c.tick(540);
+      expect(c.next.acts).not.toContain("give_answer");
+      expect(c.refused({ act: "give_answer", parts: [] }).code).toBe("act_not_allowed");
+      const close = fallbacks(c.session).find((p) => p.act === "close" && p.parts.some((part) => "line" in part && part.line === "close.stuck"));
+      expect(close).toBeDefined();
+      expect(step(c.session, { type: "proposal", at: T0 + 540_000, proposal: close }).refusal).toBeNull();
+    }
+  });
+
   it("starts closing at 9 minutes and ends the call at 10", () => {
     const c = afterExample();
     c.child("56.");
@@ -654,7 +667,7 @@ describe("TIME_CLOSE and the end", () => {
     expect(c.session.state).not.toBe("TIME_CLOSE");
     c.tick(540);
     expect(c.session.state).toBe("TIME_CLOSE");
-    expect(c.next).toEqual({ expect: "maya", acts: ["give_answer", "ask_write", "close"] });
+    expect(c.next).toEqual({ expect: "maya", acts: ["ask_write", "close"] });
     expect(c.refused({ act: "guide", step: "ones", level: 1, parts: [ln("step.point", { step: "ones" })] })).toMatchObject({ code: "act_not_allowed" });
     c.maya({ act: "ask_write", parts: [t("We are almost out of time. Keep working on it on your paper.")] });
     c.tick(599);
@@ -663,15 +676,6 @@ describe("TIME_CLOSE and the end", () => {
     expect(effects.map((e) => e.kind)).toEqual(["cancel_output", "end"]);
     expect(ended(effects)).toMatchObject({ outcome: { reason: "time_limit", seconds: 600 }, safetyMessage: null });
     expect(step(c.session, { type: "proposal", at: T0 + 600_000, proposal: v2({ act: "close", parts: [t("Bye!")] }) }).refusal).toMatchObject({ code: "ended" });
-  });
-
-  it("may give the answer at the time close without climbing the ladder, and records it", () => {
-    const c = afterExample();
-    c.tick(540);
-    c.maya({ act: "give_answer", parts: [{ warm: "empathy" }] });
-    c.child("Okay, I wrote it.");
-    c.maya({ act: "close", parts: [t("Bye for now!")], reading: { paper: "written" } });
-    expect(c.session.outcome).toMatchObject({ reason: "solved", assistance: "answer_given", paperStatus: "child_confirmed" });
   });
 
   it("accepts a right answer said in the closing minute", () => {
@@ -901,13 +905,6 @@ describe("review follow-up", () => {
     expect(c.session.state).toBe("REPAIR_MAYA");
     c.maya({ act: "repair", parts: [ln("repair.sorry")] });
     expect(c.session.state).toBe("TIME_CLOSE");
-  });
-
-  it("says the given answer and asks for it on paper in code's words", () => {
-    const c = afterExample();
-    c.tick(540);
-    const gives = TEMPLATES["answer.give"].map((x) => x.replaceAll("{answer}", "66"));
-    expect(gives).toContain(said(c.maya({ act: "give_answer", parts: [] }).effects)[0]);
   });
 
   it("does not count an answer Maya gave as the child's right answer", () => {
@@ -1162,6 +1159,16 @@ describe("the final step after two wrong final answers (D-199)", () => {
     const { effects } = c.maya({ act: "close", parts: [ln("close.together")] });
     expect(ended(effects)).toMatchObject({ outcome: { reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 } });
     expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "blank", stuckStep: "result" });
+  });
+
+  it("keeps D-199 after two wrong finals in the closing minute", () => {
+    const c = columnsDone();
+    c.child("67.");
+    c.maya({ ...finalHelp, reading: wrongFinal(67) });
+    c.tick(540);
+    c.child("65.");
+    c.maya({ act: "give_answer", parts: [], reading: wrongFinal(65) });
+    expect(c.session).toMatchObject({ solved: "maya", finalMisses: 2 });
   });
 
   it("never gives the answer sooner: not after one wrong final answer, nor before every column is done", () => {

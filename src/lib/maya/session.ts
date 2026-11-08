@@ -860,7 +860,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && (stepSaidUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
     const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
-      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
+      : rightResult ? ["accept_answer", "close"] : misses >= 2 ? ["give_answer", "close"] : (s.workAttempts ?? 0) > 0 ? ["ask_write", "close"] : ["close"];
     return { acts: [...acts, ...confirm], code: "act_not_allowed", reason: "Time is almost up: finish the question and close." };
   }
   // A child who says they wrote it is done writing, whatever the model reads (#605). "I'm writing" keeps its time.
@@ -1425,7 +1425,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // The final step (every work step done) has only its H0 help line: two wrong final answers there release the
       // answer (D-199); any other step needs help up to H3 and another failed attempt or request.
       const final = ladder.step === "result";
-      if (s.state !== "TIME_CLOSE" && ladder.unlocked < 4 && !(final && misses >= 2)) {
+      if ((s.state === "TIME_CLOSE" ? misses < 2 : ladder.unlocked < 4 && !(final && misses >= 2))) {
         return no("hint_too_high", final ? "On the final step the answer comes after two wrong final answers."
           : `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowedNow);
       }
@@ -1482,7 +1482,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     }
     case "close":
       // The honest close after help alone (#735): its own line, which holds no answer.
-      if (stuckWayOut(s, reading, rightResult) === "close" && !spoken.chosen.some((o) => o.line === "close.stuck")) {
+      if ((stuckWayOut(s, reading, rightResult) === "close" || (s.state === "TIME_CLOSE" && !blocked && s.solved === null)) && !spoken.chosen.some((o) => o.line === "close.stuck")) {
         return no("line_not_offered", "Close honestly with close.stuck: this one is hard, it is fine to stop, and what to try next. No answer.", allowedNow);
       }
       break;
@@ -2987,7 +2987,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       // finished it; after a shown step (guided), that their answer is right, not that they worked it out.
       return solved ? (solved === "maya" || s.assistance.includes("answer_given") ? l.closeGiven()
         : s.assistance.includes("guided") ? l.closeSolved("child", false) : l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed"))
-        : s.turn !== null && s.exampleShown >= pkg.easierExample.steps.length ? l.closeStuck() : [];
+        : (s.state === "TIME_CLOSE" || (s.turn !== null && s.exampleShown >= pkg.easierExample.steps.length)) ? l.closeStuck() : [];
     case "confirm": {
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));

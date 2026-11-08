@@ -411,8 +411,10 @@ describe("R374-3-1: the assembled turn, with the lines code adds, is checked in 
     let s = createSession({ callId: "r374-3-1", package: PKG, random: 1 });
     s = step(s, { type: "start", at: 0 }).session;
     s = step(s, { type: "proposal", at: 0, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).session;
-    s = step(s, { type: "tick", at: 541_000 }).session;
-    const r = step(s, { type: "proposal", at: 541_000, proposal: { version: 2, act: "give_answer", parts: [{ talk: "Hello there." }] } });
+    s = step(s, { type: "child_turn", at: 1, text: "Show me the ones." }).session;
+    s = step(s, { type: "proposal", at: 1, proposal: { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } } }).session;
+    s = step(s, { type: "child_turn", at: 2, text: "15." }).session;
+    const r = step(s, { type: "proposal", at: 2, proposal: { version: 2, act: "give_answer", parts: [{ talk: "Hello there." }], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } } });
     expect(r.refusal).toMatchObject({ code: "free_talk_in_math_turn" });
     expect(r.effects.some((e) => e.kind === "say")).toBe(false);
   });
@@ -421,8 +423,10 @@ describe("R374-3-1: the assembled turn, with the lines code adds, is checked in 
     let s = createSession({ callId: "r374-3-1b", package: PKG, random: 1 });
     s = step(s, { type: "start", at: 0 }).session;
     s = step(s, { type: "proposal", at: 0, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).session;
-    s = step(s, { type: "tick", at: 541_000 }).session;
-    const r = step(s, { type: "proposal", at: 541_000, proposal: { version: 2, act: "give_answer", parts: [{ warm: "empathy" }] } });
+    s = step(s, { type: "child_turn", at: 1, text: "Show me the ones." }).session;
+    s = step(s, { type: "proposal", at: 1, proposal: { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } } }).session;
+    s = step(s, { type: "child_turn", at: 2, text: "15." }).session;
+    const r = step(s, { type: "proposal", at: 2, proposal: { version: 2, act: "give_answer", parts: [{ warm: "empathy" }], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } } });
     expect(r.refusal).toBeNull();
     const said = r.effects.flatMap((e) => (e.kind === "say" ? [e.text] : []))[0];
     expect(said).toMatch(/66[^.?!]*[.?!]$/);
