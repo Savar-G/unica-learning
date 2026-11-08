@@ -9,7 +9,7 @@ import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import type { PracticeCase } from "./cases";
 
 /** The version of the validity judge's prompt and input. Raise it when either changes; every run records it. */
-export const VALIDITY_PROMPT_VERSION = "practice-validity-4";
+export const VALIDITY_PROMPT_VERSION = "practice-validity-5";
 
 export interface ValidityInput {
   promptVersion: string;
@@ -31,7 +31,7 @@ export interface ValidityJudge {
 export const VALIDITY_SYSTEM = `You check a test of a tutoring system. A language model was told to play a child aged 6 to 12 from a persona card. You get the card, the child's turns ("childTurns", numbered) and the whole call in order ("call": the tutor Maya's turns and the child's, each child turn with its number). You judge only the child's turns; Maya's turns show what she taught and when. Decide two things:
 - "persona_ok": true only if every child turn reads as that child speaking: a child's words for the age, about the persona's question, with no sign of being an AI, software, a program, a model, a simulation or a test, no talk about prompts or instructions given to the child, no narration or stage directions, and no lines for another speaker.
 - "knows_too_much": true if any child turn shows knowledge or skill the card says the child does not have yet (for example a right answer or a method the card says the child does not know), at a point where Maya has not taught it.
-What "persona.knows" says the child knows, and every step of the mistake it describes, is allowed, in the order the card gives: using it is never knowing too much, but a card that says the child does something only after something else (for example only after two wrong guesses) allows it only then. Something counts as taught when one of Maya's turns before that child turn in "call" shows it (a step she worked, said or wrote on the board, an easier example, the answer she gave); the child may then use it. A hint teaches only what its words say. A question or an invitation teaches nothing.
+What "persona.knows" says the child knows, and every step of the mistake it describes, is allowed, in the order the card gives: using it is never knowing too much, but a card that says the child does something only after something else (for example only after two wrong guesses) allows it only then. Something counts as taught when one of Maya's turns before that child turn in "call" shows it (a step she worked, said or wrote on the board, an easier example, the answer she gave); the child may then use it. A hint teaches only what its words say. A question or an invitation teaches nothing. Writing the question itself on the board teaches nothing.
 Also set "knows_too_much" for a child turn that says Maya showed, told or taught it something that none of her earlier turns in "call" shows ("Like you showed me..." before she showed it): a claim of teaching that did not happen hides knowledge the card does not give.
 Words the card's "behaviour" tells the child to say (an exact first line, a request off the question, an insult, a request Maya must decline) are always in persona: the test needs them, even when a child seldom says them. Judge only how the other turns sound.
 "reasons": short plain sentences for each problem found (empty when there are none). "turns": the ids of the turns with a problem (empty when there are none).

@@ -430,11 +430,12 @@ function sentTexts(log: SimulatorLog): { texts: string[]; lastMayDrop: boolean }
 }
 
 /**
- * A child's claim that Maya showed or taught it something ("Like you showed me", "you taught me"), with an optional
- * "like", "as" or "the way" before it. Only showed or taught: "like you said", "as you told me" or "the way you did"
+ * A child's claim that Maya showed, taught or explained something ("Like you showed me", "you taught me", "you just
+ * showed me", "you've shown me", "you have taught me", "you explained"), with an optional "like", "as" or "the way"
+ * before it (delta review of 31d65fb9). Only showed or taught: "like you said", "as you told me" or "the way you did"
  * claim no teaching (review of be8accf0: "I wrote it, like you said." after a request to write made a real run invalid).
  */
-const TEACHING_CLAIM = /\b(?:(?:like|as|the way)\s+)?you\s+(?:showed|taught)\b/i;
+const TEACHING_CLAIM = /\b(?:(?:like|as|the way)\s+)?you(?:['’]ve|\s+have)?\s+(?:just\s+|already\s+)?(?:showed|shown|taught|explained)\b/i;
 
 /**
  * The validity problems of a run. The rules run on the simulator log's raw child turns, which must be exactly the
@@ -561,10 +562,17 @@ function integrity(id: string, store: PracticeStore): string[] {
   return out;
 }
 
-/** What one board command shows: its words, or its kind and its numbers ("columns: 27, 39"). Never ids or places. */
+/** Board commands that show no content: a clear, a focus, a removal, an undo (delta review of 31d65fb9). */
+const NO_CONTENT = new Set(["clear", "focus", "remove", "undo"]);
+
+/**
+ * What one board command shows: its words, or its kind and its numbers ("columns: 27, 39"). Never ids or places, and
+ * nothing for a command that shows no content.
+ */
 function boardWords(command: unknown): string {
   if (typeof command !== "object" || command === null) return "";
   const c = command as Record<string, unknown>;
+  if (typeof c.op === "string" && NO_CONTENT.has(c.op)) return "";
   for (const key of ["text", "label"]) if (typeof c[key] === "string" && (c[key] as string).trim()) return (c[key] as string).trim();
   const numbers: number[] = [];
   const walk = (x: unknown, key = "") => {
