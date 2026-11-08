@@ -53,8 +53,9 @@ question and the fixed workbook opening, and with the easier example's intro:
 
 ### Waits on A2: evaluate
 
-- Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "A rectangle has 2 lengths
-  and 2 widths. Add one length and one width. Then double it." Built and hooked. The session holds it for two reasons
+- Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "Add one length and one
+  width, then double it." (9 words, so it fits a 25-word grade-3 turn with the question line; the first wording, 17
+  words, did not: review of #741, P1b). Built and hooked. The session holds it for two reasons
   until A2's evaluate teaching lands: `evaluate` is not in `TEACHABLE_KINDS`, and Maya has no lines for its `operate`
   steps. No change is needed here then.
 

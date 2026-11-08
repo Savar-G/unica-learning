@@ -28,7 +28,7 @@ export function topicFrame(text: string, operation: Operation): string | null {
   if (claim) return claim;
   const rectangle = readPerimeter(text);
   if (rectangle && same(operation, perimeterOperation(rectangle.length, rectangle.width))) {
-    return "A rectangle has 2 lengths and 2 widths. Add one length and one width. Then double it.";
+    return "Add one length and one width, then double it.";
   }
   return null;
 }
