@@ -21,8 +21,10 @@ type Env = Readonly<Record<string, string | undefined>>;
  *   Measured Sonnet calls in the marking ledger: median 2.7 s, 90th percentile 3.3 s.
  * - At most 6 photos start per Send, so the Send answer can say how many. At about 8 s a photo, 6 photos start well
  *   before 105 s; on a slow run the time rule stops first and the cron marks the rest.
- * Photos run one at a time. The database admits one active job per family (`scan_limits.active_jobs = 1`, counted by
- * `scan_active_jobs`), so a second photo of the same family at the same time would only answer "busy".
+ * Photos run one at a time. The family has one processing slot (`scan_limits.active_jobs = 1`, counted by
+ * `scan_active_jobs`), shared by uploads, photo checks and marking, and a claim while it is taken answers "busy". So
+ * before each photo the run waits, with a read only, until the slot is free (`familySlotFree`), with backoff, up to the
+ * start rule's deadline. Then it calls `processScanMarking` once for that photo, never again in this run.
  *
  * The cron `/api/scan-marking` stays the retry for photos this run does not reach, that fail or that stop. The claim
  * belongs to the marking lane: one claim, one lease and one budget charge per photo, so two starts never mark twice.
@@ -32,9 +34,25 @@ export const SEND_MARKING_MAX_PHOTOS = 6;
 /** The marking lane's lease: `lease_until = now + 180 seconds` in the claim. */
 export const SEND_MARKING_LEASE_MS = 180_000;
 export const SEND_MARKING_MARGIN_MS = 15_000;
-/** A "busy" photo (another scan job of the family holds the one slot) is tried again after this wait, while time remains. */
-export const SEND_MARKING_BUSY_WAIT_MS = 10_000;
-export const SEND_MARKING_BUSY_PASSES = 3;
+/** Waits between reads of the family's slot: 1, 2, 4, then 8 s each, until the start rule's deadline. */
+export const SEND_MARKING_SLOT_WAITS_MS = [1_000, 2_000, 4_000, 8_000] as const;
+
+/**
+ * Read only: true when no upload, photo check or marking job of the family holds a live lease, as the claim counts it
+ * (`scan_active_jobs`, which the secret key may not call: these are the same three reads). A failed read is false.
+ * The claim stays the authority: this read only avoids a claim that would answer "busy".
+ */
+export async function familySlotFree(db: SupabaseClient<Database>, parent: string, at: string): Promise<boolean> {
+  try {
+    const [uploads, checks, jobs] = await Promise.all([
+      db.from("scan_photos").select("id").eq("parent_id", parent).eq("state", "processing").gt("lease_until", at).gt("expires_at", at).limit(1),
+      db.from("scan_calibrations").select("photo_id").eq("parent_id", parent).eq("state", "running").gt("lease_until", at).limit(1),
+      db.from("scan_marking_jobs").select("photo_id").eq("parent_id", parent).in("state", ["running", "extracted"]).gt("lease_until", at).limit(1),
+    ]);
+    if (uploads.error || checks.error || jobs.error) return false;
+    return !uploads.data.length && !checks.data.length && !jobs.data.length;
+  } catch { return false; }
+}
 
 /**
  * The photos marking starts on now: none when the marking rule (`markingDecision`, the same rule `processScanMarking`
@@ -56,38 +74,40 @@ export interface SendMarkingDeps {
   /** A database client whose requests stop at the deadline. Default: the secret-key client with that signal. */
   db?: (signal: AbortSignal) => SupabaseClient<Database> | null;
   mark?: typeof processScanMarking;
+  slot?: typeof familySlotFree;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
 
 /**
- * Marks the photos one at a time, after the Send answer. Each photo's error is caught: it does not stop the others.
+ * Marks the photos one at a time, after the Send answer. Before each photo it waits for the family's slot; it calls
+ * `processScanMarking` at most once per photo. Each photo's error is caught: it does not stop the others.
  * `startedAt` is when the request started, because the function's time limit counts from then.
  */
 export async function markSentPhotos(parent: string, photos: readonly string[], startedAt: number, deps: SendMarkingDeps = {}): Promise<Record<string, SendMarkingResult>> {
-  const env = deps.env ?? process.env, plan = deps.plan ?? childPlanAccess, mark = deps.mark ?? processScanMarking;
+  const env = deps.env ?? process.env, plan = deps.plan ?? childPlanAccess, mark = deps.mark ?? processScanMarking, slot = deps.slot ?? familySlotFree;
   const now = deps.now ?? Date.now, sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const results: Record<string, SendMarkingResult> = Object.fromEntries(photos.map((p) => [p, "not-started" as const]));
   const end = startedAt + SEND_MARKING_LIMIT_MS - SEND_MARKING_MARGIN_MS;
-  const fits = () => now() + SEND_MARKING_LEASE_MS <= end;
+  // The start rule: a whole lease plus the margin still fits before the limit.
+  const fits = (wait = 0) => now() + wait + SEND_MARKING_LEASE_MS <= end;
   const left = end - now();
   if (!photos.length || left <= 0) return results;
   const db = (deps.db ?? adminClient)(AbortSignal.timeout(left));
   if (!db) return results;
-  let queue = [...photos];
-  for (let pass = 0; queue.length && pass <= SEND_MARKING_BUSY_PASSES; pass++) {
-    if (pass > 0) {
-      if (now() + SEND_MARKING_BUSY_WAIT_MS + SEND_MARKING_LEASE_MS > end) break;
-      await sleep(SEND_MARKING_BUSY_WAIT_MS);
+  const slotFree = async () => {
+    for (let n = 0; fits(); n++) {
+      if (await slot(db, parent, new Date(now()).toISOString())) return fits();
+      const wait = SEND_MARKING_SLOT_WAITS_MS[Math.min(n, SEND_MARKING_SLOT_WAITS_MS.length - 1)];
+      if (!fits(wait)) return false;
+      await sleep(wait);
     }
-    const busy: string[] = [];
-    for (const photo of queue) {
-      if (!fits()) break;
-      try { results[photo] = await mark(db, parent, photo, env, plan); }
-      catch { results[photo] = "error"; }
-      if (results[photo] === "busy") busy.push(photo);
-    }
-    queue = busy;
+    return false;
+  };
+  for (const photo of photos) {
+    if (!await slotFree()) break;
+    try { results[photo] = await mark(db, parent, photo, env, plan); }
+    catch { results[photo] = "error"; }
   }
   const counts: Record<string, number> = {};
   for (const r of Object.values(results)) counts[r] = (counts[r] ?? 0) + 1;

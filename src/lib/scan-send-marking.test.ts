@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import {
-  markSentPhotos, sendMarkingStart, SEND_MARKING_LIMIT_MS, SEND_MARKING_MARGIN_MS, SEND_MARKING_MAX_PHOTOS, SEND_MARKING_LEASE_MS,
+  familySlotFree, markSentPhotos, sendMarkingStart, SEND_MARKING_SLOT_WAITS_MS, SEND_MARKING_LIMIT_MS, SEND_MARKING_MARGIN_MS, SEND_MARKING_MAX_PHOTOS, SEND_MARKING_LEASE_MS,
 } from "./scan-send-marking";
 
 vi.mock("server-only", () => ({}));
@@ -15,7 +15,9 @@ vi.mock("@/lib/child-profile", () => ({ rebuildChildProfile: async () => ({ buil
 const parent = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-4222-8222-222222222222";
 const photo = (n: number) => `44444444-4444-4444-8444-${String(n).padStart(12, "0")}`;
 // A real Supabase client over a recording fetch: every table read, RPC and Storage request is listed.
-const state = { test: false, plan: { open: true, reason: "open" }, requests: [] as string[], commands: [] as string[] };
+// `taken`: what holds the family's one processing slot ("upload", "check" or "job"); `slotDown`: the slot reads fail.
+const state = { test: false, plan: { open: true, reason: "open" }, requests: [] as string[], commands: [] as string[], taken: [] as string[], slotDown: false, slotQueries: [] as URL[] };
+const SLOT = { scan_photos: "upload", scan_calibrations: "check", scan_marking_jobs: "job" } as const;
 const db = createClient<Database>("https://send-marking.example.test", "synthetic-service-key", {
   auth: { persistSession: false, autoRefreshToken: false },
   global: { fetch: async (input, init) => {
@@ -23,6 +25,13 @@ const db = createClient<Database>("https://send-marking.example.test", "syntheti
     if (url.pathname.endsWith("/test_accounts")) return Response.json(state.test ? [{ parent_id: parent }] : []);
     if (url.pathname.endsWith("/admin_users")) return Response.json([]);
     if (url.pathname.endsWith("/children")) return Response.json([{ id: child }]);
+    const table = url.pathname.split("/").pop() as keyof typeof SLOT;
+    // The slot reads: a lease filter on the family's rows. Answered from `taken`.
+    if (table in SLOT && url.searchParams.has("lease_until")) {
+      state.slotQueries.push(url);
+      if (state.slotDown) return Response.json({ message: "down" }, { status: 503 });
+      return Response.json(state.taken.includes(SLOT[table]) ? [{ id: "row", photo_id: "row" }] : []);
+    }
     if (url.pathname.endsWith("/scan_photos")) return Response.json([{ child_id: child }]);
     if (url.pathname.endsWith("/rpc/scan_marking_command")) {
       const body = JSON.parse(String(init?.body)); state.commands.push(body.p_action);
@@ -36,7 +45,8 @@ const db = createClient<Database>("https://send-marking.example.test", "syntheti
 const plan = async () => state.plan as never;
 const clock = (start = 0) => { let t = start; return { now: () => t, advance: (ms: number) => { t += ms; } }; };
 
-beforeEach(() => { Object.assign(state, { test: false, plan: { open: true, reason: "open" }, requests: [], commands: [] }); ai.transports = 0; });
+beforeEach(() => { Object.assign(state, { test: false, plan: { open: true, reason: "open" }, requests: [], commands: [], taken: [], slotDown: false, slotQueries: [] }); ai.transports = 0; });
+const free = async () => true;
 afterEach(() => vi.unstubAllEnvs());
 
 it.each([
@@ -56,11 +66,12 @@ it.each([
   expect(ai.transports).toBe(0);
 });
 
-it("off and test-only with a real family read nothing at all", async () => {
+it("off and test-only with a real family read nothing but the slot and the gate", async () => {
   for (const env of [{ SCAN_MARKING_ENABLED: "off" }, { SCAN_MARKING_ENABLED: "test-only" }]) {
-    state.requests = [];
+    state.requests = []; state.slotQueries = [];
     await markSentPhotos(parent, [photo(1)], 0, { env, plan, db: () => db, now: clock().now });
-    expect(state.requests.filter((p) => !p.endsWith("/test_accounts") && !p.endsWith("/admin_users"))).toEqual([]);
+    const others = state.requests.filter((p) => !p.endsWith("/test_accounts") && !p.endsWith("/admin_users"));
+    expect(others).toHaveLength(state.slotQueries.length);
   }
 });
 
@@ -106,7 +117,7 @@ it("runs photos one at a time; one photo's error does not stop the others", asyn
     if (id === photo(2)) throw Error("synthetic failure");
     return "finished" as const;
   });
-  const results = await markSentPhotos(parent, [photo(1), photo(2), photo(3)], 0, { db: () => db, mark, now: clock().now });
+  const results = await markSentPhotos(parent, [photo(1), photo(2), photo(3)], 0, { db: () => db, mark, slot: free, now: clock().now });
   expect(results).toEqual({ [photo(1)]: "finished", [photo(2)]: "error", [photo(3)]: "finished" });
   expect(seen).toEqual([photo(1), photo(2), photo(3)]);
   expect(most).toBe(1);
@@ -119,7 +130,7 @@ it("starts a photo only while a whole lease plus the margin fits before the time
   // Photo 1 ends at 105 s: photo 2 still starts. Photo 2 ends at 105.001 s: photo 3 does not.
   const lengths = [104_000, 1, 1];
   const mark = vi.fn(async () => { t.advance(lengths.shift()!); return "finished" as const; });
-  const results = await markSentPhotos(parent, [photo(1), photo(2), photo(3)], 0, { db: () => db, mark, now: t.now });
+  const results = await markSentPhotos(parent, [photo(1), photo(2), photo(3)], 0, { db: () => db, mark, slot: free, now: t.now });
   expect(results).toEqual({ [photo(1)]: "finished", [photo(2)]: "finished", [photo(3)]: "not-started" });
   expect(mark).toHaveBeenCalledTimes(2);
 });
@@ -127,25 +138,59 @@ it("starts a photo only while a whole lease plus the margin fits before the time
 it("the database client stops at the deadline; with no time left nothing starts", async () => {
   const signals: AbortSignal[] = [];
   const mark = vi.fn(async () => "finished" as const);
-  await markSentPhotos(parent, [photo(1)], 0, { db: (s) => { signals.push(s); return db; }, mark, now: clock().now });
+  await markSentPhotos(parent, [photo(1)], 0, { db: (s) => { signals.push(s); return db; }, mark, slot: free, now: clock().now });
   expect(signals).toHaveLength(1);
-  expect(await markSentPhotos(parent, [photo(1)], 0, { db: () => db, mark, now: clock(SEND_MARKING_LIMIT_MS).now })).toEqual({ [photo(1)]: "not-started" });
+  expect(await markSentPhotos(parent, [photo(1)], 0, { db: () => db, mark, slot: free, now: clock(SEND_MARKING_LIMIT_MS).now })).toEqual({ [photo(1)]: "not-started" });
   expect(mark).toHaveBeenCalledTimes(1);
 });
 
-it("tries a busy photo again after a wait, at most a few times, and never a finished one", async () => {
+it("waits for the family's slot with backoff, then calls the lane once for the photo", async () => {
   const t = clock();
+  const waits: number[] = [];
+  let reads = 0;
+  // An upload holds the slot for the first three reads.
+  const slot = vi.fn(async () => ++reads > 3);
+  const mark = vi.fn(async () => "finished" as const);
+  const results = await markSentPhotos(parent, [photo(1)], 0, { db: () => db, mark, slot, now: t.now, sleep: async (ms) => { waits.push(ms); t.advance(ms); } });
+  expect(results).toEqual({ [photo(1)]: "finished" });
+  expect(waits).toEqual([1_000, 2_000, 4_000]);
+  expect(mark).toHaveBeenCalledTimes(1);
+});
+
+it("a slot that never frees stops at the start rule's deadline with no call to the lane", async () => {
+  const t = clock();
+  const mark = vi.fn(async () => "finished" as const);
+  const results = await markSentPhotos(parent, [photo(1), photo(2)], 0, { db: () => db, mark, slot: async () => false, now: t.now, sleep: async (ms) => t.advance(ms) });
+  expect(results).toEqual({ [photo(1)]: "not-started", [photo(2)]: "not-started" });
+  expect(mark).not.toHaveBeenCalled();
+  // It waited until no further wait and lease fit: the last start would be at 105 s.
+  expect(t.now()).toBeLessThanOrEqual(105_000);
+  expect(t.now() + SEND_MARKING_SLOT_WAITS_MS.at(-1)!).toBeGreaterThan(105_000);
+});
+
+it("never calls the lane twice for a photo in one run, even when its claim answers busy", async () => {
   const calls: string[] = [];
-  let busyLeft = 2;
-  const mark = vi.fn(async (_db: unknown, _parent: string, id: string) => {
-    calls.push(id); t.advance(5_000);
-    if (id === photo(1) && busyLeft-- > 0) return "busy" as const;
-    return "finished" as const;
-  });
-  const results = await markSentPhotos(parent, [photo(1), photo(2)], 0, { db: () => db, mark, now: t.now, sleep: async (ms) => t.advance(ms) });
-  expect(results).toEqual({ [photo(1)]: "finished", [photo(2)]: "finished" });
-  expect(calls).toEqual([photo(1), photo(2), photo(1), photo(1)]);
-  const always = vi.fn(async () => { t.advance(1_000); return "busy" as const; });
-  expect(await markSentPhotos(parent, [photo(3)], t.now(), { db: () => db, mark: always, now: t.now, sleep: async (ms) => t.advance(ms) })).toEqual({ [photo(3)]: "busy" });
-  expect(always).toHaveBeenCalledTimes(4);
+  const mark = vi.fn(async (_db: unknown, _parent: string, id: string) => { calls.push(id); return id === photo(1) ? "busy" as const : "finished" as const; });
+  const results = await markSentPhotos(parent, [photo(1), photo(2)], 0, { db: () => db, mark, slot: free, now: clock().now, sleep: async () => {} });
+  expect(results).toEqual({ [photo(1)]: "busy", [photo(2)]: "finished" });
+  expect(calls).toEqual([photo(1), photo(2)]);
+});
+
+it("reads the slot as the claim counts it: an upload, a photo check or a marking job with a live lease takes it", async () => {
+  const at = "2026-11-07T20:00:00.000Z";
+  expect(await familySlotFree(db, parent, at)).toBe(true);
+  for (const holder of ["upload", "check", "job"]) {
+    state.taken = [holder];
+    expect(await familySlotFree(db, parent, at)).toBe(false);
+  }
+  state.taken = []; state.slotDown = true;
+  expect(await familySlotFree(db, parent, at)).toBe(false);
+  // Read only, the family's own rows, live leases only, in the states the claim counts.
+  for (const q of state.slotQueries) {
+    expect(q.searchParams.get("parent_id")).toBe(`eq.${parent}`);
+    expect(q.searchParams.get("lease_until")).toBe(`gt.${at}`);
+  }
+  const states = Object.fromEntries(state.slotQueries.slice(0, 3).map((q) => [q.pathname.split("/").pop(), q.searchParams.get("state")]));
+  expect(states).toEqual({ scan_photos: "eq.processing", scan_calibrations: "eq.running", scan_marking_jobs: "in.(running,extracted)" });
+  expect(state.commands).toEqual([]);
 });

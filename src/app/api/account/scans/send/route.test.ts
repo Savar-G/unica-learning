@@ -8,6 +8,12 @@ const f = vi.hoisted(() => ({ marked: false, plan: { open: true, reason: "open" 
 // The work after the answer is captured, not run: src/lib/scan-send-marking.test.ts runs it.
 vi.mock("next/server", () => ({ after: (task: () => unknown) => { if (f.afterFails) throw Error("no request scope"); f.later.push(task); } }));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
+// The real start rule; the run itself is recorded, so a test can read the start time the route gave it.
+const runs = vi.hoisted(() => [] as { parent: string; photos: readonly string[]; startedAt: number }[]);
+vi.mock("@/lib/scan-send-marking", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/scan-send-marking")>();
+  return { ...actual, markSentPhotos: async (parent: string, photos: readonly string[], startedAt: number) => { runs.push({ parent, photos, startedAt }); return {}; } };
+});
 vi.mock("@/lib/scan-pages-access", () => ({ markedFamily: async () => f.marked }));
 // The real admission rule, with the plan gate answered by the test (the dashboard's gate is not on main yet).
 vi.mock("@/lib/scan-marking-access", async (importOriginal) => {
@@ -26,7 +32,8 @@ vi.mock("@/lib/scan-photo-server", () => ({
   scanJson: (data: unknown, status = 200) => Response.json(data, { status }),
   scanSession: async () => ({ parent: "family", admin: { ...children, rpc: async (name: string, args: unknown) => { f.sent.push({ name, args }); return { data: f.rows, error: null }; } } }),
 }));
-import { POST } from "./route";
+import { maxDuration, POST } from "./route";
+import { SEND_MARKING_LIMIT_MS } from "@/lib/scan-send-marking";
 
 const send = (child = CHILD) => POST(new Request("https://unicalearning.com/api/account/scans/send", {
   method: "POST", headers: { Origin: "https://unicalearning.com" }, body: JSON.stringify({ child, ids: [PHOTO] }),
@@ -34,9 +41,10 @@ const send = (child = CHILD) => POST(new Request("https://unicalearning.com/api/
 
 beforeEach(() => {
   Object.assign(f, { marked: false, plan: { open: true, reason: "open" }, asked: [], sent: [], later: [], afterFails: false, rows: [PHOTO] });
+  runs.length = 0;
   vi.stubEnv("SCAN_MARKING_ENABLED", "families");
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 it.each(["open", "ending_until_end"])("families mode sends a real family's pages while the child's plan is %s", async (reason) => {
   f.plan = { open: true, reason };
@@ -92,6 +100,19 @@ it("keeps the Send answer when the work after it cannot be scheduled, and says n
   f.afterFails = true;
   const r = await send();
   expect(r.status).toBe(200); expect(await r.json()).toEqual({ sent: [PHOTO], marking: 0 });
+});
+
+it("gives the marking run the time the request started, not the time the work after the answer begins", async () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+  await send();
+  // The answer has gone; the work after it begins 50 s later.
+  clock.mockReturnValue(1_050_000);
+  await f.later[0]();
+  expect(runs).toEqual([{ parent: "family", photos: [PHOTO], startedAt: 1_000_000 }]);
+});
+
+it("the route's time limit is the one the marking run plans with", () => {
+  expect(maxDuration * 1000).toBe(SEND_MARKING_LIMIT_MS);
 });
 
 it("the work after the answer settles without an error even when it cannot reach the database", async () => {
