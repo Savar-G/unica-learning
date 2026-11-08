@@ -99,7 +99,7 @@ describe("the board offers", () => {
   const value = make("2.2", 785243, "ten thousands");
   const offersFor = (pkg: OperationPackage, act: string, keys: string[] = [], roles: Record<string, string> = {}) => {
     const l = packageLines(pkg);
-    const chosen = [...l.help("result"), ...l.stepIds.flatMap(l.help), ...l.answerRight(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id))].filter((o) => keys.includes(o.key));
+    const chosen = [...l.help("result"), ...l.stepIds.flatMap((id) => l.help(id)), ...l.answerRight(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id))].filter((o) => keys.includes(o.key));
     return placeBoardOffers({ pkg: pkg as never, act, roles, batch: 0, chosen, exampleShown: 0 });
   };
   const draw = (batches: Command[][]) => {
