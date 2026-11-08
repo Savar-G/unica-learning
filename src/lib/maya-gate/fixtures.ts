@@ -8,10 +8,19 @@
 // numbers, in the shapes of the workbook's multi-step templates. `EV_ADD_FIRST` has an addition part that is not last:
 // (47 + 38) × 3 (review of #734).
 import { mayaPackageCheck } from "@/lib/maya";
+import { teachingPackage } from "@/lib/maya-teaching";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE, CLAIM_WIDE } from "./claim-fixtures";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "EV_ADD_FIRST" | OneStepFixtureId;
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "EV_ADD_FIRST" | OneStepFixtureId | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "CLAIM_WIDE";
+
+/** A claim question's teaching package (A4): the stored synthetic package through the session adapter (claimTeaching). */
+function claimFixture(raw: QuestionPackage): QuestionPackage {
+  const pkg = teachingPackage(raw) as QuestionPackage;
+  if (pkg === raw || pkg.operation === null) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
+  return pkg;
+}
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -166,6 +175,14 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
   ...ONE_STEP_FIXTURES,
+  // Claim questions (A4): "True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436?", "True or false: 3.45 + 2.38 = 5.93."
+  CLAIM_TF: claimFixture(CLAIM_TRUE_FALSE),
+  CLAIM_GT: claimFixture(CLAIM_GREATER),
+  CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
+  // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
+  CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
+  // "Is 777 × 7 greater than 4662?": the longest spoken claim shape, for the 25-word turns (#737 review P2).
+  CLAIM_WIDE: claimFixture(CLAIM_WIDE),
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */
