@@ -810,6 +810,43 @@ function asksWhy(text: string): boolean {
   return /^\s*why\W*$/i.test(text) || /\b(?:why|where|what|how)\b[^.!\n]*\b(?:carry|carried|regroup\w*|trad\w*|ten|10|one|1)\b/i.test(text);
 }
 
+/**
+ * The top help level Maya can say on the ladder's step now: the highest level of the guide lines code offers for it,
+ * leaving out a line that would say the answer (revealsAnswer refuses it: "8 ÷ 2 = 4" is the H3 of 8 ÷ 2, so its top is
+ * H2). The final step's simplify help counts too (#407).
+ */
+function topHint(s: Session): number {
+  const pkg = s.package!;
+  const answer = pkg.answer.value;
+  const ownNumber = operandValues(pkg.operation).some((v) => equivalent(v, answer));
+  const done = [...s.done];
+  const after = regroupAfter(s, [], done);
+  const view: View = { steps: [s.ladder.step], done, checked: [], rightResult: false, equal: null, regroup: pendingRegroup(after), regroupSaid: after.said, regroupTimes: after.times };
+  const sayable = (o: LineOffer) => ownNumber || o.texts.some((t) => !valuesIn(t).some((v) => equivalent(v, answer)));
+  return offersFor(s, "guide", view).filter((o) => o.level !== undefined && (o.slots.step === undefined || o.slots.step === s.ladder.step) && sayable(o))
+    .reduce((top, o) => Math.max(top, o.level ?? 0), 0);
+}
+
+/**
+ * The way out of the help ladder (#735, decision (a); D-199 for misses). A turn that only asks for help ("I'm stuck.",
+ * "Show me.", a reading of help), with no answer in it, after Maya gave this step's top hint, never gets the answer: first
+ * the easier example ("example"), and once that is worked, an honest close with no answer ("close"). Null for any other
+ * turn: a miss (a checked wrong answer) keeps the given answer after H3 and D-199's two wrong final answers, and a copy
+ * of a shown step goes on (copiedStep). A final-only step ends the same way, so its top lines never repeat (8 ÷ 2, 2 + 1).
+ */
+function stuckWayOut(s: Session, reading: Reading, rightResult: boolean): "example" | "close" | null {
+  const pkg = s.package;
+  if (!pkg || !s.turn || s.solved !== null || rightResult) return null;
+  const main = isTeaching(s.state) ? s.state : s.resume;
+  if (!main || !["ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET"].includes(main)) return null;
+  const steps = pkg.easierExample.steps.length;
+  if (main === "MODEL_EXAMPLE" && s.exampleShown < steps) return null;
+  if ((reading.answers ?? []).some((a) => (a.problem ?? "target") === "target")) return null;
+  if (reading.help === undefined && !asksForHelp(s.turn.text)) return null;
+  if (copiedStep(s) !== null || s.ladder.hint < topHint(s)) return null;
+  return s.exampleShown < steps ? "example" : "close";
+}
+
 function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
   // Maya may check what she heard before she goes on, but not a third time in a row (practice run 6, F06: "16 or
   // 60?" eleven times after the child said 16 each time), and not once the answer is accepted (run 5, F05: "Just
@@ -879,15 +916,23 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
     return { acts: ["close"], code: "act_not_allowed", reason: "The answer stands and the child is done: close warmly, with no more questions." };
   }
   if (rightResult && s.solved === null && acts.includes("accept_answer")) acts = ["accept_answer"];
-  // H3 already showed this step. Another explicit failure or help request ends
-  // the loop, without recording the shown work as the child's progress. A turn that only copies or acknowledges the shown
-  // step, or asks about the next one (copiedStep: "16", "Okay.", "Where does the 1 go?"), is neither: the ladder goes on.
+  // Help requests alone never lead to the answer (#735, decision (a)): after the top hint, the easier example, then an
+  // honest close (stuckWayOut).
+  const way = stuckWayOut(s, reading, rightResult);
+  if (way === "example") {
+    return { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child still only asks for help after the top hint: work the easier example (example_step). Help alone never gets the answer." };
+  }
+  if (way === "close") {
+    return { acts: ["close"], code: "act_not_allowed", reason: "The child still only asks for help after the top hint and the easier example: close honestly with close.stuck, with no answer." };
+  }
+  // H3 already showed this step and the child misses it again (a checked wrong answer): the answer, with code's
+  // explanation, without recording the shown work as the child's progress. A turn that only copies or acknowledges the
+  // shown step, or asks about the next one (copiedStep: "16", "Got it.", "Where does the 1 go?"), is no miss.
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
-  const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
-    reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+  const missed = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" && copiedStep(s) === null &&
-      s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
-    return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
+      s.ladder.hint >= 3 && missed && (!noStart || s.retried) && acts.includes("give_answer")) {
+    return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child missed it again: give the answer with code's explanation." };
   }
   // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
   // Maya gives the answer, and code says how the parts make it (D-199). Never sooner, and never over a right answer.
@@ -1434,6 +1479,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     }
     case "close":
+      // The honest close after help alone (#735): its own line, which holds no answer.
+      if (stuckWayOut(s, reading, rightResult) === "close" && !spoken.chosen.some((o) => o.line === "close.stuck")) {
+        return no("line_not_offered", "Close honestly with close.stuck: this one is hard, it is fine to stop, and what to try next. No answer.", allowedNow);
+      }
       break;
     case "safety":
       // The guidance is code's policy message, never the model's words.
@@ -2866,7 +2915,9 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : [];
+      // An unsolved close after the easier example may say the honest close (#735): it holds no answer.
+      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed")
+        : s.turn !== null && s.exampleShown >= pkg.easierExample.steps.length ? l.closeStuck() : [];
     case "confirm": {
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));

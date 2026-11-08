@@ -431,8 +431,10 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   {
+    // #735, decision (a): help requests alone never get the answer. After the example, the retry and H1 to H3, the
+    // child still only asks for help: Maya closes honestly (close.stuck), with no answer.
     id: "C06",
-    title: "Still stuck after the example, the retry and guided steps: H1 to H3, then the answer with a reason",
+    title: "Still stuck after the example, the retry and guided steps H1 to H3: an honest close with no answer",
     fixture: "A",
     status: "passing",
     steps: [
@@ -441,13 +443,52 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I don't know.", { help: "more" }, [{ act: "guide", level: 1 }]),
       child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
       child("I don't know.", { help: "more" }, [{ act: "guide", level: 3 }]),
-      child("I'm still stuck.", { help: "more" }, [{ act: "give_answer" }]),
+      child("I'm still stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "close", lines: ["close.stuck"] } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3, understanding: "uncertain" },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "close"],
+      refused: ["act_not_allowed"],
+      counts: { hints: 3 },
+      never: ["give_answer"],
+    },
+  },
+  {
+    // A real miss after H3 keeps the given answer (D-199 is unchanged for misses).
+    id: "C06b",
+    title: "A wrong answer after the example, the retry and guided steps H1 to H3: the answer with a reason",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }, {}, {}]),
+      okay,
+      child("I don't know.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I don't know.", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("56.", { answers: [[56, "result", "wrong"]] }, [{ act: "give_answer" }]),
       child("Okay, I wrote 66.", { paper: "written" }),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "answer_given", highestHint: 4, paperStatus: "child_confirmed", understanding: "uncertain" },
       acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "give_answer", "close"],
       counts: { hints: 4 },
+    },
+  },
+  {
+    // #735 item "Stuck loop" on fixture A, driven by code: repeated "I'm stuck." with no reading goes H0 to H3, then
+    // the easier example, then the honest close. Never the answer.
+    id: "C06c",
+    title: "Repeated 'I'm stuck.' with the model down: H0 to H3, the easier example, then an honest close with no answer",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      ...Array.from({ length: 5 }, () => child("I'm stuck.", undefined, [{ throws: true }])),
+      child("I'm stuck.", undefined, [{ throws: true }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
+      never: ["give_answer"],
     },
   },
   {

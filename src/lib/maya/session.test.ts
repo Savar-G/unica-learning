@@ -328,8 +328,9 @@ describe("the hint ladder", () => {
     c.child("Can you show me?");
     expect(c.refused({ act: "give_answer", parts: [ln("step.show", { step: "tens" })], reading: { help: "show" } })).toMatchObject({ code: "hint_too_high" });
     c.maya({ act: "guide", step: "tens", level: 3, parts: [ln("step.show", { step: "tens" })], reading: { help: "show" } });
-    c.child("I'm still stuck.");
-    const given = c.maya({ act: "give_answer", parts: [ln("step.show", { step: "tens" })], reading: { help: "more" } });
+    // A miss after H3 gives the answer (help alone leads to the easier example, #735).
+    c.child("Still 4.");
+    const given = c.maya({ act: "give_answer", parts: [ln("step.show", { step: "tens" })], reading: wrong(4, "tens") });
     const [givenText] = said(given.effects);
     const gives = TEMPLATES["answer.give"].map((x) => x.replaceAll("{answer}", "66"));
     expect(gives.some((g) => givenText.endsWith(`Add the tens: 2 + 3 + 1 = 6. Write 6. ${g}`))).toBe(true);
@@ -346,8 +347,8 @@ describe("the hint ladder", () => {
     const c = opened();
     c.child("Just show me how.");
     c.maya({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" })], reading: { help: "show" } });
-    c.child("I really don't get it.");
-    c.maya({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { help: "more" } });
+    c.child("15.");
+    c.maya({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } });
     c.child("66!");
     c.maya({ act: "close", parts: [t("Bye for now!")], reading: { answers: [right66] } });
     expect(c.session.outcome).toMatchObject({ assistance: "answer_given", understanding: "uncertain", paperStatus: "unknown" });
@@ -912,8 +913,8 @@ describe("review follow-up", () => {
     const c = opened();
     c.child("Just show me how.");
     c.maya({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" })], reading: { help: "show" } });
-    c.child("I really don't get it.");
-    c.maya({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { help: "more" } });
+    c.child("15.");
+    c.maya({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } });
     c.child("Okay.");
     c.maya({ act: "close", parts: [t("Bye for now!")] });
     expect(c.session.outcome).toMatchObject({ reason: "solved", assistance: "answer_given", highestHint: 4 });

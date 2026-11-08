@@ -80,7 +80,9 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | C04b | A | passing | After the ones are shown at H3, 'You said 16, so I wrote 6 and carried 1.', then 'Is it 16?' with a request to be shown: the tens, never no line | solved | PR #698 practice at 361a05c9 (C04-r2): the claim is the child's; a request to be shown no longer leaves Maya with no safe line |
 | C04c | A | passing | After the ones are shown at H3, '16. What do I do next?' copies them: the tens, with no credit for the ones | solved | A copy moves the ladder past the shown step, with no credit (`passed`) |
 | C05 | A | passing | 'Just tell me' with no work: the easier example, not the answer | solved, worked_example |  |
-| C06 | A | passing | Still stuck after the example, the retry and guided steps: H1 to H3, then the answer with a reason | solved, answer_given |  |
+| C06 | A | passing | Still stuck after the example, the retry and guided steps H1 to H3: an honest close with no answer | child_stopped | #735 decision (a): help requests alone never get the answer (`close.stuck`, pending Savar) |
+| C06b | A | passing | A wrong answer after the example, the retry and guided steps H1 to H3: the answer with a reason | solved, answer_given | A real miss after H3 keeps the given answer |
+| C06c | A | passing | Repeated 'I'm stuck.' with the model down: H0 to H3, the easier example, then an honest close with no answer | child_stopped | #735 stuck loop on fixture A, driven by code's fallbacks |
 | C07 | A | passing | Solves 66 at the opening with a valid method: accepted, written, closed; no example | solved, independent |  |
 | C08 | A | passing | Says 66 but cannot explain: one concrete check, understanding uncertain | solved, independent |  |
 | C09 | A | passing | 27 + 40 - 1: the compensation method is accepted | solved, independent |  |

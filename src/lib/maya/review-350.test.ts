@@ -234,8 +234,9 @@ describe("F8: the learning event follows the learning record's contract", () => 
     const c = call();
     c.child("show me");
     c.propose(guide({ level: 3, parts: [ln("step.show", { step: "ones" })], reading: { help: "show" } }));
-    c.child("more");
-    c.propose({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { help: "more" } });
+    // A miss after H3 gives the answer (help alone leads to the easier example, #735).
+    c.child("15");
+    c.propose({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { answers: [{ value: { type: "number", value: 15 }, step: "ones", verdict: "wrong" }] } });
     c.child("okay");
     c.propose({ act: "close", parts: [t("Bye.")] });
     const event = learningEvent(c.s, { parentId, childId })!;

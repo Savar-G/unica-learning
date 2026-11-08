@@ -122,3 +122,19 @@ These are the scoped additions and replacements on the chat repair branch. The s
 | close.checked.4 | We've checked your answer for {expr}. Goodbye for now! |
 | held.hello.0 | Hi, I'm Maya, an AI. |
 | held.next.0 | Want to pick another question on this page? |
+
+## Pending Savar, #698 fix round 2026-11-08
+
+Status: pending Savar. None of these wordings is approved yet. Values in braces come from the checked question package.
+
+### The honest close after help alone (#735, decision (a))
+
+Maya says one of these when the child still only asks for help after the step's top hint and the whole easier example. The call ends with no answer. The line holds no number, so it gives no answer and no part of one. Before this change, help alone after H3 led to the given answer ("The answer is 66. Please write 66 on your paper."), or to the same H2 lines again on a one-column question.
+
+| Id | Wording |
+|---|---|
+| close.stuck.0 | This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up for help. |
+| close.stuck.1 | This is a tricky one. It's fine to stop for now. Try the easier one on paper, or ask a grown-up. |
+| close.stuck.2 | That was a hard one, and it's okay to stop. Next, try the easier one on paper, or ask a grown-up. |
+| close.stuck.3 | This one is tough, and stopping is okay. You could try the easier one on paper, or ask a grown-up. |
+| close.stuck.4 | It's okay to stop here. This one is hard. Try the easier one on paper, or ask a grown-up for help. |

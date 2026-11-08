@@ -77,6 +77,7 @@ export const LINE_IDS = [
   "redirect.workbook",
   "close.solved",
   "close.together",
+  "close.stuck",
   "repair.sorry",
   "held.hello",
   "held.next",
@@ -452,6 +453,16 @@ export const TEMPLATES = {
   "close.together": [
     "We worked through {expr} together.", "We finished {expr} together today.", "We got through {expr} together.",
     "Together, we finished {expr}.", "We worked on {expr} together today.",
+  ],
+  // The honest close (#735, decision (a)): the child still only asks for help after the top hint and the easier example.
+  // It says this one is hard and stopping is fine, and names a next step. It holds no number, so no answer and no part of
+  // one. Pending Savar's approval (docs/maya-practice-lines.md, "Pending Savar, #698 fix round 2026-11-08").
+  "close.stuck": [
+    "This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up for help.",
+    "This is a tricky one. It's fine to stop for now. Try the easier one on paper, or ask a grown-up.",
+    "That was a hard one, and it's okay to stop. Next, try the easier one on paper, or ask a grown-up.",
+    "This one is tough, and stopping is okay. You could try the easier one on paper, or ask a grown-up.",
+    "It's okay to stop here. This one is hard. Try the easier one on paper, or ask a grown-up for help.",
   ],
   "repair.sorry": [
     "Oops, I said that wrong. Let me fix it.", "Sorry, I made a mistake there. Here it is again.", "Wait, I mixed that up. Let me say it again.",
@@ -886,6 +897,7 @@ export function packageLines(pkg: OperationPackage) {
     workbook: (): LineOffer[] => [offer("redirect.workbook", "redirect.workbook", {})],
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr }) : offer("close.together", "close.together", { expr })],
+    closeStuck: (): LineOffer[] => [offer("close.stuck", "close.stuck", {})],
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
     stepIds: steps.map((s) => s.id),
@@ -927,7 +939,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.repair(),
+    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeStuck(), ...l.repair(),
     ...l.together(), ...l.guess(),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];

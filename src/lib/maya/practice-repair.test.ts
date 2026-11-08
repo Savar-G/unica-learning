@@ -21,17 +21,18 @@ function call(pkg: QuestionPackage = FIXTURES.A) {
 }
 
 describe("repairs from the full subscription practice", () => {
-  it.each(["I do not know.", "Can you show me again?"])("ends the help loop after a shown step and %j", (text) => {
+  // #735, decision (a): after a shown step, help alone leads to the easier example, never to the answer.
+  it.each(["I do not know.", "Can you show me again?"])("ends the help loop after a shown step and %j with the easier example, not the answer", (text) => {
     const c = call();
     c.child("Can you show me the ones?");
     c.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
     c.child(text);
     expect(c.propose({ act: "guide", step: "ones", level: 0, parts: [line("step.invite", { step: "ones" })], reading: { help: "more" } }).refusal).not.toBeNull();
     const r = c.fallback();
-    expect(r.effects.some(e => e.kind === "say" && e.act === "give_answer")).toBe(true);
-    expect(c.s.solved).toBe("maya");
+    expect(r.effects.some(e => e.kind === "say" && e.act === "example_step")).toBe(true);
+    expect(c.s.solved).toBeNull();
     expect(c.s.done).not.toContain("ones");
-    expect(c.s.assistance).toContain("answer_given");
+    expect(c.s.assistance).not.toContain("answer_given");
   });
 
   it("keeps the highest help level when a child asks for a gentler prompt", () => {
@@ -42,7 +43,7 @@ describe("repairs from the full subscription practice", () => {
     c.ok({ act: "guide", step: "ones", level: 0, parts: [line("step.invite", { step: "ones" })] });
     expect(c.s.ladder.hint).toBe(3);
     c.child("I do not know.");
-    expect(c.fallback().effects.some(e => e.kind === "say" && e.act === "give_answer")).toBe(true);
+    expect(c.fallback().effects.some(e => e.kind === "say" && e.act === "example_step")).toBe(true);
   });
 
   it("does not replace new checked progress with an answer after H3", () => {

@@ -582,10 +582,12 @@ describe("C04: the fallback path keeps to the hint ladder", () => {
   // The child's words of C04-r1, turn by turn, with the model down on every turn.
   const C04 = ["Hi Maya! Is it 60?", "Um, is it 70?", "Is it 66?", "I think it's 66. Is it right?", "I don't know. I just guessed 66.", "Yes, 66. I just guessed it.", "Okay. I don't know what 7 plus 9 is.", "I don't know how to do that one.", "Okay, I wrote the 6. Is the 1 for the tens?", "I still don't get the 1. Is it 66?", "Yes, I said 66. I just guessed it.", "I don't know that one. I just guessed.", "I don't know what 7 plus 9 is.", "Okay, the 6 goes in the ones. What do I do next?", "Okay, I wrote the 6. I still don't get the 1, sorry.", "Okay, I wrote the 6 down. Now what do I do with the 1?", "I'm still lost, sorry. I think it's 66.", "I still don't get it. I think it's 66, I guessed.", "Yes, I guessed 66.", "I don't know. I just guessed.", "Okay, I wrote 66. I just guessed it."];
 
-  it("gives the answer only straight after H3, with no hint skipped (C04-r1)", async () => {
+  // #735, decision (a): the help request after H3 ("I don't know. I just guessed.") gets the easier example, never the answer.
+  it("gives the easier example only straight after H3, with no hint skipped and no answer (C04-r1)", async () => {
     const { told, hard } = await play("A", C04.map(down));
     expect(hard).toEqual([]);
-    const at = told.findIndex((t) => t.act === "give_answer");
+    expect(told.map((t) => t.act)).not.toContain("give_answer");
+    const at = told.findIndex((t) => t.act === "example_step");
     expect(at).toBeGreaterThan(0);
     expect(told.slice(0, at).filter((t) => t.act === "guide").at(-1)!.level).toBe(3);
   });
@@ -599,8 +601,10 @@ describe("C04: the fallback path keeps to the hint ladder", () => {
     expect(told.at(-1)!.lines).not.toContain("check.guess");
   });
 
-  it("says no question about a step in the turn that gives the answer", async () => {
-    const { told } = await play("A", C04.map(down));
+  it("says no question about a step in the turn that gives the answer (after a miss at H3)", async () => {
+    // The model reads the miss and shows the step again; that is refused, so code's fallback gives the answer.
+    const miss: Step = { child: "15.", read: { answers: [[15, "ones", "wrong"]] }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"], repair: { throws: true } }] };
+    const { told } = await play("A", [...C04.slice(0, 13).map(down), miss]);
     const given = told.find((t) => t.act === "give_answer")!;
     expect(given.lines).toEqual([]);
   });
