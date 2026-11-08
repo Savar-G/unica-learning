@@ -171,15 +171,16 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
     }
     const next = tokens[i + 1] ?? "";
     const numberNext = isNumber(next);
-    if (bigPlaceAt(tokens, i)) {
-      // "6 ten thousands", "two hundred thousands": the digits of that column, as for a one-word place below.
-      if (afterNumber || last !== null) {
-        flush();
-        const at = items.length - 1;
-        const n = items[at];
-        if (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= PLACED_MAX) placed.add(at);
-        else unreadable = true;
-      }
+    // "6 ten thousands", "2 hundred thousands", "six ten thousands": the digits of that column, as for a one-word place
+    // below. Only right after a finished number: digits, or a unit or teen word before "ten", which cannot go on with a
+    // number. "one hundred thousands" and "a hundred thousands" may mean 100000, and a place with no number before it is
+    // read as it always was.
+    if (bigPlaceAt(tokens, i) && ((afterNumber && last === null) || (token === "ten" && (last === "unit" || last === "teen")))) {
+      flush();
+      const at = items.length - 1;
+      const n = items[at];
+      if (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= PLACED_MAX) placed.add(at);
+      else unreadable = true;
       i += 1;
       continue;
     }
@@ -207,7 +208,9 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
     // "66 to the power of 2" is a form code does not read. "Carry the 1 to the tens" names a place (#605: a clear
     // carry was confirmed as if unclear): "to the" before a place or position word is a location, read as nothing.
     if (token === "to" && next === "the" && (afterNumber || last !== null)) {
-      if (!TO_THE_PLACE.test(tokens[i + 2] ?? "") && !bigPlaceAt(tokens, i + 2)) unreadable = true;
+      // "to the ten thousands" is the same location, all four words.
+      if (bigPlaceAt(tokens, i + 2)) i += 3;
+      else if (!TO_THE_PLACE.test(tokens[i + 2] ?? "")) unreadable = true;
       continue;
     }
     if (FILLER.test(token)) continue;
