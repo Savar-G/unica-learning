@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
@@ -219,6 +219,30 @@ function sumFrame(text = "36 + 47 = ?", operation: Operation = { kind: "add", op
 
 // PR A: the AI reads every two-ways item, and every one goes to our team until the method rules ship (TWO_WAYS_METHOD_MARKS).
 const teamLabel = "Our team is checking this answer.";
+describe("#726: the model call fits the caller's deadline", () => {
+  it("caps the timeout at 120 s and refuses one shorter than 20 s", () => {
+    expect(markingAiTimeout(null)).toBe(MARKING_AI_TIMEOUT_MS);
+    expect(markingAiTimeout(500_000)).toBe(120_000);
+    expect(markingAiTimeout(45_500.7)).toBe(45_500);
+    expect(markingAiTimeout(MARKING_MIN_AI_MS)).toBe(20_000);
+    expect(markingAiTimeout(MARKING_MIN_AI_MS - 1)).toBeNull();
+    expect(markingAiTimeout(-5_000)).toBeNull();
+  });
+
+  it("with too little time left makes no call and no charge, and a later run with time marks the photo", async () => {
+    const f = frame(), s = new Store(f), requests: AiJsonRequest[] = [];
+    let left = MARKING_MIN_AI_MS - 1;
+    const timed = (token: string) => runScanMarking(s, { parent: P, photo: f.photo }, token, client(output(["0", "12", "9"]), requests), () => new Date(s.clock).toISOString(), { aiTimeLeftMs: () => left });
+    expect(await timed("short")).toBe("pending");
+    expect(requests).toHaveLength(0);
+    expect(s.spend.size).toBe(0);
+    left = 60_000;
+    expect(await timed("later")).toBe("finished");
+    expect(requests).toHaveLength(1);
+    expect(s.spend.size).toBe(1);
+  });
+});
+
 describe("two-ways AI reading, marked by our team", () => {
   it("keeps the switch off, so no two-ways item is marked by code", () => {
     expect(TWO_WAYS_METHOD_MARKS).toBe(false);

@@ -15,8 +15,9 @@ const running = "22222222-2222-4222-8222-222222222222", stopped = "33333333-3333
 const photos: Record<string, string> = {
   "44444444-4444-4444-8444-444444444444": running,
   "55555555-5555-4555-8555-555555555555": stopped,
+  "77777777-7777-4777-8777-777777777777": stopped,
 };
-const [runningPhoto, stoppedPhoto] = Object.keys(photos);
+const [runningPhoto, stoppedPhoto, stoppedPhoto2] = Object.keys(photos);
 const missingPhoto = "66666666-6666-4666-8666-666666666666";
 const families = { SCAN_MARKING_ENABLED: "families" };
 
@@ -228,6 +229,14 @@ it("in one run a closed plan gets no AI call and its committed marks publish, an
   // The closed plan's photo: only the publication of committed marks ("outbox") and one profile rebuild.
   expect(state.commands[0]).toBe("outbox");
   expect(state.queries.some((q) => q.includes("/storage/"))).toBe(false);
+});
+
+it("recovery publishes each closed-plan photo's marks but rebuilds the child's profile once (P3-2)", async () => {
+  state.recovered = [[{ parent, photo: stoppedPhoto }], [{ parent, photo: stoppedPhoto2 }]];
+  const result = await recoverScanMarking(db, families, gate);
+  expect(result.results).toEqual(["off", "off"]);
+  expect(state.commands).toEqual(["outbox", "outbox"]);
+  expect(profile.calls).toBe(1);
 });
 
 it("recovery stops when the list comes back to a photo it already had", async () => {

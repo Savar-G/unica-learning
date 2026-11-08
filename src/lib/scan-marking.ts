@@ -220,8 +220,24 @@ function originalEvents(frame: MarkingFrame, observations: Observation[], at: st
   });
 }
 class AdmissionRefusal extends Error { constructor(readonly status: MarkingStatus) { super(status); } }
+/** The model call's own limit: one timeout over both attempts. */
+export const MARKING_AI_TIMEOUT_MS = 120_000;
+/** A model call starts only with at least this much time for it; else the photo waits as `pending` (#726). */
+export const MARKING_MIN_AI_MS = 20_000;
+/** The timeout of the model call, given the time the caller still has for it: at most 120 s; null when too short. */
+export function markingAiTimeout(leftMs: number | null): number | null {
+  if (leftMs === null) return MARKING_AI_TIMEOUT_MS;
+  return leftMs >= MARKING_MIN_AI_MS ? Math.min(MARKING_AI_TIMEOUT_MS, Math.floor(leftMs)) : null;
+}
+export interface MarkingRunOptions {
+  /**
+   * The time left for the model call, read just before it starts (#726). The recovery run passes the time to its
+   * database deadline, less what extract, apply and publish need after the call. Absent: 120 s.
+   */
+  aiTimeLeftMs?: () => number;
+}
 /** One bounded server job. Reload, cron and admin recovery all call this same path. */
-export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token: string, makeClient: MarkingClientFactory, now: () => string): Promise<MarkingStatus> {
+export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token: string, makeClient: MarkingClientFactory, now: () => string, options: MarkingRunOptions = {}): Promise<MarkingStatus> {
   const frame = await store.frame(ref);
   if (!frame?.ready) return frame ? "unavailable" : "terminal";
   const expected = expectedItems(frame);
@@ -250,7 +266,10 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
       model = transport.client.model;
       try {
         const image = await store.image(ref);
-        const output = await transport.client.json(request(image, local), AbortSignal.timeout(120_000));
+        // Too little time left for a whole call and its commit: no call, so no charge. A later run takes the photo.
+        const timeout = markingAiTimeout(options.aiTimeLeftMs ? options.aiTimeLeftMs() : null);
+        if (timeout === null) { await store.pause(ref, token, "pending"); return "pending"; }
+        const output = await transport.client.json(request(image, local), AbortSignal.timeout(timeout));
         // Use the complete local alias set when reading: aliases do not change when only pending items were requested.
         observations = readMarkingOutput(frame, output);
       } catch (e) {

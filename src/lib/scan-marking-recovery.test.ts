@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
-import { RECOVERY_MAX_PHOTOS, RECOVERY_START_MS, recoverScanMarking, type ChildPlanAccess } from "./scan-marking-server";
+import { RECOVERY_AFTER_AI_MS, RECOVERY_DB_LIMIT_MS, RECOVERY_MAX_PHOTOS, RECOVERY_START_MS, recoverScanMarking, type ChildPlanAccess, type ProcessMarkingOptions } from "./scan-marking-server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
@@ -171,4 +171,36 @@ it("a failed list read ends the run as unavailable", async () => {
   photos(1);
   list.failNext = true;
   await expect(recoverScanMarking(db, env, open, deps())).rejects.toThrow("marking_recovery");
+});
+
+it("gives each model call only the time left before the database deadline, from the request start (P3-1)", async () => {
+  photos(3);
+  clock.perPhoto = 13_000;
+  const left: number[] = [];
+  const timed = async (...args: [unknown, string, string, unknown, unknown, ProcessMarkingOptions?]) => {
+    left.push(args[5]!.aiTimeLeftMs!());
+    return mark(args[0], args[1], args[2]);
+  };
+  await recoverScanMarking(db, env, open, { ...deps(), startedAt: -1_000, mark: timed as never });
+  const end = RECOVERY_DB_LIMIT_MS - RECOVERY_AFTER_AI_MS - 1_000;
+  // Photos start at 0, 13 and 26 s after the clock's zero; the request started 1 s before.
+  expect(left).toEqual([end, end - 13_000, end - 26_000]);
+});
+
+it("rebuilds each child's profile once, after the run's photos (P3-2)", async () => {
+  photos(5, (i) => `family-${i % 2}`);
+  claims.sendHolds.add("family-1"); // Busy photos still name their child.
+  const order: string[] = [];
+  const childOf = (photo: string) => `child-of-${list.photos.find((p) => p.id === photo)!.parent}`;
+  const deferring = async (...args: [unknown, string, string, unknown, unknown, ProcessMarkingOptions?]) => {
+    const r = await mark(args[0], args[1], args[2]);
+    order.push(`mark:${args[2]}`); args[5]!.deferRebuild!(childOf(args[2]));
+    return r;
+  };
+  const rebuild = vi.fn(async (child: string) => { order.push(`rebuild:${child}`); if (child === "child-of-family-1") throw Error("synthetic"); });
+  const run = await recoverScanMarking(db, env, open, { ...deps(), mark: deferring as never, rebuild });
+  expect(run.results).toEqual(["finished", "busy", "finished", "busy", "finished"]);
+  expect(rebuild.mock.calls.map((c) => c[0]).sort()).toEqual(["child-of-family-0", "child-of-family-1"]);
+  // After every photo; a failed rebuild does not change the photos' results.
+  expect(order.slice(-2).every((o) => o.startsWith("rebuild:"))).toBe(true);
 });

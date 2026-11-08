@@ -27,12 +27,21 @@ export function scanMarkingServerReadiness(env: Env = process.env, now: string =
   };
 }
 
-export async function processScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess) {
+export interface ProcessMarkingOptions {
+  /** The time left for the model call (`runScanMarking`). The recovery run sets it from its database deadline. */
+  aiTimeLeftMs?: () => number;
+  /**
+   * Given: the child's profile rebuild is left to the caller, which rebuilds each child once (the recovery run, #726).
+   * Absent: the rebuild runs here, after this photo.
+   */
+  deferRebuild?: (child: string) => void;
+}
+export async function processScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess, options: ProcessMarkingOptions = {}) {
   const decision = await markingDecision(db, parent, env, { photo }, plan);
   if (!decision.open) {
     // Families mode: a closed plan stops new (paid) marking, but marks already committed still reach the child's
     // learning events and profile. No claim, image read or model call happens here.
-    if (markingMode(env) === "families" && decision.reason !== "off" && decision.reason !== "child_unknown") await publishCommitted(db, parent, photo);
+    if (markingMode(env) === "families" && decision.reason !== "off" && decision.reason !== "child_unknown") await publishCommitted(db, parent, photo, options);
     return "off";
   }
   const row = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
@@ -40,17 +49,24 @@ export async function processScanMarking(db: SupabaseClient<Database>, parent: s
   const store = scanMarkingStore(db), child = row.data.child_id;
   // Recover committed intents and profile work even after image expiry or a worker crash after application.
   await store.publish(parent, child);
-  const result = await runScanMarking(store, { parent, photo }, crypto.randomUUID(), markingAiClient(env), () => new Date().toISOString());
-  // No profile AI call is needed. This rebuild consumes the same canonical effective set as page results.
-  const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
-  if (!rebuilt.built && rebuilt.reason !== "nothing_to_build") throw new Error("marking_profile_pending");
+  const result = await runScanMarking(store, { parent, photo }, crypto.randomUUID(), markingAiClient(env), () => new Date().toISOString(),
+    { aiTimeLeftMs: options.aiTimeLeftMs });
+  await rebuildOrDefer(db, child, options);
   return result;
 }
-async function publishCommitted(db: SupabaseClient<Database>, parent: string, photo: string) {
+async function publishCommitted(db: SupabaseClient<Database>, parent: string, photo: string, options: ProcessMarkingOptions) {
   const row = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
   if (row.error || !row.data) return;
   const child = row.data.child_id;
   await scanMarkingStore(db).publish(parent, child);
+  await rebuildOrDefer(db, child, options);
+}
+async function rebuildOrDefer(db: SupabaseClient<Database>, child: string, options: ProcessMarkingOptions) {
+  if (options.deferRebuild) { options.deferRebuild(child); return; }
+  await rebuildChildNow(db, child);
+}
+// No profile AI call is needed. This rebuild consumes the same canonical effective set as page results.
+async function rebuildChildNow(db: SupabaseClient<Database>, child: string) {
   const rebuilt = await rebuildChildProfile(child, { profiles: childProfileStore(db), events: learningEventStore(db) });
   if (!rebuilt.built && rebuilt.reason !== "nothing_to_build") throw new Error("marking_profile_pending");
 }
@@ -77,15 +93,21 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
  * no photo is left.
  *
  * Numbers (2026-11-07):
- * - The route may run 180 s (`maxDuration`); its database client stops every request 170 s after the request started.
- * - The work of one photo: at most 120 s of AI (one `AbortSignal.timeout(120_000)` over both attempts in
- *   `runScanMarking`), plus the image read, the claim, the commit and the profile rebuild. Measured Sonnet calls in the
- *   marking ledger: median 2.7 s, 90th percentile 3.3 s; a whole photo takes about 8 s.
- * - Start rule: a new photo starts only while less than 40 s has passed. 40 s + 120 s of AI leaves 10 s for the rest of
- *   the photo's work before the database client stops at 170 s, and 20 s before the route's limit. At about 8 s a photo,
- *   one run marks about 5 photos (about 20 an hour from the job), and a photo that takes the whole 120 s still ends
- *   inside the call. The claim's lease (180 s) is longer than any run, so a lease a run takes can outlive the call when
- *   the function is stopped; the next run then gets `busy` for that photo and a later run takes it.
+ * - The route may run 180 s (`maxDuration`); its database client stops every request 170 s after the request started
+ *   (`RECOVERY_DB_LIMIT_MS`).
+ * - Start rule: a new photo starts only while less than 40 s has passed (`RECOVERY_START_MS`). At about 8 s a photo
+ *   (measured Sonnet calls in the marking ledger: median 2.7 s, 90th percentile 3.3 s), one run marks about 5 photos,
+ *   about 20 an hour from the job.
+ * - The model call's timeout: the time left before the database deadline less `RECOVERY_AFTER_AI_MS` (25 s for
+ *   extract, apply, publish, finish and the profile rebuilds at the end of the run), and at most 120 s
+ *   (`markingAiTimeout`). With less than 20 s left the call does not start and the photo waits as `pending`. So a
+ *   paid answer always has time to be saved before the database client stops; the image read and the claim before
+ *   the call count against the same deadline.
+ * - The claim's lease (180 s) is longer than any run, so a lease a run takes can outlive the call when the function is
+ *   stopped; the next run then gets `busy` for that photo and a later run takes it.
+ * - Profile rebuilds: each child's profile is rebuilt once, after the run's photos (a busy or closed-plan photo still
+ *   publishes its committed marks at once). A failed rebuild is retried by a later run: the list keeps every child whose
+ *   profile is behind its marks.
  * - At most 100 photos are asked for in one run (`RECOVERY_MAX_PHOTOS`), so a list of closed plans cannot keep a run
  *   going without end.
  *
@@ -97,13 +119,19 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
  *
  * Two runs at once (the job and the daily cron, or a slow run): each list call locks the cursor, so the two get
  * different photos, and when they meet the same photo the claim in `scan_marking_command` gives one lease and the other
- * run `busy`. One claim, one lease and one budget charge per photo, so no photo is marked or charged twice.
+ * run `busy`. No photo is marked twice. A rare double charge is still possible: the known lease gap, when a lease ends
+ * while its paid call is still out and another run claims the photo again.
+ *
+ * A family whose slot is busy for the whole run (Send is marking its pages) keeps its photos waiting; the run reaches
+ * them again on its next pass (#726, P3-4, left as it is).
  *
  * `test-only` follows the same rule as `families` (#726 decision): only listed test families and admins pass
  * `markingDecision`, so every other photo answers `off` at no cost, and the test families see the same drain the
  * families will see. Before #726 `test-only` took one step per run.
  */
 export const RECOVERY_START_MS = 40_000;
+export const RECOVERY_DB_LIMIT_MS = 170_000;
+export const RECOVERY_AFTER_AI_MS = 25_000;
 export const RECOVERY_MAX_PHOTOS = 100;
 export type RecoveryResult = Awaited<ReturnType<typeof processScanMarking>> | "error";
 export interface RecoveryDeps {
@@ -111,11 +139,17 @@ export interface RecoveryDeps {
   startedAt?: number;
   now?: () => number;
   mark?: typeof processScanMarking;
+  /** The profile rebuild of one child. Default: `rebuildChildProfile` with the database stores. */
+  rebuild?: (child: string) => Promise<void>;
 }
 export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess, deps: RecoveryDeps = {}) {
   if (markingMode(env) === "off") return { status: "off" };
   const now = deps.now ?? Date.now, mark = deps.mark ?? processScanMarking, startedAt = deps.startedAt ?? now();
-  const results: RecoveryResult[] = [], seen = new Set<string>();
+  const results: RecoveryResult[] = [], seen = new Set<string>(), children = new Set<string>();
+  const options: ProcessMarkingOptions = {
+    aiTimeLeftMs: () => startedAt + RECOVERY_DB_LIMIT_MS - RECOVERY_AFTER_AI_MS - now(),
+    deferRebuild: (child) => { children.add(child); },
+  };
   let restarted = false;
   while (seen.size < RECOVERY_MAX_PHOTOS && now() - startedAt < RECOVERY_START_MS) {
     const rows = await db.rpc("recover_scan_marking_oldest", { p_limit: 1 });
@@ -133,11 +167,18 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
     // The list has wrapped (this run's restart, or another run's): every photo from here on was this run's already.
     if (seen.has(ref.photo)) break;
     seen.add(ref.photo);
-    try { results.push(await mark(db, ref.parent, ref.photo, env, plan)); }
+    try { results.push(await mark(db, ref.parent, ref.photo, env, plan, options)); }
     catch { results.push("error"); }
+  }
+  // One profile rebuild per child, after its photos. A failure stays in the list for a later run.
+  let profilesPending = 0;
+  for (const child of children) {
+    try { await (deps.rebuild ?? ((c: string) => rebuildChildNow(db, c)))(child); }
+    catch { profilesPending++; }
   }
   const counts: Record<string, number> = {};
   for (const r of results) counts[r] = (counts[r] ?? 0) + 1;
+  if (profilesPending) counts.profile_pending = profilesPending;
   // Counts only: no family, child or photo id.
   console.info("[scan-marking-recovery]", JSON.stringify(counts));
   return { status: "processed", results };
