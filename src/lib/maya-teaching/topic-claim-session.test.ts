@@ -29,7 +29,7 @@ describe("the compare step of a scale or minute-hand claim (review of #741, P1a)
   });
 
   it("money (one decimal addition): the model's steps end with the compare step too", () => {
-    const s = session(deriveTopicClaim(moneyPrinted(2, 2, true))!);
+    const s = session(deriveTopicClaim(moneyPrinted(2, 3, true))!);
     expect(modelInput(s.session).question!.steps.at(-1)!.id).toBe("claim");
   });
 
@@ -52,9 +52,9 @@ describe("the compare step of a scale or minute-hand claim (review of #741, P1a)
     expect(compareEquationSaid(tf, `${a} times ${b} is ${a * b}`, a * b)).toBe(true);
     expect(compareEquationSaid(tf, `${b} times ${a} is ${a * b}`, a * b)).toBe(true);
     expect(compareEquationSaid(tf, `${a} times ${b} is ${a * b + 1}`, a * b)).toBe(false);
-    // Money's 40 + 0.5: the equation reader takes whole numbers only, so only the total alone is heard.
-    const money = session(deriveTopicClaim(moneyPrinted(2, 2, true))!).session.package as OperationPackage;
-    expect(compareEquationSaid(money, "40 plus 0.5 is 40.5", 40.5)).toBe(false);
+    // Money's 40 + 0.75: the equation reader takes whole numbers only, so only the total alone is heard.
+    const money = session(deriveTopicClaim(moneyPrinted(2, 3, true))!).session.package as OperationPackage;
+    expect(compareEquationSaid(money, "40 plus 0.75 is 40.75", 40.75)).toBe(false);
   });
 });
 
@@ -87,5 +87,68 @@ describe("a scale claim's easier example (review of #741, P2; lessons 11 and 12)
         expect(String(answer).startsWith(String(got)), id).toBe(false);
       }
     }
+  });
+});
+
+describe("a minute-hand or money claim's easier example (review of #741, P2-1; lessons 11 and 12)", () => {
+  /** Every number the example uses or works out, and every number the question prints or works out. */
+  const numbersOf = (op: { kind: string; operands: unknown[] }): { uses: number[]; got: number } => {
+    if (op.kind === "decimal-add") {
+      const [d, q] = op.operands as number[];
+      return { uses: [d, q], got: Math.round((d + q) * 100) / 100 };
+    }
+    const [a, b] = /^(\d+) × 5 \+ (\d+)$/.exec(op.operands[0] as string)!.slice(1).map(Number);
+    return { uses: [a, b, a * 5], got: a * 5 + b };
+  };
+  const printed = (text: string) => [...text.matchAll(/\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+  const close = (x: number, y: number) => Math.abs(x - y) < 1e-9;
+  const checkExample = (pkg: QuestionPackage, own: number[], answer: number, id: string) => {
+    const { uses, got } = numbersOf(pkg.easierExample!.operation as { kind: string; operands: unknown[] });
+    expect(pkg.easierExample!.answer, id).toEqual({ type: "number", value: got });
+    for (const x of [...uses, got]) {
+      expect(x, id).toBeGreaterThan(0);
+      for (const y of [...printed(pkg.text), ...own]) expect(close(x, y), `${id}: ${x} is the question's ${y}`).toBe(false);
+    }
+    for (const p of [1, 10, 100, 1000]) expect(close(got * p, answer) || close(got, answer * p), id).toBe(false);
+    expect(String(answer).replace(".", "").startsWith(String(got).replace(".", "")), id).toBe(false);
+  };
+
+  it.each([
+    [3, 7, "6 × 5 + 3"],
+    [3, 7, "7 × 5 + 2"],
+  ] as const)("the minute hand %s marks past the %s: not a number of the question (%s)", (marks, number, refused) => {
+    const made = deriveTopicClaim(minutePrinted(marks, number, true))!;
+    expect(made.easierExample!.operation).not.toEqual({ kind: "evaluate", operands: [refused] });
+  });
+
+  it("the minute hand 2 marks past the 1 is held: its only smaller example, 1 × 5 + 1, reuses the 1", () => {
+    expect(deriveTopicClaim(minutePrinted(2, 1, true))).toBeNull();
+  });
+
+  it("every minute hand the template makes gets a checked example of its shape that gives nothing away", () => {
+    let made = 0;
+    for (let number = 1; number <= 11; number++) for (let marks = 2; marks <= 4; marks++) for (const holds of [true, false]) {
+      const pkg = deriveTopicClaim(minutePrinted(marks, number, holds));
+      if (!pkg) continue;
+      made++;
+      checkExample(pkg, [marks, number, number * 5, number * 5 + marks], number * 5 + marks, `${marks} past ${number} ${holds}`);
+    }
+    expect(made).toBeGreaterThan(0);
+  });
+
+  it("a money claim with 2 quarters is held: every smaller example the package check takes reuses the 0.5", () => {
+    for (let bills = 0; bills <= 3; bills++) expect(deriveTopicClaim(moneyPrinted(bills, 2, true)), `${bills} bills`).toBeNull();
+  });
+
+  it("every money claim the template makes gets a checked example of its shape that gives nothing away", () => {
+    let made = 0;
+    for (let bills = 0; bills <= 3; bills++) for (let quarters = 0; quarters <= 3; quarters++) for (const holds of [true, false]) {
+      const pkg = deriveTopicClaim(moneyPrinted(bills, quarters, holds));
+      if (!pkg) continue;
+      made++;
+      const [d, q] = [bills * 20, quarters * 0.25];
+      checkExample(pkg, [bills, quarters, 20, d, q, d + q], d + q, `${bills} bills ${quarters} quarters ${holds}`);
+    }
+    expect(made).toBeGreaterThan(0);
   });
 });

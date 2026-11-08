@@ -15,24 +15,64 @@ import { readTopicQuestion } from "./topic-claims";
 import { claimOperation, resultOf } from "./topic-claim";
 import type { Deriver } from "./index";
 
-/**
- * Money's easier examples, best first: one $20 bill and some quarters, then smaller dollar amounts. The first the
- * package check finds smaller than the question (and the session can teach) wins.
- */
-const MONEY_EXAMPLES: Operation[] = [[20, 0.5], [20, 0.25], [20, 0.75], [10, 0.5], [2, 0.5], [2, 0.25], [1, 0.5]]
-  .map(([d, q]) => ({ kind: "decimal-add", operands: [d, q] }));
+/** Every number printed in the question's text ("$40.50" is 40.5), for the examples' refusals (lessons 11 and 12). */
+function printedNumbers(text: string): number[] {
+  return [...text.matchAll(/\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+}
 
 /**
- * The minute hand's easier examples, of its shape ("4 × 5 + 4": a number on the clock times 5, plus the marks): one
- * number less, then one mark less, then the hand 2 marks past the 1. Its numbers are single digits, so the adapter's
- * one-place-smaller examples (examples.ts) have none.
+ * True when an example would give the question away (lessons 11 and 12): one of its numbers, its step value or its
+ * result is a number the question prints or works out (`own`), or its result is the answer times a power of 10 or
+ * begins with the answer's digits (givesAway). 0 is never an example's number.
  */
-function minuteExamples(operation: Operation): Operation[] {
+function examplesGiveAway(numbers: number[], got: number, own: number[], answer: number): boolean {
+  const same = (x: number, y: number) => Math.abs(x - y) < 1e-9;
+  const tenfold = [1, 10, 100, 1000, 10000].some((p) => same(got * p, answer) || same(got, answer * p));
+  return [...numbers, got].some((x) => x <= 0 || own.some((y) => same(x, y))) || tenfold ||
+    givesAway({ type: "number", value: answer }, { type: "number", value: got });
+}
+
+/**
+ * Money's easier examples, of its shape (some dollars plus some quarters, as a decimal addition), best first, made by
+ * code and refused when they reuse a number of the question (review of #741, P2-1): the bill and quarter counts, the
+ * $20, the shown amount, the bills' and the quarters' sums, or the answer (examplesGiveAway). The package check then
+ * takes the first that is smaller than the question.
+ */
+export function moneyExamples(operation: Operation, printed: number[]): Operation[] {
+  if (operation.kind !== "decimal-add") return [];
+  const [d, q] = operation.operands as number[];
+  const answer = d + q;
+  const own = [...printed, d, q, answer];
+  const out: Operation[] = [];
+  // Fewer digits first (every amount is written to the cent, so $5.75 is easier than $40.50 and $10.75 is not).
+  for (const dollars of [5, 4, 3, 2, 1, 10, 30, 50]) for (const quarters of [0.5, 0.75, 0.25]) {
+    const got = Math.round((dollars + quarters) * 100) / 100;
+    if (examplesGiveAway([dollars, quarters], got, own, answer)) continue;
+    out.push({ kind: "decimal-add", operands: [dollars, quarters] });
+  }
+  return out;
+}
+
+/**
+ * The minute hand's easier examples, of its shape ("4 × 5 + 3": a number on the clock times 5, plus the marks past it),
+ * best first: a smaller number on the clock, then a larger one, each with 1 to 4 marks. Refused when the example reuses
+ * a number of the question (review of #741, P2-1): the marks, the number, the shown minutes, the number times 5 or the
+ * answer, as its own numbers, its step value (times 5) or its result (examplesGiveAway). Its single digits leave the
+ * adapter's one-place-smaller examples (examples.ts) none.
+ */
+export function minuteExamples(operation: Operation, printed: number[]): Operation[] {
   const m = /^(\d+) × 5 \+ (\d+)$/.exec(operation.kind === "evaluate" ? operation.operands[0] : "");
   if (!m) return [];
   const [k, x] = [Number(m[1]), Number(m[2])];
-  return [[k - 1, x], [k, x - 1], [1, 2]].filter(([a, b]) => a >= 1 && b >= 1 && (a !== k || b !== x))
-    .map(([a, b]) => ({ kind: "evaluate", operands: [`${a} × 5 + ${b}`] }) as Operation);
+  const answer = k * 5 + x;
+  const own = [...printed, k, x, k * 5, answer];
+  const numbers = [...Array.from({ length: k - 1 }, (_, i) => k - 1 - i), ...Array.from({ length: Math.max(0, 11 - k) }, (_, i) => k + 1 + i)];
+  const out: Operation[] = [];
+  for (const a of numbers) for (const b of [1, 2, 3, 4]) {
+    if (examplesGiveAway([a, b, a * 5], a * 5 + b, own, answer)) continue;
+    out.push({ kind: "evaluate", operands: [`${a} × 5 + ${b}`] });
+  }
+  return out;
 }
 
 /**
@@ -73,7 +113,8 @@ export function deriveTopicClaim(printed: QuestionPackage): QuestionPackage | nu
   // The money operation must give what code's evaluate of the bills and quarters gives.
   if (reading.topic === "money" && !sameValue(operationResult(reading.work), { type: "number", value })) return null;
   const answer = { type: "number" as const, value };
-  const examples = reading.topic === "money" ? MONEY_EXAMPLES : reading.topic === "scale" ? scaleExamples(operation) : minuteExamples(operation);
+  const printedNow = printedNumbers(printed.text);
+  const examples = reading.topic === "money" ? moneyExamples(operation, printedNow) : reading.topic === "scale" ? scaleExamples(operation) : minuteExamples(operation, printedNow);
   for (const example of examples) {
     const made = withTeachingOperation(printed, operation, answer, { source: TEACHING_SOURCE, limits: MAYA_TEACHING_LIMITS, examples: [example] });
     if (made && heldReason(made) === null) return made;

@@ -458,9 +458,9 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"], never: ["redirect"] },
   },
   {
-    id: "OTC5", title: "Money claim in the child's own words ('It's true, because 40 plus 0.50 is 40.50.'): accepted (J06)", fixture: "MONEY", status: "passing",
+    id: "OTC5", title: "Money claim in the child's own words ('It's true, because 40 plus 0.75 is 40.75.'): accepted (J06)", fixture: "MONEY", status: "passing",
     steps: [
-      child("It's true, because 40 plus 0.50 is 40.50.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("It's true, because 40 plus 0.75 is 40.75.", { start: "has_work" }, [{ act: "accept_answer" }]),
       child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
       child("I circled it.", { paper: "written" }),
     ],

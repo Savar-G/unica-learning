@@ -186,10 +186,11 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   DIE12: deriveDieCount(diePrinted(12, "odd"))!,
   SHAPES_LONG: deriveSymmetry(symmetryPrinted(1, 2))!,
   // C3b: other-topic claims taught through A4's claim session. SCALE: "A scale's marks are 50, 60, 70. True or false: 2
-  // intervals above 60 is 80." (60 + 2 × 10, an evaluate); MONEY: "True or false: 2 $20 bills and 2 quarters is
-  // $40.50." (40 + 0.5); MINUTE: "True or false: the minute hand 3 marks past the 7 shows 38 minutes." (7 × 5 + 3).
+  // intervals above 60 is 80." (60 + 2 × 10, an evaluate); MONEY: "True or false: 2 $20 bills and 3 quarters is
+  // $40.75." (40 + 0.75; 2 quarters are held, review of #741 P2-1); MINUTE: "True or false: the minute hand 3 marks
+  // past the 7 shows 38 minutes." (7 × 5 + 3).
   SCALE: deriveTopicClaim(scalePrinted(10, 60, 2, true))!,
-  MONEY: deriveTopicClaim(moneyPrinted(2, 2, true))!,
+  MONEY: deriveTopicClaim(moneyPrinted(2, 3, true))!,
   MINUTE: deriveTopicClaim(minutePrinted(3, 7, true))!,
   // "Is 777 × 7 greater than 4662?": the longest spoken claim shape, for the 25-word turns (#737 review P2).
   CLAIM_WIDE: claimFixture(CLAIM_WIDE),

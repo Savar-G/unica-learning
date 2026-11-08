@@ -189,7 +189,7 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | OTC2 | SCALE | passing | The claim and its reason in the child's own words at the opening: accepted, not taught again (J06) | solved, independent | |
 | OTC3 | SCALE | passing | "Why is each interval 10?": the topic sentence with the claim's question line (J06), then solved | solved | |
 | OTC4 | SCALE | passing | Grade 3, hello-only opening, "I'm stuck.": the first guide says the topic sentence, then solved | solved | |
-| OTC5 | MONEY | passing | Money claim (40 + 0.5 = 40.5 against $40.50) in the child's own words: accepted (J06) | solved, independent | |
+| OTC5 | MONEY | passing | Money claim (40 + 0.75 = 40.75 against $40.75) in the child's own words: accepted (J06) | solved, independent | |
 | OTC6 | MINUTE | passing | Minute-hand claim (7 × 5 + 3 = 38 against 38) in a full sentence: accepted (J06) | solved, independent | |
 | OTC7 | SCALE | passing | "60 plus 20 is 80." read by the model as part 2, not the compare: code hears the compare (review of #741, P1a), and Maya asks for the word, not 60 + 20 again (J06) | solved, independent | |
 | OTC8 | MINUTE | passing | "35 plus 3 is 38." read by the model as the ones of part 2: code hears the compare, and Maya asks for the word (J06) | solved, independent | |
