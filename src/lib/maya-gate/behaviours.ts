@@ -9,6 +9,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
+import { MISSING_NUMBER_BEHAVIOURS } from "./missing-number-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
 const child = (text: string, read?: Read, maya?: Plan[]): Step => ({ child: text, ...(read ? { read } : {}), ...(maya ? { maya } : {}) });
@@ -2040,6 +2041,7 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   ...ONE_STEP_BEHAVIOURS,
+  ...MISSING_NUMBER_BEHAVIOURS,
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */

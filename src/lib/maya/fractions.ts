@@ -18,6 +18,8 @@ const EQUAL_FORM_KINDS: readonly OperationKind[] = ["fraction-add", "fraction-su
 export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   "add-column", "subtract-column", "multiply-digit", "partial-product", "place-point", "divide-digit",
   "common-denominator", "combine-numerators", "simplify", "to-mixed", "result",
+  // Missing numbers (missing-number.ts): the framing and zeros steps Maya says, and the try step the child does.
+  "missing-frame", "drop-zeros", "try-factor",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */
@@ -28,9 +30,11 @@ export const untaughtSteps = (pkg: OperationPackage): string[] =>
  * The worked steps Maya teaches for this question, without the result (#407). A whole-number or decimal question: every
  * step. A fraction question leaves out the mixed number (11/8 is already a right answer, the package's rules take any
  * simplest form) and, unless the question asks for the simplest form, the simplifying (2/4 is right then, research C38).
+ * A missing number leaves out its framing and zeros steps, which Maya says herself (missing-number.ts).
  */
 export const teachSteps = (pkg: OperationPackage): WorkedStep[] =>
-  pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "to-mixed" && (s.kind !== "simplify" || asksSimplest(pkg)));
+  pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "to-mixed" && s.kind !== "missing-frame" && s.kind !== "drop-zeros"
+    && (s.kind !== "simplify" || asksSimplest(pkg)));
 
 /** The question is a fraction question. */
 export const isFractionQuestion = (pkg: OperationPackage) => FRACTION_KINDS.includes(pkg.operation.kind);
