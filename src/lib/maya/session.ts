@@ -48,6 +48,9 @@ import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, 
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { isPlaceValue, placeAutoDraw, placeBoardOffers, WHY_KEYS } from "./place-value-lines";
 import { asksPlace, placeStepHeard } from "./place-value-turns";
+import { partsStepHeard, partsStepTotal } from "./place-value-parts-turns";
+import { partsChartFits } from "./place-value-parts-lines";
+import { isPartsOperation } from "@/lib/question-package-place-parts";
 import { claimActs, claimAnswers, claimConfirm, claimRead, claimResultDone, claimReveals, claimSaid, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -605,6 +608,10 @@ function stepAnswers(step: WorkedStep): AnswerValue[] {
       return [fraction(step.to)];
     case "read-digit":
       return [number(step.digit)];
+    // B1b: the bigger digit, and a digit's value (place-value-parts-turns.ts).
+    case "bigger":
+    case "place-worth":
+      return [number(partsStepTotal(step))];
     // A claim's compare step (claim.ts): the result the child puts together.
     case "claim-compare":
       return [number(step.value)];
@@ -802,6 +809,11 @@ function asksForHelp(text: string): boolean {
 function asksWhy(text: string): boolean {
   return /^\s*why\W*$/i.test(text) || /\b(?:why|where|what|how)\b[^.!\n]*\b(?:carry|carried|regroup\w*|trad\w*|ten|10|one|1)\b/i.test(text);
 }
+/** After H3 on a work step, the child's turn only says back the step Maya showed (no credit, #698): still stuck (B1b). */
+function copiesShown(s: Session): boolean {
+  const st = s.package ? workSteps(s.package).find((x) => x.id === s.ladder.step) : undefined;
+  return !!st && s.turn !== null && valuesIn(s.turn.text, readOptionsFor(s.package)).some((v) => stepAnswers(st).some((a) => equivalent(a, v)));
+}
 /** The child asks why (asksWhy), or, on a place-value question, which place is which (asksPlace, J06). */
 const asksWhyIn = (s: Session): boolean => s.turn !== null && (asksWhy(s.turn.text) || (isPlaceValue(s.package) && asksPlace(s.turn.text)));
 
@@ -886,7 +898,8 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
     reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
   // Place value has no given answer (parent lane, 2026-11-07): a child still stuck gets the easier example, then an honest close.
-  if (isPlaceValue(s.package) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.step !== "result" && s.ladder.hint >= 3 && needsMore) ||
+  // The top help is H3 on a work step and H2 on the last step, which has no H3 (lesson 7: every ladder has a way out).
+  if (isPlaceValue(s.package) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= (s.ladder.step === "result" ? 2 : 3) && (needsMore || copiesShown(s))) ||
       (misses >= 2 && FINAL_GIVE_STATES.includes(main)))) {
     return s.exampleShown < steps
       ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child is still stuck: show the easier example, step by step (example_step). There is no given answer for place value." }
@@ -1857,7 +1870,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "read-digit") && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "read-digit" || at.kind === "bigger" || at.kind === "place-worth") && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
@@ -2101,6 +2114,11 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
     return workSteps(pkg).find((st) => !s.done.includes(st.id))?.id === step.id &&
       placeStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, step, value, copy: s.ladder.step === step.id && s.ladder.hint >= 3, asked: s.stepAsked ?? null });
   }
+  // B1b's bigger and place-worth steps: the same rules, their own templates (place-value-parts-turns.ts).
+  if (pkg && s.turn && (step.kind === "bigger" || step.kind === "place-worth")) {
+    return workSteps(pkg).find((st) => !s.done.includes(st.id))?.id === step.id &&
+      partsStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, step, value, copy: s.ladder.step === step.id && s.ladder.hint >= 3, asked: s.stepAsked ?? null });
+  }
   if (!pkg || !s.turn || step.kind !== "add-column") return false;
   // A turn code could not hear for sure is no step credit: it gets its confirm first.
   const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
@@ -2160,11 +2178,12 @@ const rightFinalIn = (s: Session) => {
 };
 
 /** The first step not done, when it is a column of an addition or a place-value digit (its total is the digit). */
-function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" | "read-digit" }> | null {
+function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" | "read-digit" | "bigger" | "place-worth" }> | null {
   const st = s.package ? workSteps(s.package).find((x) => !s.done.includes(x.id)) : undefined;
-  return st?.kind === "add-column" || st?.kind === "read-digit" ? st : null;
+  return st?.kind === "add-column" || st?.kind === "read-digit" || st?.kind === "bigger" || st?.kind === "place-worth" ? st : null;
 }
-const totalOf = (st: Extract<WorkedStep, { kind: "add-column" | "read-digit" }>) => (st.kind === "add-column" ? st.total : st.digit);
+const totalOf = (st: Extract<WorkedStep, { kind: "add-column" | "read-digit" | "bigger" | "place-worth" }>) =>
+  (st.kind === "add-column" ? st.total : st.kind === "read-digit" ? st.digit : partsStepTotal(st));
 
 /**
  * The only turn Maya may ask a step's confirm about, and the number she asks: exactly one number, which is the column's full
@@ -2523,7 +2542,7 @@ function boardRoles(s: Session, role: Problem, board: unknown[]): Record<string,
     const c = raw as Record<string, unknown>;
     if ((c.op === "columns" || c.op === "write" || c.op === "model" || c.op === "place_chart") && typeof c.id === "string") {
       // A place-value chart shows this turn's problem's own number.
-      if (c.op === "place_chart" && !(operation.kind === "place-value" && c.number === String(operation.operands[0]))) return `The board shows ${name} now.`;
+      if (c.op === "place_chart" && !(operation.kind === "place-value" && (isPartsOperation(operation) ? partsChartFits(c, operation) : c.number === String(operation.operands[0])))) return `The board shows ${name} now.`;
       if (c.op === "columns") {
         const operands = Array.isArray(c.operands) ? c.operands.map((o) => (isObject(o) ? Number(o.value) : NaN)) : [];
         const want = operandsOf(operation);
@@ -3158,6 +3177,8 @@ function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoke
       }
       continue;
     }
+    // A place-value compare's circled word (B1b), in the turn Maya's answer line says it back.
+    if (pkg.answer.value.type === "choice" && isPlaceValue(pkg) && t === pkg.answer.value.value && spoken.chosen.some((o) => o.line === "answer.right")) continue;
     const values = valuesIn(t);
     if (values.length === 0 || /\p{L}/u.test(t.replace(/\bR\b/g, ""))) return { code: "wrong_math", reason: `Code cannot read "${t}" as a number to show on the board.` };
     const off = values.find((x) => !allowed.some((a) => equivalent(a, x)));

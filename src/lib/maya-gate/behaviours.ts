@@ -9,6 +9,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
 import { PLACE_VALUE_BEHAVIOURS } from "./place-value-cases";
+import { PLACE_PARTS_BEHAVIOURS } from "./place-value-parts-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
 const child = (text: string, read?: Read, maya?: Plan[]): Step => ({ child: text, ...(read ? { read } : {}), ...(maya ? { maya } : {}) });
@@ -2040,6 +2041,7 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   ...PLACE_VALUE_BEHAVIOURS,
+  ...PLACE_PARTS_BEHAVIOURS,
 
   // Claim questions (A4, src/lib/maya/claim.ts): the circled word is the final answer, read by code.
   {

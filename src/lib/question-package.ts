@@ -157,7 +157,10 @@ export type Operation =
   | { kind: "evaluate"; operands: [string]; values?: Record<string, number> }
   | { kind: "solve"; operands: [string] }
   /** Place value (Maya's session adapter only, never stored): the digit in a place of a whole number, or its value. */
-  | { kind: "place-value"; operands: [number]; ask: "digit" | "value"; place: Place };
+  | { kind: "place-value"; operands: [number]; ask: "digit" | "value"; place: Place }
+  /** B1b (question-package-place-parts.ts): two digits compared, two digits' values added, or wholes and tenths as a decimal. */
+  | { kind: "place-value"; operands: [number]; ask: "compare" | "sum"; place: Place; second: Place }
+  | { kind: "place-value"; operands: [number, number]; ask: "build"; place: "tenths" };
 
 /** One operation shape for each kind, so a kind picks its shape. */
 type KindsOf<K extends string, O> = K extends string ? { kind: K; operands: O } : never;
@@ -341,6 +344,9 @@ export type WorkedStep =
     }
   /** The digit in one place of a place-value number (question-package-place-value.ts); `worth` is that place's value. */
   | { id: string; kind: "read-digit"; place: Place; digit: number; worth: number }
+  /** B1b: which of two digits is bigger (they differ), and one digit's value in its place (question-package-place-parts.ts). */
+  | { id: "bigger"; kind: "bigger"; a: number; b: number; bigger: number }
+  | { id: string; kind: "place-worth"; place: Place; digit: number; worth: number; value: number }
   | {
       /**
        * A printed claim checked against its computed side (Maya only, src/lib/maya/claim.ts; never a stored step of an
@@ -861,7 +867,9 @@ function size(operation: Operation): Size {
   // A missing part is counted on from the part to the total: its size is the count and the total (9 + ? = 10 counts
   // 1 to 10, so it is easier than 7 + ? = 10, which counts 3).
   const numbers = operation.kind === "missing-addend" ? [operation.operands[1] - operation.operands[0], operation.operands[1]].sort((x, y) => x - y)
-    : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
+    : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y)
+      // A place-value build (Maya's adapter only, never stored): its wholes and tenths, as for whole numbers.
+      : operation.kind === "place-value" && operation.ask === "build" ? [...operation.operands].sort((x, y) => x - y) : null;
   const expression = operation.kind === "evaluate" || operation.kind === "solve" ? operation.operands[0] : null;
   const literals = expression ? operationText(operation).match(/\d+(?:\.\d+)?/g)?.map(Number).sort((a, b) => a - b) ?? null : null;
   return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length,

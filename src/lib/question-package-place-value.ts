@@ -7,6 +7,7 @@
 import type { AnswerValue, Place, WorkedStep } from "@/lib/question-package";
 import type { KindRules, Of } from "@/lib/question-package-math";
 import { fail, isOne, type Fields, type OperationProblem } from "@/lib/question-package-columns";
+import { isPartsOperation, partsOpeningText } from "@/lib/question-package-place-parts";
 
 /** The whole-number places, lowest first: index k is worth 10 ** k. */
 export const WHOLE_PLACES: readonly Place[] = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands", "millions"];
@@ -68,6 +69,8 @@ export const readDigitText = (step: Extract<WorkedStep, { kind: "read-digit" }>)
  * times the place. A child who says one of these is working on this question, never on another problem.
  */
 export function placeRelations(op: Of<"place-value">): [number, number][] {
+  // B1b's asks have their own (partsRelations in question-package-place-parts.ts).
+  if (isPartsOperation(op)) return [];
   const n = op.operands[0];
   const k = placeIndex(op.place);
   const digit = digitAt(n, k);
@@ -79,4 +82,5 @@ export function placeRelations(op: Of<"place-value">): [number, number][] {
 }
 
 /** What is asked, without the number, for Maya's fixed opening (it fits a grade 3 turn): "the value of the tens digit". */
-export const placeOpeningText = (op: Of<"place-value">): string => `${op.ask === "value" ? "the value of " : ""}the ${op.place} digit`;
+export const placeOpeningText = (op: Of<"place-value">): string =>
+  (isPartsOperation(op) ? partsOpeningText(op) : `${op.ask === "value" ? "the value of " : ""}the ${op.place} digit`);

@@ -13,6 +13,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 |---|---|
 | `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). |
 | `src/lib/maya-gate/place-value-cases.ts` | Fixtures PVD, PVD0, PVV and PVV0: teaching packages the place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored place-value questions, and their behaviours (PV01 to PVJ2b), added to `FIXTURES` and `BEHAVIOURS`. |
+| `src/lib/maya-gate/place-value-parts-cases.ts` | B1b's fixtures PVC, PVC0, PVCZ, PVSUM and PVB (compare, sum, tenths build) and their behaviours (PVC01 to PVBJ1). |
 | `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
@@ -329,6 +330,8 @@ A claim question ("True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436?
 
 Fixtures PVD, PVD0, PVV and PVV0 (`src/lib/maya-gate/place-value-cases.ts`) are the teaching packages Maya's place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored "which digit" and "value of the digit" questions. A digit question's chart has no digits on it; its H2 stripes the asked column, and it has no H3. A zero is said only after the child says it. Two misses on the last step get the easier example, then an honest close: there is no given answer for place value. The J06 cases show an early correct digit acknowledged, and a question about a place or a "why" answered, by the model and by code's fallback. Every first line on a step carries its framing (where the place is, or what each of it is worth), and a line that says Maya drew the chart, a stripe or a circle comes with that drawing, at any hint level (PV15 to PV17). Full-sentence work ("8 times 10,000 is 80,000.") is this question's work for the scope check (PVS1 to PVS4).
 
+Fixtures PVC, PVC0, PVCZ, PVSUM and PVB (`src/lib/maya-gate/place-value-parts-cases.ts`, B1b) are the teaching packages B1b's adapter (`src/lib/maya-teaching/place-value-parts.ts`) makes from synthetic stored compare ("True or false: the digit in the thousands place is bigger than the digit in the hundreds place."), sum ("the value of the thousands digit plus the value of the tens digit") and tenths build ("5 wholes and 8 tenths is ? as a decimal.") questions. A compare's circled word is read only by A4's word reader (`claim.ts`, through `place-value-claim.ts`): a bare word after the statement's own question is said back first, and a bare word after any other question is no answer. A compare never stripes or circles a column before the word stands; with the word, code writes both digits, stripes both columns and writes "8 > 4". No step credit comes from a hedged, questioning, other-speaker or copied turn, and a copy after H3 counts as still stuck. A child who only asks for help reaches the easier example, then the honest close. The J06 cases show an early step in the child's own words acknowledged, and a question about the step answered first.
+
 | Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
 |---|---|---|---|---|---|
 | PV01 | PVD | passing | Which digit: says the right digit alone; accepted with no hint, the chart's digit and answer written in that turn | solved, independent | |
@@ -355,6 +358,29 @@ Fixtures PVD, PVD0, PVV and PVV0 (`src/lib/maya-gate/place-value-cases.ts`) are 
 | PVS4 | PVD | passing | Which digit: '3 times 1000 is 3000.' is this question's work; Maya says that is the value and asks for the digit | solved | |
 | PVJ3 | PVV | passing | J06, value: 'Why do I multiply by 10,000?' gets code's answer, then the child says the value | solved, independent | |
 | PVJ3b | PVV | passing | J06, value: the model fails on 'Why do I multiply?'; code's fallback answers it first | solved | |
+| PVC01 | PVC | passing | Compare: 'It's true.' at once; accepted, and the board stripes both columns and writes 8 > 4 (screen c) | solved | |
+| PVC02 | PVC | passing | Compare: each digit, then the bigger one, then the committed word; every step credited from its whole turn | solved, independent | |
+| PVC03 | PVC0 | passing | Compare, the same digits: no bigger step; after both digits Maya asks the statement, and 'It's false.' stands | solved, independent | |
+| PVC04 | PVC | passing | Compare: a bare 'True.' after the statement's own question is said back first; the child's plain yes commits it | solved | |
+| PVC05 | PVC | passing | Compare: a bare 'True.' after Maya's digit question is no claim answer and is not said back; the step goes on | script ends mid-call | |
+| PVC06 | PVC | passing | Compare: 'Maybe 8.', 'Is it 8?' and 'My mom said 8.' give the digit step no credit; '8' does | script ends mid-call | |
+| PVC07 | PVC | passing | Compare: after H3 shows the thousands digit, the child's '8' copies it and gets no step credit | script ends mid-call | |
+| PVC08 | PVC | passing | Compare: 'I'm stuck.' four times on the last step; the easier example, then an honest close, never the word | script ends mid-call | |
+| PVCJ1 | PVC | passing | J06, compare: 'The thousands digit is 8.' first; acknowledged, and Maya goes on to the hundreds digit | script ends mid-call | |
+| PVCJ2 | PVC | passing | J06, compare: 'Which one is the hundreds place?' on the hundreds step gets code's answer first | script ends mid-call | |
+| PVCJ3 | PVC | passing | J06, compare: 'Why is 8 bigger?' on the bigger step gets code's answer first, never the digit | script ends mid-call | |
+| PVC09 | PVCZ | passing | Compare, grade 3: 'I'm stuck.' first; code's first line says where the place is, within 25 words | script ends mid-call | |
+| PVC10 | PVCZ | passing | Compare, a 0 digit: the child says 0 for the hundreds; credited with the zero line, and 'It's true.' stands | solved | |
+| PVS01 | PVSUM | passing | Sum: each value, then the two added; the values written on the chart as the child says them | solved, independent | |
+| PVS02 | PVSUM | passing | Sum: '7 times 1000 is 7000.' in a full sentence is this step's work; credited, never another problem | solved | |
+| PVS03 | PVSUM | passing | Sum: the two digits added (11); Maya says that adds the digits and asks for the values | solved | |
+| PVS04 | PVSUM | passing | Sum: 'I'm stuck.' four times on the last step; the easier example, then an honest close, never the sum | script ends mid-call | |
+| PVSJ1 | PVSUM | passing | J06, sum: 'Why do I add them?' on the last step gets code's answer first | solved | |
+| PVSJ2 | PVSUM | passing | J06, sum: 'It's worth 7000.' first, in the child's own words; acknowledged, and Maya goes on to the tens | script ends mid-call | |
+| PVB01 | PVB | passing | Build: 'five point eight' is accepted; the board writes the digits and 5.8 in that turn | solved | |
+| PVB02 | PVB | passing | Build: '58' leaves out the point; Maya says so, then the child says 5.8 | solved | |
+| PVB03 | PVB | passing | Build: 'I'm stuck.' four times; H0 to H2, the easier example, then an honest close, never the decimal | script ends mid-call | |
+| PVBJ1 | PVB | passing | J06, build, grade 3: 'Why does the point go there?' gets code's answer first, within 25 words | solved | |
 
 ## Pending
 

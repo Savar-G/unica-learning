@@ -13,6 +13,9 @@ import { placeIndex, withCommas, WHOLE_PLACES } from "@/lib/question-package-pla
 import type { Command, Place as BoardPlace } from "@/lib/board";
 import type { LineId, LineOffer, PackageLines, Slots } from "./lines";
 import { valuesIn } from "./numbers";
+import { PARTS_BAND_KEYS, PARTS_CHART_KEYS, PARTS_CIRCLE_KEYS, PARTS_WHY_KEYS, PLACE_PARTS_TEMPLATES } from "./place-value-parts-templates";
+import { placePartsBoardOffers, placePartsLines } from "./place-value-parts-lines";
+import { isPartsOperation, type PartsOperation } from "@/lib/question-package-place-parts";
 
 export const PLACE_VALUE_TEMPLATES = {
   // The chart is drawn (said with question.problem's lines). The digit question's chart has no digits on it.
@@ -198,6 +201,8 @@ export const PLACE_VALUE_TEMPLATES = {
     "Let's leave this question for now. You can try it again with a grown-up.", "That's enough for this question today. Try it again later.",
     "Thanks for working on this. We can try it again another day.",
   ],
+  // B1b: compare, sum and tenths build (place-value-parts-templates.ts).
+  ...PLACE_PARTS_TEMPLATES,
 } as const satisfies Record<string, readonly string[]>;
 export type PlaceValueTemplateKey = keyof typeof PLACE_VALUE_TEMPLATES;
 
@@ -233,8 +238,8 @@ function factsOf(op: PlaceOperation) {
 }
 
 /** Which board mark a place-value line asks for this turn: the stripe on the asked column, or a circle on its digit. */
-export const BAND_KEYS: readonly string[] = ["operation.place", "point.place.band"];
-export const CIRCLE_KEYS: readonly string[] = ["operation.place.circle", "show.digit"];
+export const BAND_KEYS: readonly string[] = ["operation.place", "point.place.band", ...PARTS_BAND_KEYS];
+export const CIRCLE_KEYS: readonly string[] = ["operation.place.circle", "show.digit", ...PARTS_CIRCLE_KEYS];
 
 /**
  * The lines of a place-value package, with the shape of packageLines (lines.ts). The lines with no place-value meaning
@@ -289,7 +294,7 @@ export function placeValueLines(pkg: OperationPackage & { operation: PlaceOperat
       ...(f.digit === 0 ? [] : [offer("step.show", "show.digit", { show: `The digit in the ${op.place} place is ${f.digit}.` }, { slots, level: 3 })]),
     ];
   };
-  return {
+  const lines: PackageLines = {
     ...base,
     question: () => safe(base.question()),
     assess: () => safe(base.assess()),
@@ -336,11 +341,13 @@ export function placeValueLines(pkg: OperationPackage & { operation: PlaceOperat
     closeUnsolved: () => [offer("close.together", "close.later", {})],
     stepIds: digitStep ? [digitStep.id] : [],
   };
+  // B1b's asks (compare, sum, build) change the lines whose meaning differs (place-value-parts-lines.ts).
+  return isPartsOperation(op) ? placePartsLines(pkg as OperationPackage & { operation: PartsOperation }, lines, base, offer) : lines;
 }
 
 /** The lines whose words say Maya drew something: the chart, the stripe or the circle. */
-const CHART_KEYS: readonly string[] = ["chart.open", "chart.open.blank"];
-export const WHY_KEYS: readonly string[] = ["where.place", "why.value", "why.value.one", "why.value.zero"];
+const CHART_KEYS: readonly string[] = ["chart.open", "chart.open.blank", ...PARTS_CHART_KEYS];
+export const WHY_KEYS: readonly string[] = ["where.place", "why.value", "why.value.one", "why.value.zero", ...PARTS_WHY_KEYS];
 
 /**
  * The board offers code draws itself in a turn whose line says Maya drew something (framing at any hint level): the
@@ -379,6 +386,8 @@ export function placeBoardOffers(input: {
   exampleShown: number;
 }): PlaceBoardOffer[] {
   const { pkg, act, roles, chosen } = input;
+  // B1b's asks have their own chart and marks (place-value-parts-lines.ts).
+  if (isPartsOperation(pkg.operation)) return placePartsBoardOffers({ ...input, pkg: pkg as OperationPackage & { operation: PartsOperation } });
   const out: PlaceBoardOffer[] = [];
   const has = (id: string) => Object.hasOwn(roles, id);
   const said = (keys: readonly string[]) => chosen.some((o) => keys.includes(o.key));

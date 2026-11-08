@@ -4,6 +4,7 @@ import { BC_SKILL_MAP } from "@/lib/assessment";
 import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
 import { completeExpression, readNumbers } from "./numbers";
 import { placeRelations } from "@/lib/question-package-place-value";
+import { isPartsOperation, partsRelations } from "@/lib/question-package-place-parts";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
@@ -64,6 +65,8 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
     if (op && operands.length === p.operation.operands.length) add(op, operands);
     // Place value (B1a): the digit times its place, and code's wrong-answer work, as the child says it.
     if (p.operation.kind === "place-value") for (const [d, worth] of placeRelations(p.operation)) add("multiply", [num(d), num(worth)]);
+    // B1b: a sum's two values and their multiplications.
+    if (p.operation.kind === "place-value" && isPartsOperation(p.operation)) for (const r of partsRelations(p.operation)) add(r.op, r.operands.map(num));
     const placeTerms = operands.flatMap(v => {
       if (v.type !== "number" || v.value < 0) return [];
       const [whole, fraction = ""] = String(v.value).split(".");

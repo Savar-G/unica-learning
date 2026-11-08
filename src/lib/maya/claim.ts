@@ -17,6 +17,7 @@ import { claimExample, claimStep, readClaim, type Claim } from "@/lib/maya-teach
 import type { Act, ChildAnswer } from "./proposal";
 import type { AnswerRead } from "./numbers";
 import type { LineId, LineOffer, Slots } from "./lines";
+import { placeClaim } from "./place-value-claim";
 
 /** The claim as a session holds it: read again from the teaching package's steps and item. */
 export interface SessionClaim {
@@ -35,6 +36,8 @@ const choice = (value: string): AnswerValue => ({ type: "choice", value });
 /** The session's claim: its compare step, its answer word and the item's two printed words; null for any other package. */
 export function sessionClaim(pkg: OperationPackage | null): SessionClaim | null {
   if (!pkg) return null;
+  // B1b: a place-value compare is a claim about two digits (place-value-claim.ts); its word is read here as any claim's.
+  if (pkg.operation.kind === "place-value") return placeClaim(pkg);
   const step = pkg.steps.find((s): s is ClaimStep => s.kind === "claim-compare");
   const region = pkg.item?.regions.find((r) => r.kind === "choice");
   if (!step || region?.kind !== "choice" || region.choices.length !== 2 || pkg.answer.value.type !== "choice") return null;
@@ -57,7 +60,8 @@ const isClaimItem = (pkg: OperationPackage) => pkg.item?.format === "circle" && 
  * taught as it is); a held reason for one code cannot read and check as a claim (fail closed: never taught as a number).
  */
 export function claimSessionPackage(pkg: OperationPackage): { pkg: OperationPackage } | { held: string } | null {
-  if (!isClaimItem(pkg)) return null;
+  // A package that is already a session claim (a place-value compare, B1b) is taught as it is.
+  if (!isClaimItem(pkg) || sessionClaim(pkg)) return null;
   const held = { held: "Maya cannot teach this circle question yet" };
   const claim = readClaim(pkg, pkg.operation);
   if (!claim || !equivalent(pkg.answer.value, { type: "number", value: claim.value })) return held;
