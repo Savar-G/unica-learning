@@ -7,7 +7,7 @@ const f = vi.hoisted(() => ({ dashboard: null as unknown, manage: false, closed:
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => f.dashboard }));
 vi.mock("@/lib/parent-dashboard-access", () => ({ planManagementAccess: async () => f.manage }));
 vi.mock("@/components/plan-closed-note", () => ({ planClosedFamily: async () => f.closed, PlanClosedNote: ({ on }: { on: string }) => `Your plan is closed, on ${on}` }));
-vi.mock("@/components/account-billing-section", () => ({ BillingSection: () => "Update card and invoices" }));
+vi.mock("@/components/account-billing-section", () => ({ BillingSection: ({ closed }: { closed?: { reason: string } | null }) => `Update card and invoices, note: ${closed?.reason ?? "none"}` }));
 vi.mock("@/components/account-child-details", () => ({ childDetails: async () => "Child details and delete" }));
 vi.mock("@/components/family-delete", () => ({ FamilyDelete: () => "Delete this family" }));
 vi.mock("@/components/account", () => ({ AddChild: () => null, SignOut: () => null }));
@@ -31,6 +31,8 @@ it("a closed family with a plan gets its card, its invoices and the deletes, wit
   f.manage = true; f.closed = { reason: "payment_failed", child: "Leah" };
   const out = await page();
   for (const text of ["Your plan is closed, on account", "Update card and invoices", "Child details and delete", "Delete this family", "/account/plan"]) expect(out).toContain(text);
+  // The section streams, so it gets the page's own read for the note, with no read of its own.
+  expect(out).toContain("note: payment_failed");
 });
 
 it("a family with no plan and no dashboard goes to Parent home, as before", async () => {

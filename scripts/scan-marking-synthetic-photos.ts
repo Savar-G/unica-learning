@@ -1,4 +1,5 @@
 // Deterministic synthetic ink on the final Robin render. No browser, font service, generator, inference or storage.
+import { suppliedMethodText } from "../src/lib/scan-marking-methods";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import sharp, { type OverlayOptions } from "sharp";
@@ -17,6 +18,8 @@ const GLYPHS: Record<string, number[][][]> = {
   "7": [[[0,0],[.6,0],[.2,1]]], "8": [[[.3,.5],[0,.25],[.2,0],[.5,.05],[.6,.3],[.3,.5],[0,.7],[.1,1],[.5,1],[.6,.75],[.3,.5]]],
   "9": [[[.6,.45],[.1,.5],[0,.2],[.2,0],[.5,.05],[.6,.3],[.55,.8],[.3,1]]],
   "/": [[[.55,0],[0,1]]], "-": [[[0,.5],[.6,.5]]], ".": [[[.2,.96],[.22,1]]],
+  "+": [[[0,.5],[.6,.5]],[[.3,.2],[.3,.8]]], "×": [[[.05,.25],[.55,.75]],[[.55,.25],[.05,.75]]],
+  "÷": [[[0,.5],[.6,.5]],[[.28,.22],[.32,.26]],[[.28,.74],[.32,.78]]], "=": [[[0,.38],[.6,.38]],[[0,.62],[.6,.62]]],
   "e": [[[.05,.55],[.55,.5],[.45,.3],[.15,.3],[0,.6],[.1,.9],[.5,.9]]],
   "v": [[[0,.3],[.25,.95],[.6,.3]]], "n": [[[0,1],[0,.3],[0,.6],[.15,.3],[.4,.3],[.55,.45],[.55,1]]],
   "o": [[[.3,.3],[.05,.35],[0,.7],[.15,1],[.45,.95],[.6,.6],[.45,.3],[.3,.3]]],
@@ -35,6 +38,7 @@ export function syntheticReading(region: MarkingRegion, variant: number): Labell
   if (variant === 2) return { regionId: region.id, state: "blank", text: "", issue: null };
   if (variant === 3) return { regionId: region.id, state: "uncertain", text: null, issue: "blurry" };
   const wrong = variant === 1;
+  if (region.kind === "method") return { regionId: region.id, state: "written", text: suppliedMethodText(region, region.id === "method-2" ? 1 : 0, wrong), issue: null, verdict: "solves" };
   const text = region.kind === "number" ? String(region.answer + (wrong ? 1 : 0)) : region.kind === "text" ? wrong ? "odd" : region.answer : region.kind === "choice" ? wrong ? region.choices.find(c => c !== region.answer)! : region.answer :
     region.answer.type === "mixed" ? `${region.answer.whole + (wrong ? 1 : 0)} ${region.answer.numerator}/${region.answer.denominator}` : region.answer.type === "fraction" ? `${region.answer.numerator + (wrong ? 1 : 0)}/${region.answer.denominator}` : String(region.answer.value + (wrong ? 1 : 0));
   return { regionId: region.id, state: "written", text, issue: null };
@@ -97,7 +101,7 @@ export async function makeComparisonPhotos(source: string, output: string): Prom
     let drawing = "";
     for (const q of photo.frame.questions) {
       const format = comparisonItemFormat(photo.frame, q.package!.id), regions = markingRegions(q), readings = regions.map(r => syntheticReading(r, variant));
-      photo.truth.push({ itemId: q.package!.id, format, result: format === "two-ways" ? "parent" : ["right", "wrong", "blank", "uncertain"][variant] as "right" | "wrong" | "blank" | "uncertain", readings });
+      photo.truth.push({ itemId: q.package!.id, format, result: ["right", "wrong", "blank", "uncertain"][variant] as "right" | "wrong" | "blank" | "uncertain", readings });
       for (let k = 0; k < regions.length; k++) {
         const r = regions[k], label = readings[k]; if (variant === 2) continue;
         if (r.kind === "choice") {

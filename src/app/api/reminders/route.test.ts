@@ -58,6 +58,7 @@ vi.mock("@/lib/email-resend", () => ({
 }));
 vi.mock("@/lib/card-sweep-server", () => ({
   dueCardCount: async () => 3,
+  duePlanReadCount: async () => 2,
   sweepCardsNow: async ({ transport }: { transport: { send(m: unknown): Promise<unknown> } }) => {
     h.cardRuns++;
     h.transports.add(transport);
@@ -271,6 +272,6 @@ it("the card sweep runs beside the emails, a failed sweep hides nothing else, an
   expect(await (await call()).json()).toMatchObject({ ok: true, maya: { due: 0 }, cards: { error: "run_failed" } });
   h.cardFails = false;
   const runs = h.cardRuns;
-  expect(await (await call("?dry=1")).json()).toMatchObject({ ok: true, dry: true, cards: 3 });
+  expect(await (await call("?dry=1")).json()).toMatchObject({ ok: true, dry: true, cards: 3, planReads: 2 });
   expect(h.cardRuns).toBe(runs);
 });

@@ -39,7 +39,11 @@ const db = createClient<Database>("https://marking-launch.example.test", "synthe
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
       return Response.json([{ id: "expired-photo", child_id: child, workbook_id: "book", page_id: "page", printed_revision: "print", state: "expired", expires_at: "2026-01-01T00:00:00.000Z" }]);
     }
-    if (url.pathname.endsWith("/rpc/recover_scan_marking")) return Response.json([{ parent, photo: "expired-photo" }]);
+    if (url.pathname.endsWith("/scan_marking_items")) {
+      expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`); expect(url.searchParams.get("item_id")).toBe(`eq.${expected.identity.itemId}`);
+      return Response.json([{ result_version: state.mark.resultVersion, observation: state.mark }]);
+    }
+    if (url.pathname.endsWith("/rpc/recover_scan_marking_oldest")) return Response.json([{ parent, photo: "expired-photo" }]);
     if (url.pathname.endsWith("/rpc/scan_marking_command")) {
       const body = JSON.parse(String(init?.body));
       expect(body.p_parent).toBe(parent); state.commands.push(body.p_action);
@@ -119,7 +123,8 @@ it("refuses unlisted direct work and already-sent recovery work without dispatch
   ]);
   expect(direct).toBe("off");
   expect(recovery).toEqual({ status: "processed", results: ["off"] });
-  expect(state.queries.map(q => q.pathname)).toEqual(["/rest/v1/rpc/recover_scan_marking"]);
+  // The second list answer is the same photo again (the fake never ends), so the run stops there.
+  expect(state.queries.map(q => q.pathname)).toEqual(["/rest/v1/rpc/recover_scan_marking_oldest", "/rest/v1/rpc/recover_scan_marking_oldest"]);
   expect(state.commands).toEqual([]); expect(profile.calls).toBe(0);
 });
 
@@ -186,6 +191,16 @@ it("reads expired-photo history while marking is off, without image access or fa
   expect(result?.items[0].photoAvailable).toBe(false); expect(result?.marks[0].observation.result).toBe("wrong");
   expect(result?.items[0].canChange).toBe(true);
   expect(state.queries.some((q) => /test_accounts|admin_users|storage/.test(q.pathname))).toBe(false);
+});
+
+it("refuses a parent's change of an answer with no mark yet: the AI and our team mark it (#715)", async () => {
+  state.photo = true; state.mark = { ...firstObservation(expected, "expired-photo"), resultVersion: 2 } as typeof state.mark;
+  expect(await changeScanMarking(db, parent, "expired-photo", { itemId: expected.identity.itemId, version: 2, result: "right" })).toEqual({ status: "refused" });
+  expect(state.commands).toEqual([]); expect(state.mark.result).toBeNull(); expect(profile.calls).toBe(0);
+  // An older version the parent saw goes to the store, which answers conflict with the current mark.
+  state.mark = { ...original, resultVersion: 3 };
+  await changeScanMarking(db, parent, "expired-photo", { itemId: expected.identity.itemId, version: 2, result: "right" });
+  expect(state.commands).toEqual(["change", "outbox"]);
 });
 
 it.each([false, true])("keeps an expired-photo parent change and its recovery handoff while off (profile interrupted: %s)", async (failed) => {
