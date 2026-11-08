@@ -3601,6 +3601,24 @@ export type Database = {
         }
         Relationships: []
       }
+      scan_marking_queue_cursor: {
+        Row: {
+          after_id: string | null
+          after_sent_at: string | null
+          singleton: boolean
+        }
+        Insert: {
+          after_id?: string | null
+          after_sent_at?: string | null
+          singleton?: boolean
+        }
+        Update: {
+          after_id?: string | null
+          after_sent_at?: string | null
+          singleton?: boolean
+        }
+        Relationships: []
+      }
       scan_marking_revisions: {
         Row: {
           child_id: string
@@ -8053,6 +8071,7 @@ export type Database = {
         Returns: Json
       }
       recover_scan_marking: { Args: { p_limit?: number }; Returns: Json }
+      recover_scan_marking_oldest: { Args: { p_limit?: number }; Returns: Json }
       recover_scan_photo: {
         Args: { p_id: string; p_parent: string }
         Returns: string
