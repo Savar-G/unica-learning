@@ -30,8 +30,8 @@ beforeAll(async () => {
     mkdirSync(dir, { recursive: true });
     for (const id of store.ids()) writeFileSync(join(dir, `${id}.json`), store.load(id)!);
   }
-  // The hook runs every behaviour, so it needs more than vitest's 10 s default hook limit on a loaded CI runner; the
-  // speed budget is the "runs fast enough" test below (30 s), not this limit.
+// Every behaviour runs in this one hook: give it CI's test time limit, not the 10 s hook default (the CI runner took over
+// 10 s once the claim behaviours were added; locally it takes about 3 s).
 }, 60_000);
 
 const RESEARCH_IDS = Array.from({ length: 40 }, (_, i) => `C${String(i + 1).padStart(2, "0")}`);

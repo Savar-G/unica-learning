@@ -248,3 +248,5 @@ The honest close (`close.honest`, controller decision (a) on #735) is new: after
 | claim ask, more or less (true/false) | Is {expr} {greater or less} than {shown}? True or false? | Is 5 + 5 less than 1? True or false? |
 
 Every wording is in `src/lib/maya/clock-lines.ts` (`CLOCK_TEMPLATES`), `src/lib/maya/topic-frame.ts` and `src/lib/maya/claim.ts`.
+
+Review round 3 (#737 at d3aaff46) adds no wording. In a 25-word turn, the claim's result may now be acknowledged with the existing `check.right_step.plain` wordings, with "the result" as `{where}` ("Good, the result is done.", "That's right. The result is done."), when its equation does not fit beside the claim's question.

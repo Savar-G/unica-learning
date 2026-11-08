@@ -925,6 +925,16 @@ export function packageLines(given: OperationPackage) {
       // In a yes/no claim (claim.ts), "Yes!" about a step could sound like the claim's answer: those wordings are left out.
       return [claim?.yesNo ? withoutYes(line) : line];
     },
+    /**
+     * The same line in its short wordings, with no equation ("Good, the result is done."): for a claim's result whose
+     * equation does not fit beside the claim's question in a 25-word turn (claim.ts, #737 review P2).
+     */
+    rightStepShort: (id: string): LineOffer[] => {
+      const step = find(id);
+      if (!step) return [];
+      const line = offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)), where: whereOf(step) }, { slots: { step: id }, requires: { answer: "right", step: id } });
+      return [claim?.yesNo ? withoutYes(line) : line];
+    },
     /** "Not quite.": only after code checked the child's wrong answer for that step. */
     notYet: (id: string): LineOffer[] => {
       if (id === "result") return [offer("check.not_yet", "check.not_yet", { where: "this answer" }, { slots: { step: id }, requires: { answer: "wrong", step: id } })];
@@ -1034,7 +1044,7 @@ export function allLineTexts(given: OperationPackage, heardValues: readonly Answ
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeHonest(), ...l.repair(),
-    ...l.together(), ...l.guess(), ...l.which(), ...l.honestClose(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
+    ...l.together(), ...l.guess(), ...(pkg.steps.some((st) => st.kind === "claim-compare") ? l.stepIds.flatMap((id) => l.rightStepShort(id)) : []), ...l.which(), ...l.honestClose(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];
   return [...new Set([...offers, ...offers.map(spokenOffer), ...extra].flatMap((o) => o.texts.map(sentence)))];

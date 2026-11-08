@@ -126,3 +126,15 @@ export const CLAIM_ROUND = claimPackage({
   derived: [["a", "a0"], ["b", "b0 // 10 * 10"], ["c", "a * b - a if f == 0 else a * b + a"]],
   expression: "'yes' if f == 0 else 'no'", check: "b0 >= 10",
 });
+
+/**
+ * The longest spoken claim shape (#737 review P2): three digits with no zero by one digit, 777 × 7 = 5439, greater than
+ * 4662 (5.9 distributive shape). Its equation and its question are over 25 words together.
+ */
+export const CLAIM_WIDE = claimPackage({
+  id: "claim-gate-wide", question: 9, templateId: "5.9-distributive#1.4:true-false",
+  text: "Is 777 × 7 greater than 4662? Circle yes or no.", skill: "5.9-distributive", choices: ["yes", "no"], answer: "yes",
+  slots: [["a0", "777", 100, 999], ["b0", "7", 2, 9], ["f", "0", 0, 1]],
+  derived: [["a", "a0"], ["b", "b0"], ["c", "a * b - a if f == 0 else a * b + a"]],
+  expression: "'yes' if f == 0 else 'no'", check: "'0' not in str(a0)",
+});

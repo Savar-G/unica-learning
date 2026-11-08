@@ -17,6 +17,7 @@
 import { equivalent, operationText, type AnswerValue, type Operation, type OperationPackage, type WorkedStep } from "@/lib/question-package";
 import { claimExample, claimStep, readClaim, type Claim } from "@/lib/maya-teaching/claim";
 import { topicClaim } from "@/lib/maya-teaching/topic-claim";
+import { topicOwnWork } from "./topic-work";
 import type { Act, ChildAnswer } from "./proposal";
 import { confirmWordsOnly, plainNumber, wholeTurn, wholeYes, type AnswerRead } from "./numbers";
 import type { LineId, LineOffer, Slots } from "./lines";
@@ -309,9 +310,11 @@ export type WordRead = { word: string; committed: boolean } | { unclear: true } 
  * Reads the circled word in a child's turn, by an allow-list over the whole turn. `choices`: the claim's two words. Only a
  * committed form ("It's true.", "I circle no.", "..., so it's false.") is an answer. A bare word ("True.", "No, 5220 is
  * less.") after any question of Maya's answers that question, never the claim (wave brief, controller rule 4): it is read
- * as not committed, and Maya says it back before it counts.
+ * as not committed, and Maya says it back before it counts. What comes before ", so" and the reason after the word must be
+ * the child's own work (`ownWork`, an allow-list): "My mom said 48, so it's true." and "It's true, because I copied it."
+ * are no answer (#737 and #743 reviews). With no `work`, only a word with nothing beside it counts (fail closed).
  */
-export function readClaimWord(text: string, choices: readonly [string, string]): WordRead {
+export function readClaimWord(text: string, choices: readonly [string, string], work: ClaimWork | null = null): WordRead {
   const t = text.toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, " ").trim();
   if (NO_ANSWER.test(t)) return null;
   const found = t.match(ANY_WORD) ?? [];
@@ -327,24 +330,66 @@ export function readClaimWord(text: string, choices: readonly [string, string]):
   const word = words[0];
   const said = found[0] as string;
   const affirmative = word === choices[0] && (word === "true" || word === "yes");
-  // The explanation after the word: none, a reason, or a sentence with a number; never another word or a negation of a "yes".
+  // The explanation after the word: none, or the child's own work, after a reason word or not; never another word or a
+  // negation of a "yes".
   const tailOk = (tail: string) => {
     const rest = tail.replace(/^[,.!;:]\s*/, "").trim();
     if (rest === "") return true;
     if (HAS_WORD.test(rest)) return false;
     if (affirmative && NEGATION.test(rest)) return false;
-    return REASON.test(rest) || /\d/.test(rest);
+    return ownWork(rest.replace(REASON, "").trim(), work);
   };
   const committed = COMMIT.exec(body);
   if (committed) {
     const after = body.slice(committed[0].length);
     return after.startsWith(said) && tailOk(after.slice(said.length)) ? { word, committed: true } : null;
   }
-  // "..., so it's false.": a conclusion at the end, after an explanation with no claim word in it.
+  // "..., so it's false.": a conclusion at the end, after the child's own work (ownWork) with no claim word in it.
   const so = new RegExp(`^(.*?),?\\s+so\\s+(?:it'?s\\s+|it is\\s+|the answer is\\s+|i circle\\s+)?${said}$`).exec(body);
-  if (so && !HAS_WORD.test(so[1])) return { word, committed: true };
+  if (so) return !HAS_WORD.test(so[1]) && ownWork(so[1], work) ? { word, committed: true } : null;
   if (body.startsWith(said) && tailOk(body.slice(said.length))) return { word, committed: false };
   return null;
+}
+
+/** What the child's own work on a claim is checked against: its result, the page's number and the operation worked. */
+export interface ClaimWork {
+  value: number;
+  shown: number;
+  operation: Operation;
+}
+
+const workOf = (c: SessionClaim | null, pkg: OperationPackage | null): ClaimWork | null =>
+  c && pkg ? { value: c.value, shown: c.shown, operation: pkg.operation } : null;
+
+const COMPARE_WORDS = "more|greater|bigger|larger|less|smaller|fewer";
+
+/**
+ * The child's own work beside a claim's word, by an allow-list over the whole text (#737 and #743 reviews): nothing; a
+ * bare number; the result sentence as the compare step hears it ("6 times 8 is 48", "I got 1440", claimStepHeard); the
+ * difference of the result and the page's number ("1440 minus 1436 is 4"); or the two compared ("1440 is more than
+ * 1436", "48 is 48", "5.83 is not 5.93"). Any other text (a speaker, a copy, "my mom said 48", "I copied it") is not.
+ */
+function ownWork(raw: string, work: ClaimWork | null): boolean {
+  const text = raw.replace(/[.!,;:]+$/, "").trim();
+  if (text === "") return true;
+  if (work === null) return false;
+  if (numberIn(text) !== null) return true;
+  if (claimStepHeard({ text, uncertain: false, operation: work.operation, value: work.value, resultAsked: null, shown: false })) return true;
+  // A topic claim (C3b, C3c; topic-work.ts): an evaluate's own part, or pieces of own work joined by "and".
+  if (topicOwnWork(text, work.operation, (piece) => ownWork(piece, work))) return true;
+  const n = (x: string) => numberIn(x);
+  const same = (x: number | null, y: number) => x !== null && equivalent({ type: "number", value: x }, { type: "number", value: y });
+  const pair = (a: number | null, b: number | null) => (same(a, work.value) && same(b, work.shown)) || (same(a, work.shown) && same(b, work.value));
+  const t = text.toLowerCase();
+  const minus = /^(.+?)\s+(?:minus|take away|−|-)\s+(.+?)\s+(?:is|equals|makes|=)\s+(.+)$/.exec(t);
+  if (minus) return pair(n(minus[1]), n(minus[2])) && same(n(minus[3]), Math.abs(work.value - work.shown)) && (n(minus[1]) ?? 0) >= (n(minus[2]) ?? 0);
+  const compared = new RegExp(`^(.+?)\\s+is\\s+(?:(?:${COMPARE_WORDS})(?:\\s+than\\s+(.+))?|not\\s+(.+)|the same as\\s+(.+)|(.+))$`).exec(t);
+  if (!compared) return false;
+  const a = n(compared[1]);
+  const b = compared[2] ?? compared[3] ?? compared[4] ?? compared[5];
+  // "1440 is more." names only one of the two numbers.
+  if (b === undefined) return same(a, work.value) || same(a, work.shown);
+  return pair(a, n(b));
 }
 
 /** A plain yes, the whole turn: the answer to Maya's "You said no. Is no the word you circle?". */
@@ -374,7 +419,7 @@ function wordIn(t: ClaimTurn): WordRead {
   if (t.wordAsked !== null && !t.heardAsked && c.choices.includes(t.wordAsked) && PLAIN_YES.test(t.text.toLowerCase().replace(/[’]/g, "'").trim())) {
     return { word: t.wordAsked, committed: true };
   }
-  const read = readClaimWord(t.text, c.choices);
+  const read = readClaimWord(t.text, c.choices, workOf(c, t.pkg));
   // A bare or unsure word answers the claim only when Maya just asked it; after any other question it is no claim turn.
   return read && "word" in read && read.committed ? read : t.claimAsked === true ? read : null;
 }
@@ -406,7 +451,8 @@ export function claimConfirm(t: ClaimTurn): { kind: "which" } | { kind: "said"; 
 
 /** The word the child said in this turn, bare or committed, or null. */
 export function claimSaid(t: ClaimTurn): string | null {
-  const read = t.text === null || !sessionClaim(t.pkg) ? null : readClaimWord(t.text, sessionClaim(t.pkg)!.choices);
+  const c = sessionClaim(t.pkg);
+  const read = t.text === null || !c ? null : readClaimWord(t.text, c.choices, workOf(c, t.pkg));
   return read && "word" in read ? read.word : null;
 }
 
@@ -439,14 +485,27 @@ export function claimAnswers(t: ClaimTurn, answers: readonly ChildAnswer[] | und
  * The acts allowed in a claim call: Maya never gives the word (no give_answer). Where giving it was the only way on (H3
  * shown and more help asked, or two wrong words), and where a child who only asks for help is at the top of the final
  * step's ladder (`stuck`: H2, the final step has no H3), the way out is the honest close (controller decision (a), #735,
- * brief lesson 10): no endless top hint, no answer.
+ * brief lesson 10): no endless top hint, no answer. `exampleDue`: the easier example comes before that close.
  */
-export function claimActs(pkg: OperationPackage | null, acts: Act[], stuck = false): Act[] {
+export function claimActs(pkg: OperationPackage | null, acts: Act[], stuck = false, exampleDue = false): Act[] {
   if (!sessionClaim(pkg)) return acts;
+  const out = claimActsOf(acts, stuck);
+  // The honest close comes only after the easier example (brief lessons 7 and 10): when it would close a child who only
+  // asks for help, who has done no step and has not seen the example (`exampleDue`), the example comes instead.
+  // On any help-only turn before that, the example is offered beside the guide (code's fallback says it first).
+  const closing = out.includes("close") && !out.some((a) => TEACHING.includes(a));
+  if (!exampleDue) return out;
+  if (closing) return ["example_step", ...out.filter((a) => a === "confirm")];
+  return out.includes("guide") && !out.includes("example_step") ? [...out, "example_step"] : out;
+}
+
+const TEACHING: readonly Act[] = ["accept_answer", "guide", "try_target", "example_step", "clarify", "ask_write"];
+
+function claimActsOf(acts: Act[], stuck: boolean): Act[] {
   if (stuck && acts.includes("guide")) return ["close", ...acts.filter((a) => a === "confirm")];
   if (!acts.includes("give_answer")) return acts;
   const rest = acts.filter((a) => a !== "give_answer");
-  const teaching = rest.some((a) => ["accept_answer", "guide", "try_target", "example_step", "clarify", "ask_write"].includes(a));
+  const teaching = rest.some((a) => TEACHING.includes(a));
   return teaching ? rest : [...new Set<Act>([...rest.filter((a) => a !== "close"), "close"])];
 }
 
@@ -487,11 +546,12 @@ const OPERATION_WORDS: Partial<Record<Operation["kind"], { words: string; swap: 
 /**
  * The child's whole turn says the claim's result, in one of these forms only (an allow-list, as stepTurnHeard for a
  * column): the value alone or "it's / it is / i got / that's N"; "<a> times <b> is N" with the operation's own numbers
- * (either order for + and ×); a plain yes to Maya's own "Did you say N?" (`heardAsked`); or a claim about the child's own
+ * (either order for + and ×); a plain yes to Maya's own "Did you say N?" about this result (`resultAsked`: only the confirm
+ * the session asked for the claim's result, never one for another reason, #737 review P1); or a claim about the child's own
  * paper ("I wrote N", "N is on my paper"). A question, a hedge, another sentence, another speaker, a copy or any other
  * word fits none. After H3 (`shown`) only the paper claim counts: the rest copies what Maya showed.
  */
-export function claimStepHeard(input: { text: string; uncertain: boolean; operation: Operation; value: number; heardAsked: AnswerValue | null; shown: boolean }): boolean {
+export function claimStepHeard(input: { text: string; uncertain: boolean; operation: Operation; value: number; resultAsked: AnswerValue | null; shown: boolean }): boolean {
   const body = input.uncertain ? null : wholeTurn(input.text);
   if (body === null) return false;
   const is = (n: number | null) => n !== null && equivalent({ type: "number", value: n }, { type: "number", value: input.value });
@@ -499,7 +559,7 @@ export function claimStepHeard(input: { text: string; uncertain: boolean; operat
   if (paper && is(numberIn(paper[1]))) return true;
   if (input.shown) return false;
   const yes = wholeYes(body);
-  if (yes) return input.heardAsked?.type === "number" && is(input.heardAsked.value) && (yes.value === null || is(yes.value));
+  if (yes) return input.resultAsked?.type === "number" && is(input.resultAsked.value) && (yes.value === null || is(yes.value));
   const bare = /^(?:it's|it is|i got|that's)\s+(.+)$/.exec(body);
   if (is(numberIn(bare ? bare[1] : body))) return true;
   const op = OPERATION_WORDS[input.operation.kind];
