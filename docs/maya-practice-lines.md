@@ -120,3 +120,23 @@ These are the scoped additions and replacements on the chat repair branch. Revie
 | close.checked.4 | We've checked your answer for {expr}. Goodbye for now! |
 | held.hello.0 | Hi, I'm Maya, an AI. |
 | held.next.0 | Want to pick another question on this page? |
+
+## Other-topic questions (Wave C, #731), pending approval
+
+The topic sentence (code's facts, `src/lib/maya/topic-frame.ts`) and the honest close (lessons from review 10, controller decision (a)). Values in braces come from the checked question package; `{frame}` is the topic sentence.
+
+| Id | Wordings, pending approval | Example |
+|---|---|---|
+| topic sentence, die | From 1 to {last}, odd and even take turns. So half are {kind}. | From 1 to 8, odd and even take turns. So half are odd. |
+| topic sentence, symmetry | {Shape} has {n} lines of symmetry. {Shape} has {m}. | A rectangle that is not a square has 2 lines of symmetry. An isosceles triangle has 1. |
+| topic sentence, perimeter | A rectangle has 2 lengths and 2 widths. Add one length and one width. Then double it. | (the same) |
+| `question.framed#0` to `#4` | {frame} Our question is {expr}. / {frame} So our question is {expr}. / {frame} So we work on {expr}. / {frame} So this one is {expr}. / {frame} Here's our question: {expr}. | From 1 to 8, odd and even take turns. So half are odd. Our question is 8 ÷ 2. |
+| `assess.framed#0` to `#4` | {frame} What did you try for {expr}? / {frame} How did you start {expr}? / {frame} What have you done on {expr}? / {frame} What did you do for {expr}? / {frame} How did you begin {expr}? | A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. How did you start 6 + 5? |
+| `example.framed#0` to `#4` | Easier one. {frame} It is {expr}. / A smaller one. {frame} It is {expr}. / An easier one. {frame} It is {expr}. / Smaller one first. {frame} It is {expr}. / Warm-up. {frame} It is {expr}. | Easier one. From 1 to 6, odd and even take turns. So half are odd. It is 6 ÷ 2. |
+| `close.honest#0` | This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up to help. | (no numbers) |
+| `close.honest#1` | This is a hard one. It's fine to stop here. You can ask a grown-up to try it with you. | |
+| `close.honest#2` | This one is hard. It's okay to stop for now. Try the easier one on your paper. | |
+| `close.honest#3` | That was a hard one, and stopping is okay. Ask a grown-up to look at it with you. | |
+| `close.honest#4` | This question is hard. It's fine to stop. Try the smaller one on paper first. | |
+
+The honest close is said only for an other-topic question, after the easier example, when the child still only asks for help. It holds no number, so it gives nothing of the answer away. The call records the stuck step as a learning event (`result: blank`, `stuckStep`).

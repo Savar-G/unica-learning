@@ -316,6 +316,65 @@ export const BEHAVIOURS: Behaviour[] = [
       never: ["redirect"],
     },
   },
+  // Review of #731 (P1): after a hello-only opening the topic sentence is still owed, but a first turn with work in it
+  // gets the normal guide ("not yet", or the right step acknowledged); the sentence comes on the next help-only turn.
+  {
+    id: "OT9", title: "Die 12 at grade 3, says 5 after a hello-only opening: not yet, then the topic sentence on 'I'm stuck.', then solved", fixture: "DIE12", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("5.", { start: "has_work", answers: [[5, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", undefined, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("12 divided by 2 is 6.", { answers: [[6, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 2, lines: [variants(packageLines(FIXTURES.DIE12 as OperationPackage).question(), "question.framed")] }],
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "OT10", title: "Die 12 at grade 3, a right first step after a hello-only opening ('1 divided by 2 is 0 remainder 1.'): acknowledged (J06)", fixture: "DIE12", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("1 divided by 2 is 0 remainder 1.", { start: "has_work", answers: [[0, "tens", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("12 divided by 2 is 6.", { answers: [[6, "ones", "right"], [6, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "OT11", title: "Longest shape names at grade 3, says 4 after a hello-only opening: not yet, then '2 plus 1 is 3.'", fixture: "SHAPES_LONG", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("4.", { start: "has_work", answers: [[4, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("2 plus 1 is 3.", { answers: [[3, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "OT12", title: "Longest shape names at grade 3, the right sum first after a hello-only opening ('2 plus 1 is 3.'): accepted, not taught again (J06)", fixture: "SHAPES_LONG", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("2 plus 1 is 3.", { start: "has_work", answers: [[3, "result", "right"]] }, [{ act: "accept_answer" }]),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      never: ["guide", "example_step", "redirect"],
+    },
+  },
   {
     id: "C01",
     title: "Cannot start: the easier example, then back to the question",

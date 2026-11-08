@@ -9,7 +9,7 @@ import { deriveDieCount } from "@/lib/maya-teaching/die-count";
 import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
 import { diePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG";
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -127,6 +127,10 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // 6 + 5 lines of symmetry from code's table.
   DIE: deriveDieCount(diePrinted(8, "even"))!,
   SHAPES: deriveSymmetry(symmetryPrinted(4, 5))!,
+  // Review of #731: die 12 (two division steps, 12 ÷ 2) and the longest shape names (a rectangle that is not a square and
+  // an isosceles triangle, 2 + 1), for grade 3 turns.
+  DIE12: deriveDieCount(diePrinted(12, "odd"))!,
+  SHAPES_LONG: deriveSymmetry(symmetryPrinted(1, 2))!,
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */
