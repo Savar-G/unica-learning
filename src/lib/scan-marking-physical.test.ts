@@ -146,7 +146,9 @@ describe("physical plans, journals and accounting", () => {
     expect(() => validateComparisonManifest({ ...input.set, version: 1, synthetic: true } as never)).toThrow();
     const initial = physicalReport(input.set, [], evidences(), input.run);
     expect(initial).toMatchObject({ complete: false, passed: false, totalPhotos: 2, counts: { photos: 2, itemLabels: 18, aiMarked: 18, parent: 0 } });
-    expect(initial.models.map(m => [m.model, m.denominator, m.clearDenominator, m.parentMethods])).toEqual([[SONNET.model, 18, 9, 0], [TERRA.model, 18, 9, 0]]);
+    // D-267's clear denominator holds only AI-markable items; the one with team items keeps all 9.
+    const clear = TWO_WAYS_METHOD_MARKS ? 9 : 8;
+    expect(initial.models.map(m => [m.model, m.denominator, m.clearDenominator, m.clearDenominatorWithTeam, m.parentMethods])).toEqual([[SONNET.model, 18, clear, 9, 0], [TERRA.model, 18, clear, 9, 0]]);
   });
   it.each(["changed-plan", "changed-image", "stale-result", "old-exit", "old-refund", "old-unknown"])("stops %s before preflight or any budget access", async kind => {
     const input = await setAndPlan(); let preflight = 0, budgets = 0;
@@ -225,7 +227,8 @@ describe("physical plans, journals and accounting", () => {
   it("replays saved HTTP without inference and rejects a copied or edited result", async () => {
     const input = await setAndPlan("local-fake"); await fakePhysicalHttp(input.out, input.set, input.plan, input.run);
     const original = JSON.parse(await readFile(resolve(input.out, "results.json"), "utf8")) as ComparisonResult[];
-    expect(physicalReport(input.set, original, evidences(), input.run).passed).toBe(TWO_WAYS_METHOD_MARKS);
+    // The fake reads every label; items our team marks are not model unsure under D-267, so it passes.
+    expect(physicalReport(input.set, original, evidences(), input.run).passed).toBe(true);
     const refused = structuredClone(input.set); refused.photos[0].status = "refused"; refused.photos[0].reason = "wrong-page-qr";
     expect(physicalReport(refused, original, evidences(), input.run)).toMatchObject({ passed: false, complete: false, refusedPhotos: 1 });
     const missing = structuredClone(input.set); missing.missing.push("android:pdf-11");
@@ -269,22 +272,26 @@ describe("Sonnet and Terra side by side", () => {
   });
   it("reports wrong marks, wrong marked right, clear unsure, two-ways, cost and latency for each model", async () => {
     const { report } = await fakeRun(), [sonnet, terra] = report.models;
-    expect(sonnet).toMatchObject({ model: SONNET.model, endpoint: "google-vertex/global", wrongMarks: 0, wrongAsRight: 0, clearUnsure: team, passed: !team, complete: true,
+    // Our team marks the two-ways item while the method rules are off: D-267 leaves it out, so a perfect reader passes.
+    expect(sonnet).toMatchObject({ model: SONNET.model, endpoint: "google-vertex/global", wrongMarks: 0, wrongAsRight: 0, clearUnsure: 0, clearUnsureWithTeam: team, passed: true, complete: true,
       twoWays: { items: 2, right: 0, wrong: 0, wrongMarks: 0, wrongAsRight: 0, ...twoWaysBlank } });
-    expect(terra).toMatchObject({ model: TERRA.model, endpoint: "azure", wrongMarks: 2, wrongAsRight: 0, clearUnsure: 1 + team, passed: false, complete: true,
+    expect(terra).toMatchObject({ model: TERRA.model, endpoint: "azure", wrongMarks: 2, wrongAsRight: 0, clearUnsure: 1, clearUnsureWithTeam: 1 + team, passed: false, complete: true,
       twoWays: { items: 2, right: 0, wrong: 0, wrongMarks: 0, wrongAsRight: 0, ...twoWaysBlank } });
     for (const m of report.models) { expect(m.costPerPageUsd).toBe(0); expect(m.latencyP50Ms).not.toBeNull(); expect(m.latencyP95Ms).not.toBeNull(); }
     expect(report.passed).toBe(false);
   });
   it("shows the two-ways unsure rate apart from the whole-page unsure rate, for each model", async () => {
     const { report } = await fakeRun(), [sonnet, terra] = report.models;
-    expect(sonnet).toMatchObject({ clearUnsureRate: team / 9, twoWays: { clearItems: 1, clearUnsure: twoWaysBlank.clearUnsure, clearUnsureRate: twoWaysBlank.clearUnsureRate, unsureRate: twoWaysBlank.unsureRate } });
-    expect(terra).toMatchObject({ clearUnsureRate: (1 + team) / 9, twoWays: { clearItems: 1, clearUnsure: twoWaysBlank.clearUnsure, clearUnsureRate: twoWaysBlank.clearUnsureRate } });
+    expect(sonnet).toMatchObject({ clearUnsureRate: 0, clearUnsureRateWithTeam: team / 9, twoWays: { clearItems: 1, clearUnsure: twoWaysBlank.clearUnsure, clearUnsureRate: twoWaysBlank.clearUnsureRate, unsureRate: twoWaysBlank.unsureRate } });
+    expect(terra).toMatchObject({ clearUnsureRate: 1 / (9 - team), clearUnsureRateWithTeam: (1 + team) / 9, twoWays: { clearItems: 1, clearUnsure: twoWaysBlank.clearUnsure, clearUnsureRate: twoWaysBlank.clearUnsureRate } });
     const text = physicalSideBySide(report);
     expect(text).toContain("Clear unsure rate");
     expect(text).toContain("Two-ways unsure (clear)");
-    expect(text).toContain(`${((1 + team) / 9 * 100).toFixed(1)}%`);
     expect(text).toContain("D-267 at most 5%");
+    // Both counts, each with its numbers: the D-267 figure on AI-markable items, and the one with team items.
+    expect(text).toContain(`1/${9 - team} (${(1 / (9 - team) * 100).toFixed(1)}%; D-267 at most 5%, AI-markable items only)`);
+    expect(text).toContain(`${1 + team}/9 (${((1 + team) / 9 * 100).toFixed(1)}%; with ${team} team item${team === 1 ? "" : "s"})`);
+    if (!TWO_WAYS_METHOD_MARKS) expect(text).toContain("reads 100% while the method switch is off");
   });
   it("re-scores saved model output through the current method rules on replay, with no new call", async () => {
     const { input } = await fakeRun(), journal = resolve(input.out, "journal");
@@ -313,8 +320,13 @@ describe("Sonnet and Terra side by side", () => {
   });
   it("prints a side-by-side table with no key or child data", async () => {
     const { report } = await fakeRun(), text = physicalSideBySide(report);
-    for (const row of ["Wrong marks", "Wrong marked right", "Clear unsure", "Two-ways", "Cost per page", "Latency p50", "Latency p95", "Disagreements", "Sonnet", "Terra", "AI-marked 18", "parent 0"]) expect(text).toContain(row);
+    for (const row of ["Wrong marks", "Wrong marked right", "Clear unsure", "Two-ways", "Cost per page", "Latency p50", "Latency p95", "Disagreements", "Sonnet", "Terra", "AI-marked 18", "parent 0", `AI-marked 18, of which ${TWO_WAYS_METHOD_MARKS ? 0 : 2} team-marked; parent 0`]) expect(text).toContain(row);
     expect(text).not.toContain(FAKE_KEY);
+  });
+  it("states on its first line how many items went to the team and why", async () => {
+    const { report } = await fakeRun(), first = physicalSideBySide(report).split("\n")[0];
+    expect(report.team).toEqual(TWO_WAYS_METHOD_MARKS ? { items: 0, reasons: {} } : { items: 2, reasons: { "two-ways-method-marks-off": 2 } });
+    expect(first).toBe(TWO_WAYS_METHOD_MARKS ? "0 items went to the team." : "2 items went to the team: two-ways method marking is off.");
   });
   it("keeps the same side-by-side result in saved replay", async () => {
     const { input, report } = await fakeRun(), parent = await temp(), out = resolve(parent, "replay");
@@ -527,9 +539,13 @@ describe("fixed 40 set in the same paid step", () => {
     expect(report.rows.map(r => r.model)).toEqual([SONNET.model, TERRA.model]);
     expect(report.rows[0]).toMatchObject({ v8: { complete: false, wrongMarks: 0, wrongAsRight: 0, prompt: "whole-page-scalar-readings-v8" }, v7: { prompt: "whole-page-scalar-readings-v7", wrongMarks: 0, definite: 218, wrongAsRight: 0, clearUnsure: 1, clear: 219, costPerPageUsd: 0.01095165, latencyP50Ms: 2551, latencyP95Ms: 3164 } });
     expect(report.rows[1].v7).toMatchObject({ costPerPageUsd: 0.005076625, latencyP50Ms: 2270, latencyP95Ms: 3264 });
-    expect(report.rows[0].v8).toMatchObject({ clearUnsureRate: TWO_WAYS_METHOD_MARKS ? 0 : 2 / 18, twoWays: { items: 2, clearItems: 2, clearUnsure: TWO_WAYS_METHOD_MARKS ? 0 : 2, clearUnsureRate: TWO_WAYS_METHOD_MARKS ? 0 : 1 } });
+    const team = TWO_WAYS_METHOD_MARKS ? 0 : 2;
+    expect(report.rows[0].v8).toMatchObject({ clearUnsure: 0, clear: 18 - team, clearUnsureRate: 0, clearUnsureWithTeam: team, clearWithTeam: 18, clearUnsureRateWithTeam: team / 18,
+      twoWays: { items: 2, clearItems: 2, clearUnsure: team, clearUnsureRate: TWO_WAYS_METHOD_MARKS ? 0 : 1 } });
     const text = physicalFixedSideBySide(report);
-    for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219", "2W unsure"]) expect(text).toContain(piece);
+    for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219", "2W unsure", "Unsure+team", `0/${18 - team} 0.0%`, `${team}/18 ${(team / 18 * 100).toFixed(1)}%`, "1/219 0.5%"]) expect(text).toContain(piece);
+    if (!TWO_WAYS_METHOD_MARKS) expect(text).toContain("reads 100% while the method switch is off");
+    expect(text.split("\n")[0]).toBe(team ? `${team} items went to the team: two-ways method marking is off.` : "0 items went to the team.");
   });
   it("runs the fixed set after Robin in one serial queue, under one credit check, and replays both", async () => {
     const input = await withFixed(), mem = memoryBudget(), printed = vi.spyOn(console, "log").mockImplementation(() => {});

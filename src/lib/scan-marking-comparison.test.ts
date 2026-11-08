@@ -595,15 +595,45 @@ describe("D267 denominators, projection and selection", () => {
   });
   it("counts every item as AI-marked, with no parent path, and measures clear-photo unsure", () => {
     const m = manifest(), results = m.photos.map(p => result(p)), report = scoreComparison(m, COMPARISON_MODELS[0], results, evidence());
-    // With the method rules off, 4 photos carry a two-ways item and our team marks each one, so they count as unsure.
-    const [d, c, w, u, cu] = TWO_WAYS_METHOD_MARKS ? [360, 342, 340, 20, 2] : [324, 307, 302, 22, 5];
-    expect(report.denominator).toBe(d); expect(report.aiMarked).toBe(d); expect(report.parentMethods).toBe(0); expect(report.clearDenominator).toBe(c);
-    expect(report.wrongMarkDenominator).toBe(w); expect(report.wrongMarks).toBe(0); expect(report.wrongAsRight).toBe(0); expect(report.unsure).toBe(u); expect(report.clearUnsure).toBe(cu); expect(report.passed).toBe(true);
+    // With the method rules off, 4 photos carry a two-ways item and our team marks each one: unsure, but not model
+    // unsure, so D-267's clear count leaves the 3 on clear photos out and the count with team items keeps them.
+    const [d, c, w, u, cu, team] = TWO_WAYS_METHOD_MARKS ? [360, 342, 340, 20, 2, 0] : [324, 307, 302, 22, 5, 3];
+    expect(report.denominator).toBe(d); expect(report.aiMarked).toBe(d); expect(report.parentMethods).toBe(0); expect(report.clearDenominator).toBe(c - team);
+    expect(report.wrongMarkDenominator).toBe(w); expect(report.wrongMarks).toBe(0); expect(report.wrongAsRight).toBe(0); expect(report.unsure).toBe(u); expect(report.clearUnsure).toBe(cu - team); expect(report.passed).toBe(true);
+    expect(report).toMatchObject({ teamItems: TWO_WAYS_METHOD_MARKS ? 0 : 4, clearTeamItems: team, clearUnsureWithTeam: cu, clearDenominatorWithTeam: c });
     const missing = scoreComparison(m, COMPARISON_MODELS[0], results.slice(1), evidence());
     expect(missing.denominator).toBe(TWO_WAYS_METHOD_MARKS ? 360 : 324); expect(missing.complete).toBe(false); expect(missing.passed).toBe(false); expect(missing.missingRuns).toBe(1);
     const refused = copy(results); refused[0].status = "failed"; refused[0].failure = "refusal"; refused[0].schemaValid = false;
     const refusalReport = scoreComparison(m, COMPARISON_MODELS[0], refused, evidence());
     expect(refusalReport.refusals).toBe(1); expect(refusalReport.schemaFailures).toBe(0); expect(refusalReport.schemaUnvalidated).toBe(1);
+  });
+  describe("D-267 counts unsure only on items the AI is meant to mark", () => {
+    // Photos 0 to 2 are clear and each carries a two-ways item. With the method rules off our team marks it, so it is
+    // left out of the bar's numerator and denominator, and the report shows the count with team items beside it.
+    const set = () => { const m = manifest(); m.photos = m.photos.slice(0, 3); return m; };
+    // The labelled fake is already unsure of one AI-markable item: a write-words answer read wrong, which code leaves unsure.
+    const team = TWO_WAYS_METHOD_MARKS ? 0 : 3, items = 27, base = 1;
+    const unsureOn = (m: ComparisonManifest, results: ComparisonResult[], count: number) => {
+      for (let n = 0; n < count; n++) {
+        const t = m.photos[n].truth.find(t => t.format !== "two-ways")!, o = results[n].observations.find(o => o.identity.itemId === t.itemId)!;
+        o.result = null; o.issue = "blurry";
+      }
+    };
+    it("a perfect model on a set with team items passes", () => {
+      const m = set(), report = scoreComparison(m, COMPARISON_MODELS[0], m.photos.map(p => result(p)), evidence());
+      expect(report).toMatchObject({ passed: true, teamItems: team, clearTeamItems: team, clearUnsure: base, clearDenominator: items - team, clearUnsureWithTeam: base + team, clearDenominatorWithTeam: items });
+    });
+    it("a model unsure on more than 5% of the AI-markable clear items still fails", () => {
+      const m = set(), over = m.photos.map(p => result(p));
+      unsureOn(m, over, 1);
+      // 2 of 24 (or of 27 with the method rules on) is above 5%; the fake's 1 is not.
+      expect(scoreComparison(m, COMPARISON_MODELS[0], over, evidence())).toMatchObject({ passed: false, clearUnsure: base + 1, clearDenominator: items - team, clearUnsureWithTeam: base + 1 + team });
+    });
+    it("a team item with a definite wrong mark still counts against the wrong-mark rules", () => {
+      const m = set(), results = m.photos.map(p => result(p)), t = m.photos[1].truth.find(t => t.format === "two-ways")!;
+      Object.assign(results[1].observations.find(o => o.identity.itemId === t.itemId)!, { result: "right", state: "scored", issue: null });
+      expect(scoreComparison(m, COMPARISON_MODELS[0], results, evidence())).toMatchObject({ passed: false, wrongAsRight: 1 });
+    });
   });
   it("zero wrong-as-right is binding even below the aggregate wrong-mark threshold", () => {
     const m = manifest(), results = m.photos.map(p => result(p)); results[1].observations[0].result = "right";
