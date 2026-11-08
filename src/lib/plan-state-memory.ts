@@ -110,20 +110,17 @@ export function memoryPlanStates({ cards, subscriptions: initial = {}, now = Dat
   const DAY = 24 * 60 * 60 * 1000;
   const lookedAt = (childId: string) => Math.max(readAt.get(childId) ?? 0, triedAt.get(childId) ?? 0);
   const byLookedAt = (a: PlanRead, b: PlanRead) => lookedAt(a.childId) - lookedAt(b.childId) || a.childId.localeCompare(b.childId);
-  /** due_plan_start_reads: the newest start is `started` and finished in the last 40 days, and the row does not show it yet. */
-  const startReads = (): PlanRead[] => cards.flatMap((card): PlanRead[] => {
-    const newest = starts.filter((p) => p.childId === card.childId).sort((a, b) => b.generation - a.generation)[0];
-    if (newest?.state !== "started" || newest.finishedAt === null || newest.finishedAt <= now() - 40 * DAY) return [];
-    const row = rows.find((r) => r.childId === card.childId);
-    if (!row) return [{ parentId: card.parentId, childId: card.childId, customer: card.customer, kind: null, eventAt: null }];
-    const kind = PLAN_START_READ_KINDS.find((k) => k === row.plan.kind);
-    const read = readAt.get(row.childId) ?? 0;
-    if (!kind || (read >= newest.finishedAt && read >= now() - DAY)) return [];
-    return [{ parentId: row.parentId, childId: row.childId, customer: card.customer, kind, eventAt: row.eventAt }];
-  }).sort((a, b) => (a.kind === null ? 0 : 1) - (b.kind === null ? 0 : 1) || byLookedAt(a, b));
+  /** The child's newest plan start record, by generation. */
+  const newestStart = (childId: string) => starts.filter((p) => p.childId === childId).sort((a, b) => b.generation - a.generation)[0];
+  /** plan_starts.read_tried_at, per record (`child:generation`), on the database's clock (`now`). */
+  const startTriedAt = new Map<string, number>();
+  const startTried = (r: PlanRead) => {
+    const newest = newestStart(r.childId);
+    return newest ? startTriedAt.get(`${r.childId}:${newest.generation}`) : undefined;
+  };
   /**
-   * The rules of the database functions due_plan_start_reads, due_plan_reads and note_plan_read_tried, with the start rows first, as
-   * supabasePlanReads lists them; supabase/tests/child_plan_states.sql and supabase/tests/plan_start_reads.sql check the same cases.
+   * The rules of the database functions due_plan_reads, note_plan_read_tried, due_plan_start_reads and note_plan_start_read_tried;
+   * supabase/tests/child_plan_states.sql and supabase/tests/plan_start_reads.sql check the same cases.
    */
   const reads: PlanReadRows = {
     async duePlanReads(limit) {
@@ -134,11 +131,31 @@ export function memoryPlanStates({ cards, subscriptions: initial = {}, now = Dat
         if (!kind || !customer || (readAt.get(row.childId) ?? 0) >= now() - DAY) return [];
         return [{ parentId: row.parentId, childId: row.childId, customer, kind, eventAt: row.eventAt }];
       });
-      return [...startReads(), ...due.sort(byLookedAt)].slice(0, limit);
+      return due.sort(byLookedAt).slice(0, limit);
     },
     async notePlanReadTried(childId) {
       await tick();
       if (rows.some((r) => r.childId === childId)) triedAt.set(childId, now());
+    },
+    /** The newest start is `started` and finished in the last 40 days, and the row does not show it yet. Never tried first. */
+    async dueStartReads(limit) {
+      await tick();
+      const due = cards.flatMap((card): PlanRead[] => {
+        const newest = newestStart(card.childId);
+        if (newest?.state !== "started" || newest.finishedAt === null || newest.finishedAt <= now() - 40 * DAY) return [];
+        const row = rows.find((r) => r.childId === card.childId);
+        if (!row) return [{ parentId: card.parentId, childId: card.childId, customer: card.customer, kind: null, eventAt: null }];
+        const kind = PLAN_START_READ_KINDS.find((k) => k === row.plan.kind);
+        const read = readAt.get(row.childId) ?? 0;
+        if (!kind || (read >= newest.finishedAt && read >= now() - DAY)) return [];
+        return [{ parentId: row.parentId, childId: row.childId, customer: card.customer, kind, eventAt: row.eventAt }];
+      });
+      return due.sort((a, b) => (startTried(a) ?? -Infinity) - (startTried(b) ?? -Infinity) || a.childId.localeCompare(b.childId)).slice(0, limit);
+    },
+    async noteStartReadTried(childId) {
+      await tick();
+      const newest = newestStart(childId);
+      if (newest?.state === "started") startTriedAt.set(`${childId}:${newest.generation}`, now());
     },
   };
 

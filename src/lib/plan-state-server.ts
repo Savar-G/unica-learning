@@ -75,32 +75,38 @@ export function supabasePlanStore(db: SupabaseClient<Database>): PlanStateStore 
 }
 
 /**
- * The daily re-read's rows, through the service-only functions of migrations plan_state_reread and plan_start_reread. The rows of a start
- * that the plan state does not show yet come first: a family is locked out of a plan it pays for. Both lists are short (#713).
+ * The daily re-read's rows, through the service-only functions of migrations plan_state_reread, plan_start_reread and
+ * plan_start_read_tried: the rows that can still change, and the children of a start that the plan state does not show yet (#713).
+ * sweepPlanReads reads the two lists side by side.
  */
 export function supabasePlanReads(db: SupabaseClient<Database>): PlanReadRows {
   return {
     async duePlanReads(limit) {
-      const starts = await db.rpc("due_plan_start_reads", { p_limit: limit });
-      if (starts.error) throw new Error(`Plan start re-read rows failed: ${starts.error.message}`);
-      const startRows = starts.data.map((row): PlanRead => {
+      const { data, error } = await db.rpc("due_plan_reads", { p_limit: limit });
+      if (error) throw new Error(`Plan re-read rows failed: ${error.message}`);
+      return data.map((row): PlanRead => {
+        const kind = PLAN_READ_KINDS.find((k) => k === row.kind);
+        if (!kind) throw new Error("Plan re-read row unreadable");
+        return { parentId: row.parent_id, childId: row.child_id, customer: row.customer, kind, eventAt: row.event_at };
+      });
+    },
+    async notePlanReadTried(childId) {
+      const { error } = await db.rpc("note_plan_read_tried", { p_child: childId });
+      if (error) throw new Error(`Plan re-read note failed: ${error.message}`);
+    },
+    async dueStartReads(limit) {
+      const { data, error } = await db.rpc("due_plan_start_reads", { p_limit: limit });
+      if (error) throw new Error(`Plan start re-read rows failed: ${error.message}`);
+      return data.map((row): PlanRead => {
         // A child with no row has kind null; the generated type does not say so.
         const kind = row.kind === null ? null : PLAN_START_READ_KINDS.find((k) => k === row.kind);
         if (kind === undefined) throw new Error("Plan start re-read row unreadable");
         return { parentId: row.parent_id, childId: row.child_id, customer: row.customer, kind, eventAt: row.event_at };
       });
-      if (startRows.length >= limit) return startRows.slice(0, limit);
-      const { data, error } = await db.rpc("due_plan_reads", { p_limit: limit - startRows.length });
-      if (error) throw new Error(`Plan re-read rows failed: ${error.message}`);
-      return [...startRows, ...data.map((row): PlanRead => {
-        const kind = PLAN_READ_KINDS.find((k) => k === row.kind);
-        if (!kind) throw new Error("Plan re-read row unreadable");
-        return { parentId: row.parent_id, childId: row.child_id, customer: row.customer, kind, eventAt: row.event_at };
-      })];
     },
-    async notePlanReadTried(childId) {
-      const { error } = await db.rpc("note_plan_read_tried", { p_child: childId });
-      if (error) throw new Error(`Plan re-read note failed: ${error.message}`);
+    async noteStartReadTried(childId) {
+      const { error } = await db.rpc("note_plan_start_read_tried", { p_child: childId });
+      if (error) throw new Error(`Plan start re-read note failed: ${error.message}`);
     },
   };
 }

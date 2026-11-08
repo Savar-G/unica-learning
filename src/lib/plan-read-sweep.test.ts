@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
-import { sweepPlanReads, type SweepTime } from "@/lib/card-reconcile";
+import { START_READ_LIMIT, sweepPlanReads, type SweepTime } from "@/lib/card-reconcile";
 import type { Database } from "@/lib/database";
 import type { KnownPlan, PlanSubscription } from "@/lib/parent-plan";
 import { childPlanAccess, familyHasPlanHistory, planAccessRule } from "@/lib/plan-access";
@@ -412,12 +412,12 @@ describe("a started plan whose plan state write failed, with the webhook lost to
     await lostStart(f, [trial]);
     expect(row(f)).toBeUndefined();
     expect((await gate(f)).open).toBe(false);
-    const due = await f.states.reads.duePlanReads(100);
+    const due = await f.states.reads.dueStartReads(100);
     expect(due).toEqual([{ ...key, customer: "cus_a", kind: null, eventAt: null }]);
     expect(await sweepPlanReads(f.states.reads, f.states, time())).toEqual({ due: 1, read: 1, changed: 1, unclear: 0, failed: 0, outOfTime: false });
     expect(row(f)).toMatchObject({ plan: { kind: "free_month" }, eventAt: new Date(0).toISOString() });
     expect(await gate(f)).toEqual({ open: true, reason: "open" });
-    expect(await f.states.reads.duePlanReads(100)).toEqual([]);
+    expect(await f.states.reads.dueStartReads(100)).toEqual([]);
   });
 
   it("an admin start on a not_started row: one re-read opens it", async () => {
@@ -439,7 +439,7 @@ describe("a started plan whose plan state write failed, with the webhook lost to
     await lostStart(f, [over, { ...active, created: 1_800_000_000 }], 2);
     expect(row(f)?.plan.kind).toBe("ended");
     expect((await gate(f)).open).toBe(false);
-    expect(await f.states.reads.duePlanReads(100)).toMatchObject([{ kind: "ended", eventAt: new Date(1_760_000_000_000).toISOString() }]);
+    expect(await f.states.reads.dueStartReads(100)).toMatchObject([{ kind: "ended", eventAt: new Date(1_760_000_000_000).toISOString() }]);
     expect(await sweepPlanReads(f.states.reads, f.states, time())).toMatchObject({ due: 1, read: 1, changed: 1, unclear: 0 });
     expect(row(f)).toMatchObject({ plan: { kind: "paying" }, eventAt: new Date(1_760_000_000_000).toISOString() });
     expect(await gate(f)).toEqual({ open: true, reason: "open" });
@@ -457,20 +457,20 @@ describe("a started plan whose plan state write failed, with the webhook lost to
     expect(row(f)).toEqual(before);
     expect(f.states.writes).toBe(writes);
     expect((await gate(f)).open).toBe(false);
-    expect(await f.states.reads.duePlanReads(100)).toHaveLength(1);
+    expect(await f.states.reads.dueStartReads(100)).toHaveLength(1);
     // With no row, too.
     const none = family();
     await lostStart(none, [trial]);
     none.states.fail.plan = new Error("Stripe down");
     expect(await sweepPlanReads(none.states.reads, none.states, time())).toMatchObject({ read: 0, failed: 1 });
     expect(none.states.rows).toEqual([]);
-    expect(await none.states.reads.duePlanReads(100)).toHaveLength(1);
+    expect(await none.states.reads.dueStartReads(100)).toHaveLength(1);
   });
 
   it("a newer webhook is never overwritten: the event takes after the read and saves first", async () => {
     const f = family();
     await lostStart(f, [trial]);
-    const [due] = await f.states.reads.duePlanReads(1);
+    const [due] = await f.states.reads.dueStartReads(1);
     const hold = f.states.hold("plan");
     const read = rereadPlan(due, f.states);
     await hold.reached;
@@ -493,19 +493,24 @@ describe("a started plan whose plan state write failed, with the webhook lost to
   it("a child with no started plan start is not read", async () => {
     // No start at all, with no row and with an ended row.
     const none = family([trial]);
-    expect(await none.states.reads.duePlanReads(100)).toEqual([]);
+    expect(await none.states.reads.dueStartReads(100)).toEqual([]);
     const ended = family([over]);
     await applyPlanEvent({ id: "evt_end", type: "customer.subscription.deleted", created: 1_760_000_000, customer: "cus_a" }, ended.states);
     ended.tick(2 * DAY);
-    expect(await ended.states.reads.duePlanReads(100)).toEqual([]);
+    expect(await ended.states.reads.dueStartReads(100)).toEqual([]);
     // A newest start that is open, refused or closed by the team is not read: the card sweep decides an open one.
-    for (const state of ["open", "refused", "team_ended"] as const) {
+    for (const state of ["open", "other", "refused", "team_ended"] as const) {
       ended.states.starts.splice(0, ended.states.starts.length, { childId: "a", generation: 1, state: "started", finishedAt: ended.at() - DAY }, { childId: "a", generation: 2, state, finishedAt: state === "open" ? null : ended.at() });
-      expect(await ended.states.reads.duePlanReads(100)).toEqual([]);
+      expect(await ended.states.reads.dueStartReads(100)).toEqual([]);
+    }
+    // A start that found another plan running (`other`) is not read, alone or after an older started one: that plan is not this start's.
+    for (const older of [[], [{ childId: "a", generation: 1, state: "started" as const, finishedAt: ended.at() - DAY }]]) {
+      ended.states.starts.splice(0, ended.states.starts.length, ...older, { childId: "a", generation: older.length + 1, state: "other", finishedAt: ended.at() });
+      expect(await ended.states.reads.dueStartReads(100)).toEqual([]);
     }
     // A start that finished more than 40 days ago is not read.
     ended.states.starts.splice(0, ended.states.starts.length, { childId: "a", generation: 1, state: "started", finishedAt: ended.at() - 41 * DAY });
-    expect(await ended.states.reads.duePlanReads(100)).toEqual([]);
+    expect(await ended.states.reads.dueStartReads(100)).toEqual([]);
     expect(await sweepPlanReads(ended.states.reads, ended.states, time())).toMatchObject({ due: 0, read: 0 });
     expect(row(ended)?.plan.kind).toBe("ended");
   });
@@ -516,9 +521,9 @@ describe("a started plan whose plan state write failed, with the webhook lost to
     f.tick(60_000);
     await lostStart(f, [over]);
     expect(await sweepPlanReads(f.states.reads, f.states, time())).toMatchObject({ read: 1, changed: 0 });
-    expect(await f.states.reads.duePlanReads(100)).toEqual([]);
+    expect(await f.states.reads.dueStartReads(100)).toEqual([]);
     f.tick(DAY + 1);
-    expect(await f.states.reads.duePlanReads(100)).toHaveLength(1);
+    expect(await f.states.reads.dueStartReads(100)).toHaveLength(1);
     expect((await gate(f)).open).toBe(false);
   });
 
@@ -532,7 +537,7 @@ describe("a started plan whose plan state write failed, with the webhook lost to
     expect(row(f)).toEqual(before);
   });
 
-  it("the start rows come first, before the rows of the daily re-read, inside the limit", async () => {
+  it("the start rows are their own list: the daily re-read's list never holds them, and they never hold its places", async () => {
     let clock = NOW - 2 * DAY;
     const s = memoryPlanStates({
       cards: [{ parentId: "p-b", childId: "b", customer: "cus_b", cardSaved: true }, { parentId: "p-s", childId: "s", customer: "cus_s", cardSaved: true }],
@@ -541,7 +546,116 @@ describe("a started plan whose plan state write failed, with the webhook lost to
     await applyPlanEvent({ id: "evt_b", type: "customer.subscription.updated", created: 1_700_000_000, customer: "cus_b" }, s);
     clock = NOW;
     s.starts.push({ childId: "s", generation: 1, state: "started", finishedAt: NOW - 1000 });
-    expect((await s.reads.duePlanReads(100)).map((r: PlanRead) => [r.childId, r.kind])).toEqual([["s", null], ["b", "paying"]]);
-    expect((await s.reads.duePlanReads(1)).map((r: PlanRead) => r.childId)).toEqual(["s"]);
+    expect((await s.reads.dueStartReads(100)).map((r: PlanRead) => [r.childId, r.kind])).toEqual([["s", null]]);
+    expect((await s.reads.duePlanReads(1)).map((r: PlanRead) => [r.childId, r.kind])).toEqual([["b", "paying"]]);
+  });
+
+  describe("start reads cannot hold up the reads that close stopped plans", () => {
+    /** `n` children each with a lost start whose Stripe read fails, plus `z`: an overdue paying row whose plan ended with no webhook. */
+    const crowd = async (n: number) => {
+      let clock = NOW - 2 * DAY;
+      const names = Array.from({ length: n }, (_, i) => `s${String(i).padStart(3, "0")}`);
+      const s = memoryPlanStates({
+        cards: [...names, "z"].map((c) => ({ parentId: `p-${c}`, childId: c, customer: `cus_${c}`, cardSaved: true })),
+        subscriptions: { ...Object.fromEntries(names.map((c) => [`cus_${c}`, [trial]])), cus_z: [active] }, now: () => clock,
+      });
+      await applyPlanEvent({ id: "evt_z", type: "customer.subscription.updated", created: 1_700_000_000, customer: "cus_z" }, s);
+      clock = NOW;
+      s.subscriptions.cus_z = [over];
+      for (const c of names) s.starts.push({ childId: c, generation: 1, state: "started", finishedAt: NOW - 1000 });
+      return { s, names, tick: (ms: number) => { clock += ms; } };
+    };
+
+    it("three start reads that fail after about 9 s each, then an overdue paying row whose plan ended: it closes in the same run", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { s } = await crowd(3);
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      try {
+        const plan = s.provider.plan;
+        const started: [string, number][] = [];
+        s.provider.plan = async (customer) => {
+          started.push([customer, Date.now() - NOW]);
+          await new Promise((resolve) => setTimeout(resolve, 9_000));
+          if (customer === "cus_z") return plan(customer);
+          throw new Error("Stripe timed out");
+        };
+        const end = new AbortController();
+        const timer = setTimeout(() => end.abort(), 45_000);
+        const run = sweepPlanReads(s.reads, s, { now: () => Date.now(), startBy: NOW + 25_000, signal: end.signal });
+        await vi.advanceTimersByTimeAsync(10_000);
+        // The ordinary read finishes while start reads still fail. Serial start reads would leave it open.
+        expect(s.rows.find((r) => r.childId === "z")?.plan.kind).toBe("ended");
+        await vi.advanceTimersByTimeAsync(18_000);
+        expect(await run).toEqual({ due: 4, read: 1, changed: 1, unclear: 0, failed: 3, outOfTime: false });
+        const starts = started.filter(([customer]) => customer !== "cus_z");
+        expect(starts.map(([customer]) => customer)).toEqual(["cus_s000", "cus_s001", "cus_s002"]);
+        // The memory store yields with zero-delay timers between requests. Allow those small delays.
+        for (const [i, [, at]] of starts.entries()) {
+          expect(at).toBeGreaterThanOrEqual(i * 9_000);
+          expect(at).toBeLessThan(i * 9_000 + 100);
+        }
+        expect(started.find(([customer]) => customer === "cus_z")?.[1]).toBeLessThan(100);
+        expect(end.signal.aborted).toBe(false);
+        clearTimeout(timer);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("200 starts that fail at once: the run tries only START_READ_LIMIT of them, and every ordinary read still runs", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { s } = await crowd(200);
+      const plan = s.provider.plan;
+      const tried: string[] = [];
+      s.provider.plan = async (customer) => {
+        if (customer === "cus_z") return plan(customer);
+        tried.push(customer);
+        throw new Error("Stripe refused");
+      };
+      expect(await sweepPlanReads(s.reads, s, time())).toEqual({ due: 1 + START_READ_LIMIT, read: 1, changed: 1, unclear: 0, failed: START_READ_LIMIT, outOfTime: false });
+      expect(tried).toEqual(["cus_s000", "cus_s001", "cus_s002"]);
+      expect(s.rows.find((r) => r.childId === "z")?.plan.kind).toBe("ended");
+    });
+
+    it("failing starts take turns across runs, by the try time kept on the start record, a child with no row too", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { s, tick } = await crowd(5);
+      const plan = s.provider.plan;
+      const tried: string[][] = [];
+      s.provider.plan = async (customer) => {
+        if (customer === "cus_z") return plan(customer);
+        tried.at(-1)!.push(customer.slice(4));
+        tick(1_000); // Each note has its own database time.
+        throw new Error("Stripe down");
+      };
+      for (let run = 0; run < 3; run++) {
+        tried.push([]);
+        await sweepPlanReads(s.reads, s, time());
+        tick(900_000);
+      }
+      expect(tried).toEqual([["s000", "s001", "s002"], ["s003", "s004", "s000"], ["s001", "s002", "s003"]]);
+      expect(s.rows.map((r) => r.childId)).toEqual(["z"]);
+      // A new start record starts with no try, so it goes first again.
+      s.starts.push({ childId: "s004", generation: 2, state: "started", finishedAt: NOW });
+      expect((await s.reads.dueStartReads(START_READ_LIMIT)).map((r: PlanRead) => r.childId)).toEqual(["s004", "s000", "s001"]);
+    });
+
+    it("a failed start attempt note skips its Stripe read and leaves ordinary reads running", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { s } = await crowd(3);
+      const plan = vi.spyOn(s.provider, "plan");
+      const reads = { ...s.reads, noteStartReadTried: async () => { throw new Error("note failed"); } };
+      expect(await sweepPlanReads(reads, s, time())).toEqual({ due: 4, read: 1, changed: 1, unclear: 0, failed: 3, outOfTime: false });
+      expect(plan.mock.calls).toEqual([["cus_z"]]);
+      expect(s.rows.find((r) => r.childId === "z")?.plan.kind).toBe("ended");
+    });
+
+    it("a failed start list is one failure, and the re-read goes on", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { s } = await crowd(1);
+      const reads = { ...s.reads, dueStartReads: async () => { throw new Error("starts down"); } };
+      expect(await sweepPlanReads(reads, s, time())).toEqual({ due: 1, read: 1, changed: 1, unclear: 0, failed: 1, outOfTime: false });
+    });
   });
 });

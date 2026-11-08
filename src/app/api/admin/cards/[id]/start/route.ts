@@ -14,7 +14,7 @@ import { workbookStore } from "@/lib/workbook-store";
 // D-139: an admin starts a saved card's paid plan when the child's first workbook arrives at your home. Stripe holds the result; the
 // dashboard reads it from there, and the parent gets the confirmation email. This action also opens the product for that child
 // (src/lib/plan-access.ts): it writes the plan state at once, before any webhook. Answers { ok, firstChargeAt, access, confirmation }
-// or { ok: false, error }. `access` is "open" when the plan state is written, else "pending": see openAccess for what writes it then.
+// or { ok: false, error }. `access` is "open" when the plan state is written, else "pending": see openAccess.
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards/[id]/start">) {
   // Checks Auth and live admin membership for every request.
   const admin = await adminSession();
@@ -61,9 +61,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
 }
 
 /**
- * The plan has started, so a failed write must not read as a failed start. After a failed write, the webhook or the next run of the daily
- * re-read writes the row: the re-read takes a child whose newest plan start is `started` while its row is missing, `not_started` or `ended`
- * (#713, PLAN_START_READ_KINDS in src/lib/plan-state.ts). The admin card says that access is not open yet (StartPlan).
+ * The plan has started, so a failed write must not read as a failed start. "pending" means only that the write did not answer `stored`:
+ * it may have stored and lost its answer. After a real failure the webhook or the daily re-read tries again: the re-read takes a child
+ * whose newest plan start is `started` while its row is missing, `not_started` or `ended` (#713, PLAN_START_READ_KINDS in
+ * src/lib/plan-state.ts), a few per run, for as long as Stripe answers. The admin card says that access could not be confirmed (StartPlan).
  */
 async function openAccess(start: Parameters<typeof applyPlanStart>[0]): Promise<"open" | "pending"> {
   try {

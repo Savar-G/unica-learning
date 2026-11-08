@@ -168,21 +168,15 @@ describe("the re-read's rows in the database", () => {
     return answer instanceof Response ? answer : Response.json(answer);
   });
 
-  it("reads the due rows by the database's clock, with no time from the app, start rows first", async () => {
+  it("reads each list by the database's clock, with no time from the app, and only its own function", async () => {
     const calls: unknown[] = [];
     const rows = supabasePlanReads(lists([{ ...row, child_id: "s", kind: null }, { ...row, child_id: "e", kind: "ended", event_at: "2026-11-01T00:00:00+00:00" }], [row], calls));
-    expect(await rows.duePlanReads(50)).toEqual([
+    expect(await rows.dueStartReads(3)).toEqual([
       { parentId: "p", childId: "s", customer: "cus_1", kind: null, eventAt: null },
       { parentId: "p", childId: "e", customer: "cus_1", kind: "ended", eventAt: "2026-11-01T00:00:00+00:00" },
-      { parentId: "p", childId: "c", customer: "cus_1", kind: "ending", eventAt: null },
     ]);
-    expect(calls).toEqual([["due_plan_start_reads", { p_limit: 50 }], ["due_plan_reads", { p_limit: 48 }]]);
-  });
-
-  it("stays inside the limit: with the start rows filling it, the other list is not read", async () => {
-    const calls: unknown[] = [];
-    expect(await supabasePlanReads(lists([{ ...row, kind: "not_started" }], [row], calls)).duePlanReads(1)).toMatchObject([{ kind: "not_started" }]);
-    expect(calls).toEqual([["due_plan_start_reads", { p_limit: 1 }]]);
+    expect(await rows.duePlanReads(50)).toEqual([{ parentId: "p", childId: "c", customer: "cus_1", kind: "ending", eventAt: null }]);
+    expect(calls).toEqual([["due_plan_start_reads", { p_limit: 3 }], ["due_plan_reads", { p_limit: 50 }]]);
   });
 
   it("reads the closed kinds too", async () => {
@@ -193,9 +187,9 @@ describe("the re-read's rows in the database", () => {
     await expect(supabasePlanReads(lists([], [{ ...row, kind: "ended" }])).duePlanReads(1)).rejects.toThrow("unreadable");
     await expect(supabasePlanReads(lists([], [{ ...row, kind: "not_started" }])).duePlanReads(1)).rejects.toThrow("unreadable");
     await expect(supabasePlanReads(lists([], [{ ...row, kind: null }])).duePlanReads(1)).rejects.toThrow("unreadable");
-    await expect(supabasePlanReads(lists([{ ...row, kind: "paying" }], [])).duePlanReads(1)).rejects.toThrow("unreadable");
+    await expect(supabasePlanReads(lists([{ ...row, kind: "paying" }], [])).dueStartReads(1)).rejects.toThrow("unreadable");
     await expect(supabasePlanReads(lists([], Response.json({ message: "down" }, { status: 500 }))).duePlanReads(1)).rejects.toThrow("down");
-    await expect(supabasePlanReads(lists(Response.json({ message: "starts down" }, { status: 500 }), [])).duePlanReads(1)).rejects.toThrow("starts down");
+    await expect(supabasePlanReads(lists(Response.json({ message: "starts down" }, { status: 500 }), [])).dueStartReads(1)).rejects.toThrow("starts down");
   });
 
   it("notes a row, and a failed note throws", async () => {
@@ -203,5 +197,12 @@ describe("the re-read's rows in the database", () => {
     await supabasePlanReads(client((name, body) => { calls.push([name, body]); return Response.json(null); })).notePlanReadTried("c");
     expect(calls).toEqual([["note_plan_read_tried", { p_child: "c" }]]);
     await expect(supabasePlanReads(client(() => Response.json({ message: "fenced" }, { status: 400 }))).notePlanReadTried("c")).rejects.toThrow("fenced");
+  });
+
+  it("notes a start, and a failed note throws", async () => {
+    const calls: unknown[] = [];
+    await supabasePlanReads(client((name, body) => { calls.push([name, body]); return Response.json(null); })).noteStartReadTried("c");
+    expect(calls).toEqual([["note_plan_start_read_tried", { p_child: "c" }]]);
+    await expect(supabasePlanReads(client(() => Response.json({ message: "fenced" }, { status: 400 }))).noteStartReadTried("c")).rejects.toThrow("fenced");
   });
 });

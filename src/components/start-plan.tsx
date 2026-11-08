@@ -15,7 +15,10 @@ const ERRORS: Record<string, string> = {
   failed: "Stripe could not start the plan. Check Stripe before trying again.",
 };
 
-/** The start's answer, as the route gives it. `access` is "pending" when the plan state write after the start failed. */
+/**
+ * The start's answer, as the route gives it. `access` is "pending" when the plan state write after the start did not answer that it
+ * stored: it may have failed, or it may have stored and its answer been lost. So the note claims neither.
+ */
 export interface StartedAnswer {
   firstChargeAt: string;
   access: "open" | "pending";
@@ -26,7 +29,7 @@ export interface StartedAnswer {
 export function StartedPlan({ firstChargeAt, access, confirmation }: StartedAnswer) {
   return <>
     <span className="adm-note">Started. First charge {localDay(firstChargeAt, PACIFIC_ZONE)}</span>
-    {access === "pending" && <p role="alert" className="adm-note">The plan started in Stripe, but this child cannot use Unica yet: we could not save the plan on our side. The daily plan check opens it in its next run, which comes every 15 minutes, or the next Stripe event for this family opens it before that. Do not start another plan.</p>}
+    {access === "pending" && <p role="alert" className="adm-note">The plan started in Stripe, but we could not confirm that this child can use Unica. Automatic checks will try again. Check this child&apos;s plan state later today. Do not start another plan.</p>}
     {confirmation !== "sent" && <p role="alert" className="adm-note">We could not confirm the free month email. If it was refused, we try again every 15 minutes. Reload this page later and check Workbook emails on this card. If it still did not go, send the parent its text by hand.</p>}
   </>;
 }

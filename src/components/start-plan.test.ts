@@ -11,13 +11,15 @@ it("a start with access open shows the first charge and no warning", () => {
   expect(html).not.toContain("role=\"alert\"");
 });
 
-it("a start whose plan state write failed says that access is not open yet, and what opens it", () => {
+it("a start whose plan state write did not answer says access could not be confirmed, and promises no recovery", () => {
   const html = render("pending");
   expect(html).toContain("Started. First charge");
-  expect(html).toContain("The plan started in Stripe, but this child cannot use Unica yet");
-  expect(html).toContain("The daily plan check opens it in its next run, which comes every 15 minutes");
-  expect(html).toContain("the next Stripe event for this family opens it before that");
+  expect(html).toContain("The plan started in Stripe, but we could not confirm that this child can use Unica.");
+  expect(html).toContain("Automatic checks will try again.");
+  expect(html).toContain("Check this child&#x27;s plan state later today.");
   expect(html).toContain("Do not start another plan.");
+  // The write may have stored and lost its answer, and a long Stripe outage holds the checks: the note claims neither outcome.
+  expect(html).not.toMatch(/cannot use Unica yet|opens it|every 15 minutes|before that/);
   expect(html).not.toContain("free month email");
 });
 

@@ -2693,6 +2693,7 @@ export type Database = {
           parent_id: string
           payment_method_id: string
           purpose: string
+          read_tried_at: string | null
           start_key: string
           started_at: string
           state: string
@@ -2725,6 +2726,7 @@ export type Database = {
           parent_id: string
           payment_method_id: string
           purpose?: string
+          read_tried_at?: string | null
           start_key: string
           started_at?: string
           state?: string
@@ -2757,6 +2759,7 @@ export type Database = {
           parent_id?: string
           payment_method_id?: string
           purpose?: string
+          read_tried_at?: string | null
           start_key?: string
           started_at?: string
           state?: string
@@ -4940,6 +4943,51 @@ export type Database = {
           },
           {
             foreignKeyName: "workbook_emails_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_instructions: {
+        Row: {
+          child_id: string
+          instructions: Json
+          parent_id: string
+          schema_version: number
+          updated_at: string
+          updated_by: string | null
+          updated_by_email: string | null
+        }
+        Insert: {
+          child_id: string
+          instructions: Json
+          parent_id: string
+          schema_version?: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string | null
+        }
+        Update: {
+          child_id?: string
+          instructions?: Json
+          parent_id?: string
+          schema_version?: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_instructions_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_instructions_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "parents"
@@ -7888,6 +7936,10 @@ export type Database = {
           p_token: string
         }
         Returns: boolean
+      }
+      note_plan_start_read_tried: {
+        Args: { p_child: string }
+        Returns: undefined
       }
       parent_explanation_command: {
         Args: {

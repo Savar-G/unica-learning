@@ -110,8 +110,8 @@ export async function applyPlanEvent(event: PlanEvent, { store, provider }: Plan
  * Stores what Stripe says right after a plan start, so the plan gate (src/lib/plan-access.ts) opens with no webhook. It goes
  * through applyPlanEvent, not a fill: a fill leaves a `not_started` row as it is. The event's time is when the start began,
  * before the subscription existed, so no event of that subscription reads as older than this write. The id is one per start
- * and generation. Throws when Stripe or the store fails. The webhook then writes the row, and the daily re-read reads it in its next run
- * (PLAN_START_READ_KINDS); the card sweep writes it only when it closes an open start itself.
+ * and generation. Throws when Stripe or the store fails. The webhook and the daily re-read (PLAN_START_READ_KINDS, START_READ_LIMIT a run) then try
+ * again; the card sweep writes it only when it closes an open start itself.
  */
 export function applyPlanStart(start: { customer: string; cardSetup: string; generation: number; startedAt: number }, states: PlanStates): Promise<PlanSave> {
   return applyPlanEvent({
@@ -128,7 +128,8 @@ export const PLAN_READ_KINDS = ["free_month", "paying", "ending", "payment_faile
 
 /**
  * The kinds of a row the re-read also takes when a start backs it (#713): the newest plan start of the child's card is `started`, it
- * finished in the last 40 days, and the row was not read since, or not for 24 hours (database function due_plan_start_reads). An admin's
+ * finished in the last 40 days, and the row was not read since, or not for 24 hours (database function due_plan_start_reads). These are
+ * their own list, read beside the others, a few per run, the start tried longest ago first (sweepPlanReads in card-reconcile.ts). An admin's
  * start or a Restart writes its row at once; when that write fails and the webhook is lost too, the row stays like this on a running
  * plan. A child with no row is taken in the same case, with kind null. Other ended and not_started rows are never read.
  */

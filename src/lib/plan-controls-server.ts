@@ -129,8 +129,8 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
 
 /**
  * As the admin start route does. The plan has started, so a failed write must not read as a failed restart. After a failed write, the webhook
- * or the next run of the daily re-read writes the row: the re-read takes a child whose newest plan start is `started` while its row is
- * missing, `not_started` or `ended` (#713, PLAN_START_READ_KINDS in src/lib/plan-state.ts).
+ * or the daily re-read tries again: the re-read takes a child whose newest plan start is `started` while its row is missing,
+ * `not_started` or `ended` (#713, PLAN_START_READ_KINDS in src/lib/plan-state.ts), a few per run, for as long as Stripe answers.
  */
 async function openRestartedPlan(db: SupabaseClient<Database>, client: NonNullable<ReturnType<typeof stripe>>, start: Parameters<typeof applyPlanStart>[0]): Promise<"open" | "pending"> {
   try {
