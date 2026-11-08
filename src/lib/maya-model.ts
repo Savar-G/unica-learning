@@ -89,8 +89,8 @@ export function modelInput(session: Session, repair: ModelInput["repair"] = null
       ? {
           text: pkg.text,
           answer: valueText(pkg.answer.value),
-          // An evaluate question's steps are its parts and each part's columns (src/lib/maya/evaluate.ts).
-          steps: evaluateModelSteps(pkg) ?? pkg.steps.filter((s) => s.kind !== "result").map((s) => ({ id: s.id, text: stepText(s, pkg.operation) })),
+          steps: evaluateModelSteps(pkg) ?? pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "missing-frame" && s.kind !== "drop-zeros")
+            .map((s) => ({ id: s.id, text: stepText(s, pkg.operation) })),
           easierExample: pkg.easierExample.text,
         }
       : null,

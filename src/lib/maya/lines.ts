@@ -24,6 +24,8 @@ import {
 import { simplestWords, teachSteps } from "./fractions";
 import { evaluateFrame, partAt, withEvaluateExample } from "./evaluate";
 import { EVALUATE_TEMPLATES, partEquation, partHelp, partShow } from "./evaluate-lines";
+import { frameInvite, framedLines, MISSING_TEMPLATES, type FramedLines } from "./missing-number";
+import { showTrial, trialEquation, trialFeedback, trialHelp, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -36,8 +38,10 @@ import { EVALUATE_TEMPLATES, partEquation, partHelp, partShow } from "./evaluate
  * step.order; check.not_yet never praises wrong work.
  * Version 11 (#605): a held question invites another question on the page, without an inability claim.
  * Version 13: answer-only clarification and checked regroup explanations from full practice.
+ * Version 14 (Wave A): missing numbers: the framing invites, try.target.frame, and the try-a-number lines; a
+ * check.not_yet line may name the wrong try it answers (`heard`).
  */
-export const LINES_VERSION = 13;
+export const LINES_VERSION = 14;
 
 export const LINE_IDS = [
   "about.ai",
@@ -466,6 +470,9 @@ export const TEMPLATES = {
   // Code adds the AI disclosure only before the first hello. No alternate question is invented or promised.
   "held.hello": ["Hi, I'm Maya, an AI."],
   "held.next": ["Want to pick another question on this page?"],
+  // Missing numbers (Wave A): the framing and the try-a-number lines, from their own modules.
+  ...MISSING_TEMPLATES,
+  ...TRIAL_TEMPLATES,
 } as const satisfies Record<string, readonly string[]>;
 export type TemplateKey = keyof typeof TEMPLATES;
 
@@ -515,6 +522,8 @@ function whereOf(step: WorkedStep): string {
       return "the simplest form";
     case "operate":
       return `${step.left} ${step.op} ${step.right}`;
+    case "try-factor":
+      return "the missing number";
     default:
       return "this step";
   }
@@ -554,6 +563,8 @@ function equationOf(step: WorkedStep, pkg: OperationPackage, problem: "target" |
       return `${step.numerators[0]} ${step.op === "add" ? "+" : "−"} ${step.numerators[1]} = ${step.numerator}`;
     case "simplify":
       return `${step.from.numerator} ÷ ${step.divisor} = ${step.to.numerator} and ${step.from.denominator} ÷ ${step.divisor} = ${step.to.denominator}`;
+    case "try-factor":
+      return trialEquation(step);
     default:
       return null;
   }
@@ -595,7 +606,8 @@ function fractionShow(step: WorkedStep): string | null {
 
 /** A worked step in words: a fraction step as fractionShow says it, any other as the shared step text. */
 const showOf = (step: WorkedStep, pkg: OperationPackage, problem: "target" | "example") =>
-  partShow(step) ?? fractionShow(step) ?? stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
+  partShow(step) ?? fractionShow(step) ?? (step.kind === "try-factor" && problem === "target" ? showTrial(step) : null)
+  ?? stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
 
 /** The top number of a long multiplication as its rows work it: without its point (2.5 × 1.3 works 25 × 13). */
 function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
@@ -611,7 +623,12 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
   if (part) return part;
   const slots = { step: step.id };
   const where = whereOf(step);
-  const out: LineOffer[] = [offer("step.invite", "step.invite", { where }, { slots, level: 0 })];
+  // A missing number's first work step says the framing first (missing-number.ts); a try step invites a try.
+  const framed = framedLines(pkg.steps);
+  const lead = framed && teachSteps(pkg)[0]?.id === step.id ? frameInvite(framed, where) : null;
+  const trial = step.kind === "try-factor" ? trialHelp(step) : [];
+  const out: LineOffer[] = [lead ? offer("step.invite", lead.key, lead.vars, { slots, level: 0 })
+    : trial[0] ? trialOffer(trial[0], slots) : offer("step.invite", "step.invite", { where }, { slots, level: 0 })];
   const add = (line: LineId, key: TemplateKey, vars: Vars, level: 1 | 2, board?: string) =>
     out.push(offer(line, key, vars, { slots, level, ...(board ? { board } : {}) }));
   switch (step.kind) {
@@ -703,10 +720,14 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
     case "simplify":
       out.push(...simplifyLines(step.from, slots));
       break;
+    case "try-factor":
+      out.push(...trial.slice(1).map((t) => trialOffer(t, slots)));
+      break;
     default:
       break;
   }
-  const eq = equationOf(step, pkg, "target");
+  // A try step's equation holds the answer: its H3 shows the tries on each side, with no board note.
+  const eq = step.kind === "try-factor" ? null : equationOf(step, pkg, "target");
   out.push(offer("step.show", "step.show", { show: showOf(step, pkg, "target") }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
   return out;
 }
@@ -721,6 +742,13 @@ function simplifyLines(from: FractionParts, slots: Slots): LineOffer[] {
   if (g <= 1) return [];
   const vars = { n: from.numerator, d: from.denominator, g };
   return [offer("step.point", "point.simplify", vars, { slots, level: 1 }), offer("step.operation", "operation.simplify", vars, { slots, level: 2 })];
+}
+
+/** A try line as an offer (trial-factor.ts): a help line at its level, or a not-yet line that needs its wrong try checked. */
+function trialOffer(t: TrialLine, slots: Slots): LineOffer {
+  if (t.heard === undefined) return offer(t.line, t.key, t.vars, { slots, level: t.level });
+  const s = { ...slots, heard: t.heard };
+  return offer(t.line, t.key, t.vars, { slots: s, requires: { answer: "wrong", step: slots.step!, heard: t.heard } });
 }
 
 const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
@@ -786,8 +814,11 @@ const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+/).map((s) => s.t
 /** Controller-owned opening. Only checked operation data is read aloud, never arbitrary workbook prose. */
 export function workbookOpening(pkg: OperationPackage): string | null {
   return pkg.ref.source === "workbook" ? WORKBOOK_OPENING
-    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", evaluateFrame(pkg)?.printed ?? operationText(pkg.operation)) : null;
+    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", questionExpr(pkg)) : null;
 }
+
+/** The question as Maya names it: a missing number's printed equation ("30 × ? = 16200"), else its operation. */
+const questionExpr = (pkg: OperationPackage) => framedLines(pkg.steps)?.printed ?? evaluateFrame(pkg)?.printed ?? operationText(pkg.operation);
 
 /** One fixed confirmation, outside the model's selectable wordings. */
 export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page}, number {number}: {expr}.";
@@ -798,10 +829,11 @@ export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page
  */
 export function packageLines(given: OperationPackage) {
   const pkg = withEvaluateExample(given);
-  const expr = operationText(pkg.operation);
-  // A missing-number evaluate question is named as the page prints it ("8 × ? = 7360 − 400"); its math lines keep expr.
+  const framed: FramedLines | null = framedLines(pkg.steps);
+  const expr = questionExpr(pkg);
   const asked = evaluateFrame(pkg)?.printed ?? expr;
-  const exampleExpr = operationText(pkg.easierExample.operation);
+  const solved = framed?.inverse ?? expr;
+  const exampleExpr = framedLines(pkg.easierExample.steps)?.printed ?? operationText(pkg.easierExample.operation);
   const answer = valueText(pkg.answer.value);
   const steps = teachSteps(pkg);
   const find = (id: string) => steps.find((s) => s.id === id);
@@ -821,13 +853,15 @@ export function packageLines(given: OperationPackage) {
       const eq = equationOf(step, pkg, "example");
       return [offer("example.step", step.kind === "result" ? "example.result" : "example.step", { show }, { slots: { step: id }, ...(eq ? { board: eq } : {}) })];
     },
-    tryTarget: (): LineOffer[] => [offer("try.target", "try.target", { expr: asked }, { slots: {}, board: asked })],
+    tryTarget: (): LineOffer[] => [framed
+      ? offer("try.target", "try.target.frame", { expr, inverse: framed.inverse }, { slots: {}, board: expr })
+      : offer("try.target", "try.target", { expr: asked }, { slots: {}, board: asked })],
     /**
      * The help lines of the child's question's step, H0 to H3. The final step ("result", once every work step is done)
      * has one line, an H0 invite to put the whole answer together (#389).
      */
     help: (id: string): LineOffer[] => {
-      if (id === "result") return [offer("step.invite", "invite.result", { expr }, { slots: { step: "result" }, level: 0 })];
+      if (id === "result") return [offer("step.invite", "invite.result", { expr: solved }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
       return step ? stepLines(pkg, step) : [];
     },
@@ -854,9 +888,14 @@ export function packageLines(given: OperationPackage) {
     },
     /** "Not quite.": only after code checked the child's wrong answer for that step. */
     notYet: (id: string): LineOffer[] => {
-      if (id === "result") return [offer("check.not_yet", "check.not_yet", { where: "this answer" }, { slots: { step: id }, requires: { answer: "wrong", step: id } })];
+      // A wrong try is multiplied out ("236 × 7 = 1652. ..."): on a try step, and on the final answer when the try
+      // finds the answer itself (a missing factor).
+      const trial = id === "result" ? (framed?.trial ?? null) : steps.find((s) => s.id === id && s.kind === "try-factor") ?? null;
+      const tries = trial?.kind === "try-factor" && (id !== "result" || trial.value === (pkg.answer.value.type === "number" ? pkg.answer.value.value : null))
+        ? trialFeedback(trial).map((t) => trialOffer(t, { step: id })) : [];
+      if (id === "result") return [offer("check.not_yet", "check.not_yet", { where: "this answer" }, { slots: { step: id }, requires: { answer: "wrong", step: id } }), ...tries];
       const step = find(id);
-      return step ? [offer("check.not_yet", "check.not_yet", { where: whereOf(step) }, { slots: { step: id }, requires: { answer: "wrong", step: id } })] : [];
+      return step ? [offer("check.not_yet", "check.not_yet", { where: whereOf(step) }, { slots: { step: id }, requires: { answer: "wrong", step: id } }), ...tries] : [];
     },
     // An evaluate question asks about its parts, never one column of a part ("the ones" of which part?).
     explain: (): LineOffer[] => steps.filter((s) => !partAt(pkg, s.id)?.inner).map((s) => offer("check.explain", "check.explain", { where: whereOf(s) }, { slots: { step: s.id } })),
@@ -868,7 +907,7 @@ export function packageLines(given: OperationPackage) {
     /** "Yes! 3/4 + 1/8 = 7/8.", in the form the child gave when it is an equal form code accepted ("= 14/16", #407). */
     answerRight: (form: AnswerValue = pkg.answer.value): LineOffer[] => {
       const said = valueText(form);
-      return [offer("answer.right", "answer.right", { expr, answer: said }, { slots: {}, board: `${expr} = ${said}` })];
+      return [offer("answer.right", "answer.right", { expr: solved, answer: said }, { slots: {}, board: `${solved} = ${said}` })];
     },
     answerGive: (): LineOffer[] => [offer("answer.give", "answer.give", { answer })],
     /** How the parts make the answer ("6 tens and 6 ones make 66."), said before answer.give on the final step (D-199). */

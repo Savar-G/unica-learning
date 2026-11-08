@@ -324,7 +324,9 @@ function build(plan: Plan, reading: Reading | undefined, input: ModelInput): unk
     const met = same.filter((l) => !l.requires || (l.requires.answer === "right"
       ? input.done.includes(l.requires.step) || (reading?.answers ?? []).some((a) => a.step === l.requires!.step && a.verdict === "right")
       : (reading?.answers ?? []).some((a) => a.step === l.requires!.step && a.verdict === "wrong")));
-    const pool = met.length > 0 ? met : same;
+    const judged = met.length > 0 ? met : same;
+    // A not-yet line for one wrong try names the try it answers (trial-factor.ts): the plan's `heard` picks it.
+    const pool = plan.heard !== undefined && judged.some((l) => l.slots.heard === plan.heard) ? judged.filter((l) => l.slots.heard === plan.heard) : judged;
     return pool.find((l) => typeof l.slots.step !== "string" || l.slots.step === step) ?? pool.at(-1);
   };
   let ids: LineId[];

@@ -3,18 +3,21 @@
 // worked-steps code, with its wrong answers and an easier example, checked by `checkQuestionPackage` like any package.
 // `A_BAD_KEY` is fixture A with a wrong answer key (56 while the checked steps total 66), for the content hold (C36).
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
-// not teach yet (equivalent fractions, C36b).
+// not teach yet (equivalent fractions, C36b). `M_DIVIDE`, `M_TRY` and `M_SUBTRACT` are missing numbers (Wave A),
+// made by Maya's session adapter from synthetic printed packages and checked by Maya's check (mayaPackageCheck).
 import { mayaPackageCheck } from "@/lib/maya";
-import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { deriveMissingNumber } from "@/lib/maya-teaching/missing-number";
+import { printedMissing, type PrintedMissing } from "@/lib/maya-teaching/missing-number-fixtures";
+
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId;
 // not teach yet (equivalent fractions, C36b). `EV_TWO`, `EV_STORY` and `EV_MISSING` are evaluate questions (Wave A, A2):
 // a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
 // numbers, in the shapes of the workbook's multi-step templates.
 import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "EV_TWO" | "EV_STORY" | "EV_MISSING";
+
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT";
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -44,6 +47,14 @@ function fixture(input: {
     wrongAnswers: input.wrong,
     easierExample: { ...input.easier, steps: workedSteps(input.easier.operation) },
   };
+}
+
+/** A missing number as Maya teaches it: the adapter's package for a synthetic printed one. */
+function missing(p: PrintedMissing): QuestionPackage {
+  const printed = printedMissing(p);
+  const pkg = deriveMissingNumber(printed);
+  if (!pkg) throw new Error(`fixtures: no missing-number package for ${printed.text}`);
+  return pkg;
 }
 
 const D = fixture({
@@ -159,12 +170,17 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
   ...ONE_STEP_FIXTURES,
+  // Missing numbers (Wave A): 30 × ? = 1620 by division after dropping a zero (162 ÷ 3), 236 × ? = 1416 by trying
+  // numbers, and 9000 − ? = 3000 by subtracting.
+  M_DIVIDE: missing({ id: "gate-M-30x?=1620", known: 30, missing: 54, sign: "×" }),
+  M_TRY: missing({ id: "gate-M-236x?=1416", known: 236, missing: 6, sign: "×" }),
+  M_SUBTRACT: missing({ id: "gate-M-9000-?=3000", known: 9000, missing: 6000, sign: "−" }),
 };
 
-/** Fixtures that must pass the package check; the bad key must fail it. */
+/** Fixtures that must pass Maya's package check (the default check, or hers for a missing number); the bad key must fail it. */
 export function fixtureProblems(): string[] {
   return (Object.entries(FIXTURES) as [FixtureId, QuestionPackage][]).flatMap(([id, pkg]) => {
-    // Maya's own check: her wider limits hold for the adapter-made fixtures (W5, W3, W6) only.
+    // Maya's own check: her wider limits hold for the adapter-made fixtures (W5, W3, W6, and the missing numbers) only.
     const check = mayaPackageCheck(pkg);
     if (id === "A_BAD_KEY") return check.ok ? [`${id}: the bad key passed the package check`] : [];
     return check.ok ? [] : [`${id}: ${check.reason}`];
