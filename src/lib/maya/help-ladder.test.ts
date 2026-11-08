@@ -137,7 +137,7 @@ describe("real misses keep D-199", () => {
     expect(s.assistance).toContain("answer_given");
   });
 
-  it("gives the answer for a miss at the shown step after H3", () => {
+  it.each([["15.", 15], ["Still 4.", 4]] as const)("gives the answer for %s at the shown step after H3", (text, value) => {
     // The model reads a wrong answer: code's fallback keeps it and gives the answer.
     let s = createSession({ callId: "help-ladder-miss", package: FIXTURES.A });
     let at = 1000;
@@ -146,18 +146,35 @@ describe("real misses keep D-199", () => {
     send({ type: "proposal", at, proposal: { version: 2, act: "open", parts: [{ line: "open.hello", slots: {} }, { line: "question.problem", slots: {} }] } });
     send({ type: "child_turn", at: at += 4000, text: "Show me the ones." });
     send({ type: "proposal", at, proposal: { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } } });
-    send({ type: "child_turn", at: at += 4000, text: "15." });
-    const refused = { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } } as Proposal;
-    expect(send({ type: "proposal", at, proposal: refused }).refusal).toMatchObject({ allowed: ["give_answer"] });
+    send({ type: "child_turn", at: at += 4000, text });
+    const refused = { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { answers: [{ value: num(value), step: "ones", verdict: "wrong" }] } } as Proposal;
+    const refusal = send({ type: "proposal", at, proposal: refused }).refusal;
+    if (value === 15) expect(refusal).toMatchObject({ allowed: ["give_answer"] });
+    else expect(refusal?.allowed).toContain("give_answer");
     const r = fallbacks(s, [refused]).map((p) => send({ type: "proposal", at, proposal: p as Proposal })).find((x) => x.refusal === null)!;
     expect(r.effects.some((e) => e.kind === "say" && e.act === "give_answer")).toBe(true);
   });
 });
 
 describe("fallback availability after a shown step", () => {
-  it.each(["16.", "I need help.", "15."])("handles %s followed by copies, help, or misses", (first) => {
-    for (const next of ["6.", "I need help.", "65."]) {
-      expect(() => byCode(FIXTURES.A, ["Show me the ones.", first, next, "I need help."])).not.toThrow();
+  it("always accepts a fallback after H3 across copies, help requests and misses", () => {
+    for (const first of ["16.", "I need help.", "15."]) for (const next of ["6.", "I need help.", "65."]) {
+      let s = createSession({ callId: "fallback-grid", package: FIXTURES.A });
+      let at = 1000;
+      const send = (event: SessionEvent) => { const r = step(s, event); s = r.session; return r; };
+      const fallback = () => {
+        for (let n = 0; n < 8 && s.expect === "maya" && !s.outcome; n++) {
+          const r = fallbacks(s).map((proposal) => send({ type: "proposal", at, proposal })).find((x) => !x.refusal);
+          expect(r, `no fallback after ${first}, ${next}`).toBeDefined();
+        }
+      };
+      send({ type: "start", at }); fallback();
+      send({ type: "child_turn", at: at += 4000, text: "Show me the ones." });
+      expect(send({ type: "proposal", at, proposal: { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } } }).refusal).toBeNull();
+      for (const text of [first, next, "I need help."]) {
+        if (s.outcome) break;
+        send({ type: "child_turn", at: at += 4000, text }); fallback();
+      }
     }
   });
 });

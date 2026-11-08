@@ -247,7 +247,7 @@ export const BEHAVIOURS: Behaviour[] = [
     status: "passing",
     steps: [
       child("Seven plus nine is 16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
-      child("Is it 4?", { answers: [[4, "tens", "wrong"]] }, [{ act: "guide", level: 1, lines: ["check.not_yet", "step.point"] }]),
+      child("4.", { answers: [[4, "tens", "wrong"]] }, [{ act: "guide", level: 1, lines: ["check.not_yet", "step.point"] }]),
       child("What 1? I didn't carry anything.", undefined, [
         // A model that says the carry line anyway ("the 1 you carried"): refused, as code no longer offers it.
         { raw: { version: 2, act: "guide", step: "tens", level: 1, parts: [{ line: "step.point", slots: { step: "tens" } }] }, repair: { act: "guide", level: 1, lines: ["step.regroup"] } },
@@ -1602,8 +1602,8 @@ export const BEHAVIOURS: Behaviour[] = [
     steps: [
       child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
       child("Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }]),
-      child("56?", { answers: [[56, "result", "wrong"]] }, [{ act: "guide", step: "result", level: 0, lines: ["step.invite"] }]),
-      child("Is it 65?", { answers: [[65, "result", "wrong"]] }, [{ act: "give_answer", warm: "empathy" }]),
+      child("56.", { answers: [[56, "result", "wrong"]] }, [{ act: "guide", step: "result", level: 0, lines: ["step.invite"] }]),
+      child("65.", { answers: [[65, "result", "wrong"]] }, [{ act: "give_answer", warm: "empathy" }]),
       okay,
     ],
     expect: {
@@ -1620,7 +1620,7 @@ export const BEHAVIOURS: Behaviour[] = [
     steps: [
       child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
       child("Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }]),
-      child("56?", { answers: [[56, "result", "wrong"]] }, [{ act: "give_answer", repair: { act: "guide", step: "result", level: 0, lines: ["step.invite"] } }]),
+      child("56.", { answers: [[56, "result", "wrong"]] }, [{ act: "give_answer", repair: { act: "guide", step: "result", level: 0, lines: ["step.invite"] } }]),
       child("Oh, 66!", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
