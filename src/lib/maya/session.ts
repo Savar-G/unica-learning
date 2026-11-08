@@ -818,6 +818,7 @@ function asksWhy(text: string): boolean {
 function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
   // A claim question never gives its word (claim.ts).
   const allowed = teachingActsOf(s, reading, rightResult, progress, misses, offering);
+  if (!sessionClaim(s.package)) return allowed;
   // A child who only asks for help at the top of a claim's final step closes honestly (claim.ts, lesson 10).
   const helpOnly = claimHelpOnly(s, reading, rightResult);
   const stuck = s.ladder.step === "result" && s.ladder.hint >= 2 && helpOnly;
@@ -2384,7 +2385,8 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   // claim judged wrong is not a hearing problem (review of fec3dac4).
   const unheard = refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
   // A claim child who only asks for help and has not seen the easier example gets it first (lesson 10, #737 review P2).
-  const exampleFirst = claimExampleDue(s) && claimHelpOnly(s, reading ?? {}, rightResult);
+  const claimPkg = sessionClaim(pkg) !== null;
+  const exampleFirst = claimPkg && claimExampleDue(s) && claimHelpOnly(s, reading ?? {}, rightResult);
   const rank = (a: Act) => (exampleFirst && a === "example_step" ? -1 : (solved && a === "ask_write") || (finalGive && a === "give_answer") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : FALLBACK_ORDER.indexOf(a));
   const order = [...new Set(unheard && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({
@@ -2417,7 +2419,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
           : why ? Number(b.line === "step.why") - Number(a.line === "step.why")
           // A claim's step help before its question lines: "Let's find 282 × 6 first." after the result asks for the step
           // again (claim.ts, #737 review P2, J06).
-          : sessionClaim(pkg) ? Number(a.line.startsWith("question.")) - Number(b.line.startsWith("question.")) : 0));
+          : claimPkg ? Number(a.line.startsWith("question.")) - Number(b.line.startsWith("question.")) : 0));
         // A right final answer said with doubt or as a guess: check it together, with the step's question (#605).
         const lead = offers.find((o) => o.line === "check.guess") ?? offers.find((o) => o.line === "check.together");
         const asks = lead ? byLevel(free).filter((o) => o.slots.step === ladderStep && (o.line === "step.operation" || o.line === "step.invite")).reverse() : [];
@@ -2806,8 +2808,9 @@ function offersFor(s: Session, act: Act, view: View): LineOffer[] {
 function claimShortAck(s: Session, offers: LineOffer[]): LineOffer[] {
   const pkg = s.package;
   const st = pkg && sessionClaim(pkg) ? pkg.steps.find((x) => x.kind === "claim-compare") : undefined;
+  if (!pkg || !st) return offers;
   const asks = offers.filter((o) => o.line === "step.invite" && o.slots.step === "result");
-  if (!pkg || !st || asks.length === 0) return offers;
+  if (asks.length === 0) return offers;
   const least = (o: LineOffer) => Math.min(...o.texts.map(speechWords));
   const room = turnWordLimit(s) - Math.min(...asks.map(least));
   return offers.map((o) => (o.line === "check.right_step" && o.slots.step === st.id && least(o) > room ? packageLines(pkg).rightStepShort(st.id)[0] ?? o : o));
@@ -2859,7 +2862,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       const check = s.solved === null && s.turn && !shownHere ? (saysGuess(s.turn.text) ? l.guess() : doubtfulRight(s) ? l.together() : []) : [];
       // "How do you know?" after another person's claim result ("My mom said 1440.") asks about work the child did not do:
       // the step's invite asks for their own (claim.ts, #737 review P3).
-      const thinking = claimResultUnconfirmable(s) ? [] : l.thinking();
+      const thinking = sessionClaim(pkg) && claimResultUnconfirmable(s) ? [] : l.thinking();
       return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...thinking];
     }
     case "accept_answer": {
@@ -3071,9 +3074,10 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
     }
     // In a claim question, only wordings that leave the lines still to come room in the turn's word limit, when some do
     // and some do not (#737 review P2: a claim's acknowledgement and question at 25 words); else every wording, as before.
-    const room = turnWordLimit(s) - speechWords(texts.join(" ")) - laterWords(k);
-    const fit = o.texts.map((_, i) => i).filter((i) => speechWords(o.texts[i]) <= room);
-    const pool = fitClaim && fit.length > 0 && fit.length < o.texts.length ? fit : o.texts.map((_, i) => i);
+    const all = o.texts.map((_, i) => i);
+    const room = fitClaim ? turnWordLimit(s) - speechWords(texts.join(" ")) - laterWords(k) : Infinity;
+    const fit = fitClaim ? all.filter((i) => speechWords(o.texts[i]) <= room) : all;
+    const pool = fit.length > 0 && fit.length < o.texts.length ? fit : all;
     const text = o.texts[pool[pickFresh(pool.map((i) => o.texts[i]), (j) => o.wordingIds?.[pool[j]] ?? `${o.key}#${pool[j]}`)]];
     // The decline counts as math (D-197): a turn that declines holds no free talk, and nothing follows it but code.
     add(isMathLine(o) || o.line === "redirect.decline" ? "math" : "plain", text);
