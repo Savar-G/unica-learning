@@ -7863,3 +7863,24 @@ The SPEC review at `90600c96` found that independent colour counts could exceed 
 ## 2026-11-05: final-step scale intervals and missing bills
 
 For `4.16-many-to-one`, step 3, template 4 now gives three adjacent scale marks. The child must infer the interval before checking a reading several intervals above a labelled mark. This replaces the count-on wording while keeping the existing ranges and key. For `4.18-money-notation`, step 3, template 4 now asks for a missing count of $10 bills from a total with $20 bills, loonies and quarters. The old whole-dollar addition did not exercise decimal money notation. The new inverse calculation stays below $100 and uses the same denomination ranges. These changes also apply to the standards' own practice.
+
+## 2026-11-08: U10 Challenge questions for books without assessment results
+
+Issues #728 and #588 exposed two empty Challenge slots on the first teaching step of U10. A Challenge prints 3 cards on the day's step, each harder than that day's practice (D-228), and that step had one hard template with a number answer. The later U10 days reach steps with the same gap. Unica adds three hard templates to each step listed below. The templates live in `src/lib/workbook-curriculum/house-templates.ts`. They are appended when the curriculum loads. Cedric's source templates stay as written.
+
+| Skill | Steps | Work |
+|---|---|---|
+| `3.1-place-value-1000` | 1, 2 | Combine digit values, and add or take away hundreds and tens. |
+| `3.1-place-value-1000` | 3 | Count the tens in hundreds and tens, and take away a hundred from a number with more than 9 tens and more than 9 ones. |
+| `3.1-estimate-quantity` | 1, 2 | Use the stated group size, then add or take away a stated amount. |
+| `3.1-estimate-quantity` | 3 | Pick the sensible guess among Cedric's choices (it, 10 times and 100 times as many), then use it for several classes, shelves or books. The choices rotate. |
+| `3.6-increasing-pattern` | 1, 2 | Infer or apply equal jumps over several terms. |
+| `3.6-decreasing-pattern` | 1 | Infer or apply repeated decreases. |
+
+Each step gets a bare question, a missing-number question, and a story. Each needs more than one step of work. Code computes every answer. Each template keeps its numbers within the step's bounds. These templates are for Challenge and Show what you know. Normal practice does not take them. The existing difficulty, repeat, complete-row, fit, and whole-book quality checks still apply.
+
+Normal practice for `3.6-decreasing-pattern`, step 1, also gets a medium two-choice question about the next term. Its check computes the stated first number minus the stated jump. This question stays separate from the hard Challenge templates. Three existing prompts of that step get shorter U10 wording with the same fields, answer expressions, and ranges; the start stays "Number 1", so the term count is not ambiguous. The extra form lets the practice page keep its eight checked questions and the required variety.
+
+The U10 review story for `2.5-increasing-pattern`, step 3, also gets shorter wording. It keeps the Day 1 count, daily increase, and Day 2 question. The same shortening applies when the planner uses an interest word. This preserves the shorter reading load for the catch-up profile.
+
+Zero-place and expanded-form teaching examples now show a method from their own structured hundreds, ones, and place selector. The method names the empty tens place. The generator can keep distinct checked examples instead of repeating the fixed `305` example and its answer alone. The sensible-estimate new-idea page reserves two complete pairs of short questions before the day's time pass. The time limit stays the same.

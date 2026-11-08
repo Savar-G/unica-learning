@@ -2402,7 +2402,11 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
     for (const s of layout.slots) {
       if(page.type === "remember-these" && s.slot === "picture-stories") s.slot="unit-b-practice";
       if (s.slot === "remember-these") s.items = ["word-problems","challenge","unit-b","new-idea"].includes(page.type) ? 0 : target(friday >= 0 ? 4 : has("mixed-set") ? 4 : 8);
-      if (s.slot === "now-you") s.items = target(3);
+      if (s.slot === "now-you") {
+        const step = page.parts[s.part].step;
+        // This step's short choices need two complete pairs. Reserve its page minimum before the day's time pass.
+        s.items = target(page.type === "new-idea" && step?.skill === "3.1-estimate-quantity" && step.step === 3 ? 4 : 3);
+      }
       if (s.slot === "finish-these") s.items = target(2);
       if (s.slot === "on-your-own") s.items = target(6);
       // 8 practice questions beside the page's Spot the error and two ways (the adopted count; they do not count).
@@ -2820,11 +2824,19 @@ const DAY_MINUTES_FILL_ESTIMATED = 31.5;
 const DAY_MINUTES_REVIEW = 32.8;
 /** Above this estimate a day plans template practice items fewer before any writing. */
 const DAY_MINUTES_MOST = 33.3;
+/**
+ * Rounds a page may measure an odd own-step block beside an odd review block before it gives up a row of review. Every
+ * own-step question that closed the rows was a tall one on U10 book 3's Day 7 page 4, and its 8 rows overflowed by 1 px
+ * until capacity ran out of rounds: with one review row fewer, the own-step rows close and fit.
+ */
+const HOLE_ROUNDS = 12;
 
 /** Required calculation space changes the count a page can hold, while its measured fullness stays binding. */
 function minimumFor(w: PageWork, level: number): number {
   const working = w.slots.some(s => s.place !== "warm-up" && !NUMBER_PLACES.has(s.place ?? "") && plannedWorkHeight(s.contract, level) > 0);
-  return pageMinimum(w.slots.every(s => s.place === "mini-test") ? "mini-test" : w.page.type, level, !!w.page.extraPractice, working, w.slots.filter(s => NUMBER_PLACES.has(s.place ?? "")).length);
+  const minimum = pageMinimum(w.slots.every(s => s.place === "mini-test") ? "mini-test" : w.page.type, level, !!w.page.extraPractice, working, w.slots.filter(s => NUMBER_PLACES.has(s.place ?? "")).length);
+  const paired = w.page.type === "new-idea" && w.slots.some(s => s.place === "now-you" && s.part.step?.skill === "3.1-estimate-quantity" && s.part.step.step === 3);
+  return paired ? Math.max(4, minimum) : minimum;
 }
 
 /** Places whose items capacity may plan fewer of: practice and review, never a teaching panel, Friday 5 or a test. */
@@ -3154,6 +3166,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
       let rowTrial: { key: string; rollback(): void } | null = null;
       let preferReview = false;
       let unpairedAdds = 0;
+      // Rounds that measured an odd own-step block beside an odd review block (see HOLE_ROUNDS).
+      let holeRounds = 0;
       let lastComplete: { slots: Slot[]; layout: DayLayout } | null = null;
       let lastBudgetFit: FitResult | null = null;
       let lastHoles: number[] = [];
@@ -3217,6 +3231,16 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         }
         lastBudgetFit = fit; lastHoles = holes;
         if (!holes.length && !belowFloor && w.layout && (fit.ok || fit.problems.every(p => p.kind === "fullness"))) lastComplete = { slots: w.slots.map(s => ({ ...s })), layout: structuredClone(w.layout) };
+        if (reviewPartner && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness")) && ++holeRounds > HOLE_ROUNDS && w.layout) {
+          // (Two review questions of the block, a row: the page keeps its own-step questions and its floor.)
+          const row = w.slots.filter(s => s.layoutSlot === holeSlot!.layoutSlot && !s.existing && s.contract?.template && s.part.step
+            && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step)).slice(-2);
+          if (row.length === 2 && counted - 2 >= minimumFor(w, input.plan.level)) {
+            w.slots = w.slots.filter(s => !row.includes(s)); w.layout.slots[holeSlot!.layoutSlot].items -= 2;
+            ceiling = w.slots.length; minimum = Math.min(minimum, w.slots.length); added = null; pendingRefill = null; rowTrial = null; holeRounds = 0;
+            continue;
+          }
+        }
         if (holes.length >= 2 && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness")) && await swapCompleteRows(input, w, work, fitCheck)) continue;
         const wanted = Math.max(minimum, w.slots.length + (belowFloor ? 1 : 0));
         const restoringFloor = belowFloor;

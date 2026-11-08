@@ -1,5 +1,5 @@
-// Unica's own Challenge templates (Savar, 2026-11-03): hard templates with a number answer and more than one step, for
-// the U16 day steps whose Challenge had one medium template only. A Challenge prints 3 cards a day on the day's step
+// Unica's own Challenge templates: hard templates with a number answer and more than one step, for
+// the U10 and U16 day steps with too few hard templates. A Challenge prints 3 cards a day on the day's step
 // (D-228), each harder than that day's practice (Codex at 24751f16, B3), so these steps needed 3 hard ones. They are
 // appended to Cedric's templates of the step when the curriculum loads; his data stays as he wrote it. Each is logged in
 // data/curriculum/author-changes.md ("Unica Challenge templates"). The step's name is checked, so a renumbered step
@@ -13,6 +13,8 @@ export interface HouseTemplates {
   stories?: boolean;
   /** The step's name when these were written: the curriculum test fails when it changes. */
   name: string;
+  /** Extra normal practice forms, separate from this step's Challenge-only templates. */
+  practice?: readonly StepTemplate[];
   templates: readonly StepTemplate[];
 }
 
@@ -27,6 +29,83 @@ const medium = (text: string, answer: string, slots: Record<string, string>, der
   ({ format: "story", difficulty: "medium", text, answer, slots, derived, check });
 
 export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
+  {
+    skill: "3.1-place-value-1000", step: 1, name: "Hundreds, tens and ones",
+    templates: [
+      hard("bare", "In {n}, add the value of the hundreds digit to the tens digit's value, then subtract the ones digit.", "100 * nh + 10 * nt - no", { n0: "number" }, { nh: "5 + n0 % 4", nt: "2 + n0 // 10 % 8", no: "1 + n0 % 9", n: "100 * nh + 10 * nt + no" }, "n <= 899"),
+      hard("missing", "{n} + 100 - 10 = __", "100 * (nh + 1) + 10 * (nt - 1) + no", { n0: "number" }, { nh: "5 + n0 % 4", nt: "2 + n0 // 10 % 8", no: "1 + n0 % 9", n: "100 * nh + 10 * nt + no" }, "n <= 899"),
+      hard("story", "{name}'s code is {n}. Add 1 hundred and take away 1 ten. What is the new code?", "100 * (nh + 1) + 10 * (nt - 1) + no", { n0: "number" }, { nh: "5 + n0 % 4", nt: "2 + n0 // 10 % 8", no: "1 + n0 % 9", n: "100 * nh + 10 * nt + no" }, "n <= 899"),
+    ],
+  },
+  {
+    skill: "3.1-place-value-1000", step: 2, name: "Zero as a placeholder",
+    templates: [
+      hard("bare", "In {n}, replace the zero tens digit with {t}. What is the new number?", "100 * h + 10 * t + o", { n0: "number" }, { h: "3 + n0 % 6", t: "1 + n0 % 9", o: "1 + n0 // 10 % 9", n: "100 * h + o" }, "n <= 899"),
+      hard("missing", "{n} + {t} tens - 100 = __", "100 * (h - 1) + 10 * t + o", { n0: "number" }, { h: "3 + n0 % 6", t: "1 + n0 % 9", o: "1 + n0 // 10 % 9", n: "100 * h + o" }, "n <= 899"),
+      hard("story", "{name}'s lock code is {n}. Add {t} tens, then take away 1 hundred. What is the new code?", "100 * (h - 1) + 10 * t + o", { n0: "number" }, { h: "3 + n0 % 6", t: "1 + n0 % 9", o: "1 + n0 // 10 % 9", n: "100 * h + o" }, "n <= 899"),
+    ],
+  },
+  {
+    skill: "3.1-place-value-1000", step: 3, name: "Trading tens and ones (up to 19 tens)",
+    templates: [
+      hard("bare", "How many tens are in {h} hundreds and {t} tens?", "10 * h + t", { h0: "hundreds", t0: "tens" }, { h: "2 + h0 % 5", t: "10 + t0 % 10" }, "10 * h + t <= 99"),
+      hard("missing", "{h} hundreds + {t} tens + {o} ones - 1 hundred = __", "100 * (h - 1) + 10 * t + o", { h0: "hundreds", t0: "tens", o0: "ones" }, { h: "2 + h0 % 5", t: "10 + t0 % 10", o: "10 + o0 % 10" }, "100 * h + 10 * t + o <= 999"),
+      hard("story", "{name} has {h} boxes of 100 beads, {t} bags of 10 and {o} loose beads. {They} sells 1 box. How many beads are left?", "100 * (h - 1) + 10 * t + o", { h0: "hundreds", t0: "tens", o0: "ones" }, { h: "2 + h0 % 5", t: "10 + t0 % 10", o: "10 + o0 % 10" }, "100 * h + 10 * t + o <= 999"),
+    ],
+  },
+  {
+    skill: "3.1-estimate-quantity", step: 1, name: "Estimate with a group of 10 or 25",
+    templates: [
+      hard("bare", "Estimate the total of {a} groups with about {g} {things} each and {b} extra {things}.", "a * g + b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 6", b: "1 + n0 % 9" }, "a * g + b <= 250"),
+      hard("missing", "{a} groups of about {g} {things}, and {b} extra {things}, make about __ {things}.", "a * g + b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 6", b: "1 + n0 % 9" }, "a * g + b <= 250"),
+      hard("story", "{name} has {a} trays with about {g} {things} each. {They} removes {b} {things}. About how many remain?", "a * g - b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 6", b: "1 + n0 % 9" }, "a * g - b >= 20 and a * g - b <= 250"),
+    ],
+  },
+  {
+    skill: "3.1-estimate-quantity", step: 2, name: "Estimate with a group of 100",
+    templates: [
+      hard("bare", "About how many in {a} groups of {g} and {b} more?", "a * g + b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 5", b: "(1 + n0 % 5) * 10" }, "a * g + b <= 1000"),
+      hard("missing", "{a} boxes hold about {g} cards each. Take away 1 box and {b} more cards. About __ cards are left.", "a * g - g - b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 5", b: "(1 + n0 % 5) * 10" }, "a * g - g - b >= 50"),
+      hard("story", "There are {a} boxes with about {g} cards each. {b} cards are unpacked. About how many cards are still boxed?", "a * g - b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 5", b: "(1 + n0 % 5) * 10" }, "a * g - b >= 50 and a * g - b <= 1000"),
+    ],
+  },
+  {
+    skill: "3.1-estimate-quantity", step: 3, name: "Choose a sensible estimate",
+    // The child picks the sensible guess among Cedric's choices (it, 10 times and 100 times as many), then uses it.
+    // The choices rotate, so the sensible one is not always first.
+    templates: [
+      hard("bare", "Children in one class: {p}, {q} or {r}? Double the sensible guess.", "2 * b", { x: "choices", pos: "template_pos" }, { b: "20 + x % 8", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
+      hard("missing", "Books on one shelf: {p}, {q} or {r}? Use the sensible guess. 3 shelves hold about __ books.", "3 * b", { x: "choices", pos: "template_pos" }, { b: "24 + 2 * (x % 4)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
+      hard("story", "{name} reads 4 storybooks. Pages in each: {p}, {q} or {r}? Use the sensible guess. About how many pages?", "4 * b", { x: "choices", pos: "template_pos" }, { b: "20 + 2 * (x % 6)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
+    ],
+  },
+  {
+    skill: "3.6-increasing-pattern", step: 1, name: "Add 2, 5 or 10",
+    templates: [
+      hard("bare", "Start at {a}. Add {d}, then add {d} again. What number do you reach?", "a + 2 * d", { a0: "start", d: "step" }, { a: "2 + a0 % 20" }, "a + 2 * d <= 100"),
+      hard("missing", "Add the same amount each time: {a}, {b}, __, {e}. Write the missing number.", "a + 2 * d", { a0: "start", d: "step" }, { a: "2 + a0 % 20", b: "a + d", e: "a + 3 * d" }, "a + 3 * d <= 100"),
+      hard("story", "{name} starts with {a} tiles. {They} adds {d} tiles each turn. How many tiles after 3 turns?", "a + 3 * d", { a0: "start", d: "step" }, { a: "2 + a0 % 20" }, "a + 3 * d <= 100"),
+    ],
+  },
+  {
+    skill: "3.6-increasing-pattern", step: 2, name: "Other jumps",
+    templates: [
+      hard("bare", "Start at {a}. Add {d} four times. What number do you reach?", "a + 4 * d", { a0: "start", d: "step" }, { a: "3 + a0 % 90" }, "a + 4 * d <= 500"),
+      hard("missing", "{a}, {b}, __, {e}, {f}. Each jump is equal. Write the missing term.", "a + 2 * d", { a0: "start", d: "step" }, { a: "3 + a0 % 90", b: "a + d", e: "a + 3 * d", f: "a + 4 * d" }, "a + 4 * d <= 500"),
+      hard("story", "{name}'s display starts with {a} lights. Each new row adds {d} lights. How many lights after 3 new rows?", "a + 3 * d", { a0: "start", d: "step" }, { a: "3 + a0 % 90" }, "a + 3 * d <= 500"),
+    ],
+  },
+  {
+    skill: "3.6-decreasing-pattern", step: 1, name: "Take away 1, 2, 5 or 10",
+    practice: [{ format: "choose", difficulty: "medium", text: "Start {a}. Subtract {d}. What comes next: {p} or {q}?", answer: "str(right)",
+      slots: { a0: "start", d: "step", flip: "template_flip" },
+      derived: { a: "6 * d + 1 + a0 % (100 - 6 * d)", right: "a - d", wrong: "right + 1", p: "right if flip == 0 else wrong", q: "wrong if flip == 0 else right" }, check: "right >= 5" }],
+    templates: [
+      hard("bare", "Start at {a}. Take away {d} three times. What number is left?", "a - 3 * d", { a0: "start", d: "step" }, { a: "4 * d + 20 + a0 % (81 - 4 * d)" }, "a - 3 * d >= 2 and a <= 100"),
+      hard("missing", "{a}, __, {c}, {e}. The same amount is taken away each time. Write the missing number.", "a - d", { a0: "start", d: "step" }, { a: "4 * d + 20 + a0 % (81 - 4 * d)", c: "a - 2 * d", e: "a - 3 * d" }, "a - 3 * d >= 2 and a <= 100"),
+      hard("story", "A stack has {a} stamps. {name} takes out {d} each turn. How many stamps are in the stack after 4 turns?", "a - 4 * d", { a0: "start", d: "step" }, { a: "4 * d + 20 + a0 % (81 - 4 * d)" }, "a - 4 * d >= 2 and a <= 100"),
+    ],
+  },
   // Compare stories for a U16 stories page (Savar, 2026-11-04: join, take-away and compare on one page; the steps U16
   // reaches with Grade 5 numbers tell joins and take-aways only).
   {
@@ -166,7 +245,7 @@ export function withHouseTemplates(data: CurriculumData, house: readonly HouseTe
     if (s.name !== h.name) throw new Error(`Unica templates for ${h.skill} step ${h.step} were written for "${h.name}", not "${s.name}"`);
     found.add(`${s.skill}#${s.number}`);
     if (!h.stories) for (const t of h.templates) CHALLENGE_ONLY.add(t);
-    return { ...s, templates: [...(s.templates ?? []), ...h.templates] };
+    return { ...s, templates: [...(s.templates ?? []), ...(h.practice ?? []), ...h.templates] };
   });
   const missing = [...byKey.keys()].filter((k) => !found.has(k));
   if (missing.length) throw new Error(`Unica templates name steps the curriculum does not have: ${missing.join(", ")}`);
@@ -174,7 +253,7 @@ export function withHouseTemplates(data: CurriculumData, house: readonly HouseTe
 }
 
 /**
- * Shorter words for U4's long templates and U16's hundreds-place question. Each keeps its slots, answer, difficulty
+ * Shorter words for U4/U10's long templates and U16's hundreds-place question. Each keeps its slots, answer, difficulty
  * and task. Only the named level changes; other levels keep Cedric's words. U4's part-part-whole form prints the
  * given parts and whole without a picture note. The source text is checked: a changed template is not rewritten.
  * Logged in data/curriculum/author-changes.md ("Unica's shorter U4 wording").
@@ -182,6 +261,10 @@ export function withHouseTemplates(data: CurriculumData, house: readonly HouseTe
 export interface LevelRewrite { level: number; skill: string; step: number; template: number; from: string; to: string }
 
 export const LEVEL_REWRITES: readonly LevelRewrite[] = [
+  { level: 10, skill: "2.5-increasing-pattern", step: 3, template: 2, from: "{name} saves {things} in a pattern. Day 1 {name} has {a}. Each day {name} adds {s} more. How many on day 2?", to: "Day 1: {name} has {a} {things}. Add {s} each day. How many on day 2?" },
+  { level: 10, skill: "3.6-decreasing-pattern", step: 1, template: 2, from: "{name} starts with {a} {things} and gives away {d} each day. How many {things} are there the next day?", to: "{name} has {a} {things} and gives away {d}. How many now?" },
+  { level: 10, skill: "3.6-decreasing-pattern", step: 1, template: 3, from: "Number 1 is {a}. Take away {d} each time. Number {n} is __.", to: "Number 1 is {a}. Take {d} off each time. Number {n}: __." },
+  { level: 10, skill: "3.6-decreasing-pattern", step: 1, template: 4, from: "Number 1 is {a}. Take away {d} each time. True or false: number {n} is {shown}.", to: "Number 1 is {a}. Take {d} off each time. Number {n} is {shown}: true or false?" },
   { level: 16, skill: "5.1-place-value-million", step: 3, template: 2, from: "What is the value of the digit in the hundreds place of {n}?", to: "{n}: value of the hundreds digit?" },
   { level: 4, skill: "K3-part-part-whole", step: 3, template: 1, from: "(picture: part {sa}, part {sb}, whole {sc}) Find the missing number.", to: "Parts {sa}, {sb}. Whole {sc}." },
   { level: 4, skill: "K5-two-more-less", step: 3, template: 3, from: "{name} has {s} {things}. {name} gets 2 more. How many {things} does {name} have now?", to: "{name} has {s} {things} and gets 2 more. How many {things} now?" },
