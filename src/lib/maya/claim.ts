@@ -150,6 +150,13 @@ export const CLAIM_TEMPLATES = {
     "Yes! {expr} = {value}. So you circle {word}.", "That's right: {expr} = {value}. You circle {word}.",
     "You got it! {expr} = {value}. It's {word}.", "Well done! {expr} = {value}. You circle {word}.", "Exactly! {expr} = {value}. The answer is {word}.",
   ],
+  // The word given after two real wrong words once the work is done (D-199, Savar Brain P6; pending Savar, D-202): code's
+  // comparison, the word, and the request to circle it.
+  "answer.give.claim": [
+    "{compare} So the answer is {word}. Please circle {word}.", "{compare} So it's {word}. Can you circle {word}?",
+    "{compare} That means {word}. Please circle {word} on your page.", "{compare} So we circle {word}. Can you circle it?",
+    "{compare} The answer is {word}. Now circle {word}.",
+  ],
   "write.claim": [
     "Please circle {word} on your page.", "Can you circle {word} on your page?", "Now circle {word} on your page.",
     "Go ahead and circle {word} on your paper.", "Circle {word} on your page, please.",
@@ -247,6 +254,8 @@ export function claimLines(pkg: OperationPackage, offer: MakeOffer) {
       offer("step.operation", "compare.claim", vars, step("result", 2)),
     ],
     answerRight: (): LineOffer[] => [offer("answer.right", "answer.claim", vars, { slots: {}, board: `${expr} = ${num(c.value)}` })],
+    /** The word given (D-199): "5220 is less than 5226. So the answer is no. Please circle no." */
+    answerGive: (): LineOffer[] => [offer("answer.give", "answer.give.claim", vars)],
     writeAnswer: (): LineOffer[] => [offer("write.answer", "write.claim", vars)],
     writeYours: (): LineOffer[] => [offer("write.yours", "write.claim.yours", {})],
     which: (): LineOffer[] => [offer("confirm.claim", "confirm.claim", { first: c.choices[0], second: c.choices[1] })],

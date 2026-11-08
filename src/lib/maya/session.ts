@@ -801,6 +801,12 @@ function gate(s: Session, reading: Reading): Allowed | null {
 /** The teaching states where the final step's given answer replaces more help (D-199): not after the answer stands. */
 const FINAL_GIVE_STATES: readonly Teaching[] = ["ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET"];
 
+/** Two wrong final answers once every work step is done, and no answer stands: the final step's answer is given (D-199). */
+function finalGiveDue(s: Session, rightResult: boolean, misses: number): boolean {
+  const main = isTeaching(s.state) ? s.state : s.resume;
+  return misses >= 2 && !rightResult && s.solved === null && !!main && FINAL_GIVE_STATES.includes(main);
+}
+
 const MAIN_ACTS: Record<Teaching, Act[]> = {
   OPEN: ["open"],
   ASSESS: ["accept_answer", "clarify", "example_step", "try_target", "guide"],
@@ -826,9 +832,12 @@ function asksWhy(text: string): boolean {
 }
 
 function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
-  // A claim question never gives its word (claim.ts).
+  // A claim question gives its word only as D-199 gives a number (claim.ts).
   const allowed = teachingActsOf(s, reading, rightResult, progress, misses, offering);
   if (!sessionClaim(s.package)) return allowed;
+  // ...except after two real wrong words once every work step is done: Maya gives the word, as D-199 gives a number (Savar
+  // Brain P6, #737 review). Help, doubt and questions are never misses (claimNotAMiss).
+  if (allowed.acts[0] === "give_answer" && finalGiveDue(s, rightResult, misses)) return allowed;
   // A child who only asks for help at the top of a claim's final step closes honestly (claim.ts, lesson 10).
   const helpOnly = claimHelpOnly(s, reading, rightResult);
   const stuck = s.ladder.step === "result" && s.ladder.hint >= 2 && helpOnly;
@@ -932,7 +941,7 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
   }
   // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
   // Maya gives the answer, and code says how the parts make it (D-199). Never sooner, and never over a right answer.
-  if (misses >= 2 && !rightResult && s.solved === null && FINAL_GIVE_STATES.includes(main)) {
+  if (finalGiveDue(s, rightResult, misses)) {
     return {
       acts: ["give_answer", ...confirm], code: "act_not_allowed",
       reason: "Every step is done and the child gave two wrong final answers: give the answer (give_answer). Code shows how the parts make it and says it.",
@@ -1210,7 +1219,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // A checked right answer on the child's question shows they have started: a no-start no longer holds (#389).
   const progress = s.done.length > 0 || equal !== null || checked.some((c) => c.problem === "target" && c.answer.verdict === "right");
   if (progress) s.noStart = false;
-  const misses = finalMisses(s, checked);
+  const misses = finalMisses(s, checked, reading);
   const allowedNow = blocked ? blocked.acts : teachingActs(s, reading, rightResult, progress, misses).acts;
   if (!blocked && !allowedNow.includes(p.act)) {
     const allowed = teachingActs(s, reading, rightResult, progress, misses);
@@ -1926,13 +1935,38 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
   return null;
 }
 
+/** A hedge ("I think it's 66", "maybe", a question) is not clear, though the reader may find it sure: the one doubt check. */
+function hedgedTurn(s: Session): boolean {
+  if (!s.turn) return false;
+  return showsDoubt(s.turn.text, readOptionsFor(s.package)) || /\b(?:i think|i guess|i believe|probably|maybe|might be)\b/i.test(s.turn.text);
+}
+
+/**
+ * The child's own words hold a clear help request, even beside a number ("I'm stuck, but it's 7."): one of the turn's
+ * clauses is a help request by asksForHelp. Decided from the text, never the model's reading.
+ */
+const helpInWords = (text: string) => text.split(/[,;.!?\n]+|\bbut\b/i).some((part) => part.trim() !== "" && asksForHelp(part.trim()));
+
+/**
+ * A claim turn is never a miss, whatever wrong word is read in it (D-199, Savar Brain P6, #737 review): it asks for help
+ * (the model's reading, or in the child's own words even beside a word: helpInWords), or is hedged or a question ("I think
+ * it's no.", "Is it no?": hedgedTurn). A speaker's or a copied word is never read as the child's word at all (claim.ts,
+ * readClaimWord). The claim's side of #732's notAMiss: the two become one rule at the wave merge.
+ */
+function claimNotAMiss(s: Session, reading: Reading): boolean {
+  if (!sessionClaim(s.package) || !s.turn) return false;
+  return reading.help !== undefined || helpInWords(s.turn.text) || hedgedTurn(s) || s.turn.text.includes("?");
+}
+
 /**
  * The child's checked wrong final answers once every work step is done, with this reading's (D-199): a wrong final
  * answer counts when the steps done, with the ones this reading checked right, are every work step.
  */
-function finalMisses(s: Session, checked: readonly Checked[]): number {
+function finalMisses(s: Session, checked: readonly Checked[], reading: Reading = {}): number {
   const before = s.finalMisses ?? 0;
   const pkg = s.package;
+  // A claim turn that is no miss (claimNotAMiss: help, doubt, a question) is no wrong final answer (D-199, Brain P6).
+  if (claimNotAMiss(s, reading)) return before;
   // An equal fraction is not a wrong final answer (#407).
   if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && !isEqualForm(pkg, c.answer.value))) return before;
   const done = closeParts(pkg, [...s.done, ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)]);
@@ -2407,10 +2441,10 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   const regroup = pkg ? regroupAfter(s, checked, done) : { due: [], said: [] };
   const ladderStep = pkg ? guideStep(pkg, done, regroup) : "result";
   const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
-  const misses = finalMisses(s, checked);
   // The acts come from the reading `step` will check, a claim's word included (review of #740: a wrong word at a compare's
   // top help left only guide offers, which the place-value rule refuses, and the call ended with no safe line).
   const actsReading: Reading = { ...(reading ?? {}), ...(answers.length > 0 ? { answers } : {}) };
+  const misses = finalMisses(s, checked, actsReading);
   const acts = (gate(s, {}) ?? teachingActs(s, actsReading, rightResult, done.length > 0, misses)).acts;
   // A right final answer the child was not sure of: the confirmation comes before more help (#605).
   const read = session.turn && pkg ? turnRead(session) : null;

@@ -33,6 +33,9 @@ const gtLines = claimLinesOf("CLAIM_GT");
 const wideLines = claimLinesOf("CLAIM_WIDE");
 /** The honest close's approved wordings (claim.ts, pending Savar's approval under D-202). */
 const TEMPLATES_CLOSE_HONEST = [...CLAIM_TEMPLATES["close.honest"]];
+/** The given word of a claim (D-199), each wording with the fixture's values. */
+const giveOf = (id: "CLAIM_TF" | "CLAIM_GT") => packageLines(claimView(FIXTURES[id] as OperationPackage)).answerGive()[0]?.texts ?? [];
+const tfGive = giveOf("CLAIM_TF");
 /** "My mom said 1440.": the model proposes the confirm; code refuses it, and the yes after it credits nothing (#737 P1). */
 const otherSpeaker = (id: string, fixture: "CLAIM_GT" | "CLAIM_DEC", said: string, heard: string, title: string): Behaviour => ({
   id, title, fixture, status: "passing",
@@ -2828,6 +2831,106 @@ export const BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  // Review of #737 at 6dce58ee, D-199 (Savar Brain P6, "give the answer after two misses"): two real committed wrong words
+  // once the work is done release the word, as two wrong final answers release a number. Help, doubt and questions are
+  // never misses (claimNotAMiss), and a child who only asks for help still gets the easier example, then the honest close.
+  {
+    id: "CL63",
+    title: "The work done, then 'It's false.' twice: Maya gives the word with code's comparison (D-199), then closes",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "r1-ones", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("I write the 4.", { answers: [[4, "r1-tens", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("48.", { answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's false.", undefined, [{ act: "guide", level: 0 }]),
+      child("It's false.", undefined, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
+      outputs: [{ mayaTurn: 5, lines: [tfGive] }],
+      never: ["accept_answer"],
+    },
+  },
+  {
+    id: "CL64",
+    title: "The model down: the product, then 'It's no.' twice: code's fallback gives the word (D-199), never the honest close",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work" }, [{ throws: true }]),
+      child("It's no.", undefined, [{ throws: true }]),
+      child("It's no.", undefined, [{ throws: true }]),
+      child("Okay.", undefined, [{ throws: true }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "give_answer", "close"],
+      never: ["accept_answer"],
+    },
+  },
+  ...([
+    ["CL65", "I'm stuck, but it's no."],
+    ["CL66", "I think it's no."],
+  ] as const).map(([id, said]): Behaviour => ({
+    id,
+    title: `The product, then '${said}' twice: no miss (help or doubt), so a give_answer the model proposes is refused`,
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child(said, undefined, [{ act: "give_answer" }]),
+      child(said, undefined, [{ act: "give_answer" }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "accept_answer"],
+    },
+  })),
+  {
+    id: "CL67",
+    title: "'It's no.', then 'I'm stuck, but it's no.', then 'It's no.': the help turn is no miss, so the word comes only after the second real one",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's no.", undefined, [{ act: "guide", level: 1 }]),
+      child("I'm stuck, but it's no.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 2 } }]),
+      child("It's no.", undefined, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "guide", "give_answer", "close"],
+      refused: ["act_not_allowed"],
+      never: ["accept_answer"],
+    },
+  },
+  {
+    id: "CL68",
+    title: "Only 'I'm stuck.', the model asking to give the answer each turn: refused every time; the easier example, H1 to H3, then the honest close",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "no_start" }, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "try_target" } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 1 } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 2 } }]),
+      child("I'm stuck.", { help: "show" }, [{ act: "give_answer", repair: { act: "guide", level: 3 } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "close"],
+      outputs: [{ mayaTurn: 8, lines: [TEMPLATES_CLOSE_HONEST] }],
+      refused: ["act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "accept_answer"],
     },
   },
   ...ONE_STEP_BEHAVIOURS,

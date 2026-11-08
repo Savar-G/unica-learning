@@ -184,6 +184,11 @@ The honest close (`close.honest`, controller decision (a) on #735) is new: after
 | `answer.claim#2` | No line at this id. | You got it! {expr} = {value}. It's {word}. |
 | `answer.claim#3` | No line at this id. | Well done! {expr} = {value}. You circle {word}. |
 | `answer.claim#4` | No line at this id. | Exactly! {expr} = {value}. The answer is {word}. |
+| `answer.give.claim#0` | No line at this id. | {compare} So the answer is {word}. Please circle {word}. |
+| `answer.give.claim#1` | No line at this id. | {compare} So it's {word}. Can you circle {word}? |
+| `answer.give.claim#2` | No line at this id. | {compare} That means {word}. Please circle {word} on your page. |
+| `answer.give.claim#3` | No line at this id. | {compare} So we circle {word}. Can you circle it? |
+| `answer.give.claim#4` | No line at this id. | {compare} The answer is {word}. Now circle {word}. |
 | `write.claim#0` | No line at this id. | Please circle {word} on your page. |
 | `write.claim#1` | No line at this id. | Can you circle {word} on your page? |
 | `write.claim#2` | No line at this id. | Now circle {word} on your page. |

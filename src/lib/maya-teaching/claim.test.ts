@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { claimExample, claimTeaching, exampleGivesAway, readClaim, type Claim } from "@/lib/maya-teaching/claim";
+import { claimExample, claimTeaching, exampleGivesAway, exampleShowsWork, readClaim, type Claim } from "@/lib/maya-teaching/claim";
+import { claimSessionPackage } from "@/lib/maya/claim";
 import * as CLAIMS from "@/lib/maya-gate/claim-fixtures";
 import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_RIGHT, CLAIM_TRUE_FALSE } from "@/lib/maya-gate/claim-fixtures";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
@@ -120,13 +121,31 @@ describe("the easier example never gives the answer away (lesson 11, #724's revi
   });
 
   it("prints no number of the question's own steps in the example (lesson 12, #737 review): 8 is the tens of 40 × 2", () => {
-    const pkg = { steps: workedSteps(mul(40, 2)), easierExample: { operation: mul(3, 3) } } as unknown as OperationPackage;
+    const pkg = { operation: mul(40, 2), steps: workedSteps(mul(40, 2)), easierExample: { operation: mul(3, 3) } } as unknown as OperationPackage;
     const greater = { relation: "greater", choices: ["yes", "no"] } as unknown as Claim;
     expect(claimExample(greater, pkg)).toMatchObject({ value: 9, shown: 7, holds: true, word: "yes" });
     const equal = { relation: "equal", choices: ["true", "false"] } as unknown as Claim;
-    const sum = { steps: workedSteps({ kind: "add", operands: [5, 5] }), easierExample: { operation: { kind: "add", operands: [4, 5] } } } as unknown as OperationPackage;
+    const sum = { operation: { kind: "add", operands: [5, 5] }, steps: workedSteps({ kind: "add", operands: [5, 5] }), easierExample: { operation: { kind: "add", operands: [4, 5] } } } as unknown as OperationPackage;
     // 10 is the sum's result and 1 its tens: the example prints 11.
     expect(claimExample(equal, sum)).toMatchObject({ value: 9, shown: 11, holds: false, word: "false" });
+  });
+
+  it("never prints or works out the question's answer or a multi-digit step value; a single digit is allowed (lesson 12, #737 review at 6dce58ee)", () => {
+    expect(exampleShowsWork(mul(8, 3), mul(360, 4))).toBe(true); // 24, the tens of 360 × 4
+    expect(exampleShowsWork(mul(6, 7), mul(870, 6))).toBe(true); // 42, the tens of 870 × 6
+    expect(exampleShowsWork(mul(2, 2), mul(870, 6))).toBe(false); // the 2 the tens writes is one digit
+    expect(exampleShowsWork(mul(2, 2), mul(870, 6), 52)).toBe(true); // the claim's printed number: the hundreds' 52
+    expect(exampleShowsWork({ kind: "divide", operands: [32, 2] }, { kind: "divide", operands: [96, 4] })).toBe(true); // 16, the ones' 16
+    expect(exampleShowsWork({ kind: "decimal-add", operands: [1.2, 1.3] }, { kind: "decimal-add", operands: [6.67, 2.55] })).toBe(false);
+    // A stored claim whose easier example works out a step value is held, never taught with it.
+    const stored = { ...FIXTURES.CLAIM_GT, easierExample: { text: "8 × 3 = ?", operation: mul(8, 3), answer: { type: "number", value: 24 }, steps: workedSteps(mul(8, 3)) } } as OperationPackage;
+    expect(claimSessionPackage(stored)).toEqual({ held: "Maya cannot teach this circle question yet" });
+    expect(claimSessionPackage({ ...stored, easierExample: { text: "2 × 3 = ?", operation: mul(2, 3), answer: { type: "number", value: 6 }, steps: workedSteps(mul(2, 3)) } } as OperationPackage)).toHaveProperty("pkg");
+    // Every claim's made example passes it.
+    for (const raw of Object.values(CLAIMS)) {
+      const made = claimTeaching(raw)!;
+      expect(exampleShowsWork(made.easierExample!.operation, made.operation!), `${raw.id}: ${made.easierExample!.text}`).toBe(false);
+    }
   });
 });
 

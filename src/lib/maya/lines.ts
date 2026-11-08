@@ -902,8 +902,8 @@ export function packageLines(given: OperationPackage) {
       const said = valueText(form);
       return [offer("answer.right", "answer.right", { expr, answer: said }, { slots: {}, board: `${expr} = ${said}` })];
     },
-    // A claim's word is never given (claim.ts): the child circles it.
-    answerGive: (): LineOffer[] => (claim ? [] : [offer("answer.give", "answer.give", { answer })]),
+    // A claim's word is given only after two real wrong words once the work is done (D-199, claim.ts).
+    answerGive: (): LineOffer[] => claim?.answerGive() ?? [offer("answer.give", "answer.give", { answer })],
     /** How the parts make the answer ("6 tens and 6 ones make 66."), said before answer.give on the final step (D-199). */
     answerParts: (): LineOffer[] => {
       const parts = claim ? null : placeParts(pkg.answer.value);
