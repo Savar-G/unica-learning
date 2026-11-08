@@ -960,6 +960,17 @@ export function packageLines(given: OperationPackage) {
     redirect: (): LineOffer[] => [offer("redirect.back", "redirect.back", { expr: asked })],
     workbook: (): LineOffer[] => [offer("redirect.workbook", "redirect.workbook", {})],
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
+    /**
+     * The honest close of a missing number left unsolved (review of #732): the existing close.together line, in its one
+     * wording that claims no finish ("We worked on {expr} together today."), with no answer. No new wording: #698's
+     * close.stuck set replaces it when the wave rebases onto main.
+     */
+    closeUnsolved: (): LineOffer[] => {
+      if (!framed) return [];
+      const o = offer("close.together", "close.together", { expr: asked });
+      const honest = TEMPLATES["close.together"].findIndex((t) => t === "We worked on {expr} together today.");
+      return honest < 0 ? [] : [{ ...o, texts: [o.texts[honest]], wordingIds: [`close.together#${honest}`] }];
+    },
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr: asked }) : offer("close.together", "close.together", { expr: asked })],
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */

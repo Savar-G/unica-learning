@@ -1,7 +1,7 @@
 // Behaviour-gate cases for missing numbers (Wave A, A3): a missing factor by division after dropping a zero, a 3-digit
 // missing factor by trying numbers, and a missing number taken away. Scripted child, scripted fake model, free.
 import { packageLines, type LineOffer, type TemplateKey } from "@/lib/maya/lines";
-import type { OperationPackage } from "@/lib/question-package";
+import type { OperationPackage, QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "./fixtures";
 import type { Behaviour, Plan, Read, Step } from "./gate";
 
@@ -13,6 +13,9 @@ const OPEN = "open" as const;
 const divide = packageLines(FIXTURES.M_DIVIDE as OperationPackage);
 const trial = packageLines(FIXTURES.M_TRY as OperationPackage);
 const subtract = packageLines(FIXTURES.M_SUBTRACT as OperationPackage);
+/** One example_step act per worked step of a fixture's easier example (the whole example after one turn). */
+const exampleActs = (pkg: QuestionPackage) => (pkg.easierExample?.steps ?? []).map(() => "example_step" as const);
+const CLOSE_LINES = (l: ReturnType<typeof packageLines>) => l.closeUnsolved().flatMap((o) => o.texts);
 const tryLine = (heard: string) => trial.notYet("result").filter((o) => o.slots.heard === heard).flatMap((o) => o.texts);
 
 export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
@@ -343,28 +346,6 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     },
   },
   {
-    // Re-review P2b: H3 shows the try next to the answer; the child saying it back is a copy, not a miss, so no answer is given.
-    id: "MN2f",
-    title: "236 × ? = 1416, after H3 shows '236 × 5 = 1180. That is less than 1416.', the child says it back: a copy, answered with 'try a bigger number', never the answer; then 6 is accepted",
-    fixture: "M_TRY",
-    status: "passing",
-    steps: [
-      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
-      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
-      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
-      child("236 times 5 is 1180.", { answers: [[5, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "5" }]),
-      child("6.", { answers: [[6, "result", "right"]] }),
-      ...wrote,
-    ],
-    expect: {
-      outcome: { reason: "solved", highestHint: 3 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
-      counts: { refusals: 0 },
-      outputs: [{ mayaTurn: 4, lines: [trial.notYet("try").filter((o) => o.slots.heard === "5").flatMap((o) => o.texts)] }],
-      never: ["give_answer", "redirect"],
-    },
-  },
-  {
     // Re-review P2a: adding back is a check of a subtraction's answer, the question's own math.
     id: "MN6b",
     title: "9000 − ? = 3000, 'I got 6000.' is accepted, and '6000 plus 3000 is 9000.' is a check of it, not an outside request",
@@ -390,78 +371,6 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], counts: { refusals: 0 }, never: ["give_answer", "redirect"] },
   },
   {
-    // Lesson 13 (re-check of e7a3ccfa): a copy of H3's try is no failure, so a proposed give_answer is refused on it.
-    id: "MN2g",
-    title: "236 × ? = 1416, after H3, '236 times 5 is 1180.' with give_answer proposed: refused (hint_too_high), the copy gets 'try a bigger number'; then 6 is accepted",
-    fixture: "M_TRY",
-    status: "passing",
-    steps: [
-      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
-      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
-      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
-      child("236 times 5 is 1180.", { answers: [[5, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "guide", level: 0, lines: ["check.not_yet"], heard: "5" } }]),
-      child("6.", { answers: [[6, "result", "right"]] }),
-      ...wrote,
-    ],
-    expect: { outcome: { reason: "solved", highestHint: 3 }, refused: ["hint_too_high"], outputs: [{ mayaTurn: 4, lines: [trial.notYet("try").filter((o) => o.slots.heard === "5").flatMap((o) => o.texts)] }], never: ["give_answer", "redirect"] },
-  },
-  {
-    id: "MN2h",
-    title: "236 × ? = 1416, after H3, '5.' with give_answer proposed: refused (hint_too_high); then 6 is accepted",
-    fixture: "M_TRY",
-    status: "passing",
-    steps: [
-      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
-      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
-      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
-      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "guide", level: 0, lines: ["check.not_yet"], heard: "5" } }]),
-      child("6.", { answers: [[6, "result", "right"]] }),
-      ...wrote,
-    ],
-    expect: { outcome: { reason: "solved", highestHint: 3 }, refused: ["hint_too_high"], outputs: [{ mayaTurn: 4, lines: [trial.notYet("try").filter((o) => o.slots.heard === "5").flatMap((o) => o.texts)] }], never: ["give_answer", "redirect"] },
-  },
-  {
-    id: "MN2i",
-    title: "236 × ? = 1416, after H3, '5.' gets 'try a bigger number', then 'Okay.' with give_answer proposed: refused (hint_too_high); then 6 is accepted",
-    fixture: "M_TRY",
-    status: "passing",
-    steps: [
-      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
-      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
-      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
-      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "5" }]),
-      child("Okay.", undefined, [{ act: "give_answer", repair: { act: "guide", level: 3 } }]),
-      child("6.", { answers: [[6, "result", "right"]] }),
-      ...wrote,
-    ],
-    expect: { outcome: { reason: "solved", highestHint: 3 }, refused: ["hint_too_high"], outputs: [{ mayaTurn: 4, lines: [trial.notYet("try").filter((o) => o.slots.heard === "5").flatMap((o) => o.texts)] }], never: ["give_answer", "redirect"] },
-  },
-  {
-    // Lessons 7 and 10, today's end state on this base: repeated copies after H3 each get code's "try a bigger number",
-    // never the answer and never a refusal. The honest close is not on site/maya-wave-a (it is #735's base change).
-    id: "MN2j",
-    title: "236 × ? = 1416, after H3, the child copies '5.' three times: each copy gets 'try a bigger number', never the answer; then 6 is accepted (end state documented: no honest close on this base)",
-    fixture: "M_TRY",
-    status: "passing",
-    steps: [
-      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
-      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
-      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
-      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "5" }]),
-      child("5?", { answers: [[5, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "5" }]),
-      child("It's 5.", { answers: [[5, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "5" }]),
-      child("6.", { answers: [[6, "result", "right"]] }),
-      ...wrote,
-    ],
-    expect: {
-      outcome: { reason: "solved", highestHint: 3 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
-      counts: { refusals: 0 },
-      outputs: [{ mayaTurn: 4, lines: [trial.notYet("try").filter((o) => o.slots.heard === "5").flatMap((o) => o.texts)] }, { mayaTurn: 5, lines: [trial.notYet("try").filter((o) => o.slots.heard === "5").flatMap((o) => o.texts)] }, { mayaTurn: 6, lines: [trial.notYet("try").filter((o) => o.slots.heard === "5").flatMap((o) => o.texts)] }],
-      never: ["give_answer", "redirect"],
-    },
-  },
-  {
     // Re-check optional P3: the estimate's own product, divided back.
     id: "MN7c",
     title: "236 × ? = 1416, after the rounding hint, '1400 divided by 200 is 7.': in scope, 7 is multiplied out (too big), then 6 is accepted",
@@ -483,10 +392,124 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     },
   },
   {
-    // Item 4 (wave-b 921ab669): a wrong number at the top hint with a failing model never ends as technical_issue. The end
-    // state on this base is the base ladder's given answer (#735 replaces it with the easier example and an honest close).
+    // The way out (review of #732, lessons 7 and 10): after H3, a copy of what H3 showed is no miss; it brings the easier
+    // example, and a child still stuck after it gets the honest close (close.together, "We worked on ... together
+    // today."): never the answer, never give_answer.
+    id: "MN2f",
+    title: "236 × ? = 1416, after H3 shows '236 × 5 = 1180. That is less than 1416.', the child says it back: no miss, the easier example; 'I'm stuck.' gets the honest close, never the answer",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("236 times 5 is 1180.", { answers: [[5, "try", "wrong"]] }, [{ act: "example_step" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 7, lines: [CLOSE_LINES(trial)] }],
+      never: ["give_answer", "redirect", "accept_answer"],
+    },
+  },
+  {
+    // Lesson 13: a proposed give_answer is refused on the copy turn and on the next neutral turn.
+    id: "MN2g",
+    title: "236 × ? = 1416, after H3, '236 times 5 is 1180.' with give_answer proposed: refused, the easier example comes; 'Okay.' with give_answer proposed: refused; then 6 is accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("236 times 5 is 1180.", { answers: [[5, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("Okay.", undefined, [{ act: "give_answer", repair: { act: "try_target" } }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: { outcome: { reason: "solved", highestHint: 3 }, refused: ["act_not_allowed", "act_not_allowed"], never: ["give_answer", "redirect"] },
+  },
+  {
+    id: "MN2h",
+    title: "236 × ? = 1416, after H3, '5.' with give_answer proposed: refused, the easier example comes; then 6 is accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("Okay.", undefined, [{ act: "try_target" }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: { outcome: { reason: "solved", highestHint: 3 }, refused: ["act_not_allowed"], never: ["give_answer", "redirect"] },
+  },
+  {
+    // Review P2 (round 5): the copy read as its product (1180) is a copy too: code reads the child's words, not the value.
+    id: "MN2k",
+    title: "236 × ? = 1416, after H3, '236 times 5 is 1180.' read as 1180, with give_answer proposed: refused (a copy, decided from the child's words); the easier example comes",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("236 times 5 is 1180.", { answers: [[1180, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("Okay.", undefined, [{ act: "give_answer", repair: { act: "try_target" } }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: { outcome: { reason: "solved", highestHint: 3 }, refused: ["act_not_allowed", "act_not_allowed"], never: ["give_answer", "redirect"] },
+  },
+  {
+    id: "MN2i",
+    title: "236 × ? = 1416, after H3, '5.' brings the easier example, then 'I'm stuck.' gets the honest close, never the answer",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "example_step" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 7, lines: [CLOSE_LINES(trial)] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // Repeated copies have a way out: the easier example, then the honest close (no loop on H3 to the call clock).
+    id: "MN2j",
+    title: "236 × ? = 1416, after H3, the child copies '5.' again and again: the easier example, then the honest close, never the answer",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "example_step" }]),
+      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 7, lines: [CLOSE_LINES(trial)] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // The way out with a failing model (wave-b 921ab669): a wrong number at the top hint, then still stuck; code's own
+    // fallback gives the easier example, then the honest close. Never technical_issue, never give_answer.
     id: "MN8a",
-    title: "236 × ? = 1416, H3, then a wrong '7.' with a failing model: code's fallback shows H3 again; the next help request gets the base ladder's given answer (#735); never technical_issue",
+    title: "236 × ? = 1416, H3, then a wrong '7.' with a failing model: the easier example, then 'I don't know.' twice: the easier example, then the honest close; never give_answer",
     fixture: "M_TRY",
     status: "passing",
     steps: [
@@ -498,16 +521,37 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I don't know.", { help: "more" }, [{ throws: true }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given" },
-      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
-      never: ["redirect"],
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      never: ["give_answer", "redirect"],
     },
   },
   {
-    // Item 4 (wave-b 921ab669): a wrong number at the top hint with a failing model never ends as technical_issue. The end
-    // state on this base is the base ladder's given answer (#735 replaces it with the easier example and an honest close).
+    // The same, with a model that proposes give_answer on every turn: each is refused; code's fallback gives the way out.
+    id: "MN9a",
+    title: "236 × ? = 1416, H3, then a wrong '7.' (one real miss) and 'I don't know.' twice, with give_answer proposed on every turn: refused each time; the easier example, then the honest close",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("7.", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I don't know.", { help: "more" }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I don't know.", { help: "more" }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // The way out with a failing model (wave-b 921ab669): a wrong number at the top hint, then still stuck; code's own
+    // fallback gives the easier example, then the honest close. Never technical_issue, never give_answer.
     id: "MN8b",
-    title: "30 × ? = 1620, H3, then a wrong '1.' with a failing model: code's fallback shows H3 again; the next help request gets the base ladder's given answer (#735); never technical_issue",
+    title: "30 × ? = 1620, H3, then a wrong '1.' with a failing model: the easier example, then 'I don't know.' twice: the easier example, then the honest close; never give_answer",
     fixture: "M_DIVIDE",
     status: "passing",
     steps: [
@@ -519,16 +563,37 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I don't know.", { help: "more" }, [{ throws: true }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given" },
-      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
-      never: ["redirect"],
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_DIVIDE), "close"],
+      never: ["give_answer", "redirect"],
     },
   },
   {
-    // Item 4 (wave-b 921ab669): a wrong number at the top hint with a failing model never ends as technical_issue. The end
-    // state on this base is the base ladder's given answer (#735 replaces it with the easier example and an honest close).
+    // The same, with a model that proposes give_answer on every turn: each is refused; code's fallback gives the way out.
+    id: "MN9b",
+    title: "30 × ? = 1620, H3, then a wrong '1.' (one real miss) and 'I don't know.' twice, with give_answer proposed on every turn: refused each time; the easier example, then the honest close",
+    fixture: "M_DIVIDE",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("1.", { answers: [[1, "hundreds", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I don't know.", { help: "more" }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I don't know.", { help: "more" }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_DIVIDE), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // The way out with a failing model (wave-b 921ab669): a wrong number at the top hint, then still stuck; code's own
+    // fallback gives the easier example, then the honest close. Never technical_issue, never give_answer.
     id: "MN8c",
-    title: "9000 − ? = 3000, H3, then a wrong '1.' with a failing model: code's fallback shows H3 again; the next help request gets the base ladder's given answer (#735); never technical_issue",
+    title: "9000 − ? = 3000, H3, then a wrong '1.' with a failing model: the easier example, then 'I don't know.' twice: the easier example, then the honest close; never give_answer",
     fixture: "M_SUBTRACT",
     status: "passing",
     steps: [
@@ -540,9 +605,72 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I don't know.", { help: "more" }, [{ throws: true }]),
     ],
     expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_SUBTRACT), "close"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // The same, with a model that proposes give_answer on every turn: each is refused; code's fallback gives the way out.
+    id: "MN9c",
+    title: "9000 − ? = 3000, H3, then a wrong '1.' (one real miss) and 'I don't know.' twice, with give_answer proposed on every turn: refused each time; the easier example, then the honest close",
+    fixture: "M_SUBTRACT",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("1.", { answers: [[1, "ones", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I don't know.", { help: "more" }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I don't know.", { help: "more" }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_SUBTRACT), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // D-199 stands: two real wrong numbers at H3 (not copies, not help) still reach the given answer.
+    id: "MN10",
+    title: "236 × ? = 1416, after H3, two real wrong tries ('7.' then '8.'): 'Not quite' and H3 again after the first, the second reaches the given answer (D-199)",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("7.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 3, lines: ["check.not_yet", "step.show"] }]),
+      child("8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
       outcome: { reason: "solved", assistance: "answer_given" },
       acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
-      never: ["redirect"],
+      counts: { refusals: 0 },
+      never: ["example_step", "redirect"],
+    },
+  },
+  {
+    // One real miss, then a copy, then a help request: neither is a miss, so the way out, not the answer.
+    id: "MN10b",
+    title: "236 × ? = 1416, after H3, one real miss ('7.'), then a copy ('5.'), then 'I'm stuck.': the easier example, then the honest close; never the answer",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("7.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 3, lines: ["check.not_yet", "step.show"], heard: "7" }]),
+      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "close" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
     },
   },
   {

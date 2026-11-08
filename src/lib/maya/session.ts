@@ -40,8 +40,8 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { teachingLimits } from "@/lib/maya-teaching/limits";
-import { checkMissingNumber, frameState, type FrameState } from "./missing-number";
-import { shownTry, trialHeard } from "./trial-factor";
+import { checkMissingNumber, frameState, isMissingNumber, type FrameState } from "./missing-number";
+import { shownNumbers, trialHeard } from "./trial-factor";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
@@ -496,12 +496,33 @@ export function mayaPackageCheck(raw: unknown): PackageCheck {
 }
 
 /**
- * After H3 on a try step, the child says back the one try H3 showed (trial-factor.ts shownTry): a copy of Maya's help,
- * never a miss (lesson 13). It sets no failure, raises no unlock and forces no given answer.
+ * After H3 on a try step, the child's turn only says back what H3 showed ("236 times 5 is 1180.", "5."): every number in
+ * it, as code reads the child's own words, is one H3 showed, and it names the try or its product (trial-factor.ts
+ * shownNumbers). A copy of Maya's help, never a miss (lesson 13), whatever value a model reads in it: it sets no failure
+ * and raises no unlock; on a missing number it leads to the easier example, then the honest close (missingWayOut).
  */
-function copiesShownTry(pkg: OperationPackage | null, ladder: Ladder, value: AnswerValue): boolean {
-  const st = pkg ? workSteps(pkg).find((x) => x.id === ladder.step) : undefined;
-  return st?.kind === "try-factor" && ladder.hint >= 3 && value.type === "number" && value.value === shownTry(st);
+/** The turn holds a real miss on the child's question: a checked wrong answer that is not a copy of what H3 showed. */
+const realMissNow = (s: Session, reading: Reading) =>
+  !copiesShownTry(s) && (reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+
+/**
+ * A missing number before two real misses (D-199): the current step's failed attempts, this turn's included, and the
+ * wrong final answers, each fewer than two. Help requests and copies are never misses (lessons 7 and 13). Until then the
+ * way out is the easier example and the honest close, never a given answer; after, the path's given answer stands.
+ */
+const missingWayOut = (s: Session, reading: Reading, misses: number) =>
+  isMissingNumber(s.package) && s.ladder.failures + (realMissNow(s, reading) ? 1 : 0) < 2 && misses < 2;
+
+/** The highest hint a step has: H3 for a work step, H0 for the final step (its one invite). */
+const topHint = (pkg: OperationPackage, stepId: string) => Math.max(0, ...packageLines(pkg).help(stepId).map((o) => o.level ?? 0));
+
+function copiesShownTry(s: Session): boolean {
+  const st = s.package ? workSteps(s.package).find((x) => x.id === s.ladder.step) : undefined;
+  if (st?.kind !== "try-factor" || s.ladder.hint < 3 || !s.turn) return false;
+  const shown = shownNumbers(st);
+  const said = valuesIn(s.turn.text, readOptionsFor(s.package));
+  const number = (v: AnswerValue) => (v.type === "number" ? v.value : null);
+  return said.length > 0 && said.every((v) => shown.all.includes(number(v) ?? NaN)) && said.some((v) => shown.own.includes(number(v) ?? NaN));
 }
 
 /** The package Maya teaches from, or why she holds it (the content hold's reason). */
@@ -830,8 +851,9 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // read as unclear, numbers speech heard two ways, a choice, or a final answer the child is not sure of.
   const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && (stepSaidUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
-    const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
-      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
+    // A missing number has no given answer, not even at the time close (review of #732).
+    const acts: Act[] = (s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
+      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"]).filter((a): a is Act => a !== "give_answer" || !missingWayOut(s, reading, misses));
     return { acts: [...acts, ...confirm], code: "act_not_allowed", reason: "Time is almost up: finish the question and close." };
   }
   // A child who says they wrote it is done writing, whatever the model reads (#605). "I'm writing" keeps its time.
@@ -893,7 +915,18 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // the loop, without recording the shown work as the child's progress.
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
-    reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && !copiesShownTry(s.package, s.ladder, a.value));
+    (reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong") && !copiesShownTry(s));
+  // A missing number's way out (review of #732, lessons 7, 10 and 13, D-199): a help request or a copy of what H3 showed
+  // is never a miss. Before two real misses (missingWayOut), give_answer is not offered; at the step's top hint a child
+  // who asks for help or copies gets the easier example, then the honest close. After two real misses, D-199 stands.
+  if (missingWayOut(s, reading, misses) && isTeaching(s.state) && s.solved === null && !rightResult && s.turn !== null && !rightHere &&
+      s.ladder.hint >= topHint(s.package!, s.ladder.step) && !realMissNow(s, reading) &&
+      (reading.help !== undefined || asksForHelp(s.turn.text) || copiesShownTry(s))) {
+    return s.exampleShown < steps
+      ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child asks for help (or copies the hint) at the top hint: show the easier example, step by step (example_step). Help is never a miss." }
+      : { acts: ["close"], code: "act_not_allowed", reason: "The child is still stuck after the easier example: close kindly, with no answer and no number of the question." };
+  }
+  if (missingWayOut(s, reading, misses)) acts = acts.filter((a) => a !== "give_answer");
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
@@ -1189,11 +1222,13 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   let failed = false;
   let regroup = regroupOf(s);
   if (pkg && scoring) {
+    // A turn that only says back what H3 showed is no failed attempt (lesson 13): decided from the child's words.
+    const copy = copiesShownTry(s);
     for (const { answer: a, problem } of checked) {
       if (problem !== "target") continue;
       if (a.verdict === "right" && a.step !== "result" && !done.includes(a.step)) done.push(a.step);
       // An equal fraction is not a failed attempt (#407), and neither is a copy of the try H3 showed (lesson 13).
-      if (a.verdict === "wrong" && !(a.step === "result" && isEqualForm(pkg, a.value)) && !copiesShownTry(pkg, s.ladder, a.value)) failed = true;
+      if (a.verdict === "wrong" && !(a.step === "result" && isEqualForm(pkg, a.value)) && !copy) failed = true;
     }
     // An equal fraction shows every work step done: the final step simplifies the child's own fraction (#407).
     if (equal) for (const st of workSteps(pkg)) if (!done.includes(st.id)) done.push(st.id);
@@ -1419,6 +1454,12 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     }
     case "close":
+      // A missing number closed as the way out for a stuck child says the honest close in code's words (review of #732),
+      // never a warm phrase alone. A stop, the time limit and silence keep their own closes.
+      if (isMissingNumber(pkg) && s.solved === null && !s.stopRequested && s.state !== "TIME_CLOSE" && s.silence !== "close_due" &&
+          !spoken.chosen.some((o) => o.line === "close.together")) {
+        return no("line_not_offered", "Close a missing number the child is stuck on with its honest close line (close.together).", allowedNow);
+      }
       break;
     case "safety":
       // The guidance is code's policy message, never the model's words.
@@ -2793,7 +2834,8 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : [];
+      // A missing number closed as the way out for a stuck child: the honest close, in an existing approved wording.
+      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : isMissingNumber(pkg) ? l.closeUnsolved() : [];
     case "confirm": {
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));
