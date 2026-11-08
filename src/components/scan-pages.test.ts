@@ -163,10 +163,10 @@ it("keeps a refused photo first with its reason while the other pages go on, and
 });
 
 it.each([
-  [3, "3 pages sent. We started to mark them."],
-  [2, "3 pages sent. We started to mark 2 of them. We will mark the other 1 page later."],
+  [3, "3 pages sent for marking. Marks show here when they are ready."],
+  [2, "3 pages sent for marking. Marks show here when they are ready."],
   [0, "3 pages sent for marking. Marking is not ready yet. The pages wait here."],
-])("the Send result says marking started only on the pages the server started (%s of 3)", async (started, words) => {
+])("the Send result says whether marking started (%s of 3 started)", async (started, words) => {
   marking = started;
   await render();
   await choose("library", "p10.jpg", "p11.jpg", "p12.jpg");
@@ -174,12 +174,25 @@ it.each([
   expect(text()).toContain(words);
 });
 
-it("the Send result for one page that marking started on", async () => {
-  marking = 1;
+it.each([
+  [1, "1 page sent for marking. Marks show here when they are ready."],
+  [0, "1 page sent for marking. Marking is not ready yet. The pages wait here."],
+])("the Send result for one page (%s started)", async (started, words) => {
+  marking = started;
   await render();
   await choose("library", "p10.jpg");
   await act(async () => button("Send this page for marking")!.click()); await settle();
-  expect(text()).toContain("1 page sent. We started to mark it.");
+  expect(text()).toContain(words);
+});
+
+it.each([0, 1, 2, 3])("no Send result says \"started\" or \"later\" (%s of 3 started)", async (started) => {
+  marking = started;
+  await render();
+  await choose("library", "p10.jpg", "p11.jpg", "p12.jpg");
+  await act(async () => button("Send 3 pages for marking")!.click()); await settle();
+  // The whole page after Send, so the message cannot hide a promise anywhere on it.
+  expect(text()).toContain("3 pages sent for marking.");
+  expect(text()).not.toMatch(/started|later/i);
 });
 
 it("retakes a refused page: the camera opens in the tap, and the old photo goes only once a new one is chosen", async () => {

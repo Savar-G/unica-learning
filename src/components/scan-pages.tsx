@@ -88,13 +88,12 @@ function Tile({ tile, thumb, onOpen }: { tile: StackTile; thumb?: string; onOpen
   </li>;
 }
 
-/** The Send result. `started`: how many sent pages the server started to mark now; the cron marks the others later. */
+/** The Send result. `started`: how many sent pages the server started to mark now; the cron marks the others. */
 function sentWords(sent: number, started: number) {
-  const pages = (n: number) => (n === 1 ? "1 page" : `${n} pages`);
+  const pages = sent === 1 ? "1 page" : `${sent} pages`;
   if (sent === 0) return "0 pages sent for marking.";
-  if (started <= 0) return `${pages(sent)} sent for marking. Marking is not ready yet. The pages wait here.`;
-  if (started >= sent) return `${pages(sent)} sent. We started to mark ${sent === 1 ? "it" : "them"}.`;
-  return `${pages(sent)} sent. We started to mark ${started} of them. We will mark the other ${pages(sent - started)} later.`;
+  if (started <= 0) return `${pages} sent for marking. Marking is not ready yet. The pages wait here.`;
+  return `${pages} sent for marking. Marks show here when they are ready.`;
 }
 
 export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "phone", focus = null, initial }: {
