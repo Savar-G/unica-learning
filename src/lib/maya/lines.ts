@@ -38,7 +38,7 @@ import { CLAIM_TEMPLATES, claimLines, claimShow, claimView } from "./claim";
  * step.order; check.not_yet never praises wrong work.
  * Version 11 (#605): a held question invites another question on the page, without an inability claim.
  * Version 13: answer-only clarification and checked regroup explanations from full practice.
- * Version 14 (A4): claim questions (claim.ts): confirm.claim, confirm.word, and the claim wordings of existing lines.
+ * Version 14 (A4): claim questions (claim.ts): confirm.claim, confirm.word, close.honest, and the claim wordings of existing lines.
  */
 export const LINES_VERSION = 14;
 
@@ -84,6 +84,7 @@ export const LINE_IDS = [
   "redirect.workbook",
   "close.solved",
   "close.together",
+  "close.honest",
   "repair.sorry",
   "held.hello",
   "held.next",
@@ -484,7 +485,7 @@ export const TEMPLATES = {
   // The honest close of an "other-topic" question left unsolved after the easier example (lessons from review 10,
   // controller decision (a)): this one is hard, it is fine to stop, and one next step. No number, so no hint at the
   // answer. Pending Savar's approval (D-202).
-  "close.honest": [
+  "close.topic": [
     "This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up to help.",
     "This is a hard one. It's fine to stop here. You can ask a grown-up to try it with you.",
     "This one is hard. It's okay to stop for now. Try the easier one on your paper.",
@@ -912,6 +913,16 @@ export function packageLines(given: OperationPackage) {
       // In a yes/no claim (claim.ts), "Yes!" about a step could sound like the claim's answer: those wordings are left out.
       return [claim?.yesNo ? withoutYes(line) : line];
     },
+    /**
+     * The same line in its short wordings, with no equation ("Good, the result is done."): for a claim's result whose
+     * equation does not fit beside the claim's question in a 25-word turn (claim.ts, #737 review P2).
+     */
+    rightStepShort: (id: string): LineOffer[] => {
+      const step = find(id);
+      if (!step) return [];
+      const line = offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)), where: whereOf(step) }, { slots: { step: id }, requires: { answer: "right", step: id } });
+      return [claim?.yesNo ? withoutYes(line) : line];
+    },
     /** "Not quite.": only after code checked the child's wrong answer for that step. */
     notYet: (id: string): LineOffer[] => {
       if (id === "result") return [offer("check.not_yet", "check.not_yet", { where: "this answer" }, { slots: { step: id }, requires: { answer: "wrong", step: id } })];
@@ -951,6 +962,8 @@ export function packageLines(given: OperationPackage) {
     writeYours: (): LineOffer[] => claim?.writeYours() ?? [offer("write.yours", "write.yours", {})],
     /** A claim's word the child said unsure, or both words: "Which word do you circle: true or false?" (claim.ts). */
     which: (): LineOffer[] => claim?.which() ?? [],
+    /** A claim question's honest close (claim.ts): no answer, one next step. */
+    honestClose: (): LineOffer[] => claim?.honestClose() ?? [],
     /** A claim's bare word said back: "You said true. Is true the word you circle?" (claim.ts). */
     said: (word: string): LineOffer[] => claim?.said(word) ?? [],
     /** "Did you say 15?" for each number Maya may have heard, and "15 or 50?" for each pair that sound alike. */
@@ -968,7 +981,7 @@ export function packageLines(given: OperationPackage) {
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr: asked }) : offer("close.together", "close.together", { expr: asked })],
     /** The honest close of an "other-topic" question left unsolved after the easier example: never the answer. */
-    closeHonest: (): LineOffer[] => (frame ? [offer("close.together", "close.honest", {})] : []),
+    closeHonest: (): LineOffer[] => (frame ? [offer("close.honest", "close.topic", {})] : []),
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
     stepIds: steps.map((s) => s.id),
@@ -1019,7 +1032,7 @@ export function allLineTexts(given: OperationPackage, heardValues: readonly Answ
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeHonest(), ...l.repair(),
-    ...l.together(), ...l.guess(), ...l.which(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
+    ...l.together(), ...l.guess(), ...(pkg.steps.some((st) => st.kind === "claim-compare") ? l.stepIds.flatMap((id) => l.rightStepShort(id)) : []), ...l.which(), ...l.honestClose(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];
   return [...new Set([...offers, ...offers.map(spokenOffer), ...extra].flatMap((o) => o.texts.map(sentence)))];

@@ -7,23 +7,23 @@
 // a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
 // numbers, in the shapes of the workbook's multi-step templates.
 import { mayaPackageCheck } from "@/lib/maya";
-import { claimTeaching } from "@/lib/maya-teaching/claim";
+import { teachingPackage } from "@/lib/maya-teaching";
 import { deriveDieCount } from "@/lib/maya-teaching/die-count";
 import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
 import { diePrinted, minutePrinted, moneyPrinted, scalePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
 import { deriveTopicClaim } from "@/lib/maya-teaching/topic-derivers";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
-import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
+import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE, CLAIM_WIDE } from "./claim-fixtures";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId
   | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG"
-  | "SCALE" | "MONEY" | "MINUTE";
+  | "SCALE" | "MONEY" | "MINUTE" | "CLAIM_WIDE";
 
-/** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
+/** A claim question's teaching package (A4): the stored synthetic package through the session adapter (claimTeaching). */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
-  const pkg = claimTeaching(raw);
-  if (!pkg) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
+  const pkg = teachingPackage(raw) as QuestionPackage;
+  if (pkg === raw || pkg.operation === null) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
   return pkg;
 }
 
@@ -191,6 +191,8 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   SCALE: deriveTopicClaim(scalePrinted(10, 60, 2, true))!,
   MONEY: deriveTopicClaim(moneyPrinted(2, 2, true))!,
   MINUTE: deriveTopicClaim(minutePrinted(3, 7, true))!,
+  // "Is 777 × 7 greater than 4662?": the longest spoken claim shape, for the 25-word turns (#737 review P2).
+  CLAIM_WIDE: claimFixture(CLAIM_WIDE),
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */

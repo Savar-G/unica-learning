@@ -151,12 +151,41 @@ export function readClaim(pkg: QuestionPackage, operation: Operation | null = nu
 
 const sameOperation = (x: Operation, y: Operation) => x.kind === y.kind && JSON.stringify(x.operands) === JSON.stringify(y.operands);
 
-/** The easier examples to try, smallest first: the same kind with small numbers (the package check picks a smaller one). */
+/**
+ * The easier examples to try, smallest result first: one-digit facts of the same kind (decimals with one place, a division
+ * with no remainder). The package check then keeps only a smaller one, and exampleGivesAway one that tells nothing.
+ */
 function examplesFor(op: Operation): Operation[] {
-  if (op.kind === "divide") return [[4, 2], [6, 2], [6, 3], [8, 2], [9, 3]].map(([a, b]) => ({ kind: "divide", operands: [a, b] }) as Operation);
+  const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  if (op.kind === "divide") {
+    return digits.filter((q) => q > 1).flatMap((q) => digits.filter((b) => b > 1).map((b) => [q * b, b]))
+      .sort((x, y) => x[0] / x[1] - y[0] / y[1] || x[0] - y[0]).map(([a, b]) => ({ kind: "divide", operands: [a, b] }) as Operation);
+  }
   const decimal = op.kind.startsWith("decimal-");
-  const pairs = decimal ? [[1.2, 1.3], [1.1, 1.2], [2.1, 1.3], [1.5, 1.2]] : [[2, 3], [2, 1], [3, 1], [3, 2], [1, 2], [1, 3], [2, 2], [3, 3], [1, 1]];
-  return pairs.map(([a, b]) => ({ kind: op.kind, operands: [a, b] }) as Operation);
+  const values = decimal ? digits.flatMap((w) => [1, 2, 3, 4].map((t) => Number(`${w}.${t}`))).filter((v) => v < 5) : digits;
+  // No × 1: it shows nothing of multiplying.
+  const pairs = values.flatMap((a) => values.map((b) => [a, b]))
+    .filter(([a, b]) => (op.kind.includes("subtract") ? a > b : true) && !(op.kind.includes("multiply") && (a === 1 || b === 1)));
+  const result = ([a, b]: number[]) => (op.kind.includes("multiply") ? a * b : op.kind.includes("subtract") ? a - b : a + b);
+  return pairs.sort((x, y) => result(x) - result(y) || x[0] - y[0]).map(([a, b]) => ({ kind: op.kind, operands: [a, b] }) as Operation);
+}
+
+/** A number's digits without the point or leading zeros: 6.8 and 680 both begin "68". */
+const digitsOf = (n: number) => String(n).replace(".", "").replace(/^0+/, "");
+
+/**
+ * The easier example gives the question's answer away (wave brief, lesson 11, from #724's review): it uses one of the
+ * question's own numbers, its result times a power of 10 is the question's result (6 for 60), or the question's result
+ * begins with its digits (6 for 680, 68 for 6800).
+ */
+export function exampleGivesAway(example: Operation, question: Operation): boolean {
+  const ex = operationResult(example);
+  const q = operationResult(question);
+  if (ex.type !== "number" || q.type !== "number") return true;
+  const numbers = (o: Operation) => (o.operands as unknown[]).filter((n): n is number => typeof n === "number");
+  if (numbers(example).some((n) => numbers(question).some((m) => equivalent({ type: "number", value: n }, { type: "number", value: m })))) return true;
+  if ([0, 1, 2, 3, 4, 5, 6].some((k) => Math.abs(ex.value * 10 ** k - q.value) < 1e-9)) return true;
+  return digitsOf(q.value).startsWith(digitsOf(ex.value));
 }
 
 /**
@@ -174,7 +203,7 @@ export function claimTeaching(pkg: QuestionPackage): QuestionPackage | null {
   // A wrong product: one more than the result, never the printed number (that is the claim, not a slip).
   const wrong = [claim.value + 1, claim.value + 2].find((v) => !equivalent({ type: "number", value: v }, { type: "number", value: claim.shown }))!;
   for (const example of examplesFor(claim.operation)) {
-    if (operationProblem(example) || sameValue(operationResult(example), answer)) continue;
+    if (operationProblem(example) || sameValue(operationResult(example), answer) || exampleGivesAway(example, claim.operation)) continue;
     const candidate: QuestionPackage = {
       ...pkg,
       operationSource: "maya",
