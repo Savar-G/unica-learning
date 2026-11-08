@@ -38,7 +38,7 @@ export function readPattern(text: string): Pattern | null {
 }
 
 /** A pattern only when its printed relation and its checked operation agree exactly. */
-export function patternOf(p: { text: string; operation: Operation } | null | undefined): Pattern | null {
+export function patternOf(p: { text: string; operation: Operation | null } | null | undefined): Pattern | null {
   if (!p) return null;
   const pattern = readPattern(p.text);
   return pattern && JSON.stringify(pattern.operation) === JSON.stringify(p.operation) ? pattern : null;

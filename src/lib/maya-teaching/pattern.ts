@@ -37,7 +37,7 @@ export function derivePattern(printed: QuestionPackage): QuestionPackage | null 
     const small = readPattern(patternText(p.form, start, step))!;
     if (exampleGivesAway(p, small)) continue;
     const easierExample = { text: small.text, operation: small.operation, answer: operationResult(small.operation), steps: workedSteps(small.operation) };
-    const made = { ...printed, operationSource: TEACHING_SOURCE, operation: p.operation,
+    const made: QuestionPackage = { ...printed, operationSource: TEACHING_SOURCE, operation: p.operation,
       answer: { value: answer, accepted: [], unit: null }, steps: workedSteps(p.operation), wrongAnswers: [{ value: { type: "number" as const, value: (answer.type === "number" ? answer.value : 0) + 1 }, cause: "calculation", description: "Gives a different result.", step: null }], easierExample };
     if (checkQuestionPackage(made).ok) return made;
   }

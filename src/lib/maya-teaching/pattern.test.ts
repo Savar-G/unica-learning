@@ -14,7 +14,6 @@ import { createTextSession } from "@/lib/maya-text";
 vi.mock("server-only", () => ({}));
 const forms: PatternForm[] = ["missing3", "missing9", "term4", "plant3", "pair", "days8"];
 const make = (form: PatternForm) => printedPattern(form, 36, 9);
-const made = (form: PatternForm) => teachingPackage(make(form)) as OperationPackage;
 
 describe("closed pattern derivation", () => {
   it.each(forms)("derives %s without changing a printed field or the stored object", form => {
