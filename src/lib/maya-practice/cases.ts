@@ -12,6 +12,7 @@ import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
 import { PLACE_VALUE_PRACTICE } from "./place-value-cases";
 import { PLACE_PARTS_PRACTICE } from "./place-value-parts-cases";
+import { ONE_STEP_PRACTICE } from "./one-step-cases";
 
 /** The AI-judge dimensions of the research (section 8, "AI-judge checks"), each scored 0 to 3. */
 export const DIMENSIONS = {
@@ -492,6 +493,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "after help", opens: "help", numbers: [13, 8, 5.83, 5.93, 3.45, 2.38] }] },
     fakeScript: ["It's true.", "5 plus 8 is 13.", "4 plus 3 plus 1 is 8.", "3 plus 2 is 5.", "5.83.", "It's false, because 5.83 is not 5.93.", "I added the columns: 5.83.", "I circled it."],
   },
+  ...ONE_STEP_PRACTICE,
 ];
 
 /** How many times each case runs (research, section 8: three recorded repetitions). */

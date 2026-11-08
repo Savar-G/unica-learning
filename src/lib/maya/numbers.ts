@@ -29,6 +29,12 @@ const LINK = /^(?:of|a|an|the|and)$/;
  * After a bigger number ("66 tens") they change its value: a form code does not read yet.
  */
 const PLACE = /^(?:ones|tens|hundreds|thousands)$/;
+/**
+ * The two-word places of a 5- or 6-digit number: "ten thousands", "hundred thousands" (always plural). They name a column,
+ * never the number 10 or 100: "6 ten thousands" is a column's digits, as "6 tens" is; "carry 1 to the ten thousands" is
+ * a place. The singular ("ten thousand") stays a number.
+ */
+const bigPlaceAt = (tokens: string[], k: number) => (tokens[k] === "ten" || tokens[k] === "hundred") && tokens[k + 1] === "thousands";
 /** The largest number a place word may follow as a column's digits ("19 ones"); above it the form is unreadable. */
 const PLACED_MAX = 19;
 /**
@@ -165,6 +171,18 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
     }
     const next = tokens[i + 1] ?? "";
     const numberNext = isNumber(next);
+    if (bigPlaceAt(tokens, i)) {
+      // "6 ten thousands", "two hundred thousands": the digits of that column, as for a one-word place below.
+      if (afterNumber || last !== null) {
+        flush();
+        const at = items.length - 1;
+        const n = items[at];
+        if (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= PLACED_MAX) placed.add(at);
+        else unreadable = true;
+      }
+      i += 1;
+      continue;
+    }
     if (changes(token)) {
       if (linked(i)) unreadable = true;
       continue;
@@ -178,18 +196,18 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
       continue;
     }
     // "6 in the ones", "16 for the ones": the digits of a column, as above. A bigger number is left as it is.
-    if ((token === "in" || token === "for") && next === "the" && PLACE.test(tokens[i + 2] ?? "") && (afterNumber || last !== null)) {
+    if ((token === "in" || token === "for") && next === "the" && (PLACE.test(tokens[i + 2] ?? "") || bigPlaceAt(tokens, i + 2)) && (afterNumber || last !== null)) {
       flush();
       const at = items.length - 1;
       const n = items[at];
       if (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= PLACED_MAX) placed.add(at);
-      i += 2;
+      i += bigPlaceAt(tokens, i + 2) ? 3 : 2;
       continue;
     }
     // "66 to the power of 2" is a form code does not read. "Carry the 1 to the tens" names a place (#605: a clear
     // carry was confirmed as if unclear): "to the" before a place or position word is a location, read as nothing.
     if (token === "to" && next === "the" && (afterNumber || last !== null)) {
-      if (!TO_THE_PLACE.test(tokens[i + 2] ?? "")) unreadable = true;
+      if (!TO_THE_PLACE.test(tokens[i + 2] ?? "") && !bigPlaceAt(tokens, i + 2)) unreadable = true;
       continue;
     }
     if (FILLER.test(token)) continue;
@@ -1174,9 +1192,10 @@ export function saysWritten(text: string): boolean {
 /**
  * One sentence in which the child says, in the first person, that they are stuck: "I don't know", "I don't know about
  * the ten", "I don't get it", "I don't understand", "I'm stuck", "I have no idea", "I'm confused" (#605 practice run 2:
- * C24-r2; PR #624 review). The words after "about", "how", "what", "where" or "why" hold no negative.
+ * C24-r2; PR #624 review), each also with "still" ("I'm still stuck", "I still don't know": the honest close needs a child
+ * who keeps asking to be heard, brief lesson 10). The words after "about", "how", "what", "where" or "why" hold no negative.
  */
-const STUCK_SENTENCE = /^(?:(?:um+|uh+|oh|well|hmm+|okay|ok)[\s,]+)*(?:i (?:don'?t|do not) (?:know|get it|understand(?: it)?)(?: (about|how|what|where|why)((?: [a-z']+){1,6}))?|i(?:'m| am) stuck|i have no idea|i(?:'m| am) (?:really |so )?confused)$/;
+const STUCK_SENTENCE = /^(?:(?:um+|uh+|oh|well|hmm+|okay|ok)[\s,]+)*(?:i (?:still )?(?:don'?t|do not) (?:know|get it|understand(?: it)?)(?: (about|how|what|where|why)((?: [a-z']+){1,6}))?|i(?:'m| am) (?:still )?stuck|i (?:still )?have no idea|i(?:'m| am) (?:still |really |so )?confused)$/;
 const NEGATIVE_WORD = /\b(?:not|no|never|nothing)\b|n't\b/;
 
 /**

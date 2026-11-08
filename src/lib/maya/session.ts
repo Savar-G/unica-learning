@@ -36,8 +36,10 @@ import {
   type Operation,
   type OperationKind,
   type OperationPackage,
+  type PackageCheck,
   type WorkedStep,
 } from "@/lib/question-package";
+import { teachingLimits } from "@/lib/maya-teaching/limits";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
@@ -491,9 +493,17 @@ export function createSession(input: {
   };
 }
 
+/**
+ * The package check Maya teaches under: the default check, with Maya's wider operand limits only for a package her
+ * session adapter made (src/lib/maya-teaching, operationSource "maya-teaching"). The adapter checks its output here too.
+ */
+export function mayaPackageCheck(raw: unknown): PackageCheck {
+  return checkQuestionPackage(raw, undefined, teachingLimits(raw));
+}
+
 /** The package Maya teaches from, or why she holds it (the content hold's reason). */
 function teachableOf(raw: unknown): { pkg: OperationPackage | null; held: string | null } {
-  const check = checkQuestionPackage(raw);
+  const check = mayaPackageCheck(raw);
   if (!check.ok) return { pkg: null, held: check.reason };
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
   if (!hasOperation(check.package)) return { pkg: null, held: "Maya cannot teach items with no operation yet" };
@@ -814,7 +824,8 @@ function asksWhy(text: string): boolean {
 /** After H3 on a work step, the child's turn only says back the step Maya showed (no credit, #698): still stuck (B1b). */
 function copiesShown(s: Session): boolean {
   const st = s.package ? workSteps(s.package).find((x) => x.id === s.ladder.step) : undefined;
-  return !!st && s.turn !== null && valuesIn(s.turn.text, readOptionsFor(s.package)).some((v) => stepAnswers(st).some((a) => equivalent(a, v)));
+  // Only after Maya showed the step (H3): at a lower top help (a step with no H3) the child's number is their own.
+  return !!st && s.ladder.hint >= 3 && s.turn !== null && valuesIn(s.turn.text, readOptionsFor(s.package)).some((v) => stepAnswers(st).some((a) => equivalent(a, v)));
 }
 /** The child asks why (asksWhy), or, on a place-value question, which place is which (asksPlace, J06). */
 const asksWhyIn = (s: Session): boolean => s.turn !== null && (asksWhy(s.turn.text) || (isPlaceValue(s.package) && asksPlace(s.turn.text)));
@@ -903,8 +914,10 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
     reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
   // Place value has no given answer (parent lane, 2026-11-07): a child still stuck gets the easier example, then an honest close.
-  // The top help is H3 on a work step and H2 on the last step, which has no H3 (lesson 7: every ladder has a way out).
-  if (isPlaceValue(s.package) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= (s.ladder.step === "result" ? 2 : 3) && (needsMore || copiesShown(s))) ||
+  // The step's top help is its highest line: H2 on a last step (and a zero digit's step), else H3 (review of #738: "I'm stuck."
+  // again and again on a last step met H2 forever).
+  const placeTop = isPlaceValue(s.package) ? Math.max(0, ...packageLines(s.package).help(s.ladder.step).map((o) => o.level ?? 0)) : 3;
+  if (isPlaceValue(s.package) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= placeTop && (needsMore || copiesShown(s))) ||
       (misses >= 2 && FINAL_GIVE_STATES.includes(main)))) {
     return s.exampleShown < steps
       ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child is still stuck: show the easier example, step by step (example_step). There is no given answer for place value." }

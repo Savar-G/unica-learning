@@ -5,12 +5,14 @@
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
 // not teach yet (equivalent fractions, C36b).
 import { claimTeaching } from "@/lib/maya-teaching/claim";
-import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { mayaPackageCheck } from "@/lib/maya";
+import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 import { PLACE_VALUE_FIXTURES, type PlaceValueFixtureId } from "./place-value-cases";
 import { PLACE_PARTS_FIXTURES, type PlacePartsFixtureId } from "./place-value-parts-cases";
 import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | PlaceValueFixtureId | PlacePartsFixtureId;
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | OneStepFixtureId | PlaceValueFixtureId | PlacePartsFixtureId;
 
 /** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
@@ -138,12 +140,14 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
   // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
   CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
+  ...ONE_STEP_FIXTURES,
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */
 export function fixtureProblems(): string[] {
   return (Object.entries(FIXTURES) as [FixtureId, QuestionPackage][]).flatMap(([id, pkg]) => {
-    const check = checkQuestionPackage(pkg);
+    // Maya's own check: her wider limits hold for the adapter-made fixtures (W5, W3, W6) only.
+    const check = mayaPackageCheck(pkg);
     if (id === "A_BAD_KEY") return check.ok ? [`${id}: the bad key passed the package check`] : [];
     return check.ok ? [] : [`${id}: ${check.reason}`];
   });

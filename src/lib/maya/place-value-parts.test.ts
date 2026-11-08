@@ -1,7 +1,8 @@
 // B1b: the four agreements for compare, sum and tenths build, through the deriver and the session adapter. Synthetic
 // numbers only.
 import { describe, expect, it } from "vitest";
-import type { QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
+import { MAYA_TEACHING_LIMITS } from "@/lib/maya-teaching/limits";
 import { placePartsOf } from "./place-value-parts";
 import { exampleGiveaway, placePartsTeachingPackage } from "@/lib/maya-teaching/place-value-parts";
 import { derivePlaceValue } from "@/lib/maya-teaching/place-value";
@@ -131,5 +132,20 @@ describe("place-value compare, sum and build: what the stored question asks", ()
     const compare = { ask: "compare" as const, number: 38472, place: "thousands" as const, second: "hundreds" as const, answer: "true" as const };
     const cmp = { kind: "place-value" as const, operands: [275] as [number], ask: "compare" as const, place: "hundreds" as const, second: "tens" as const };
     expect(exampleGiveaway(compare, { text: "", operation: cmp, answer: { type: "choice", value: "true" }, steps: [] })).toMatch(/word/);
+  });
+
+  it("is checked only under Maya's explicit option: the default check, and its easier-example size rule, are unchanged (lesson 8)", () => {
+    for (const stored of [storedBuild({ wholes: 6, tenths: 4 }), storedCompare({ step: 1, n0: 38472, place: "thousands", second: "hundreds" }), storedSum({ step: 1, n0: 87346, place: "thousands", second: "tens" })]) {
+      const r = placePartsTeachingPackage(stored);
+      if (!r || "held" in r) throw new Error(`held ${stored.text}`);
+      expect(checkQuestionPackage(r.package)).toMatchObject({ ok: false, status: "unsupported" });
+      expect(checkQuestionPackage(r.package, undefined, { wholeResult: 999_999 })).toMatchObject({ ok: false, status: "unsupported" });
+      expect(checkQuestionPackage(r.package, undefined, MAYA_TEACHING_LIMITS).ok).toBe(true);
+    }
+    // A build's easier example with fewer wholes but more tenths is smaller only under Maya's option.
+    const r = placePartsTeachingPackage(storedBuild({ wholes: 6, tenths: 4 }));
+    if (!r || "held" in r) throw new Error("held");
+    expect(r.package.easierExample!.operation).toMatchObject({ operands: [2, 7] });
+    expect(checkQuestionPackage(r.package, undefined, { ...MAYA_TEACHING_LIMITS })).toMatchObject({ ok: true });
   });
 });

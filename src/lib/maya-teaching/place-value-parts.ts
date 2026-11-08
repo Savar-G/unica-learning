@@ -5,6 +5,7 @@
 import { checkQuestionPackage, workedSteps, type AnswerValue, type EasierExample, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { placePartsOf, type PlacePartsObject } from "@/lib/maya/place-value-parts";
 import { placeIndex } from "@/lib/question-package-place-value";
+import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "./limits";
 
 type PartsOperation = Extract<Operation, { kind: "place-value"; ask: "compare" | "sum" | "build" }>;
 const num = (value: number): AnswerValue => ({ type: "number", value });
@@ -133,7 +134,9 @@ export function placePartsTeachingPackage(printed: QuestionPackage): { package: 
     steps: workedSteps(operation),
     wrongAnswers: wrongAnswersOf(o),
     easierExample,
+    // Marked as made by the session adapter: only Maya's check (mayaPackageCheck) knows the place-value kind.
+    operationSource: TEACHING_SOURCE,
   };
-  const check = checkQuestionPackage(made);
+  const check = checkQuestionPackage(made, undefined, MAYA_TEACHING_LIMITS);
   return check.ok ? { package: made } : { held: `the teaching package does not check: ${check.reason}` };
 }

@@ -8,7 +8,7 @@
 // - No wording holds the word "one" as a number, or a digit next to its place's value, where that could be the answer.
 // - After two misses on the last step there is no given answer: the easier example, then an honest close (session.ts).
 // Each line has 5 wordings in the plain style of lines.ts (D-202), pending Savar's approval. Pure TypeScript.
-import { equivalent, valueText, type OperationPackage, type Place, type WorkedStep } from "@/lib/question-package";
+import { equivalent, operationText, valueText, type OperationPackage, type Place, type WorkedStep } from "@/lib/question-package";
 import { placeIndex, withCommas, WHOLE_PLACES } from "@/lib/question-package-place-value";
 import type { Command, Place as BoardPlace } from "@/lib/board";
 import type { LineId, LineOffer, PackageLines, Slots } from "./lines";
@@ -195,11 +195,16 @@ export const PLACE_VALUE_TEMPLATES = {
     "Yes! A zero in the {place} place is worth 0.", "That's right. 0 {place} is worth 0.", "You got it! The value is 0. A zero holds the place.",
     "Yes, 0. There are no {place}, so the value is 0.", "Exactly! That zero has a value of 0.",
   ],
-  // An honest close of an unsolved question (after the easier example and another miss): never the answer.
+  // The honest close (brief lesson 10, controller decision (a), 2026-11-08): after the easier example, a child who still
+  // only asks for help (or misses again) hears that the question is hard and that it is fine to stop, and one next step:
+  // the easier example on paper ({example}, already worked by Maya) or a grown-up. Never a hint at the answer. Pending
+  // Savar's approval (D-202).
   "close.later": [
-    "Let's stop here for now. You can try this question again later.", "Good effort. We can come back to this question another time.",
-    "Let's leave this question for now. You can try it again with a grown-up.", "That's enough for this question today. Try it again later.",
-    "Thanks for working on this. We can try it again another day.",
+    "This question is hard, and it is fine to stop now. You can try {example} on paper.",
+    "This question is a hard puzzle. It's okay to stop here. Ask a grown-up to try it with you.",
+    "That was a hard question, and stopping is fine. Try {example} on paper later.",
+    "This question is tricky, and it's fine to stop. A grown-up can help you try it again.",
+    "It's okay to stop. This question is hard. You can practise {example} on paper.",
   ],
   // B1b: compare, sum and tenths build (place-value-parts-templates.ts).
   ...PLACE_PARTS_TEMPLATES,
@@ -284,12 +289,15 @@ export function placeValueLines(pkg: OperationPackage & { operation: PlaceOperat
   };
   const digitHelp = (step: WorkedStep): LineOffer[] => {
     const slots: Slots = { step: step.id };
+    // A zero digit is also the value's answer (review of #738): its step is taught as a digit question is, on a chart
+    // with no digits, with no stripe at H1 and the stripe, never a circle, at H2.
+    const zero = f.digit === 0;
     return [
       offer("step.invite", "invite.place", f.vars, { slots, level: 0 }),
-      offer("step.point", "point.place.band", f.vars, { slots, level: 1 }),
+      offer("step.point", zero ? "point.place" : "point.place.band", f.vars, { slots, level: 1 }),
       offer("step.why", "where.place", f.vars, { slots, level: 1 }),
-      offer("step.operation", "operation.place.circle", f.vars, { slots, level: 2 }),
-      { ...open, slots, level: 0 },
+      offer("step.operation", zero ? "operation.place" : "operation.place.circle", f.vars, { slots, level: 2 }),
+      { ...(zero ? offer("chart.open", "chart.open.blank", f.vars) : open), slots, level: 0 },
       // A zero digit is also the value's answer: its step has no H3, as a last step has none.
       ...(f.digit === 0 ? [] : [offer("step.show", "show.digit", { show: `The digit in the ${op.place} place is ${f.digit}.` }, { slots, level: 3 })]),
     ];
@@ -338,7 +346,7 @@ export function placeValueLines(pkg: OperationPackage & { operation: PlaceOperat
     // No given answer for place value (parent lane, 2026-11-07): the easier example, then an honest close.
     answerGive: () => [],
     answerParts: () => [],
-    closeUnsolved: () => [offer("close.together", "close.later", {})],
+    closeUnsolved: () => safe([offer("close.together", "close.later", { example: operationText(ex) })]),
     stepIds: digitStep ? [digitStep.id] : [],
   };
   // B1b's asks (compare, sum, build) change the lines whose meaning differs (place-value-parts-lines.ts).
@@ -411,19 +419,24 @@ export function placeBoardOffers(input: {
   const op = pkg.operation;
   const f = factsOf(op);
   const value = op.ask === "value";
+  // A digit question's chart has no digits; nor has a value question's whose digit is 0, the value's answer too.
+  const blank = !value || f.digit === 0;
   // A chart has room for 6 places on one board page (a 7-digit number is taught by voice and lines only).
   if (!has("question") && String(op.operands[0]).length <= 6) {
     out.push({
       id: "question.chart",
-      shows: value ? `a place-value chart of ${f.vars.number}` : `a place-value chart of the places of ${f.vars.number}, with no digits written`,
-      commands: (place) => [{ op: "place_chart", id: "question", number: String(op.operands[0]), ...(value ? {} : { blank: true }), place } as unknown as Command],
+      shows: blank ? `a place-value chart of the places of ${f.vars.number}, with no digits written` : `a place-value chart of ${f.vars.number}`,
+      commands: (place) => [{ op: "place_chart", id: "question", number: String(op.operands[0]), ...(blank ? { blank: true } : {}), place } as unknown as Command],
     });
   }
   if (said(BAND_KEYS)) out.push({ id: "question.band", shows: `color the ${op.place} place on the chart`, commands: () => [mark("question", { part: "piece", piece: `band-${chartPlace(op.place)}` }, "highlight", 0)] });
-  if (value && said(CIRCLE_KEYS)) out.push({ id: "question.circle", shows: `circle the digit in the ${op.place} place`, commands: () => [mark("question", { part: "cell", rowId: "digits", column: chartPlace(op.place) }, "circle", 1)] });
+  if (value && !blank && said(CIRCLE_KEYS)) out.push({ id: "question.circle", shows: `circle the digit in the ${op.place} place`, commands: () => [mark("question", { part: "cell", rowId: "digits", column: chartPlace(op.place) }, "circle", 1)] });
   if (chosen.some((o) => o.line === "answer.right")) {
+    const digitCell = { op: "put", target: { objectId: "question", part: "cell", rowId: "digits", column: chartPlace(op.place) }, value: String(f.digit) } as unknown as Command;
     const cells: Command[] = value
       ? [
+        // On a blank chart the digit is written before its value.
+        ...(blank ? [digitCell] : []),
         { op: "put", target: { objectId: "question", part: "cell", rowId: "value", column: chartPlace(op.place) }, value: String(f.answer) } as unknown as Command,
         { op: "put", target: { objectId: "question", part: "row", rowId: "equation" }, value: `${f.digit} × ${f.vars.perOne} = ${f.vars.answer}` } as unknown as Command,
       ]

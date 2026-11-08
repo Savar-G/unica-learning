@@ -15,6 +15,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 | `src/lib/maya-gate/place-value-cases.ts` | Fixtures PVD, PVD0, PVV and PVV0: teaching packages the place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored place-value questions, and their behaviours (PV01 to PVJ2b), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/place-value-parts-cases.ts` | B1b's fixtures PVC, PVC0, PVCZ, PVSUM and PVB (compare, sum, tenths build) and their behaviours (PVC01 to PVBJ1). |
 | `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
+| `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6a), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -389,6 +390,19 @@ Fixtures PVC, PVC0, PVCZ, PVSUM and PVB (`src/lib/maya-gate/place-value-parts-ca
 | PVB02 | PVB | passing | Build: '58' leaves out the point; Maya says so, then the child says 5.8 | solved | |
 | PVB03 | PVB | passing | Build: 'I'm stuck.' four times; H0 to H2, the easier example, then an honest close, never the decimal | script ends mid-call | |
 | PVBJ1 | PVB | passing | J06, build, grade 3: 'Why does the point go there?' gets code's answer first, within 25 words | solved | |
+| PV18 | PVV0 | passing | Value, zero digit: stuck twice; H1 names the places with no stripe, H2 stripes the empty column of a chart with no digits | solved | |
+| PV19 | PVD | passing | Which digit: 'I'm stuck.' four times; help rises to H2, the top of a last step, then the easier example, then the honest close | child_stopped, worked_example | |
+### One-step workbook questions through the session adapter (Wave A)
+
+Fixtures W5, W3 and W6 (`src/lib/maya-gate/one-step-cases.ts`) are the teaching packages Maya's session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, as a call gets them. Each easier example has the question's own shape, one place smaller at a time, and the first one whose every step fits the strictest turn (25 words) is taken (`examples.ts`: 10 − 3 for 10000 − 3615, as each regroup across zeros is 33 words). W5 (10000 − 3615) and W6 (352418 + 41275) are above today's limits, so they run under Maya's wider limits only: they show her 5- and 6-digit columns, the place names she says, and the child's "ten thousands" and "hundred thousands" read as places, never as 10 or 100.
+
+| Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
+|---|---|---|---|---|---|
+| W5a | W5 | passing | 10000 − 3615 story, says 7615 (smaller from larger): regrouping across the zeros is guided column by column | solved, hint | |
+| W5b | W5 | passing | 10000 − 3615 story, solved at the opening in words: 'six thousand three hundred eighty five' is accepted | solved, independent | |
+| W5c | W5 | passing | 10000 − 3615 story, cannot start: the easier example of the same shape that fits every turn (10 − 3: a subtraction from a round number with a regroup), then back to the question | solved, worked_example | |
+| W3a | W3 | passing | 284 × 7 'Each crate has' story, says 1488 (drops the carries): each row digit with its carry is guided | solved, hint | |
+| W6a | W6 | passing | 352418 + 41275: a 6-digit sum, column by column to the hundred thousands, with the question's six columns on the board; '3 hundred thousands' is a column, not 300 | solved | |
 
 ## Pending
 

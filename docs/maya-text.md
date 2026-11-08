@@ -95,6 +95,18 @@ Practice runs on the Claude subscription (PR #401) found Maya asking for work th
 
 Every regroup wording is new and waits for Savar's approval. See [the line review](maya-practice-lines.md).
 
+## Workbook questions with no stored operation (Wave A)
+
+Many stored workbook packages have no operation: the generator left it out, for example because a number is above today's limit (10000 − 2426). Before every session on a workbook question, `teachingPackage` (`src/lib/maya-teaching/index.ts`) makes the package Maya teaches from. It runs at the call start in `maya-call.ts` (chat, voice and admin calls), at workbook selection and for the desk's held list. The stored package is never changed: not in storage, not in print and not in marking.
+
+- A deriver in the adapter's registry (`DERIVERS`) may add only the teaching data: the operation, its answer, worked steps, wrong answers and easier example. The adapter refuses a package whose printed fields differ from the stored ones, and one that fails `mayaPackageCheck`. It marks the package it makes `operationSource: "maya-teaching"`. It never trusts that mark on a package it is given: it drops that teaching data and makes it again.
+- An operation needs three independent agreements (`agreement.ts`). First, the printed text matches a closed form. Second, the code-computed result equals the answer key in the item's box. Third, the template expression, evaluated on the stored slot values, gives the same result. For a one-step question, that expression must also be the same operation on the same numbers. A tick-and-number item's ticked sign must be the operation's sign.
+- One-step stories and sums (`one-step.ts`) are taught with the add, subtract and multiply steps Maya already has. Multi-step stories and printed chains (`multi-step.ts`, "5 × 350 − 870", "98378 + 1000 + 100") become one `evaluate`, held until Maya teaches evaluate.
+- The easier example has the question's own shape, one place smaller at a time (`examples.ts`): 28 × 7 for 284 × 7, "4 × 23 − 46" for "4 × 230 − 460". It must be of the question's kind, a question of a kind Maya teaches must pass the session's own rule with it, and every step Maya works must fit the strictest turn (25 words, grades 1 to 3 and a shorter call) with the existing example_step pacing. A regroup across zeros is 33 words, so 10000 − 3615 takes 10 − 3 rather than 1000 − 361. When no example of its shape passes, the question is held.
+- The new place words block a step confirm as the one-word places do: `confirmWordsOnly` is an allow-list, and "thousands" is not on it. "9 ten thousands." gets no confirm and no credit, even after a yes.
+- Maya's wider limits (`limits.ts`) hold only for a marked package: whole-number +, − and × results and ÷ dividends up to 999,999, and divisors up to 999. `mayaPackageCheck` passes them to `checkQuestionPackage`. Every default check, and the generator, keep today's limits. Expressions (`evaluate`) keep the literal limit of 99,999.
+- Up to the hundred thousands, Maya says each place by its name and draws its column. A child's "6 ten thousands" or "2 hundred thousands" names a column's digits, as "6 tens" does. It is never the number 10 or 100. "Carry 1 to the ten thousands" names a place.
+
 ## Fractions (D-204, #407)
 
 Maya teaches adding and subtracting two fractions (`fraction-add`, `fraction-subtract`), with like or unlike denominators. A question with a step Maya has no lines for stays held (`content_issue`): a mixed or whole number to add, multiplying, dividing, simplifying alone and equivalent fractions (`TEACHABLE_KINDS`, `TAUGHT_STEP_KINDS`).
