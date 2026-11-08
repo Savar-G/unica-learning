@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { allLineTexts, createSession, heldReason, lineOffers, step, type Session } from "@/lib/maya";
-import { claimActs, claimReveals, claimView, readClaimWord } from "@/lib/maya/claim";
+import { allLineTexts, createSession, heldReason, learningEvent, lineOffers, nextActs, step, type Session } from "@/lib/maya";
+import { claimActs, claimQuestionAsked, claimReveals, claimStepConfirmable, claimStepHeard, claimView, readClaimWord } from "@/lib/maya/claim";
 import { packageLines } from "@/lib/maya/lines";
 import * as CLAIMS from "@/lib/maya-gate/claim-fixtures";
 import { CLAIM_TRUE_FALSE } from "@/lib/maya-gate/claim-fixtures";
@@ -70,10 +70,12 @@ describe("a claim question's session (A4)", () => {
     expect(heldReason({ ...tf, operation: swapped, steps: workedSteps(swapped) })).toBe("Maya cannot teach this circle question yet");
   });
 
-  it("never gives the word: give_answer leaves the acts, and guide or close takes its place where it was the only way on", () => {
+  it("never gives the word: give_answer leaves the acts, and the honest close takes its place where it was the only way on", () => {
     const pkg = claimView(tf);
     expect(claimActs(pkg, ["accept_answer", "guide", "give_answer"])).toEqual(["accept_answer", "guide"]);
-    expect(claimActs(pkg, ["give_answer", "confirm"])).toEqual(["guide", "confirm", "close"]);
+    // The way out is the honest close, never another top hint (lesson 7).
+    expect(claimActs(pkg, ["give_answer", "confirm"])).toEqual(["confirm", "close"]);
+    expect(claimActs(pkg, ["accept_answer", "guide"], true)).toEqual(["close"]);
     expect(claimActs(FIXTURES.A as OperationPackage, ["give_answer"])).toEqual(["give_answer"]);
   });
 
@@ -115,6 +117,17 @@ describe("a claim question's session (A4)", () => {
     return step(s, { type: "proposal", at: 1, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }, { line: "assess.ask" }] } }).session;
   }
 
+  /** A call where the child gave 6 × 8 = 48 and Maya then asked the claim itself (the final step's invite). */
+  function afterClaimQuestion(): Session {
+    const s = step(opened(tf), { type: "child_turn", at: 2, text: "6 times 8 is 48." }).session;
+    const r = step(s, { type: "proposal", at: 3, proposal: { version: 2, act: "guide", step: "result", level: 0,
+      reading: { answers: [{ value: { type: "number", value: 48 }, step: "claim", verdict: "right" }] },
+      parts: [{ line: "check.right_step", slots: { step: "claim" } }, { line: "step.invite", slots: { step: "result" } }] } });
+    expect(r.refusal).toBeNull();
+    expect(r.session.claimAsked).toBe(true);
+    return r.session;
+  }
+
   it("accepts a committed right word, refuses a wrong one, and asks which word for an unsure one", () => {
     const accept = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }] };
     const right = step(step(opened(tf), { type: "child_turn", at: 2, text: "It's true." }).session, { type: "proposal", at: 3, proposal: accept });
@@ -125,25 +138,58 @@ describe("a claim question's session (A4)", () => {
     const wrong = step(step(opened(FIXTURES.CLAIM_GT), { type: "child_turn", at: 2, text: "It's no." }).session, { type: "proposal", at: 3, proposal: accept });
     expect(wrong.refusal?.code).toBe("accepts_wrong_answer");
 
-    const unsure = step(opened(tf), { type: "child_turn", at: 2, text: "Maybe true?" }).session;
+    // Before Maya asks the claim, "Maybe true?" is no claim turn; after, it gets the which-word question.
+    expect(lineOffers(step(opened(tf), { type: "child_turn", at: 2, text: "Maybe true?" }).session).confirm?.map((o) => o.line) ?? []).not.toContain("confirm.claim");
+    const unsure = step(afterClaimQuestion(), { type: "child_turn", at: 4, text: "Maybe true?" }).session;
     expect(lineOffers(unsure).confirm?.map((o) => o.line)).toEqual(["confirm.claim"]);
     expect(lineOffers(unsure).confirm?.[0].texts[0]).toBe("Which word do you circle: true or false?");
   });
 
   it("never takes a bare word as the answer: Maya says it back, and a plain yes to that commits it", () => {
     const accept = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }] };
-    const bare = step(opened(tf), { type: "child_turn", at: 2, text: "True." }).session;
-    expect(step(bare, { type: "proposal", at: 3, proposal: accept }).refusal?.code).toBe("accepts_wrong_answer");
+    // Before Maya asks the claim, "True." is no claim turn at all: no say-back.
+    const early = step(opened(tf), { type: "child_turn", at: 2, text: "True." }).session;
+    expect(lineOffers(early).confirm ?? []).toEqual([]);
+    const bare = step(afterClaimQuestion(), { type: "child_turn", at: 4, text: "True." }).session;
+    expect(step(bare, { type: "proposal", at: 5, proposal: accept }).refusal?.code).toBe("accepts_wrong_answer");
     expect(lineOffers(bare).confirm?.map((o) => [o.line, o.slots.heard])).toEqual([["confirm.word", "true"]]);
     expect(lineOffers(bare).confirm?.[0].texts[0]).toBe("You said true. Is true the word you circle?");
-    const asked = step(bare, { type: "proposal", at: 3, proposal: { version: 2, act: "confirm", parts: [{ line: "confirm.word", slots: { heard: "true" } }] } });
+    const asked = step(bare, { type: "proposal", at: 5, proposal: { version: 2, act: "confirm", parts: [{ line: "confirm.word", slots: { heard: "true" } }] } });
     expect(asked.refusal).toBeNull();
     expect(asked.session.wordAsked).toBe("true");
-    const yes = step(asked.session, { type: "child_turn", at: 4, text: "Yes." }).session;
-    const r = step(yes, { type: "proposal", at: 5, proposal: accept });
+    const yes = step(asked.session, { type: "child_turn", at: 6, text: "Yes." }).session;
+    const r = step(yes, { type: "proposal", at: 7, proposal: accept });
     expect(r.refusal).toBeNull();
     expect(r.session.solved).toBe("child");
     expect(r.session.wordAsked).toBeUndefined();
+  });
+
+  it("a child who only asks for help at the top of the final step gets the honest close, and the stuck step is a learning event", () => {
+    let s = afterClaimQuestion();
+    let at = 10;
+    for (const level of [1, 2] as const) {
+      s = step(s, { type: "child_turn", at: at++, text: "I'm stuck." }).session;
+      const line = level === 1 ? "step.point" : "step.operation";
+      const r = step(s, { type: "proposal", at: at++, proposal: { version: 2, act: "guide", step: "result", level, reading: { help: "more" }, parts: [{ line, slots: { step: "result" } }] } });
+      expect(r.refusal).toBeNull();
+      s = r.session;
+    }
+    s = step(s, { type: "child_turn", at: at++, text: "I'm stuck." }).session;
+    // No endless top hint and no answer: the only way on is the close.
+    expect(nextActs(s).acts.filter((a) => a !== "confirm")).toEqual(["close"]);
+    const offers = lineOffers(s).close ?? [];
+    expect(offers.map((o) => o.line)).toEqual(["close.honest"]);
+    for (const t of offers[0].texts) {
+      expect(t).not.toMatch(/\d|\b(?:true|false|yes|no)\b/i);
+      expect(t).toMatch(/\b(?:stop|stopping)\b/i);
+      expect(t).toMatch(/\b(?:easier one|smaller one|grown-up)\b/i);
+    }
+    // A warm-only close is refused; the honest close ends the call.
+    expect(step(s, { type: "proposal", at: at, proposal: { version: 2, act: "close", parts: [{ warm: "closing" }] } }).refusal?.code).toBe("line_not_offered");
+    const r = step(s, { type: "proposal", at: at++, proposal: { version: 2, act: "close", parts: [{ line: "close.honest" }] } });
+    expect(r.refusal).toBeNull();
+    expect(r.session.outcome).toMatchObject({ reason: "child_stopped", assistance: "hint" });
+    expect(learningEvent(r.session, { parentId: "p", childId: "c" })).toMatchObject({ source: "call", result: "blank", stuckStep: "result", hints: 2 });
   });
 
   it("does not take a plain yes to 'Did you say ...?', or a yes after another act, as the claim's word", () => {
@@ -190,6 +236,47 @@ describe("claim lines fit the word limits and the scope check (A4, lessons from 
   it("other math is still another problem", () => {
     expect(scopeReason(views.find((p) => p.id === "claim-gate-gt")!, "4 times 36 is 144.", false)).toBe("changed_problem");
     expect(scopeReason(views.find((p) => p.id === "claim-gate-tf")!, "7 times 8 is 56.", false)).toBe("changed_problem");
+  });
+});
+
+describe("the compare step's credit (A4, review of #737): a whole-turn allow-list", () => {
+  const mul = { kind: "multiply", operands: [360, 4] } as Operation;
+  const yes1440 = { type: "number", value: 1440 } as const;
+  const heard = (text: string, o: Partial<{ heardAsked: typeof yes1440 | null; shown: boolean; operation: Operation; value: number }> = {}) =>
+    claimStepHeard({ text, uncertain: false, operation: o.operation ?? mul, value: o.value ?? 1440, heardAsked: o.heardAsked ?? null, shown: o.shown ?? false });
+
+  it.each([
+    "1440", "1440.", "It's 1440.", "I got 1440.", "360 times 4 is 1440.", "4 times 360 is 1440.", "So 4 × 360 = 1440.", "I wrote 1440.", "1440 is on my paper.",
+  ])("credits %j", (text) => expect(heard(text)).toBe(true));
+
+  it.each([
+    "I guess 1440?", "Maybe 1440.", "Is it 1440?", "1440, I think.", "My mom said 1440.", "I copied 1440 from my friend.", "1440. My dad helped.",
+    "4 times 36 is 1440.", "360 plus 4 is 1440.", "1441.", "Yes.", "It's 1440, I think.",
+  ])("gives no credit for %j", (text) => expect(heard(text)).toBe(false));
+
+  it("a plain yes credits only Maya's own 'Did you say 1440?', and after H3 only the claim about the child's own paper counts", () => {
+    expect(heard("Yes.", { heardAsked: yes1440 })).toBe(true);
+    expect(heard("Yes, 1440.", { heardAsked: yes1440 })).toBe(true);
+    expect(heard("Yes.", { heardAsked: { type: "number", value: 1436 } as never })).toBe(false);
+    expect(heard("1440.", { shown: true })).toBe(false);
+    expect(heard("360 times 4 is 1440.", { shown: true })).toBe(false);
+    expect(heard("Yes.", { heardAsked: yes1440, shown: true })).toBe(false);
+    expect(heard("I wrote 1440.", { shown: true })).toBe(true);
+    expect(heard("5.83.", { operation: { kind: "decimal-add", operands: [3.45, 2.38] }, value: 5.83 })).toBe(true);
+    expect(heard("56 divided by 8 is 7.", { operation: { kind: "divide", operands: [56, 8] }, value: 7 })).toBe(true);
+    expect(heard("8 divided by 56 is 7.", { operation: { kind: "divide", operands: [56, 8] }, value: 7 })).toBe(false);
+  });
+
+  it("offers the confirm only for one number, the result, with the step confirm's short list of words", () => {
+    for (const t of ["Maybe 1440.", "Is it 1440?", "I got 1440, I think.", "I guess 1440?"]) expect(claimStepConfirmable(t, 1440), t).toBe(true);
+    for (const t of ["My mom said 1440.", "I copied 1440 from my friend.", "The answer is 1440.", "Maybe 1436.", "1440 or 1436?"]) expect(claimStepConfirmable(t, 1440), t).toBe(false);
+  });
+
+  it("knows the lines that ask the claim itself", () => {
+    expect(claimQuestionAsked([{ line: "step.invite", slots: { step: "result" } }])).toBe(true);
+    expect(claimQuestionAsked([{ line: "confirm.claim", slots: {} }])).toBe(true);
+    expect(claimQuestionAsked([{ line: "confirm.heard", slots: { heard: "1440" } }])).toBe(false);
+    expect(claimQuestionAsked([{ line: "assess.ask", slots: {} }, { line: "step.invite", slots: { step: "claim" } }])).toBe(false);
   });
 });
 

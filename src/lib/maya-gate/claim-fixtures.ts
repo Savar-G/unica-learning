@@ -117,3 +117,12 @@ export const CLAIM_LARGE_ROWS = claimPackage({
   derived: [["a", "a0 // 10 * 10"], ["b", "b0 // 10 * 10"], ["c", "a * b - a if f == 0 else a * b + a"]],
   expression: "'yes' if f == 0 else 'no'", check: "a0 >= 10 and b0 >= 10",
 });
+
+/** A round product (lesson 11): 3 × 20 is 60, so 2 × 3 = 6 would give it away. 60 is greater than 57 (5.9 shape). */
+export const CLAIM_ROUND = claimPackage({
+  id: "claim-gate-round", question: 8, templateId: "5.9-multiply-tens#1.4:true-false",
+  text: "Is 3 × 20 greater than 57? Circle yes or no.", skill: "5.9-multiply-tens", choices: ["yes", "no"], answer: "yes",
+  slots: [["a0", "3", 1, 9], ["b0", "24", 10, 900], ["f", "0", 0, 1]],
+  derived: [["a", "a0"], ["b", "b0 // 10 * 10"], ["c", "a * b - a if f == 0 else a * b + a"]],
+  expression: "'yes' if f == 0 else 'no'", check: "b0 >= 10",
+});
