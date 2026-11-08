@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DESK_HOME, deskGate, deskView as readDeskView, lockCookie, openPageToken, questionCrop, readLock, tapAreas } from "@/lib/desk";
+import { heldPackage } from "@/lib/maya-held-fixture";
+import type { WorkbookQuestionRef } from "@/lib/question-package";
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { memoryWorkbookStore } from "@/lib/workbook-store-memory";
 
@@ -148,6 +150,22 @@ describe("the picked question", () => {
     const view = await deskView(store, { parentId: PARENT, childId: CHILD, page: 2 });
     if (view.status !== "ready") throw new Error(view.status);
     expect(view.page.questions.map((q) => q.columns)).toEqual([null, { kind: "add", operands: [345, 286] }, { kind: "add", operands: [419, 193] }, { kind: "add", operands: [176, 248] }]);
+  });
+});
+
+describe("the held pre-check (#527)", () => {
+  it("marks a question Maya cannot teach yet from its package, and no other question", async () => {
+    const store = memoryWorkbookStore({ children: [{ id: CHILD, parentId: PARENT }], now: () => new Date("2026-10-29T18:00:00Z") });
+    const book = sampleWorkbook({ workbookId: FIRST, childId: CHILD, parentId: PARENT, qrTokens: [1, 2, 3].map((p) => token(FIRST, p)) });
+    const first = book.pages[1].questions[0];
+    first.package = { ...heldPackage(first.package.ref as WorkbookQuestionRef), id: first.package.id };
+    expect((await store.write(book)).status).toBe("written");
+    store.setStatus(FIRST, "shipped");
+    const view = await deskView(store, { parentId: PARENT, childId: CHILD, page: 2 });
+    if (view.status !== "ready") throw new Error(view.status);
+    expect(view.page.questions.map((q) => q.held)).toEqual([true, ...view.page.questions.slice(1).map(() => false)]);
+    expect(view.page.questions.length).toBeGreaterThan(1);
+    expect(view.page.questions[0]).toMatchObject({ text: "Yes or no: 3 and 4 make 6.", columns: null });
   });
 });
 
