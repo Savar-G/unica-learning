@@ -365,12 +365,12 @@ The cases are in `src/lib/maya-gate/pattern-cases.ts`. Fixtures `PT_MISSING` (st
 | PT7 | PT_TERM | passing | Grade 3, 'I'm stuck.' first: the first hint (H1) says why the fourth term takes three steps | solved, hint | |
 | PT8 | PT_MISSING | passing | Stuck on the last part: H1 is its multiplication fact (2 × ? = 14), and '2 times 7 is 14, so 7.' stays in scope | solved, hint | |
 | PT8b | PT_MISSING | passing | Still stuck at H2 on the last part: counts by the divisor, never the answer; the child stops, a kind close | child_stopped, hint | |
+| PT9 | PT_MISSING | passing | Hedged and other-speaker steps ('Maybe 14.', 'My mom said 14.') get no credit | solved | |
 | PT10 | PT_MISSING | passing | Model failing: a wrong answer at the first part's top help (H3), the easier pattern, then on another wrong answer the honest close | child_stopped | |
 | PT11 | PT_MISSING | passing | Model failing: a wrong answer at the last part's top help (H2), the easier pattern, then the honest close | child_stopped, worked_example | |
 | PT12 | PT_MISSING | passing | Model failing: 'I'm stuck.' on every hint of the last part: H1, H2, the easier pattern, then the honest close | child_stopped, worked_example | |
 | PT13 | PT_MISSING | passing | Lesson 13: '14.' only copies what H3 showed: no credit, no miss; give_answer refused there and on the next 'Okay.' | no answer given | |
 | PT14 | PT_MISSING | passing | Lessons 5, 6 and 13, model proposing credit every turn: 'Yes.' first, 'My mom said 14.', 'I copied 14.', 'Maybe 14.', 'Is it 14?' credit nothing | no credit | The final answer's say-back confirm after 'My mom said 7.' is #735's (skipped test in `pattern.test.ts`) |
-| PT9 | PT_MISSING | passing | Hedged and other-speaker steps ('Maybe 14.', 'My mom said 14.') get no credit | solved | |
 
 ## Pending
 
