@@ -40,6 +40,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { teachingLimits } from "@/lib/maya-teaching/limits";
+import { checkMissingNumber } from "./missing-number";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
@@ -486,7 +487,8 @@ export function createSession(input: {
  * session adapter made (src/lib/maya-teaching, operationSource "maya-teaching"). The adapter checks its output here too.
  */
 export function mayaPackageCheck(raw: unknown): PackageCheck {
-  return checkQuestionPackage(raw, undefined, teachingLimits(raw));
+  // A missing number's framing steps are Maya's own: her check computes them again (missing-number.ts).
+  return checkMissingNumber(raw, teachingLimits(raw)) ?? checkQuestionPackage(raw, undefined, teachingLimits(raw));
 }
 
 /** The package Maya teaches from, or why she holds it (the content hold's reason). */
@@ -593,6 +595,8 @@ function stepAnswers(step: WorkedStep): AnswerValue[] {
       return [number(step.value)];
     case "divide-digit":
       return [number(step.quotient)];
+    case "try-factor":
+      return [number(step.value)];
     // Fraction steps (#407), each in its exact written form: 6/8 answers the common denominator of 3/4 + 1/8, 3/4 does not.
     case "common-denominator": {
       const changed = step.to.filter((_, i) => step.factors[i] > 1);
@@ -2778,7 +2782,8 @@ const meets = (requires: NonNullable<LineOffer["requires"]>, view: View) =>
     ? view.done.includes(requires.step)
     : requires.answer === "equal"
       ? !!view.equal && (requires.heard === undefined || valueText(view.equal) === requires.heard)
-      : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong");
+      : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong"
+        && (requires.heard === undefined || valueText(c.answer.value) === requires.heard));
 
 /** The first two words of each sentence of a text, in lower case, to keep two sentences of one turn from starting alike. */
 const openings = (text: string) =>
@@ -2949,9 +2954,10 @@ function boardPlaces(s: Session, batch: readonly string[], exampleStep: boolean)
 /** The columns of a problem as code lays them out, with a code-made id ("question" or "example"). */
 function columnsOf(s: Session, problem: Problem): Command | null {
   const pkg = s.package!;
-  const { operation } = problemOf(pkg, problem);
+  const { operation, steps } = problemOf(pkg, problem);
   const layout = BOARD_OPERATION[operation.kind];
-  if (!layout) return null;
+  // A missing factor found by trying numbers has no long division to lay out (trial-factor.ts).
+  if (!layout || steps.some((st) => st.kind === "try-factor")) return null;
   const [a, b] = operandsOf(operation);
   return { op: "columns", id: problem === "target" ? "question" : "example", operation: layout, operands: [{ id: "top", value: String(a) }, { id: "bottom", value: String(b) }], place: { region: "main" } } as unknown as Command;
 }

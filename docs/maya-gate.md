@@ -320,6 +320,17 @@ Fixtures W5, W3 and W6 (`src/lib/maya-gate/one-step-cases.ts`) are the teaching 
 | W3a | W3 | passing | 284 × 7 'Each crate has' story, says 1488 (drops the carries): each row digit with its carry is guided | solved, hint | |
 | W6a | W6 | passing | 352418 + 41275: a 6-digit sum, column by column to the hundred thousands, with the question's six columns on the board; '3 hundred thousands' is a column, not 300 | solved | |
 
+### Missing numbers (Wave A)
+
+Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT` (9000 − ? = 3000) are made by Maya's session adapter (`src/lib/maya-teaching/missing-number.ts`) from synthetic printed packages and checked by `mayaPackageCheck`. The framing step ("To find the missing number, work out 1620 ÷ 30.") and the zeros step are said by Maya: in the easier example, with "Now you try yours" and with the first work step's invite. A 3-digit known factor is found by trying numbers (`src/lib/maya/trial-factor.ts`): each wrong try is multiplied out with code's numbers, and H3 shows the tries on each side, never the answer.
+
+| Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
+|---|---|---|---|---|---|
+| MN1 | M_DIVIDE | passing | 30 × ? = 1620, cannot start: the easier example frames 20 × ? = 40 as 40 ÷ 20 and drops a zero, then 54 is accepted | solved, worked_example | |
+| MN2 | M_TRY | passing | 236 × ? = 1416 by trying numbers: 7 is multiplied out (too big), 5 (too small), then 6 is accepted; no long division | solved, independent | |
+| MN2b | M_TRY | passing | 236 × ? = 1416, stuck: the try hint at H1, the rounding hint at H2, then 6 is accepted | solved, hint | |
+| MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
+
 ## Pending
 
 `PENDING` is empty. The partial audio behaviours still state their proof limits above.
