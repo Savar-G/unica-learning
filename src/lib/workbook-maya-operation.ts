@@ -2,7 +2,7 @@
 // unknown. The template source checks the key only. Equal results do not prove that a method fits the question.
 import {
   checkQuestionPackage, operationProblem, operationResult, operationText, sameValue, workedSteps,
-  type Operation, type QuestionPackage,
+  type AnswerValue, type Operation, type OperationLimits, type QuestionPackage,
 } from "./question-package";
 import { templateAnswer, templateAnswerValue } from "./question-package-template";
 import { readNumbers } from "./number-words";
@@ -10,7 +10,7 @@ import type { GeneratedWorkbook } from "./workbook-generator";
 
 /** Keep the original print input. Teaching metadata must not select columns, methods, units or answer-key text. */
 export function printedWorkbookQuestion(pkg: QuestionPackage): QuestionPackage {
-  if (pkg.operationSource !== "maya") return pkg;
+  if (pkg.operationSource !== "maya" && pkg.operationSource !== "maya-teaching") return pkg;
   const original = { ...pkg };
   delete original.operationSource;
   return { ...original, operation: null, answer: null, steps: [], wrongAnswers: [], easierExample: null };
@@ -23,8 +23,10 @@ const ACTOR = "(?<who>[a-z]+)";
 const SUBJECT = "(?:\\k<who>|he|she|they)";
 const THINGS = `(?<things>${WORDS})`;
 const n = (name: string) => `(?<${name}>${NUMBER})`;
+/** The pieces of a closed printed form, for the closed forms Maya's session adapter adds (src/lib/maya-teaching). */
+export const FORM_PARTS = { NUMBER, UNKNOWN, WORDS, ACTOR, SUBJECT, THINGS, n } as const;
 
-function binary(sign: string, a: number, b: number): Operation {
+export function binary(sign: string, a: number, b: number): Operation {
   const whole = [a, b].every(Number.isSafeInteger);
   if (sign === "/" && !whole) return { kind: "evaluate", operands: [`${a} ÷ ${b}`] };
   const kind = sign === "+" ? (whole ? "add" : "decimal-add")
@@ -34,7 +36,7 @@ function binary(sign: string, a: number, b: number): Operation {
 }
 
 /** Read only an entire printed numeric expression. No slot names, derived bindings or answer expressions enter here. */
-function expressionOperation(expression: string): Operation | null {
+export function expressionOperation(expression: string): Operation | null {
   const fraction = new RegExp(`^(${NUMBER})/(\\d+)\\s*([+*/-])\\s*(${NUMBER})/(\\d+)$`).exec(expression);
   if (fraction) {
     const kind = fraction[3] === "+" ? "fraction-add" : fraction[3] === "-" ? "fraction-subtract" : fraction[3] === "*" ? "fraction-multiply" : "fraction-divide";
@@ -76,7 +78,8 @@ function equationOperation(text: string): Operation | null {
 
 // Closed printed story and number-bond forms. Named captures bind printed quantities to their roles. Unmatched
 // wording stays unsupported even when the source's answer expression happens to produce the key.
-const PRINTED_FORMS: readonly [string, (v: Record<string, string>) => Operation | null][] = [
+export type PrintedForm = readonly [string, (v: Record<string, string>) => Operation | null];
+const PRINTED_FORMS: readonly PrintedForm[] = [
   [`${n("whole")} is ${n("part")} and (?:${UNKNOWN}|which number: ${NUMBER} or ${NUMBER}\\?)`, v => binary("-", +v.whole, +v.part)],
   [`${n("whole")} is ${n("a")} and ${n("b")} and ${UNKNOWN}`, v => expressionOperation(`${v.whole} - ${v.a} - ${v.b}`)],
   [`(?:${NUMBER} and ${NUMBER} make ${NUMBER}\\. )?${n("part")} and ${UNKNOWN} make ${n("whole")}`, v => binary("-", +v.whole, +v.part)],
@@ -101,15 +104,23 @@ const PRINTED_FORMS: readonly [string, (v: Record<string, string>) => Operation 
   [`${ACTOR}'s school sends ${n("a")} full buses of ${n("b")} people to a game, and ${n("c")} people leave early\\. How many people are still at the game\\?`, v => expressionOperation(`${v.a} * ${v.b} - ${v.c}`)],
   [`A plant is ${n("a")} cm tall and grows ${n("b")} cm each week\\. How tall is it after ${n("c")} weeks\\?`, v => expressionOperation(`${v.a} + ${v.b} * ${v.c}`)],
 ];
-const PRINTED_RELATIONSHIPS = PRINTED_FORMS.map(([pattern, build]) => ({ pattern: new RegExp(`^${pattern}\\.?$`, "i"), build }));
+type PrintedRelationship = { pattern: RegExp; build: PrintedForm[1] };
+/** Closed forms as anchored, case-blind patterns. */
+export const printedRelationships = (forms: readonly PrintedForm[]): PrintedRelationship[] =>
+  forms.map(([pattern, build]) => ({ pattern: new RegExp(`^${pattern}\\.?$`, "i"), build }));
+const PRINTED_RELATIONSHIPS = printedRelationships(PRINTED_FORMS);
 
-function printedOperation(text: string): Operation | null {
+/**
+ * The operation of an entire printed text: a numeric equation or expression, then the closed forms. `extra`: more closed
+ * forms after the #525 ones, only for a caller that passes them (Maya's session adapter); generation passes none.
+ */
+export function printedOperation(text: string, extra: readonly PrintedRelationship[] = []): Operation | null {
   const printed = text.replace(/\d{1,3}(?:,\d{3})+/g, value => value.replace(/,/g, ""))
     .replace(/[−–]/g, "-").replace(/×/g, "*").replace(/÷/g, "/").replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
   const equation = printed.replace(/^(?:Missing number: |Fill the blank: )/i, "").replace(/\.$/, "");
   const operation = equationOperation(equation.replace(/^What is (.*)\?$/i, "$1"));
   if (operation) return operation;
-  for (const { pattern, build } of PRINTED_RELATIONSHIPS) {
+  for (const { pattern, build } of [...PRINTED_RELATIONSHIPS, ...extra]) {
     const match = pattern.exec(printed);
     if (match?.groups) return build(match.groups);
   }
@@ -117,7 +128,7 @@ function printedOperation(text: string): Operation | null {
 }
 
 /** This is an additional provenance check, not proof that equal arithmetic describes the printed relationship. */
-function hasPrintedOperands(operation: Operation, text: string): boolean {
+export function hasPrintedOperands(operation: Operation, text: string): boolean {
   const printed = new Set(readNumbers(text).map(n => n.value));
   const operands = operation.kind === "evaluate" ? readNumbers(operation.operands[0]).map(n => n.value)
     : operation.operands.flatMap(value => typeof value === "number" ? [value]
@@ -141,25 +152,37 @@ export function withWorkbookMayaOperation(pkg: QuestionPackage): QuestionPackage
   if (!operation || !hasPrintedOperands(operation, pkg.text) || operationProblem(operation) || !sameValue(operationResult(operation), answer)) return pkg;
   const region = pkg.item.regions.find(r => r.id === check.region);
   if (region?.kind !== "box" || !region.answer || !sameValue(region.answer, answer)) return pkg;
+  return withTeachingOperation(pkg, operation, answer) ?? pkg;
+}
+
+/**
+ * The package with checked teaching data for `operation` (its answer, worked steps, one wrong answer and an easier
+ * example), or null when no candidate passes the package check. The caller has checked that the operation fits the
+ * printed question and its key. `source`, `limits` and `examples`: only Maya's session adapter passes them
+ * ("maya-teaching", its wider limits, and easier examples of the question's own shape, tried instead of the list
+ * below); generation passes none, so the #525 output is as before.
+ */
+export function withTeachingOperation(pkg: QuestionPackage, operation: Operation, answer: AnswerValue,
+  options: { source?: "maya" | "maya-teaching"; limits?: OperationLimits; examples?: readonly Operation[] } = {}): QuestionPackage | null {
   // All examples use the same operation kind. The package checker must confirm a smaller example with a different
   // answer, correct worked steps and a valid wrong answer. Minimal targets with no such example stay unchanged.
-  const examples: Operation[] = operation.kind === "evaluate" ? [{ kind: "evaluate", operands: ["1 + 1"] }, { kind: "evaluate", operands: ["1 + 2"] }]
+  const examples: readonly Operation[] = options.examples ?? (operation.kind === "evaluate" ? [{ kind: "evaluate", operands: ["1 + 1"] }, { kind: "evaluate", operands: ["1 + 2"] }]
     : operation.kind.startsWith("fraction-") ? [2, 3, 1].flatMap(d => [2, 3, 1].map(e => ({ ...operation, operands: [
       { type: "fraction", numerator: 1, denominator: d }, { type: "fraction", numerator: 1, denominator: e },
     ] }) as Operation))
       : [...[0, 1, 2, 3].flatMap(a => [1, 2, 3].map(b => ({ ...operation, operands: [a, b] }) as Operation)),
-        { ...operation, operands: [0, 0] } as Operation];
+        { ...operation, operands: [0, 0] } as Operation]);
   for (const example of examples) {
-    if (operationProblem(example)) continue;
+    if (operationProblem(example, options.limits)) continue;
     const candidate: QuestionPackage = {
-      ...pkg, operationSource: "maya", operation,
+      ...pkg, operationSource: options.source ?? "maya", operation,
       answer: { value: answer, accepted: [], unit: null }, steps: workedSteps(operation),
       wrongAnswers: [{ value: { type: "number", value: answer.type === "number" ? answer.value + 1 : 0 }, cause: "calculation", description: "Gives a different result.", step: null }],
       easierExample: { text: `${operationText(example)} = ?`, operation: example, answer: operationResult(example), steps: workedSteps(example) },
     };
-    if (checkQuestionPackage(candidate).ok) return candidate;
+    if (checkQuestionPackage(candidate, undefined, options.limits).ok) return candidate;
   }
-  return pkg;
+  return null;
 }
 
 /** Finalize teaching data after selection, fit and book checks. This function does not mutate the draft. */
