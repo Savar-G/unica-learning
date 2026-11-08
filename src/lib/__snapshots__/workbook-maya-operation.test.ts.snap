@@ -71,14 +71,14 @@ exports[`generated Maya coverage by print band > pins all ten days of U3 and kee
 exports[`generated Maya coverage by print band > pins all ten days of U4 and keeps the exact print input 1`] = `
 [
   {
-    "accepted": 109,
+    "accepted": 111,
     "kind": "All",
     "level": "U4",
     "operations": 114,
     "questions": 544,
   },
   {
-    "accepted": 6,
+    "accepted": 8,
     "kind": "bare",
     "level": "U4",
     "operations": 9,

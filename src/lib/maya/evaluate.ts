@@ -15,6 +15,8 @@
 // the try-factor path); a missing-number text code cannot match exactly; and a question with no easier example of the
 // same shape. The easier example Maya works first must be the same shape as the question: when the stored one is not
 // (the generator stores "1 + 1"), code makes one with the same signs and brackets and smaller numbers, and checks it.
+// When no example of the shape is smaller by the package check, an example that is easier by Maya's own rule
+// (easierForMaya: no more digits, a smaller sum) may be used.
 // Pure TypeScript: no clock, network or randomness.
 import {
   checkQuestionPackage,
@@ -278,6 +280,27 @@ function sameShapeExample(expr: string, answer: number, valid: (example: EasierE
   return null;
 }
 
+/** The package check's reason for an easier example that is not smaller than the question (question-package.ts). */
+const NOT_SMALLER = "the easier example is not smaller than the question";
+
+/**
+ * Maya's own "easier" for an evaluate example, used only when no example of the same shape is smaller by the package
+ * check (round 4, Option B; Maya's evaluate examples only: the package check and the generator keep their rule). Every
+ * number is no larger than the question's largest; a number that has 1 digit in the question has 1 digit in the same
+ * place of the example; the example has no more digits than the question; and the sum of its numbers is smaller than
+ * the question's. The digits keep it on the same place values, and the smaller sum keeps it never harder than the
+ * question: "1 + 4 × 4" (sum 9) is easier than "7 + 2 × 3" (sum 12), and "6 + 4 × 4" (sum 14) is not.
+ */
+export function easierForMaya(exampleExpr: string, expr: string): boolean {
+  const own = (expr.match(/\d+/g) ?? []).map(Number);
+  const made = (exampleExpr.match(/\d+/g) ?? []).map(Number);
+  if (shapeOf(exampleExpr) !== shapeOf(expr) || made.length !== own.length || own.length === 0) return false;
+  const largest = Math.max(...own);
+  const digits = (ns: number[]) => ns.join("").length;
+  const sum = (ns: number[]) => ns.reduce((a, b) => a + b, 0);
+  return made.every((n, i) => n <= largest && (own[i] >= 10 || n < 10)) && digits(made) <= digits(own) && sum(made) < sum(own);
+}
+
 /** The easier example: the stored one when it is the same shape and every part a whole number, else one code makes. */
 function exampleFor(pkg: OperationPackage, expr: string): EasierExample | null {
   const stored = pkg.easierExample;
@@ -288,7 +311,16 @@ function exampleFor(pkg: OperationPackage, expr: string): EasierExample | null {
     keepsOrder(storedExpr, storedValue.value, expr, answer) && !("values" in stored.operation && stored.operation.values)) return stored;
   // The package with the made example must pass the same check as any package (its steps and answer are the
   // operation's, and the example is smaller): the first candidate that does is the example.
-  return sameShapeExample(expr, answer, (made) => checkQuestionPackage({ ...pkg, easierExample: made }, undefined, teachingLimits(pkg)).ok);
+  const limits = teachingLimits(pkg);
+  const check = (made: EasierExample) => checkQuestionPackage({ ...pkg, easierExample: made }, undefined, limits);
+  const smaller = sameShapeExample(expr, answer, (made) => check(made).ok);
+  if (smaller || !checkQuestionPackage(pkg, undefined, limits).ok) return smaller;
+  // Else Maya's own "easier" (easierForMaya): the made example passes every other check (the smaller check is the last
+  // one the package check makes), and every rule above still runs on it.
+  return sameShapeExample(expr, answer, (made) => {
+    const c = check(made);
+    return c.ok || (c.status === "failed" && c.reason === NOT_SMALLER && easierForMaya((made.operation as { operands: string[] }).operands[0], expr));
+  });
 }
 
 type Worked = { teaching: EvaluateTeaching } | { held: string };

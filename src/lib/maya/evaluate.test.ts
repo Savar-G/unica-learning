@@ -11,7 +11,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import {
-  closeParts, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, givesAway, keepsOrder, leftToRight, partCovered, partEquationSaid, withEvaluateExample,
+  closeParts, easierForMaya, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, givesAway, keepsOrder, leftToRight, partCovered, partEquationSaid, withEvaluateExample,
 } from "./evaluate";
 import { allLineTexts, packageLines, workbookOpening } from "./lines";
 import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "@/lib/maya-teaching/limits";
@@ -385,9 +385,10 @@ describe("evaluate parts (Wave A, A2)", () => {
     expect(copy.session.done).not.toContain("e1");
   });
 
-  it("holds \"(6 + 4) ÷ 2\" rather than make \"(5 + 3) ÷ 1\": the answer as a number, and ÷ 1 (round 3)", () => {
-    // No smaller example of its shape is free of the question's own numbers, its answer and a trivial operand.
-    expect(heldReason(evaluatePackage("(6 + 4) ÷ 2"))).toEqual(expect.stringMatching(/no easier example of the same shape/));
+  it("never makes \"(5 + 3) ÷ 1\" for \"(6 + 4) ÷ 2\": the answer as a number, and ÷ 1 (round 3)", () => {
+    // No example of its shape is smaller by the package check, so Maya's own "easier" (easierForMaya) picks one.
+    expect(heldReason(evaluatePackage("(6 + 4) ÷ 2"))).toBeNull();
+    expect(withEvaluateExample(op(evaluatePackage("(6 + 4) ÷ 2"))).easierExample.operation).toEqual({ kind: "evaluate", operands: ["(3 + 3) ÷ 3"] });
   });
 
   it("makes \"5 × 5 − 5\" for \"7 × 8 − 50\", not \"6 × 6 − 5\" with the answer as both factors (round 3)", () => {
@@ -426,10 +427,36 @@ describe("evaluate parts (Wave A, A2)", () => {
     expect(givesAway("21 × 3 − 10", 53, "9 × 880 + 9 × 40", 8280)).toBe(false);
   });
 
-  it("holds \"7 + 2 × 3\" rather than make \"6 + 1 × 1\", which is 7 both ways (round 3)", () => {
-    // Worked left to right and worked right, "6 + 1 × 1" is 7: it shows nothing about the order. Every smaller example
-    // of the shape has × 1, × 0 or one of the question's own numbers, so Maya holds the question.
-    expect(heldReason(evaluatePackage("7 + 2 × 3"))).toEqual(expect.stringMatching(/no easier example of the same shape/));
+  it("never makes \"6 + 1 × 1\" for \"7 + 2 × 3\", which is 7 both ways (round 3)", () => {
+    // Worked left to right and worked right, "6 + 1 × 1" is 7: it shows nothing about the order. No example of the
+    // shape is smaller by the package check, so Maya's own "easier" picks "1 + 4 × 4": 17, and 20 left to right.
+    expect(heldReason(evaluatePackage("7 + 2 × 3"))).toBeNull();
+    expect(withEvaluateExample(op(evaluatePackage("7 + 2 × 3"))).easierExample.operation).toEqual({ kind: "evaluate", operands: ["1 + 4 × 4"] });
+  });
+
+  it("uses Maya's own \"easier\" only when no example of the shape is smaller by the package check (round 4)", () => {
+    // Easier: no larger than the question's largest number, 1 digit stays 1 digit, no more digits, a smaller sum.
+    expect(easierForMaya("1 + 4 × 4", "7 + 2 × 3")).toBe(true);
+    expect(easierForMaya("6 + 4 × 4", "7 + 2 × 3")).toBe(false); // sum 14, not under 12
+    expect(easierForMaya("8 + 1 × 2", "7 + 2 × 3")).toBe(false); // 8 is larger than the question's largest, 7
+    expect(easierForMaya("1 + 2 × 5", "7 + 2 × 3")).toBe(true);
+    expect(easierForMaya("10 + 1 × 1", "7 + 2 × 3")).toBe(false); // 1 digit in the question, 2 in the example
+    expect(easierForMaya("11 − 3 × 3", "15 − 2 × 7")).toBe(true);
+    expect(easierForMaya("16 − 1 × 1", "15 − 2 × 7")).toBe(false); // larger than the question's largest
+    expect(easierForMaya("1 + 4 × 4", "(7 + 2) × 3")).toBe(false); // not the same shape
+    // The package check keeps its rule: "1 + 4 × 4" is not smaller than "7 + 2 × 3" there.
+    const made: Operation = { kind: "evaluate", operands: ["1 + 4 × 4"] };
+    const pkg = evaluatePackage("7 + 2 × 3");
+    expect(checkQuestionPackage({ ...pkg, easierExample: { text: "1 + 4 × 4 = ?", operation: made, answer: { type: "number", value: 17 }, steps: workedSteps(made) } }))
+      .toMatchObject({ ok: false, reason: "the easier example is not smaller than the question" });
+    // Shapes the round-3 rules held: Maya teaches them again, every other rule still holding.
+    for (const [expr, easier] of [["15 − 2 × 7", "11 − 3 × 3"], ["2 × 5 − 9", "3 × 4 − 8"]]) {
+      expect(withEvaluateExample(op(evaluatePackage(expr))).easierExample.operation, expr).toEqual({ kind: "evaluate", operands: [easier] });
+    }
+    // Every number of "2 × 3 + 4 × 7" sits beside a × and must not be 1 or its own: 5 or 6 each, a sum of at least 20, not under 16.
+    expect(heldReason(evaluatePackage("2 × 3 + 4 × 7"))).toEqual(expect.stringMatching(/no easier example of the same shape/));
+    // An example that is smaller by the package check is chosen as before ("30 + 4 × 3" keeps "5 + 2 × 2").
+    expect(withEvaluateExample(op(evaluatePackage("30 + 4 × 3"))).easierExample.operation).toEqual({ kind: "evaluate", operands: ["5 + 2 × 2"] });
   });
 
   it("keeps the order-of-operations lesson in the easier example (round 3)", () => {
