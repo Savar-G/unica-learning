@@ -2775,7 +2775,7 @@ function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View,
   // The second way (step.why, #605) comes only after the regroup line, for "why?" or when the first did not land.
   if (pending.length === 0) {
     // A missing number's step.why (missing-number.ts) answers a question about its first step; it is no regroup line.
-    return own.filter((o) => (o.line === "step.why" ? said || o.key !== "regroup.why"
+    return own.filter((o) => (o.line === "step.why" ? said || o.key === "frame.why" || o.key === "trial.why"
       : o.line !== "step.regroup" || !((view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= MAX_REGROUP_SAYS)));
   }
   // Explain an incoming carry before any outgoing explanation that uses it.
