@@ -5,8 +5,11 @@
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
 // not teach yet (equivalent fractions, C36b).
 import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { deriveDieCount } from "@/lib/maya-teaching/die-count";
+import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
+import { diePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES";
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -119,6 +122,11 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
+  // Wave C "other-topic" (src/lib/maya-teaching): made by the derivers from synthetic printed packages. DIE: "Roll a die
+  // numbered 1 to 8. How many of the numbers are even?" as 8 ÷ 2; SHAPES: a regular hexagon and a regular pentagon,
+  // 6 + 5 lines of symmetry from code's table.
+  DIE: deriveDieCount(diePrinted(8, "even"))!,
+  SHAPES: deriveSymmetry(symmetryPrinted(4, 5))!,
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */

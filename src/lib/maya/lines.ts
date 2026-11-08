@@ -22,6 +22,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { simplestWords, teachSteps } from "./fractions";
+import { topicFrame } from "./topic-frame";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -141,6 +142,12 @@ export const TEMPLATES = {
     "Today we're working on {expr}.", "Our question is {expr}.", "Let's work on {expr} together.", "We're doing {expr} today.",
     "This one is {expr}.", "Here's our question: {expr}.",
   ],
+  // An "other-topic" question (Wave C, topic-frame.ts): code's topic sentence before the operation it gives. Pending
+  // Savar's approval (D-202).
+  "question.framed": [
+    "{frame} Our question is {expr}.", "{frame} So our question is {expr}.", "{frame} That makes our question {expr}.",
+    "{frame} So we work on {expr}.", "{frame} So this one is {expr}.", "{frame} Here's our question: {expr}.",
+  ],
   "question.read": [
     "The question says: {sentence}", "Let's read it again: {sentence}", "Here's the question: {sentence}", "It says: {sentence}",
     "Let's read it together: {sentence}", "Here's what it says: {sentence}",
@@ -149,9 +156,20 @@ export const TEMPLATES = {
     "What did you try for {expr}?", "How did you start {expr}?", "Tell me what you did on {expr} so far.", "What have you done on {expr} so far?",
     "How far did you get with {expr}?", "Can you show me how you began {expr}?",
   ],
+  // The first question of an "other-topic" call (Wave C): code's topic sentence, then the usual question.
+  "assess.framed": [
+    "{frame} What did you try for {expr}?", "{frame} How did you start {expr}?", "{frame} What have you done on {expr} so far?",
+    "{frame} How far did you get with {expr}?", "{frame} Tell me what you did on {expr} so far.",
+  ],
   "example.intro": [
     "Let's try an easier one first: {expr}.", "Here's a smaller one to warm up: {expr}.", "Let me show you an easier one: {expr}.",
     "Let's warm up with an easier one: {expr}.", "First, a smaller one: {expr}.", "I'll show you an easier one first: {expr}.",
+  ],
+  // The easier example of an "other-topic" question (Wave C): its own topic sentence, then its operation.
+  "example.framed": [
+    "Let's try an easier one first. {frame} So we work on {expr}.", "Here's a smaller one to warm up. {frame} So it is {expr}.",
+    "Let me show you an easier one. {frame} So it is {expr}.", "First, a smaller one. {frame} So we work on {expr}.",
+    "I'll show you an easier one first. {frame} So it is {expr}.",
   ],
   "example.step": ["{show}", "Watch this. {show}", "Here's how. {show}", "Look. {show}", "Follow along. {show}", "Like this. {show}"],
   "example.result": ["So {show}.", "And that's it: {show}.", "There we go: {show}.", "All done: {show}.", "So in the end, {show}."],
@@ -775,8 +793,12 @@ const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+/).map((s) => s.t
 /** Controller-owned opening. Only checked operation data is read aloud, never arbitrary workbook prose. */
 export function workbookOpening(pkg: OperationPackage): string | null {
   return pkg.ref.source === "workbook" ? WORKBOOK_OPENING
-    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", operationText(pkg.operation)) : null;
+    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", operationText(pkg.operation))
+    + framed(topicFrame(pkg.text, pkg.operation)) : null;
 }
+
+/** An "other-topic" question's topic sentence after the fixed opening (Wave C, topic-frame.ts). */
+const framed = (frame: string | null) => (frame ? ` ${frame}` : "");
 
 /** One fixed confirmation, outside the model's selectable wordings. */
 export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page}, number {number}: {expr}.";
@@ -788,17 +810,21 @@ export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page
 export function packageLines(pkg: OperationPackage) {
   const expr = operationText(pkg.operation);
   const exampleExpr = operationText(pkg.easierExample.operation);
+  const frame = topicFrame(pkg.text, pkg.operation);
+  const exampleFrame = frame ? topicFrame(pkg.easierExample.text, pkg.easierExample.operation) : null;
   const answer = valueText(pkg.answer.value);
   const steps = teachSteps(pkg);
   const find = (id: string) => steps.find((s) => s.id === id);
   return {
     hello: (): LineOffer[] => [offer("open.hello", "open.hello", {})],
     question: (): LineOffer[] => [
-      offer("question.problem", "question.problem", { expr }, { slots: {}, board: expr }),
+      frame ? offer("question.problem", "question.framed", { frame, expr }, { slots: {}, board: expr }) : offer("question.problem", "question.problem", { expr }, { slots: {}, board: expr }),
       ...sentencesOf(pkg.text).map((s, i) => offer("question.read", "question.read", { sentence: s }, { slots: { sentence: i } })),
     ],
-    assess: (): LineOffer[] => [offer("assess.ask", "assess.ask", { expr })],
-    exampleIntro: (): LineOffer[] => [offer("example.intro", "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
+    assess: (): LineOffer[] => [frame ? offer("assess.ask", "assess.framed", { frame, expr }) : offer("assess.ask", "assess.ask", { expr })],
+    exampleIntro: (): LineOffer[] => [exampleFrame
+      ? offer("example.intro", "example.framed", { frame: exampleFrame, expr: exampleExpr }, { slots: {}, board: exampleExpr })
+      : offer("example.intro", "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
     /** Maya works one step of the easier example. */
     exampleStep: (id: string): LineOffer[] => {
       const step = pkg.easierExample.steps.find((s) => s.id === id);

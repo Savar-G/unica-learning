@@ -2682,7 +2682,8 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "example_step": {
       const index = main === "ASSESS" ? 0 : s.exampleShown;
       const next = pkg.easierExample.steps[index];
-      if (index === 0 && !s.exampleIntroduced && turnWordLimit(s) === 25) {
+      // A framed intro (an "other-topic" question's topic sentence, topic-frame.ts) is its own turn too.
+      if (index === 0 && !s.exampleIntroduced && (turnWordLimit(s) === 25 || l.exampleIntro().some((o) => o.key === "example.framed"))) {
         return l.exampleIntro().map((o) => ({ ...o, slots: { step: next.id } }));
       }
       return [...(index === 0 && !s.exampleIntroduced ? l.exampleIntro() : []), ...(next ? l.exampleStep(next.id) : [])];

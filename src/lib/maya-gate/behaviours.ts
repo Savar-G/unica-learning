@@ -25,6 +25,7 @@ const num = (value: number) => ({ type: "number" as const, value });
 const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.filter((line) => line.key === key).flatMap((line) => line.texts);
 const fractionLines = packageLines(FIXTURES.D as OperationPackage);
 const simplestLines = packageLines(FIXTURES.D_SIMPLEST as OperationPackage);
+const dieLines = packageLines(FIXTURES.DIE as OperationPackage);
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
 /** The answer to a free-talk turn: back to the question, solved. */
@@ -195,6 +196,78 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved" }, counts: { confirmations: 1 } },
   },
 
+  // Wave C "other-topic" (src/lib/maya-teaching, topic-frame.ts): a die count taught as 8 ÷ 2 and lines of symmetry as
+  // 6 + 5, each with code's topic sentence. OT1 to OT5.
+  {
+    id: "OT1", title: "Die count, cannot start: the framed easier example (6 ÷ 2), then the question", fixture: "DIE", status: "passing",
+    steps: [
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }, {}, {}]),
+      okay,
+      child("8 divided by 2 is 4.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "worked_example" },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(dieLines.exampleIntro(), "example.framed")] }],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "OT2", title: "Die count in the child's own words at the opening: one confirm, then accepted, not taught again (J06)", fixture: "DIE", status: "passing",
+    steps: [
+      child("They take turns, so half of 8. That's 4.", { start: "has_work", answers: [[4, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "4" } }]),
+      child("Yes.", { answers: [[4, "result", "right"]] }),
+      child("Because 2, 4, 6 and 8 are even.", undefined, [{ act: "ask_write", understanding: "evidence_observed" }]),
+      wroteIt,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", highestHint: null },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { confirmations: 1, fallbacks: 0 },
+      never: ["example_step", "guide"],
+    },
+  },
+  {
+    id: "OT3", title: "Die count, 'why divide by 2?': answered with code's topic sentence, then solved", fixture: "DIE", status: "passing",
+    steps: [
+      child("Why do we divide by 2?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("Oh. Then it's 4.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(dieLines.question(), "question.framed")] }],
+    },
+  },
+  {
+    id: "OT4", title: "Lines of symmetry, says 10: not accepted; guided, then 11", fixture: "SHAPES", status: "passing",
+    steps: [
+      child("10.", { start: "has_work", answers: [[10, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("6 plus 5 is 11.", { answers: [[11, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
+  {
+    id: "OT5", title: "Lines of symmetry from the facts in the child's own words: one confirm, then accepted, no step repeated (J06)", fixture: "SHAPES", status: "passing",
+    steps: [
+      child("The hexagon has 6 and the pentagon has 5, so 11.", { start: "has_work", answers: [[11, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "11" } }]),
+      child("Yes.", { answers: [[11, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { confirmations: 1, fallbacks: 0 },
+      never: ["example_step", "guide"],
+    },
+  },
   {
     id: "C01",
     title: "Cannot start: the easier example, then back to the question",
