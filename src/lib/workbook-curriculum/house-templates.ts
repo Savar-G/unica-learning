@@ -24,6 +24,12 @@ const hard = (format: StepTemplate["format"], text: string, answer: string, slot
 /** Unica's Challenge templates are the Challenge's (and Show what you know's): no practice or story page takes one. */
 const CHALLENGE_ONLY = new WeakSet<StepTemplate>();
 export const isChallengeOnly = (t: StepTemplate): boolean => CHALLENGE_ONLY.has(t);
+/**
+ * A step's templates for normal practice and for choosing a page's step (stories, Solve it two ways): every template
+ * except Unica's Challenge-only ones, so adding a Challenge template never moves another page to that step (#744).
+ */
+export const practiceTemplates = (step: { templates?: readonly StepTemplate[] } | null | undefined): readonly StepTemplate[] =>
+  (step?.templates ?? []).filter((t) => !isChallengeOnly(t));
 
 const medium = (text: string, answer: string, slots: Record<string, string>, derived: Record<string, string>, check: string): StepTemplate =>
   ({ format: "story", difficulty: "medium", text, answer, slots, derived, check });
@@ -32,7 +38,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   {
     skill: "3.1-place-value-1000", step: 1, name: "Hundreds, tens and ones",
     templates: [
-      hard("bare", "In {n}, add the value of the hundreds digit to the tens digit's value, then subtract the ones digit.", "100 * nh + 10 * nt - no", { n0: "number" }, { nh: "5 + n0 % 4", nt: "2 + n0 // 10 % 8", no: "1 + n0 % 9", n: "100 * nh + 10 * nt + no" }, "n <= 899"),
+      hard("bare", "In {n}, add the hundreds value and the tens value. Then take away the ones digit.", "100 * nh + 10 * nt - no", { n0: "number" }, { nh: "5 + n0 % 4", nt: "2 + n0 // 10 % 8", no: "1 + n0 % 9", n: "100 * nh + 10 * nt + no" }, "n <= 899"),
       hard("missing", "{n} + 100 - 10 = __", "100 * (nh + 1) + 10 * (nt - 1) + no", { n0: "number" }, { nh: "5 + n0 % 4", nt: "2 + n0 // 10 % 8", no: "1 + n0 % 9", n: "100 * nh + 10 * nt + no" }, "n <= 899"),
       hard("story", "{name}'s code is {n}. Add 1 hundred and take away 1 ten. What is the new code?", "100 * (nh + 1) + 10 * (nt - 1) + no", { n0: "number" }, { nh: "5 + n0 % 4", nt: "2 + n0 // 10 % 8", no: "1 + n0 % 9", n: "100 * nh + 10 * nt + no" }, "n <= 899"),
     ],
