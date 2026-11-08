@@ -40,7 +40,8 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { teachingLimits } from "@/lib/maya-teaching/limits";
-import { checkMissingNumber } from "./missing-number";
+import { checkMissingNumber, frameDue } from "./missing-number";
+import { trialHeard } from "./trial-factor";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
@@ -1828,7 +1829,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate") && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || at.kind === "try-factor") && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
@@ -2068,7 +2069,7 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
 function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolean {
   const pkg = s.package;
   // A part of an evaluate question is a step too: its result is its total (evaluate.ts).
-  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "operate")) return false;
+  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "operate" && step.kind !== "try-factor")) return false;
   // A turn code could not hear for sure is no step credit: it gets its confirm first.
   const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
   if (body === null) return false;
@@ -2076,6 +2077,8 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   // of its columns is the first not done (currentPart).
   if (currentColumn(s)?.id !== step.id && workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
   const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
+  // A missing factor's try (trial-factor.ts): its value, a yes to Maya's own confirm, or its own product.
+  if (step.kind === "try-factor") return trialHeard(step, body, value, s.stepAsked ?? null, copy);
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16). A part's total is its result.
   const total = saidAs(number(step.kind === "operate" ? step.value : step.total), value);
   // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
@@ -2706,6 +2709,8 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
   }
   const main = isTeaching(s.state) ? s.state : s.resume;
   const solved = s.solved ?? (view.rightResult ? "child" : null);
+  // A missing number's framing rides on the first step's hint until Maya has said it (missing-number.ts).
+  const framing = frameDue(pkg.steps, s.turns.filter((t) => t.speaker === "maya").map((t) => t.text));
   const right = l.stepIds.flatMap(l.rightStep);
   switch (act) {
     case "open":
@@ -2734,7 +2739,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       // child saw, and the given answer must follow H3 (first-ship practice, C04-r1, hint_skipped). The help goes on instead.
       const shownHere = view.steps[0] === s.ladder.step && s.ladder.hint >= 3;
       const check = s.solved === null && s.turn && !shownHere ? (saysGuess(s.turn.text) ? l.guess() : doubtfulRight(s) ? l.together() : []) : [];
-      return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...l.thinking()];
+      return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...l.thinking()];
     }
     case "accept_answer": {
       const form = view.checked.find((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right")?.answer.value ?? s.answerForm ?? undefined;
@@ -2742,7 +2747,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     }
     case "give_answer":
       // Never the final step's question before code gives its answer (D-199).
-      return [...view.steps.filter((id) => id !== "result").flatMap((id) => regroupHelp(l, id, view)), ...right];
+      return [...view.steps.filter((id) => id !== "result").flatMap((id) => regroupHelp(l, id, view, framing)), ...right];
     case "ask_write": {
       // Never a request to write what the child already wrote, or said they wrote or would not write (#389).
       const written = s.wrote === true || s.paper !== "unknown";
@@ -2769,7 +2774,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "redirect":
       return [...l.decline(), ...l.redirect(), ...l.question()];
     case "repair":
-      return [...l.repair(), ...l.question(), ...view.steps.flatMap((id) => regroupHelp(l, id, view)).filter((o) => (o.level ?? 0) <= Math.max(0, s.ladder.hint))];
+      return [...l.repair(), ...l.question(), ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing)).filter((o) => (o.level ?? 0) <= Math.max(0, s.ladder.hint))];
     default:
       return [];
   }
@@ -2780,14 +2785,15 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
  * the gentlest invite, so no line names a carried digit before the child hears where it comes from. The regroup line
  * of the column a carry comes from is offered only then (it says that column's sum).
  */
-function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View): LineOffer[] {
+function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View, framing = false): LineOffer[] {
   const pending = (view.regroup ?? []).filter((c) => c.at === id);
-  const own = l.help(id);
+  const own = l.help(id, framing);
   // Once said, the line comes again only when the child denies the carry, which makes it pending (regroupAfter).
   const said = (view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= 1;
   // The second way (step.why, #605) comes only after the regroup line, for "why?" or when the first did not land.
   if (pending.length === 0) {
-    return own.filter((o) => (o.line === "step.why" ? said
+    // A missing number's step.why (missing-number.ts) answers a question about its first step; it is no regroup line.
+    return own.filter((o) => (o.line === "step.why" ? said || o.key !== "regroup.why"
       : o.line !== "step.regroup" || !((view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= MAX_REGROUP_SAYS)));
   }
   // Explain an incoming carry before any outgoing explanation that uses it.

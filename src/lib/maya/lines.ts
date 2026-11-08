@@ -24,8 +24,8 @@ import {
 import { simplestWords, teachSteps } from "./fractions";
 import { evaluateFrame, partAt, withEvaluateExample } from "./evaluate";
 import { EVALUATE_TEMPLATES, partEquation, partHelp, partShow } from "./evaluate-lines";
-import { frameInvite, framedLines, MISSING_TEMPLATES, type FramedLines } from "./missing-number";
-import { showTrial, trialEquation, trialFeedback, trialHelp, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
+import { frameInvite, frameLead, framedLines, frameWhy, MISSING_TEMPLATES, type FramedLines } from "./missing-number";
+import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -618,7 +618,7 @@ function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
 }
 
 /** The help lines of one step of the child's question, by hint level: H0 invite, H1 point, H2 give the operation, H3 show. */
-function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
+function stepLines(pkg: OperationPackage, step: WorkedStep, frameDue = false): LineOffer[] {
   const part = partHelp(pkg, step, stepLines, offer);
   if (part) return part;
   const slots = { step: step.id };
@@ -729,7 +729,14 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
   // A try step's equation holds the answer: its H3 shows the tries on each side, with no board note.
   const eq = step.kind === "try-factor" ? null : equationOf(step, pkg, "target");
   out.push(offer("step.show", "step.show", { show: showOf(step, pkg, "target") }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
-  return out;
+  if (!lead || !framed) return out;
+  // A missing number's first step: why it does what it does (step.why), and, while Maya has not said the framing yet
+  // (frameDue), every hint after the invite starts with it, so the first hint said at any level carries it.
+  const why = frameWhy(framed);
+  out.push(offer("step.why", why.key, why.vars, { slots, level: 1 }));
+  if (!frameDue) return out;
+  const before = frameLead(framed);
+  return out.map((o) => ((o.level ?? 0) >= 1 ? { ...o, texts: o.texts.map((t) => `${before} ${t}`) } : o));
 }
 
 /**
@@ -860,10 +867,10 @@ export function packageLines(given: OperationPackage) {
      * The help lines of the child's question's step, H0 to H3. The final step ("result", once every work step is done)
      * has one line, an H0 invite to put the whole answer together (#389).
      */
-    help: (id: string): LineOffer[] => {
+    help: (id: string, frameDue = false): LineOffer[] => {
       if (id === "result") return [offer("step.invite", "invite.result", { expr: solved }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
-      return step ? stepLines(pkg, step) : [];
+      return step ? stepLines(pkg, step, frameDue) : [];
     },
     /**
      * The regroup line of the column a carry comes from (the ones of 27 + 39), for a child who plans to write its
@@ -880,8 +887,13 @@ export function packageLines(given: OperationPackage) {
     rightStep: (id: string): LineOffer[] => {
       const step = find(id);
       if (!step) return [];
-      const eq = equationOf(step, pkg, "target");
       const requires = { answer: "right" as const, step: id };
+      // A right try is the answer itself: said back without the number until the child gives it as the answer.
+      if (step.kind === "try-factor") {
+        const t = trialRight(step);
+        return [offer(t.line, t.key, t.vars, { slots: { step: id }, requires })];
+      }
+      const eq = equationOf(step, pkg, "target");
       return [eq
         ? offer("check.right_step", "check.right_step", { eq }, { slots: { step: id }, requires, board: eq })
         : offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)), where: whereOf(step) }, { slots: { step: id }, requires })];
@@ -980,7 +992,7 @@ export function allLineTexts(given: OperationPackage, heardValues: readonly Answ
   const offers = [
     ...equalForms.flatMap((v) => [...l.answerRight(v), ...l.writeAnswer(v), ...l.equal(v, simplestWords(pkg)), ...l.simplifyOwn(v)]),
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.help(id, true), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.repair(),
     ...l.together(), ...l.guess(),
