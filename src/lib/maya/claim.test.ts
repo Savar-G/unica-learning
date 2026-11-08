@@ -12,6 +12,10 @@ import { workedSteps, type Operation, type OperationPackage } from "@/lib/questi
 
 const TF = ["true", "false"] as const;
 const YN = ["yes", "no"] as const;
+/** The child's own work each claim checks a reason against (claim.ts, ownWork). */
+const GT = { value: 1440, shown: 1450, operation: { kind: "multiply", operands: [360, 4] } as Operation };
+const TFW = { value: 48, shown: 48, operation: { kind: "multiply", operands: [6, 8] } as Operation };
+const DEC = { value: 5.83, shown: 5.93, operation: { kind: "decimal-add", operands: [3.45, 2.38] } as Operation };
 
 describe("reading the circled word (A4): an allow-list over the whole turn", () => {
   it.each([
@@ -20,14 +24,17 @@ describe("reading the circled word (A4): an allow-list over the whole turn", () 
     ["false!", TF, { word: "false", committed: false }],
     ["Yeah.", YN, { word: "yes", committed: false }],
     ["Nope.", YN, { word: "no", committed: false }],
-    ["No, 1440 is less than 1450.", YN, { word: "no", committed: false }],
-    ["Yes, because 1440 is more.", YN, { word: "yes", committed: false }],
+    ["No, 1440 is less than 1450.", YN, { word: "no", committed: false }, GT],
+    ["Yes, because 1440 is more.", YN, { word: "yes", committed: false }, GT],
     // Committed forms.
     ["It's true.", TF, { word: "true", committed: true }],
     ["I circle no.", YN, { word: "no", committed: true }],
     ["The answer is yes.", YN, { word: "yes", committed: true }],
-    ["It's false, because 3.45 plus 2.38 is 5.83.", TF, { word: "false", committed: true }],
-    ["6 times 8 is 48, so it's true.", TF, { word: "true", committed: true }],
+    ["It's false, because 3.45 plus 2.38 is 5.83.", TF, { word: "false", committed: true }, DEC],
+    ["It's false, because 5.83 is not 5.93.", TF, { word: "false", committed: true }, DEC],
+    ["6 times 8 is 48, so it's true.", TF, { word: "true", committed: true }, TFW],
+    ["48, so it's true.", TF, { word: "true", committed: true }, TFW],
+    ["1450 minus 1440 is 10, so it's no.", YN, { word: "no", committed: true }, GT],
     ["Um, it is no.", YN, { word: "no", committed: true }],
     // Unsure, or both words: Maya asks which word.
     ["Maybe true?", TF, { unclear: true }],
@@ -46,8 +53,22 @@ describe("reading the circled word (A4): an allow-list over the whole turn", () 
     ["Yes, it is not greater.", YN, null],
     ["No, I want to stop.", YN, null],
     ["48.", TF, null],
-  ] as const)("%j (%j)", (text, choices, want) => {
-    expect(readClaimWord(text, choices)).toEqual(want);
+    // Another person's work or a copy is never the child's answer (#737 and #743 reviews): an allow-list for what comes
+    // before ", so" and after "because".
+    ["My mom said 48, so it's true.", TF, null, TFW],
+    ["I copied 48, so it's true.", TF, null, TFW],
+    ["My teacher said it's 48, so it's true.", TF, null, TFW],
+    ["Mom told me, so it's true.", TF, null, TFW],
+    ["I copied it, so it's true.", TF, null, TFW],
+    ["My mom said 1440, so it's yes.", YN, null, GT],
+    ["It's true, because my mom said so.", TF, null, TFW],
+    ["It's yes, because I copied 1440.", YN, null, GT],
+    ["Yes, because my friend said 1440.", YN, null, GT],
+    ["6 times 9 is 54, so it's true.", TF, null, TFW],
+    // No work to check against: only a word with nothing beside it counts.
+    ["6 times 8 is 48, so it's true.", TF, null],
+  ] as const)("%j (%j)", (text, choices, want, work?: { value: number; shown: number; operation: Operation }) => {
+    expect(readClaimWord(text, choices, work ?? null)).toEqual(want);
   });
 });
 

@@ -2551,6 +2551,30 @@ export const BEHAVIOURS: Behaviour[] = [
       never: ["give_answer", "accept_answer"],
     },
   },
+  // Review of #743 (the same reader): what comes before ", so" is the child's own work or nothing. Another person's
+  // number or word, or a copy, is no answer, whatever the model proposes: accept on every turn, and confirm in repair.
+  ...([["CLAIM_TF", "48", "true"], ["CLAIM_GT", "1440", "yes"]] as const).flatMap(([fixture, n, word], f) => [
+    `My mom said ${n}, so it's ${word}.`,
+    `I copied ${n}, so it's ${word}.`,
+    `My teacher said it's ${n}, so it's ${word}.`,
+    `Mom told me, so it's ${word}.`,
+    `I copied it, so it's ${word}.`,
+  ].map((said, i): Behaviour => ({
+    id: `CL${30 + f * 5 + i}`,
+    title: `'${said}' is no answer: an accept or a confirm the model proposes never credits it`,
+    fixture,
+    status: "passing",
+    steps: [
+      child(said, { start: "has_work" }, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Yes.", undefined, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["accepts_wrong_answer"],
+      never: ["accept_answer", "give_answer"],
+    },
+  }))),
   ...ONE_STEP_BEHAVIOURS,
 ];
 
