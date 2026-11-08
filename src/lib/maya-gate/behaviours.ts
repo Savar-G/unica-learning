@@ -467,9 +467,9 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["redirect", "guide"] },
   },
   {
-    id: "OTC6", title: "Minute-hand claim in a full sentence ('It's true, because 7 times 5 is 35 and 3 more is 38.'): accepted (J06)", fixture: "MINUTE", status: "passing",
+    id: "OTC6", title: "Minute-hand claim in a full sentence ('It's true, because 7 times 5 is 35 and 35 plus 3 is 38.'): accepted (J06)", fixture: "MINUTE", status: "passing",
     steps: [
-      child("It's true, because 7 times 5 is 35 and 3 more is 38.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("It's true, because 7 times 5 is 35 and 35 plus 3 is 38.", { start: "has_work" }, [{ act: "accept_answer" }]),
       child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
       child("I circled it.", { paper: "written" }),
     ],

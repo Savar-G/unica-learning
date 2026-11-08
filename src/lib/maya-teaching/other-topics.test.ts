@@ -112,7 +112,7 @@ describe("lines of symmetry", () => {
 });
 
 describe("the session adapter registers the other-topic derivers", () => {
-  it("teachingPackage gives a stored die count and lines of symmetry their operation; a perimeter stays held until A2", () => {
+  it("teachingPackage gives a stored die count and lines of symmetry their operation; a perimeter is taught from A2's evaluate", () => {
     const die = teachingPackage(diePrinted(8, "odd")) as QuestionPackage;
     expect(die.operation).toEqual(dieOperation(8));
     expect(heldReason(die)).toBeNull();
@@ -121,7 +121,7 @@ describe("the session adapter registers the other-topic derivers", () => {
     expect(heldReason(shapes)).toBeNull();
     const perimeter = teachingPackage(perimeterPrinted(245, 126)) as QuestionPackage;
     expect(perimeter.operation).toEqual({ kind: "evaluate", operands: ["2 × (245 + 126)"] });
-    expect(heldReason(perimeter)).not.toBeNull();
+    expect(heldReason(perimeter)).toBeNull();
   });
 });
 
@@ -250,8 +250,10 @@ describe("the honest close (lessons from review 7 and 10)", () => {
   const cases: [string, QuestionPackage, number, string][] = [
     ["die 8", deriveDieCount(diePrinted(8, "odd"))!, 2, "ones"],
     ["symmetry (1, 2)", deriveSymmetry(symmetryPrinted(1, 2))!, 2, "ones"],
-    // C3b: a scale claim (an evaluate and A4's compare step); its stuck step is the first column of its first part.
-    ["scale claim", deriveTopicClaim(scalePrinted(10, 60, 2, true))!, 2, "e1.r1-ones"],
+    // C3b: a scale claim (an evaluate and A4's compare step); its stuck step is the first column of its first part. With
+    // only code's fallbacks, A4's claim path (#737 at fe7a5ff8) shows the easier example at the first "I'm stuck." of a
+    // child who cannot start, and the next closes, so no hint is reached (-1), as decided on #731 (lesson 10).
+    ["scale claim", deriveTopicClaim(scalePrinted(10, 60, 2, true))!, -1, "e1.r1-ones"],
     // The perimeter (review of #741, P1b): its stuck step is the ones of the brackets' addition.
     ["perimeter 245 by 126", derivePerimeter(perimeterPrinted(245, 126))!, 2, "e1.ones"],
   ];

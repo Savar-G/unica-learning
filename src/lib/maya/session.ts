@@ -1937,7 +1937,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || at.kind === "claim-compare") && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || (at.kind === "claim-compare" && !!topicClaim(pkg))) && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
