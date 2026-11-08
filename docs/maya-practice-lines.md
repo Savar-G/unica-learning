@@ -229,3 +229,22 @@ The honest close (`close.honest`, controller decision (a) on #735) is new: after
 | `confirm.claim#2` | No line at this id. | Which one is it: {first} or {second}? |
 | `confirm.claim#3` | No line at this id. | Tell me one word: {first} or {second}? |
 | `confirm.claim#4` | No line at this id. | Which word is your answer: {first} or {second}? |
+
+## Other-topic questions, C3c (clock times and compare claims), pending approval
+
+| Id | Wordings, pending approval | Example |
+|---|---|---|
+| topic sentence, clock (two counts) | First count on to the next hour, {next}. Then count the minutes left. | First count on to the next hour, 7:00. Then count the minutes left. |
+| topic sentence, clock (one count) | The hour stays {h}. Count on the minutes. | The hour stays 9. Count on the minutes. |
+| `point.count.hour#0` to `#4` | Start at {from}. First count on to {to}, the next hour. / Begin at {from}. Count on to the next hour, {to}. / ... | Start at 6:13. First count on to 7:00, the next hour. |
+| `operation.count.hour#0` to `#4` | How many minutes from {from} to {to}? / ... | How many minutes from 6:13 to 7:00? |
+| `show.count.hour#0` to `#4` | From {from} to {to} is {minutes} minutes. / ... | From 6:13 to 7:00 is 47 minutes. |
+| `point.count.rest#0` to `#4` | We used {used} of the {total} minutes. So {left} minutes are left. / ... | We used 47 of the 50 minutes. So 3 minutes are left. |
+| `operation.count.rest#0` to `#4` | What time is {left} minutes after {from}? / ... | What time is 3 minutes after 7:00? |
+| `point.count.one#0` to `#4` | Start at {from}. The minutes go up by {minutes}. / ... | Start at 9:00. The minutes go up by 40. |
+| `operation.count.one#0` to `#4` | {start} + {minutes} = how many minutes past {hour}? / ... | 0 + 40 = how many minutes past 9 o'clock? |
+| topic sentence, marbles | Red is more likely only if there are more red marbles than blue and green together. | (the same) |
+| topic sentence, area | {c} by {d} squares is {area} squares. Bigger means more squares. | 4 by 2 squares is 8 squares. Bigger means more squares. |
+| claim ask, more or less (true/false) | Is {expr} {greater or less} than {shown}? True or false? | Is 5 + 5 less than 1? True or false? |
+
+Every wording is in `src/lib/maya/clock-lines.ts` (`CLOCK_TEMPLATES`), `src/lib/maya/topic-frame.ts` and `src/lib/maya/claim.ts`.

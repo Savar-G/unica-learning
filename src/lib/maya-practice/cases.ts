@@ -531,6 +531,18 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [75] }, { name: "after help", opens: "help", numbers: [35, 60, 15, 50, 25], values: [{ type: "time", hours: 5, minutes: 15, period: null }, { type: "time", hours: 5, minutes: 0, period: null }] }], firstNumbers: [75] },
     fakeScript: ["I got 4:75.", "25 plus 35 is 60, so 35 minutes to 5:00.", "I got 5:15.", "Because 35 and 15 make 50.", "I wrote it."],
   },
+  // C3c compare claims: an area claim, "greater" (src/lib/maya-teaching/topic-claim.ts).
+  {
+    id: "OTK1",
+    title: "Area claim: cannot start",
+    fixture: "AREA_TF",
+    persona: { name: "Rosa", age: 9, question: "True or false: 6 by 3 squares is bigger than 4 by 4 squares.", knows: "You know your multiplication facts, but you do not know that a rectangle of squares is its sides multiplied until Maya shows you.", behaviour: "Start by saying you do not know how to start. Follow Maya's help one step at a time, then say your word: true or false." },
+    expected: "Say code's topic sentence (4 by 4 squares is 16 squares). Guide 6 × 3, then the compare with 16. Accept the circled word only in the child's own words. Never give the word.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [2, 3, 4] }, { name: "after help", opens: "help", numbers: [16, 18] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    fakeScript: ["I don't know how to start.", "okay", "6 times 3 is 18.", "It's true.", "Because 18 is more than 16.", "I circled it."],
+  },
   // Claim questions (A4, src/lib/maya/claim.ts): the answer is the circled word, which code reads.
   {
     id: "CL01",

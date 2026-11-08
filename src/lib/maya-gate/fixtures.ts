@@ -10,7 +10,7 @@ import { mayaPackageCheck } from "@/lib/maya";
 import { claimTeaching } from "@/lib/maya-teaching/claim";
 import { deriveDieCount } from "@/lib/maya-teaching/die-count";
 import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
-import { clockPrinted, diePrinted, minutePrinted, moneyPrinted, scalePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
+import { areaClaimPrinted, clockPrinted, diePrinted, marblesPrinted, minutePrinted, moneyPrinted, scalePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
 import { deriveClockTime, deriveTopicClaim } from "@/lib/maya-teaching/topic-derivers";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
@@ -18,7 +18,7 @@ import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId
   | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG"
-  | "SCALE" | "MONEY" | "MINUTE" | "CLOCK1" | "CLOCK2";
+  | "SCALE" | "MONEY" | "MINUTE" | "CLOCK1" | "CLOCK2" | "MARBLES" | "AREA_TF";
 
 /** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
@@ -195,6 +195,11 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // is 50 minutes after 4:25?" (35 minutes to 5:00, then 15 more: 5:15).
   CLOCK1: deriveClockTime(clockPrinted(8, 0, 35))!,
   CLOCK2: deriveClockTime(clockPrinted(4, 25, 50))!,
+  // C3c: compare claims through A4's claim session. MARBLES: "with 2 red, 3 blue and 4 green marbles, red is more likely
+  // than the other colours together" (3 + 4 = 7, less than 2? false); AREA_TF: "6 by 3 squares is bigger than 4 by 4
+  // squares" (6 × 3 = 18, greater than 16? true).
+  MARBLES: deriveTopicClaim(marblesPrinted(2, 3, 4))!,
+  AREA_TF: deriveTopicClaim(areaClaimPrinted(6, 3, 4, 4))!,
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */

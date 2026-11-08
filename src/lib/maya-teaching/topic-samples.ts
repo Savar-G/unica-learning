@@ -122,3 +122,19 @@ export function clockPrinted(h: number, mm: number, minutes: number): QuestionPa
     { answer: "str((e // 60 - 1) % 12 + 1) + ':' + ('00' if e % 60 == 0 else ('0' + str(e % 60) if e % 60 < 10 else str(e % 60)))", check: null, values: null, derived: ELAPSED_DERIVED, slots: slotsOf({ hr: h, mm, m: minutes }, 59) },
     { type: "text", value: answer }, "write-words");
 }
+
+/** "True or false: with {a} red, {b} blue and {c} green marbles, red is more likely than the other colours together." */
+export function marblesPrinted(a: number, b: number, c: number): QuestionPackage {
+  return choicePrinted("4.17-predict-outcome#3.3:true-false", `True or false: with ${a} red, ${b} blue and ${c} green marbles, red is more likely than the other colours together.`,
+    { answer: "'true' if a > b + c else 'false'", check: "a != b + c and 8 <= a + b + c <= 12", values: null, derived: [], slots: slotsOf({ a, b, c }, 12) },
+    a > b + c ? "true" : "false");
+}
+
+const AREA_DERIVED: [string, string][] = [["a", "2 + a0 % 7"], ["b", "2 + b0 % min(7, 50 // a - 1)"], ["c", "2 + c0 % 7"], ["d", "2 + d0 % min(7, 50 // c - 1)"]];
+
+/** "True or false: {a} by {b} squares is bigger than {c} by {d} squares." (3.9-area-square-units#4.3); small sides. */
+export function areaClaimPrinted(a: number, b: number, c: number, d: number): QuestionPackage {
+  return choicePrinted("3.9-area-square-units#4.3:true-false", `True or false: ${a} by ${b} squares is bigger than ${c} by ${d} squares.`,
+    { answer: "'true' if a * b > c * d else 'false'", check: "a * b != c * d", values: null, derived: AREA_DERIVED, slots: slotsOf({ a0: a - 2, b0: b - 2, c0: c - 2, d0: d - 2 }, 8) },
+    a * b > c * d ? "true" : "false");
+}

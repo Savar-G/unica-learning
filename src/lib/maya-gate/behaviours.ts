@@ -511,6 +511,60 @@ export const BEHAVIOURS: Behaviour[] = [
     ],
     expect: { outcome: { reason: "solved" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"], never: ["redirect"] },
   },
+  // C3c: compare claims (marbles: "less"; area: "greater") through A4's claim session, with code's topic sentence.
+  {
+    id: "OTK1", title: "Marbles claim in full sentences: '3 plus 4 is 7.', then 'It's false.'", fixture: "MARBLES", status: "passing",
+    steps: [
+      child("3 plus 4 is 7.", { start: "has_work", answers: [[7, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's false.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer", "example_step"] },
+  },
+  {
+    id: "OTK2", title: "Marbles claim in the child's own words at the opening: accepted, not taught again (J06)", fixture: "MARBLES", status: "passing",
+    steps: [
+      child("It's false, because 3 plus 4 is 7 and 2 is less.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["guide", "example_step", "redirect"] },
+  },
+  {
+    id: "OTK3", title: "Marbles claim, 'Why do I add blue and green?': answered with code's topic sentence (J06), then solved", fixture: "MARBLES", status: "passing",
+    steps: [
+      child("Why do I add blue and green?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("It's false, because 3 plus 4 is 7.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved" }, acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(packageLines(claimView(FIXTURES.MARBLES as OperationPackage)).question(), "question.claim.framed")] }],
+    },
+  },
+  {
+    id: "OTK4", title: "Area claim at grade 3, 'I'm stuck.' after a hello-only opening: the topic sentence first, then '6 times 3 is 18.' and 'It's true.'", fixture: "AREA_TF", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("6 times 3 is 18.", { answers: [[18, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer"] },
+  },
+  {
+    id: "OTK5", title: "Area claim in the child's own words ('It's true, because 6 times 3 is 18 and 18 is more than 16.'): accepted (J06)", fixture: "AREA_TF", status: "passing",
+    steps: [
+      child("It's true, because 6 times 3 is 18 and 18 is more than 16.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["guide", "redirect"] },
+  },
   {
     id: "C01",
     title: "Cannot start: the easier example, then back to the question",
