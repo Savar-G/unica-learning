@@ -23,10 +23,11 @@ export const PLACE_PARTS_TEMPLATES = {
   ],
   // H2 of a compare's digit step: no stripe and no circle; the child counts on their own page.
   "operation.place.count": [
-    "In {number}, count {ordinal} places from the right. Which digit is there?", "Start at the right of {number} and count to the {ordinal} digit. What is it?",
-    "Count the digits of {number} from the right, to the {ordinal}. Which digit is it?",
-    "Start at the last digit of {number}. Move left to the {ordinal} digit. Which is it?",
-    "From the right of {number}, the {ordinal} digit is the {place} digit. Which digit is it?",
+    "Find the {ordinal} place from the right in {number}. Which digit is there?",
+    "Start at the right of {number} and count to the {ordinal} digit. What is it?",
+    "Count the digits of {number} from the right, up to the {ordinal} digit. Which digit is it?",
+    "Start at the last digit of {number}. Move left to the {ordinal} digit. Which digit is it?",
+    "In {number}, the {place} digit is the {ordinal} digit from the right. Which digit is it?",
   ],
   // H3 of a compare's digit step: the digit said, with no circle on the board.
   "show.place": ["{show}", "Here it is. {show}", "Let me show you. {show}", "Like this. {show}", "I'll do this part. {show}"],

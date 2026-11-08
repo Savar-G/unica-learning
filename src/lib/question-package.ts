@@ -868,8 +868,8 @@ function size(operation: Operation): Size {
   // 1 to 10, so it is easier than 7 + ? = 10, which counts 3).
   const numbers = operation.kind === "missing-addend" ? [operation.operands[1] - operation.operands[0], operation.operands[1]].sort((x, y) => x - y)
     : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y)
-      // A place-value build (Maya's adapter only, never stored): its wholes and tenths, as for whole numbers.
-      : operation.kind === "place-value" && operation.ask === "build" ? [...operation.operands].sort((x, y) => x - y) : null;
+      // A place-value build (Maya's adapter only, never stored): fewer wholes is easier.
+      : operation.kind === "place-value" && operation.ask === "build" ? [operation.operands[0]] : null;
   const expression = operation.kind === "evaluate" || operation.kind === "solve" ? operation.operands[0] : null;
   const literals = expression ? operationText(operation).match(/\d+(?:\.\d+)?/g)?.map(Number).sort((a, b) => a - b) ?? null : null;
   return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length,

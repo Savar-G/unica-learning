@@ -23,36 +23,67 @@ const COMPARE_PAIRS = { bigger: [[8, 3], [7, 2], [9, 4]], smaller: [[3, 8], [2, 
 const SUM_PAIRS = [[6, 3], [4, 7], [2, 5]] as const;
 const ONES = [5, 6, 1] as const;
 
+/** The easier example's tenths for a build: the first that is not the question's. */
+const BUILD_TENTHS = [7, 3, 5] as const;
+
 /**
- * The easier example: the same ask with a 3-digit number (the hundreds and the tens), or other wholes and tenths; no
- * digit of the example's two places is one of the question's two. Null when no row gives one.
+ * Why a made example gives the question's answer away, or null (brief lesson 11): its answer times a power of 10 is the
+ * question's answer (630 for 6300); its answer's digits start the answer's digits (63 for 6304); it uses one of the
+ * question's own operands (a digit of a compare or a sum, the wholes or the tenths of a build, or the number itself); a
+ * compare's example circles the question's word.
+ */
+export function exampleGiveaway(o: PlacePartsObject, example: EasierExample): string | null {
+  const op = example.operation as PartsOperation;
+  const ans = example.answer;
+  if (o.ask === "compare") {
+    if (ans.type !== "choice" || ans.value === o.answer) return "the example circles the question's word";
+  } else {
+    if (ans.type !== "number") return "the example's answer is not a number";
+    const e = ans.value;
+    for (let k = -6; k <= 6; k++) if (Math.abs(e * 10 ** k - o.answer) < 1e-9) return "the example's answer times a power of 10 is the question's answer";
+    const digits = (n: number) => String(n).replace(".", "").replace(/^0+/, "");
+    if (digits(o.answer).startsWith(digits(e))) return "the example's answer is the first digits of the question's answer";
+  }
+  if (o.ask === "build") {
+    if (op.ask !== "build" || op.operands[0] === o.wholes || op.operands[1] === o.tenths) return "the example uses the question's wholes or tenths";
+    return null;
+  }
+  if (op.ask === "build") return "the example is not the question's ask";
+  const own = [o.number, ...[o.place, o.second].map((p) => Math.floor(o.number / 10 ** placeIndex(p)) % 10)];
+  const theirs = [op.operands[0], ...[op.place, op.second].map((p) => Math.floor(op.operands[0] / 10 ** placeIndex(p)) % 10)];
+  return theirs.some((v) => own.includes(v)) ? "the example uses the question's own number or digits" : null;
+}
+
+/**
+ * The easier example: the same ask with a 3-digit number (the hundreds and the tens), or fewer wholes and other tenths;
+ * the first candidate with no giveaway (exampleGiveaway). Null when none has none.
  */
 function easierExampleOf(o: PlacePartsObject): EasierExample | null {
+  const candidates: EasierExample[] = [];
   if (o.ask === "build") {
-    // Fewer wholes, and no more tenths (another number of tenths when there is one): smaller, as the package check asks.
-    if (o.wholes < 2) return null;
     const w = o.wholes > 2 ? 2 : 1;
-    const t = o.tenths > 1 ? o.tenths - 1 : 1;
-    const operation: PartsOperation = { kind: "place-value", operands: [w, t], ask: "build", place: "tenths" };
-    return { text: `${w} wholes and ${t} ${t === 1 ? "tenth" : "tenths"} is ? as a decimal.`, operation, answer: num((w * 10 + t) / 10), steps: workedSteps(operation) };
+    for (const t of BUILD_TENTHS) {
+      if (w >= o.wholes) break;
+      const operation: PartsOperation = { kind: "place-value", operands: [w, t], ask: "build", place: "tenths" };
+      candidates.push({ text: `${w} ${w === 1 ? "whole" : "wholes"} and ${t} tenths is ? as a decimal.`, operation, answer: num((w * 10 + t) / 10), steps: workedSteps(operation) });
+    }
+  } else {
+    const digits = (n: number, place: Parameters<typeof placeIndex>[0]) => Math.floor(n / 10 ** placeIndex(place)) % 10;
+    const a = digits(o.number, o.place);
+    const b = digits(o.number, o.second);
+    const pairs: readonly (readonly [number, number])[] = o.ask === "compare" ? COMPARE_PAIRS[a > b ? "smaller" : "bigger"] : SUM_PAIRS;
+    for (const [x, y] of pairs) {
+      const ones = ONES.find((d) => d !== x && d !== y)!;
+      const number = x * 100 + y * 10 + ones;
+      const operation: PartsOperation = { kind: "place-value", operands: [number], ask: o.ask, place: "hundreds", second: "tens" };
+      const text = o.ask === "compare"
+        ? `True or false: in ${number}, the digit in the hundreds place is bigger than the digit in the tens place.`
+        : `In ${number}, what is the value of the hundreds digit plus the value of the tens digit?`;
+      const answer = o.ask === "compare" ? choice(x > y ? "true" : "false") : num(x * 100 + y * 10);
+      candidates.push({ text, operation, answer, steps: workedSteps(operation) });
+    }
   }
-  const digits = (n: number, place: Parameters<typeof placeIndex>[0]) => Math.floor(n / 10 ** placeIndex(place)) % 10;
-  const a = digits(o.number, o.place);
-  const b = digits(o.number, o.second);
-  const pairs: readonly (readonly [number, number])[] = o.ask === "compare" ? COMPARE_PAIRS[a > b ? "smaller" : "bigger"] : SUM_PAIRS;
-  for (const [x, y] of pairs) {
-    if ([x, y].some((d) => d === a || d === b)) continue;
-    const ones = ONES.find((d) => d !== x && d !== y)!;
-    const number = x * 100 + y * 10 + ones;
-    const operation: PartsOperation = { kind: "place-value", operands: [number], ask: o.ask, place: "hundreds", second: "tens" };
-    if (o.ask === "sum" && x * 100 + y * 10 === o.answer) continue;
-    const text = o.ask === "compare"
-      ? `True or false: in ${number}, the digit in the hundreds place is bigger than the digit in the tens place.`
-      : `In ${number}, what is the value of the hundreds digit plus the value of the tens digit?`;
-    const answer = o.ask === "compare" ? choice(x > y ? "true" : "false") : num(x * 100 + y * 10);
-    return { text, operation, answer, steps: workedSteps(operation) };
-  }
-  return null;
+  return candidates.find((e) => exampleGiveaway(o, e) === null) ?? null;
 }
 
 /** The wrong answers code expects (design 5.4), each with its cause. None equals the answer, none twice. */

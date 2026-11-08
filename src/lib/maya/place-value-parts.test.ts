@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
 import { placePartsOf } from "./place-value-parts";
-import { placePartsTeachingPackage } from "@/lib/maya-teaching/place-value-parts";
+import { exampleGiveaway, placePartsTeachingPackage } from "@/lib/maya-teaching/place-value-parts";
 import { derivePlaceValue } from "@/lib/maya-teaching/place-value";
 import { storedBuild, storedCompare, storedSum } from "@/lib/maya-teaching/place-value-parts-samples";
 import { storedPlaceValue, zeroPrinted } from "@/lib/maya-teaching/place-value-samples";
@@ -90,5 +90,46 @@ describe("place-value compare, sum and build: what the stored question asks", ()
     expect(steps(storedCompare({ step: 2, n0: 735561, place: "thousands", second: "hundreds" }))).toEqual(["read-digit", "read-digit", "result"]);
     expect(steps(storedSum({ step: 1, n0: 87346, place: "thousands", second: "tens" }))).toEqual(["place-worth", "place-worth", "result"]);
     expect(steps(storedBuild({ wholes: 5, tenths: 8 }))).toEqual(["result"]);
+  });
+
+  it("never makes an easier example that gives the answer away (lesson 11), over many numbers", () => {
+    const places = ["ten thousands", "thousands", "hundreds", "tens"] as const;
+    let made = 0;
+    for (let n0 = 11111; n0 <= 99999; n0 += 3917) {
+      for (const [i, place] of places.entries()) for (const second of places.slice(i + 1)) {
+        for (const stored of [storedCompare({ step: 1, n0, place, second }), storedSum({ step: 1, n0, place, second })]) {
+          const o = placePartsOf(stored);
+          const r = placePartsTeachingPackage(stored);
+          if (!o || "held" in o || !r || "held" in r) continue;
+          made++;
+          expect(exampleGiveaway(o, r.package.easierExample!), stored.text).toBeNull();
+        }
+      }
+    }
+    for (let w = 2; w <= 6; w++) for (let t = 1; t <= 9; t++) {
+      const stored = storedBuild({ wholes: w, tenths: t });
+      const o = placePartsOf(stored);
+      const r = placePartsTeachingPackage(stored);
+      if (!o || "held" in o || !r || "held" in r) throw new Error(`held ${stored.text}`);
+      made++;
+      expect(exampleGiveaway(o, r.package.easierExample!), stored.text).toBeNull();
+    }
+    expect(made).toBeGreaterThan(100);
+  });
+
+  it("names each giveaway: a power of 10, the first digits, the question's operands, the question's word", () => {
+    const num = (value: number) => ({ type: "number" as const, value });
+    const sumOf = (n: number) => ({ kind: "place-value" as const, operands: [n] as [number], ask: "sum" as const, place: "hundreds" as const, second: "tens" as const });
+    const sum = { ask: "sum" as const, number: 6304, place: "thousands" as const, second: "hundreds" as const, answer: 6300 };
+    expect(exampleGiveaway(sum, { text: "", operation: sumOf(635), answer: num(630), steps: [] })).toMatch(/power of 10/);
+    expect(exampleGiveaway({ ...sum, answer: 6340 }, { text: "", operation: sumOf(635), answer: num(63), steps: [] })).toMatch(/first digits/);
+    expect(exampleGiveaway({ ...sum, number: 46104, answer: 6100 }, { text: "", operation: sumOf(635), answer: num(630), steps: [] })).toMatch(/own number or digits/);
+    const build = { ask: "build" as const, wholes: 6, tenths: 1, answer: 6.1 };
+    const buildOf = (w: number, t: number) => ({ kind: "place-value" as const, operands: [w, t] as [number, number], ask: "build" as const, place: "tenths" as const });
+    expect(exampleGiveaway(build, { text: "", operation: buildOf(2, 1), answer: num(2.1), steps: [] })).toMatch(/wholes or tenths/);
+    expect(exampleGiveaway(build, { text: "", operation: buildOf(2, 7), answer: num(2.7), steps: [] })).toBeNull();
+    const compare = { ask: "compare" as const, number: 38472, place: "thousands" as const, second: "hundreds" as const, answer: "true" as const };
+    const cmp = { kind: "place-value" as const, operands: [275] as [number], ask: "compare" as const, place: "hundreds" as const, second: "tens" as const };
+    expect(exampleGiveaway(compare, { text: "", operation: cmp, answer: { type: "choice", value: "true" }, steps: [] })).toMatch(/word/);
   });
 });

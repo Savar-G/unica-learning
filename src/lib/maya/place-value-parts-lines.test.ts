@@ -51,6 +51,14 @@ describe("B1b's lines", () => {
     }
   });
 
+  it("read naturally: an ordinal names a place, never a count ('count fourth places')", () => {
+    const ordinal = "first|second|third|fourth|fifth|sixth|seventh";
+    for (const p of ALL) for (const t of allLineTexts(p)) {
+      expect(t, t).not.toMatch(new RegExp(`\\b(?:${ordinal}) (?:places|digits)\\b`, "i"));
+      expect(t, t).not.toMatch(new RegExp(`\\bcount (?:${ordinal})\\b`, "i"));
+    }
+  });
+
   it("never point at a compare's column before the word stands: no stripe or circle line on its steps", () => {
     const l = packageLines(COMPARE);
     for (const id of [...l.stepIds, "result"]) for (const t of l.help(id).flatMap((o) => o.texts)) expect(t, t).not.toMatch(/\b(?:colou?red|circled|striped)\b/i);
