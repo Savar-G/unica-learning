@@ -372,6 +372,13 @@ export function claimSaid(t: ClaimTurn): string | null {
   return read && "word" in read ? read.word : null;
 }
 
+/**
+ * The claim's result is checked right (its step "claim" is done): the operation's whole result shows every step of it
+ * done, as an equal fraction does (#407) and as a right final answer does for a number. So the ladder goes on to the
+ * claim's question, and Maya never asks again for a column of work the result already shows (J06).
+ */
+export const claimResultDone = (pkg: OperationPackage | null, done: readonly string[]): boolean => !!sessionClaim(pkg) && done.includes("claim");
+
 /** The turn needs the claim's confirm (claimConfirm). */
 export const claimUnclear = (t: ClaimTurn): boolean => claimConfirm(t) !== null;
 

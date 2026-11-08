@@ -2169,6 +2169,24 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0, confirmations: 1 },
     },
   },
+  {
+    id: "CL08",
+    title: "The result given before its columns is acknowledged, and Maya goes on to the claim's question, not the columns",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("It's yes, because 1440 is more than 1436.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer", "example_step"],
+    },
+  },
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */
