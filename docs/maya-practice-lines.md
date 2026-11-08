@@ -242,7 +242,7 @@ The honest close (`close.honest`, controller decision (a) on #735) is new: after
 | `point.count.rest#0` to `#4` | We used {used} of the {total} minutes. So {left} minutes are left. / ... | We used 47 of the 50 minutes. So 3 minutes are left. |
 | `operation.count.rest#0` to `#4` | What time is {left} minutes after {from}? / ... | What time is 3 minutes after 7:00? |
 | `point.count.one#0` to `#4` | Start at {from}. The minutes go up by {minutes}. / ... | Start at 9:00. The minutes go up by 40. |
-| `operation.count.one#0` to `#4` | {start} + {minutes} = how many minutes past {hour}? / ... | 0 + 40 = how many minutes past 9 o'clock? |
+| `operation.count.one#0` to `#4` | The minutes start at {start}. Add {minutes}. What time is it? / Work out {start} + {minutes}. What time does the clock show? / {start} + {minutes} minutes past {hour}. What time is that? / Add {minutes} to the {start} minutes. What time do you get? / Count on {minutes} minutes from {from}. What time is it? (review of #742, P3-b: it asks for the time, the only answer a one count credits) | The minutes start at 0. Add 40. What time is it? |
 | topic sentence, marbles | Red is more likely only if there are more red marbles than blue and green together. | (the same) |
 | topic sentence, area | {c} by {d} squares is {area} squares. Bigger means more squares. | 4 by 2 squares is 8 squares. Bigger means more squares. |
 | claim ask, more or less (true/false) | Is {expr} {greater or less} than {shown}? True or false? | Is 5 + 5 less than 1? True or false? |
