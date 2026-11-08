@@ -101,7 +101,7 @@ describe("workbook emails", () => {
 });
 
 describe("the free month confirmation", () => {
-  const email = planStartEmail({ parentName: "Priya", childName: "Asha & Co", grade: 3, price: 79.99, firstCharge: "December 5, 2026" });
+  const email = planStartEmail({ parentName: "Priya", childName: "Asha & Co", grade: 3, price: 79.99, firstCharge: "December 5, 2026", marking: true });
   it("gives the terms the card networks require: the price, how often, the first charge and how to cancel", () => {
     expect(email.text).toContain("On December 5, 2026, we charge CAD 79.99 to your saved card. We then charge CAD 79.99 each month until you cancel.");
     expect(email.text).toContain("We will email you a reminder 7 days before the first charge.");
@@ -114,7 +114,7 @@ describe("the free month confirmation", () => {
     expect(email.html).not.toContain("Asha & Co");
   });
   it.each([0, 1, 2, 3, 9, -1, 10, NaN])("includes Maya chat only for a valid school grade of at least 3 (%s)", (grade) => {
-    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade, price: 79.99, firstCharge: "December 15, 2026" });
+    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade, price: 79.99, firstCharge: "December 15, 2026", marking: true });
     for (const format of [message.text, message.html]) {
       if (grade === 3 || grade === 9) expect(format).toContain("can chat with Maya, our AI Teaching Assistant");
       else expect(format).not.toContain("Maya");
@@ -127,7 +127,7 @@ describe("the free month confirmation", () => {
     for (const path of ["schedule", "scan", "feedback", "plan"]) expect(message.html).toContain(`href="https://unicalearning.com/account/${path}"`);
   });
   it("matches Savar's approved free-month words, with unchanged signature and footer", () => {
-    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026" });
+    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking: true });
     const expected = `Hi Sam,
 
 Thanks for joining Unica Learning. Alex's first workbook has arrived, so your free first month has started. Nothing has been charged.
@@ -150,5 +150,22 @@ To cancel, sign in and open https://unicalearning.com/account/plan, then press "
     for (const paragraph of expected.split("\n\n")) expect(htmlText).toContain(paragraph);
     expect(message.text).toContain("Thank you,\nThe Unica Learning team");
     expect(message.text).toContain("16557 87A Ave");
+  });
+  it("promises no marks and no Explain button while marking is closed for the child: step 3 says the marks come later", () => {
+    const open = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking: true });
+    const closed = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking: false });
+    const later = "3. Marks come later. Scan the pages now. Later, we will use the photos to mark Alex's work.";
+    expect(closed.text).toContain(later);
+    for (const format of [closed.text, closed.html]) {
+      expect(format).not.toContain("Read the marks");
+      expect(format).not.toContain("right and wrong");
+      expect(format).not.toContain("Explain this problem");
+    }
+    const htmlText = closed.html.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "").replace(/&#39;/g, "'");
+    expect(htmlText).toContain(later);
+    // Only step 3 differs: the steps before and after it, the plan terms and the footer are the same words.
+    const lines = (t: string) => t.split("\n").filter((l) => !l.startsWith("3. "));
+    expect(lines(closed.text)).toEqual(lines(open.text));
+    expect(open.text).not.toContain("Marks come later");
   });
 });

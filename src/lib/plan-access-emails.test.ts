@@ -13,6 +13,10 @@ import type { CallNote } from "@/lib/maya-call-note";
 // The one allowed exception, for an email no one asked for: the monthly summary imports only `dashboardSwitchOpen` from
 // parent-dashboard-access.ts, the dashboard's switch with no plan (its own test: parent-dashboard-access.test.ts).
 //
+// The second exception, for words only: the plan start email (workbook-email-server.ts) imports only `markingAccess` from
+// scan-marking-access.ts, to pick step 3's words (marks now, or marks later). It sends either way, and a failed read gives the
+// "marks later" words (workbook-email-server.test.ts). Every sender that reaches workbook-email-server.ts gets its two edges.
+//
 // Three emails only a signed-in parent's own press sends sit behind the gate, and each goes to that parent: the two delete codes
 // (behind planManagementAccess, so a closed family can leave) and "Email me the link" (the route's scanSession reads
 // scanPagesAccess, and the sender itself reads no gate). Opening a plan sends none of them.
@@ -98,6 +102,25 @@ const ALLOWED: Record<string, string[]> = {
   "src/app/api/account/children/[id]/delete/code/route.ts": ["src/app/api/account/children/[id]/delete/code/route.ts -> src/lib/parent-dashboard-access.ts { planManagementAccess }"],
 };
 
+/** The marking rule's own edges into the gate, reached only through the plan start email's words. */
+const PLAN_START_EMAIL = "src/lib/workbook-email-server.ts";
+const MARKING_WORDS = [
+  "src/lib/scan-marking-access.ts -> src/lib/plan-access.ts { childPlanAccess as sharedChildPlanAccess }",
+  "src/lib/scan-marking-access.ts -> src/lib/scan-pages-access.ts { markedFamily }",
+];
+/** Whether `start` imports `target`, directly or through modules that hold no gate. */
+function reaches(start: string, target: string): boolean {
+  const seen = new Set([start]), queue = [start];
+  while (queue.length) {
+    for (const { to } of imports(queue.shift()!)) {
+      if (to === target) return true;
+      if (!GATE_MODULES.has(to) && !seen.has(to)) { seen.add(to); queue.push(to); }
+    }
+  }
+  return false;
+}
+const allowed = (file: string) => [...(ALLOWED[file] ?? []), ...(file === PLAN_START_EMAIL || reaches(file, PLAN_START_EMAIL) ? MARKING_WORDS : [])].sort();
+
 describe("no email sender reaches the plan gate", () => {
   it("finds a sender by an alias import, a relative import, a type import, a dynamic import and a direct fetch; a mention alone is no send", () => {
     for (const source of [
@@ -122,7 +145,13 @@ describe("no email sender reaches the plan gate", () => {
   });
 
   it.each(senders)("%s", (file) => {
-    expect(gateEdges(file)).toEqual(ALLOWED[file] ?? []);
+    expect(gateEdges(file).sort()).toEqual(allowed(file));
+  });
+
+  it("the plan start email takes only markingAccess from the marking rule, and no other module of the sender graph takes it", () => {
+    const users = sourceFiles("src").filter((file) => imports(file).some((i) => i.to === "src/lib/scan-marking-access.ts") && senders.some((s) => s === file || reaches(s, file)));
+    expect(users).toEqual([PLAN_START_EMAIL]);
+    expect(imports(PLAN_START_EMAIL).filter((i) => i.to === "src/lib/scan-marking-access.ts").map((i) => i.names)).toEqual(["{ markingAccess }"]);
   });
 
   it("the monthly summary's exception names only the switch, which reads no plan", () => {

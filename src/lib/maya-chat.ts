@@ -45,10 +45,16 @@ export function childChatView(view: CallView): ChatView {
 export const CHAT_MIN_GRADE = 3;
 export const chatServesGrade = (grade: number | null | undefined): boolean => typeof grade === "number" && grade >= CHAT_MIN_GRADE;
 /** The chat limit in the desk header: messages left today, the grade for a younger child (`note`), else the limit. */
-export function chatLimitLabel(usage: ChatUsage | null, note: string | null): string {
+export function chatLimitLabel(usage: ChatUsage | null, note: string | null, planClosed = false): string {
   if (usage) return `${usage.left} left today`;
+  if (planClosed) return "Closed";
   return note ? "Grade 3 and up" : `${CHAT_MESSAGES} messages a day`;
 }
+/**
+ * What the desk says to the child when the family's plan stopped (ended, payment failed or paused), in place of "start soon",
+ * which stays for a family that never had a plan. The account page shows a parent why (PlanClosedNote). No money words.
+ */
+export const chatPlanClosedLine = () => "Chat with Maya is closed because your family's plan is not running. A grown-up can see why on the account page.";
 /** What the desk says when a younger child's family has chat. */
 export const chatGradeLine = () => "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.";
 

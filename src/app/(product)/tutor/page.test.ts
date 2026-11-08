@@ -6,6 +6,7 @@ import { sampleWorkbook } from "@/lib/workbook-sample";
 import { memoryWorkbookStore } from "@/lib/workbook-store-memory";
 import type { DeliveryReceipt } from "@/lib/workbook-delivery";
 import type { WorkbookStore } from "@/lib/workbook-content";
+import { chatPlanClosedLine } from "@/lib/maya-chat";
 const PARENT = "11111111-1111-4111-8111-111111111111", CHILD = "22222222-2222-4222-8222-222222222222", BOOK = "33333333-3333-4333-8333-333333333333";
 const state = vi.hoisted(() => ({ store: null as WorkbookStore | null, receipt: vi.fn(), sign: vi.fn(), chat: vi.fn(), notice: false }));
 vi.mock("server-only", () => ({}));
@@ -63,4 +64,24 @@ it("keeps the delivered page, picks and question crop through the real desk comp
 it("returns to awaiting delivery if the receipt is retracted during the content read", async () => {
   state.receipt.mockResolvedValueOnce(receipt).mockResolvedValue(null);
   expect(await html()).toContain("after we confirm delivery"); expect(state.sign).not.toHaveBeenCalled();
+});
+it.each([
+  ["never had a plan", { usage: null, note: null, planClosed: false }, "Chat and calls with Maya start soon.", "60 messages a day"],
+  ["closed plan", { usage: null, note: chatPlanClosedLine(), planClosed: true }, chatPlanClosedLine(), "Closed"],
+])("tells the child about chat for a family that %s, on the delivered page and while awaiting delivery", async (_, chat, line, label) => {
+  state.chat.mockResolvedValue(chat);
+  for (const receipt of [undefined, null]) {
+    if (receipt === null) state.receipt.mockResolvedValue(null);
+    const body = (await html()).replace(/&#x27;/g, "'");
+    expect(body).toContain(line);
+    expect(body).toContain(`<dd>${label}</dd>`);
+    if (chat.planClosed) expect(body).not.toContain("start soon");
+    expect(body).not.toContain("Grade 3 and up");
+  }
+});
+it("an open plan shows the chat, with no closed line and no start-soon line", async () => {
+  const body = await html();
+  expect(body).toContain("<dd>60 left today</dd>");
+  expect(body).not.toContain(chatPlanClosedLine().split(" because")[0]);
+  expect(body).not.toContain("start soon");
 });

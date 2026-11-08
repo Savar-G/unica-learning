@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { chatFamilyGate, chatLimitLabel, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
+import { chatFamilyGate, chatLimitLabel, chatPlanClosedLine, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
 import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, mayaCalls, type CallChange, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import { memoryWordingHistoryStore, SAFETY_GUIDANCE } from "@/lib/maya";
@@ -155,6 +155,14 @@ describe("family days and release switch", () => {
     expect(chatLimitLabel(chatUsage(12, now, zone), null)).toBe("48 left today");
     expect(chatLimitLabel(null, "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.")).toBe("Grade 3 and up");
     expect(chatLimitLabel(null, null)).toBe("60 messages a day");
+    expect(chatLimitLabel(null, chatPlanClosedLine(), true)).toBe("Closed");
+  });
+  it("tells the child plainly that chat is closed because the plan is not running, and where a grown-up sees why, with no money words", () => {
+    const line = chatPlanClosedLine();
+    expect(line).toBe("Chat with Maya is closed because your family's plan is not running. A grown-up can see why on the account page.");
+    expect(line).not.toMatch(/start soon|pay|charge|card|CAD|\$|money|price/i);
+    // Short sentences for a Grade 3 or 4 reader.
+    for (const sentence of line.split(/(?<=\.)\s+/)) expect(sentence.split(" ").length).toBeLessThanOrEqual(13);
   });
   it("serves Grade 3 and up only; kindergarten is grade 0", () => {
     expect([0, 1, 2, 3, 7, 8, 9].map(chatServesGrade)).toEqual([false, false, false, true, true, true, true]);
