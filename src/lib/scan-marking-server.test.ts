@@ -43,7 +43,7 @@ const db = createClient<Database>("https://marking-launch.example.test", "synthe
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`); expect(url.searchParams.get("item_id")).toBe(`eq.${expected.identity.itemId}`);
       return Response.json([{ result_version: state.mark.resultVersion, observation: state.mark }]);
     }
-    if (url.pathname.endsWith("/rpc/recover_scan_marking")) return Response.json([{ parent, photo: "expired-photo" }]);
+    if (url.pathname.endsWith("/rpc/recover_scan_marking_oldest")) return Response.json([{ parent, photo: "expired-photo" }]);
     if (url.pathname.endsWith("/rpc/scan_marking_command")) {
       const body = JSON.parse(String(init?.body));
       expect(body.p_parent).toBe(parent); state.commands.push(body.p_action);
@@ -123,7 +123,8 @@ it("refuses unlisted direct work and already-sent recovery work without dispatch
   ]);
   expect(direct).toBe("off");
   expect(recovery).toEqual({ status: "processed", results: ["off"] });
-  expect(state.queries.map(q => q.pathname)).toEqual(["/rest/v1/rpc/recover_scan_marking"]);
+  // The second list answer is the same photo again (the fake never ends), so the run stops there.
+  expect(state.queries.map(q => q.pathname)).toEqual(["/rest/v1/rpc/recover_scan_marking_oldest", "/rest/v1/rpc/recover_scan_marking_oldest"]);
   expect(state.commands).toEqual([]); expect(profile.calls).toBe(0);
 });
 

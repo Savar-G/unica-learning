@@ -70,29 +70,76 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
   const items = view.items.map((i) => ({ ...i, photoAvailable: i.evidencePhoto !== null && activeEvidence.has(i.evidencePhoto) }));
   return { ...view, items, budgetHeld: held === "budget", photoAvailable: p.state === "saved" && Date.parse(p.expires_at) > Date.now(), marks, detail };
 }
-const RECOVERY_STEPS = 10;
-/** The persisted keyset cursor includes already-sent photos. No new Send action is needed after deployment. */
-export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess) {
+/**
+ * One recovery run (#726): the cron route `/api/scan-marking` (the pg_cron job `scan-marking-recovery` every 15 minutes,
+ * and the daily Vercel cron) calls this. It takes the waiting photos one at a time, the oldest sent first
+ * (`recover_scan_marking_oldest`), and marks each through `processScanMarking`, until the start rule below stops it or
+ * no photo is left.
+ *
+ * Numbers (2026-11-07):
+ * - The route may run 180 s (`maxDuration`); its database client stops every request 170 s after the request started.
+ * - The work of one photo: at most 120 s of AI (one `AbortSignal.timeout(120_000)` over both attempts in
+ *   `runScanMarking`), plus the image read, the claim, the commit and the profile rebuild. Measured Sonnet calls in the
+ *   marking ledger: median 2.7 s, 90th percentile 3.3 s; a whole photo takes about 8 s.
+ * - Start rule: a new photo starts only while less than 40 s has passed. 40 s + 120 s of AI leaves 10 s for the rest of
+ *   the photo's work before the database client stops at 170 s, and 20 s before the route's limit. At about 8 s a photo,
+ *   one run marks about 5 photos (about 20 an hour from the job), and a photo that takes the whole 120 s still ends
+ *   inside the call. The claim's lease (180 s) is longer than any run, so a lease a run takes can outlive the call when
+ *   the function is stopped; the next run then gets `busy` for that photo and a later run takes it.
+ * - At most 100 photos are asked for in one run (`RECOVERY_MAX_PHOTOS`), so a list of closed plans cannot keep a run
+ *   going without end.
+ *
+ * Every answer of a photo goes on to the next photo: `busy` (the family's one slot, or a claim another run holds),
+ * `off` (a closed plan: committed marks are published, no claim and no model call), `pending`, `budget`, `terminal`
+ * and an error. Such a photo stays in the list, so a later run takes it again. Only a failed list read ends the run.
+ * When the list ends (an empty answer), the function has set its cursor back to the start; the run asks once more, so
+ * the restart does not waste the run. The run stops at the first photo it already had, because the list has wrapped.
+ *
+ * Two runs at once (the job and the daily cron, or a slow run): each list call locks the cursor, so the two get
+ * different photos, and when they meet the same photo the claim in `scan_marking_command` gives one lease and the other
+ * run `busy`. One claim, one lease and one budget charge per photo, so no photo is marked or charged twice.
+ *
+ * `test-only` follows the same rule as `families` (#726 decision): only listed test families and admins pass
+ * `markingDecision`, so every other photo answers `off` at no cost, and the test families see the same drain the
+ * families will see. Before #726 `test-only` took one step per run.
+ */
+export const RECOVERY_START_MS = 40_000;
+export const RECOVERY_MAX_PHOTOS = 100;
+export type RecoveryResult = Awaited<ReturnType<typeof processScanMarking>> | "error";
+export interface RecoveryDeps {
+  /** When the request started: the start rule counts from then. Default: when this run starts. */
+  startedAt?: number;
+  now?: () => number;
+  mark?: typeof processScanMarking;
+}
+export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess, deps: RecoveryDeps = {}) {
   if (markingMode(env) === "off") return { status: "off" };
-  // In families mode a refused photo (closed plan) only publishes committed marks, then the run takes the next photo
-  // on the same cursor, at most RECOVERY_STEPS in one run, so closed plans do not hold up other families.
-  const steps = markingMode(env) === "families" ? RECOVERY_STEPS : 1;
-  const results: string[] = [];
-  for (let step = 0; step < steps; step++) {
-    const rows = await db.rpc("recover_scan_marking", { p_limit: 1 });
+  const now = deps.now ?? Date.now, mark = deps.mark ?? processScanMarking, startedAt = deps.startedAt ?? now();
+  const results: RecoveryResult[] = [], seen = new Set<string>();
+  let restarted = false;
+  while (seen.size < RECOVERY_MAX_PHOTOS && now() - startedAt < RECOVERY_START_MS) {
+    const rows = await db.rpc("recover_scan_marking_oldest", { p_limit: 1 });
     if (rows.error) throw new Error("marking_recovery");
     const value: unknown = rows.data;
     if (!Array.isArray(value)) throw new Error("marking_recovery_shape");
-    if (!value.length) break;
-    let worked = false;
-    for (const ref of value) {
-      if (!ref || typeof ref !== "object" || typeof ref.parent !== "string" || typeof ref.photo !== "string") throw new Error("marking_recovery_shape");
-      const result = await processScanMarking(db, ref.parent, ref.photo, env, plan);
-      results.push(result);
-      if (result !== "off") worked = true;
+    if (!value.length) {
+      // The end of the list: the cursor is back at the start. Ask once more in this run.
+      if (restarted) break;
+      restarted = true;
+      continue;
     }
-    if (worked) break;
+    const ref: unknown = value[0];
+    if (!ref || typeof ref !== "object" || !("parent" in ref) || !("photo" in ref) || typeof ref.parent !== "string" || typeof ref.photo !== "string") throw new Error("marking_recovery_shape");
+    // The list has wrapped (this run's restart, or another run's): every photo from here on was this run's already.
+    if (seen.has(ref.photo)) break;
+    seen.add(ref.photo);
+    try { results.push(await mark(db, ref.parent, ref.photo, env, plan)); }
+    catch { results.push("error"); }
   }
+  const counts: Record<string, number> = {};
+  for (const r of results) counts[r] = (counts[r] ?? 0) + 1;
+  // Counts only: no family, child or photo id.
+  console.info("[scan-marking-recovery]", JSON.stringify(counts));
   return { status: "processed", results };
 }
 
