@@ -11,13 +11,18 @@ export type Ink = (typeof INKS)[number];
 /** Place names, smallest first. Decimal places come with decimal columns, later. */
 export const PLACE_NAMES = ["ones", "tens", "hundreds", "thousands", "ten_thousands", "hundred_thousands", "millions"] as const;
 export type PlaceName = (typeof PLACE_NAMES)[number];
+/** Decimal places, tenths first. Only the place chart has decimal columns (design: maya-place-value-design.md). */
+export const DECIMAL_PLACE_NAMES = ["tenths", "hundredths", "thousandths"] as const;
+export type DecimalPlaceName = (typeof DECIMAL_PLACE_NAMES)[number];
+/** A column of the place chart: a whole-number place or a decimal place. */
+export type ChartPlace = PlaceName | DecimalPlaceName;
 
 /** A named part of an object on the board. Each part has its own exact selector; words use indices, not text. */
 export type Target =
   | { objectId: string; part: "whole" }
-  | { objectId: string; part: "column"; column: PlaceName }
+  | { objectId: string; part: "column"; column: ChartPlace }
   | { objectId: string; part: "row"; rowId: string }
-  | { objectId: string; part: "cell"; rowId: string; column: PlaceName }
+  | { objectId: string; part: "cell"; rowId: string; column: ChartPlace }
   | { objectId: string; part: "word"; index: number }
   | { objectId: string; part: FractionPart }
   /** A value on a number line, by its exact value: "1/3", "-2", "0.5". The core keeps it in lowest terms ("2/6" is "1/3"). */
@@ -86,8 +91,20 @@ export interface ModelCommand {
   ink?: Ink;
 }
 
+/**
+ * A place-value chart for one number: a column for each place, the number written digit by digit under the column names.
+ * `build`: the number is made from its parts ("6 wholes and 4 tenths"), so the digit row starts empty and `put` fills it.
+ */
+export interface PlaceChartCommand {
+  op: "place_chart";
+  id: string;
+  number: string;
+  mode?: "read" | "build";
+  place: Place;
+}
+
 /** Commands that create a new math object with its own layout. Later representations join this union. */
-export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand | ModelCommand | FractionCommand | NumberLineCommand;
+export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand | ModelCommand | FractionCommand | NumberLineCommand | PlaceChartCommand;
 
 export type Command =
   | CreateCommand

@@ -3,12 +3,14 @@
 import { parseModel } from "@/lib/board/model";
 import { refuse, type RefusalBody } from "@/lib/board/representation";
 import { MAX_NUMBER_TEXT, valueName } from "@/lib/board/rational";
-import { CLEAR_SCOPES, FRACTION_PARTS, INKS, LINE_LABELS, MARK_STYLES, NUMBER_FORMS, OPERATIONS, PLACE_NAMES, REGROUP_KINDS, type Command, type Place, type Target } from "@/lib/board/types";
+import { CLEAR_SCOPES, DECIMAL_PLACE_NAMES, FRACTION_PARTS, INKS, LINE_LABELS, MARK_STYLES, NUMBER_FORMS, OPERATIONS, PLACE_NAMES, REGROUP_KINDS, type Command, type Place, type Target } from "@/lib/board/types";
 
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const PIECE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
-const OPS = ["columns", "division", "write", "model", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus", "fraction", "number_line", "jump"] as const;
+const OPS = ["columns", "division", "write", "model", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus", "fraction", "number_line", "jump", "place_chart"] as const;
 const LATER: string[] = [];
+/** The longest value a put may carry: a number-line label, or a place chart's sentence ("5 × 10,000 = 50,000"). */
+const PUT_VALUE_MAX = Math.max(MAX_NUMBER_TEXT, 24);
 
 class Invalid extends Error {}
 const fail = (reason: string): never => {
@@ -34,6 +36,7 @@ function oneOf<T extends string>(v: unknown, values: readonly T[], what: string)
 }
 const ink = (v: unknown) => (v === undefined ? undefined : oneOf(v, INKS, "ink"));
 const place = (v: unknown) => oneOf(v, PLACE_NAMES, "column");
+const chartPlace = (v: unknown) => oneOf(v, [...PLACE_NAMES, ...DECIMAL_PLACE_NAMES] as const, "column");
 
 function target(v: unknown, what = "target"): Target {
   const base = object(v, what, ["objectId", "part"], ["rowId", "column", "index", "value", "piece"]);
@@ -44,13 +47,13 @@ function target(v: unknown, what = "target"): Target {
       return { objectId, part: "whole" };
     case "column":
       object(v, what, ["objectId", "part", "column"]);
-      return { objectId, part: "column", column: place(base.column) };
+      return { objectId, part: "column", column: chartPlace(base.column) };
     case "row":
       object(v, what, ["objectId", "part", "rowId"]);
       return { objectId, part: "row", rowId: id(base.rowId, `${what}.rowId`) };
     case "cell":
       object(v, what, ["objectId", "part", "rowId", "column"]);
-      return { objectId, part: "cell", rowId: id(base.rowId, `${what}.rowId`), column: place(base.column) };
+      return { objectId, part: "cell", rowId: id(base.rowId, `${what}.rowId`), column: chartPlace(base.column) };
     case "word":
       object(v, what, ["objectId", "part", "index"]);
       if (!Number.isInteger(base.index) || (base.index as number) < 0 || (base.index as number) > 50) fail(`${what}.index must be a word number from 0.`);
@@ -109,7 +112,7 @@ function exactValue(v: unknown, what: string): string {
 }
 
 function parse(raw: unknown): Command {
-  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "dividend", "divisor", "model", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope", "numerator", "denominator", "whole", "min", "max", "tick", "labels", "form", "lineId", "fromValue", "toValue", "label"]);
+  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "dividend", "divisor", "model", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope", "numerator", "denominator", "whole", "min", "max", "tick", "labels", "form", "lineId", "fromValue", "toValue", "label", "number", "mode"]);
   if (LATER.includes(head.op as string)) return fail(`The board cannot draw "${head.op}" yet.`);
   const op = oneOf(head.op, OPS, "op");
   switch (op) {
@@ -145,7 +148,7 @@ function parse(raw: unknown): Command {
     case "put": {
       const c = object(raw, "put", ["op", "target"], ["value", "ink"]);
       // A digit, an answer row or a number-line label: each representation checks its own form and length.
-      return { op, target: target(c.target), ...(c.value === undefined ? {} : { value: text(c.value, "put.value", MAX_NUMBER_TEXT) }), ink: ink(c.ink) };
+      return { op, target: target(c.target), ...(c.value === undefined ? {} : { value: text(c.value, "put.value", PUT_VALUE_MAX) }), ink: ink(c.ink) };
     }
     case "regroup": {
       const c = object(raw, "regroup", ["op", "id", "objectId", "rowId", "kind", "from", "to"], ["ink"]);
@@ -203,6 +206,12 @@ function parse(raw: unknown): Command {
         ...(c.form === undefined ? {} : { form: oneOf(c.form, NUMBER_FORMS, "number_line.form") }),
         place: placement(c.place),
       };
+    }
+    case "place_chart": {
+      const c = object(raw, "place_chart", ["op", "id", "number", "place"], ["mode"]);
+      const number = text(c.number, "place_chart.number", 12);
+      if (!/^(0|[1-9]\d{0,6})(\.\d{1,3})?$/.test(number)) fail("place_chart.number must be a whole number of up to 7 digits, or one with up to 3 decimal places.");
+      return { op, id: id(c.id, "place_chart.id"), number, ...(c.mode === undefined ? {} : { mode: oneOf(c.mode, ["read", "build"] as const, "place_chart.mode") }), place: placement(c.place) };
     }
     case "jump": {
       const c = object(raw, "jump", ["op", "id", "lineId", "fromValue", "toValue"], ["label", "ink"]);
