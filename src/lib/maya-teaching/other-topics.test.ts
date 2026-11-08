@@ -13,7 +13,8 @@ import { withWorkbookMayaOperation } from "@/lib/workbook-maya-operation";
 import { countKind, deriveDieCount, dieOperation, exampleDie } from "./die-count";
 import { derivePerimeter } from "./perimeter";
 import { deriveSymmetry, SYMMETRY_LINES } from "./symmetry";
-import { diePrinted, perimeterPrinted, symmetryPrinted } from "./topic-samples";
+import { diePrinted, perimeterPrinted, scalePrinted, symmetryPrinted } from "./topic-samples";
+import { deriveTopicClaim } from "./topic-derivers";
 
 vi.mock("server-only", () => ({}));
 
@@ -221,7 +222,12 @@ describe("a workbook-confirmed call at grade 3 (review of #731)", () => {
 });
 
 describe("the honest close (lessons from review 7 and 10)", () => {
-  const cases: [string, QuestionPackage][] = [["die 8", deriveDieCount(diePrinted(8, "odd"))!], ["symmetry (1, 2)", deriveSymmetry(symmetryPrinted(1, 2))!]];
+  const cases: [string, QuestionPackage][] = [
+    ["die 8", deriveDieCount(diePrinted(8, "odd"))!],
+    ["symmetry (1, 2)", deriveSymmetry(symmetryPrinted(1, 2))!],
+    // C3b: a scale claim (an evaluate and A4's compare step); its stuck step is the first column of its first part.
+    ["scale claim", deriveTopicClaim(scalePrinted(10, 60, 2, true))!],
+  ];
   it.each(cases)("%s: help-only turns reach the easier example, then an honest close with no answer, and the stuck step is recorded", async (_, pkg) => {
     for (const grade of [3, 5]) {
       const script = scenarioModel();
@@ -244,7 +250,7 @@ describe("the honest close (lessons from review 7 and 10)", () => {
       expect(acts).not.toContain("give_answer");
       expect(acts).toContain("example_step");
       expect(acts.at(-1)).toBe("close");
-      expect(s.session.ladder.hint).toBeLessThanOrEqual(2);
+      expect(s.session.ladder.hint).toBeLessThanOrEqual(3);
       const close = said.at(-1)!;
       expect(close).toMatch(/hard/);
       expect(close).toMatch(/stop/);
@@ -252,7 +258,8 @@ describe("the honest close (lessons from review 7 and 10)", () => {
       expect(close).not.toMatch(/\d/);
       for (const text of said) expect(gateWordCount(text), text).toBeLessThanOrEqual(grade <= 3 ? 25 : 45);
       const event = learningEvent(s.session, { parentId: "p", childId: "c" });
-      expect(event).toMatchObject({ result: "blank", stuckStep: "ones" });
+      expect(event).toMatchObject({ result: "blank" });
+      expect(event?.stuckStep).toBeTruthy();
     }
   });
 

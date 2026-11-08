@@ -507,6 +507,18 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [4, 260, 590] }, { name: "easier example", opens: "example", numbers: exampleNumbers("EV_STORY") }, { name: "after help", opens: "help", numbers: [...EV_STORY_WORK, 450] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
     fakeScript: ["I don't know how to start.", "okay", "okay", "4 times 260 is 1040.", "I got 450.", "Because I did the boxes first.", "I wrote it."],
   },
+  // C3b other-topic claims (src/lib/maya-teaching/topic-derivers.ts): the scale's evaluate, then A4's compare and word.
+  {
+    id: "OTC1",
+    title: "Scale claim: cannot start",
+    fixture: "SCALE",
+    persona: { name: "Lena", age: 9, question: "A scale's marks are 50, 60, 70. True or false: 2 intervals above 60 is 80.", knows: "You can multiply and add small numbers, but you do not know what an interval on a scale is until Maya tells you.", behaviour: "Start by saying you do not know how to start. Follow Maya's help one step at a time, then say your word: true or false." },
+    expected: "Say code's topic sentence (the marks go up by 10). Guide 2 × 10, then 60 + 20, then the compare with 80. Accept the circled word only in the child's own words. Never give the word.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [6, 2, 1, 8, 9] }, { name: "after help", opens: "help", numbers: [10, 20, 80] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    fakeScript: ["I don't know how to start.", "okay", "2 times 10 is 20.", "60 plus 20 is 80.", "It's true.", "Because 2 times 10 is 20.", "I circled it."],
+  },
   // Claim questions (A4, src/lib/maya/claim.ts): the answer is the circled word, which code reads.
   {
     id: "CL01",
