@@ -191,31 +191,65 @@ function candidates(n: number): number[] {
   for (let v = start; v <= top; v++) out.push(v);
   for (let v = start - 1; v >= 2; v--) out.push(v);
   if (n < 10) for (let v = n + 1; v <= 9; v++) out.push(v);
-  // 1 last: only when nothing else keeps the example smaller and off the question's own digits ("7 + 2 × 3").
+  // 1 last: only when nothing else keeps the example smaller and off the question's own digits. givesAway refuses it
+  // where it is a trivial operand (× 1, ÷ 1).
   if (n < 10) out.push(1);
   return out;
 }
 
 const MAX_TRIES = 6000;
 
+/** A trivial operand anywhere in an expression: ÷ 1, × 1 or 1 ×, + 0 or 0 +, − 0. It teaches nothing. */
+const TRIVIAL = [/[×÷]\s*1(?!\d)/, /(?<![\d.])1\s*×/, /[+−]\s*0(?!\d)/, /(?<![\d.])0\s*\+/];
+
 /**
- * The easier example gives the question's answer away (brief, lesson 11, from #724's review): its answer is the
- * question's, or the question's times a power of 10 apart (1700 + 300 = 2000 for 17000 + 3000), or the first digits of
- * the question's answer (88 for 880), or the example uses one of the question's own numbers.
+ * The easier example gives the question's answer away (brief, lessons 11 and 12): its answer is the question's, or the
+ * question's times a power of 10 apart (1700 + 300 = 2000 for 17000 + 3000), or the first digits of the question's
+ * answer (88 for 880); or the example uses one of the question's own numbers, or the question's answer as any of its
+ * numbers ("(5 + 3) ÷ 1" for an answer of 5). An example with a trivial operand (÷ 1, × 1, + 0, − 0) is refused too.
  */
 export function givesAway(exampleExpr: string, exampleValue: number, expr: string, answer: number): boolean {
   const own = new Set(expr.match(/\d+/g) ?? []);
-  if ((exampleExpr.match(/\d+/g) ?? []).some((t) => own.has(t))) return true;
+  const numbers = exampleExpr.match(/\d+/g) ?? [];
+  if (numbers.some((t) => own.has(t))) return true;
   if (!Number.isSafeInteger(answer) || !Number.isSafeInteger(exampleValue)) return true;
+  if (numbers.some((t) => Number(t) === answer)) return true;
+  if (TRIVIAL.some((re) => re.test(exampleExpr))) return true;
   if (exampleValue === answer) return true;
   for (let k = 10; exampleValue * k <= answer; k *= 10) if (exampleValue * k === answer) return true;
   return String(answer).startsWith(String(exampleValue));
 }
 
 /**
+ * An expression worked strictly from left to right, each sign in the order it is written, brackets left out: the
+ * mistake the order of operations is about ("7 + 2 × 3" gives 27). NaN for a division by 0.
+ */
+export function leftToRight(expr: string): number {
+  const tokens = expr.replace(/[()]/g, " ").match(/\d+|[+−×÷]/g) ?? [];
+  let value = Number(tokens[0]);
+  for (let i = 1; i + 1 < tokens.length; i += 2) {
+    const n = Number(tokens[i + 1]);
+    const sign = tokens[i];
+    value = sign === "+" ? value + n : sign === "−" ? value - n : sign === "×" ? value * n : n === 0 ? NaN : value / n;
+  }
+  return value;
+}
+
+/**
+ * The easier example keeps the question's order-of-operations lesson: when the question gives a different result
+ * worked strictly left to right ("7 + 2 × 3": 27, not 13), the example must too ("5 + 2 × 2": 14, not 9), so working
+ * it shows why the order matters. A question whose order changes nothing ("5 × 350 − 870") asks nothing of it.
+ */
+export function keepsOrder(exampleExpr: string, exampleValue: number, expr: string, answer: number): boolean {
+  if (leftToRight(expr) === answer) return true;
+  return leftToRight(exampleExpr) !== exampleValue;
+}
+
+/**
  * An easier example of the same shape as the expression: the same signs and brackets, each number its first digit or
- * a little more or less (never more than it was, at least 2), every part a whole number at least 1, and not the
- * question itself or its answer. The first such expression in a fixed order, so the same question always gets the same example.
+ * a little more or less (never more than it was, at least 2), every part a whole number at least 1, not the
+ * question itself or its answer (givesAway), and with the question's order-of-operations lesson (keepsOrder). The
+ * first such expression in a fixed order, so the same question always gets the same example.
  */
 function sameShapeExample(expr: string, answer: number, valid: (example: EasierExample) => boolean): EasierExample | null {
   const numbers = (expr.match(/\d+/g) ?? []).map(Number);
@@ -228,7 +262,7 @@ function sameShapeExample(expr: string, answer: number, valid: (example: EasierE
     const e = expr.replace(/\d+/g, () => String(lists[i][pick[i++]]));
     const worked = e !== expr ? workedWhole(e) : null;
     // The package check refuses an easier example with the question's answer; it must not give it away either.
-    if (worked && !givesAway(e, worked.value, expr, answer)) {
+    if (worked && !givesAway(e, worked.value, expr, answer) && keepsOrder(e, worked.value, expr, answer)) {
       const operation: Operation = { kind: "evaluate", operands: [e] };
       const example: EasierExample = { text: `${e} = ?`, operation, answer: { type: "number", value: worked.value }, steps: worked.steps };
       if (valid(example)) return example;
@@ -249,7 +283,7 @@ function exampleFor(pkg: OperationPackage, expr: string): EasierExample | null {
   const storedValue = storedExpr !== null ? workedWhole(storedExpr) : null;
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : NaN;
   if (storedExpr !== null && storedValue && shapeOf(storedExpr) === shapeOf(expr) && !givesAway(storedExpr, storedValue.value, expr, answer) &&
-    !("values" in stored.operation && stored.operation.values)) return stored;
+    keepsOrder(storedExpr, storedValue.value, expr, answer) && !("values" in stored.operation && stored.operation.values)) return stored;
   // The package with the made example must pass the same check as any package (its steps and answer are the
   // operation's, and the example is smaller): the first candidate that does is the example.
   return sameShapeExample(expr, answer, (made) => checkQuestionPackage({ ...pkg, easierExample: made }, undefined, teachingLimits(pkg)).ok);

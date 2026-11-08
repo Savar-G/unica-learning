@@ -10,7 +10,9 @@ import {
   type QuestionPackage,
   type WorkedStep,
 } from "@/lib/question-package";
-import { closeParts, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, givesAway, partCovered, partEquationSaid, withEvaluateExample } from "./evaluate";
+import {
+  closeParts, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, givesAway, keepsOrder, leftToRight, partCovered, partEquationSaid, withEvaluateExample,
+} from "./evaluate";
 import { allLineTexts, packageLines, workbookOpening } from "./lines";
 import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "@/lib/maya-teaching/limits";
 import { scopeReason } from "./scope";
@@ -182,7 +184,6 @@ describe("evaluate parts (Wave A, A2)", () => {
       ["995 × 9 − 60", "10 × 8 − 6"],
       ["10 × 90 − 220", "2 × 9 − 2"],
       ["30 + 4 × 3", "5 + 2 × 2"],
-      ["7 + 2 × 3", "6 + 1 × 1"],
       ["8070 − (80 × 100)", "8 − (3 × 2)"],
       ["6 × 412 + 8 × 385", "5 × 4 + 7 × 3"],
       ["5 × 350 − 870", "4 × 3 − 8"],
@@ -197,6 +198,7 @@ describe("evaluate parts (Wave A, A2)", () => {
       const exValue = (shown.easierExample.answer as { value: number }).value;
       const value = (pkg.answer.value as { value: number }).value;
       expect(givesAway(easier, exValue, expr, value), expr).toBe(false);
+      expect(keepsOrder(easier, exValue, expr, value), expr).toBe(true);
       // The stored package is not changed.
       expect(pkg.easierExample.operation).toEqual({ kind: "evaluate", operands: ["1 + 1"] });
       // The session works the made example, and its lines are among the lines code can say.
@@ -383,6 +385,43 @@ describe("evaluate parts (Wave A, A2)", () => {
     expect(copy.session.done).not.toContain("e1");
   });
 
+  it("holds \"(6 + 4) ÷ 2\" rather than make \"(5 + 3) ÷ 1\": the answer as a number, and ÷ 1 (round 3)", () => {
+    // No smaller example of its shape is free of the question's own numbers, its answer and a trivial operand.
+    expect(heldReason(evaluatePackage("(6 + 4) ÷ 2"))).toEqual(expect.stringMatching(/no easier example of the same shape/));
+  });
+
+  it("makes \"5 × 5 − 5\" for \"7 × 8 − 50\", not \"6 × 6 − 5\" with the answer as both factors (round 3)", () => {
+    expect(withEvaluateExample(op(evaluatePackage("7 × 8 − 50"))).easierExample.operation).toEqual({ kind: "evaluate", operands: ["5 × 5 − 5"] });
+  });
+
+  it("never puts the question's answer, or a trivial operand, in an easier example (round 3)", () => {
+    expect(givesAway("(5 + 3) ÷ 1", 8, "(6 + 4) ÷ 2", 5)).toBe(true);
+    expect(givesAway("6 × 6 − 5", 31, "7 × 8 − 50", 6)).toBe(true);
+    expect(givesAway("5 × 5 − 5", 20, "7 × 8 − 50", 6)).toBe(false);
+    // A trivial operand anywhere: ÷ 1, × 1 on either side, + 0 on either side, − 0.
+    for (const trivial of ["(5 + 3) ÷ 1", "4 + 3 × 1", "1 × 4 + 3", "4 + 0 × 3", "(4 + 0) × 3", "0 + 4 × 3", "4 × 3 − 0"]) {
+      expect(givesAway(trivial, 1000, "9 × 880 + 9 × 40", 8280), trivial).toBe(true);
+    }
+    // A 1 or a 0 inside a longer number is not one.
+    expect(givesAway("5 × 12 + 4 × 10", 100, "9 × 880 + 9 × 40", 8280)).toBe(false);
+    expect(givesAway("21 × 3 − 10", 53, "9 × 880 + 9 × 40", 8280)).toBe(false);
+  });
+
+  it("holds \"7 + 2 × 3\" rather than make \"6 + 1 × 1\", which is 7 both ways (round 3)", () => {
+    // Worked left to right and worked right, "6 + 1 × 1" is 7: it shows nothing about the order. Every smaller example
+    // of the shape has × 1, × 0 or one of the question's own numbers, so Maya holds the question.
+    expect(heldReason(evaluatePackage("7 + 2 × 3"))).toEqual(expect.stringMatching(/no easier example of the same shape/));
+  });
+
+  it("keeps the order-of-operations lesson in the easier example (round 3)", () => {
+    expect(leftToRight("7 + 2 × 3")).toBe(27);
+    expect(leftToRight("8070 − (80 × 100)")).toBe(799000);
+    expect(keepsOrder("6 + 1 × 1", 7, "7 + 2 × 3", 13)).toBe(false);
+    expect(keepsOrder("5 + 2 × 2", 9, "30 + 4 × 3", 42)).toBe(true);
+    // A question whose order changes nothing asks nothing of its example.
+    expect(keepsOrder("4 × 3 − 8", 4, "5 × 350 − 870", 880)).toBe(true);
+  });
+
   it("refuses an easier example that gives the answer away (lesson 11)", () => {
     expect(givesAway("5 × 35 − 87", 88, "5 × 350 − 870", 880)).toBe(true);
     expect(givesAway("1700 + 300", 2000, "17000 + 3000", 20000)).toBe(true);
@@ -432,7 +471,12 @@ describe("evaluate parts (Wave A, A2)", () => {
     expect(operationProblem({ kind: "solve", operands: ["x + 100000 = 100005"] }, MAYA_TEACHING_LIMITS)).not.toBeNull();
     expect(operationProblem({ kind: "add", operands: [10000, 2000] })).not.toBeNull();
     // The worked steps of an expression today's check passes are what they were.
-    expect(workedSteps({ kind: "evaluate", operands: ["9 × 880 + 9 × 40"] })).toEqual(FIXTURES.EV_TWO.steps.length ? workedSteps({ kind: "evaluate", operands: ["9 × 880 + 9 × 40"] }) : []);
+    expect(workedSteps({ kind: "evaluate", operands: ["9 × 880 + 9 × 40"] })).toEqual([
+      { id: "e1", kind: "operate", rule: "multiply-divide", op: "×", left: 9, right: 880, value: 7920, rest: "7920 + 9 × 40" },
+      { id: "e2", kind: "operate", rule: "multiply-divide", op: "×", left: 9, right: 40, value: 360, rest: "7920 + 360" },
+      { id: "e3", kind: "operate", rule: "add-subtract", op: "+", left: 7920, right: 360, value: 8280, rest: "8280" },
+      { id: "result", kind: "result", value: { type: "number", value: 8280 } },
+    ]);
     expect(workedSteps({ kind: "evaluate", operands: ["7 × 640 + 7 × 30"] })).toEqual(FIXTURES.EV_TWO.steps);
   });
 
