@@ -42,6 +42,7 @@ import {
 } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import { reviewInput, runReview, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
+import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
@@ -252,7 +253,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (folded.session.outcome || folded.request?.id !== requestId) return;
     // The handler logs even a late response from a provider that ignores abort.
     const response = Promise.resolve().then(() => model.propose(input, controller.signal)).then((proposal) => {
-      append({ kind: "response", at: now(), requestId, proposal, ms: now() - at });
+      // A proposal the client read from inside one code fence is counted in the trace (`fenced`), never told apart otherwise.
+      append({ kind: "response", at: now(), requestId, proposal, ...(readFromFence(proposal) ? { fenced: true as const } : {}), ms: now() - at });
     }, (error) => {
       const stale = folded.request?.id !== requestId;
       append({ kind: "response", at: now(), requestId, error: classifyError(error, "model"), ms: now() - at });

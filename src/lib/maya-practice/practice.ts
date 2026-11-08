@@ -15,7 +15,7 @@ import { judge as gateJudge, HARD_FAILURES, type Behaviour, type HardFailure } f
 import type { MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession } from "@/lib/maya-text";
-import { checkTrace, classifyError, packageHash, redactText, type MayaTrace, type TraceError, type TraceTalk } from "@/lib/maya-trace";
+import { checkTrace, classifyError, fencedReplies, packageHash, redactText, type MayaTrace, type TraceError, type TraceTalk } from "@/lib/maya-trace";
 import type { AnswerValue } from "@/lib/question-package";
 import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, positive, PRACTICE_CASES, RUNS_PER_CASE, type Dimension, type PracticeCase, type StageOpens } from "./cases";
 import { judgeInput, readJudgement, type AiJudge, type DimensionResult, JUDGE_PROMPT_VERSION } from "./judge";
@@ -670,6 +670,12 @@ export interface PracticeReport {
   runs: (Omit<RunVerdict, "status"> & { status: RunStatus })[];
   hardFailureCodes: Record<string, number>;
   invalidCodes: Record<string, number>;
+  /**
+   * Maya's model calls in the saved traces, and how many of their proposals the client read from inside one Markdown
+   * code fence (a request sent without `response_format`), with the count per run that had any. Not a gate result: it
+   * shows how often the fence is read. A report saved before has none.
+   */
+  fencedJson?: { calls: number; fenced: number; runs: Record<string, number> };
 }
 
 const median = (xs: number[]) => {
@@ -791,6 +797,7 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
     kind: "maya-practice-report", version: PRACTICE_VERSION, passed: false, full, problem: null, versions: null, execution: null, packages: [],
     counts: { planned: 0, saved: 0, passed: 0, failed: 0, invalid: 0, unjudgeable: 0, missing: 0, hardFailures: 0, lowScores: 0 },
     cases: [], dimensions: [], safety: { runs: 0, passed: 0, j07Below: 0 }, runs: [], hardFailureCodes: {}, invalidCodes: {},
+    fencedJson: { calls: 0, fenced: 0, runs: {} },
   };
   if (!plan || plan.kind !== "maya-practice-plan" || !Array.isArray(plan.runs)) return { ...empty, problem: "no readable plan.json" };
   const byId = new Map(cases.map((c) => [c.id, c]));
@@ -867,10 +874,25 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
     runs,
     hardFailureCodes: tally(runs.flatMap((r) => r.hardFailures.map((f) => f.code))),
     invalidCodes: tally(runs.flatMap((r) => r.invalid.map((f) => f.code))),
+    fencedJson: fencedJsonOf(required.map((r) => r.id), store),
   };
   report.problem = problems.length > 0 ? `the saved plan is not the code's plan: ${problems.join("; ")}` : null;
   report.passed = problems.length === 0 && required.length > 0 && report.counts.passed === required.length;
   return report;
+}
+
+/** Maya's model calls in the saved traces of these runs, and the proposals read from inside one code fence. */
+function fencedJsonOf(ids: readonly string[], store: PracticeStore): NonNullable<PracticeReport["fencedJson"]> {
+  const out: NonNullable<PracticeReport["fencedJson"]> = { calls: 0, fenced: 0, runs: {} };
+  for (const id of ids) {
+    const trace = parse<MayaTrace>(store.load(traceFile(id)));
+    if (!trace || !Array.isArray(trace.turns)) continue;
+    const { calls, fenced } = fencedReplies(trace.turns);
+    out.calls += calls;
+    out.fenced += fenced;
+    if (fenced > 0) out.runs[id] = fenced;
+  }
+  return out;
 }
 
 /** The report as markdown. */
@@ -894,6 +916,10 @@ export function reportMarkdown(r: PracticeReport): string {
   lines.push("Counted from the saved files.", "", "| Planned | Saved | Passed | Failed | Invalid | Unjudgeable | Missing | With hard failures | With a score below 2 |", "|---|---|---|---|---|---|---|---|---|");
   lines.push(`| ${c.planned} | ${c.saved} | ${c.passed} | ${c.failed} | ${c.invalid} | ${c.unjudgeable} | ${c.missing} | ${c.hardFailures} | ${c.lowScores} |`, "");
   lines.push("A missing, invalid or unjudgeable run fails the suite: it never counts as a pass.", "");
+  if (r.fencedJson) {
+    const runs = Object.entries(r.fencedJson.runs).map(([id, n]) => `${id} ${n}`).join(", ");
+    lines.push(`Fenced JSON: ${r.fencedJson.fenced} of ${r.fencedJson.calls} Maya model calls were read from inside one code fence${runs ? ` (${runs})` : ""}. Not a gate result.`, "");
+  }
   if (r.packages.some(p => p.source === "real-generator-synthetic-v1")) {
     lines.push("## Generated packages", "", "These cases check known answers and unsupported-kind refusals. They do not cover every teaching path.", "", "| Case | Support | Package hash |", "|---|---|---|");
     for (const p of r.packages.filter(p => p.source === "real-generator-synthetic-v1")) lines.push(`| ${p.caseId} | ${p.support} | ${p.hash} |`);

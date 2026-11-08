@@ -9,6 +9,8 @@ import { aiChildSimulator, aiJudge, aiValidityJudge, DIMENSION_IDS, DIMENSIONS, 
 import { readSimulatorTurn } from "@/lib/maya-practice/simulator";
 import { aiTalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession } from "@/lib/maya-text";
+import { readFromFence } from "@/lib/ai-fenced";
+import { checkTrace, fencedReplies } from "@/lib/maya-trace";
 
 const MODEL = "anthropic/claude-sonnet-5.5";
 const signal = () => new AbortController().signal;
@@ -192,10 +194,77 @@ describe("OpenRouter schema compatibility through public callers and fake HTTP",
     expect(failing.sent).toHaveLength(1);
   });
 
-  it.each(["not JSON", '```json\n{}\n```', '{"version":'])("still rejects malformed output: %s", async (raw) => {
+  it.each(["not JSON", '{"version":'])("still rejects malformed output: %s", async (raw) => {
     const p = provider(open, { raw });
     await expect(aiMayaModel(p.client).propose(input(), signal())).rejects.toThrow("not valid JSON");
     expect(p.sent).toHaveLength(1);
+  });
+
+  // First-ship practice at 6de7e777: 9 of 319 Maya calls failed as bad_json once her request went out without
+  // response_format. Exactly one outer fence is read for such a request, and noted; a request with response_format is not.
+  const fence = (body: string, tag = "json") => `\`\`\`${tag}\n${body}\n\`\`\``;
+  it.each([
+    ["a ```json fence", fence(JSON.stringify(open))],
+    ["a bare ``` fence", fence(JSON.stringify(open), "")],
+    ["a fence with spaces and new lines around it", `\n  ${fence(JSON.stringify(open, null, 2))}  \n`],
+  ])("reads %s on a request sent without response_format, and notes it", async (_name, raw) => {
+    const p = provider(open, { raw });
+    const out = await aiMayaModel(p.client).propose(input(), signal());
+    expect(out).toEqual(open);
+    expect(readFromFence(out)).toBe(true);
+    expect(p.sent[0].body.response_format).toBeUndefined();
+    const plain = provider(open);
+    expect(readFromFence(await aiMayaModel(plain.client).propose(input(), signal()))).toBe(false);
+  });
+
+  it.each([
+    ["prose before the block", `Here is my proposal:\n${fence(JSON.stringify(open))}`],
+    ["prose after the block", `${fence(JSON.stringify(open))}\nI hope this helps.`],
+    ["two blocks", `${fence(JSON.stringify(open))}\n${fence(JSON.stringify(open))}`],
+    ["an unclosed fence", `\`\`\`json\n${JSON.stringify(open)}`],
+    ["a nested fence", fence(`\`\`\`json\n${JSON.stringify(open)}\n\`\`\``)],
+    ["another language", fence(JSON.stringify(open), "js")],
+    ["no JSON inside", fence("not JSON")],
+    ["cut-off JSON inside", fence('{"version":')],
+  ])("still rejects %s as not JSON on a request sent without response_format", async (_name, raw) => {
+    const p = provider(open, { raw });
+    await expect(aiMayaModel(p.client).propose(input(), signal())).rejects.toThrow("not valid JSON");
+    expect(p.sent).toHaveLength(1);
+  });
+
+  it("keeps the strict reading for a request that sent response_format: a fenced output is still not JSON", async () => {
+    const turn = { action: "say", text: "Hi.", seconds: null, stop: false };
+    const p = provider(turn, { raw: fence(JSON.stringify(turn)) });
+    const child = aiChildSimulator(p.client);
+    await expect(child.next({ promptVersion: "test", persona: PRACTICE_CASES[0].persona, maxWords: 25, transcript: [] }, signal())).rejects.toThrow("not valid JSON");
+    expect(p.sent[0].body.response_format).toMatchObject({ type: "json_schema" });
+    const plain = provider(turn);
+    await expect(aiChildSimulator(plain.client).next({ promptVersion: "test", persona: PRACTICE_CASES[0].persona, maxWords: 25, transcript: [] }, signal())).resolves.toEqual(turn);
+    expect(plain.sent[0].body.response_format).toMatchObject({ type: "json_schema" });
+  });
+
+  it("checks a fenced proposal against the same schema and rules, and counts it in the trace", async () => {
+    const bad = { version: 99, act: "open", parts: [] };
+    const p = provider(bad, { raw: fence(JSON.stringify(bad)) });
+    const session = createTextSession({ callId: "schema-fenced-bad", package: FIXTURES.A, model: aiMayaModel(p.client), clock: () => 1000, random: 3, channel: "chat", freeTalk: false });
+    await session.start();
+    const trace = session.trace();
+    // Refused as an unfenced one would be: the model, its repair, then code's fallback.
+    expect(trace.counts).toMatchObject({ refusals: 2, fallbacks: 1 });
+    const attempts = trace.turns.flatMap((t) => (t.kind === "maya" ? t.attempts : []));
+    expect(attempts.filter((a) => a.fenced === true).map((a) => a.source)).toEqual(["model", "repair"]);
+    expect(fencedReplies(trace.turns)).toEqual({ calls: 2, fenced: 2 });
+    expect(checkTrace(JSON.parse(JSON.stringify(trace)))).toMatchObject({ ok: true });
+
+    const good = provider(open, { raw: fence(JSON.stringify(open)) });
+    const accepted = createTextSession({ callId: "schema-fenced-good", package: FIXTURES.A, model: aiMayaModel(good.client), clock: () => 1000, random: 3, channel: "chat", freeTalk: false });
+    expect((await accepted.start()).say.join(" ")).toContain("Maya");
+    expect(fencedReplies(accepted.trace().turns)).toEqual({ calls: 1, fenced: 1 });
+    const plain = provider(open);
+    const unfenced = createTextSession({ callId: "schema-plain", package: FIXTURES.A, model: aiMayaModel(plain.client), clock: () => 1000, random: 3, channel: "chat", freeTalk: false });
+    await unfenced.start();
+    expect(fencedReplies(unfenced.trace().turns)).toEqual({ calls: 1, fenced: 0 });
+    expect(JSON.stringify(unfenced.trace())).not.toContain("fenced");
   });
 
   it.each([
