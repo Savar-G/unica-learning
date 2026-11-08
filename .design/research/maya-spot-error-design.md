@@ -45,7 +45,7 @@ READY → OPEN → (MODEL_EXAMPLE) → the underlying path's own steps → the c
 
 ## 4. The easier example (lesson 11)
 
-A spot-the-error of the same shape: the underlying path's easier example (already checked for giveaways), with a code-made wrong answer given: its result over 10, else times 10, else plus 1. Refused when the given answer equals the question's result or shown answer, or when the question's result is that number times a power of 10 or begins with its digits.
+A spot-the-error of the same shape: the underlying path's easier example (already checked for giveaways), with a code-made wrong answer given: its result over 10, else times 10, else plus 1, 2 or 3. Refused when the given answer equals the question's result or shown answer or any number the question prints (its operands and printed text), or when the question's result is that number times a power of 10 or begins with its digits.
 
 ## 5. Shared files
 
@@ -60,3 +60,5 @@ Small hooks only: `session.ts` (the session package, the step credit, the reveal
 - **A1, scope.** On the one-step multiply path (7 × 640 taught as two rows), the child's row in a sentence, "7 times 40 is 280." or "7 times 600 is 4200.", is out of scope (`changed_problem`), with or without a spot item. It belongs to A1's `allowedMath`.
 - **A1 and the text adapter, example length.** The multiply example 6 × 64 has 9 steps, the spot form 11 with its compare and word. `MAX_MAYA_TURNS` is 8, so Maya pauses once in the example and goes on at the child's next turn. `example-flow.test.ts` accepts exactly that one pause for an example longer than the limit.
 - **A4, the word reader.** `readClaimWord("It's 48, so it's true.")` returns nothing: the committed "it's" form returns before the ", so it's true" form. Spot the error works around it in its own allow-list; claim questions still miss it.
+- **Other speakers after the fix step (review of #743).** "My mom said 4480, so it's wrong." and the like, said after the fix step, end solved through claim.ts's ", so it's no" form. A4 is closing it in #737; `src/lib/maya-gate/spot-error-heard.test.ts` holds the five cases in both orders, the five after the fix skipped until #737's new head lands.
+- **The pause in a long example.** An approved bank phrase asks the child to go on ("Are you ready to keep going?", "Whenever you're ready."), but a turn with math takes bank phrases only before its math (R374-3-1), and the stop at `MAX_MAYA_TURNS` is the text adapter's. Saying one at the pause needs a new line or a rule change: Savar's decision (D-202).
