@@ -13,8 +13,8 @@ tests use synthetic packages with the same template shapes).
   expressions, exactly) whose slot values are the printed numbers.
 - **5 are teachable now** with kinds Maya already teaches: the 4 die counts (divide) and the 1 symmetry sum (add). R2
   count with these derivers as the adapter: 249 to 254.
-- **1 more (perimeter) is teachable when A2 lands**: its package is an `evaluate` and checks, and is held today only on
-  the `operate` step.
+- **1 more (perimeter) is teachable when A2 lands**: its package is an `evaluate` and checks. It is held today because
+  `evaluate` is not in `TEACHABLE_KINDS` and because Maya has no lines for its `operate` steps.
 - **28 have a checked reading** (`readTopicQuestion`) and wait on teaching paths: A4's claim path (true/false and word
   answers), A2's evaluate steps, a small compare path, and a time path.
 - None needs a change to the printed book or a stored package. None is left underivable.
@@ -41,8 +41,9 @@ question and the fixed workbook opening, and with the easier example's intro:
 ### Waits on A2: evaluate
 
 - Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "A rectangle has 2 lengths
-  and 2 widths. Add one length and one width. Then double it." Built and hooked; held on the `operate` step until
-  A2's evaluate teaching lands. No change needed then.
+  and 2 widths. Add one length and one width. Then double it." Built and hooked. The session holds it for two reasons
+  until A2's evaluate teaching lands: `evaluate` is not in `TEACHABLE_KINDS`, and Maya has no lines for its `operate`
+  steps. No change is needed here then.
 
 ### Waits on A4: the claim path (22 true/false, 3 word answers)
 
@@ -74,7 +75,8 @@ needs: lines for `count-on` (5 to 8 wordings, Savar's approval), step answers as
 ## Shared-file hooks
 
 - `src/lib/maya/lines.ts`: three template keys (`question.framed`, `assess.framed`, `example.framed`) and their use in
-  `packageLines` and `workbookOpening` when `topicFrame` gives a sentence. Every other question's lines are unchanged
+  `packageLines` when `topicFrame` gives a sentence. The fixed workbook opening (`workbookOpening`) never carries it:
+  with it the opening passes a 25-word turn (review of #731); the question and assess lines say it next. Every other question's lines are unchanged
   (tested).
 - `src/lib/maya/session.ts`: one condition in `rawOffersFor`, `example_step`: a framed intro is its own turn.
 - No change to `question-package.ts`, `fractions.ts`, the generator or `checkQuestionPackage`. The derivers need no
@@ -101,7 +103,7 @@ template id is not theirs, so the order does not matter.
 | 1 | `d1p3s1.5` | 5.5 | `4.16-many-to-one#3.4:true-false` | scale | evaluate `mark + m × interval`, then compare with the claim | A2, A4 | derived (reading) |
 | 2 | `d1p3s1.6` | 5.6 | `4.16-many-to-one#3.4:true-false` | scale | evaluate `mark + m × interval`, then compare with the claim | A2, A4 | derived (reading) |
 | 3 | `d1p3s1.7` | 5.7 | `4.18-money-notation#3.3:true-false` | money | evaluate `bills × 20 + quarters × 0.25`, then compare with the claim | A2 (decimal `operate`), A4 | derived (reading) |
-| 4 | `d1p4s1.7` | 6.7 | `4.14-perimeter#3.1:bare` | perimeter | evaluate `2 × (l + w)` + topic sentence | A2 (`operate` steps) | derived; held until A2 |
+| 4 | `d1p4s1.7` | 6.7 | `4.14-perimeter#3.1:bare` | perimeter | evaluate `2 × (l + w)` + topic sentence | A2 (`operate` steps) | derived; held until A2 (`evaluate` not in `TEACHABLE_KINDS`, no `operate` lines) |
 | 5 | `d1p6s1.7` | 8.7 | `4.18-money-notation#3.3:true-false` | money | evaluate `bills × 20 + quarters × 0.25`, then compare with the claim | A2 (decimal `operate`), A4 | derived (reading) |
 | 6 | `d1p7s1.2` | 9.2 | `3.9-area-square-units#4.1:compare` | area-compare | two multiplies, then name the bigger as printed | A4 word answers + compare path | derived (reading) |
 | 7 | `d1p7s3.1` | 9.5 | `4.3-same-denominator#3.4:true-false` | same-denominator | compare the numerators (no operation) | A4 + new compare path | derived (reading) |

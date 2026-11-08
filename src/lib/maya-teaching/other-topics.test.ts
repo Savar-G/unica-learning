@@ -1,6 +1,9 @@
 // The "other-topic" derivers (Maya coverage, Wave C): die counts, lines of symmetry and the perimeter of a rectangle,
 // each made from a printed package only when the printed text, the template and the answer key agree.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createTextSession } from "@/lib/maya-text";
+import { scenarioModel } from "@/lib/maya-gate/gate";
+import { gateWordCount } from "@/lib/maya-gate/word-count";
 import { createSession, heldReason } from "@/lib/maya/session";
 import { packageLines, workbookOpening } from "@/lib/maya/lines";
 import { speechWords } from "@/lib/maya/speech";
@@ -11,6 +14,8 @@ import { countKind, deriveDieCount, dieOperation, exampleDie } from "./die-count
 import { derivePerimeter } from "./perimeter";
 import { deriveSymmetry, SYMMETRY_LINES } from "./symmetry";
 import { diePrinted, perimeterPrinted, symmetryPrinted } from "./topic-samples";
+
+vi.mock("server-only", () => ({}));
 
 type Source = { answer: string; check: string | null; slots: { name: string; value: { int: string } }[]; derived: [string, string][] };
 const sourceOf = (p: QuestionPackage) => (p.item!.checks[0] as { source: Source }).source;
@@ -142,7 +147,8 @@ describe("the topic sentence", () => {
     expect(intro.key).toBe("example.framed");
     for (const t of intro.texts) expect(t).toContain("From 1 to 4, odd and even take turns. So half are odd.");
     expect(exampleDie(10)).toBe(4);
-    expect(workbookOpening(die)).toMatch(/: 10 ÷ 2\. From 1 to 10, odd and even take turns\. So half are odd\.$/);
+    // The fixed workbook opening stays as it is: with the topic sentence it would pass a 25-word turn.
+    expect(workbookOpening(die)).toMatch(/: 10 ÷ 2\.$/);
   });
 
   it("fits a 25-word turn, for the longest shape names too", () => {
@@ -164,5 +170,35 @@ describe("the generator is unchanged", () => {
   it("attaches no operation to these templates and keeps its default limits", () => {
     for (const p of [diePrinted(8, "odd"), symmetryPrinted(0, 3), perimeterPrinted(245, 126)]) expect(withWorkbookMayaOperation(p)).toBe(p);
     expect(operationProblem({ kind: "add", operands: [10000, 2000] })).not.toBeNull();
+  });
+});
+
+describe("a workbook-confirmed call at grade 3 (review of #731)", () => {
+  const packages: [string, QuestionPackage | null][] = [
+    ["die 8", deriveDieCount(diePrinted(8, "odd"))],
+    ["die 12", deriveDieCount(diePrinted(12, "even"))],
+    ["symmetry, longest names", deriveSymmetry(symmetryPrinted(1, 2))],
+    ["symmetry, a square and a scalene triangle", deriveSymmetry(symmetryPrinted(0, 3))],
+  ];
+  it.each(packages)("%s: the fixed opening fits 25 words, and the call leaves OPEN on the child's first turn", async (_, pkg) => {
+    expect(pkg).not.toBeNull();
+    const model = scenarioModel();
+    const s = createTextSession({ callId: "grade-3-open", package: pkg!, grade: 3, confirmWorkbook: true, model, clock: () => 1000 });
+    model.next([{ act: "open" }], undefined);
+    const opening = await s.start();
+    expect(s.session.opened, JSON.stringify(opening.say)).toBe(true);
+    model.next([{ act: "example_step" }], { start: "no_start" });
+    const next = await s.child("I don't know how to start.");
+    expect(s.session.state).not.toBe("OPEN");
+    expect(s.session.outcome).toBeNull();
+    for (const text of [...opening.say, ...next.say]) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
+  });
+
+  it("perimeter: held until A2, so the call ends at once in the held lines only", async () => {
+    const model = scenarioModel();
+    const s = createTextSession({ callId: "grade-3-held", package: derivePerimeter(perimeterPrinted(245, 126))!, grade: 3, confirmWorkbook: true, model, clock: () => 1000 });
+    const out = await s.start();
+    expect(s.session.outcome?.reason).toBe("content_issue");
+    for (const text of out.say) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
   });
 });

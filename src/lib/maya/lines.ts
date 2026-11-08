@@ -792,14 +792,13 @@ const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+/).map((s) => s.t
 /** Controller-owned opening. Only checked operation data is read aloud, never arbitrary workbook prose. */
 export function workbookOpening(pkg: OperationPackage): string | null {
   return pkg.ref.source === "workbook" ? WORKBOOK_OPENING
-    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", operationText(pkg.operation))
-    + framed(topicFrame(pkg.text, pkg.operation)) : null;
+    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", operationText(pkg.operation)) : null;
 }
 
-/** An "other-topic" question's topic sentence after the fixed opening (Wave C, topic-frame.ts). */
-const framed = (frame: string | null) => (frame ? ` ${frame}` : "");
-
-/** One fixed confirmation, outside the model's selectable wordings. */
+/**
+ * One fixed confirmation, outside the model's selectable wordings. It never carries an "other-topic" topic sentence
+ * (topic-frame.ts): with it the opening passes a 25-word turn; the question and assess lines say it next.
+ */
 export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page}, number {number}: {expr}.";
 
 /**
