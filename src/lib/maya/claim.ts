@@ -150,6 +150,11 @@ export const CLAIM_TEMPLATES = {
     "Please circle your answer on your page.", "Can you circle your answer on your page?", "Go ahead and circle your answer on your paper.",
     "Now circle your answer on your page.", "Circle your answer on your page, please.",
   ],
+  // A bare word said back (controller rule 4): the child's own word, never the other one.
+  "confirm.claim.said": [
+    "You said {heard}. Is {heard} the word you circle?", "I heard {heard}. Do you circle {heard}?", "So you circle {heard}?",
+    "Is {heard} your answer?", "Just checking: do you circle {heard}?",
+  ],
   "confirm.claim": [
     "Which word do you circle: {first} or {second}?", "Do you circle {first} or {second}?", "Which one is it: {first} or {second}?",
     "Tell me one word: {first} or {second}?", "Which word is your answer: {first} or {second}?",
@@ -169,6 +174,17 @@ function askOf(c: SessionClaim, expr: string): string {
   return c.choices[0] === "true" ? `Is ${expr} = ${num(c.shown)} ${a} or ${b}?` : `${claimSentence(c, expr)} Circle ${a} or ${b}.`;
 }
 
+/**
+ * The child's own claim question, after they found the result. An "equal" claim names the sentence on the page, not its
+ * equation: "Yes! 6 × 8 = 48." then "Is 6 × 8 = 48 true or false?" says one equation twice. Every equal claim asks it
+ * this way, true or not, so the wording says nothing of the answer.
+ */
+function targetAsk(c: SessionClaim, expr: string): string {
+  const [a, b] = c.choices;
+  if (c.relation !== "equal") return askOf(c, expr);
+  return a === "true" ? `Is the sentence on your page ${a} or ${b}?` : `Is the sentence on your page right? Circle ${a} or ${b}.`;
+}
+
 /** The comparison in words, without the word to circle: "5220 is less than 5226.", "6800 and 6800 are the same number." */
 function compareOf(c: Pick<SessionClaim, "relation" | "value" | "shown">): string {
   const [v, s] = [num(c.value), num(c.shown)];
@@ -185,13 +201,15 @@ export function claimLines(pkg: OperationPackage, offer: MakeOffer) {
   const c = sessionClaim(pkg);
   if (!c) return null;
   const expr = operationText(pkg.operation);
-  const ask = askOf(c, expr);
+  const ask = targetAsk(c, expr);
   const step = (id: string, level: 0 | 1 | 2): Pick<LineOffer, "slots" | "level"> => ({ slots: { step: id } as Slots, level });
   const vars = { expr, value: num(c.value), shown: num(c.shown), ask, word: c.word, compare: compareOf(c) };
   const example = sessionClaim({ ...pkg, steps: pkg.easierExample.steps, answer: { value: pkg.easierExample.answer, accepted: [], unit: null } });
   const exampleExpr = operationText(pkg.easierExample.operation);
   const printed = printedOrder(pkg);
   return {
+    /** The claim is circled yes or no. */
+    yesNo: c.choices[0] === "yes",
     question: (): LineOffer[] => [printed
       ? offer("question.problem", "question.claim.swap", { expr, printed }, { slots: {}, board: expr })
       : offer("question.problem", "question.claim", { expr }, { slots: {}, board: expr })],
@@ -213,6 +231,8 @@ export function claimLines(pkg: OperationPackage, offer: MakeOffer) {
     writeAnswer: (): LineOffer[] => [offer("write.answer", "write.claim", vars)],
     writeYours: (): LineOffer[] => [offer("write.yours", "write.claim.yours", {})],
     which: (): LineOffer[] => [offer("confirm.claim", "confirm.claim", { first: c.choices[0], second: c.choices[1] })],
+    /** "You said true. Is true the word you circle?": only for a word the child said bare. */
+    said: (word: string): LineOffer[] => (c.choices.includes(word) ? [offer("confirm.word", "confirm.claim.said", { heard: word }, { slots: { heard: word } })] : []),
   };
 }
 
@@ -250,14 +270,19 @@ const FILLER = /^(?:(?:um+|uh+|oh|okay|ok|so|well),?\s+)+/;
 const REASON = /^(?:because|since|cause|cuz|as)\b/;
 const NEGATION = /\b(?:not|n't|isn'?t|less|smaller|fewer)\b/;
 
-/** What a turn says about the claim's word: a word, unclear (ask which), or nothing (a turn about something else). */
+/**
+ * What a turn says about the claim's word: a committed word, a bare word (its confirm comes first), unclear (ask which
+ * word), or nothing (a turn about something else).
+ */
 export type WordRead = { word: string; committed: boolean } | { unclear: true } | null;
 
 /**
- * Reads the circled word in a child's turn, by an allow-list over the whole turn. `choices`: the claim's two words.
- * A bare word counts only after Maya's claim question (`asked`); a committed form ("It's true.") always does.
+ * Reads the circled word in a child's turn, by an allow-list over the whole turn. `choices`: the claim's two words. Only a
+ * committed form ("It's true.", "I circle no.", "..., so it's false.") is an answer. A bare word ("True.", "No, 5220 is
+ * less.") after any question of Maya's answers that question, never the claim (wave brief, controller rule 4): it is read
+ * as not committed, and Maya says it back before it counts.
  */
-export function readClaimWord(text: string, choices: readonly [string, string], asked: boolean): WordRead {
+export function readClaimWord(text: string, choices: readonly [string, string]): WordRead {
   const t = text.toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, " ").trim();
   if (NO_ANSWER.test(t)) return null;
   const found = t.match(ANY_WORD) ?? [];
@@ -284,52 +309,71 @@ export function readClaimWord(text: string, choices: readonly [string, string], 
   const committed = COMMIT.exec(body);
   if (committed) {
     const after = body.slice(committed[0].length);
-    if (after.startsWith(said) && tailOk(after.slice(said.length))) return { word, committed: true };
-    return null;
+    return after.startsWith(said) && tailOk(after.slice(said.length)) ? { word, committed: true } : null;
   }
   // "..., so it's false.": a conclusion at the end, after an explanation with no claim word in it.
   const so = new RegExp(`^(.*?),?\\s+so\\s+(?:it'?s\\s+|it is\\s+|the answer is\\s+|i circle\\s+)?${said}$`).exec(body);
   if (so && !HAS_WORD.test(so[1])) return { word, committed: true };
-  if (body.startsWith(said) && tailOk(body.slice(said.length))) return asked ? { word, committed: false } : null;
+  if (body.startsWith(said) && tailOk(body.slice(said.length))) return { word, committed: false };
   return null;
 }
 
-/** The claim's question ends Maya's turn: "... true or false?", "... Circle yes or no.", "Which word do you circle: yes or no?". */
-export function askedClaim(lastMaya: string | undefined, choices: readonly [string, string]): boolean {
-  if (!lastMaya) return false;
-  const [a, b] = choices;
-  return new RegExp(`\\b${a} or ${b}[?.]\\s*$`, "i").test(lastMaya.trim());
-}
+/** A plain yes, the whole turn: the answer to Maya's "You said no. Is no the word you circle?". */
+const PLAIN_YES = /^(?:(?:um+|uh+|oh|okay|ok|well),?\s+)*(?:yes|yeah|yep|yup)(?:,?\s+(?:it is|that's it|i do))?[.!]*$/;
 
-/** What the session needs to read a turn: its claim, the child's words and Maya's last words. */
+/** What the session needs to read a turn: its claim, the child's words, and what Maya's last turn asked. */
 export interface ClaimTurn {
   pkg: OperationPackage | null;
   text: string | null;
-  lastMaya: string | undefined;
-  /** Maya's last turn asked about one number ("Did you say 5220?"): a plain yes answers that, not the claim. */
+  /** Maya's last turn asked about one number ("Did you say 5220?"): a plain yes answers that, never the claim. */
   heardAsked: boolean;
+  /** The bare word Maya said back in her last turn ("You said no. Is no the word you circle?"): a plain yes commits it. */
+  wordAsked: string | null;
 }
 
 function wordIn(t: ClaimTurn): WordRead {
   const c = sessionClaim(t.pkg);
   if (!c || t.text === null) return null;
-  const read = readClaimWord(t.text, c.choices, !t.heardAsked && askedClaim(t.lastMaya, c.choices));
-  return read;
+  // A plain yes to Maya's "Is no the word you circle?" commits the word the child said (as heardAsked for a number).
+  if (t.wordAsked !== null && !t.heardAsked && c.choices.includes(t.wordAsked) && PLAIN_YES.test(t.text.toLowerCase().replace(/[’]/g, "'").trim())) {
+    return { word: t.wordAsked, committed: true };
+  }
+  return readClaimWord(t.text, c.choices);
 }
 
-/** The child's turn as read with their word: the word is the final answer, kept after any numbers of their explanation. */
-export function claimRead(t: ClaimTurn, base: AnswerRead): AnswerRead {
+/** The child's committed word as read: the final answer, kept after any numbers of their explanation. */
+function committedWord(t: ClaimTurn): string | null {
   const read = wordIn(t);
-  if (!read || !("word" in read)) return base;
-  const w = choice(read.word);
+  return read && "word" in read && read.committed ? read.word : null;
+}
+
+/** The child's turn as read with their committed word: the word is the final answer. A bare word changes nothing. */
+export function claimRead(t: ClaimTurn, base: AnswerRead): AnswerRead {
+  const word = committedWord(t);
+  if (word === null) return base;
+  const w = choice(word);
   return { ...base, kept: [...base.kept, w], final: w, choice: false, outside: [...base.outside, w], sure: true };
 }
 
-/** The turn holds a word the child is not sure of, or both words: Maya asks which word they circle. */
-export const claimUnclear = (t: ClaimTurn): boolean => {
+/**
+ * The confirm a claim turn needs before anything else: "which" for an unsure word or both words ("Which word do you
+ * circle: true or false?"), "said" for a bare word ("You said true. Is true the word you circle?"), else null.
+ */
+export function claimConfirm(t: ClaimTurn): { kind: "which" } | { kind: "said"; word: string } | null {
   const read = wordIn(t);
-  return !!read && "unclear" in read;
-};
+  if (!read) return null;
+  if ("unclear" in read) return { kind: "which" };
+  return read.committed ? null : { kind: "said", word: read.word };
+}
+
+/** The word the child said in this turn, bare or committed, or null. */
+export function claimSaid(t: ClaimTurn): string | null {
+  const read = t.text === null || !sessionClaim(t.pkg) ? null : readClaimWord(t.text, sessionClaim(t.pkg)!.choices);
+  return read && "word" in read ? read.word : null;
+}
+
+/** The turn needs the claim's confirm (claimConfirm). */
+export const claimUnclear = (t: ClaimTurn): boolean => claimConfirm(t) !== null;
 
 /**
  * The answers of a reading in a claim call: the model's final answers are left out (code reads the word), and the word
@@ -339,8 +383,7 @@ export function claimAnswers(t: ClaimTurn, answers: readonly ChildAnswer[] | und
   const c = sessionClaim(t.pkg);
   if (!c) return answers ? [...answers] : undefined;
   const own = (answers ?? []).filter((a) => !(a.step === "result" && (a.problem ?? "target") === "target"));
-  const read = wordIn(t);
-  const word = read && "word" in read ? read.word : null;
+  const word = committedWord(t);
   // A right word the child says again once it stands carries nothing new (as withoutRepeats for a number).
   const add: ChildAnswer[] = word && !(solvedRight && word === c.word) ? [{ value: choice(word), step: "result", verdict: word === c.word ? "right" : "wrong" }] : [];
   const out = [...own, ...add];
@@ -360,17 +403,18 @@ export function claimActs(pkg: OperationPackage | null, acts: Act[]): Act[] {
 
 /**
  * Maya's words say the claim's word as the answer before it may be said: "circle no", "it's true", "the answer is yes".
- * Naming both words ("Circle yes or no.") gives nothing away, and the easier example circles its own word.
+ * Naming both words ("Circle yes or no.") gives nothing away, the easier example circles its own word, and a confirm may
+ * say back the word the child said in the turn it answers (`said`, as a confirm says back a number).
  */
-export function claimReveals(pkg: OperationPackage, act: Act, texts: readonly string[]): boolean {
+export function claimReveals(pkg: OperationPackage, act: Act, texts: readonly string[], said: string | null = null): boolean {
   const c = sessionClaim(pkg);
-  if (!c || act === "example_step") return false;
-  const said = new RegExp(`\\b(?:circle|answer is|it'?s|it is)\\s+${c.word}\\b(?!\\s+or\\b)`, "i");
-  return texts.some((t) => said.test(t));
+  if (!c || act === "example_step" || (act === "confirm" && said === c.word)) return false;
+  const says = new RegExp(`\\b(?:circle|answer is|it'?s|it is)\\s+${c.word}\\b(?!\\s+or\\b)`, "i");
+  return texts.some((t) => says.test(t));
 }
 
-/** The claim's word as the gate's judge reads it in a child turn (the same allow-list), or null. */
-export function claimFinal(pkg: OperationPackage | null, text: string, lastMaya: string | undefined, heardAsked = false): AnswerValue | null {
-  const read = wordIn({ pkg, text, lastMaya, heardAsked });
-  return read && "word" in read ? choice(read.word) : null;
+/** The claim's committed word as the gate's judge reads it in a child turn (the same allow-list), or null. */
+export function claimFinal(pkg: OperationPackage | null, text: string, wordAsked: string | null, heardAsked = false): AnswerValue | null {
+  const word = committedWord({ pkg, text, heardAsked, wordAsked });
+  return word === null ? null : choice(word);
 }

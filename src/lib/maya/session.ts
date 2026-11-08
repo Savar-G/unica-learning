@@ -46,7 +46,7 @@ import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FE
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
-import { claimActs, claimAnswers, claimRead, claimReveals, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
+import { claimActs, claimAnswers, claimConfirm, claimRead, claimReveals, claimSaid, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -383,6 +383,8 @@ export interface Session {
   heardAsked?: AnswerValue | null;
   /** The column total Maya asked about in that confirmation (stepConfirmable): the only number a yes credits for a step. */
   stepAsked?: AnswerValue | null;
+  /** A claim's bare word Maya said back in her last turn (confirm.word, claim.ts): a plain yes commits it. Any other act clears it. */
+  wordAsked?: string | null;
   confirmTries: number;
   offeredOtherInput: boolean;
   redirects: number;
@@ -1420,6 +1422,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       s.heardAsked = !claimJudgedWrong(s) && asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots.heard ? valuesIn(asked[0].slots.heard, readOptionsFor(pkg))[0] ?? null : null;
       const total = stepSaidUnheard(s) ? stepConfirmable(s) : null;
       s.stepAsked = total && s.heardAsked && saidAs(total, s.heardAsked) ? s.heardAsked : null;
+      // A claim's bare word said back (claim.ts): a plain yes to it commits that word.
+      s.wordAsked = spoken.chosen.find((o) => o.line === "confirm.word")?.slots.heard ?? null;
       enterInterrupt(s, "CONFIRM_HEARD");
       break;
     }
@@ -1506,6 +1510,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (p.act !== "confirm") {
     delete s.heardAsked;
     delete s.stepAsked;
+    delete s.wordAsked;
   }
   if (p.act !== "confirm" && p.act !== "offer_other_input") {
     s.confirmTries = 0;
@@ -1779,9 +1784,9 @@ function turnRead(s: Session): AnswerRead {
   return yes ? { kept: [yes], final: yes, choice: false, outside: [yes], sure: true } : claimRead(claimTurn(s), readAnswer(s.turn!.text, readOptionsIn(s)));
 }
 
-/** What claim.ts reads a turn with: the package, the child's words, Maya's last words and an open "Did you say ...?". */
+/** What claim.ts reads a turn with: the package, the child's words, and an open "Did you say ...?" or "Is no the word you circle?". */
 const claimTurn = (s: Session): ClaimTurn => ({
-  pkg: s.package, text: s.turn?.text ?? null, lastMaya: s.turns.filter((t) => t.speaker === "maya").at(-1)?.text, heardAsked: s.heardAsked != null,
+  pkg: s.package, text: s.turn?.text ?? null, heardAsked: s.heardAsked != null, wordAsked: s.wordAsked ?? null,
 });
 
 /**
@@ -2453,7 +2458,7 @@ const boardTexts = (board: unknown[], only?: "text" | "value") =>
 function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
   const pkg = s.package!;
   // A claim's answer is a word (claim.ts); its result is a step, not the answer.
-  if (sessionClaim(pkg)) return claimReveals(pkg, p.act, texts);
+  if (sessionClaim(pkg)) return claimReveals(pkg, p.act, texts, claimSaid(claimTurn(s)));
   const answer = pkg.answer.value;
   const ownNumber = operandValues(pkg.operation).some((v) => equivalent(v, answer));
   // An equal form the child said (14/16 for 7/8, #407) gives nothing away when Maya says it back; the answer's own
@@ -2760,8 +2765,9 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       // A claim question whose word Maya may not give (claim.ts) closes as worked together.
       return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : sessionClaim(pkg) ? l.closeSolved("maya") : [];
     case "confirm": {
-      // A claim's word said unsure, or both words: which word the child circles (claim.ts).
-      if (claimUnclear(claimTurn(s))) return l.which();
+      // A claim's word said unsure or with both words: which word the child circles; a bare word: said back (claim.ts).
+      const word = claimConfirm(claimTurn(s));
+      if (word) return word.kind === "which" ? l.which() : l.said(word.word);
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));
       return heard.length > 0 ? heard : l.answerOnly();

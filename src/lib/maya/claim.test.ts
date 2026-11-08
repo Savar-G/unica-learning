@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { allLineTexts, createSession, heldReason, lineOffers, step, type Session } from "@/lib/maya";
-import { askedClaim, claimActs, claimReveals, claimView, readClaimWord } from "@/lib/maya/claim";
+import { claimActs, claimReveals, claimView, readClaimWord } from "@/lib/maya/claim";
 import { packageLines } from "@/lib/maya/lines";
 import { CLAIM_TRUE_FALSE } from "@/lib/maya-gate/claim-fixtures";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
@@ -11,50 +11,39 @@ const YN = ["yes", "no"] as const;
 
 describe("reading the circled word (A4): an allow-list over the whole turn", () => {
   it.each([
-    // Bare words, after Maya's claim question only.
-    ["True.", TF, true, { word: "true", committed: false }],
-    ["false!", TF, true, { word: "false", committed: false }],
-    ["Yeah.", YN, true, { word: "yes", committed: false }],
-    ["Nope.", YN, true, { word: "no", committed: false }],
-    ["No, 1440 is less than 1450.", YN, true, { word: "no", committed: false }],
-    ["Yes, because 1440 is more.", YN, true, { word: "yes", committed: false }],
-    ["True.", TF, false, null],
-    ["No.", YN, false, null],
-    // Committed forms, after any turn of Maya's.
-    ["It's true.", TF, false, { word: "true", committed: true }],
-    ["I circle no.", YN, false, { word: "no", committed: true }],
-    ["The answer is yes.", YN, false, { word: "yes", committed: true }],
-    ["It's false, because 3.45 plus 2.38 is 5.83.", TF, false, { word: "false", committed: true }],
-    ["6 times 8 is 48, so it's true.", TF, false, { word: "true", committed: true }],
-    ["Um, it is no.", YN, false, { word: "no", committed: true }],
+    // Bare words: never the claim's answer (controller rule 4). Maya says the word back before it counts.
+    ["True.", TF, { word: "true", committed: false }],
+    ["false!", TF, { word: "false", committed: false }],
+    ["Yeah.", YN, { word: "yes", committed: false }],
+    ["Nope.", YN, { word: "no", committed: false }],
+    ["No, 1440 is less than 1450.", YN, { word: "no", committed: false }],
+    ["Yes, because 1440 is more.", YN, { word: "yes", committed: false }],
+    // Committed forms.
+    ["It's true.", TF, { word: "true", committed: true }],
+    ["I circle no.", YN, { word: "no", committed: true }],
+    ["The answer is yes.", YN, { word: "yes", committed: true }],
+    ["It's false, because 3.45 plus 2.38 is 5.83.", TF, { word: "false", committed: true }],
+    ["6 times 8 is 48, so it's true.", TF, { word: "true", committed: true }],
+    ["Um, it is no.", YN, { word: "no", committed: true }],
     // Unsure, or both words: Maya asks which word.
-    ["Maybe true?", TF, true, { unclear: true }],
-    ["true?", TF, true, { unclear: true }],
-    ["Maybe yes.", YN, true, { unclear: true }],
-    ["I think it's true.", TF, true, { unclear: true }],
-    ["It's not true.", TF, true, { unclear: true }],
-    ["true and false", TF, true, { unclear: true }],
-    ["True or false.", TF, true, { unclear: true }],
-    ["Yes, it's true.", TF, true, { unclear: true }],
+    ["Maybe true?", TF, { unclear: true }],
+    ["true?", TF, { unclear: true }],
+    ["Maybe yes.", YN, { unclear: true }],
+    ["I think it's true.", TF, { unclear: true }],
+    ["It's not true.", TF, { unclear: true }],
+    ["true and false", TF, { unclear: true }],
+    ["True or false.", TF, { unclear: true }],
+    ["Yes, it's true.", TF, { unclear: true }],
     // No answer at all, or a word that is not one of the two.
-    ["No idea.", YN, true, null],
-    ["I don't know.", YN, true, null],
-    ["Yes.", TF, true, null],
-    ["It's right.", YN, true, null],
-    ["Yes, it is not greater.", YN, true, null],
-    ["No, I want to stop.", YN, true, null],
-    ["48.", TF, true, null],
-  ] as const)("%j (%j, asked %s)", (text, choices, asked, want) => {
-    expect(readClaimWord(text, choices, asked)).toEqual(want);
-  });
-
-  it("knows Maya's claim question by its end: the two printed words", () => {
-    expect(askedClaim("Now we can check it. Is 6 × 8 = 48 true or false?", TF)).toBe(true);
-    expect(askedClaim("Is 360 × 4 greater than 1436? Circle yes or no.", YN)).toBe(true);
-    expect(askedClaim("Which word do you circle: yes or no?", YN)).toBe(true);
-    expect(askedClaim("Did you say 1440?", YN)).toBe(false);
-    expect(askedClaim("Yes! 6 × 8 = 48. What do you get for 6 × 8?", YN)).toBe(false);
-    expect(askedClaim(undefined, YN)).toBe(false);
+    ["No idea.", YN, null],
+    ["I don't know.", YN, null],
+    ["Yes.", TF, null],
+    ["It's right.", YN, null],
+    ["Yes, it is not greater.", YN, null],
+    ["No, I want to stop.", YN, null],
+    ["48.", TF, null],
+  ] as const)("%j (%j)", (text, choices, want) => {
+    expect(readClaimWord(text, choices)).toEqual(want);
   });
 });
 
@@ -111,6 +100,8 @@ describe("a claim question's session (A4)", () => {
     const l = packageLines(claimView(FIXTURES.CLAIM_GT as OperationPackage));
     expect(l.question()[0].texts[0]).toBe("4 × 360 is the same as 360 × 4. Let's work out 360 × 4 first.");
     expect(l.help("result")[0].texts[0]).toBe("Is 360 × 4 greater than 1436? Circle yes or no.");
+    // "Yes!" about a step could sound like the answer of a yes/no claim.
+    for (const id of l.stepIds) for (const t of l.rightStep(id)[0].texts) expect(t).not.toMatch(/^yes\b/i);
   });
 
   /** A call opened with the hello and the question's first line. */
@@ -135,9 +126,27 @@ describe("a claim question's session (A4)", () => {
     expect(lineOffers(unsure).confirm?.[0].texts[0]).toBe("Which word do you circle: true or false?");
   });
 
-  it("does not take a bare word as the answer before Maya asks the claim", () => {
-    const s = step(opened(tf), { type: "child_turn", at: 2, text: "True." }).session;
-    const r = step(s, { type: "proposal", at: 3, proposal: { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }] } });
-    expect(r.refusal?.code).toBe("accepts_wrong_answer");
+  it("never takes a bare word as the answer: Maya says it back, and a plain yes to that commits it", () => {
+    const accept = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }] };
+    const bare = step(opened(tf), { type: "child_turn", at: 2, text: "True." }).session;
+    expect(step(bare, { type: "proposal", at: 3, proposal: accept }).refusal?.code).toBe("accepts_wrong_answer");
+    expect(lineOffers(bare).confirm?.map((o) => [o.line, o.slots.heard])).toEqual([["confirm.word", "true"]]);
+    expect(lineOffers(bare).confirm?.[0].texts[0]).toBe("You said true. Is true the word you circle?");
+    const asked = step(bare, { type: "proposal", at: 3, proposal: { version: 2, act: "confirm", parts: [{ line: "confirm.word", slots: { heard: "true" } }] } });
+    expect(asked.refusal).toBeNull();
+    expect(asked.session.wordAsked).toBe("true");
+    const yes = step(asked.session, { type: "child_turn", at: 4, text: "Yes." }).session;
+    const r = step(yes, { type: "proposal", at: 5, proposal: accept });
+    expect(r.refusal).toBeNull();
+    expect(r.session.solved).toBe("child");
+    expect(r.session.wordAsked).toBeUndefined();
+  });
+
+  it("does not take a plain yes to 'Did you say ...?', or a yes after another act, as the claim's word", () => {
+    const gt = FIXTURES.CLAIM_GT as OperationPackage;
+    const accept = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }] };
+    // No confirm before it: "Yes." is a bare word, not an answer.
+    const yes = step(opened(gt), { type: "child_turn", at: 2, text: "Yes." }).session;
+    expect(step(yes, { type: "proposal", at: 3, proposal: accept }).refusal?.code).toBe("accepts_wrong_answer");
   });
 });

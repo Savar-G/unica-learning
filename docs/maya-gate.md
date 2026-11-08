@@ -306,15 +306,17 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |
 | P5c | A | passing | Numeric work after an answer requires confirmation | checked answer retained | |
 | P5d | A | passing | The child already wrote the answer | checked answer | |
-| CL01 | CLAIM_TF | passing | True/false product claim worked step by step: the result, then the circled word | solved, independent | |
+| CL01 | CLAIM_TF | passing | True/false product claim worked step by step; a bare 'True.' is said back, and the plain yes to that commits it | solved, independent | |
 | CL02 | CLAIM_GT | passing | Yes/no 'greater than' claim answered at once with a reason: accepted, circled, closed | solved, independent | |
 | CL03 | CLAIM_DEC | passing | Decimal-add claim: the wrong word is not accepted; the right word with its reason is | solved, hint | |
-| CL04 | CLAIM_TF | passing | 'Maybe true?' is unclear: Maya asks which word, then accepts the word alone | solved | |
+| CL04 | CLAIM_TF | passing | 'Maybe true?' is unclear: Maya asks which word, then accepts the committed word | solved | |
 | CL05 | CLAIM_GT | passing | A plain yes to 'Did you say 1440?' answers that question, not the claim | solved | |
+| CL06 | CLAIM_TF | passing | The result in the child's own words is acknowledged once; a question about the step gets code's help line | solved, hint | |
+| CL07 | CLAIM_GT | passing | A bare 'Yes.' is said back; the child's 'No.' answers that question, not the claim | solved | |
 
 ### Claim questions (A4)
 
-A claim question ("True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436? Circle yes or no.") is judged as its session teaches it (`claimView` in `src/lib/maya/claim.ts`): the operation's steps, the compare step `claim`, and the circled word as the answer. Code reads the word with the claim reader's allow-list; the scripted model reads only the numbers. An accepted word must be the word the claim gives, read from the child's turn: a committed form ("It's yes, because ...") after any turn, a bare word only after Maya's claim question. A plain yes to "Did you say 1440?" is never the word (CL05). Before the word is released, no Maya turn but the easier example may say "circle", "it's" or "the answer is" with the word (`answer_too_early`). No claim call gives the word (`give_answer`).
+A claim question ("True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436? Circle yes or no.") is judged as its session teaches it (`claimView` in `src/lib/maya/claim.ts`): the operation's steps, the compare step `claim`, and the circled word as the answer. Code reads the word with the claim reader's allow-list; the scripted model reads only the numbers. An accepted word must be the word the claim gives, in a committed form ("It's yes, because ..."). A bare word after any Maya question is never the answer (controller rule 4): Maya says it back ("You said true. Is true the word you circle?"), and only a plain yes to that commits it (CL01). A plain yes to "Did you say 1440?" is never the word (CL05), and a "No." to the said-back question is not the word "no" (CL07). Before the word is released, no Maya turn but the easier example may say "circle", "it's" or "the answer is" with the word (`answer_too_early`). No claim call gives the word (`give_answer`).
 
 ## Pending
 

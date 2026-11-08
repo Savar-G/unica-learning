@@ -35,7 +35,7 @@ import {
 } from "@/lib/maya";
 import { gateWordCount } from "./word-count";
 import { packageLines, TEMPLATES } from "@/lib/maya/lines";
-import { claimFinal, claimView } from "@/lib/maya/claim";
+import { claimFinal, claimSaid, claimView } from "@/lib/maya/claim";
 import { FLAG_LEVELS, UNSAFE_REQUEST_FLAG, type AlertState, type AlertStatus, type CallFlag, type CallStatus, type FlagLevel } from "@/lib/maya-call";
 import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
 import { fakeTalkReviewer, type TalkReviewer } from "@/lib/maya-talk-review";
@@ -701,9 +701,8 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
 
   // 3. Accepting an answer: the child said it in the turn Maya answers, and code checks it right.
   let lastChild = "";
-  /** Maya's words in her last turn that reached the child: a claim's bare word answers only her claim question. */
-  let lastMaya: string | undefined;
-  let mayaBefore: string | undefined;
+  /** A claim's bare word Maya's last accepted turn said back ("Is no the word you circle?"): a plain yes commits it. */
+  let askedWord: string | null = null;
   let released = false;
   /** The one number Maya's last accepted turn asked about ("Did you say 66?"): a plain yes gives it (#605). */
   let askedHeard: AnswerValue | null = null;
@@ -726,7 +725,6 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   for (const [i, turn] of t.turns.entries()) {
     if (turn.kind === "child") {
       lastChild = turn.text;
-      mayaBefore = lastMaya;
       childSaid.push(...valuesIn(turn.text, opts));
       childSince = true;
       continue;
@@ -744,8 +742,9 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       // worded (#407: an equal fraction when the question does not ask for the simplest form).
       const read = readAnswer(lastChild, opts);
       const yes = askedHeard !== null && GATE_YES.test(lastChild) ? askedHeard : null;
-      // A claim's circled word, by the claim reader's allow-list (a plain yes to "Did you say ...?" is never one).
-      const word = yes === null ? claimFinal(op, lastChild, mayaBefore, askedHeard !== null) : null;
+      // A claim's committed word, by the claim reader's allow-list: a bare word is never one, a plain yes to "Did you say
+      // ...?" never, and a plain yes to "Is no the word you circle?" commits that word.
+      const word = yes === null ? claimFinal(op, lastChild, askedWord, askedHeard !== null) : null;
       const final = yes ?? word ?? read.final;
       if (!final || (yes === null && word === null && !read.sure) || !rightForQuestion(op, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
     }
@@ -790,7 +789,8 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     }
     // A claim's word (A4) is said only after it is released: never "circle no" or "it's no" before. Naming both words in the
     // claim's question ("Circle yes or no.") gives nothing away, and the easier example circles its own word.
-    if (!released && answer?.type === "choice" && act !== "example_step") {
+    const saidWord = answer?.type === "choice" && op ? claimSaid({ pkg: op, text: lastChild, heardAsked: false, wordAsked: null }) : null;
+    if (!released && answer?.type === "choice" && act !== "example_step" && !(act === "confirm" && saidWord === answer.value)) {
       const said = new RegExp(`\\b(?:circle|answer is|it'?s|it is|so it'?s)\\s+${answer.value}\\b(?!\\s+or\\b)`, "i");
       if (said.test(turn.output.say.join(" "))) fail("answer_too_early", `Maya turn ${i} said the claim's word before it was released`);
     }
@@ -810,7 +810,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     const parts = (accepted(turn)?.proposal as { parts?: { line?: string; slots?: { heard?: string | null } | null }[] } | null)?.parts ?? [];
     const asked = act === "confirm" ? parts.filter((x) => x.line === "confirm.heard" || x.line === "confirm.which") : [];
     askedHeard = asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots?.heard ? valuesIn(asked[0].slots.heard, opts)[0] ?? null : null;
-    lastMaya = turn.output.say.join(" ");
+    askedWord = act === "confirm" ? (parts.find((x) => x.line === "confirm.word")?.slots?.heard ?? null) : null;
   }
 
   // 3a. Maya's own repeats (#605): an equation said twice in one turn, or one carry's regroup line more than twice.
