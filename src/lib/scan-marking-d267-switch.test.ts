@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import publicEvidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
-import type { ComparisonFormat, ComparisonPhoto, ComparisonResult, EndpointSnapshot } from "@/lib/scan-marking-comparison";
+import type { ComparisonFormat, ComparisonManifest, ComparisonPhoto, ComparisonResult, EndpointSnapshot } from "@/lib/scan-marking-comparison";
 import type { QuestionPackage } from "@/lib/question-package";
 
 async function withSwitch(on: boolean) {
@@ -33,8 +33,8 @@ async function score(on: boolean) {
   const result = { run: m.hashBytes("run"), model: model.model, photo: id, status: "complete", failure: null, schemaValid: true,
     attempts: [{ id: m.hashBytes(id), latencyMs: 100, error: null, usage: { generationId: "gen", provider: model.providerName, model: model.model, costMicros: 1000, inputTokens: 4000, outputTokens: 100, reasoningTokens: 0, imageTokens: 2000 } }],
     observations, requestHash: m.hashValue(m.markingRequest(photo.frame, new Uint8Array())), photoHash: photo.image.sha256, evidenceHash: m.hashValue(evidence) } as unknown as ComparisonResult;
-  const manifest = { version: 1, synthetic: true, identity: { name: "Robin", madeUp: true, containsRealData: false, profileSource: "sampleChild/samplePlanInput" },
-    source: { synthetic: true, draftSha256: m.hashBytes("d"), renderSha256: m.hashBytes("r"), fixtureSha256: m.hashBytes("f") }, photos: [photo] } as const;
+  const manifest: ComparisonManifest = { version: 1, synthetic: true, identity: { name: "Robin", madeUp: true, containsRealData: false, profileSource: "sampleChild/samplePlanInput" },
+    source: { synthetic: true, draftSha256: m.hashBytes("d"), renderSha256: m.hashBytes("r"), fixtureSha256: m.hashBytes("f") }, photos: [photo] };
   return { report: m.scoreComparison(manifest, model, [result], evidence), line: m.teamLine(m.teamItemsOf([photo])) };
 }
 
