@@ -331,6 +331,11 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN2b | M_TRY | passing | 236 × ? = 1416, stuck: the try hint at H1, the rounding hint at H2, then 6 is accepted | solved, hint | |
 | MN2c | M_TRY | passing | 236 × ? = 1416, '236 times 6 is 1416': the try step is heard on the whole turn and said back without the number (it is the answer), then the final answer is asked and 6 accepted | solved, independent | |
 | MN1b | M_DIVIDE | passing | 30 × ? = 1620, 'Why do I divide?': the framing line says why (30 times the missing number makes 1620), then 54 is accepted | solved, independent | |
+| MN1c | M_DIVIDE | passing | 30 × ? = 1620, 'I'm stuck.': the first hint (H1) starts with the framing, 'The missing number is 1620 ÷ 30. That is 162 ÷ 3.', then 54 is accepted | solved, hint | |
+| MN2d | M_TRY | passing | 236 × ? = 1416, 'Why do I try numbers?': code's answer (multiplying is easier than dividing by 236), then 6 is accepted | solved, hint | |
+| MN4 | M_TRY | passing | 236 × ? = 1416, '236 times 5 is 1180.' then '236 times 7 is 1652.': each try is in scope and multiplied out, then 6 is accepted | solved, independent | |
+| MN5 | M_DIVIDE | passing | 30 × ? = 1620, '1620 divided by 30 is 54.' is accepted, and '30 times 54 is 1620.' is a check of it, not an outside request | solved, independent | |
+| MN6 | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '9000 minus 6000 is 3000.' is a check of it, not an outside request | solved, independent | |
 | MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
 
 ## Pending

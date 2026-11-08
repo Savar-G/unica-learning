@@ -79,7 +79,8 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
       outputs: [
-        { mayaTurn: 1, lines: [variants(trial.help("try"), "trial.point")] },
+        // The first hint carries the framing (Maya has not said it yet); the next one does not repeat it.
+        { mayaTurn: 1, lines: [variants(trial.help("try", true), "trial.point")] },
         { mayaTurn: 2, lines: [variants(trial.help("try"), "trial.round")] },
       ],
       never: ["give_answer"],
@@ -121,6 +122,104 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
       outputs: [{ mayaTurn: 1, lines: [variants(divide.help(divide.stepIds[0]), "invite.frame.zeros")] }],
       never: ["give_answer", "example_step"],
+    },
+  },
+  {
+    // P2 (review of #732): a child who starts stuck gets H1 first; that hint carries the framing and the zeros, so
+    // 162 ÷ 3 is never said before 1620 ÷ 30 is.
+    id: "MN1c",
+    title: "30 × ? = 1620, 'I'm stuck.': the first hint (H1) starts with the framing, 'The missing number is 1620 ÷ 30. That is 162 ÷ 3.', then 54 is accepted",
+    fixture: "M_DIVIDE",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("162 divided by 3 is 54.", { answers: [[54, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 1, lines: [variants(divide.help(divide.stepIds[0], true), "point.divide.first")] }],
+      never: ["give_answer", "example_step", "redirect"],
+    },
+  },
+  {
+    // J06 (b): a question about the current step gets code's answer (step.why), not the invite again.
+    id: "MN2d",
+    title: "236 × ? = 1416, 'Why do I try numbers?': code's answer (multiplying is easier than dividing by 236), then 6 is accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("Why do I try numbers?", { start: "has_work", help: "more" }, [{ act: "guide", level: 1, lines: ["step.why"] }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 1, lines: [variants(trial.help("try", true), "trial.why")] }],
+      never: ["give_answer", "example_step", "redirect"],
+    },
+  },
+  {
+    // P1 (review of #732): the child's own tries are work on the question, never an outside request.
+    id: "MN4",
+    title: "236 × ? = 1416, '236 times 5 is 1180.' then '236 times 7 is 1652.': each try is in scope and multiplied out, then 6 is accepted",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("236 times 5 is 1180.", { start: "has_work", answers: [[5, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "5" }]),
+      child("236 times 7 is 1652.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 0, lines: ["check.not_yet"], heard: "7" }]),
+      child("6.", { answers: [[6, "result", "right"]] }),
+      ...wrote,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [
+        { mayaTurn: 1, lines: [trial.notYet("try").filter((o) => o.slots.heard === "5").flatMap((o) => o.texts)] },
+        { mayaTurn: 2, lines: [trial.notYet("try").filter((o) => o.slots.heard === "7").flatMap((o) => o.texts)] },
+      ],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // P1: the framing's operation and its check are the question's own math.
+    id: "MN5",
+    title: "30 × ? = 1620, '1620 divided by 30 is 54.' is accepted, and '30 times 54 is 1620.' is a check of it, not an outside request",
+    fixture: "M_DIVIDE",
+    status: "passing",
+    steps: [
+      child("1620 divided by 30 is 54.", { start: "has_work", answers: [[54, "result", "right"]] }),
+      child("30 times 54 is 1620.", undefined, [{ act: "ask_write", understanding: "uncertain" }]),
+      child("I wrote it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // P1: a subtraction's check is the question's own math.
+    id: "MN6",
+    title: "9000 − ? = 3000, 'I got 6000.' is accepted, and '9000 minus 6000 is 3000.' is a check of it, not an outside request",
+    fixture: "M_SUBTRACT",
+    status: "passing",
+    steps: [
+      child("I got 6000.", { start: "has_work", answers: [[6000, "result", "right"]] }),
+      child("9000 minus 6000 is 3000.", undefined, [{ act: "ask_write", understanding: "uncertain" }]),
+      child("I wrote it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer", "redirect"],
     },
   },
   {
