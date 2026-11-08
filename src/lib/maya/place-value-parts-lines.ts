@@ -182,7 +182,7 @@ export function placePartsLines(pkg: OperationPackage & { operation: PartsOperat
     notYet,
     explain: () => [],
     // The honest close (brief lesson 10): hard, fine to stop, one next step; never the answer.
-    closeUnsolved: (): LineOffer[] => [offer("close.together", "close.hard", {})],
+    closeUnsolved: (): LineOffer[] => [offer("close.honest", "close.hard", {})],
     answerRight: (): LineOffer[] => [offer("answer.right", answerKey, { ...vars, word: answerWord })],
     stepIds: steps.map((s) => s.id),
   };

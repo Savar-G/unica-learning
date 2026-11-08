@@ -37,7 +37,7 @@ import { CLAIM_TEMPLATES, claimLines, claimShow, claimView } from "./claim";
  * step.order; check.not_yet never praises wrong work.
  * Version 11 (#605): a held question invites another question on the page, without an inability claim.
  * Version 13: answer-only clarification and checked regroup explanations from full practice.
- * Version 14 (A4): claim questions (claim.ts): confirm.claim, confirm.word, and the claim wordings of existing lines.
+ * Version 14 (A4): claim questions (claim.ts): confirm.claim, confirm.word, close.honest, and the claim wordings of existing lines.
  * Version 15 (B1a, B1b): place value (place-value-lines.ts): chart.open, and the place-value templates of the shared ids.
  */
 export const LINES_VERSION = 15;
@@ -85,6 +85,7 @@ export const LINE_IDS = [
   "redirect.workbook",
   "close.solved",
   "close.together",
+  "close.honest",
   "repair.sorry",
   "held.hello",
   "held.next",
@@ -907,6 +908,8 @@ function sharedLines(pkg: OperationPackage) {
     writeYours: (): LineOffer[] => claim?.writeYours() ?? [offer("write.yours", "write.yours", {})],
     /** A claim's word the child said unsure, or both words: "Which word do you circle: true or false?" (claim.ts). */
     which: (): LineOffer[] => claim?.which() ?? [],
+    /** A claim question's honest close (claim.ts): no answer, one next step. */
+    honestClose: (): LineOffer[] => claim?.honestClose() ?? [],
     /** A claim's bare word said back: "You said true. Is true the word you circle?" (claim.ts). */
     said: (word: string): LineOffer[] => claim?.said(word) ?? [],
     /** "Did you say 15?" for each number Maya may have heard, and "15 or 50?" for each pair that sound alike. */
@@ -975,7 +978,7 @@ export function allLineTexts(raw: OperationPackage, heardValues: readonly Answer
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeUnsolved(), ...l.repair(),
-    ...l.together(), ...l.guess(), ...l.which(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
+    ...l.together(), ...l.guess(), ...l.which(), ...l.honestClose(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];
   return [...new Set([...offers, ...offers.map(spokenOffer), ...extra].flatMap((o) => o.texts.map(sentence)))];
