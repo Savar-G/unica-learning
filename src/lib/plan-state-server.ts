@@ -4,7 +4,7 @@ import type Stripe from "stripe";
 import type { PlanReadRows } from "@/lib/card-reconcile";
 import type { Database } from "@/lib/database";
 import { customerPlan } from "@/lib/parent-plan-server";
-import { PLAN_READ_KINDS, planColumns, planFromColumns, type PlanOwner, type PlanProvider, type PlanSave, type PlanStates, type PlanStateStore } from "@/lib/plan-state";
+import { PLAN_READ_KINDS, PLAN_START_READ_KINDS, planColumns, planFromColumns, type PlanOwner, type PlanProvider, type PlanRead, type PlanSave, type PlanStates, type PlanStateStore } from "@/lib/plan-state";
 import { stripe } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 
@@ -74,17 +74,29 @@ export function supabasePlanStore(db: SupabaseClient<Database>): PlanStateStore 
   };
 }
 
-/** The daily re-read's rows, through the service-only functions of migration plan_state_reread. */
+/**
+ * The daily re-read's rows, through the service-only functions of migrations plan_state_reread and plan_start_reread. The rows of a start
+ * that the plan state does not show yet come first: a family is locked out of a plan it pays for. Both lists are short (#713).
+ */
 export function supabasePlanReads(db: SupabaseClient<Database>): PlanReadRows {
   return {
     async duePlanReads(limit) {
-      const { data, error } = await db.rpc("due_plan_reads", { p_limit: limit });
+      const starts = await db.rpc("due_plan_start_reads", { p_limit: limit });
+      if (starts.error) throw new Error(`Plan start re-read rows failed: ${starts.error.message}`);
+      const startRows = starts.data.map((row): PlanRead => {
+        // A child with no row has kind null; the generated type does not say so.
+        const kind = row.kind === null ? null : PLAN_START_READ_KINDS.find((k) => k === row.kind);
+        if (kind === undefined) throw new Error("Plan start re-read row unreadable");
+        return { parentId: row.parent_id, childId: row.child_id, customer: row.customer, kind, eventAt: row.event_at };
+      });
+      if (startRows.length >= limit) return startRows.slice(0, limit);
+      const { data, error } = await db.rpc("due_plan_reads", { p_limit: limit - startRows.length });
       if (error) throw new Error(`Plan re-read rows failed: ${error.message}`);
-      return data.map((row) => {
+      return [...startRows, ...data.map((row): PlanRead => {
         const kind = PLAN_READ_KINDS.find((k) => k === row.kind);
         if (!kind) throw new Error("Plan re-read row unreadable");
         return { parentId: row.parent_id, childId: row.child_id, customer: row.customer, kind, eventAt: row.event_at };
-      });
+      })];
     },
     async notePlanReadTried(childId) {
       const { error } = await db.rpc("note_plan_read_tried", { p_child: childId });

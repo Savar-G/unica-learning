@@ -61,8 +61,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
 }
 
 /**
- * The plan has started, so a failed write must not read as a failed start. After a failed write the webhook is the fallback: the re-read does not
- * take `not_started` rows, and the card sweep writes plan state only when it closes an open start itself. A load of the Account tab fills only a missing row.
+ * The plan has started, so a failed write must not read as a failed start. After a failed write, the webhook or the next run of the daily
+ * re-read writes the row: the re-read takes a child whose newest plan start is `started` while its row is missing, `not_started` or `ended`
+ * (#713, PLAN_START_READ_KINDS in src/lib/plan-state.ts). The admin card says that access is not open yet (StartPlan).
  */
 async function openAccess(start: Parameters<typeof applyPlanStart>[0]): Promise<"open" | "pending"> {
   try {

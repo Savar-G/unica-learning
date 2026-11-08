@@ -5,8 +5,8 @@ vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
 import { sweepPlanReads, type SweepTime } from "@/lib/card-reconcile";
 import type { Database } from "@/lib/database";
 import type { KnownPlan, PlanSubscription } from "@/lib/parent-plan";
-import { childPlanAccess, familyHasPlanHistory } from "@/lib/plan-access";
-import { applyPlanEvent, PLAN_READ_KINDS, planColumns, planReadMayStore, rereadPlan, type PlanRead } from "@/lib/plan-state";
+import { childPlanAccess, familyHasPlanHistory, planAccessRule } from "@/lib/plan-access";
+import { applyPlanEvent, applyPlanStart, PLAN_READ_KINDS, PLAN_START_READ_KINDS, planColumns, planReadMayStore, readChildPlan, rereadPlan, type PlanRead } from "@/lib/plan-state";
 import { memoryPlanStates } from "@/lib/plan-state-memory";
 
 // What this proves: which rows the re-read takes and in what order (the database's rule, also in supabase/tests/child_plan_states.sql),
@@ -357,5 +357,191 @@ describe("a closed row, with no webhook", () => {
     states.subscriptions.cus_a = [];
     expect(await sweepPlanReads(states.reads, states, time())).toMatchObject({ read: 1, changed: 1, unclear: 0 });
     expect(states.rows[0].plan.kind).toBe("not_started");
+  });
+});
+
+describe("a started plan whose plan state write failed, with the webhook lost too (#713)", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const firstCharge = "2027-01-01T00:00:00.000Z";
+  const key = { parentId: "p-a", childId: "a" };
+  /** One family, card a, no row, no start yet. The database's clock is `clock`. */
+  const family = (subscriptions: PlanSubscription[] = []) => {
+    let clock = NOW;
+    const states = memoryPlanStates({ cards: [{ ...key, customer: "cus_a", cardSaved: true }], subscriptions: { cus_a: subscriptions }, now: () => clock });
+    return { states, tick: (ms: number) => { clock += ms; }, at: () => clock };
+  };
+  type Family = ReturnType<typeof family>;
+  /** A start as startPlan leaves it: the record is `started`, and the plan state write after it failed. No event ever arrives. */
+  const lostStart = async ({ states, at }: Family, plan: PlanSubscription[], generation = 1) => {
+    states.subscriptions.cus_a = plan;
+    states.starts.push({ childId: "a", generation, state: "started", finishedAt: at() });
+    states.fail.save = new Error("Database down");
+    await expect(applyPlanStart({ customer: "cus_a", cardSetup: "card-a", generation, startedAt: at() - 1000 }, states)).rejects.toThrow("Database down");
+    delete states.fail.save;
+  };
+  const gate = async ({ states }: Family) => planAccessRule(await readChildPlan(key, states.store), NOW);
+  const row = ({ states }: Family) => states.rows.find((r) => r.childId === "a");
+
+  describe("what a read may store on a row a start backs", () => {
+    // [answer, row not_started, row ended, no row]
+    const TABLE: [KnownPlan, boolean, boolean, boolean, string][] = [
+      [{ kind: "free_month", firstCharge, monthly: 79.99 }, true, true, true, "the free month is what a new start makes"],
+      [{ kind: "paying", nextCharge: firstCharge, monthly: 79.99 }, true, true, true, "a Restart is paid at once"],
+      [{ kind: "ending", endsOn: firstCharge, free: true }, true, true, true, "the started free month, set to end by the parent: Stripe still runs it"],
+      [{ kind: "ending", endsOn: firstCharge, free: false }, true, true, true, "a paid plan running to its period's end"],
+      [{ kind: "payment_failed" }, true, true, true, "stays closed, with the reason Stripe gives"],
+      [{ kind: "paused", resumesOn: firstCharge, monthly: 79.99 }, true, true, true, "stays closed, with the reason Stripe gives"],
+      [{ kind: "ended" }, true, true, true, "the started plan has ended: stays closed"],
+      [{ kind: "not_started" }, false, false, true, "an empty list contradicts the start record; with no row it is what a fill stores, and closed either way"],
+    ];
+    it.each(TABLE)("%j: not_started %s, ended %s, no row %s (%s)", (plan, notStarted, ended, none) => {
+      expect(planReadMayStore("not_started", plan)).toBe(notStarted);
+      expect(planReadMayStore("ended", plan)).toBe(ended);
+      expect(planReadMayStore(null, plan)).toBe(none);
+    });
+    it("covers every kind Stripe can answer, and the closed rows keep their rule", () => {
+      expect(new Set(TABLE.map(([p]) => p.kind))).toEqual(new Set(["paying", "ending", "payment_failed", "paused", "ended", "free_month", "not_started"]));
+      expect(planReadMayStore("payment_failed", { kind: "free_month", firstCharge, monthly: 79.99 })).toBe(false);
+      expect(planReadMayStore("paused", { kind: "ending", endsOn: firstCharge, free: true })).toBe(false);
+      expect([...PLAN_START_READ_KINDS].sort()).toEqual(["ended", "not_started"]);
+    });
+  });
+
+  it("an admin start on a child with no row: one re-read stores the free month, and the gate opens", async () => {
+    const f = family();
+    await lostStart(f, [trial]);
+    expect(row(f)).toBeUndefined();
+    expect((await gate(f)).open).toBe(false);
+    const due = await f.states.reads.duePlanReads(100);
+    expect(due).toEqual([{ ...key, customer: "cus_a", kind: null, eventAt: null }]);
+    expect(await sweepPlanReads(f.states.reads, f.states, time())).toEqual({ due: 1, read: 1, changed: 1, unclear: 0, failed: 0, outOfTime: false });
+    expect(row(f)).toMatchObject({ plan: { kind: "free_month" }, eventAt: new Date(0).toISOString() });
+    expect(await gate(f)).toEqual({ open: true, reason: "open" });
+    expect(await f.states.reads.duePlanReads(100)).toEqual([]);
+  });
+
+  it("an admin start on a not_started row: one re-read opens it", async () => {
+    const f = family();
+    await f.states.store.save("cus_a", { plan: { kind: "not_started" }, eventAt: null, eventId: null, readOrder: await f.states.store.takeReadOrder() });
+    f.tick(60_000);
+    await lostStart(f, [trial]);
+    expect(row(f)?.plan.kind).toBe("not_started");
+    expect(await sweepPlanReads(f.states.reads, f.states, time())).toMatchObject({ due: 1, read: 1, changed: 1, unclear: 0 });
+    expect(row(f)?.plan.kind).toBe("free_month");
+    expect(await gate(f)).toEqual({ open: true, reason: "open" });
+  });
+
+  it("a Restart on an ended row: one re-read stores paying and keeps the row's event time, and the gate opens", async () => {
+    const f = family([over]);
+    await applyPlanEvent({ id: "evt_end", type: "customer.subscription.deleted", created: 1_760_000_000, customer: "cus_a" }, f.states);
+    f.states.starts.push({ childId: "a", generation: 1, state: "started", finishedAt: f.at() - 40 * DAY });
+    f.tick(2 * DAY);
+    await lostStart(f, [over, { ...active, created: 1_800_000_000 }], 2);
+    expect(row(f)?.plan.kind).toBe("ended");
+    expect((await gate(f)).open).toBe(false);
+    expect(await f.states.reads.duePlanReads(100)).toMatchObject([{ kind: "ended", eventAt: new Date(1_760_000_000_000).toISOString() }]);
+    expect(await sweepPlanReads(f.states.reads, f.states, time())).toMatchObject({ due: 1, read: 1, changed: 1, unclear: 0 });
+    expect(row(f)).toMatchObject({ plan: { kind: "paying" }, eventAt: new Date(1_760_000_000_000).toISOString() });
+    expect(await gate(f)).toEqual({ open: true, reason: "open" });
+  });
+
+  it("Stripe not answering changes nothing, and the child stays due", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = family([over]);
+    await applyPlanEvent({ id: "evt_end", type: "customer.subscription.deleted", created: 1_760_000_000, customer: "cus_a" }, f.states);
+    f.tick(60_000);
+    await lostStart(f, [active]);
+    const before = { ...row(f)! }, writes = f.states.writes;
+    f.states.fail.plan = new Error("Stripe down");
+    expect(await sweepPlanReads(f.states.reads, f.states, time())).toEqual({ due: 1, read: 0, changed: 0, unclear: 0, failed: 1, outOfTime: false });
+    expect(row(f)).toEqual(before);
+    expect(f.states.writes).toBe(writes);
+    expect((await gate(f)).open).toBe(false);
+    expect(await f.states.reads.duePlanReads(100)).toHaveLength(1);
+    // With no row, too.
+    const none = family();
+    await lostStart(none, [trial]);
+    none.states.fail.plan = new Error("Stripe down");
+    expect(await sweepPlanReads(none.states.reads, none.states, time())).toMatchObject({ read: 0, failed: 1 });
+    expect(none.states.rows).toEqual([]);
+    expect(await none.states.reads.duePlanReads(100)).toHaveLength(1);
+  });
+
+  it("a newer webhook is never overwritten: the event takes after the read and saves first", async () => {
+    const f = family();
+    await lostStart(f, [trial]);
+    const [due] = await f.states.reads.duePlanReads(1);
+    const hold = f.states.hold("plan");
+    const read = rereadPlan(due, f.states);
+    await hold.reached;
+    f.states.subscriptions.cus_a = [active];
+    expect(await applyPlanEvent({ id: "evt_paid", type: "invoice.paid", created: 1_800_000_000, customer: "cus_a" }, f.states)).toBe("stored");
+    hold.release();
+    expect((await read).save).toBe("older");
+    expect(row(f)).toMatchObject({ eventId: "evt_paid", plan: { kind: "paying" } });
+  });
+
+  it("a webhook after the read still applies: no event reads as older than the read's time", async () => {
+    const f = family();
+    await lostStart(f, [trial]);
+    await sweepPlanReads(f.states.reads, f.states, time());
+    f.states.subscriptions.cus_a = [past];
+    expect(await applyPlanEvent({ id: "evt_failed", type: "invoice.payment_failed", created: 1_700_000_000, customer: "cus_a" }, f.states)).toBe("stored");
+    expect(row(f)?.plan.kind).toBe("payment_failed");
+  });
+
+  it("a child with no started plan start is not read", async () => {
+    // No start at all, with no row and with an ended row.
+    const none = family([trial]);
+    expect(await none.states.reads.duePlanReads(100)).toEqual([]);
+    const ended = family([over]);
+    await applyPlanEvent({ id: "evt_end", type: "customer.subscription.deleted", created: 1_760_000_000, customer: "cus_a" }, ended.states);
+    ended.tick(2 * DAY);
+    expect(await ended.states.reads.duePlanReads(100)).toEqual([]);
+    // A newest start that is open, refused or closed by the team is not read: the card sweep decides an open one.
+    for (const state of ["open", "refused", "team_ended"] as const) {
+      ended.states.starts.splice(0, ended.states.starts.length, { childId: "a", generation: 1, state: "started", finishedAt: ended.at() - DAY }, { childId: "a", generation: 2, state, finishedAt: state === "open" ? null : ended.at() });
+      expect(await ended.states.reads.duePlanReads(100)).toEqual([]);
+    }
+    // A start that finished more than 40 days ago is not read.
+    ended.states.starts.splice(0, ended.states.starts.length, { childId: "a", generation: 1, state: "started", finishedAt: ended.at() - 41 * DAY });
+    expect(await ended.states.reads.duePlanReads(100)).toEqual([]);
+    expect(await sweepPlanReads(ended.states.reads, ended.states, time())).toMatchObject({ due: 0, read: 0 });
+    expect(row(ended)?.plan.kind).toBe("ended");
+  });
+
+  it("a row read after its start is read again only after 24 hours, and an ended answer stays closed", async () => {
+    const f = family([over]);
+    await applyPlanEvent({ id: "evt_end", type: "customer.subscription.deleted", created: 1_760_000_000, customer: "cus_a" }, f.states);
+    f.tick(60_000);
+    await lostStart(f, [over]);
+    expect(await sweepPlanReads(f.states.reads, f.states, time())).toMatchObject({ read: 1, changed: 0 });
+    expect(await f.states.reads.duePlanReads(100)).toEqual([]);
+    f.tick(DAY + 1);
+    expect(await f.states.reads.duePlanReads(100)).toHaveLength(1);
+    expect((await gate(f)).open).toBe(false);
+  });
+
+  it("an empty list on an ended row a start backs is unclear: nothing stored, and the family keeps its plan's pages", async () => {
+    const f = family([over]);
+    await applyPlanEvent({ id: "evt_end", type: "customer.subscription.deleted", created: 1_760_000_000, customer: "cus_a" }, f.states);
+    f.tick(60_000);
+    await lostStart(f, []);
+    const before = { ...row(f)! };
+    expect(await sweepPlanReads(f.states.reads, f.states, time())).toEqual({ due: 1, read: 0, changed: 0, unclear: 1, failed: 0, outOfTime: false });
+    expect(row(f)).toEqual(before);
+  });
+
+  it("the start rows come first, before the rows of the daily re-read, inside the limit", async () => {
+    let clock = NOW - 2 * DAY;
+    const s = memoryPlanStates({
+      cards: [{ parentId: "p-b", childId: "b", customer: "cus_b", cardSaved: true }, { parentId: "p-s", childId: "s", customer: "cus_s", cardSaved: true }],
+      subscriptions: { cus_b: [active], cus_s: [trial] }, now: () => clock,
+    });
+    await applyPlanEvent({ id: "evt_b", type: "customer.subscription.updated", created: 1_700_000_000, customer: "cus_b" }, s);
+    clock = NOW;
+    s.starts.push({ childId: "s", generation: 1, state: "started", finishedAt: NOW - 1000 });
+    expect((await s.reads.duePlanReads(100)).map((r: PlanRead) => [r.childId, r.kind])).toEqual([["s", null], ["b", "paying"]]);
+    expect((await s.reads.duePlanReads(1)).map((r: PlanRead) => r.childId)).toEqual(["s"]);
   });
 });

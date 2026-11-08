@@ -500,7 +500,10 @@ export async function sweepCards(seams: CardCheckSeams, time: SweepTime, limit =
 
 /** The rows of the daily re-read. The database decides what is due, by its own clock. */
 export interface PlanReadRows {
-  /** Rows of a kind in PLAN_READ_KINDS not read for 24 hours, the row looked at longest ago first. Throws when it fails. */
+  /**
+   * The rows of a started plan start that the plan state does not show yet (PLAN_START_READ_KINDS, or no row), then the rows of a kind in
+   * PLAN_READ_KINDS not read for 24 hours; in each list the row looked at longest ago first. Throws when it fails.
+   */
   duePlanReads(limit: number): Promise<PlanRead[]>;
   /** The re-read is about to try this row. It goes behind the rows not tried since. Throws when it fails. */
   notePlanReadTried(childId: string): Promise<void>;
