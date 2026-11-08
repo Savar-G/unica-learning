@@ -152,3 +152,45 @@ describe("real misses keep D-199", () => {
     expect(r.effects.some((e) => e.kind === "say" && e.act === "give_answer")).toBe(true);
   });
 });
+
+describe("fallback availability after a shown step", () => {
+  it.each(["16.", "I need help.", "15."])("handles %s followed by copies, help, or misses", (first) => {
+    for (const next of ["6.", "I need help.", "65."]) {
+      expect(() => byCode(FIXTURES.A, ["Show me the ones.", first, next, "I need help."])).not.toThrow();
+    }
+  });
+});
+
+describe("passed columns and final misses", () => {
+  it("gives the answer after two wrong finals without crediting copied columns", () => {
+    let s = createSession({ callId: "passed-finals", package: FIXTURES.A });
+    let at = 1000;
+    const send = (event: SessionEvent) => { const r = step(s, event); s = r.session; return r; };
+    const ok = (proposal: Proposal) => expect(send({ type: "proposal", at, proposal }).refusal).toBeNull();
+    const fallback = () => {
+      let accepted: ReturnType<typeof step> | undefined;
+      for (const proposal of fallbacks(s)) {
+        const result = send({ type: "proposal", at, proposal });
+        if (!result.refusal) { accepted = result; break; }
+      }
+      expect(accepted, "no accepted fallback").toBeDefined();
+      return accepted!;
+    };
+    const child = (text: string) => send({ type: "child_turn", at: at += 4000, text });
+    send({ type: "start", at });
+    fallback();
+    child("Show me the ones.");
+    ok({ version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } });
+    child("16."); fallback();
+    child("Show me the tens.");
+    ok({ version: 2, act: "guide", step: "tens", level: 3, parts: [{ line: "step.show", slots: { step: "tens" } }], reading: { help: "show" } });
+    child("6."); fallback();
+    expect(s.passed).toEqual(["ones", "tens"]);
+    expect(s.done).toEqual([]);
+    child("67."); fallback(); expect(s.finalMisses).toBe(1);
+    child("65.");
+    expect(fallback().effects.some((e) => e.kind === "say" && e.act === "give_answer")).toBe(true);
+    expect(s.done).toEqual([]);
+    expect(s.assistance).toContain("answer_given");
+  });
+});

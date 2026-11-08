@@ -1992,7 +1992,7 @@ function finalMisses(s: Session, checked: readonly Checked[]): number {
   const pkg = s.package;
   // An equal fraction is not a wrong final answer (#407).
   if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && !isEqualForm(pkg, c.answer.value))) return before;
-  const done = [...s.done, ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)];
+  const done = [...behind(s), ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)];
   return currentStep(pkg, done) === "result" ? before + 1 : before;
 }
 
@@ -2381,6 +2381,10 @@ function heardAnswers(session: Session): ChildAnswer[] {
   const equated = body !== null && /^(.+?)\s+(?:is|equals|makes?)\s+(.+)$/.exec(body);
   const twoNumbers = !!equated && plainNumber(equated[1]) !== null && plainNumber(equated[2]) !== null;
   if (session.solved === null && read.final && read.sure && !twoNumbers && !notClear(session, {}) && !saysGuess(session.turn.text) && rightForQuestion(pkg, read.final)) found.push({ value: read.final, step: "result", verdict: "right" });
+  // A plain final number on the last step is a committed miss, even when the model is unavailable.
+  if (session.solved === null && session.ladder.step === "result" && body !== null && plainNumber(body) !== null && read.final && read.sure && !rightForQuestion(pkg, read.final)) {
+    found.push({ value: read.final, step: "result", verdict: "wrong" });
+  }
   return found.filter((a) => checkAnswers(session, [a], []) === null);
 }
 
