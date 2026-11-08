@@ -30,7 +30,9 @@ beforeAll(async () => {
     mkdirSync(dir, { recursive: true });
     for (const id of store.ids()) writeFileSync(join(dir, `${id}.json`), store.load(id)!);
   }
-});
+  // The hook's limit is the gate's own budget ("runs fast enough for npm test"), not vitest's 10 s default: under a
+  // full parallel suite the run took longer than 10 s and failed the hook before the budget check could report.
+}, 30_000);
 
 const RESEARCH_IDS = Array.from({ length: 40 }, (_, i) => `C${String(i + 1).padStart(2, "0")}`);
 const baseId = (id: string) => id.replace(/[a-z]$/, "");
