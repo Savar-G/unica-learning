@@ -1,5 +1,5 @@
 import { questionWorkSpace } from "./workbook-work-space";
-import { workbookPageInstruction } from "@/lib/workbook-page-instructions";
+import { workbookPageInstruction, workQuestionNumbers } from "@/lib/workbook-page-instructions";
 // The workbook templates (#310, spec #296): one layout for every page type of .design/workbooks/DESIGN.md (section
 // 7), with its tokens (section 1 to 4): the 8-page and 6-page days, Math in the world, the cover, How + Plan, the back
 // cover with its level map, Friday 5, Show what you know, the level test, parent-led U1 to U3 pages, the early-level
@@ -59,6 +59,9 @@ const fontFace = (family: string, weights: string, woff2: Uint8Array) =>
 /** The type ramp and box sizes of a level band (DESIGN.md section 2, minimum sizes by level; section 7.3). */
 interface Band {
   consistentLayout?: boolean;
+  /** The questions the page's instruction already asks to show their work for ("Show your work for questions 1-3."):
+   * their work spaces print no "Show your work" label of their own and are plain white (Savar's book 1 review). */
+  instructed?: ReadonlySet<number>;
   name: "parent" | "early" | "mid";
   title: number;
   body: number;
@@ -562,6 +565,8 @@ const CSS = `
 .pg.consistent .chs.side3 .act .wb{width:100%;min-width:0}
 .pg.consistent .chs.side3 .act .rg{align-self:flex-end}
 .pg.consistent.older-extra .ab{height:88px}
+/* The shading is the question's only: the work space under it is white paper, the card's outline unchanged. */
+.pg.consistent .chc.plain{background:#fff}.pg.consistent .chc.plain>.top{background:#F4F2F0;margin:-12px -12px 0;padding:12px;border-radius:10.5px 10.5px 0 0}
 .pg.consistent .chc.nowork{flex:0 0 auto}.pg.consistent .chc.nowork .act{flex:0 0 auto;align-items:flex-start}
 .pg.consistent [data-slot="word-problems"] .story{flex:1}
 .pg.consistent [data-slot="word-problems"] .story.nowork{flex:0 0 auto}
@@ -876,7 +881,9 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
     case "work": {
       if (o.compactWork && o.band.consistentLayout) return `<div class="work-space" ${at} style="min-height:${Math.max(32, questionWorkSpace(q.package))}px"></div>`;
       const h = o.minimumWork !== undefined ? `height:${o.minimumWork}px;--work-min:${o.minimumWork}px` : o.work === "fill" ? "" : `height:max(${o.work ?? 80}px,var(--work-min,64px))`;
-      return `<div class="wb" ${at} style="${h}"><span class="lab">${escape(r.label)}</span></div>`;
+      // The page's instruction names this question: its own "Show your work" says it again (Savar, book 1 review).
+      const repeated = !!o.band.instructed?.has(q.number) && /^show your work$/i.test(r.label.trim());
+      return `<div class="wb" ${at} style="${h}">${repeated ? "" : `<span class="lab">${escape(r.label)}</span>`}</div>`;
     }
     case "lines": {
       // A written-reason item's prompt is its question text; the lines need no label of their own, nor a label the
@@ -1242,7 +1249,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const { inline, full } = regionsSplit(q, { band, work });
         // (A card with nothing to work in, a count with boxes, keeps its height: its boxes sit under the question, never at
         // the foot of an empty card, the real U4 sample.)
-        return `<div class="chc${full ? "" : " nowork"}" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div><div class="act">${full}${inline}</div></div>`;
+        // A card whose work the instruction asks for: its question shaded, its work space white (Savar, book 1 review).
+        const plain = full && band.instructed?.has(q.number) ? " plain" : "";
+        return `<div class="chc${full ? plain : " nowork"}" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div><div class="act">${full}${inline}</div></div>`;
       }).join("")}</div>`;
     }
     case "math-in-the-world": {
@@ -1405,7 +1414,9 @@ function footer(page: DraftPage, parts: PageParts, id: string): string {
 }
 
 function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
-  const band:Band = {...bandOf(c.level),consistentLayout:c.consistentLayout};
+  // (`page` is the printed page: its subtitle is the instruction workbookPageInstruction prints, when it has one.)
+  const band:Band = {...bandOf(c.level),consistentLayout:c.consistentLayout,
+    instructed: new Set(workbookPageInstruction(page) ? workQuestionNumbers(page) : [])};
   const byNumber = new Map(page.questions.map((q) => [q.number, q]));
   const ctx: Ctx = {
     page, c, band, six: c.pages <= 6 && band.name === "mid",
