@@ -10,6 +10,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
+import { C3B_REVIEW_BEHAVIOURS } from "./c3b-review-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
 const child = (text: string, read?: Read, maya?: Plan[]): Step => ({ child: text, ...(read ? { read } : {}), ...(maya ? { maya } : {}) });
@@ -2423,6 +2424,7 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   ...ONE_STEP_BEHAVIOURS,
+  ...C3B_REVIEW_BEHAVIOURS,
   // Evaluate questions (Wave A, A2): each part in the order of operations; the part's columns when the child is stuck.
   {
     id: "EV01",
