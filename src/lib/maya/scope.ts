@@ -3,6 +3,7 @@
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
 import { missingScope } from "./missing-number";
+import { spotScope } from "./spot-error";
 import { completeExpression, readNumbers } from "./numbers";
 import { placeRelations } from "@/lib/question-package-place-value";
 
@@ -111,6 +112,8 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
           add("multiply", [num(st.value), num(p.operation.operands[1])]);
         }
       }
+      // Spot the error (spot-error.ts): a dropped or added zero, "498 times 10 is 4980".
+      for (const [n, ten] of spotScope(st)) { add("multiply", [num(n), num(ten)]); add("divide", [num(n * ten), num(ten)]); }
       if (st.kind === "combine-numerators") add(st.op, st.numerators.map(num));
       for (const [op, operands] of missingScope(st)) add(op, operands.map(num));
       if (st.kind === "common-denominator") for (let i = 0; i < st.from.length; i++) {

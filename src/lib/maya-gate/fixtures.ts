@@ -13,9 +13,10 @@ import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, ty
 import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 import { PLACE_VALUE_FIXTURES, type PlaceValueFixtureId } from "./place-value-cases";
+import { SPOT_FIXTURES, type SpotFixtureId } from "./spot-error-cases";
 
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId | PlaceValueFixtureId | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT"
-  | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV";
+  | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | SpotFixtureId;
 
 /** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
@@ -144,6 +145,8 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
   ...PLACE_VALUE_FIXTURES,
+  // Spot the error (C2): a question and a worked answer to tick yes or no and fix.
+  ...SPOT_FIXTURES,
   ...ONE_STEP_FIXTURES,
   // Missing numbers (Wave A): 30 × ? = 1620 by division after dropping a zero (162 ÷ 3), 236 × ? = 1416 by trying
   // numbers, and 9000 − ? = 3000 by subtracting.

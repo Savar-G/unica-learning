@@ -14,6 +14,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 | `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
 | `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6c, with the J06 cases W5d, W6b and W6c), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/place-value-cases.ts` | Fixtures PVD, PVD0, PVV and PVV0: teaching packages the place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored place-value questions, and their behaviours (PV01 to PVJ2b), added to `FIXTURES` and `BEHAVIOURS`. |
+| `src/lib/maya-gate/spot-error-cases.ts` | Fixtures SPOT_MUL, SPOT_MISS, SPOT_PVV, SPOT_PVD and SPOT_RIGHT: teaching packages the spot-the-error adapter (`src/lib/maya-teaching/spot-error.ts`) makes from synthetic stored spot-the-error questions, and their behaviours (SE01 to SE11), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -406,6 +407,24 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN6b | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '6000 plus 3000 is 9000.' is a check of it, not an outside request | solved, independent | |
 | MN6c | M_SUBTRACT | passing | 9000 − ? = 3000, 'I got 6000.' is accepted, and '3000 plus 6000 is 9000.' is a check of it, not an outside request | solved, independent | |
 | MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
+
+### Spot the error (C2)
+
+Fixtures `SPOT_MUL` (7 × 640 = ?, answer given 448), `SPOT_MISS` (4 × ? = 680, answer given 17), `SPOT_PVV` (the value of the ten thousands digit of 46213, answer given 4000), `SPOT_PVD` (the hundred thousands digit of 571324, answer given 7) and `SPOT_RIGHT` (the value of the thousands digit of 48216, answer given 8000, which is right) are the teaching packages Maya's session adapter (`src/lib/maya-teaching/spot-error.ts`) makes from synthetic stored spot-the-error questions (`src/lib/maya-gate/spot-error-cases.ts`). The session (`src/lib/maya/spot-error.ts`) teaches the question's own path, then the compare step `claim` (the fix, with H0 to H2 and no H3), then the word yes or no as the answer, read by the claim reader with "right" and "wrong" as yes and no. The judge views the package as the session does (`spotView`). A right word before the fix is known is no answer yet (SE05). Before the answer is released, no turn but the easier example says the fix or "tick" with the word.
+
+| Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
+|---|---|---|---|---|---|
+| SE01 | SPOT_MUL | passing | Spot the error, 7 × 640, answer given 448: '7 times 640 is 4480.' is acknowledged once, then the question; a bare 'No.' is said back and the yes to that commits it; then 'Tick no, and write 4480 in the Fix it box.' | solved, independent | |
+| SE02 | SPOT_MUL | passing | J06: 'How do I know if it's right?' gets code's compare line (H1), then 'It's wrong, it should be 4480.' is accepted | solved, hint | |
+| SE03 | SPOT_MISS | passing | 4 × ? = 680, answer given 17: '680 divided by 4 is 170, so it's wrong.' is this question's work and its word, accepted at once | solved, independent | |
+| SE04 | SPOT_RIGHT | passing | Grade 3, an answer given that is right: '8 times 1000 is 8000, so it's right.' stays in scope and is accepted as yes; the Fix it box stays empty | solved, independent | |
+| SE05 | SPOT_MUL | passing | 'It's wrong.' before the fix is known is no answer yet: the work goes on, the fix is never said first, then the product and 'So it's not right.' are accepted | solved, independent | |
+| SE06 | SPOT_PVV | passing | Grade 3, 'I'm stuck.' first: the easier example is a spot the error of the same shape (the value of the hundreds digit of 847, answer given 80), within 25 words a turn | child_stopped | |
+| SE07 | SPOT_PVD | passing | Which digit, only 'I'm stuck.': each compare-step line carries 'Then check 7.', help rises to H2 (no H3: it is the fix), then the easier example, then the honest close | child_stopped, worked_example | |
+| SE08 | SPOT_MUL | passing | A plain yes to 'Did you say 4480?' credits the product, never the word; then 'It's not right.' is accepted | solved | |
+| SE09 | SPOT_PVV | passing | Value: the digit, then 'It should be 40000.' (the fix in the child's words) credits the compare step; a bare 'Wrong.' is said back and confirmed | solved, independent | |
+| SE10 | SPOT_MUL | passing | After 'Did you say 4480?' a bare 'No.' answers that question, never the claim, and gets no say-back | solved | |
+| SE11 | SPOT_MUL | passing | 'My mom said 4480.' and 'Is it 4480?' credit nothing; the child's own '7 times 640 is 4480.' does | solved | |
 
 ## Pending
 

@@ -487,6 +487,11 @@ export interface OperationLimits {
   readonly divisor?: number;
   /** Check the place-value kind (B1a), which no default check knows. */
   readonly placeValue?: boolean;
+  /**
+   * Accept a spot-the-error item whose "Is it right?" its template checks (template-shown, #489) and that shows no stored
+   * error, holding an operation (Maya's spot-the-error path, C2). No default check passes it.
+   */
+  readonly templateShown?: boolean;
 }
 
 /** Within the wider limits: the kind's own other rules (a multiplier to 999, a divisor from 1 to 99, no result below zero). */

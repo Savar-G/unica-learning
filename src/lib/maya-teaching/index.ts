@@ -11,6 +11,7 @@ import { TEACHING_SOURCE } from "./limits";
 import { deriveOneStep } from "./one-step";
 import { deriveMultiStep } from "./multi-step";
 import { derivePlaceValue } from "./place-value";
+import { deriveSpotError } from "./spot-error";
 import { deriveMissingNumber } from "./missing-number";
 
 /**
@@ -25,6 +26,7 @@ const DERIVERS: readonly Deriver[] = [
   deriveOneStep, // A1: one add, subtract or multiply
   deriveMultiStep, // A1: multi-step stories, as evaluate (taught from A2)
   derivePlaceValue, // B1a: place value, the digit and value asks
+  deriveSpotError, // C2: spot the error, taught as the question under it plus "Is it right?" and the fix
 ];
 
 /** The fields a deriver may add. Every other field must stay exactly as stored. */

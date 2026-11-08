@@ -14,9 +14,9 @@ export const TEACHING_SOURCE = "maya-teaching";
 /**
  * Whole-number +, − and × results (and their numbers) and ÷ dividends to 999,999: the six columns Maya's board and
  * spoken place names cover (ones to hundred thousands). Divisors to 999 are for the missing-number path (A3). The
- * place-value kind (B1a) is checked only here.
+ * place-value kind (B1a) is checked only here, and so is a spot-the-error item whose template checks "Is it right?" (C2).
  */
-export const MAYA_TEACHING_LIMITS: OperationLimits = Object.freeze({ wholeResult: 999_999, divisor: 999, placeValue: true });
+export const MAYA_TEACHING_LIMITS: OperationLimits = Object.freeze({ wholeResult: 999_999, divisor: 999, placeValue: true, templateShown: true });
 
 /** Maya's limits for a package the adapter made; none (today's limits) for any other. */
 export function teachingLimits(raw: unknown): OperationLimits | undefined {

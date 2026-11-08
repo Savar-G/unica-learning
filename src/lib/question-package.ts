@@ -928,6 +928,7 @@ function packageProblem(p: unknown, limits?: OperationLimits): Problem | null {
     ...VALUE_READERS,
     text: q.text,
     computed: { operation: q.operation, answer: q.answer.value, accepted: q.answer.accepted, wrongAnswers: q.wrongAnswers },
+    ...(limits?.templateShown === true ? { templateShown: true } : {}),
   });
 }
 

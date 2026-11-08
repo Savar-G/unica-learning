@@ -30,7 +30,8 @@ beforeAll(async () => {
     mkdirSync(dir, { recursive: true });
     for (const id of store.ids()) writeFileSync(join(dir, `${id}.json`), store.load(id)!);
   }
-});
+  // Every behaviour runs here, once: a fixed amount of work that takes more than the default 10 s on a busy machine.
+}, 120_000);
 
 const RESEARCH_IDS = Array.from({ length: 40 }, (_, i) => `C${String(i + 1).padStart(2, "0")}`);
 const baseId = (id: string) => id.replace(/[a-z]$/, "");

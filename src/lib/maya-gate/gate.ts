@@ -36,6 +36,7 @@ import {
 import { gateWordCount } from "./word-count";
 import { packageLines, TEMPLATES } from "@/lib/maya/lines";
 import { claimFinal, claimSaid, claimView } from "@/lib/maya/claim";
+import { spotView } from "@/lib/maya/spot-error";
 import { FLAG_LEVELS, UNSAFE_REQUEST_FLAG, type AlertState, type AlertStatus, type CallFlag, type CallStatus, type FlagLevel } from "@/lib/maya-call";
 import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
 import { fakeTalkReviewer, type TalkReviewer } from "@/lib/maya-talk-review";
@@ -635,7 +636,8 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
 
   // What Maya may ever say for this question: code lines (math), bank phrases (no math), the safety guidance.
   // A claim question (A4) is judged as its session teaches it: the compare step, and the circled word as the answer.
-  const op = pkg.operation !== null && pkg.answer !== null && pkg.easierExample !== null ? claimView(pkg as OperationPackage) : null;
+  // A spot-the-error question (C2) too: the compare step, the word yes or no as the answer.
+  const op = pkg.operation !== null && pkg.answer !== null && pkg.easierExample !== null ? claimView(spotView(pkg as OperationPackage)) : null;
   const lineSentences = new Set((op ? allLineTexts(op, heardValues(b, t, pkg)) : heldSentences(true)).flatMap(sentences));
   const bank = Object.values(PHRASES).flat();
   const bankSentences = new Set(bank.filter((p) => !p.includes("{echo}")).flatMap(sentences));

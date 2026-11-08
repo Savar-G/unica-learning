@@ -19,6 +19,7 @@ import { claimExample, claimStep, readClaim, type Claim } from "@/lib/maya-teach
 import type { Act, ChildAnswer } from "./proposal";
 import { confirmWordsOnly, plainNumber, wholeTurn, wholeYes, type AnswerRead } from "./numbers";
 import type { LineId, LineOffer, Slots } from "./lines";
+import { spotWordsAsClaim } from "./spot-words";
 
 /** The claim as a session holds it: read again from the teaching package's steps and item. */
 export interface SessionClaim {
@@ -40,7 +41,8 @@ export function sessionClaim(pkg: OperationPackage | null): SessionClaim | null 
   const step = pkg.steps.find((s): s is ClaimStep => s.kind === "claim-compare");
   const region = pkg.item?.regions.find((r) => r.kind === "choice");
   if (!step || region?.kind !== "choice" || region.choices.length !== 2 || pkg.answer.value.type !== "choice") return null;
-  const [first, second] = region.choices;
+  // A spot-the-error item prints "Yes" and "No" (spot-error.ts): the words are read and said in lower case.
+  const [first, second] = region.choices.map((c) => c.toLowerCase());
   const word = pkg.answer.value.value;
   if (word !== (step.holds ? first : second)) return null;
   return { choices: [first, second], relation: step.relation, value: step.value, shown: step.shown, holds: step.holds, word, other: word === first ? second : first };
@@ -361,6 +363,9 @@ export function claimQuestionAsked(chosen: readonly Pick<LineOffer, "line" | "sl
   return chosen.some((o) => o.line === "confirm.claim" || (["step.invite", "step.point", "step.operation"].includes(o.line) && o.slots.step === "result"));
 }
 
+/** A spot-the-error turn's "right" and "wrong" in the claim words yes and no (spot-words.ts); any other turn as it is. */
+const wordText = (pkg: OperationPackage | null, text: string) => (pkg?.item?.format === "spot-the-error" ? spotWordsAsClaim(text) : text);
+
 function wordIn(t: ClaimTurn): WordRead {
   const c = sessionClaim(t.pkg);
   if (!c || t.text === null) return null;
@@ -368,7 +373,7 @@ function wordIn(t: ClaimTurn): WordRead {
   if (t.wordAsked !== null && !t.heardAsked && c.choices.includes(t.wordAsked) && PLAIN_YES.test(t.text.toLowerCase().replace(/[’]/g, "'").trim())) {
     return { word: t.wordAsked, committed: true };
   }
-  const read = readClaimWord(t.text, c.choices);
+  const read = readClaimWord(wordText(t.pkg, t.text), c.choices);
   // A bare or unsure word answers the claim only when Maya just asked it; after any other question it is no claim turn.
   return read && "word" in read && read.committed ? read : t.claimAsked === true ? read : null;
 }
@@ -400,7 +405,7 @@ export function claimConfirm(t: ClaimTurn): { kind: "which" } | { kind: "said"; 
 
 /** The word the child said in this turn, bare or committed, or null. */
 export function claimSaid(t: ClaimTurn): string | null {
-  const read = t.text === null || !sessionClaim(t.pkg) ? null : readClaimWord(t.text, sessionClaim(t.pkg)!.choices);
+  const read = t.text === null || !sessionClaim(t.pkg) ? null : readClaimWord(wordText(t.pkg, t.text), sessionClaim(t.pkg)!.choices);
   return read && "word" in read ? read.word : null;
 }
 

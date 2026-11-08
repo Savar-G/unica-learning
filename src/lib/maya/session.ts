@@ -53,6 +53,7 @@ import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachStep
 import { isPlaceValue, placeAutoDraw, placeBoardOffers, WHY_KEYS } from "./place-value-lines";
 import { asksPlace, placeStepHeard } from "./place-value-turns";
 import { claimActs, claimAnswers, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
+import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -507,8 +508,9 @@ function teachableOf(raw: unknown): { pkg: OperationPackage | null; held: string
   if (!check.ok) return { pkg: null, held: check.reason };
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
   if (!hasOperation(check.package)) return { pkg: null, held: "Maya cannot teach items with no operation yet" };
-  // A claim question (claim.ts) is taught with its compare step and its circled word, or held.
-  const claim = claimSessionPackage(check.package);
+  // A claim question (claim.ts) is taught with its compare step and its circled word, or held; a spot-the-error question
+  // (spot-error.ts) as a claim with a fix.
+  const claim = spotSessionPackage(check.package) ?? claimSessionPackage(check.package);
   if (claim && "held" in claim) return { pkg: null, held: claim.held };
   const pkg = structuredClone(claim ? claim.pkg : check.package);
   const untaught = untaughtSteps(pkg);
@@ -911,14 +913,16 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
   // Place value has no given answer (parent lane, 2026-11-07): a child still stuck gets the easier example, then an honest close.
   // The step's top help is its highest line: H2 on a last step (and a zero digit's step), else H3 (review of #738: "I'm stuck."
   // again and again on a last step met H2 forever).
-  const placeTop = isPlaceValue(s.package) ? Math.max(0, ...packageLines(s.package).help(s.ladder.step).map((o) => o.level ?? 0)) : 3;
-  if (isPlaceValue(s.package) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= placeTop && needsMore) ||
+  // Spot the error has no given answer either (spot-error.ts): its compare step has no H3, as it is the fix.
+  const noGiven = isPlaceValue(s.package) || isSpot(s.package);
+  const placeTop = noGiven ? Math.max(0, ...packageLines(s.package!).help(s.ladder.step).map((o) => o.level ?? 0)) : 3;
+  if (noGiven && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= placeTop && needsMore) ||
       (misses >= 2 && FINAL_GIVE_STATES.includes(main)))) {
     return s.exampleShown < steps
       ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child is still stuck: show the easier example, step by step (example_step). There is no given answer for place value." }
       : { acts: ["close"], code: "act_not_allowed", reason: "The child is still stuck after the easier example: close kindly (close.together), never with the answer." };
   }
-  if (isPlaceValue(s.package)) acts = acts.filter((a) => a !== "give_answer");
+  if (noGiven) acts = acts.filter((a) => a !== "give_answer");
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
@@ -1168,7 +1172,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const yes = said.answers?.length ? null : yesAnswer(s);
   const heard: Reading = yes ? { ...said, answers: [yes] } : said;
   // A claim question's word is read by code, never by the model (claim.ts).
-  const claimed = yes ? heard.answers : claimAnswers(claimTurn(s), heard.answers, s.solved !== null && s.lastResult === "right");
+  // A spot-the-error word before its fix is known is no answer yet (spot-error.ts).
+  const claimed = yes ? heard.answers : spotAnswers(pkg, claimAnswers(claimTurn(s), heard.answers, s.solved !== null && s.lastResult === "right"), s.done);
   const reading: Reading = sessionClaim(pkg) ? { ...heard, answers: claimed } : heard;
   // Before the words: Maya never asks for what the child said they wrote or would not write (#605).
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
@@ -1285,7 +1290,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     roles = board;
   }
   const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult || p.act === "give_answer";
-  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, [forcedOpening ? operationText(pkg.operation) : say, ...boardTexts(pb.board ?? [])])) {
+  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, [forcedOpening ? operationText(pkg.operation) : say, ...boardTexts(pb.board ?? [])], done)) {
     return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
   }
   const bad = pb.board ? boardProblem(s, pb.board, role, spoken, done) : null;
@@ -1865,7 +1870,9 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     const { operation, steps, answer } = problemOf(pkg, problem);
     const at = steps.find((x) => x.id === a.step);
     if (!at) return { code: "wrong_step", reason: `The ${problem} has no step "${a.step}".` };
-    if (!heard.some((v) => saidAs(v, a.value))) return { code: "answer_not_heard", reason: `The child did not say ${valueText(a.value)}, or took it back.` };
+    // A spot-the-error result in a sentence with its word ("..., so it's wrong.") is heard by its own whole-turn forms.
+    const spotHeard = problem === "target" && at.kind === "claim-compare" && isSpot(pkg) && stepTurnHeard(s, at, a.value);
+    if (!spotHeard && !heard.some((v) => saidAs(v, a.value))) return { code: "answer_not_heard", reason: `The child did not say ${valueText(a.value)}, or took it back.` };
     // A wrong final answer the child gave outside an explanation may be judged wrong although a later number is the
     // final one ("I got 56. I did 7 plus 9 is 16, so I wrote the 6. Then 2 plus 3 is 5."): never when the final one is
     // right or the answer stands, and never as right.
@@ -2143,8 +2150,9 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   const pkg = s.package;
   // A claim's result (claim.ts): its own whole-turn templates; it may come before the columns, as a whole result.
   if (pkg && s.turn && step.kind === "claim-compare") {
-    return saidAs(number(step.value), value) && claimStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, operation: pkg.operation, value: step.value,
-      heardAsked: s.heardAsked ?? null, shown: s.ladder.step === step.id && s.ladder.hint >= 3 });
+    const heard = { text: s.turn.text, uncertain: s.turn.uncertain, operation: pkg.operation, value: step.value, heardAsked: s.heardAsked ?? null, shown: s.ladder.step === step.id && s.ladder.hint >= 3 };
+    // A spot-the-error result also in its own forms ("It should be 4980.", "No, 6 times 830 is 4980.", spot-error.ts).
+    return saidAs(number(step.value), value) && (claimStepHeard(heard) || spotStepHeard({ ...heard, pkg }));
   }
   // A place-value digit step: its own templates (place-value-turns.ts), on the same rules: the first step not done, not after H3.
   if (pkg && s.turn && step.kind === "read-digit") {
@@ -2351,7 +2359,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
     .filter((a) => !kept.some((k) => k.step === a.step && (k.problem ?? "target") === "target"));
   const found = [...kept, ...heard];
   // A claim question's word is read by code (claim.ts), right or wrong; the model's final answers are left out.
-  const answers = !yes && sessionClaim(pkg) ? claimAnswers(claimTurn(session), found, session.solved !== null && session.lastResult === "right") ?? [] : found;
+  const answers = !yes && sessionClaim(pkg) ? spotAnswers(pkg, claimAnswers(claimTurn(session), found, session.solved !== null && session.lastResult === "right"), session.done) ?? [] : found;
   const keptFields = keptReading(session, refused, answers);
   // A reading's answers are numbers: `step` reads a claim's word again itself.
   const said = answers.filter((a) => isAnswerValue(a.value));
@@ -2549,10 +2557,12 @@ const boardTexts = (board: unknown[], only?: "text" | "value") =>
  * in 66 + 0), or fills the answer row of the question's board in its highest place. The lines that state the answer
  * are offered only once it may be said; this is the net under them.
  */
-function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
+function revealsAnswer(s: Session, p: Proposal, texts: string[], done: readonly string[] = s.done): boolean {
   const pkg = s.package!;
   // A claim's answer is a word (claim.ts); its result is a step, not the answer.
-  if (sessionClaim(pkg)) return claimReveals(pkg, p.act, texts, claimSaid(claimTurn(s)));
+  // A spot-the-error question's word to tick, and its fix before the child found it (spot-error.ts).
+  if (sessionClaim(pkg)) return claimReveals(pkg, p.act, texts, claimSaid(claimTurn(s))) || spotReveals(pkg, p.act, texts, sessionClaim(pkg), done.includes("claim"),
+    { word: claimSaid(claimTurn(s)), values: p.act === "confirm" && s.turn ? valuesIn(s.turn.text, readOptionsFor(pkg)) : [] });
   const answer = pkg.answer.value;
   const ownNumber = operandValues(pkg.operation).some((v) => equivalent(v, answer));
   // An equal form the child said (14/16 for 7/8, #407) gives nothing away when Maya says it back; the answer's own

@@ -9,6 +9,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
 import { PLACE_VALUE_BEHAVIOURS } from "./place-value-cases";
+import { SPOT_BEHAVIOURS } from "./spot-error-cases";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
 import { MISSING_NUMBER_BEHAVIOURS } from "./missing-number-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
@@ -2042,6 +2043,7 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   ...PLACE_VALUE_BEHAVIOURS,
+  ...SPOT_BEHAVIOURS,
   ...ONE_STEP_BEHAVIOURS,
   ...MISSING_NUMBER_BEHAVIOURS,
 

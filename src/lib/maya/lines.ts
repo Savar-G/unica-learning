@@ -27,6 +27,7 @@ import { placeOpeningText } from "@/lib/question-package-place-value";
 import { frameInvite, frameLead, framedLines, frameWhy, MISSING_TEMPLATES, type FrameState, type FramedLines } from "./missing-number";
 import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_RESULT_KEY, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
 import { CLAIM_TEMPLATES, claimLines, claimShow, claimView } from "./claim";
+import { SPOT_TEMPLATES, spotLines, spotView } from "./spot-error";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -479,6 +480,8 @@ export const TEMPLATES = {
   ...TRIAL_TEMPLATES,
   // Claim questions (A4, claim.ts): "True or false: 8 × 850 = 6800." and "Is 6 × 870 greater than 5226?".
   ...CLAIM_TEMPLATES,
+  // Spot the error (C2, spot-error.ts): "6 × 830 = ? Answer given: 498." Tick yes or no, and fix it.
+  ...SPOT_TEMPLATES,
 } as const satisfies Record<string, readonly string[]>;
 export type TemplateKey = keyof typeof TEMPLATES;
 
@@ -850,7 +853,10 @@ export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page
  * is filled from the package's checked numbers and steps. A place-value package has its own (place-value-lines.ts).
  */
 export function packageLines(pkg: OperationPackage): PackageLines {
-  return pkg.operation.kind === "place-value" ? placeValueLines(pkg as Parameters<typeof placeValueLines>[0], sharedLines(pkg)) : sharedLines(pkg);
+  const shared = sharedLines(pkg);
+  const lines = pkg.operation.kind === "place-value" ? placeValueLines(pkg as Parameters<typeof placeValueLines>[0], shared) : shared;
+  // A spot-the-error question (spot-error.ts): its own lines over the question's path.
+  return spotLines(pkg, lines, shared, offer);
 }
 export type PackageLines = ReturnType<typeof sharedLines>;
 
@@ -1026,7 +1032,7 @@ export function normalSlots(raw: Slots | Record<string, unknown>): Slots {
  */
 export function allLineTexts(raw: OperationPackage, heardValues: readonly AnswerValue[] = []): string[] {
   // A claim question's lines are those of its session package (claim.ts).
-  const pkg = claimView(raw);
+  const pkg = claimView(spotView(raw));
   const l = packageLines(pkg);
   const heard = [...new Map(heardValues.map((v) => [valueText(v), v])).values()];
   // An equal fraction the child said (14/16 for 7/8, #407): said back as accepted, or as an equal form to simplify.
