@@ -99,3 +99,21 @@ export const CLAIM_RIGHT = claimPackage({
   derived: [["b", "2 + (b0 - 1) % 9"], ["a", "1 + a0 % 10"], ["c", "a * b if f == 0 else a * b + b"]],
   expression: "'yes' if f == 0 else 'no'",
 });
+
+/** Large numbers for the word limits (lesson 3): 7 × 890 is not greater than 6237, worked as 890 × 7 (5.9 shape). */
+export const CLAIM_LARGE = claimPackage({
+  id: "claim-gate-large", question: 6, templateId: "5.9-multiply-tens#1.4:true-false",
+  text: "Is 7 × 890 greater than 6237? Circle yes or no.", skill: "5.9-multiply-tens", choices: ["yes", "no"], answer: "no",
+  slots: [["a0", "7", 1, 9], ["b0", "894", 10, 900], ["f", "1", 0, 1]],
+  derived: [["a", "a0"], ["b", "b0 // 10 * 10"], ["c", "a * b - a if f == 0 else a * b + a"]],
+  expression: "'yes' if f == 0 else 'no'", check: "b0 >= 10",
+});
+
+/** Large numbers, two digits by three: 70 × 790 is greater than 55230 (5.9 shape). */
+export const CLAIM_LARGE_ROWS = claimPackage({
+  id: "claim-gate-large-rows", question: 7, templateId: "5.9-multiply-tens#2.4:true-false",
+  text: "Is 70 × 790 greater than 55230? Circle yes or no.", skill: "5.9-multiply-tens", choices: ["yes", "no"], answer: "yes",
+  slots: [["a0", "78", 10, 90], ["b0", "797", 10, 900], ["f", "0", 0, 1]],
+  derived: [["a", "a0 // 10 * 10"], ["b", "b0 // 10 * 10"], ["c", "a * b - a if f == 0 else a * b + a"]],
+  expression: "'yes' if f == 0 else 'no'", check: "a0 >= 10 and b0 >= 10",
+});

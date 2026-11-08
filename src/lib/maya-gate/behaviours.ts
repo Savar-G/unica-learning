@@ -2187,6 +2187,79 @@ export const BEHAVIOURS: Behaviour[] = [
       never: ["give_answer", "example_step"],
     },
   },
+  // Lessons from review: the child's work in a full sentence is this question's math (scope), and at grade 3 the claim's
+  // framing reaches a child who is stuck from the first turn.
+  {
+    id: "CL09",
+    grade: 3,
+    title: "Grade 3, 'I'm stuck.' first: the easier example says its claim's question, within 25 words a turn",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    open: [{ act: "open", lines: ["open.hello", "question.problem"] }],
+    steps: [
+      child("I'm stuck.", { start: "no_start" }, [{ act: "example_step" }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      never: ["give_answer", "guide"],
+    },
+  },
+  {
+    id: "CL10",
+    grade: 3,
+    title: "Grade 3: '6 times 8 is 48, so it's true.' is this question's work, accepted as the circled word",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    open: [{ act: "open", lines: ["open.hello", "question.problem"] }],
+    steps: [
+      { child: "6 times 8 is 48, so it's true.", within: true, read: { start: "has_work" }, maya: [{ act: "accept_answer" }] },
+      child("Because 6 times 8 is 48.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "CL11",
+    title: "'1440 minus 1436 is 4, so it's yes.': the compare in a full sentence is this question's math",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      { child: "4 times 360 is 1440.", within: true, read: { start: "has_work", answers: [[1440, "claim", "right"]] }, maya: [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }] },
+      { child: "1440 minus 1436 is 4, so it's yes.", within: true, maya: [{ act: "accept_answer" }] },
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "CL12",
+    title: "A claim checked by division: '6 times 8 is 48.' and '56 divided by 8 is 7, so it's no.' are this question's math",
+    fixture: "CLAIM_DIV",
+    status: "passing",
+    steps: [
+      { child: "6 times 8 is 48.", within: true, read: { start: "has_work" }, maya: [{ act: "guide", level: 0 }] },
+      { child: "56 divided by 8 is 7, so it's no.", within: true, maya: [{ act: "accept_answer" }] },
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["redirect", "give_answer"],
+    },
+  },
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */

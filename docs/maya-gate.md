@@ -11,7 +11,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 
 | File | What it holds |
 |---|---|
-| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
+| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -314,6 +314,10 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | CL06 | CLAIM_TF | passing | The result in the child's own words is acknowledged once; a question about the step gets code's help line | solved, hint | |
 | CL07 | CLAIM_GT | passing | A bare 'Yes.' is said back; the child's 'No.' answers that question, not the claim | solved | |
 | CL08 | CLAIM_GT | passing | The result given before its columns is acknowledged, and Maya goes on to the claim's question, not the columns | solved, independent | |
+| CL09 | CLAIM_GT | passing | Grade 3, 'I'm stuck.' first: the easier example says its claim's question, within 25 words a turn | child_stopped | |
+| CL10 | CLAIM_TF | passing | Grade 3: '6 times 8 is 48, so it's true.' is this question's work, accepted as the circled word | solved, independent | |
+| CL11 | CLAIM_GT | passing | '1440 minus 1436 is 4, so it's yes.': the compare in a full sentence is this question's math | solved, independent | |
+| CL12 | CLAIM_DIV | passing | A claim checked by division: '6 times 8 is 48.' and '56 divided by 8 is 7, so it's no.' are this question's math | solved | |
 
 ### Claim questions (A4)
 

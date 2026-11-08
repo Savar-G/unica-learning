@@ -596,7 +596,7 @@ function fractionShow(step: WorkedStep): string | null {
 
 /** A worked step in words: a fraction step as fractionShow says it, any other as the shared step text. */
 const showOf = (step: WorkedStep, pkg: OperationPackage, problem: "target" | "example") =>
-  fractionShow(step) ?? claimShow(step, operationText(problem === "target" ? pkg.operation : pkg.easierExample.operation)) ??
+  fractionShow(step) ?? claimShow(step, operationText(problem === "target" ? pkg.operation : pkg.easierExample.operation), problem) ??
   stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
 
 /** The top number of a long multiplication as its rows work it: without its point (2.5 × 1.3 works 25 × 13). */
@@ -611,10 +611,8 @@ function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
 function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
   const slots = { step: step.id };
   const where = whereOf(step);
-  // A claim's compare step (claim.ts): the child puts the result together, as on the final step of an operation.
-  const out: LineOffer[] = [step.kind === "claim-compare"
-    ? offer("step.invite", "invite.result", { expr: operationText(pkg.operation) }, { slots, level: 0 })
-    : offer("step.invite", "step.invite", { where }, { slots, level: 0 })];
+  // A claim's compare step (claim.ts) has its own H0 to H2.
+  const out: LineOffer[] = step.kind === "claim-compare" ? [] : [offer("step.invite", "step.invite", { where }, { slots, level: 0 })];
   const add = (line: LineId, key: TemplateKey, vars: Vars, level: 1 | 2, board?: string) =>
     out.push(offer(line, key, vars, { slots, level, ...(board ? { board } : {}) }));
   switch (step.kind) {

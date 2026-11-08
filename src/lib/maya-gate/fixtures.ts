@@ -6,9 +6,9 @@
 // not teach yet (equivalent fractions, C36b).
 import { claimTeaching } from "@/lib/maya-teaching/claim";
 import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
-import { CLAIM_DECIMAL, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
+import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV";
 
 /** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
@@ -132,6 +132,8 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   CLAIM_TF: claimFixture(CLAIM_TRUE_FALSE),
   CLAIM_GT: claimFixture(CLAIM_GREATER),
   CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
+  // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
+  CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */

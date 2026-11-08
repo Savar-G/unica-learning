@@ -105,38 +105,43 @@ function claimSentence(c: Pick<SessionClaim, "choices" | "relation" | "shown">, 
  * it answers the claim. No line here says the word before the child does, except the answer and the request to circle it.
  */
 export const CLAIM_TEMPLATES = {
-  "question.claim": [
-    "Let's check it. First we work out {expr}.", "First, let's work out {expr}.", "We start with {expr}.",
-    "To check it, we work out {expr} first.", "Let's find {expr} first.",
-  ],
+  // Every claim line fits 25 spoken words at grade 3 with the book's largest numbers (wave brief, lessons 2 and 3).
+  "question.claim": ["First we work out {expr}.", "Let's work out {expr} first.", "We start with {expr}.", "Let's find {expr} first.", "First, let's find {expr}."],
   // The product printed with its shorter number first ("6 × 870") is worked as "870 × 6": the same number, one row.
   "question.claim.swap": [
-    "{printed} is the same as {expr}. Let's work out {expr} first.", "{printed} makes the same number as {expr}. We start with {expr}.",
-    "We can swap the numbers: {printed} is the same as {expr}. Let's find {expr}.", "{printed} and {expr} are the same. First we work out {expr}.",
-    "Let's check it. {printed} is the same as {expr}. We work out {expr}.",
+    "{printed} is the same as {expr}.", "We can swap them: {printed} is the same as {expr}.", "{printed} makes the same number as {expr}.",
+    "Swap the numbers: {printed} is the same as {expr}.", "{printed} and {expr} make the same number.",
   ],
   "example.intro.claim": [
     "Let's try an easier one first. {ask}", "Here's a smaller one to warm up. {ask}", "Let me show you an easier one. {ask}",
     "First, a smaller one. {ask}", "I'll show you an easier one first. {ask}",
   ],
   "example.claim": ["So {show}.", "And that's it: {show}.", "There we go: {show}.", "All done: {show}.", "So in the end, {show}."],
+  // The compare step: each level says that the result is compared with the page's number (lesson 2: the framing comes
+  // with the first line on the step, at whatever level the child enters).
+  "invite.claim.product": [
+    "What is {expr}? Then we compare it with {shown}.", "Now find {expr}. Then we compare it with {shown}.",
+    "What does {expr} make? Then we check {shown}.", "So what is {expr}? Then we look at {shown}.", "Put it together: what is {expr}? Then we check {shown}.",
+  ],
   "point.claim.product": [
-    "Look at the digits you wrote. What number do they make?", "Read your answer row from the left. What number is it?",
-    "Read the digits you wrote, from the left.", "What number do your digits make together?", "Read the whole number you wrote.",
+    "Read the digits you wrote. Then compare that number with {shown}.", "Read your answer row from the left. Then compare it with {shown}.",
+    "What number do your digits make? Then compare it with {shown}.", "Read the whole number you wrote. Then look at {shown}.",
+    "Read the digits you wrote, from the left. Then check {shown}.",
   ],
   "operation.claim.product": [
     "First find {expr}. Then we compare it with {shown}.", "We need {expr} first. Then we look at {shown}.",
     "Work out {expr}. Then check it against {shown}.", "Find {expr}. After that, compare it with {shown}.",
     "Let's finish {expr}. Then we check {shown}.",
   ],
-  "invite.claim": ["{ask}", "Now we can check it. {ask}", "Every part is done. {ask}", "Let's check the question. {ask}", "Now look at the question again. {ask}"],
+  "invite.claim": ["{ask}", "Now check it. {ask}", "Last part. {ask}", "Let's check. {ask}", "Now the question. {ask}"],
   "point.claim": [
-    "We found {expr} = {value}. The question says {shown}. {ask}", "{expr} = {value}. Compare {value} with {shown}. {ask}",
-    "We have {value}. The question has {shown}. {ask}", "Our number is {value}. The question's number is {shown}. {ask}",
-    "Compare {value} with {shown}. {ask}",
+    "Compare {value} with {shown}. Circle {first} or {second}.", "We found {value}. The page says {shown}. Circle {first} or {second}.",
+    "Look at {value} and {shown}. Circle {first} or {second}.", "Our number is {value}. The page has {shown}. Circle {first} or {second}.",
+    "Check {value} against {shown}. Circle {first} or {second}.",
   ],
   "compare.claim": [
-    "{compare} {ask}", "Look: {compare} {ask}", "Here's the check. {compare} {ask}", "Let's compare. {compare} {ask}", "See it this way. {compare} {ask}",
+    "{compare} Circle {first} or {second}.", "Look: {compare} Circle {first} or {second}.", "Let's compare. {compare} Circle {first} or {second}.",
+    "Here's the check. {compare} Circle {first} or {second}.", "{compare} Which word do you circle?",
   ],
   "answer.claim": [
     "Yes! {expr} = {value}. So you circle {word}.", "That's right: {expr} = {value}. You circle {word}.",
@@ -188,7 +193,7 @@ function targetAsk(c: SessionClaim, expr: string): string {
 /** The comparison in words, without the word to circle: "5220 is less than 5226.", "6800 and 6800 are the same number." */
 function compareOf(c: Pick<SessionClaim, "relation" | "value" | "shown">): string {
   const [v, s] = [num(c.value), num(c.shown)];
-  if (c.relation === "equal") return c.value === c.shown ? `${v} and ${s} are the same number.` : `${v} and ${s} are not the same number.`;
+  if (c.relation === "equal") return c.value === c.shown ? `${v} and ${s} are the same number.` : `${v} is not ${s}.`;
   return c.value > c.shown ? `${v} is greater than ${s}.` : c.value === c.shown ? `${v} is the same as ${s}, not greater.` : `${v} is less than ${s}.`;
 }
 
@@ -203,7 +208,7 @@ export function claimLines(pkg: OperationPackage, offer: MakeOffer) {
   const expr = operationText(pkg.operation);
   const ask = targetAsk(c, expr);
   const step = (id: string, level: 0 | 1 | 2): Pick<LineOffer, "slots" | "level"> => ({ slots: { step: id } as Slots, level });
-  const vars = { expr, value: num(c.value), shown: num(c.shown), ask, word: c.word, compare: compareOf(c) };
+  const vars = { expr, value: num(c.value), shown: num(c.shown), ask, word: c.word, compare: compareOf(c), first: c.choices[0], second: c.choices[1] };
   const example = sessionClaim({ ...pkg, steps: pkg.easierExample.steps, answer: { value: pkg.easierExample.answer, accepted: [], unit: null } });
   const exampleExpr = operationText(pkg.easierExample.operation);
   const printed = printedOrder(pkg);
@@ -217,8 +222,10 @@ export function claimLines(pkg: OperationPackage, offer: MakeOffer) {
     /** The example's last step (its word): "So we circle false." */
     exampleResult: (id: string): LineOffer[] => (example ? [offer("example.step", "example.claim", { show: `we circle ${example.word}` }, { slots: { step: id } })] : []),
     /** The compare step's H1 and H2 (H0 is invite.result, H3 the step shown). */
+    /** The compare step's H0 to H2, each with what the result is compared with (H3 is the step shown). */
     claimStep: (id: string): LineOffer[] => [
-      offer("step.point", "point.claim.product", {}, step(id, 1)),
+      offer("step.invite", "invite.claim.product", vars, step(id, 0)),
+      offer("step.point", "point.claim.product", vars, step(id, 1)),
       offer("step.operation", "operation.claim.product", vars, step(id, 2)),
     ],
     /** The final step: the claim's question (H0), the two numbers to compare (H1), and how they compare (H2). */
@@ -245,8 +252,10 @@ function printedOrder(pkg: OperationPackage): string | null {
 }
 
 /** A worked claim step in words, for the board and the example: the compare step as its equation and comparison. */
-export function claimShow(step: WorkedStep, expr: string): string | null {
-  return step.kind === "claim-compare" ? `${expr} = ${num(step.value)}. ${compareOf(step)}` : null;
+export function claimShow(step: WorkedStep, expr: string, problem: "target" | "example" = "target"): string | null {
+  if (step.kind !== "claim-compare") return null;
+  // The child's own comparison is the final step's (H1, H2); the example shows it whole.
+  return problem === "example" ? `${expr} = ${num(step.value)}. ${compareOf(step)}` : `${expr} = ${num(step.value)}. Now we compare it with ${num(step.shown)}.`;
 }
 
 // ---------- Reading the child's word ----------

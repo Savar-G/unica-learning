@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { allLineTexts, createSession, heldReason, lineOffers, step, type Session } from "@/lib/maya";
 import { claimActs, claimReveals, claimView, readClaimWord } from "@/lib/maya/claim";
 import { packageLines } from "@/lib/maya/lines";
+import * as CLAIMS from "@/lib/maya-gate/claim-fixtures";
 import { CLAIM_TRUE_FALSE } from "@/lib/maya-gate/claim-fixtures";
+import { claimTeaching } from "@/lib/maya-teaching/claim";
+import { scopeReason } from "@/lib/maya/scope";
+import { speechWords } from "@/lib/maya/speech";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 
@@ -98,7 +102,7 @@ describe("a claim question's session (A4)", () => {
 
   it("says the product printed the other way round is the same number", () => {
     const l = packageLines(claimView(FIXTURES.CLAIM_GT as OperationPackage));
-    expect(l.question()[0].texts[0]).toBe("4 × 360 is the same as 360 × 4. Let's work out 360 × 4 first.");
+    expect(l.question()[0].texts[0]).toBe("4 × 360 is the same as 360 × 4.");
     expect(l.help("result")[0].texts[0]).toBe("Is 360 × 4 greater than 1436? Circle yes or no.");
     // "Yes!" about a step could sound like the answer of a yes/no claim.
     for (const id of l.stepIds) for (const t of l.rightStep(id)[0].texts) expect(t).not.toMatch(/^yes\b/i);
@@ -150,3 +154,42 @@ describe("a claim question's session (A4)", () => {
     expect(step(yes, { type: "proposal", at: 3, proposal: accept }).refusal?.code).toBe("accepts_wrong_answer");
   });
 });
+
+describe("claim lines fit the word limits and the scope check (A4, lessons from review)", () => {
+  const views = Object.values(CLAIMS).map((raw) => claimView(claimTeaching(raw)! as OperationPackage));
+
+  it("every claim line fits 25 spoken words at grade 3, and the opening has a hello and a framing that fit together", () => {
+    for (const pkg of views) {
+      const l = packageLines(pkg);
+      const said = pkg.answer.value.type === "choice" ? pkg.answer.value.value : "";
+      const lines = [
+        ...l.question(), ...l.exampleIntro(), ...l.help("claim"), ...l.help("result"), ...l.answerRight(), ...l.writeAnswer(), ...l.writeYours(),
+        ...l.which(), ...l.said(said), ...l.rightStep("claim"), ...pkg.easierExample.steps.flatMap((st) => l.exampleStep(st.id)),
+      ].filter((o) => o.line !== "question.read" && o.line !== "step.show");
+      for (const o of lines) for (const t of o.texts) expect(speechWords(t), `${pkg.id}: ${t}`).toBeLessThanOrEqual(25);
+      // H3 of the compare step: at least one wording fits.
+      expect(l.help("claim").filter((o) => o.line === "step.show").every((o) => o.texts.some((t) => speechWords(t) <= 25)), pkg.id).toBe(true);
+      const shortest = (texts: string[]) => Math.min(...texts.map(speechWords));
+      expect(shortest(l.hello()[0].texts) + shortest(l.question()[0].texts), pkg.id).toBeLessThanOrEqual(25);
+    }
+  });
+
+  it.each([
+    ["claim-gate-tf", "6 times 8 is 48, so it's true."],
+    ["claim-gate-gt", "4 times 360 is 1440."],
+    ["claim-gate-gt", "1440 minus 1436 is 4, so it's yes."],
+    ["claim-gate-dec", "3.45 plus 2.38 is 5.83, so it's false."],
+    ["claim-gate-dec", "5.93 minus 5.83 is 0.1."],
+    ["claim-gate-div", "56 divided by 8 is 7, so it's no."],
+    ["claim-gate-div", "6 times 8 is 48."],
+    ["claim-gate-right", "32 minus 28 is 4."],
+  ])("%s: the child's own work in a full sentence is this question's math: %j", (id, text) => {
+    expect(scopeReason(views.find((p) => p.id === id)!, text, false)).toBeNull();
+  });
+
+  it("other math is still another problem", () => {
+    expect(scopeReason(views.find((p) => p.id === "claim-gate-gt")!, "4 times 36 is 144.", false)).toBe("changed_problem");
+    expect(scopeReason(views.find((p) => p.id === "claim-gate-tf")!, "7 times 8 is 56.", false)).toBe("changed_problem");
+  });
+});
+
