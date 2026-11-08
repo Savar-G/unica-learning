@@ -27,5 +27,5 @@ export default async function PlanPage() {
   const manage = !!dashboard || await planManagementAccess(parent);
   const pending = manage && plans ? await familyPendingControls(parent, plans.map(plan => plan.cardId)) : new Map();
   const closed = dashboard ? null : await planClosedFamily(parent);
-  return <ParentPlanView plans={plans} zone={zone} controls={manage} pending={pending} note={closed ? <PlanClosedNote closed={closed} on="plan" /> : undefined} />;
+  return <ParentPlanView plans={plans} zone={zone} controls={manage} pending={pending} closed={closed} note={closed ? <PlanClosedNote closed={closed} on="plan" /> : undefined} />;
 }

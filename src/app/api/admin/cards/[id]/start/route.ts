@@ -14,7 +14,7 @@ import { workbookStore } from "@/lib/workbook-store";
 // D-139: an admin starts a saved card's paid plan when the child's first workbook arrives at your home. Stripe holds the result; the
 // dashboard reads it from there, and the parent gets the confirmation email. This action also opens the product for that child
 // (src/lib/plan-access.ts): it writes the plan state at once, before any webhook. Answers { ok, firstChargeAt, access, confirmation }
-// or { ok: false, error }. `access` is "open" when the plan state is written, else "pending": the webhook or the sweep then writes it.
+// or { ok: false, error }. `access` is "open" when the plan state is written, else "pending": see openAccess for what writes it then.
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards/[id]/start">) {
   // Checks Auth and live admin membership for every request.
   const admin = await adminSession();
@@ -60,7 +60,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
   }
 }
 
-/** The plan has started, so a failed write must not read as a failed start. The webhook and the sweep each write the row too. */
+/**
+ * The plan has started, so a failed write must not read as a failed start. After a failed write the webhook is the fallback: the re-read does not
+ * take `not_started` rows, and the card sweep writes plan state only when it closes an open start itself. A load of the Account tab fills only a missing row.
+ */
 async function openAccess(start: Parameters<typeof applyPlanStart>[0]): Promise<"open" | "pending"> {
   try {
     const states = livePlanStates();

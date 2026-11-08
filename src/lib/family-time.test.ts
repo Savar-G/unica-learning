@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  addMonths, effectiveZone, familyZone, familyZoneName, familyTime, familyWhen, formatCalendarDate, localDay, localMonth, localWeekStart,
+  addMonths, effectiveZone, familyMoment, familyZone, familyZoneName, familyTime, familyWhen, formatCalendarDate, localDay, localMonth, localWeekStart,
   monthOf, PACIFIC_ZONE, warnIfTimeZoneDataIsOld, zoneFor,
 } from "@/lib/family-time";
 
@@ -203,6 +203,15 @@ describe("Canadian family clocks", () => {
     ["X1A 2N2", "2026-01-01T12:00:00Z", "5:00 a.m."],
   ])("keeps the correct clock across %s at %s", (postal, iso, clock) => {
     expect(familyTime(Date.parse(iso), zoneFor(postal))).toBe(clock);
+  });
+
+  it("writes a short date and time in the family's zone, in plain words (scan results, #715)", () => {
+    const at = "2026-11-07T21:37:13.132333+00:00";
+    // BC keeps UTC-7 after November 1, 2026 (the dated override).
+    expect(familyMoment(at, PACIFIC_ZONE)).toBe("Nov 7, 2:37 p.m.");
+    expect(familyMoment(at, zoneFor("M5V 2T6"))).toBe("Nov 7, 4:37 p.m.");
+    expect(familyMoment("2026-11-08T07:30:00Z", PACIFIC_ZONE)).toBe("Nov 8, 12:30 a.m.");
+    expect(familyMoment("2026-11-08T06:59:00Z", PACIFIC_ZONE)).toBe("Nov 7, 11:59 p.m.");
   });
 
   it("uses the same new day for display, day keys, and Monday resets", () => {

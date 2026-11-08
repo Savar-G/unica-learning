@@ -35,6 +35,7 @@ const copy = v => JSON.parse(JSON.stringify(v));
   await db.query(sql('20261106_scan_calibration_previous.sql'));
   await db.query(sql('20261106_scan_marking_sheet_check.sql'));
   await db.query(sql('20261106_scan_recheck_admission.sql'));
+  await db.query(sql('20261108021747_scan_marking_queue.sql'));
  }
  let passed=0,failures=0;
  async function test(name,run){try{await run();passed++;console.log('PASS',name);}catch(e){failures++;console.log('FAIL',name,e.stack);}}
@@ -147,6 +148,31 @@ const copy = v => JSON.parse(JSON.stringify(v));
   const f=await fixture();let seen=false;
   for(let n=0;n<100;n++){const batch=(await db.query('select recover_scan_marking(10) v')).rows[0].v;if(batch.some(r=>r.photo===f.photo)){seen=true;break;}}
   assert(seen);assert.equal((await db.query('select sent_at is not null v from scan_photos where id=$1',[f.photo])).rows[0].v,true);
+ });
+ await test('recovery queue gives the oldest sent photo first, restarts after the end, and locks its cursor (#726)',async()=>{
+  const fs=[await fixture(),await fixture(),await fixture()];
+  // Sent long before every other fixture, newest id first, so sent_at (not id) sets the order.
+  const sorted=[...fs].sort((a,b)=>b.photo.localeCompare(a.photo));
+  for(const [n,f] of sorted.entries()) await db.query("update scan_photos set sent_at=timestamptz '2000-01-01'+make_interval(secs=>$2) where id=$1",[f.photo,n]);
+  const next=async(c=db)=>(await c.query('select recover_scan_marking_oldest(1) v')).rows[0].v;
+  await db.query('update scan_marking_queue_cursor set after_sent_at=null,after_id=null');
+  for(const f of sorted){const got=await next();assert.equal(got.length,1);assert.equal(got[0].photo,f.photo);assert.deepEqual(Object.keys(got[0]).sort(),['child','parent','photo']);}
+  // The end of the list: [] and the cursor goes back to the start, so the next call has the oldest again.
+  await db.query("update scan_marking_queue_cursor set (after_sent_at,after_id)=(select sent_at,id from scan_photos where sent_at is not null order by sent_at desc,id desc limit 1)");
+  assert.deepEqual(await next(),[]);
+  assert.deepEqual((await db.query('select after_sent_at,after_id from scan_marking_queue_cursor')).rows[0],{after_sent_at:null,after_id:null});
+  assert.equal((await next())[0].photo,sorted[0].photo);
+  await db.query('update scan_marking_queue_cursor set (after_sent_at,after_id)=(select sent_at,id from scan_photos where id=$1)',[sorted[0].photo]);
+  // Two runs at once: the second call waits on the cursor lock, then gets the next photo, never the same one.
+  const a=await open(),b=await open();
+  try{
+   await a.query('begin');const first=(await a.query('select recover_scan_marking_oldest(1) v')).rows[0].v;
+   const pending=b.query('select recover_scan_marking_oldest(1) v');await waitLock(b);await a.query('commit');
+   const second=(await pending).rows[0].v;assert.equal(first[0].photo,sorted[1].photo);assert.notEqual(second[0]?.photo,first[0].photo);
+  }finally{await a.query('rollback').catch(()=>{});await a.end();await b.end();}
+  assert.equal((await db.query("select has_function_privilege('authenticated','public.recover_scan_marking_oldest(int)','execute') v")).rows[0].v,false);
+  assert.equal((await db.query("select has_function_privilege('service_role','public.recover_scan_marking_oldest(int)','execute') v")).rows[0].v,true);
+  await assert.rejects(db.query('select recover_scan_marking_oldest(11)'),/marking_limit/);
  });
  await test('real profile compare-and-set refuses stale effective snapshots, including first build',async()=>{
   const f=await fixture();await claim(f);await extraction(f);await apply(f);const rev=(await db.query('select revision from scan_marking_revisions where child_id=$1',[f.c])).rows[0].revision;

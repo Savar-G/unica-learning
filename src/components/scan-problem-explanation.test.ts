@@ -10,7 +10,7 @@ vi.mock("@/lib/scan-track", () => ({ scanEventTicket: () => () => {} }));
 vi.mock("./scan-private-images", () => ({ ScanPrivateImages: () => null }));
 let root: Root, host: HTMLDivElement;
 const item = { number: 1, itemId: "question", version: 2, state: "scored" as const, result: "wrong" as const, readAnswerText: "41", canChange: true, actor: "system" as const, at: "saved", evidencePhoto: "photo", photoAvailable: true, label: "Wrong" };
-const base = { completion: { status: "complete" as const, total: 1, finished: 1, items: [] }, counts: { scored: 1, unscored: 0, parentChecks: 0, pending: 0 }, solutionsAvailable: true, photoAvailable: true, items: [item] };
+const base = { completion: { status: "complete" as const, total: 1, finished: 1, items: [] }, counts: { scored: 1, unscored: 0, teamChecks: 0, pending: 0 }, solutionsAvailable: true, photoAvailable: true, items: [item] };
 const ready = { status: "ready", context: "version", correctAnswer: "42", explanation: { steps: ["Add one more ten."], say: "Check the tens." } };
 const render = async (result: Parameters<typeof ScanMarkingResults>[0]["result"] = base, parent = "parent", photo = "photo") => { await act(async () => root.render(createElement(ScanMarkingResults, { result, parent, photo }))); };
 const press = async (label = "Explain this problem") => { const b = [...host.querySelectorAll("button")].find(b => b.textContent?.startsWith(label)); expect(b).toBeDefined(); await act(async () => b!.click()); };
