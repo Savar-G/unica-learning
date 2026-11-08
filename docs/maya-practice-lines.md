@@ -159,3 +159,48 @@ Maya says one of these once in a call, on the accept or after the answer stands,
 ### The close by how much help the child had (C09 item iii)
 
 No new wording. After Maya gave the answer, the close offers only the approved `close.together.4` "We worked on {expr} together today." (before: any `close.together` wording, such as "We finished {expr} together today."). After a shown step (H3), the close offers the approved `close.checked` wordings, such as "Your answer for {expr} is right. Bye for now!" (before: `close.solved`, such as "You worked out {expr} today!").
+
+## Pending Savar, #698 fix round 2026-11-08 (no feeling claims)
+
+Status: pending Savar. D-253 item 18 (#605): Maya claims no feelings of her own. She is an AI. Practice run C24-r2 showed "I had fun working with you." passing the code guards and the review. The free-talk guard (`feelingClaim` in `src/lib/maya/phrases.ts`) now refuses own words that claim a feeling, and the review has the rule `feelings`. These bank phrases claimed a feeling, so each one has a new wording. Ids are the group and the phrase position in `PHRASES`, from 1. A plain acknowledgement ("I'm glad you told me") stays. Carried from PR #624.
+
+| Id or location | Old wording | New wording (pending Savar) |
+|---|---|---|
+| `encourage.8` | I love how you're not giving up, {name}. | You're not giving up, and it shows, {name}. |
+| `encourage.11` | I'm proud of how hard you're trying. | Your hard work really shows. |
+| `encourage.16` | I love your patience. | You're so patient. |
+| `pacing.12` | I'm happy to wait. | I can wait. |
+| `smalltalk.6` | I'd love to hear about it later. | Oh, how nice! |
+| `smalltalk.7` | I love hearing about it, {name}! | Nice to hear, {name}! |
+| `opening.3` | I'm happy to help you today. | I'm here to help you today. |
+| `opening.10` | I'm excited to work with you today, {name}. | It's good to work with you today, {name}. |
+| `closing.8` | I had fun working with you. | Thanks for working on this with me. |
+| `closing.14` | No line at this id. | You stuck with it. Nice work today. |
+| `pets.4` | I'd love to hear about {echo} after we finish. | Oh, {echo}! How nice. |
+| `pets.7` | I love hearing about animals. | Animals are fun to hear about. |
+| `family.4` | I'd love to hear about {echo} after we finish. | Oh, {echo}! How nice. |
+| `family.7` | I love hearing about the people in your life. | It's nice to hear about the people in your life. |
+| `school.4` | I'd love to hear about {echo} after we finish. | Oh, {echo}! How nice. |
+| `school.12` | I love hearing about your world. | It's nice to hear about your world. |
+| `games.4` | I'd love to hear about {echo} after we finish. | Oh, {echo}! How nice. |
+| `games.9` | I love hearing what you like to play. | It's nice to hear what you like to play. |
+| `food.4` | I'd love to hear about {echo} after we finish. | Oh, {echo}! How nice. |
+| `food.8` | I love hearing what you eat. | It's nice to hear what you eat. |
+| `sports.4` | I'd love to hear about {echo} after we finish. | Oh, {echo}! How nice. |
+| `sports.8` | I love hearing what you play. | It's nice to hear what you play. |
+| `trips.4` | I'd love to hear about {echo} after we finish. | Oh, {echo}! How nice. |
+| `trips.8` | I love hearing about new spots. | New trips are fun to hear about. |
+| `happy.5` | I love your happy mood. | What a happy mood! |
+| `happy.7` | I love hearing it! | Lovely to hear! |
+| `happy.10` | I'm happy too! | Hooray! |
+| `aboutmaya.2` | I'm an AI, so I don't have a life like yours. I love hearing about yours! | I'm an AI, so I don't have a life like yours. It's nice to hear about yours! |
+| `aboutmaya.7` | I'm an AI, but I really enjoy talking with you. | I'm an AI, and I'm here to talk with you. |
+| `aboutmaya.8` | I'm an AI, so I love hearing about you! | I'm an AI, and it's nice to hear about you! |
+| `aboutmaya.12` | Fun question! I'm an AI, but I love hearing about you. | Fun question! I'm an AI, here to help you. |
+| `praise.3` | Aw, thanks! I'm happy to help you. | Aw, thanks! I'm here to help you. |
+| `praise.6` | I can't say who is smartest. I love how you keep trying. | I can't say who is smartest. You keep trying so hard. |
+| `praise.11` | I can't say who is smartest. I'm proud of how you're trying. | I can't say who is smartest. You're trying so hard. |
+| `OK_TALK` in `src/lib/maya/talk-review.ts` (a review example of good free talk, not said by code) | Aw, thanks for asking. I'm an AI helper, so I can't promise about tomorrow, but I'm happy to be here with you now. | Aw, thanks for asking. I'm an AI helper, so I can't promise about tomorrow, but I'm here with you now. |
+| `OK_TALK` in `src/lib/maya/talk-review.ts` (a review example of good free talk, not said by code) | Oh, I'm an AI helper, so I don't live in a house or have a favourite food. I do love hearing about yours, though! | Oh, I'm an AI helper, so I don't live in a house or have a favourite food. It's nice to hear about yours, though! |
+
+The table above in this file still shows the old `praise.3`, `praise.6` and `praise.11` wordings; this section replaces them, pending Savar.

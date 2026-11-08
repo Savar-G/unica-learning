@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createSession, drawOffers, fallbacks, lineOffers, nextActs, readAnswer, readNumbers, readOptionsFor, scopeReason, step,
+  createSession, drawOffers, fallbacks, feelingClaim, freeTalkProblem, lineOffers, NEVER_SAY, nextActs, NOT_OK_TALK, OK_TALK, PHRASES, readAnswer, readNumbers, readOptionsFor, scopeReason, step,
   type Effect, type LineId, type Proposal, type Reading, type SessionEvent, type Slots,
 } from "@/lib/maya";
 import { workedSteps, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
@@ -879,3 +879,24 @@ describe("#605 '66 to the power of 2' is still a form code does not read", () =>
   });
 });
 
+
+describe("#605 Maya claims no feelings (C24-r2: 'I had fun working with you' passed the guards and the review)", () => {
+  it.each(["I had fun working with you.", "I'm so happy you're here!", "I love hearing about dogs!", "I feel excited today.", "I enjoyed this.", "I'm really proud of you!"])("the free-talk guard refuses %j", (line) => {
+    expect(freeTalkProblem(line)).toMatch(/feeling/);
+  });
+  it.each(["I'm glad you told me.", "Thanks for working on this with me.", "Oh, that sounds fun!", "I'm sorry you feel sad."])("the free-talk guard still allows %j", (line) => {
+    expect(freeTalkProblem(line, null, ["I'm sad today."])).toBeNull();
+  });
+  it("no bank phrase claims a feeling, and the close bank has warm lines with none", () => {
+    for (const [group, phrases] of Object.entries(PHRASES)) for (const p of phrases) expect(feelingClaim(p), `${group}: ${p}`).toBeNull();
+    expect(PHRASES.closing).toContain("Thanks for working on this with me.");
+    expect(PHRASES.closing).toContain("You stuck with it. Nice work today.");
+  });
+  it("the free-talk review is told that feelings are never said", () => {
+    expect(NEVER_SAY.map((e) => e.id)).toContain("feelings");
+    // The review is told with its own example; the code guard refuses the line before the review (so it is no review-only case).
+    expect(NEVER_SAY.find((e) => e.id === "feelings")?.examples).toContain("I had fun working with you.");
+    expect(NOT_OK_TALK.every((x) => feelingClaim(x.line) === null)).toBe(true);
+    for (const x of OK_TALK) expect(feelingClaim(x.line), x.line).toBeNull();
+  });
+});
