@@ -649,6 +649,7 @@ export type Database = {
           parent_id: string
           read_at: string
           read_order: number | null
+          read_tried_at: string | null
           updated_at: string
         }
         Insert: {
@@ -663,6 +664,7 @@ export type Database = {
           parent_id: string
           read_at: string
           read_order?: number | null
+          read_tried_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -677,6 +679,7 @@ export type Database = {
           parent_id?: string
           read_at?: string
           read_order?: number | null
+          read_tried_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3028,6 +3031,7 @@ export type Database = {
       scan_mark_changes: {
         Row: {
           actor: string
+          admin_id: string | null
           changed_at: string
           child_id: string
           current: Json
@@ -3040,6 +3044,7 @@ export type Database = {
         }
         Insert: {
           actor?: string
+          admin_id?: string | null
           changed_at?: string
           child_id: string
           current: Json
@@ -3052,6 +3057,7 @@ export type Database = {
         }
         Update: {
           actor?: string
+          admin_id?: string | null
           changed_at?: string
           child_id?: string
           current?: Json
@@ -3592,6 +3598,24 @@ export type Database = {
           maximum_micros?: number | null
           model?: string
           verified_at?: string | null
+        }
+        Relationships: []
+      }
+      scan_marking_queue_cursor: {
+        Row: {
+          after_id: string | null
+          after_sent_at: string | null
+          singleton: boolean
+        }
+        Insert: {
+          after_id?: string | null
+          after_sent_at?: string | null
+          singleton?: boolean
+        }
+        Update: {
+          after_id?: string | null
+          after_sent_at?: string | null
+          singleton?: boolean
         }
         Relationships: []
       }
@@ -4162,6 +4186,111 @@ export type Database = {
             columns: ["workbook_id"]
             isOneToOne: false
             referencedRelation: "workbooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_book1_baselines: {
+        Row: {
+          actor_id: string
+          boundary_at: string
+          child_id: string
+          created_at: string
+          db_content_hash: string
+          db_frame_hash: string
+          db_rendering_hash: string
+          draft_id: string
+          draft_revision: number
+          engine: string
+          id: string
+          initial_activity: Json
+          parent_id: string
+          payload: string
+          payload_hash: string
+          plan_input_hash: string
+          planning_kind: string
+          print_hash: string
+          printed_revision: string
+          run_id: string
+        }
+        Insert: {
+          actor_id: string
+          boundary_at?: string
+          child_id: string
+          created_at?: string
+          db_content_hash: string
+          db_frame_hash: string
+          db_rendering_hash: string
+          draft_id: string
+          draft_revision: number
+          engine: string
+          id: string
+          initial_activity: Json
+          parent_id: string
+          payload: string
+          payload_hash: string
+          plan_input_hash: string
+          planning_kind: string
+          print_hash: string
+          printed_revision: string
+          run_id: string
+        }
+        Update: {
+          actor_id?: string
+          boundary_at?: string
+          child_id?: string
+          created_at?: string
+          db_content_hash?: string
+          db_frame_hash?: string
+          db_rendering_hash?: string
+          draft_id?: string
+          draft_revision?: number
+          engine?: string
+          id?: string
+          initial_activity?: Json
+          parent_id?: string
+          payload?: string
+          payload_hash?: string
+          plan_input_hash?: string
+          planning_kind?: string
+          print_hash?: string
+          printed_revision?: string
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_book1_baselines_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baselines_draft_id_draft_revision_fkey"
+            columns: ["draft_id", "draft_revision"]
+            isOneToOne: true
+            referencedRelation: "workbook_draft_revisions"
+            referencedColumns: ["draft_id", "revision"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baselines_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baselines_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baselines_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -6283,6 +6412,92 @@ export type Database = {
           },
         ]
       }
+      workbook_second_tries: {
+        Row: {
+          based_on_version: number
+          baseline_id: string
+          child_id: string
+          engine: string
+          evidence_reference: string
+          help: string
+          id: string
+          item_id: string
+          item_row_id: string
+          page_id: string
+          parent_id: string
+          printed_revision: string
+          recorded_at: string
+          result: string
+          source: string
+          workbook_id: string
+        }
+        Insert: {
+          based_on_version: number
+          baseline_id: string
+          child_id: string
+          engine: string
+          evidence_reference: string
+          help: string
+          id: string
+          item_id: string
+          item_row_id: string
+          page_id: string
+          parent_id: string
+          printed_revision: string
+          recorded_at?: string
+          result: string
+          source: string
+          workbook_id: string
+        }
+        Update: {
+          based_on_version?: number
+          baseline_id?: string
+          child_id?: string
+          engine?: string
+          evidence_reference?: string
+          help?: string
+          id?: string
+          item_id?: string
+          item_row_id?: string
+          page_id?: string
+          parent_id?: string
+          printed_revision?: string
+          recorded_at?: string
+          result?: string
+          source?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_second_tries_baseline_id_fkey"
+            columns: ["baseline_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_book1_baselines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_second_tries_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_second_tries_item_row_id_fkey"
+            columns: ["item_row_id"]
+            isOneToOne: false
+            referencedRelation: "scan_marking_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_second_tries_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_workers: {
         Row: {
           build: string | null
@@ -6643,9 +6858,32 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_scan_team_queue: {
+        Args: { p_limit?: number }
+        Returns: {
+          book: number
+          child_id: string
+          child_name: string
+          issue: string
+          item_id: string
+          page_number: number
+          parent_id: string
+          photo_id: string
+          question_number: number
+          read_text: string
+          test_family: boolean
+          total: number
+          waiting_since: string
+          workbook_id: string
+        }[]
+      }
       admin_set_maya_chat_family: {
         Args: { p_change: string; p_enabled: boolean; p_parent: string }
         Returns: string
+      }
+      admin_set_scan_mark: {
+        Args: { p_item: string; p_result: string; p_version: number }
+        Returns: Json
       }
       admin_set_test_account: {
         Args: { p_parent: string; p_test: boolean }
@@ -7324,6 +7562,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      due_plan_reads: {
+        Args: { p_limit?: number }
+        Returns: {
+          child_id: string
+          customer: string
+          event_at: string
+          kind: string
+          parent_id: string
+        }[]
+      }
       email_copy_child_scope: {
         Args: { l: Database["public"]["Tables"]["email_log"]["Row"] }
         Returns: string[]
@@ -7605,6 +7853,7 @@ export type Database = {
       }
       my_family_deletion_state: { Args: never; Returns: string }
       note_card_checked: { Args: { p_card: string }; Returns: undefined }
+      note_plan_read_tried: { Args: { p_child: string }; Returns: undefined }
       note_plan_start_alert: {
         Args: {
           p_card: string
@@ -7805,11 +8054,24 @@ export type Database = {
         }
         Returns: Json
       }
+      record_workbook_second_try: {
+        Args: {
+          p_based_on_version: number
+          p_baseline: string
+          p_evidence_reference: string
+          p_help: string
+          p_id: string
+          p_item_row: string
+          p_result: string
+        }
+        Returns: Json
+      }
       recover_maya_chat_message: {
         Args: { p_child: string; p_parent: string }
         Returns: Json
       }
       recover_scan_marking: { Args: { p_limit?: number }; Returns: Json }
+      recover_scan_marking_oldest: { Args: { p_limit?: number }; Returns: Json }
       recover_scan_photo: {
         Args: { p_id: string; p_parent: string }
         Returns: string
@@ -8307,6 +8569,28 @@ export type Database = {
           p_slots: string[]
         }
         Returns: boolean
+      }
+      workbook_book1_access: {
+        Args: { p_child: string; p_parent: string }
+        Returns: boolean
+      }
+      workbook_book1_baseline_command: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_child: string
+          p_draft: string
+          p_hash?: string
+          p_parent: string
+          p_payload?: string
+          p_request: string
+          p_run: string
+        }
+        Returns: Json
+      }
+      workbook_book1_sources: {
+        Args: { p_child: string; p_parent: string; p_workbook: string }
+        Returns: Json
       }
       workbook_comment_route: {
         Args: { p_note: string; p_page: Json; p_route?: string }

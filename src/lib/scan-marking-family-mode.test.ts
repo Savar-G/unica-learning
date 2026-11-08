@@ -15,8 +15,9 @@ const running = "22222222-2222-4222-8222-222222222222", stopped = "33333333-3333
 const photos: Record<string, string> = {
   "44444444-4444-4444-8444-444444444444": running,
   "55555555-5555-4555-8555-555555555555": stopped,
+  "77777777-7777-4777-8777-777777777777": stopped,
 };
-const [runningPhoto, stoppedPhoto] = Object.keys(photos);
+const [runningPhoto, stoppedPhoto, stoppedPhoto2] = Object.keys(photos);
 const missingPhoto = "66666666-6666-4666-8666-666666666666";
 const families = { SCAN_MARKING_ENABLED: "families" };
 
@@ -38,7 +39,7 @@ const db = createClient<Database>("https://marking-families.example.test", "synt
       const id = url.searchParams.get("id")?.replace(/^eq\./, ""), owner = url.searchParams.get("parent_id")?.replace(/^eq\./, "");
       return Response.json(owner === parent && (id === running || id === stopped) ? [{ id }] : []);
     }
-    if (url.pathname.endsWith("/rpc/recover_scan_marking")) { state.recoverCalls++; return Response.json(state.recoverAlways ?? state.recovered.shift() ?? []); }
+    if (url.pathname.endsWith("/rpc/recover_scan_marking_oldest")) { state.recoverCalls++; return Response.json(state.recoverAlways ?? state.recovered.shift() ?? []); }
     if (url.pathname.endsWith("/rpc/scan_marking_command")) {
       const body = JSON.parse(String(init?.body)); state.commands.push(body.p_action);
       if (body.p_action === "outbox") return Response.json([]);
@@ -128,8 +129,10 @@ it("a real family is closed when no child is named", async () => {
   expect(asked).toEqual([]);
 });
 
-it("the default plan gate stays closed until the dashboard's plan access exists", async () => {
-  expect(await markingDecision(db, parent, families, { child: running })).toEqual({ open: false, reason: "unknown" });
+it("the default plan gate is the dashboard's shared childPlanAccess (#705)", async () => {
+  const shared = await import("@/lib/plan-access");
+  const access = await import("./scan-marking-access");
+  expect(access.childPlanAccess).toBe(shared.childPlanAccess);
 });
 
 it.each(["test", "admin"] as const)("families mode keeps %s access without a plan", async (role) => {
@@ -200,25 +203,47 @@ it("test-only mode publishes nothing for a refused family, as before", async () 
 });
 
 it("recovery moves past refused photos in the same run, so they do not hold up other families", async () => {
-  state.recovered = [[{ parent, photo: stoppedPhoto }], [{ parent: otherParent, photo: stoppedPhoto }], [{ parent, photo: missingPhoto }]];
-  state.test = false;
+  state.recovered = [[{ parent, photo: stoppedPhoto }], [{ parent: otherParent, photo: runningPhoto }], [{ parent, photo: missingPhoto }]];
   const result = await recoverScanMarking(db, families, gate);
   expect(result).toEqual({ status: "processed", results: ["off", "off", "off"] });
-  expect(state.recoverCalls).toBe(4);
+  // Three photos, the end of the list, then the restart's empty answer.
+  expect(state.recoverCalls).toBe(5);
 });
 
-it("recovery stops after the first photo it works on", async () => {
+it("recovery goes on after a photo it works on (#726)", async () => {
   state.test = true;
   state.recovered = [[{ parent, photo: missingPhoto }], [{ parent, photo: runningPhoto }]];
-  expect(await recoverScanMarking(db, families, gate)).toEqual({ status: "processed", results: ["terminal"] });
-  expect(state.recoverCalls).toBe(1);
+  const result = await recoverScanMarking(db, families, gate);
+  expect(result.results).toHaveLength(2);
+  expect(result.results).not.toContain("error");
 });
 
-it("recovery skips a bounded number of refused photos in one run", async () => {
+it("in one run a closed plan gets no AI call and its committed marks publish, and an open plan's photo is still taken (#726)", async () => {
+  state.recovered = [[{ parent, photo: stoppedPhoto }], [{ parent, photo: runningPhoto }]];
+  const result = await recoverScanMarking(db, families, gate);
+  // The fake answers any image read or paid dispatch with an error, which would show here as "error".
+  expect(result.results![0]).toBe("off");
+  expect(result.results).toHaveLength(2);
+  expect(result.results).not.toContain("error");
+  expect(asked).toEqual([{ parentId: parent, childId: stopped }, { parentId: parent, childId: running }]);
+  // The closed plan's photo: only the publication of committed marks ("outbox") and one profile rebuild.
+  expect(state.commands[0]).toBe("outbox");
+  expect(state.queries.some((q) => q.includes("/storage/"))).toBe(false);
+});
+
+it("recovery publishes each closed-plan photo's marks but rebuilds the child's profile once (P3-2)", async () => {
+  state.recovered = [[{ parent, photo: stoppedPhoto }], [{ parent, photo: stoppedPhoto2 }]];
+  const result = await recoverScanMarking(db, families, gate);
+  expect(result.results).toEqual(["off", "off"]);
+  expect(state.commands).toEqual(["outbox", "outbox"]);
+  expect(profile.calls).toBe(1);
+});
+
+it("recovery stops when the list comes back to a photo it already had", async () => {
   state.recoverAlways = [{ parent, photo: stoppedPhoto }];
   const result = await recoverScanMarking(db, families, gate);
-  expect(result.results).toHaveLength(10);
-  expect(state.recoverCalls).toBe(10);
+  expect(result.results).toEqual(["off"]);
+  expect(state.recoverCalls).toBe(2);
 });
 
 it("the plan gate is given the database client", async () => {

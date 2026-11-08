@@ -34,5 +34,5 @@ export default async function AccountSettings({ searchParams }: PageProps<"/acco
   const closed = dashboard ? null : await planClosedFamily(parent);
   return <ParentAccountSettings note={closed ? <PlanClosedNote closed={closed} on="account" /> : undefined} card={card} hasCard={!!cards?.some(c => c.card_saved_at)} province={kids?.at(-1)?.province ?? "BC"}
     details={await childDetails(db)}
-    billing={<Suspense fallback={<p role="status">Loading billing...</p>}><BillingSection parent={parent} zone={zone} /></Suspense>} />;
+    billing={<Suspense fallback={<p role="status">Loading billing...</p>}><BillingSection parent={parent} zone={zone} closed={closed} /></Suspense>} />;
 }

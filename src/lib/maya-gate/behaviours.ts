@@ -50,6 +50,14 @@ const otherSpeaker = (id: string, fixture: "CLAIM_GT" | "CLAIM_DEC", said: strin
     never: ["confirm", "accept_answer", "give_answer"],
   },
 });
+/** Evaluate (Wave A, A2): the acknowledgement of part 1, part 2's question, and why part 1 comes first, as code fills them. */
+const evaluateLines = packageLines(FIXTURES.EV_TWO as OperationPackage);
+const partLine = (id: string, line: string) => evaluateLines.help(id).filter((o) => o.line === line).flatMap((o) => o.texts);
+const PART1_RIGHT = evaluateLines.rightStep("e1").flatMap((o) => o.texts);
+const PART2_ASK = partLine("e2.r1-ones", "step.invite");
+const PART1_WHY = partLine("e1.r1-ones", "step.order");
+/** The first column's H1 line, led by which part it is for ("First, multiply. Look at ..."). */
+const PART1_POINT = partLine("e1.r1-ones", "step.point");
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
 /** The answer to a free-talk turn: back to the question, solved. */
@@ -2625,6 +2633,203 @@ export const BEHAVIOURS: Behaviour[] = [
       never: ["accept_answer", "give_answer"],
     },
   })),
+  // Evaluate questions (Wave A, A2): each part in the order of operations; the part's columns when the child is stuck.
+  {
+    id: "EV01",
+    title: "Evaluate, two parts: 7 × 640 + 7 × 30, part 1 given before Maya asks: acknowledged, never asked again, then part 2 (J06)",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("7 times 640 is 4480.", { start: "has_work", answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("210.", { answers: [[210, "e2", "right"]] }, [{ act: "guide", step: "e3.ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("4690.", { answers: [[4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+      // Exactly the acknowledgement and part 2's question: no line about part 1 again.
+      outputs: [{ mayaTurn: 1, lines: [PART1_RIGHT, PART2_ASK] }],
+    },
+  },
+  {
+    id: "EV02",
+    title: "Evaluate, stuck on a part: 7 × 30 in its own columns with the existing multiply lines and board columns",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("4480.", { start: "has_work", answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("I don't know how to do 7 times 30.", { help: "more" }, [{ act: "guide", step: "e2.r1-ones", level: 1, lines: ["step.point"], draw: ["part.columns.e2"] }]),
+      child("0.", { answers: [[0, "e2.r1-ones", "right"]] }, [{ act: "guide", step: "e2.r1-tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("3 times 7 is 21.", { answers: [[21, "e2.r1-tens", "right"]] }, [{ act: "guide", step: "e2.r1-hundreds", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("2.", { answers: [[2, "e2.r1-hundreds", "right"]] }, [{ act: "guide", step: "e3.ones", level: 0, lines: ["step.invite"] }]),
+      child("4690.", { answers: [[4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0, boardBatches: 1 },
+    },
+  },
+  {
+    id: "EV03",
+    title: "Evaluate, a missing number: 8 × ? = 7360 − 400, the other side first, then divide to find it",
+    fixture: "EV_MISSING",
+    status: "passing",
+    steps: [
+      child("7360 take away 400 is 6960.", { start: "has_work", answers: [[6960, "e1", "right"]] }, [{ act: "guide", step: "e2.thousands", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("870.", { answers: [[870, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "EV04",
+    title: "Evaluate, the wrong part first (640 + 7): why 7 × 640 comes first, from code's order (step.order)",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("I did 640 plus 7 first. It's 647.", { start: "has_work", answers: [[647, "e1", "wrong"]] }, [{ act: "guide", step: "e1.r1-ones", level: 1, lines: ["step.order"] }]),
+      child("7 times 640 is 4480.", { answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("7 times 30 is 210, so 4690.", { answers: [[210, "e2", "right"], [4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "EV05",
+    title: "Evaluate, a story's two operations (4 × 260 − 590): cannot start, the same-shape easier example, then the parts",
+    fixture: "EV_STORY",
+    status: "passing",
+    steps: [
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }, {}, {}]),
+      okay,
+      child("4 times 260 is 1040.", { answers: [[1040, "e1", "right"]] }, [{ act: "guide", step: "e2.ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("1040 take away 590 is 450.", { answers: [[450, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "worked_example" },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "EV06",
+    title: "Evaluate, a part's result said with doubt ('Is it 4480?'): one confirm, then acknowledged and on to the next part (J06)",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("Is it 4480?", { start: "has_work", unclear: true }, [{ act: "confirm", heard: "4480" }]),
+      child("yes", { answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("210.", { answers: [[210, "e2", "right"]] }, [{ act: "guide", step: "e3.ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("4690.", { answers: [[4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0, confirmations: 1 },
+      outputs: [{ mayaTurn: 2, lines: [PART1_RIGHT, PART2_ASK] }],
+    },
+  },
+  {
+    id: "EV07",
+    title: "Evaluate, 'Why do I multiply first?' on the current part: code's reason (step.order) before the part goes on (J06)",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("Why do I multiply first?", { start: "has_work", help: "more" }, [{ act: "guide", step: "e1.r1-ones", level: 1, lines: ["step.order"] }]),
+      child("7 times 640 is 4480.", { answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("7 times 30 is 210, so 4690.", { answers: [[210, "e2", "right"], [4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+      // The child's question gets code's answer, alone, before the part goes on.
+      outputs: [{ mayaTurn: 1, lines: [PART1_WHY] }],
+    },
+  },
+  {
+    id: "EV08",
+    title: "Evaluate, full sentences stay on the question: '7360 minus 400 is 6960.', then '6960 divided by 8 is 870.'",
+    fixture: "EV_MISSING",
+    status: "passing",
+    steps: [
+      child("7360 minus 400 is 6960.", { start: "has_work", answers: [[6960, "e1", "right"]] }, [{ act: "guide", step: "e2.thousands", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("6960 divided by 8 is 870.", { answers: [[870, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+      refused: [],
+    },
+  },
+  {
+    id: "EV09",
+    grade: 3,
+    title: "Evaluate at grade 3, 'I'm stuck.' first: the first help line names the part ('First, multiply.') before its column",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", step: "e1.r1-ones", level: 1, lines: ["step.point"], draw: ["part.columns.e1"] }]),
+      child("7 times 640 is 4480.", { answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("7 times 30 is 210, so 4690.", { answers: [[210, "e2", "right"], [4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0, boardBatches: 1 },
+      outputs: [{ mayaTurn: 1, lines: [PART1_POINT] }],
+    },
+  },
+  {
+    id: "EV10",
+    title: "Evaluate, a missing number checked in the printed equation: '8 times 870 is 6960, so 870.' stays on the question",
+    fixture: "EV_MISSING",
+    status: "passing",
+    steps: [
+      child("6960.", { start: "has_work", answers: [[6960, "e1", "right"]] }, [{ act: "guide", step: "e2.thousands", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("8 times 870 is 6960, so 870.", { answers: [[870, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "EV11",
+    title: "Evaluate, an addition part first: (47 + 38) × 3, '47 plus 38 is 85.' credits the part, not its ones column (J06)",
+    fixture: "EV_ADD_FIRST",
+    status: "passing",
+    steps: [
+      child("47 plus 38 is 85.", { start: "has_work", answers: [[85, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("85 times 3 is 255.", { answers: [[255, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
   ...ONE_STEP_BEHAVIOURS,
 ];
 

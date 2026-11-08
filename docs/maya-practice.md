@@ -159,6 +159,8 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 | CL01 | CLAIM_TF (True or false: 6 × 8 = 48.) | Knows the fact and says it's true | solved |
 | CL02 | CLAIM_GT (Is 4 × 360 greater than 1436?) | Not sure; works 360 × 4 with help, then says yes | solved |
 | CL03 | CLAIM_DEC (True or false: 3.45 + 2.38 = 5.93.) | Says true at first; adds the columns with help, then says false | solved |
+| EV1 | EV_TWO (7 × 640 + 7 × 30) | Works from left to right: 640 + 7 = 647, then each part after help (Wave A, A2) | solved |
+| EV2 | EV_STORY (4 × 260 − 590) | Cannot start a two-step story; follows the same-shape easier example, then each part | solved |
 | W5 | W5 (10000 − 3615, a workbook story through the session adapter) | Stuck on the zeros; regroups across them column by column | solved |
 | W3 | W3 (284 × 7, an "Each … has" workbook story through the session adapter) | Drops the carries: 1468 | solved |
 

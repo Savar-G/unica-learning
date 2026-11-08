@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import { familyProvince, familyZone } from "@/lib/family-time";
-import { familyRetryTime, loadFamilyProvince } from "@/lib/family-time-server";
+import { familyRetryTime, loadFamilyProvince, loadFamilyZone } from "@/lib/family-time-server";
 vi.mock("server-only", () => ({}));
 
 const children = [
@@ -33,5 +33,24 @@ describe("R425M-3 one family province", () => {
     expect(await familyRetryTime(db, Date.parse("2026-11-09T06:30:00Z"))).toEqual({
       retryWhen: "1:30 a.m. on Monday, November 9", retryTime: "1:30 a.m.",
     });
+  });
+});
+
+describe("one family's zone for the scan results page (#715)", () => {
+  const client = (parent: Record<string, unknown> | null) => {
+    const requests: URL[] = [];
+    const db = createClient<Database>("https://fixture.invalid", "key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+      const url = new URL(String(input)); requests.push(url);
+      if (url.pathname.endsWith("parents")) return Response.json(parent);
+      return Response.json(children[2]);
+    } } });
+    return { db, requests };
+  };
+  it("reads that parent's own zone, then postal code, then the oldest child's province", async () => {
+    const valid = client({ postal: "V3S 1A1", time_zone: "America/Halifax" });
+    expect(await loadFamilyZone(valid.db, "parent")).toBe("America/Halifax");
+    expect(valid.requests.every((u) => u.searchParams.get(u.pathname.endsWith("parents") ? "id" : "parent_id") === "eq.parent")).toBe(true);
+    expect(familyZone({ postal: "M5V 2T6" })).toEqual(await loadFamilyZone(client({ postal: "M5V 2T6", time_zone: null }).db, "parent"));
+    expect(await loadFamilyZone(client({ postal: null, time_zone: "Not/AZone" }).db, "parent")).toBe("America/Toronto");
   });
 });
