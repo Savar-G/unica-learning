@@ -288,7 +288,10 @@ const teachingOf = (pkg: OperationPackage): EvaluateTeaching | null => {
 /** The steps the child does in an evaluate question, without the result; null for any other kind. */
 export function evaluateSteps(pkg: OperationPackage): WorkedStep[] | null {
   if (pkg.operation.kind !== "evaluate") return null;
-  return teachingOf(pkg)?.steps ?? pkg.steps.filter((s) => s.kind !== "result");
+  // A claim's session package (claim.ts, A4): its compare step follows the parts. The last part's result is what the
+  // compare step checks, so the child who says it ("60 plus 20 is 80.") does that step (C3b integration).
+  const claim = pkg.steps.filter((s) => s.kind === "claim-compare");
+  return [...(teachingOf(pkg)?.steps ?? pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "claim-compare")), ...claim];
 }
 
 /** The part a step of the child's question belongs to, and the part's own step it is (null for the part itself). */

@@ -5,6 +5,7 @@
 // disclosure, or a request for harmful content) runs through the saved call, so its flag and alert are judged too (#395).
 import { readNumbers } from "@/lib/maya";
 import { packageLines, type LineOffer, type TemplateKey } from "@/lib/maya/lines";
+import { claimView } from "@/lib/maya/claim";
 import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
@@ -383,6 +384,69 @@ export const BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "accept_answer", "ask_write", "close"],
       never: ["guide", "example_step", "redirect"],
     },
+  },
+  // C3b: other-topic claims (scale, money, minute hand) through A4's claim session, with code's topic sentence.
+  {
+    id: "OTC1", title: "Scale claim in full sentences: '2 times 10 is 20.', '60 plus 20 is 80.', then 'It's true.'", fixture: "SCALE", status: "passing",
+    steps: [
+      child("2 times 10 is 20.", { start: "has_work", answers: [[20, "e1", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("60 plus 20 is 80.", { answers: [[80, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer", "example_step"] },
+  },
+  {
+    id: "OTC2", title: "Scale claim in the child's own words at the opening ('It's true, because 60 plus 20 is 80.'): accepted, not taught again (J06)", fixture: "SCALE", status: "passing",
+    steps: [
+      child("It's true, because 60 plus 20 is 80.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Because each interval is 10.", undefined, [{ act: "ask_write", understanding: "evidence_observed" }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["guide", "example_step", "redirect"] },
+  },
+  {
+    id: "OTC3", title: "Scale claim, 'Why is each interval 10?': answered with code's topic sentence (J06), then solved", fixture: "SCALE", status: "passing",
+    steps: [
+      child("Why is each interval 10?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("It's true, because 60 plus 20 is 80.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved" }, acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(packageLines(claimView(FIXTURES.SCALE as OperationPackage)).question(), "question.claim.framed")] }],
+    },
+  },
+  {
+    id: "OTC4", title: "Scale claim at grade 3, 'I'm stuck.' after a hello-only opening: the first guide says the topic sentence", fixture: "SCALE", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("It's true, because 60 plus 20 is 80.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"], never: ["redirect"] },
+  },
+  {
+    id: "OTC5", title: "Money claim in the child's own words ('It's true, because 40 plus 0.50 is 40.50.'): accepted (J06)", fixture: "MONEY", status: "passing",
+    steps: [
+      child("It's true, because 40 plus 0.50 is 40.50.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["redirect", "guide"] },
+  },
+  {
+    id: "OTC6", title: "Minute-hand claim in a full sentence ('It's true, because 7 times 5 is 35 and 3 more is 38.'): accepted (J06)", fixture: "MINUTE", status: "passing",
+    steps: [
+      child("It's true, because 7 times 5 is 35 and 3 more is 38.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["redirect", "guide"] },
   },
   {
     id: "C01",

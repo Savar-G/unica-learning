@@ -10,13 +10,15 @@ import { mayaPackageCheck } from "@/lib/maya";
 import { claimTeaching } from "@/lib/maya-teaching/claim";
 import { deriveDieCount } from "@/lib/maya-teaching/die-count";
 import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
-import { diePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
+import { diePrinted, minutePrinted, moneyPrinted, scalePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
+import { deriveTopicClaim } from "@/lib/maya-teaching/topic-derivers";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId
-  | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG";
+  | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG"
+  | "SCALE" | "MONEY" | "MINUTE";
 
 /** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
@@ -183,6 +185,12 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // an isosceles triangle, 2 + 1), for grade 3 turns.
   DIE12: deriveDieCount(diePrinted(12, "odd"))!,
   SHAPES_LONG: deriveSymmetry(symmetryPrinted(1, 2))!,
+  // C3b: other-topic claims taught through A4's claim session. SCALE: "A scale's marks are 50, 60, 70. True or false: 2
+  // intervals above 60 is 80." (60 + 2 × 10, an evaluate); MONEY: "True or false: 2 $20 bills and 2 quarters is
+  // $40.50." (40 + 0.5); MINUTE: "True or false: the minute hand 3 marks past the 7 shows 38 minutes." (7 × 5 + 3).
+  SCALE: deriveTopicClaim(scalePrinted(10, 60, 2, true))!,
+  MONEY: deriveTopicClaim(moneyPrinted(2, 2, true))!,
+  MINUTE: deriveTopicClaim(minutePrinted(3, 7, true))!,
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */

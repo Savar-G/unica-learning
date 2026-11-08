@@ -15,8 +15,12 @@ import { readTopicQuestion } from "./topic-claims";
 import { claimOperation, resultOf } from "./topic-claim";
 import type { Deriver } from "./index";
 
-/** Money's easier examples: one $20 bill and one, two or three quarters. */
-const MONEY_EXAMPLES: Operation[] = [0.25, 0.5, 0.75].map((q) => ({ kind: "decimal-add", operands: [20, q] }));
+/**
+ * Money's easier examples, best first: one $20 bill and some quarters, then smaller dollar amounts. The first the
+ * package check finds smaller than the question (and the session can teach) wins.
+ */
+const MONEY_EXAMPLES: Operation[] = [[20, 0.5], [20, 0.25], [20, 0.75], [10, 0.5], [2, 0.5], [2, 0.25], [1, 0.5]]
+  .map(([d, q]) => ({ kind: "decimal-add", operands: [d, q] }));
 
 /**
  * The minute hand's easier examples, of its shape ("4 × 5 + 4": a number on the clock times 5, plus the marks): one

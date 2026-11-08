@@ -188,6 +188,12 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | OT10 | DIE12 | passing | Grade 3, hello-only opening, a right first step ("1 divided by 2 is 0 remainder 1."): acknowledged (J06), then solved | solved | |
 | OT11 | SHAPES_LONG | passing | Grade 3, hello-only opening, longest shape names, says 4: "not yet", then "2 plus 1 is 3." | solved | |
 | OT12 | SHAPES_LONG | passing | Grade 3, hello-only opening, the right sum first: accepted, not taught again (J06) | solved, independent | |
+| OTC1 | SCALE | passing | C3b scale claim (60 + 2 × 10 = 80 against 80) in full sentences, then "It's true." | solved | |
+| OTC2 | SCALE | passing | The claim and its reason in the child's own words at the opening: accepted, not taught again (J06) | solved, independent | |
+| OTC3 | SCALE | passing | "Why is each interval 10?": the topic sentence with the claim's question line (J06), then solved | solved | |
+| OTC4 | SCALE | passing | Grade 3, hello-only opening, "I'm stuck.": the first guide says the topic sentence, then solved | solved | |
+| OTC5 | MONEY | passing | Money claim (40 + 0.5 = 40.5 against $40.50) in the child's own words: accepted (J06) | solved, independent | |
+| OTC6 | MINUTE | passing | Minute-hand claim (7 × 5 + 3 = 38 against 38) in a full sentence: accepted (J06) | solved, independent | |
 
 | S01 | A | passing | Pasted homework sheet: fixed workbook redirect, no teaching or board | solved after return to own question | |
 | S02 | A | passing | Same shape with different numbers: fixed workbook redirect | solved after return | |

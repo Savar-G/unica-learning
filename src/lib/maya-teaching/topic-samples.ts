@@ -72,3 +72,32 @@ export function choicePrinted(templateId: string, text: string, source: Template
   pkg.item!.regions = [{ id: "answer", kind: "choice", mark: "circle", label: null, choices: ["true", "false"], answer: word }];
   return pkg;
 }
+
+const SCALE_DERIVED: [string, string][] = [["k", "2 + 8 * (u1 % 2)"], ["v", "10 * (2 + u2 % 9)"], ["shown", "(v + m * k) if flip == 0 else (v + m * k) + (k)"], ["lower", "v - k"], ["upper", "v + k"]];
+const MONEY_DERIVED: [string, string][] = [["w", "b20 * 2000 + qu * 25"], ["shown", "str((w if flip == 0 else w + 50) // 100) + '.' + ('0' + str((w if flip == 0 else w + 50) % 100) if (w if flip == 0 else w + 50) % 100 < 10 else str((w if flip == 0 else w + 50) % 100))"]];
+const slotsOf = (values: Record<string, number>, max = 12) => Object.entries(values).map(([name, v]) => ({ name, value: int(v), domain: { min: 0, max } }));
+
+/** "A scale's marks are .... True or false: {m} intervals above {v} is {shown}." (4.16-many-to-one#3.4), step 2 or 10. */
+export function scalePrinted(step: 2 | 10, v: number, m: number, holds: boolean): QuestionPackage {
+  const shown = v + m * step + (holds ? 0 : step);
+  return choicePrinted("4.16-many-to-one#3.4:true-false", `A scale's marks are ${v - step}, ${v}, ${v + step}. True or false: ${m} intervals above ${v} is ${shown}.`,
+    { answer: "'true' if flip == 0 else 'false'", check: null, values: null, derived: SCALE_DERIVED, slots: slotsOf({ u1: step === 10 ? 1 : 0, u2: v / 10 - 2, m, flip: holds ? 0 : 1 }, 9) },
+    holds ? "true" : "false");
+}
+
+/** "True or false: {bills} $20 bills and {quarters} quarters is ${shown}." (4.18-money-notation#3.3). */
+export function moneyPrinted(bills: number, quarters: number, holds: boolean): QuestionPackage {
+  const cents = bills * 2000 + quarters * 25 + (holds ? 0 : 50);
+  const shown = `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
+  return choicePrinted("4.18-money-notation#3.3:true-false", `True or false: ${bills} $20 bills and ${quarters} quarters is $${shown}.`,
+    { answer: "'true' if flip == 0 else 'false'", check: null, values: null, derived: MONEY_DERIVED, slots: slotsOf({ b20: bills, qu: quarters, flip: holds ? 0 : 1 }, 3) },
+    holds ? "true" : "false");
+}
+
+/** "True or false: the minute hand {marks} marks past the {number} shows {shown} minutes." (4.12-read-analog#3.4). */
+export function minutePrinted(marks: number, number: number, holds: boolean): QuestionPackage {
+  const shown = number * 5 + marks - (holds ? 0 : 1);
+  return choicePrinted("4.12-read-analog#3.4:true-false", `True or false: the minute hand ${marks} marks past the ${number} shows ${shown} minutes.`,
+    { answer: "'true' if flip == 0 else 'false'", check: "x >= 2", values: null, derived: [["shown", "k * 5 + x if flip == 0 else k * 5 + x - 1"]], slots: slotsOf({ x: marks, k: number, flip: holds ? 0 : 1 }, 11) },
+    holds ? "true" : "false");
+}
