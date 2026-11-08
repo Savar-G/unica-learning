@@ -199,6 +199,8 @@ export function stepWords(step: WorkedStep): string {
       return "doing the same thing to both sides";
     case "check":
       return "checking the answer";
+    case "claim-compare":
+      return "comparing the result with the question's number";
     case "result":
       return "writing the final answer";
   }

@@ -2038,6 +2038,97 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
     },
   },
+
+  // Claim questions (A4, src/lib/maya/claim.ts): the circled word is the final answer, read by code.
+  {
+    id: "CL01",
+    title: "True/false product claim worked step by step: the result, then the circled word",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "r1-ones", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("I write the 4.", { answers: [[4, "r1-tens", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("48.", { answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("True.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer"],
+    },
+  },
+  {
+    id: "CL02",
+    title: "Yes/no 'greater than' claim answered at once with a reason: accepted, circled, closed",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("It's yes, because 360 times 4 is 1440.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Because 1440 is more than 1436.", undefined, [{ act: "ask_write", understanding: "evidence_observed" }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", understanding: "evidence_observed", paperStatus: "child_confirmed" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
+  {
+    id: "CL03",
+    title: "Decimal-add claim: the wrong word is not accepted; the right word with its reason is",
+    fixture: "CLAIM_DEC",
+    status: "passing",
+    steps: [
+      child("It's true.", { start: "has_work" }, [{ act: "guide", level: 1 }]),
+      child("It's false, because 3.45 plus 2.38 is 5.83.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1, paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer"],
+    },
+  },
+  {
+    id: "CL04",
+    title: "'Maybe true?' is unclear: Maya asks which word, then accepts the word alone",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("Maybe true?", { start: "has_work" }, [{ act: "confirm", lines: ["confirm.claim"] }]),
+      child("True.", undefined, [{ act: "accept_answer" }]),
+      child("Because 6 times 8 is 48.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, confirmations: 1 },
+    },
+  },
+  {
+    id: "CL05",
+    title: "A plain yes to 'Did you say 1440?' answers that question, not the claim",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("Maybe 1440.", { start: "has_work", unclear: true }, [{ act: "confirm" }]),
+      child("Yes.", undefined, [{ act: "guide", level: 0 }]),
+      child("It's yes, because 1440 is greater than 1436.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "confirm", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, confirmations: 1 },
+    },
+  },
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */

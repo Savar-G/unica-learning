@@ -46,6 +46,7 @@ import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FE
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
+import { claimActs, claimAnswers, claimRead, claimReveals, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -485,7 +486,10 @@ function teachableOf(raw: unknown): { pkg: OperationPackage | null; held: string
   if (!check.ok) return { pkg: null, held: check.reason };
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
   if (!hasOperation(check.package)) return { pkg: null, held: "Maya cannot teach items with no operation yet" };
-  const pkg = structuredClone(check.package);
+  // A claim question (claim.ts) is taught with its compare step and its circled word, or held.
+  const claim = claimSessionPackage(check.package);
+  if (claim && "held" in claim) return { pkg: null, held: claim.held };
+  const pkg = structuredClone(claim ? claim.pkg : check.package);
   const untaught = untaughtSteps(pkg);
   if (TEACHABLE_KINDS.includes(pkg.operation.kind) && TEACHABLE_KINDS.includes(pkg.easierExample.operation.kind) && untaught.length === 0) return { pkg, held: null };
   return { pkg: null, held: `Maya cannot teach ${untaught.length > 0 ? `the ${untaught.join(", ")} step of ${pkg.operation.kind} questions` : `${pkg.operation.kind} questions`} yet` };
@@ -593,6 +597,9 @@ function stepAnswers(step: WorkedStep): AnswerValue[] {
       return [number(step.numerator), fraction({ numerator: step.numerator, denominator: step.denominator })];
     case "simplify":
       return [fraction(step.to)];
+    // A claim's compare step (claim.ts): the result the child puts together.
+    case "claim-compare":
+      return [number(step.value)];
     default:
       return [];
   }
@@ -789,6 +796,12 @@ function asksWhy(text: string): boolean {
 }
 
 function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
+  // A claim question never gives its word (claim.ts).
+  const allowed = teachingActsOf(s, reading, rightResult, progress, misses, offering);
+  return { ...allowed, acts: claimActs(s.package, allowed.acts) };
+}
+
+function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, progress: boolean, misses: number, offering: boolean): Allowed {
   // Maya may check what she heard before she goes on, but not a third time in a row (practice run 6, F06: "16 or
   // 60?" eleven times after the child said 16 each time), and not once the answer is accepted (run 5, F05: "Just
   // checking, was that 66?" after "You got it!"). An unclear turn still gets its two confirmations (gate).
@@ -1109,7 +1122,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const said = s.solved !== null && s.lastResult === "right" && pkg ? withoutRepeats(pkg, p.reading ?? {}) : p.reading ?? {};
   // A plain yes to "Did you say 66?" gives 66, whatever the model reads: code checks it right, then only the accept fits.
   const yes = said.answers?.length ? null : yesAnswer(s);
-  const reading: Reading = yes ? { ...said, answers: [yes] } : said;
+  const heard: Reading = yes ? { ...said, answers: [yes] } : said;
+  // A claim question's word is read by code, never by the model (claim.ts).
+  const claimed = yes ? heard.answers : claimAnswers(claimTurn(s), heard.answers, s.solved !== null && s.lastResult === "right");
+  const reading: Reading = sessionClaim(pkg) ? { ...heard, answers: claimed } : heard;
   // Before the words: Maya never asks for what the child said they wrote or would not write (#605).
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
 
@@ -1312,6 +1328,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
         spoken.segments = [{ kind: "math", text: areaOffers(pkg)[0].texts[0] }];
       }
       if (!rightResult) return no("accepts_wrong_answer", "Only a right final answer the child said and kept can be accepted.", allowedNow);
+      // A claim's word is confirmed in code's words: the result and the word the child circles (claim.ts).
+      if (sessionClaim(pkg) && !spoken.chosen.some((o) => o.line === "answer.right")) return no("line_not_offered", "Say the child's word back with answer.right.", allowedNow);
       // The answer alone says nothing of how the child got it, and "I'm done" next closes the call (first-ship practice,
       // C38-r1: "Well done!", then goodbye). So this turn asks, with code's own line, whatever the proposal's lines were.
       if (pkg && methodUnseen(s, done, spoken)) {
@@ -1729,9 +1747,11 @@ function readOptionsIn(s: Session): ReadOptions {
 
 function notClear(s: Session, reading: Reading): boolean {
   if (!s.turn) return false;
-  if (s.turn.uncertain || reading.unclear) return true;
+  if (s.turn.uncertain || reading.unclear || claimUnclear(claimTurn(s))) return true;
   const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
   if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return true;
+  // A claim's word the child committed to is their answer, whatever the numbers of their reason (claim.ts).
+  if (turnRead(s).final?.type === "choice") return false;
   const read = readAnswer(s.turn.text, readOptionsIn(s));
   // A hedge ("I think it's 66", "maybe", a question) is not clear either, though the reader may find it sure.
   const hedged = showsDoubt(s.turn.text, readOptionsFor(s.package)) || /\b(?:i think|i guess|i believe|probably|maybe|might be)\b/i.test(s.turn.text);
@@ -1755,8 +1775,14 @@ function doubtfulRight(s: Session): boolean {
 /** What the child kept in this turn: their words as read, or the number their plain yes gives, which they then committed to. */
 function turnRead(s: Session): AnswerRead {
   const yes = yesValue(s);
-  return yes ? { kept: [yes], final: yes, choice: false, outside: [yes], sure: true } : readAnswer(s.turn!.text, readOptionsIn(s));
+  // A claim question's circled word is the final answer (claim.ts); a plain yes to "Did you say 5220?" is not.
+  return yes ? { kept: [yes], final: yes, choice: false, outside: [yes], sure: true } : claimRead(claimTurn(s), readAnswer(s.turn!.text, readOptionsIn(s)));
 }
+
+/** What claim.ts reads a turn with: the package, the child's words, Maya's last words and an open "Did you say ...?". */
+const claimTurn = (s: Session): ClaimTurn => ({
+  pkg: s.package, text: s.turn?.text ?? null, lastMaya: s.turns.filter((t) => t.speaker === "maya").at(-1)?.text, heardAsked: s.heardAsked != null,
+});
 
 /**
  * Checks the child's answers: each was said and kept in this turn (after anything taken back, not offered as a choice;
@@ -2225,9 +2251,13 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   const named = keptReading(session, refused, kept);
   const heard = yes || named.offTopic || named.unsafeRequest ? [] : heardAnswers(session)
     .filter((a) => !kept.some((k) => k.step === a.step && (k.problem ?? "target") === "target"));
-  const answers = [...kept, ...heard];
+  const found = [...kept, ...heard];
+  // A claim question's word is read by code (claim.ts), right or wrong; the model's final answers are left out.
+  const answers = !yes && sessionClaim(pkg) ? claimAnswers(claimTurn(session), found, session.solved !== null && session.lastResult === "right") ?? [] : found;
   const keptFields = keptReading(session, refused, answers);
-  const reading: Reading | undefined = answers.length > 0 || Object.keys(keptFields).length > 0 ? { ...keptFields, ...(answers.length > 0 ? { answers } : {}) } : undefined;
+  // A reading's answers are numbers: `step` reads a claim's word again itself.
+  const said = answers.filter((a) => isAnswerValue(a.value));
+  const reading: Reading | undefined = said.length > 0 || Object.keys(keptFields).length > 0 ? { ...keptFields, ...(said.length > 0 ? { answers: said } : {}) } : undefined;
   const checked: Checked[] = answers.map((answer) => ({ answer, problem: answer.problem ?? "target" }));
   const rightResult = checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right");
   // The session after the reading, as `step` will see it: a checked wrong final answer takes back the solution that
@@ -2422,6 +2452,8 @@ const boardTexts = (board: unknown[], only?: "text" | "value") =>
  */
 function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
   const pkg = s.package!;
+  // A claim's answer is a word (claim.ts); its result is a step, not the answer.
+  if (sessionClaim(pkg)) return claimReveals(pkg, p.act, texts);
   const answer = pkg.answer.value;
   const ownNumber = operandValues(pkg.operation).some((v) => equivalent(v, answer));
   // An equal form the child said (14/16 for 7/8, #407) gives nothing away when Maya says it back; the answer's own
@@ -2725,8 +2757,11 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : [];
+      // A claim question whose word Maya may not give (claim.ts) closes as worked together.
+      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : sessionClaim(pkg) ? l.closeSolved("maya") : [];
     case "confirm": {
+      // A claim's word said unsure, or both words: which word the child circles (claim.ts).
+      if (claimUnclear(claimTurn(s))) return l.which();
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));
       return heard.length > 0 ? heard : l.answerOnly();

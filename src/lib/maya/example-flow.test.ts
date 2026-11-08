@@ -4,7 +4,8 @@ import { scenarioModel } from "@/lib/maya-gate/gate";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { gateWordCount } from "@/lib/maya-gate/word-count";
 import { withoutNulls, type Proposal } from "@/lib/maya";
-import { valueText } from "@/lib/question-package";
+import { claimView } from "@/lib/maya/claim";
+import { valueText, type OperationPackage } from "@/lib/question-package";
 
 vi.mock("server-only", () => ({}));
 
@@ -48,13 +49,14 @@ describe("R443-2: limits permit the whole example and question", () => {
   });
   it.each(cases)("$fixture grade $grade shorter=$shorter fallback=$fallback", async ({ fixture, grade, shorter, fallback }) => {
     for (const seed of [1, 9, 31]) {
-      const pkg = FIXTURES[fixture];
+      // A claim question (A4) is taught as its session package: its example ends with the compare step and the word.
+      const pkg = FIXTURES[fixture].operation ? claimView(FIXTURES[fixture] as OperationPackage) : FIXTURES[fixture];
       const script = scenarioModel();
       const model = fallback ? { ...script, propose: async (...args: Parameters<typeof script.propose>) => {
         const raw = await script.propose(...args);
         return { ...(raw as object), parts: "invalid" }; // Keep priority readings and checked answers; force code's fallback.
       } } : script;
-      const s = createTextSession({ callId: `sweep-${fixture}-${grade}-${shorter}-${fallback}-${seed}`, package: pkg, grade, model, random: seed, clock: () => 1000 });
+      const s = createTextSession({ callId: `sweep-${fixture}-${grade}-${shorter}-${fallback}-${seed}`, package: FIXTURES[fixture], grade, model, random: seed, clock: () => 1000 });
       const check = (out: TextOutput, limit = shorter ? 25 : grade <= 3 ? 25 : 45) => {
         for (const text of out.say) expect(gateWordCount(text), text).toBeLessThanOrEqual(limit);
       };
@@ -83,8 +85,10 @@ describe("R443-2: limits permit the whole example and question", () => {
       script.next([], undefined);
       check(await s.child("Let me try."));
       expect(s.session.retried).toBe(true);
-      script.next([], { answers: [[pkg.answer!.value, "result", "right"]] });
-      check(await s.child(valueText(pkg.answer!.value)));
+      // A claim's word is read by code, in a committed form ("It's true."), never from the model's reading.
+      const word = pkg.answer!.value.type === "choice" ? pkg.answer!.value.value : null;
+      script.next([], word ? undefined : { answers: [[pkg.answer!.value, "result", "right"]] });
+      check(await s.child(word ? `It's ${word}.` : valueText(pkg.answer!.value)));
       script.next([{ act: "ask_write", understanding: "uncertain" }], undefined);
       check(await s.child("Okay."));
       script.next([], { paper: "written" });

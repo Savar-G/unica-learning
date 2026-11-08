@@ -11,7 +11,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 
 | File | What it holds |
 |---|---|
-| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). |
+| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -306,6 +306,15 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |
 | P5c | A | passing | Numeric work after an answer requires confirmation | checked answer retained | |
 | P5d | A | passing | The child already wrote the answer | checked answer | |
+| CL01 | CLAIM_TF | passing | True/false product claim worked step by step: the result, then the circled word | solved, independent | |
+| CL02 | CLAIM_GT | passing | Yes/no 'greater than' claim answered at once with a reason: accepted, circled, closed | solved, independent | |
+| CL03 | CLAIM_DEC | passing | Decimal-add claim: the wrong word is not accepted; the right word with its reason is | solved, hint | |
+| CL04 | CLAIM_TF | passing | 'Maybe true?' is unclear: Maya asks which word, then accepts the word alone | solved | |
+| CL05 | CLAIM_GT | passing | A plain yes to 'Did you say 1440?' answers that question, not the claim | solved | |
+
+### Claim questions (A4)
+
+A claim question ("True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436? Circle yes or no.") is judged as its session teaches it (`claimView` in `src/lib/maya/claim.ts`): the operation's steps, the compare step `claim`, and the circled word as the answer. Code reads the word with the claim reader's allow-list; the scripted model reads only the numbers. An accepted word must be the word the claim gives, read from the child's turn: a committed form ("It's yes, because ...") after any turn, a bare word only after Maya's claim question. A plain yes to "Did you say 1440?" is never the word (CL05). Before the word is released, no Maya turn but the easier example may say "circle", "it's" or "the answer is" with the word (`answer_too_early`). No claim call gives the word (`give_answer`).
 
 ## Pending
 
