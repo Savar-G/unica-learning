@@ -17,7 +17,7 @@ export interface TextLogInitial {
 export type TextLogEvent =
   | { kind: "input"; at: number; event: SessionEvent; error?: TraceError }
   | { kind: "request"; at: number; requestId: number; source: "model" | "repair" }
-  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number }
+  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true }
   | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; reviewMs?: number }
   | { kind: "fallback"; at: number; proposal: unknown }
   | { kind: "recover"; at: number }
@@ -42,7 +42,7 @@ export interface TextFold {
   obligations: TraceObligation[];
   childState: "listening" | "child_speaking";
   request: { id: number; source: "model" | "repair" } | null;
-  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair" } | null;
+  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true } | null;
   attempts: TraceAttempt[];
   deferred: { event: SessionEvent; childId: number | null }[];
   pending: PendingOutput[];
@@ -354,7 +354,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
         s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms });
         s.request = null;
       } else {
-        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source };
+        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}) };
         const reading = e.proposal && typeof e.proposal === "object" ? (e.proposal as { reading?: unknown }).reading : undefined;
         receiveReading(s, reading, e.at);
       }
@@ -364,7 +364,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews);
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;
