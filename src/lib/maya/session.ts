@@ -2420,7 +2420,10 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   const ladderStep = pkg ? guideStep(pkg, done, regroup) : "result";
   const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
   const misses = finalMisses(s, checked);
-  const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0, misses)).acts;
+  // The acts come from the reading `step` will check, a claim's word included (review of #740: a wrong word at a compare's
+  // top help left only guide offers, which the place-value rule refuses, and the call ended with no safe line).
+  const actsReading: Reading = { ...(reading ?? {}), ...(answers.length > 0 ? { answers } : {}) };
+  const acts = (gate(s, {}) ?? teachingActs(s, actsReading, rightResult, done.length > 0, misses)).acts;
   // A right final answer the child was not sure of: the confirmation comes before more help (#605).
   const read = session.turn && pkg ? turnRead(session) : null;
   const doubtful = !rightResult && s.solved === null && pkg !== null && read?.final != null && !read.sure && rightForQuestion(pkg, read.final) ? read.final : null;

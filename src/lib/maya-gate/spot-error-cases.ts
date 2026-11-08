@@ -38,6 +38,10 @@ const writeEnd: Step[] = [child("Okay.", undefined, [{ act: "ask_write", lines: 
 const OPEN = "open" as const;
 const lines = (id: SpotFixtureId) => packageLines(spotView(SPOT_FIXTURES[id] as OperationPackage));
 const texts = (offers: LineOffer[], key: string) => offers.filter((o) => o.key === key).flatMap((o) => o.texts);
+/** A child turn the model fails on: code's fallback answers it. */
+const down = (text: string, read?: Read): Step => ({ child: text, ...(read ? { read } : {}), maya: [{ throws: true }] });
+/** The honest close's wordings (lesson 10). */
+const closeTexts = (id: SpotFixtureId) => lines(id).closeUnsolved().flatMap((o) => o.texts);
 
 export const SPOT_BEHAVIOURS: Behaviour[] = [
   {
@@ -178,5 +182,48 @@ export const SPOT_BEHAVIOURS: Behaviour[] = [
       ...writeEnd,
     ],
     expect: { outcome: { reason: "solved" }, never: ["give_answer"] },
+  },
+  // Review of #743, P1: a wrong word at the top help, with the model down (it throws on every turn). step() then allows
+  // only the easier example or the close; fallbacks() must work out its acts from the same reading, the word included
+  // (the shape of #740's 921ab669), or every offer is refused and the call ends as technical_issue with no stuck step.
+  {
+    id: "SE12", title: "Model down, multiply: 'I'm stuck.' through the example, the try and H0 to H3 on the first work step, then 'It's right.': the honest close",
+    fixture: "SPOT_MUL", status: "passing",
+    steps: [...Array.from({ length: 7 }, () => down("I'm stuck.")), down("It's right.")],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      acts: [OPEN, ...Array.from({ length: 11 }, () => "example_step"), "try_target", "guide", "guide", "guide", "guide", "close"],
+      outputs: [{ mayaTurn: 17, lines: [closeTexts("SPOT_MUL")] }], never: ["give_answer", "accept_answer"],
+    },
+  },
+  {
+    id: "SE13", title: "Model down, multiply: the fix, then 'I'm stuck.' to the word step's top help (H2), then 'It's right.': the easier example, then the honest close",
+    fixture: "SPOT_MUL", status: "passing",
+    steps: [down("7 times 640 is 4480.", { start: "has_work" }), down("I'm stuck."), down("I'm stuck."), down("It's right."), down("Okay."), down("I'm stuck.")],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 },
+      acts: [OPEN, "guide", "guide", "guide", ...Array.from({ length: 11 }, () => "example_step"), "close"],
+      outputs: [{ mayaTurn: 15, lines: [closeTexts("SPOT_MUL")] }], never: ["give_answer", "accept_answer"],
+    },
+  },
+  {
+    id: "SE14", title: "Model down, missing number: 'I'm stuck.' through the example, the try and H0 to H3 on the first work step, then 'It's right.': the honest close",
+    fixture: "SPOT_MISS", status: "passing",
+    steps: [...Array.from({ length: 6 }, () => down("I'm stuck.")), down("It's right.")],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      acts: [OPEN, "example_step", "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "guide", "close"],
+      outputs: [{ mayaTurn: 10, lines: [closeTexts("SPOT_MISS")] }], never: ["give_answer", "accept_answer"],
+    },
+  },
+  {
+    id: "SE15", title: "Model down, missing number: the fix, then 'I'm stuck.' to the word step's top help (H2), then 'It's right.': the easier example, then the honest close",
+    fixture: "SPOT_MISS", status: "passing",
+    steps: [down("680 divided by 4 is 170.", { start: "has_work" }), down("I'm stuck."), down("I'm stuck."), down("It's right."), down("I'm stuck.")],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "example_step", "close"],
+      outputs: [{ mayaTurn: 8, lines: [closeTexts("SPOT_MISS")] }], never: ["give_answer", "accept_answer"],
+    },
   },
 ];

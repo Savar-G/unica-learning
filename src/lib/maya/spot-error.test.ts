@@ -59,6 +59,26 @@ function fallbackCall(p: QuestionPackage, turns: string[], grade?: number): { ac
   return { acts, texts, s };
 }
 
+/** Code's fallbacks only (the model down), with the child's next words chosen from the session (null: stop). */
+function drive(p: QuestionPackage, first: string, next: (s: Session) => string | null): { acts: string[]; s: Session } {
+  let s = opened(p, first);
+  let at = 3;
+  const acts: string[] = [];
+  for (let n = 0; n < 40 && !s.outcome; n++) {
+    while (s.expect === "maya" && !s.outcome) {
+      const r = step(s, { type: "proposal", at: at++, proposal: fallbacks(s)[0], fallback: true });
+      expect(r.refusal, `${acts.length}: ${JSON.stringify(r.refusal)}`).toBeNull();
+      s = r.session;
+      const said = r.effects.find((e) => e.kind === "say");
+      if (said && said.kind === "say") acts.push(said.act);
+    }
+    const text = s.outcome ? null : next(s);
+    if (text === null) break;
+    s = step(s, { type: "child_turn", at: at++, text }).session;
+  }
+  return { acts, s };
+}
+
 describe("spot the error in the controller", () => {
   it("teaches each spot-the-error question, and holds the stored one it gets with no adapter", () => {
     for (const p of [MUL, MISS, VALUE, DIGIT]) expect(heldReason(p), p.text).toBeNull();
@@ -84,6 +104,31 @@ describe("spot the error in the controller", () => {
       }
       expect(s.outcome).toMatchObject({ reason: "child_stopped" });
       expect(learningEvent(s, FAMILY)).toMatchObject({ source: "call", result: "blank", stuckStep: stuck, mistake: null });
+    }
+  });
+
+  it("a wrong word at the top help, with the model down: the easier example, then the honest close and the stuck step (review of #743)", () => {
+    // On the first work step at H3 (the example already shown), and on the word step at H2 after the fix.
+    for (const [p, work, first] of [[MUL, "r2-ones", "I'm stuck."], [MISS, "hundreds", "I'm stuck."]] as const) {
+      let said = false;
+      const { acts, s } = drive(p, first, (x) => (!said && x.ladder.step === work && x.ladder.hint === 3 ? ((said = true), "It's right.") : "I'm stuck."));
+      expect(said, p.text).toBe(true);
+      expect(acts.at(-1), p.text).toBe("close");
+      expect(acts).toContain("example_step");
+      expect(acts).not.toContain("give_answer");
+      expect(s.outcome).toMatchObject({ reason: "child_stopped" });
+      expect(learningEvent(s, FAMILY)).toMatchObject({ source: "call", stuckStep: work });
+    }
+    for (const [p, fix] of [[MUL, "7 times 640 is 4480."], [MISS, "680 divided by 4 is 170."]] as const) {
+      let said = false;
+      const { acts, s } = drive(p, fix, (x) => (!said && x.ladder.step === "result" && x.ladder.hint === 2 ? ((said = true), "It's right.") : "I'm stuck."));
+      expect(said, p.text).toBe(true);
+      const word = acts.lastIndexOf("guide");
+      expect(acts.slice(word + 1).every((a) => a === "example_step" || a === "close"), acts.join(" ")).toBe(true);
+      expect(acts.slice(word + 1)).toContain("example_step");
+      expect(acts.at(-1)).toBe("close");
+      expect(s.outcome).toMatchObject({ reason: "child_stopped" });
+      expect(learningEvent(s, FAMILY)).toMatchObject({ source: "call", stuckStep: "result" });
     }
   });
 
