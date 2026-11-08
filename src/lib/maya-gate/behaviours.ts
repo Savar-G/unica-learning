@@ -10,6 +10,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
+import { C3C_REVIEW_BEHAVIOURS } from "./c3c-review-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
 const child = (text: string, read?: Read, maya?: Plan[]): Step => ({ child: text, ...(read ? { read } : {}), ...(maya ? { maya } : {}) });
@@ -538,7 +539,7 @@ export const BEHAVIOURS: Behaviour[] = [
   {
     id: "OTK1", title: "Marbles claim in full sentences: '3 plus 4 is 7.', then 'It's false.'", fixture: "MARBLES", status: "passing",
     steps: [
-      child("3 plus 4 is 7.", { start: "has_work", answers: [[7, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("3 plus 5 is 8.", { start: "has_work", answers: [[8, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
       child("It's false.", undefined, [{ act: "accept_answer" }]),
       child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
       child("I circled it.", { paper: "written" }),
@@ -548,7 +549,7 @@ export const BEHAVIOURS: Behaviour[] = [
   {
     id: "OTK2", title: "Marbles claim in the child's own words at the opening: accepted, not taught again (J06)", fixture: "MARBLES", status: "passing",
     steps: [
-      child("It's false, because 3 plus 4 is 7 and 2 is less.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("It's false, because 3 plus 5 is 8 and 1 is less.", { start: "has_work" }, [{ act: "accept_answer" }]),
       child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
       child("I circled it.", { paper: "written" }),
     ],
@@ -558,7 +559,7 @@ export const BEHAVIOURS: Behaviour[] = [
     id: "OTK3", title: "Marbles claim, 'Why do I add blue and green?': answered with code's topic sentence (J06), then solved", fixture: "MARBLES", status: "passing",
     steps: [
       child("Why do I add blue and green?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
-      child("It's false, because 3 plus 4 is 7.", undefined, [{ act: "accept_answer" }]),
+      child("It's false, because 3 plus 5 is 8.", undefined, [{ act: "accept_answer" }]),
       child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
       child("I circled it.", { paper: "written" }),
     ],
@@ -2432,6 +2433,7 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   ...ONE_STEP_BEHAVIOURS,
+  ...C3C_REVIEW_BEHAVIOURS,
   // Evaluate questions (Wave A, A2): each part in the order of operations; the part's columns when the child is stuck.
   {
     id: "EV01",

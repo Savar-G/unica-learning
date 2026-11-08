@@ -127,7 +127,11 @@ function clockFrame(text: string, operation: Operation): string | null {
  * "Lessons from review" 1): the minutes to the next hour ("13 plus 47 is 60", "60 minus 13 is 47"), the minutes left
  * ("50 minus 47 is 3"), and the minutes of a one-count question ("0 plus 40 is 40").
  */
-export function topicRelations(operation: Operation): { op: "add" | "subtract"; operands: number[] }[] {
+export function topicRelations(operation: Operation, text = ""): { op: "add" | "subtract" | "multiply"; operands: number[] }[] {
+  // An area claim's other area, by the same closed form as its topic sentence ("4 by 2 squares is 8 squares"): a child
+  // who works it ("4 times 2 is 8.") stays on the question (review of #742, P1-c).
+  const area = AREA.exec(text.trim());
+  if (area && same(operation, { kind: "multiply", operands: [+area[1], +area[2]] })) return [{ op: "multiply", operands: [+area[3], +area[4]] }];
   if (operation.kind !== "time-add") return [];
   const [from, d] = operation.operands;
   if (d.type !== "quantity" || d.unit !== "min") return [];

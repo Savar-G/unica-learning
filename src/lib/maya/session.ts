@@ -2892,8 +2892,14 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       }
       return [...(index === 0 && !s.exampleIntroduced ? l.exampleIntro() : []), ...(next ? l.exampleStep(next.id) : [])];
     }
-    case "try_target":
-      return [...l.tryTarget(), ...l.question()];
+    case "try_target": {
+      // Checked wrong work after the easier example ("It's true." for a false claim) gets a line that answers it first:
+      // the claim's own question again, or "not yet" for any other question. Without one every try_target is refused,
+      // and a call with the model down had no safe line (review of #742, P1-a).
+      const wrong = view.checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong");
+      const respond = !wrong ? [] : sessionClaim(pkg) ? l.help("result").filter((o) => o.line === "step.invite") : l.notYet("result");
+      return [...respond, ...l.tryTarget(), ...l.question()];
+    }
     case "guide": {
       // An "other-topic" question's topic sentence comes first, with the question, before any step line (topic-frame.ts),
       // but only on a help-only turn: a turn with work in it (a checked answer or any number) gets the normal guide

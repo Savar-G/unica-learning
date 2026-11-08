@@ -65,8 +65,8 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
     collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : p.answer);
     // An "other-topic" question's checked counted numbers (topic-frame.ts): the die's odd or even numbers.
     collect(topicNumbers(p.text, p.operation));
-    // A clock-time question's checked minute relations (topic-frame.ts, C3c).
-    for (const r of topicRelations(p.operation)) add(r.op, r.operands.map(num));
+    // A clock-time question's checked minute relations, and an area claim's other area (topic-frame.ts, C3c).
+    for (const r of topicRelations(p.operation, p.text)) add(r.op, r.operands.map(num));
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
     const placeTerms = operands.flatMap(v => {
