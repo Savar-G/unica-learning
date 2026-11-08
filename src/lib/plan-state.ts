@@ -13,6 +13,9 @@ import type { KnownPlan, ParentPlan } from "@/lib/parent-plan";
 // same order.
 //
 // `unknown` is never stored. It is what a child with no row reads as, and a read that fails leaves the row as it is.
+//
+// A webhook can be lost, so each row that can still change is also read again once a day (rereadPlan, run by sweepPlanReads in card-reconcile.ts).
+// That read follows the same order. It keeps the row's event time: see rereadPlan.
 // The store (child_plan_states and card_setups) and the provider (Stripe) are the seams: plan-state-server.ts holds
 // Supabase and Stripe, plan-state-memory.ts holds both in memory for tests.
 
@@ -107,13 +110,67 @@ export async function applyPlanEvent(event: PlanEvent, { store, provider }: Plan
  * Stores what Stripe says right after a plan start, so the plan gate (src/lib/plan-access.ts) opens with no webhook. It goes
  * through applyPlanEvent, not a fill: a fill leaves a `not_started` row as it is. The event's time is when the start began,
  * before the subscription existed, so no event of that subscription reads as older than this write. The id is one per start
- * and generation. Throws when Stripe or the store fails; the webhook or the sweep then writes the row.
+ * and generation. Throws when Stripe or the store fails. The webhook then writes the row; the sweep writes it only when it closes an open start itself.
  */
 export function applyPlanStart(start: { customer: string; cardSetup: string; generation: number; startedAt: number }, states: PlanStates): Promise<PlanSave> {
   return applyPlanEvent({
     id: `plan-start:${start.cardSetup}:${start.generation}`, type: "customer.subscription.created",
     created: Math.floor(start.startedAt / 1000), customer: start.customer,
   }, states);
+}
+
+/**
+ * The kinds the daily re-read looks at: free_month, paying and ending hold the plan gate open, so a lost event must not leave them open;
+ * payment_failed and paused hold it closed, so a lost event must not lock out a parent who paid. The re-read does not take a row of kind
+ * ended or not_started: a restart or a start writes its row. If that write fails and its webhook is lost, a read would find the running
+ * plan, but none is made (#713).
+ */
+export const PLAN_READ_KINDS = ["free_month", "paying", "ending", "payment_failed", "paused"] as const;
+
+/** One row the daily re-read looks at. */
+export interface PlanRead extends PlanKey {
+  customer: string;
+  kind: (typeof PLAN_READ_KINDS)[number];
+  /** The row's event time, or null on a filled row. */
+  eventAt: string | null;
+}
+
+/**
+ * What a read may store on this row. An open row stores what Stripe says. A closed row (payment_failed, paused) reopens only on a paid
+ * answer: Stripe `active`, as past_due goes to active on payment and a pause resumes with resume_on_payment_success. It also takes an answer
+ * that stays closed. A trial is not paid, and an empty list on a row that had a plan is not a clear answer: not_started would also take the
+ * family out of familyHasPlanHistory, and so away from its card and its plan's controls. Such an answer leaves the row as it is.
+ */
+export function planReadMayStore(rowKind: PlanRead["kind"], plan: KnownPlan): boolean {
+  if (rowKind !== "payment_failed" && rowKind !== "paused") return true;
+  switch (plan.kind) {
+    case "paying":
+    case "payment_failed":
+    case "paused":
+    case "ended": return true;
+    case "ending": return !plan.free;
+    case "free_month":
+    case "not_started": return false;
+  }
+}
+
+/** Stored on a re-read of a row with no event: the save needs a time, and no Stripe event is older. */
+const NO_EVENT_AT = new Date(0).toISOString();
+
+/**
+ * Stores what Stripe says about one row now. The save needs a new event id to replace a row, and read_at then says when Stripe was
+ * last read. The take comes first, so an event that took later wins, whichever save lands first.
+ *
+ * It stores the row's own event time, never a time of its own: applyPlanEvent skips the read for an event older than the row's, and
+ * our clock and Stripe's can disagree. With a time from our clock, the event of a change that came just after this read could read as
+ * older, and that change would be lost. `unclear`: planReadMayStore refused the answer, so nothing was saved and the take goes unused. A
+ * value with no save leaves a gap, and a gap changes nothing. Throws when Stripe or the store fails, and the row stays as it is.
+ */
+export async function rereadPlan(row: PlanRead, { store, provider }: PlanStates): Promise<{ save: PlanSave | "unclear"; plan: KnownPlan }> {
+  const readOrder = await store.takeReadOrder();
+  const plan = await provider.plan(row.customer);
+  if (!planReadMayStore(row.kind, plan)) return { save: "unclear", plan };
+  return { save: await store.save(row.customer, { plan, eventAt: row.eventAt ?? NO_EVENT_AT, eventId: `plan-read:${readOrder}`, readOrder }), plan };
 }
 
 /** The stored plan. A child with no row, or a read that fails, is unknown. Asks Stripe nothing. */

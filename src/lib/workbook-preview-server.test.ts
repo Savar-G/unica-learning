@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sourceDbFixture, previewActor } from "./workbook-progress-source.fixture";
-import { createWorkbookPreviewRecord, replayWorkbookPreview, type WorkbookPreviewRecord, type WorkbookPreviewRepository } from "./workbook-preview-record";
+import { createWorkbookPreviewRecord, replayWorkbookPreviewAny, type WorkbookPreviewRecord, type WorkbookPreviewRepository } from "./workbook-preview-record";
 import { saveAdminWorkbookPreview, readAdminWorkbookPreview } from "./workbook-preview-server";
 const mocks = vi.hoisted(() => ({ adminSession: vi.fn(), adminClient: vi.fn() }));
 vi.mock("server-only", () => ({}));
@@ -10,7 +10,7 @@ vi.mock("./supabase-auth", () => ({ adminClient: mocks.adminClient }));
 function repository() {
   let saved: WorkbookPreviewRecord | null = null;
   const repo: WorkbookPreviewRepository = {
-    read: vi.fn(async (actor, req) => { if (saved && !replayWorkbookPreview(saved, actor, req)) throw Error("conflict"); return saved; }),
+    read: vi.fn(async (actor, req) => { if (saved && !(await replayWorkbookPreviewAny(saved, actor, req))) throw Error("conflict"); return saved; }),
     save: vi.fn(async (_actor, _req, record) => { if (saved) return saved.hash === record.hash ? "duplicate" : "conflict"; saved = structuredClone(record); return "saved"; }),
   };
   return repo;

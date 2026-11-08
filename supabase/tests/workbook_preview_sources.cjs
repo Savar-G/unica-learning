@@ -60,6 +60,12 @@ async function test(name, run) { await run(); cases.push(name); console.log('PAS
   await db.query(functionSql('20261105_child_delete.sql','child_delete_row_child'));
   await db.query(sql('20261105_child_delete_plan_recovery.sql'));
   await db.query(sql('20261107144016_workbook_preview_sources.sql'));
+  // `--with-book1` proves the version 1 cases again on top of the #472 Book 1 migration (compatible evolution).
+  if (process.argv.includes('--with-book1')) {
+    await db.query(readFileSync(path.join(__dirname,'workbook_book1_baseline_fixture.sql'),'utf8'));
+    await db.query(sql('20261107161035_workbook_book1_baseline.sql'));
+    console.log('WITH_BOOK1_MIGRATION');
+  }
   const f = previewSourceFixture(12), r = f.request;
   await db.query('insert into public.admin_users values($1)',[previewActor]);
   await db.query('insert into public.parents(id) values($1),($2)',[r.parentId,id(600)]);

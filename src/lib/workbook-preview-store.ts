@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
 import type { WorkbookPreviewRequest } from "./workbook-progress-source";
-import { replayWorkbookPreview, type WorkbookPreviewRecord, type WorkbookPreviewRepository } from "./workbook-preview-record";
+import { replayWorkbookPreviewAny, type WorkbookPreviewRecord, type WorkbookPreviewRepository } from "./workbook-preview-record";
 
 /** Dedicated SQL transport contract, bound to the generated schema below. */
 export interface WorkbookPreviewSql {
@@ -29,11 +29,11 @@ export function workbookPreviewRepository(sql: WorkbookPreviewSql): WorkbookPrev
       if (a.status === "missing") return null;
       if (a.status !== "found" || typeof a.payload !== "string" || typeof a.hash !== "string") throw Error("preview-unavailable");
       const record = { payload: a.payload, hash: a.hash };
-      if (!replayWorkbookPreview(record, actor, request)) throw Error("preview-invalid-record");
+      if (!(await replayWorkbookPreviewAny(record, actor, request))) throw Error("preview-invalid-record");
       return record;
     },
     async save(actor, request, record) {
-      if (!replayWorkbookPreview(record, actor, request)) return "conflict";
+      if (!(await replayWorkbookPreviewAny(record, actor, request))) return "conflict";
       const a = await command("save", actor, request, record);
       if (!["saved", "duplicate", "conflict", "unavailable"].includes(String(a.status))) throw Error("preview-sql-answer");
       return a.status as "saved" | "duplicate" | "conflict" | "unavailable";

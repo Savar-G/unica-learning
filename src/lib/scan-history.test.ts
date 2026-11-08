@@ -18,6 +18,8 @@ export function record(n = 1, result: "right" | "wrong" | "blank" | null = "righ
       originalEvent: { key: "marking:original", parentId: P, childId: C, source: "marking", question: { source: "workbook", workbookId: W, page: n, question: 1 }, skill: { standard: "2.4", skills: [] }, result: "wrong", stuckStep: "tens", mistake: "O3", hints: 0, timeMs: null, occurredAt: "2026-07-01T00:00:00Z", evidence: { kind: "scan", id: id(500 + n) } },
       eventId: id(900 + n), at: "2026-11-05T00:00:00Z", model: "synthetic-model", prompt: "synthetic-v1" }] };
 }
+/** A mark the AI has not read yet: no model, no reading. */
+const unread = (r: HistoryRecord) => { r.marks[0].model = null; Object.assign(r.marks[0].observation, { certainty: "not-read", readAnswerText: null, regions: [] }); return r; };
 const source = (records: HistoryRecord[], batch = 2): HistoryStore => ({ read: async (f) => ({ pages: records.filter((r) => !f.after || r.id > f.after).slice(0, batch), budget: null }) });
 it("uses canonical parent-corrected results after expiry and does not count retakes", async () => {
   const r = record(); r.photos.push({ ...r.photos[0], id: id(999), state: "saved", expiresAt: "2027-01-01T00:00:00Z" });
@@ -28,8 +30,26 @@ it("uses canonical parent-corrected results after expiry and does not count reta
 it("keeps blank, unscored, pending, failed, never scanned and ready separate", () => {
   const blank = record(1, "blank"), unscored = record(2), pending = record(3, null), failed = record(4, null), empty = record(5);
   unscored.marks[0].expected.method = "unscored"; Object.assign(unscored.marks[0].observation, { state: "unscored", method: "unscored", result: null });
-  pending.jobs[0].state = "running"; pending.photos[0].state = "saved"; pending.photos[0].expiresAt = "2027-01-01"; failed.jobs[0].state = "queued"; failed.jobs[0].blocked = "attempts"; empty.marks = []; empty.photos = []; empty.jobs = [];
+  unread(pending); pending.jobs[0].state = "running"; pending.photos[0].state = "saved"; pending.photos[0].expiresAt = "2027-01-01"; failed.jobs[0].state = "queued"; failed.jobs[0].blocked = "attempts"; unread(failed); empty.marks = []; empty.photos = []; empty.jobs = [];
   expect([blank, unscored, pending, failed, empty, record(6)].map((r) => historyPage(r, now).status)).toEqual(["blank", "unscored", "pending", "failed", "never-scanned", "ready"]);
+});
+it("an unsure page says our team is checking it; a page not read yet says Not marked yet; neither asks the parent (#715)", () => {
+  const unsure = record(1, null), notRead = unread(record(2, null));
+  notRead.jobs = []; notRead.photos[0].state = "saved"; notRead.photos[0].expiresAt = "2027-01-01";
+  expect(historyPage(unsure, now)).toMatchObject({ status: "review", label: "Our team is checking", counts: { teamChecks: 1, pending: 0 } });
+  expect(historyPage(notRead, now)).toMatchObject({ status: "pending", label: "Not marked yet", counts: { teamChecks: 0, pending: 1 } });
+  // Some answers marked and others not read yet: the page says so, as the results page does.
+  const partly = record(3);
+  partly.marks.push({ ...structuredClone(unread(record(3, null)).marks[0]), expected: { ...partly.marks[0].expected, identity: { ...partly.marks[0].expected.identity, itemId: "q2" }, number: 2 } });
+  partly.marks[1].observation.identity = partly.marks[1].expected.identity;
+  partly.jobs = []; partly.photos[0].state = "saved"; partly.photos[0].expiresAt = "2027-01-01";
+  expect(historyPage(partly, now)).toMatchObject({ status: "pending", label: "Some answers not marked yet", counts: { scored: 1, pending: 1 } });
+  // One rule with the results page and the team list: an answer our team is checking wins, even while a job waits.
+  const queued = record(4, null); queued.jobs[0].state = "queued"; queued.jobs[0].blocked = null;
+  expect(historyPage(queued, now)).toMatchObject({ status: "review", label: "Our team is checking" });
+  // Photo gone and never read: still not marked, never a team claim.
+  notRead.photos[0].expiresAt = "2026-01-01";
+  expect(historyPage(notRead, now)).toMatchObject({ status: "pending", label: "Not marked yet" });
 });
 it("advances across every cursor page and filters before counting or costing the displayed set", async () => {
   const data = Array.from({ length: 108 }, (_, n) => record(n + 1, n % 3 === 0 ? null : "right"));
