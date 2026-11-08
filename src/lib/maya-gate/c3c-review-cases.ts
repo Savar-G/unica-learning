@@ -1,13 +1,14 @@
 // Gate cases from the review of #742 (C3c) on the compare claims MARBLES and AREA_TF: a wrong word with the model down,
 // before and after the easier example (P1-a); another person's or a copied ", so" answer with a model that proposes
 // accept (P1-b); and the other area's own product in the child's words (P1-c). Added to BEHAVIOURS (behaviours.ts).
+import type { HintLevel } from "@/lib/maya";
 import type { Behaviour, Plan, Step } from "./gate";
 
 const OPEN = "open" as const;
 const child = (text: string, read?: Extract<Step, { child: string }>["read"], maya?: Plan[]): Step => ({ child: text, ...(read ? { read } : {}), ...(maya ? { maya } : {}) });
 /** The model is down: every request throws, so code's own fallbacks speak. */
 const DOWN: Plan[] = [{ throws: true }];
-const guideAt = (level: number) => child("I'm stuck.", { help: "more" }, [{ act: "guide", level }]);
+const guideAt = (level: HintLevel) => child("I'm stuck.", { help: "more" }, [{ act: "guide", level }]);
 
 /** Each compare claim: the wrong word, the right word, its id, and its easier example's turns (5 × 2 = 10 has a carry). */
 const CLAIMS = [["MARBLES", "true", "false", "K6", 3], ["AREA_TF", "false", "true", "K7", 4]] as const;
