@@ -38,7 +38,7 @@ import {
   type OperationProblem,
   type Written,
 } from "@/lib/question-package-columns";
-import { ALGEBRA_KINDS, algebraStepText } from "@/lib/question-package-algebra";
+import { ALGEBRA_KINDS, algebraStepText, evaluateWithin } from "@/lib/question-package-algebra";
 import { MEASURE_KINDS, amountText, measureStepText } from "@/lib/question-package-measures";
 
 /** A place's unit name, for "carry 1 ten". */
@@ -490,6 +490,8 @@ export function operationCheck(operation: unknown, limits?: OperationLimits): Op
   const op = operation as Fields;
   if (!isOperationKind(op.kind)) return typeof op.kind === "string" ? beyond(`code cannot check the operation ${op.kind}`) : fail("the operation has no kind");
   const problem = KINDS[op.kind].problem(op);
+  // An evaluation under the wider limits: its every number and worked value a whole number up to wholeResult.
+  if (op.kind === "evaluate" && problem?.status === "unsupported" && limits) return evaluateWithin(op, limits.wholeResult) === null ? null : problem;
   const wider = WIDER[op.kind];
   // Only "beyond code" can be widened, and only for two whole numbers (anything else failed before the size check).
   if (problem?.status !== "unsupported" || !limits || !wider || !isTwo(op.operands) || !op.operands.every(isCount)) return problem;

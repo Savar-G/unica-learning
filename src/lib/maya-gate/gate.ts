@@ -35,6 +35,7 @@ import {
 } from "@/lib/maya";
 import { gateWordCount } from "./word-count";
 import { packageLines, TEMPLATES } from "@/lib/maya/lines";
+import { withEvaluateExample } from "@/lib/maya/evaluate";
 import { FLAG_LEVELS, UNSAFE_REQUEST_FLAG, type AlertState, type AlertStatus, type CallFlag, type CallStatus, type FlagLevel } from "@/lib/maya-call";
 import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
 import { fakeTalkReviewer, type TalkReviewer } from "@/lib/maya-talk-review";
@@ -631,7 +632,8 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   if (reply.length) fail("flow_mismatch", "A fixed identity reply is missing");
 
   // What Maya may ever say for this question: code lines (math), bank phrases (no math), the safety guidance.
-  const op = pkg.operation !== null && pkg.answer !== null && pkg.easierExample !== null ? (pkg as OperationPackage) : null;
+  // An evaluate question is judged with the easier example Maya works (the same shape as the question, evaluate.ts).
+  const op = pkg.operation !== null && pkg.answer !== null && pkg.easierExample !== null ? withEvaluateExample(pkg as OperationPackage) : null;
   const lineSentences = new Set((op ? allLineTexts(op, heardValues(b, t, pkg)) : heldSentences(true)).flatMap(sentences));
   const bank = Object.values(PHRASES).flat();
   const bankSentences = new Set(bank.filter((p) => !p.includes("{echo}")).flatMap(sentences));
@@ -746,7 +748,8 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     if (op) {
       for (const a of p.reading?.answers ?? []) {
         if ((a.problem ?? "target") !== "target" || a.step === "result") continue;
-        const at = op.steps.find((st) => st.id === a.step) as Record<string, unknown> | undefined;
+        // A part's column of an evaluate question is a step of the child's question too (evaluate.ts).
+        const at = (op.steps.find((st) => st.id === a.step) ?? teachSteps(op).find((st) => st.id === a.step)) as Record<string, unknown> | undefined;
         // What a column step makes: its total, the digit written, its value or its quotient; a fraction step's new
         // numerator (#407).
         const makes = at ? ["total", "write", "value", "quotient", "numerator"].flatMap((k) => (typeof at[k] === "number" ? [{ type: "number" as const, value: at[k] }] : [])) : [];
