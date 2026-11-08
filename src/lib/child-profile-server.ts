@@ -128,8 +128,13 @@ export async function prepareChildProfileForWorkbook(childId: string, seams: Wor
     const afterProfile = await seams.child.profiles.current(childId);
     const afterMarks = marks ? await seams.child.profiles.marks!(childId) : undefined;
     if (!source || afterProfile?.buildToken !== before.buildToken || (marks && marks.revision !== afterMarks?.revision)) return { ok: false };
-    const facts = childProfileFacts({ ...source, events: events.filter((event) => event.source !== "call") });
-    return { ok: true, profile: facts ? { ...profile, profile: facts } : null };
+    const nonCall = events.filter((event) => event.source !== "call");
+    const facts = childProfileFacts({ ...source, events: nonCall });
+    const nonCallIds = new Set([...raw, ...nonCall].filter((event) => event.source !== "call").map((event) => event.id));
+    const ai = profile.profile.ai;
+    const filteredAi = ai ? { ...ai, findings: ai.findings.filter((finding) =>
+      finding.events.length > 0 && finding.events.every((id) => nonCallIds.has(id))) } : null;
+    return { ok: true, profile: facts ? { ...profile, profile: { ...facts, ai: filteredAi } } : null };
   } catch (e) {
     console.error("[workbook profile] preparation failed", childId, e instanceof Error ? e.message : String(e));
     return { ok: false };

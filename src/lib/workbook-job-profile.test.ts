@@ -29,13 +29,13 @@ const ADMIN = { id: "admin", email: "admin@example.com" };
 const BC = curriculumFor("bc")!;
 
 /** A finished test, learner profiles and child profiles in memory. No real names, ids or answer text. */
-function setup({ test = true, ahead = false }: { test?: boolean; ahead?: boolean } = {}) {
+function setup({ test = true, ahead = false, grade = 4 }: { test?: boolean; ahead?: boolean; grade?: 1 | 4 } = {}) {
   const right = ahead ? allRight : knowsUpTo(2);
-  const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 71, right);
+  const { asked, placement } = takeTest({ grade, province: "BC" }, 71, right);
   const tables: MemoryReportTables = {
     assessments: test ? [{
-      id: TEST, parentId: PARENT, childId: CHILD, status: "completed", grade: 4, province: "BC", completedAt: COMPLETED,
-      placement, help: "no", test: storedTest(createSession({ grade: 4, province: "BC" }, 71)),
+      id: TEST, parentId: PARENT, childId: CHILD, status: "completed", grade, province: "BC", completedAt: COMPLETED,
+      placement, help: "no", test: storedTest(createSession({ grade, province: "BC" }, 71)),
     }] : [],
     answers: asked.map((q, position) => ({
       assessmentId: TEST, position, questionId: q.id, response: right(q, position) ? q.answer : "no idea", correct: right(q, position),
@@ -44,7 +44,7 @@ function setup({ test = true, ahead = false }: { test?: boolean; ahead?: boolean
   };
   const readers = memoryReportReaders(tables);
   const learner = memoryLearnerProfileStore(tables);
-  const family = memoryChildProfiles({ children: [{ id: CHILD, parentId: PARENT, grade: 4 }], tests: [{ id: TEST, childId: CHILD, completedAt: COMPLETED, profile: null }] });
+  const family = memoryChildProfiles({ children: [{ id: CHILD, parentId: PARENT, grade }], tests: [{ id: TEST, childId: CHILD, completedAt: COMPLETED, profile: null }] });
   // Both adapters read the same in-memory learner profile rows, as the live stores do.
   const profiles: ChildProfileStore = {
     ...family.profiles,
@@ -436,4 +436,69 @@ it("refuses to resume a frame made with another call event policy", async () => 
   };
   expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
   expect((await s.runs.run(id))?.error).toContain("call event policy changed");
+});
+
+it("keeps a marking finding in the same workbook plan when an unrelated call is added", async () => {
+  const s = setup({ grade: 1 });
+  s.store({ ...s.facts, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION });
+  const mark = await s.events.insert({ key: "mark:finding", parentId: PARENT, childId: CHILD, source: "marking",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 1 },
+    skill: { standard: "1.10", skills: [] }, result: "wrong", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  if (!("event" in mark)) throw new Error("mark was not stored");
+  await s.events.insert({ key: "mark:other", parentId: PARENT, childId: CHILD, source: "marking",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 3 },
+    skill: { standard: "1.1", skills: [] }, result: "wrong", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  const first = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  if (!first.ok || !first.profile) throw new Error("missing profile");
+  const current = (await s.profiles.current(CHILD))!;
+  const finding = { standard: "1.10", hypothesis: "Practise this standard.", events: [mark.event.id] };
+  expect(await s.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: TEST,
+    profile: { ...first.profile.profile, ai: { model: "test", findings: [finding] } } }, current)).toHaveProperty("revision");
+  s.seams.child.keepFindings = true;
+  const baseline = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  if (!baseline.ok || !baseline.profile) throw new Error("missing baseline");
+  const plan = (profile: typeof baseline.profile.profile) => planNextWorkbook({ curriculum: BC, grade: 1, profile, workbooks: [{ number: 1, levels: [4] }], number: 2 });
+  const noFinding = plan({ ...baseline.profile.profile, ai: null });
+  expect(plan(baseline.profile.profile)).not.toEqual(noFinding);
+  await s.events.insert({ key: "call:unrelated", parentId: PARENT, childId: CHILD, source: "call",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 2 },
+    skill: { standard: "1.1", skills: [] }, result: "right", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  const filtered = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  if (!filtered.ok || !filtered.profile) throw new Error("missing filtered profile");
+  expect(filtered.profile.profile.ai?.findings).toEqual([finding]);
+  expect(plan(filtered.profile.profile)).toEqual(plan(baseline.profile.profile));
+});
+
+it("drops findings with call links or no links only from the filtered view", async () => {
+  const s = setup({ test: false });
+  const mark = await s.events.insert({ key: "mark:mixed", parentId: PARENT, childId: CHILD, source: "marking",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 1 },
+    skill: { standard: "3.3", skills: [] }, result: "wrong", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  if (!("event" in mark)) throw new Error("mark was not stored");
+  const first = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  if (!first.ok || !first.profile) throw new Error("missing profile");
+  const empty = { standard: "3.3", hypothesis: "No links.", events: [] };
+  let current = (await s.profiles.current(CHILD))!;
+  expect(await s.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: null,
+    profile: { ...first.profile.profile, ai: { model: "test", findings: [empty] } } }, current)).toHaveProperty("revision");
+  s.seams.child.keepFindings = true;
+  const noCall = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  expect(noCall.ok && noCall.profile?.profile.ai?.findings).toEqual([empty]);
+  const call = await s.events.insert({ key: "call:mixed", parentId: PARENT, childId: CHILD, source: "call",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 2 },
+    skill: { standard: "3.3", skills: [] }, result: "right", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  if (!("event" in call) || !noCall.ok || !noCall.profile) throw new Error("missing call or profile");
+  const mixed = { standard: "3.3", hypothesis: "Mixed links.", events: [mark.event.id, call.event.id] };
+  const markingOnly = { standard: "3.3", hypothesis: "Marking link.", events: [mark.event.id] };
+  current = (await s.profiles.current(CHILD))!;
+  expect(await s.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: null,
+    profile: { ...noCall.profile.profile, ai: { model: "test", findings: [mixed, empty, markingOnly] } } }, current)).toHaveProperty("revision");
+  const filtered = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  expect(filtered.ok && filtered.profile?.profile.ai?.findings).toEqual([markingOnly]);
+  expect((await readChildProfile(s.profiles, CHILD))?.profile.ai?.findings).toEqual([mixed, empty, markingOnly]);
 });
