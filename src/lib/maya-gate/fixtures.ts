@@ -6,7 +6,7 @@
 // not teach yet (equivalent fractions, C36b). `M_DIVIDE`, `M_TRY` and `M_SUBTRACT` are missing numbers (Wave A),
 // made by Maya's session adapter from synthetic printed packages and checked by Maya's check (mayaPackageCheck).
 import { mayaPackageCheck } from "@/lib/maya";
-import { claimTeaching } from "@/lib/maya-teaching/claim";
+import { teachingPackage } from "@/lib/maya-teaching";
 import { deriveMissingNumber } from "@/lib/maya-teaching/missing-number";
 import { printedMissing, type PrintedMissing } from "@/lib/maya-teaching/missing-number-fixtures";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
@@ -18,10 +18,10 @@ import { SPOT_FIXTURES, type SpotFixtureId } from "./spot-error-cases";
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId | PlaceValueFixtureId | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT"
   | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | SpotFixtureId;
 
-/** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
+/** A claim question's teaching package (A4): the stored synthetic package through the session adapter (claimTeaching). */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
-  const pkg = claimTeaching(raw);
-  if (!pkg) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
+  const pkg = teachingPackage(raw) as QuestionPackage;
+  if (pkg === raw || pkg.operation === null) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
   return pkg;
 }
 

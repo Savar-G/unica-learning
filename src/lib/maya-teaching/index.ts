@@ -13,6 +13,7 @@ import { deriveMultiStep } from "./multi-step";
 import { derivePlaceValue } from "./place-value";
 import { deriveSpotError } from "./spot-error";
 import { deriveMissingNumber } from "./missing-number";
+import { claimTeaching } from "./claim";
 
 /**
  * Makes a teaching package from a printed workbook question, or null. It gets the printed package: no teaching data,
@@ -27,6 +28,7 @@ const DERIVERS: readonly Deriver[] = [
   deriveMultiStep, // A1: multi-step stories, as evaluate (taught from A2)
   derivePlaceValue, // B1a: place value, the digit and value asks
   deriveSpotError, // C2: spot the error, taught as the question under it plus "Is it right?" and the fix
+  claimTeaching, // A4: a true/false or yes/no claim on a computed side
 ];
 
 /** The fields a deriver may add. Every other field must stay exactly as stored. */
