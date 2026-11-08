@@ -2575,6 +2575,56 @@ export const BEHAVIOURS: Behaviour[] = [
       never: ["accept_answer", "give_answer"],
     },
   }))),
+  // Review of #737 at fe7a5ff8, P1: the model down, "I'm stuck." 3 to 6 times, then the wrong committed word twice. The
+  // wrong word on a column's ladder must never leave code with no line (technical_issue): "Not quite." for the answer, the
+  // step's help, then the honest close, after the easier example.
+  ...([["CLAIM_GT", "It's no.", 3], ["CLAIM_TF", "It's false.", 3], ["CLAIM_DEC", "It's true.", 4], ["CLAIM_DIV", "It's yes.", 3]] as const).flatMap(([fixture, wrong, example], f) =>
+    [3, 4, 5, 6].map((stuck, i): Behaviour => {
+      const acts = [OPEN, ...Array.from({ length: example }, () => "example_step" as const), "try_target", "guide", "guide", "guide", "guide", "close"] as const;
+      return {
+        id: `CL${40 + f * 4 + i}`,
+        title: `The model down, 'I'm stuck.' ${stuck} times, then '${wrong}' twice: the easier example, then the honest close, never technical_issue`,
+        fixture,
+        status: "passing",
+        steps: [
+          ...Array.from({ length: stuck }, () => child("I'm stuck.", undefined, [{ throws: true }])),
+          child(wrong, undefined, [{ throws: true }]),
+          child(wrong, undefined, [{ throws: true }]),
+          ...Array.from({ length: 4 }, () => child("I'm stuck.", undefined, [{ throws: true }])),
+        ],
+        expect: {
+          outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+          acts: [...acts],
+          outputs: [{ mayaTurn: acts.length - 1, lines: [TEMPLATES_CLOSE_HONEST] }],
+          never: ["give_answer", "accept_answer"],
+        },
+      };
+    })),
+  // P2: the child's own work beside the word is checked against the true numbers: the order, equal or not, the result.
+  ...([
+    ["CLAIM_GT", "1440 is less than 1436, so it's yes."],
+    ["CLAIM_GT", "1436 is more than 1440, so it's yes."],
+    ["CLAIM_GT", "1440 is 1436, so it's yes."],
+    ["CLAIM_GT", "7, so it's yes."],
+    ["CLAIM_GT", "It's yes, 7."],
+    ["CLAIM_TF", "48 is not 48, so it's true."],
+    ["CLAIM_DEC", "5.83 is 5.93, so it's false."],
+  ] as const).map(([fixture, said], i): Behaviour => ({
+    id: `CL${56 + i}`,
+    title: `'${said}' is no answer: its work is not true, so an accept or a confirm the model proposes never credits it`,
+    fixture,
+    status: "passing",
+    steps: [
+      child(said, { start: "has_work" }, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Yes.", undefined, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["accepts_wrong_answer"],
+      never: ["accept_answer", "give_answer"],
+    },
+  })),
   ...ONE_STEP_BEHAVIOURS,
 ];
 

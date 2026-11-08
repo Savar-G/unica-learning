@@ -2373,7 +2373,10 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   const ladderStep = pkg ? guideStep(pkg, done, regroup) : "result";
   const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
   const misses = finalMisses(s, checked);
-  const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0, misses)).acts;
+  // The acts come from the reading `step` will check, a claim's word included (review of #740: a wrong word at a compare's
+  // top help left only guide offers, which the place-value rule refuses, and the call ended with no safe line).
+  const actsReading: Reading = { ...(reading ?? {}), ...(answers.length > 0 ? { answers } : {}) };
+  const acts = (gate(s, {}) ?? teachingActs(s, actsReading, rightResult, done.length > 0, misses)).acts;
   // A right final answer the child was not sure of: the confirmation comes before more help (#605).
   const read = session.turn && pkg ? turnRead(session) : null;
   const doubtful = !rightResult && s.solved === null && pkg !== null && read?.final != null && !read.sure && rightForQuestion(pkg, read.final) ? read.final : null;
@@ -2402,7 +2405,11 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         // A step the child just did right is said first ("Yes! 7 + 9 = 16."), else a checked wrong answer on this step.
         const fresh = done.filter((id) => !session.done.includes(id)).at(-1);
         const judge = offers.find((o) => o.line === "check.equal") ?? offers.find((o) => o.line === "check.right_step" && o.slots.step === fresh) ??
-          offers.find((o) => o.line === "check.not_yet" && o.slots.step === ladderStep);
+          offers.find((o) => o.line === "check.not_yet" && o.slots.step === ladderStep) ??
+          // A claim's wrong word while a column is on the ladder ("It's no." at the ones' top help): "Not quite." for the
+          // answer first, which `step` requires for checked wrong work, so the help after it is not refused (#737 review).
+          (claimPkg && checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong")
+            ? offers.find((o) => o.line === "check.not_yet" && o.slots.step === "result") : undefined);
         // A due regroup is said before any other help on its column.
         const due = (view.regroup ?? []).some((c) => c.at === ladderStep);
         // The next level up comes first on a step the child is still stuck on (#605), H3 for a child who asks to be shown,
