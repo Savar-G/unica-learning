@@ -228,7 +228,7 @@ describe("the honest close (lessons from review 7 and 10)", () => {
     // C3b: a scale claim (an evaluate and A4's compare step); its stuck step is the first column of its first part.
     ["scale claim", deriveTopicClaim(scalePrinted(10, 60, 2, true))!],
     // C3c: the compare claims (marbles "less", area "greater").
-    ["marbles claim", deriveTopicClaim(marblesPrinted(2, 3, 4))!],
+    ["marbles claim", deriveTopicClaim(marblesPrinted(1, 3, 5))!],
     ["area claim", deriveTopicClaim(areaClaimPrinted(6, 3, 4, 4))!],
   ];
   it.each(cases)("%s: help-only turns reach the easier example, then an honest close with no answer, and the stuck step is recorded", async (_, pkg) => {

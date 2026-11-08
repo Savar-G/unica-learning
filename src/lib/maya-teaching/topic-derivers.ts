@@ -9,7 +9,8 @@
 //   the quarters for money), and A4's claim session teaches the compare and the circled word (topic-claim.ts gives that
 //   session the claim).
 import { heldReason } from "@/lib/maya";
-import { checkQuestionPackage, operationResult, sameValue, workedSteps, type AnswerValue, type Operation, type QuestionPackage } from "@/lib/question-package";
+import { claimView } from "@/lib/maya/claim";
+import { checkQuestionPackage, operationResult, sameValue, workedSteps, type AnswerValue, type Operation, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
 import { withTeachingOperation } from "@/lib/workbook-maya-operation";
 import { givesAway } from "./examples";
 import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "./limits";
@@ -25,19 +26,41 @@ const MONEY_EXAMPLES: Operation[] = [[20, 0.5], [20, 0.25], [20, 0.75], [10, 0.5
   .map(([d, q]) => ({ kind: "decimal-add", operands: [d, q] }));
 
 /**
- * A sum's or a product's easier examples (marbles, area: C3c): two one-digit numbers that are none of the question's,
- * with a smaller result, smallest first (lesson 11).
+ * A sum's or a product's easier examples (marbles, area: C3c): two one-digit numbers, with a smaller result, smallest
+ * first, none of them a number the question prints or computes (`own`: the red count, the other area's sides, the
+ * results and the compared number; lesson 11, review of #742 P2-b). The example's own result and compared number are
+ * checked against `own` too, once the claim session makes them (exampleFresh).
  */
-function freshPairs(operation: Operation): Operation[] {
+function freshPairs(operation: Operation, own: ReadonlySet<number>): Operation[] {
   if (operation.kind !== "add" && operation.kind !== "multiply") return [];
   const [a, b] = operation.operands as [number, number];
   const result = operation.kind === "add" ? a + b : a * b;
   const out: Operation[] = [];
-  for (let x = 2; x <= 9; x++) for (let y = 2; y <= x; y++) {
-    if ([a, b].includes(x) || [a, b].includes(y)) continue;
-    if ((operation.kind === "add" ? x + y : x * y) < result) out.push({ kind: operation.kind, operands: [x, y] });
+  // A 1 is a trivial factor, but a fine addend ("5 + 1").
+  const low = operation.kind === "add" ? 1 : 2;
+  for (let x = low; x <= 9; x++) for (let y = low; y <= x; y++) {
+    const got = operation.kind === "add" ? x + y : x * y;
+    if (own.has(x) || own.has(y) || own.has(got)) continue;
+    if (got < result) out.push({ kind: operation.kind, operands: [x, y] });
   }
   return out;
+}
+
+/** Every number a marbles or area claim prints or computes: the printed numbers, its results and its compared number. */
+function claimNumbers(printed: QuestionPackage, reading: NonNullable<ReturnType<typeof claimReading>>): Set<number> {
+  const own = new Set(numbersOf(printed.text));
+  const works = reading.topic === "area" ? reading.work : reading.topic === "marbles" ? [reading.work] : [];
+  for (const w of works) { const v = resultOf(w); if (v !== null) own.add(v); }
+  if (reading.topic === "marbles") own.add(reading.left);
+  return own;
+}
+
+/** The claim session's easier example: its result and compared number are none of the question's numbers. */
+function exampleFresh(made: QuestionPackage, own: ReadonlySet<number>): boolean {
+  const view = claimView(made as OperationPackage);
+  const compare = view.easierExample.steps.find((st) => st.kind === "claim-compare");
+  if (!compare || compare.kind !== "claim-compare") return false;
+  return !own.has(compare.value) && !own.has(compare.shown);
 }
 
 /** The numbers of an expression, as written. */
@@ -71,11 +94,13 @@ export function deriveTopicClaim(printed: QuestionPackage): QuestionPackage | nu
   // The money operation must give what code's evaluate of the bills and quarters gives.
   if (reading.topic === "money" && !sameValue(operationResult(reading.work), { type: "number", value })) return null;
   const answer = { type: "number" as const, value };
-  const examples = reading.topic === "money" ? MONEY_EXAMPLES
-    : reading.topic === "marbles" || reading.topic === "area" ? freshPairs(operation) : freshExamples(operation, reading.topic);
+  const pairs = reading.topic === "marbles" || reading.topic === "area";
+  const own = pairs ? claimNumbers(printed, reading) : new Set<number>();
+  const examples = reading.topic === "money" ? MONEY_EXAMPLES : pairs ? freshPairs(operation, own) : freshExamples(operation, reading.topic);
   for (const example of examples) {
     const made = withTeachingOperation(printed, operation, answer, { source: TEACHING_SOURCE, limits: MAYA_TEACHING_LIMITS, examples: [example] });
-    if (made?.easierExample && !givesAway(answer, made.easierExample.answer) && heldReason(made) === null) return made;
+    if (!made?.easierExample || givesAway(answer, made.easierExample.answer) || heldReason(made) !== null) continue;
+    if (!pairs || exampleFresh(made, own)) return made;
   }
   return null;
 }
@@ -91,9 +116,16 @@ const timeAdd = (from: Clock, minutes: number): Operation => ({ kind: "time-add"
 function clockExamples(operation: Operation): Operation[] {
   if (operation.kind !== "time-add") return [];
   const [from, d] = operation.operands;
-  if (d.type !== "quantity") return [];
+  const end = operationResult(operation);
+  if (d.type !== "quantity" || end.type !== "time") return [];
   const crosses = from.minutes !== 0 && from.minutes + d.value > 60;
-  const own = new Set([from.hours, from.minutes, d.value]);
+  // Every number of the question: its start, its minutes, each count's minutes ("3 minutes are left") and its answer's
+  // hour and minutes (lessons 11 and 12, review of #742 P2-a: 2:55 + 8 = 3:03 showed the 3 and the ":03" of 7:03).
+  const own = new Set([from.hours, from.minutes, d.value, end.hours, end.minutes, ...countMinutes(operation)]);
+  const fresh = (example: Operation) => {
+    const got = operationResult(example);
+    return got.type === "time" && got.minutes !== end.minutes && got.hours !== end.hours && countMinutes(example).every((n) => !own.has(n));
+  };
   const out: Operation[] = [];
   for (const h of [2, 3, 4, 5]) {
     if (own.has(h)) continue;
@@ -102,11 +134,15 @@ function clockExamples(operation: Operation): Operation[] {
     for (const m of starts) for (const add of crosses ? [8, 7, 9, 6] : [5, 4, 3, 6, 7, 8, 2]) {
       // Two counts only when the minutes pass the next hour (question-package-measures.ts, addLegs).
       if (own.has(add) || (m !== 0 && own.has(m)) || (m + add > 60) !== crosses) continue;
-      out.push(timeAdd(clock(h, m), add));
+      const example = timeAdd(clock(h, m), add);
+      if (fresh(example)) out.push(example);
     }
   }
   return out;
 }
+
+/** The minutes each count of a time-add counts (47 and 3 for 50 minutes after 6:13). */
+const countMinutes = (op: Operation): number[] => workedSteps(op).flatMap((st) => (st.kind === "count-on" ? [st.minutes] : []));
 
 /** The teaching package of a clock-time question ("What time is 50 minutes after 6:13?"), or null. */
 export function deriveClockTime(printed: QuestionPackage): QuestionPackage | null {
@@ -115,7 +151,13 @@ export function deriveClockTime(printed: QuestionPackage): QuestionPackage | nul
   const operation = reading.work;
   const answer = operationResult(operation);
   if (answer.type !== "time" || operation.kind !== "time-add") return null;
-  const [from] = operation.operands;
+  const [from, d] = operation.operands;
+  // Held (review of #742, P2-d and P3-a): a time past 12:59 on the book's 12-hour clock ("13:03" from a start at 12), and
+  // a start whose minutes reach the hour exactly (6:10 + 50 min), which the count to the next hour does not teach yet.
+  const steps = workedSteps(operation);
+  const times = [from, answer, ...steps.flatMap((st) => (st.kind === "count-on" ? [st.from, st.to] : []))];
+  if (times.some((t) => t.type !== "time" || t.hours < 1 || t.hours > 12)) return null;
+  if (d.type !== "quantity" || (from.minutes !== 0 && from.minutes + d.value === 60)) return null;
   // A slip that keeps the hour: the minutes of the answer on the starting hour (6:13 + 50 min as 6:03), else one hour on.
   const wrong = from.hours !== answer.hours ? clock(from.hours, answer.minutes) : clock(answer.hours + 1, answer.minutes);
   for (const example of clockExamples(operation)) {
