@@ -21,13 +21,14 @@ import {
   operationProblem,
   stepText,
   workedSteps,
-  type AnswerValue,
   type EasierExample,
+  type OperationLimits,
   type Operation,
   type OperationPackage,
   type WorkedStep,
 } from "@/lib/question-package";
 import { plainNumber } from "./numbers";
+import { MAYA_TEACHING_LIMITS, teachingLimits } from "@/lib/maya-teaching/limits";
 
 type OperateStep = Extract<WorkedStep, { kind: "operate" }>;
 type Sign = OperateStep["op"];
@@ -72,6 +73,13 @@ export interface EvaluateTeaching {
   example: EasierExample;
 }
 
+/**
+ * Maya's limits for a part's own one-step operation (Wave A, #724): whole numbers to 999,999, the six columns her
+ * board and place names cover. Passed explicitly; the generator and every default check keep today's limits. The
+ * divisor stays at today's 99: a 3-digit divisor is A3's try-factor path (partMethod holds it).
+ */
+const PART_LIMITS: OperationLimits = Object.freeze({ wholeResult: MAYA_TEACHING_LIMITS.wholeResult });
+
 /** The child's steps of each kind code teaches inside a part. Anything else holds the question (fail closed). */
 const PART_STEP_KINDS: readonly WorkedStep["kind"][] = ["add-column", "subtract-column", "multiply-digit", "partial-product", "divide-digit", "result"];
 
@@ -87,8 +95,8 @@ const nonZero = (n: number) => [...String(n)].filter((d) => d !== "0").length;
  * try-factor path (Wave A, A3): a divide part whose divisor has 3 digits is held here today ("(8763 + 30) ÷ 977");
  * A3's checked trial multiplication fills it by returning its steps for that part.
  */
-export function partMethod(operation: Operation): { steps: WorkedStep[] } | { held: string } {
-  const problem = operationProblem(operation);
+export function partMethod(operation: Operation, limits: OperationLimits = PART_LIMITS): { steps: WorkedStep[] } | { held: string } {
+  const problem = operationProblem(operation, limits);
   if (problem !== null) {
     if (operation.kind === "divide" && operation.operands[1] >= 100) return { held: "a divide part with a 3-digit divisor" };
     return { held: `a part with numbers code does not check yet (${problem})` };
@@ -143,6 +151,8 @@ function wholeSteps(steps: readonly WorkedStep[]): steps is (OperateStep | Extra
 function frameOf(text: string, expr: string, parts: readonly OperateStep[]): Frame | null | undefined {
   const t = text.trim().replace(/\s+/g, " ");
   if (!/(?:^|\s)\?(?:\s|$)/.test(t)) return null;
+  // "976746 + 10000 + 1000 = ?": the ? is the whole answer, the expression as stored. A plain expression, no frame.
+  if (t === `${expr} = ?`) return null;
   if (parts.length !== 2) return undefined;
   const [first] = parts;
   const side = partText(first);
@@ -169,7 +179,10 @@ function workedWhole(expr: string): { steps: WorkedStep[]; value: number } | nul
   return result?.kind === "result" && result.value.type === "number" ? { steps, value: result.value.value } : null;
 }
 
-/** The numbers code tries in place of n in an easier example: its first digit, then near it, never more than n. */
+/**
+ * The numbers code tries in place of n in an easier example: its first digit, then near it, never more than n (a
+ * single digit may also go up to 9, as the question's own numbers are never used, and to 1 last).
+ */
 function candidates(n: number): number[] {
   const lead = Number(String(n)[0]);
   const top = Math.min(Math.max(n, 2), 20);
@@ -177,28 +190,48 @@ function candidates(n: number): number[] {
   const out: number[] = [];
   for (let v = start; v <= top; v++) out.push(v);
   for (let v = start - 1; v >= 2; v--) out.push(v);
+  if (n < 10) for (let v = n + 1; v <= 9; v++) out.push(v);
+  // 1 last: only when nothing else keeps the example smaller and off the question's own digits ("7 + 2 × 3").
+  if (n < 10) out.push(1);
   return out;
 }
 
 const MAX_TRIES = 6000;
 
 /**
+ * The easier example gives the question's answer away (brief, lesson 11, from #724's review): its answer is the
+ * question's, or the question's times a power of 10 apart (1700 + 300 = 2000 for 17000 + 3000), or the first digits of
+ * the question's answer (88 for 880), or the example uses one of the question's own numbers.
+ */
+export function givesAway(exampleExpr: string, exampleValue: number, expr: string, answer: number): boolean {
+  const own = new Set(expr.match(/\d+/g) ?? []);
+  if ((exampleExpr.match(/\d+/g) ?? []).some((t) => own.has(t))) return true;
+  if (!Number.isSafeInteger(answer) || !Number.isSafeInteger(exampleValue)) return true;
+  if (exampleValue === answer) return true;
+  for (let k = 10; exampleValue * k <= answer; k *= 10) if (exampleValue * k === answer) return true;
+  return String(answer).startsWith(String(exampleValue));
+}
+
+/**
  * An easier example of the same shape as the expression: the same signs and brackets, each number its first digit or
  * a little more or less (never more than it was, at least 2), every part a whole number at least 1, and not the
  * question itself or its answer. The first such expression in a fixed order, so the same question always gets the same example.
  */
-function sameShapeExample(expr: string, answer: number): { text: string; operation: Operation; answer: AnswerValue; steps: WorkedStep[] } | null {
+function sameShapeExample(expr: string, answer: number, valid: (example: EasierExample) => boolean): EasierExample | null {
   const numbers = (expr.match(/\d+/g) ?? []).map(Number);
-  const lists = numbers.map(candidates);
+  // Never one of the question's own numbers (brief, lesson 11).
+  const lists = numbers.map((n) => candidates(n).filter((v) => !numbers.includes(v)));
+  if (lists.some((l) => l.length === 0)) return null;
   const pick = new Array<number>(numbers.length).fill(0);
   for (let tries = 0; tries < MAX_TRIES; tries++) {
     let i = 0;
     const e = expr.replace(/\d+/g, () => String(lists[i][pick[i++]]));
     const worked = e !== expr ? workedWhole(e) : null;
-    // The package check refuses an easier example with the question's answer.
-    if (worked && worked.value !== answer) {
+    // The package check refuses an easier example with the question's answer; it must not give it away either.
+    if (worked && !givesAway(e, worked.value, expr, answer)) {
       const operation: Operation = { kind: "evaluate", operands: [e] };
-      return { text: `${e} = ?`, operation, answer: { type: "number", value: worked.value }, steps: worked.steps };
+      const example: EasierExample = { text: `${e} = ?`, operation, answer: { type: "number", value: worked.value }, steps: worked.steps };
+      if (valid(example)) return example;
     }
     // The next choice: the last number changes first.
     let k = numbers.length - 1;
@@ -213,12 +246,13 @@ function sameShapeExample(expr: string, answer: number): { text: string; operati
 function exampleFor(pkg: OperationPackage, expr: string): EasierExample | null {
   const stored = pkg.easierExample;
   const storedExpr = stored.operation.kind === "evaluate" ? stored.operation.operands[0] : null;
-  if (storedExpr !== null && shapeOf(storedExpr) === shapeOf(expr) && workedWhole(storedExpr) && !("values" in stored.operation && stored.operation.values)) return stored;
-  const made = sameShapeExample(expr, pkg.answer.value.type === "number" ? pkg.answer.value.value : NaN);
-  if (!made) return null;
-  // The package with the made example must pass the same check as any package (its steps and answer are the operation's).
-  const check = checkQuestionPackage({ ...pkg, easierExample: made });
-  return check.ok ? made : null;
+  const storedValue = storedExpr !== null ? workedWhole(storedExpr) : null;
+  const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : NaN;
+  if (storedExpr !== null && storedValue && shapeOf(storedExpr) === shapeOf(expr) && !givesAway(storedExpr, storedValue.value, expr, answer) &&
+    !("values" in stored.operation && stored.operation.values)) return stored;
+  // The package with the made example must pass the same check as any package (its steps and answer are the
+  // operation's, and the example is smaller): the first candidate that does is the example.
+  return sameShapeExample(expr, answer, (made) => checkQuestionPackage({ ...pkg, easierExample: made }, undefined, teachingLimits(pkg)).ok);
 }
 
 type Worked = { teaching: EvaluateTeaching } | { held: string };
@@ -402,7 +436,7 @@ export function withEvaluateExample<P extends OperationPackage>(pkg: P): P {
  * kind, and for a part code does not work.
  */
 export function partProblems(operation: Operation): EasierExample[] {
-  if (operation.kind !== "evaluate" || operationProblem(operation) !== null) return [];
+  if (operation.kind !== "evaluate" || operationProblem(operation, MAYA_TEACHING_LIMITS) !== null) return [];
   return workedSteps(operation).flatMap((s) => {
     if (s.kind !== "operate") return [];
     const op = partOperation(s);
@@ -434,7 +468,7 @@ export function frameProblems(pkg: OperationPackage): EasierExample[] {
   if (!t?.frame || !last) return [];
   const { left, right, value } = last.step;
   const operation: Operation = t.frame.verb === "divide" ? { kind: "multiply", operands: [right, value] } : { kind: "subtract", operands: [left, value] };
-  if (operationProblem(operation) !== null) return [];
+  if (operationProblem(operation, PART_LIMITS) !== null) return [];
   const steps = workedSteps(operation);
   const result = steps.at(-1);
   return result?.kind === "result" ? [{ text: t.frame.equation, operation, answer: result.value, steps }] : [];

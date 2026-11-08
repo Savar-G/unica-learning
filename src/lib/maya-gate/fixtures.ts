@@ -131,7 +131,7 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     skill: "5.9-multiply-tens",
     level: 16,
     wrong: [{ value: num(4480), cause: "stops-early", description: "Works out only the first part", step: null }],
-    easier: { text: "2 × 30 + 2 × 4 = ?", operation: { kind: "evaluate", operands: ["2 × 30 + 2 × 4"] }, answer: num(68) },
+    easier: { text: "2 × 40 + 2 × 5 = ?", operation: { kind: "evaluate", operands: ["2 × 40 + 2 × 5"] }, answer: num(90) },
   }),
   EV_STORY: fixture({
     id: "gate-EV-4x260-590",
@@ -141,7 +141,7 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     skill: "5.9-multiply-tens",
     level: 16,
     wrong: [{ value: num(1630), cause: "wrong-operation", description: "Adds the beads sold", step: null }],
-    easier: { text: "3 × 20 − 15 = ?", operation: { kind: "evaluate", operands: ["3 × 20 − 15"] }, answer: num(45) },
+    easier: { text: "3 × 20 − 16 = ?", operation: { kind: "evaluate", operands: ["3 × 20 − 16"] }, answer: num(44) },
   }),
   EV_MISSING: fixture({
     id: "gate-EV-8x?=7360-400",
@@ -151,7 +151,7 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     skill: "5.9-multiply-tens",
     level: 16,
     wrong: [{ value: num(6960), cause: "stops-early", description: "Works out the other side and stops", step: null }],
-    easier: { text: "(20 − 4) ÷ 8 = ?", operation: { kind: "evaluate", operands: ["(20 − 4) ÷ 8"] }, answer: num(2) },
+    easier: { text: "(20 − 5) ÷ 3 = ?", operation: { kind: "evaluate", operands: ["(20 − 5) ÷ 3"] }, answer: num(5) },
   }),
   EV_ADD_FIRST: fixture({
     id: "gate-EV-(47+38)x3",
@@ -161,7 +161,7 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     skill: "5.9-multiply-tens",
     level: 16,
     wrong: [{ value: num(161), cause: "O-order", description: "Multiplies before working inside the brackets", step: null }],
-    easier: { text: "(2 + 3) × 2 = ?", operation: { kind: "evaluate", operands: ["(2 + 3) × 2"] }, answer: num(10) },
+    easier: { text: "(2 + 4) × 2 = ?", operation: { kind: "evaluate", operands: ["(2 + 4) × 2"] }, answer: num(12) },
   }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },

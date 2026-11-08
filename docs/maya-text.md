@@ -152,7 +152,11 @@ Maya teaches an `evaluate` question part by part, in the order of operations (`s
 
 **The easier example** is the same shape as the question: the same signs and brackets. When the stored example is not (the generator stores "1 + 1"), code makes one in a fixed order (each number its first digit, or a little more or less, never more than it was) and checks it with the package check. The stored package does not change.
 
-**Held.** Unknowns, decimals, negative numbers, a part whose one-step operation code does not check by default (a number above 9999), and a divide part with a 3-digit divisor. `partMethod` in `evaluate.ts` is the seam for the try-factor path of a 3-digit divisor.
+**Big numbers (#724).** A part's one-step operation is checked under Maya's limits, passed explicitly (`partMethod`): whole numbers to 999,999, the six columns her board and place names cover. An evaluate package Maya's session adapter made (`operationSource` "maya-teaching") is checked with the same limits (`mayaPackageCheck`): `operationCheck` widens an evaluation today's check refuses as beyond code only when every number and worked value is a whole number to 999,999 and it has no unknowns (`evaluateWithin`). With no limits passed, every check keeps today's limits (numbers to 99999.999); a test proves it. "976746 + 10000 + 1000 = ?" is a plain expression: a ? that is the whole answer is no missing-number frame.
+
+**No giveaway (lesson 11).** A made or stored easier example is refused when its answer is the question's, or the question's a power of 10 apart, or the first digits of it, or when it uses one of the question's own numbers (`givesAway`). Code then makes another.
+
+**Held.** Unknowns, decimals, negative numbers, a part above Maya's limits, and a divide part with a 3-digit divisor. `partMethod` in `evaluate.ts` is the seam for the try-factor path of a 3-digit divisor.
 
 ## Free talk (D-197)
 
