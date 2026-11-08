@@ -3,7 +3,7 @@ import { claimTeaching, exampleGivesAway, readClaim } from "@/lib/maya-teaching/
 import * as CLAIMS from "@/lib/maya-gate/claim-fixtures";
 import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_RIGHT, CLAIM_TRUE_FALSE } from "@/lib/maya-gate/claim-fixtures";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
-import { checkQuestionPackage, operationProblem, workedSteps, type QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, operationProblem, workedSteps, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { withWorkbookMayaOperation } from "@/lib/workbook-maya-operation";
 
 const ALL = { CLAIM_TRUE_FALSE, CLAIM_GREATER, CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_RIGHT };
@@ -97,7 +97,7 @@ describe("the generator's workbook teaching data is unchanged (A4)", () => {
 });
 
 describe("the easier example never gives the answer away (lesson 11, #724's review)", () => {
-  const mul = (a: number, b: number) => ({ kind: "multiply", operands: [a, b] }) as const;
+  const mul = (a: number, b: number): Operation => ({ kind: "multiply", operands: [a, b] });
 
   it("knows a giveaway: the question's own number, the result times a power of 10, or the result's first digits", () => {
     expect(exampleGivesAway(mul(2, 3), mul(20, 3))).toBe(true); // 6 and 60, and the 3
