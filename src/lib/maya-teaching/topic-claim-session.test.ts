@@ -57,3 +57,35 @@ describe("the compare step of a scale or minute-hand claim (review of #741, P1a)
     expect(compareEquationSaid(money, "40 plus 0.5 is 40.5", 40.5)).toBe(false);
   });
 });
+
+describe("a scale claim's easier example (review of #741, P2; lessons 11 and 12)", () => {
+  const scales: [2 | 10, number, number][] = [];
+  for (const step of [2, 10] as const) for (let v = 20; v <= 100; v += 10) for (let m = 1; m <= 9; m++) scales.push([step, v, m]);
+
+  it.each([
+    [10, 90, 3, "9 + 3 × 1"],
+    [10, 100, 2, "10 + 2 × 1"],
+    [10, 60, 3, "6 + 3 × 1"],
+  ] as const)("%s-step scale from %s, %s intervals: not the question's own digits (%s)", (step, v, m, refused) => {
+    const made = deriveTopicClaim(scalePrinted(step, v, m, true))!;
+    expect(made.easierExample!.operation).not.toEqual({ kind: "evaluate", operands: [refused] });
+  });
+
+  it("every scale the template makes gets a checked example of its shape that gives nothing away", () => {
+    for (const [step, v, m] of scales) {
+      for (const holds of [true, false]) {
+        const made = deriveTopicClaim(scalePrinted(step, v, m, holds));
+        const id = `${step} ${v} ${m} ${holds}`;
+        expect(made, id).not.toBeNull();
+        const op = made!.easierExample!.operation;
+        const [a, b, c] = /^(\d+) \+ (\d+) × (\d+)$/.exec((op as { operands: string[] }).operands[0])!.slice(1).map(Number);
+        const answer = v + m * step;
+        const got = a + b * c;
+        expect(made!.easierExample!.answer, id).toEqual({ type: "number", value: got });
+        for (const x of [a, b, c]) expect([v, m, step, answer, 0, 1], id).not.toContain(x);
+        expect([1, 10, 100, 1000].map((p) => got * p), id).not.toContain(answer);
+        expect(String(answer).startsWith(String(got)), id).toBe(false);
+      }
+    }
+  });
+});
