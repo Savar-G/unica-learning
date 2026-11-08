@@ -11,7 +11,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import {
-  closeParts, easierForMaya, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, givesAway, keepsOrder, leftToRight, partCovered, partEquationSaid, withEvaluateExample,
+  closeParts, dividesBySelf, easierForMaya, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, givesAway, keepsOrder, leftToRight, partCovered, partEquationSaid, withEvaluateExample,
 } from "./evaluate";
 import { allLineTexts, packageLines, workbookOpening } from "./lines";
 import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "@/lib/maya-teaching/limits";
@@ -180,7 +180,7 @@ describe("evaluate parts (Wave A, A2)", () => {
     expect(withEvaluateExample(op(FIXTURES.EV_TWO))).toBe(FIXTURES.EV_TWO);
     const cases: [string, string][] = [
       ["9 × 880 + 9 × 40", "8 × 8 + 8 × 4"],
-      ["(8150 − 500) ÷ 9", "(8 − 5) ÷ 3"],
+      ["(8150 − 500) ÷ 9", "(8 − 4) ÷ 2"],
       ["995 × 9 − 60", "10 × 8 − 6"],
       ["10 × 90 − 220", "2 × 9 − 2"],
       ["30 + 4 × 3", "5 + 2 × 2"],
@@ -412,6 +412,16 @@ describe("evaluate parts (Wave A, A2)", () => {
     }
     expect(givesAway("1 + 3 × 6", 19, "4 + 2 × 7", 18, workedSteps({ kind: "evaluate", operands: ["1 + 3 × 6"] }))).toBe(true);
     expect(givesAway("2 × 2 − 2", 2, "3 × 4 − 8", 4, workedSteps({ kind: "evaluate", operands: ["2 × 2 − 2"] }))).toBe(true);
+  });
+
+  it("refuses an easier example with a step that divides a number by itself (round 4)", () => {
+    // At a90d2534, "(8150 − 500) ÷ 9" got "(8 − 5) ÷ 3": 3 ÷ 3 = 1.
+    expect(withEvaluateExample(op(evaluatePackage("(8150 − 500) ÷ 9"))).easierExample.operation).toEqual({ kind: "evaluate", operands: ["(8 − 4) ÷ 2"] });
+    // A stored one is replaced too: "(9 − 3) ÷ 6" (6 ÷ 6) for "(80 − 20) ÷ 30".
+    const stored = op(evaluatePackage("(80 − 20) ÷ 30", "What is (80 − 20) ÷ 30?", "(9 − 3) ÷ 6"));
+    expect(withEvaluateExample(stored).easierExample.operation).not.toEqual({ kind: "evaluate", operands: ["(9 − 3) ÷ 6"] });
+    for (const e of ["(8 − 5) ÷ 3", "(6 + 6) ÷ 12", "(6 − 4) ÷ 2"]) expect(dividesBySelf(workedSteps({ kind: "evaluate", operands: [e] })), e).toBe(true);
+    expect(dividesBySelf(workedSteps({ kind: "evaluate", operands: ["(8 − 4) ÷ 2"] }))).toBe(false);
   });
 
   it("never puts the question's answer, or a trivial operand, in an easier example (round 3)", () => {

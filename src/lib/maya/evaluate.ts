@@ -224,6 +224,9 @@ export function givesAway(exampleExpr: string, exampleValue: number, expr: strin
   return String(answer).startsWith(String(exampleValue));
 }
 
+/** A step that divides a number by itself ("(8 − 5) ÷ 3": 3 ÷ 3 = 1): it teaches little, so no easier example has one. */
+export const dividesBySelf = (steps: readonly WorkedStep[]): boolean => steps.some((s) => s.kind === "operate" && s.op === "÷" && s.left === s.right);
+
 /**
  * An expression worked strictly from left to right, each sign in the order it is written, brackets left out: the
  * mistake the order of operations is about ("7 + 2 × 3" gives 27). NaN for a division by 0.
@@ -266,7 +269,7 @@ function sameShapeExample(expr: string, answer: number, valid: (example: EasierE
     const e = expr.replace(/\d+/g, () => String(lists[i][pick[i++]]));
     const worked = e !== expr ? workedWhole(e) : null;
     // The package check refuses an easier example with the question's answer; it must not give it away either.
-    if (worked && !givesAway(e, worked.value, expr, answer, worked.steps) && keepsOrder(e, worked.value, expr, answer)) {
+    if (worked && !givesAway(e, worked.value, expr, answer, worked.steps) && !dividesBySelf(worked.steps) && keepsOrder(e, worked.value, expr, answer)) {
       const operation: Operation = { kind: "evaluate", operands: [e] };
       const example: EasierExample = { text: `${e} = ?`, operation, answer: { type: "number", value: worked.value }, steps: worked.steps };
       if (valid(example)) return example;
@@ -308,6 +311,7 @@ function exampleFor(pkg: OperationPackage, expr: string): EasierExample | null {
   const storedValue = storedExpr !== null ? workedWhole(storedExpr) : null;
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : NaN;
   if (storedExpr !== null && storedValue && shapeOf(storedExpr) === shapeOf(expr) && !givesAway(storedExpr, storedValue.value, expr, answer, storedValue.steps) &&
+    !dividesBySelf(storedValue.steps) &&
     keepsOrder(storedExpr, storedValue.value, expr, answer) && !("values" in stored.operation && stored.operation.values)) return stored;
   // The package with the made example must pass the same check as any package (its steps and answer are the
   // operation's, and the example is smaller): the first candidate that does is the example.
