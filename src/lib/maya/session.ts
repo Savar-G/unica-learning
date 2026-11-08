@@ -48,6 +48,7 @@ import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FE
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
+import { frameOwed, topicFrame } from "./topic-frame";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -318,6 +319,11 @@ export interface Session {
   noStart: boolean;
   /** Easier-example steps shown, in order. */
   exampleShown: number;
+  /**
+   * Maya closed with the honest close (lessons from review 10): only that close fitted (teachingActs), so the call ends
+   * as the child stopping, also from a confirm (closeCause).
+   */
+  honestClose?: boolean;
   /** The easier example was named in a prior turn, before its first worked step. */
   exampleIntroduced?: boolean;
   /** Maya handed the question back after the whole easier example. */
@@ -726,6 +732,8 @@ interface Allowed {
   acts: Act[];
   code: RefusalCode;
   reason: string;
+  /** Only the honest close fits (lessons from review 10): the close must say close.honest, and the call is the child stopping. */
+  honestClose?: true;
 }
 
 /** An answer code has checked: the child said and kept it, and the verdict is right. */
@@ -792,6 +800,16 @@ const MAIN_ACTS: Record<Teaching, Act[]> = {
  */
 function asksForHelp(text: string): boolean {
   return saysStuck(text) || /^(?:(?:can|could|would|will) you (?:please )?|please )?show me\b/i.test(text.trim());
+}
+
+/**
+ * A turn that only asks for help on an "other-topic" question (topic-frame.ts) not yet solved: the model reads help, or
+ * code reads a help request, and there is no answer and no right result. The one test for the easier example and the
+ * honest close after the top hint (lessons from review 7 and 10). A wrong answer is a miss, not a help request (D-199).
+ */
+function topicHelpOnly(s: Session, reading: Reading, rightResult: boolean): boolean {
+  return !!s.package && !!topicFrame(s.package.text, s.package.operation) && s.solved === null && !rightResult && s.turn !== null &&
+    (reading.help !== undefined || asksForHelp(s.turn.text)) && !reading.answers?.length;
 }
 
 function asksWhy(text: string): boolean {
@@ -872,6 +890,17 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
     reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+  // An "other-topic" question (topic-frame.ts) whose one step is its answer has no H3 to show. A child who only asks for
+  // help at its top hint gets the easier example, then an honest close with no answer (lessons from review 7 and 10;
+  // controller decision (a)). A wrong answer is a miss, not a help request: D-199 is unchanged.
+  if (topicHelpOnly(s, reading, rightResult) && (s.ladder.hint >= 2 || s.exampleShown >= steps)) {
+    return s.exampleShown < steps
+      ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child still only asks for help at the top hint: show the easier example, step by step (example_step)." }
+      : {
+        acts: ["close"], code: "act_not_allowed", honestClose: true,
+        reason: "The child still only asks for help after the easier example: close honestly with the close.together line (this one is hard, it's fine to stop), never with the answer.",
+      };
+  }
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
@@ -1154,11 +1183,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const progress = s.done.length > 0 || equal !== null || checked.some((c) => c.problem === "target" && c.answer.verdict === "right");
   if (progress) s.noStart = false;
   const misses = finalMisses(s, checked);
-  const allowedNow = blocked ? blocked.acts : teachingActs(s, reading, rightResult, progress, misses).acts;
-  if (!blocked && !allowedNow.includes(p.act)) {
-    const allowed = teachingActs(s, reading, rightResult, progress, misses);
-    return no(allowed.code, allowed.reason, allowed.acts);
-  }
+  const teaching = blocked ? null : teachingActs(s, reading, rightResult, progress, misses);
+  const allowedNow = blocked ? blocked.acts : teaching!.acts;
+  if (teaching && !allowedNow.includes(p.act)) return no(teaching.code, teaching.reason, teaching.acts);
 
   // 3. The ladder after this reading: failures and requests raise what help is allowed; right steps move on.
   const scoring = !blocked;
@@ -1396,6 +1423,14 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     }
     case "close":
+      // The honest close says its line (lessons from review 10), as the decline says its own: a goodbye alone ("Take
+      // care!") leaves the child with no word that this one is hard, that it is fine to stop, or what to do next.
+      if (teaching?.honestClose) {
+        if (!spoken.chosen.some((o) => o.key === "close.honest")) {
+          return no("act_not_allowed", "The honest close says the close.together line: this one is hard, it's fine to stop, and one next step.", allowedNow);
+        }
+        s.honestClose = true;
+      }
       break;
     case "safety":
       // The guidance is code's policy message, never the model's words.
@@ -1525,7 +1560,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.expect = "maya";
     s.silence = "none";
   } else if (p.act === "close") {
-    end(s, closeCause(base), effects, false);
+    end(s, closeCause(base, s), effects, false);
   } else if (doneAfterAnswer || p.act === "safety" || (p.act === "example_step" && s.exampleShown < pkg!.easierExample.steps.length)) {
     s.expect = "maya";
     s.silence = "none";
@@ -2377,11 +2412,14 @@ function raiseSafety(s: Session, severity: Severity, at: number, effects: Effect
 }
 
 /** Why Maya closes, from the session before the close, ahead of the outcome's priority (safety, content, solved). */
-function closeCause(before: Session): Reason {
+function closeCause(before: Session, after: Session): Reason {
   if (before.stopRequested) return "child_stopped";
   if (before.silence === "close_due") return "no_response";
   if (before.state === "TIME_CLOSE") return "time_limit";
-  if (before.state === "CONFIRM_HEARD") return "technical_issue";
+  // A hearing that failed twice is a technical issue; the honest close after the easier example is the child stopping,
+  // also when it comes while Maya waits on a confirm ("Maybe 1?", "Was that 1?", "I'm stuck."; re-review of #731, P1).
+  // The flag is set only when teachingActs gave the honest close alone and Maya said it (propose).
+  if (before.state === "CONFIRM_HEARD" && !after.honestClose) return "technical_issue";
   return "child_stopped";
 }
 
@@ -2692,7 +2730,8 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "example_step": {
       const index = main === "ASSESS" ? 0 : s.exampleShown;
       const next = pkg.easierExample.steps[index];
-      if (index === 0 && !s.exampleIntroduced && turnWordLimit(s) === 25) {
+      // A framed intro (an "other-topic" question's topic sentence, topic-frame.ts) is its own turn too.
+      if (index === 0 && !s.exampleIntroduced && (turnWordLimit(s) === 25 || l.exampleIntro().some((o) => o.key === "example.framed"))) {
         return l.exampleIntro().map((o) => ({ ...o, slots: { step: next.id } }));
       }
       return [...(index === 0 && !s.exampleIntroduced ? l.exampleIntro() : []), ...(next ? l.exampleStep(next.id) : [])];
@@ -2700,9 +2739,18 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "try_target":
       return [...l.tryTarget(), ...l.question()];
     case "guide": {
+      // An "other-topic" question's topic sentence comes first, with the question, before any step line (topic-frame.ts),
+      // but only on a help-only turn: a turn with work in it (a checked answer or any number) gets the normal guide
+      // ("not yet", the right step), and the sentence stays owed for the next help-only turn (review of #731, P1).
+      // A question ("Why do I divide by 2?", "Is it 4?") is not work: its numbers are the child asking, not answering. A
+      // committed answer in it is checked, so it still counts (review of #731, P3).
+      const opts = readOptionsFor(pkg);
+      const turnText = s.turn?.text ?? "";
+      const asking = asksWhy(turnText) || /\?\s*$/.test(turnText);
+      const work = view.checked.some((c) => c.problem === "target") || (!asking && valuesIn(turnText, opts).length > 0);
+      if (!work && frameOwed(pkg.text, pkg.operation, s.turns.flatMap((t) => (t.speaker === "maya" ? [t.text] : [])))) return l.question().filter((o) => o.line === "question.problem");
       // An equal fraction when the question asks for the simplest form (#407): the equal-form check for each equal
       // fraction in the child's turn (it needs code to check that one), and the final step's help to simplify it.
-      const opts = readOptionsFor(pkg);
       const candidates = view.equal ? [view.equal] : valuesIn(s.turn?.text ?? "", opts).filter((v) => isEqualForm(pkg, v));
       const simplify = view.steps.includes("result") ? view.equal ?? s.equalForm ?? null : null;
       const own = [...candidates.flatMap((v) => l.equal(v, simplestWords(pkg))), ...(simplify ? l.simplifyOwn(simplify) : [])];
@@ -2735,7 +2783,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : [];
+      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : l.closeHonest();
     case "confirm": {
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));

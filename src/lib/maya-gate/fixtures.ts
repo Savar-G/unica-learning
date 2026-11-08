@@ -6,9 +6,12 @@
 // not teach yet (equivalent fractions, C36b).
 import { mayaPackageCheck } from "@/lib/maya";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { deriveDieCount } from "@/lib/maya-teaching/die-count";
+import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
+import { diePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId;
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG" | OneStepFixtureId;
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -121,6 +124,15 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
+  // Wave C "other-topic" (src/lib/maya-teaching): made by the derivers from synthetic printed packages. DIE: "Roll a die
+  // numbered 1 to 8. How many of the numbers are even?" as 8 ÷ 2; SHAPES: a regular hexagon and a regular pentagon,
+  // 6 + 5 lines of symmetry from code's table.
+  DIE: deriveDieCount(diePrinted(8, "even"))!,
+  SHAPES: deriveSymmetry(symmetryPrinted(4, 5))!,
+  // Review of #731: die 12 (two division steps, 12 ÷ 2) and the longest shape names (a rectangle that is not a square and
+  // an isosceles triangle, 2 + 1), for grade 3 turns.
+  DIE12: deriveDieCount(diePrinted(12, "odd"))!,
+  SHAPES_LONG: deriveSymmetry(symmetryPrinted(1, 2))!,
   ...ONE_STEP_FIXTURES,
 };
 

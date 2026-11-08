@@ -455,6 +455,30 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [36] }, B_EXAMPLE, { name: "after help", opens: "help", numbers: [...B_WORK, 24] }], firstNumbers: [36] },
     fakeScript: ["I got 36.", "I did 8 take away 2.", "12 take away 8 is 4.", "4 take away 2 is 2, so 24.", "Because I traded a ten.", "I wrote it."],
   },
+  // Wave C "other-topic" (src/lib/maya-teaching): lines of symmetry, 6 + 5 from code's table, with code's topic sentence.
+  // A die count has a one-digit answer, which a practice case cannot keep behind a stage; the gate runs it (OT1 to OT3).
+  {
+    id: "OT4",
+    title: "Lines of symmetry: adds 6 and 5 wrong",
+    fixture: "SHAPES",
+    persona: { name: "Ivy", age: 9, question: "How many lines of symmetry do a regular hexagon and a regular pentagon have in all?", knows: "You do not remember how many lines of symmetry each shape has until Maya tells you. Once you know the two numbers, you add them, but at first you make a slip and get 10.", behaviour: "Start by saying your answer is 10. Answer Maya's questions honestly, then follow her help." },
+    expected: "Say the shapes' lines of symmetry from code (6 and 5). Do not accept 10. Guide the addition 6 + 5 without giving 11 away, and accept 11 when the child says it.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [10] }, { name: "after help", opens: "help", numbers: [11] }], firstNumbers: [10] },
+    fakeScript: ["I got 10.", "6 plus 5 is 11, so I got 11.", "Because 6 and 5 make 11.", "I wrote it."],
+  },
+  {
+    id: "OT5",
+    title: "Lines of symmetry in the child's own words",
+    fixture: "SHAPES",
+    persona: { name: "Noor", age: 10, question: "How many lines of symmetry do a regular hexagon and a regular pentagon have in all?", knows: "You know a regular hexagon has 6 lines of symmetry and a regular pentagon has 5, and 6 + 5 = 11.", behaviour: "Start with your answer and the reason in your own words: the hexagon has 6, the pentagon has 5, so 11. Answer Maya's questions briefly." },
+    expected: "Acknowledge the child's right answer and reasons. Confirm once if needed, then accept 11. Do not teach the facts or the addition again as if they were new (J06).",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [6, 5, 11] }] },
+    fakeScript: ["The hexagon has 6 and the pentagon has 5, so I got 11.", "Because 6 and 5 make 11.", "I wrote it."],
+  },
   ...ONE_STEP_PRACTICE,
 ];
 
