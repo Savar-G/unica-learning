@@ -4,11 +4,11 @@ import { FIXTURES } from '@/lib/maya-gate/fixtures';
 const n=(value:number)=>({type:'number',value});
 
 function rig(pkg=FIXTURES.A){
- let s=createSession({callId:'independent-r3',package:pkg});let at=1000;const trace:any[]=[];
- const send=(e:any)=>{at=e.at??at;const before={state:s.state,ladder:s.ladder,finalMisses:s.finalMisses,done:s.done,passed:s.passed,exampleShown:s.exampleShown};const r=step(s,{at,...e} as SessionEvent);s=r.session;trace.push({event:e,before,refusal:r.refusal,effects:r.effects});return r;};
+ let s=createSession({callId:'independent-r3',package:pkg});let at=1000;const trace:unknown[]=[];
+ const send=(e:Record<string, unknown>)=>{at=(e.at as number|undefined)??at;const before={state:s.state,ladder:s.ladder,finalMisses:s.finalMisses,done:s.done,passed:s.passed,exampleShown:s.exampleShown};const r=step(s,{at,...e} as SessionEvent);s=r.session;trace.push({event:e,before,refusal:r.refusal,effects:r.effects});return r;};
  const child=(text:string,extra={})=>send({type:'child_turn',at:at+4000,text,...extra});
- const prop=(p:any,extra={})=>send({type:'proposal',proposal:{version:2,...p},...extra});
- const fb=(refused:any[]=[]): {act:string; text?:string; proposal?:Proposal; effects?:unknown[]; rejects?:unknown[]}=>{const rejects=[];for(const p of fallbacks(s,refused)){const r=prop(p,{fallback:true});if(!r.refusal)return {act:p.act,text:r.effects.filter(e=>e.kind==='say').map(e=>e.text).join(' '),effects:r.effects,proposal:p};rejects.push(r.refusal);}return {act:'DEAD',rejects};};
+ const prop=(p:Record<string, unknown>,extra={})=>send({type:'proposal',proposal:{version:2,...p},...extra});
+ const fb=(refused:unknown[]=[]): {act:string; text?:string; proposal?:Proposal; effects?:unknown[]; rejects?:unknown[]}=>{const rejects=[];for(const p of fallbacks(s,refused as Parameters<typeof fallbacks>[1])){const r=prop(p as unknown as Record<string, unknown>,{fallback:true});if(!r.refusal)return {act:p.act,text:r.effects.filter(e=>e.kind==='say').map(e=>e.text).join(' '),effects:r.effects,proposal:p};rejects.push(r.refusal);}return {act:'DEAD',rejects};};
  const show=(id:string)=>{expect(prop({act:'guide',step:id,level:3,parts:[{line:'step.show',slots:{step:id}}],reading:{help:'show'}}).refusal).toBeNull();};
  send({type:'start'});expect(fb().act).toBe('open');
  return {get s(){return s},trace,send,child,prop,fb,show};
@@ -82,7 +82,7 @@ it('uses only close.stuck when the expression contains the answer', async () => 
  expect(checkQuestionPackage(pkg), JSON.stringify(checkQuestionPackage(pkg))).toMatchObject({ok:true});
  const r=rig(pkg); r.send({type:'tick',at:542000}); r.child("I'm stuck.");
  const out=r.fb(); expect(out.act).toBe('close');
- expect(out.proposal?.parts.map((p:any)=>p.line)).toEqual(['close.stuck']);
+ expect(out.proposal?.parts.map((p)=>('line' in p ? p.line : undefined))).toEqual(['close.stuck']);
  expect(out.text ?? '').not.toMatch(/\b3\b/);
 });
 it('uses both approved close lines when the expression does not contain the answer', () => {
@@ -91,6 +91,6 @@ it('uses both approved close lines when the expression does not contain the answ
   r.child(`${value}.`);
   const p={act:'give_answer',parts:[],reading:{answers:[{value:n(value),step:'result',verdict:'wrong'}]}};
   r.prop(p); const out=r.fb([p]);
-  if(value===65) expect(out.proposal?.parts.map((part:any)=>part.line)).toEqual(['close.stuck','close.together']);
+  if(value===65) expect(out.proposal?.parts.map((part)=>('line' in part ? part.line : undefined))).toEqual(['close.stuck','close.together']);
  }
 });
