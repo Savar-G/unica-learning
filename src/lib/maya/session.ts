@@ -496,20 +496,42 @@ export function mayaPackageCheck(raw: unknown): PackageCheck {
 }
 
 /**
- * The turn is never a miss, whatever wrong number a model reads in it (lessons 6, 7 and 13, D-199, review of #732): it
- * copies what H3 showed (copiesShownTry), or, on a missing number, it asks for help (the model's reading, or a help
- * request in the child's own words even beside a number: helpInWords) or is hedged or a question ("I think it's 7.",
- * "Is it 7?": hedgedTurn, the controller's one doubt check). The one rule for every miss count and the way out.
+ * The one rule for every miss count on a missing number, a fail-closed allow-list (review of #732 at 5ad7cf4b, lesson 6,
+ * D-199): a turn can be a miss only when the child's own words are a committed answer in an allowed form. That is one
+ * sentence on one line with no question mark (wholeTurn), nothing taken back (takenBack), no hedge (hedgedTurn, the
+ * controller's one doubt check), no copy of what H3 showed (copiesShownTry), and a final answer the D-199 reader holds
+ * committed (readAnswer's `sure`: plain answer words only, as "7.", "It's 7.", "I got 7.", "7 centimetres" or the
+ * step's own equation "5 times 236 is 1170."). Everything else is never a miss, whatever number a model reads: help in
+ * any position, hedges, questions, copies, negation, corrections, mixed turns. Every other package: unchanged (true).
  */
-function notAMiss(s: Session, reading: Reading): boolean {
-  if (copiesShownTry(s)) return true;
-  if (!isMissingNumber(s.package) || !s.turn) return false;
-  return reading.help !== undefined || helpInWords(s.turn.text) || hedgedTurn(s);
+function committedTurn(s: Session): boolean {
+  if (!isMissingNumber(s.package)) return true;
+  if (!s.turn || copiesShownTry(s)) return false;
+  const text = s.turn.text;
+  const opts = readOptionsFor(s.package);
+  if (wholeTurn(text) === null || text.split(/[.!?]+/).filter((x) => x.trim() !== "").length !== 1) return false;
+  if (takenBack(text, opts) !== null || hedgedTurn(s)) return false;
+  const read = readAnswer(text, opts);
+  return read.final !== null && read.sure;
 }
 
-/** The turn holds a real miss on the child's question: a checked wrong answer in a turn that is a miss (notAMiss). */
-const realMissNow = (s: Session, reading: Reading) =>
-  !notAMiss(s, reading) && (reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+/**
+ * The child's own words hold a number that answers neither the current step nor the question, as code checks them:
+ * on a missing number at the top hint, it takes the way out even when no reading of it stands (a number taken back by
+ * a negation or a correction: "I'm not stuck, it's 7.", "I'm stuck I mean 7").
+ */
+function strayNumber(s: Session): boolean {
+  const pkg = s.package;
+  if (!pkg || !s.turn) return false;
+  const st = workSteps(pkg).find((x) => x.id === s.ladder.step);
+  return valuesIn(s.turn.text, readOptionsFor(pkg)).some((v) => !rightForQuestion(pkg, v) && !(st && answersStep(st, v)));
+}
+
+/** The reading judged a number of the child's question wrong. */
+const wrongTarget = (reading: Reading) => (reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+
+/** The turn holds a real miss on the child's question: a checked wrong answer in a committed turn (committedTurn). */
+const realMissNow = (s: Session, reading: Reading) => committedTurn(s) && wrongTarget(reading);
 
 /**
  * A missing number before two real misses (D-199): the current step's failed attempts, this turn's included, and the
@@ -928,16 +950,21 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
     (reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong") && !copiesShownTry(s));
-  // A missing number's way out (review of #732, lessons 7, 10 and 13, D-199): a help request or a copy of what H3 showed
-  // is never a miss. Before two real misses (missingWayOut), give_answer is not offered; at the step's top hint a child
-  // who asks for help or copies gets the easier example, then the honest close. After two real misses, D-199 stands.
+  // A missing number's way out (review of #732, lessons 7, 10 and 13, D-199): only a committed answer is a miss
+  // (committedTurn). Before two real misses (missingWayOut), give_answer is not offered; at the step's top hint a turn
+  // that is no real miss but asks for help, copies, or holds a number (said or read) gets the easier example, then the
+  // honest close. After two real misses, D-199 stands.
   if (missingWayOut(s, reading, misses) && isTeaching(s.state) && s.solved === null && !rightResult && s.turn !== null && !rightHere &&
-      s.ladder.hint >= topHint(s.package!, s.ladder.step) && notAMiss(s, reading)) {
+      s.ladder.hint >= topHint(s.package!, s.ladder.step) && !realMissNow(s, reading) &&
+      (reading.help !== undefined || helpInWords(s.turn.text) || copiesShownTry(s) || wrongTarget(reading) || strayNumber(s))) {
     return s.exampleShown < steps
       ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child asks for help (or copies the hint) at the top hint: show the easier example, step by step (example_step). Help is never a miss." }
       : { acts: ["close"], code: "act_not_allowed", reason: "The child is still stuck after the easier example: close kindly, with no answer and no number of the question." };
   }
   if (missingWayOut(s, reading, misses)) acts = acts.filter((a) => a !== "give_answer");
+  // After the whole easier example, a committed wrong answer on a missing number is answered on the step (guide), as a
+  // right one is: never a dead end (review of #732, MN14).
+  if (isMissingNumber(s.package) && main === "MODEL_EXAMPLE" && s.exampleShown === steps && realMissNow(s, reading) && !acts.includes("guide")) acts = [...acts, "guide"];
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
@@ -1219,7 +1246,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // A checked right answer on the child's question shows they have started: a no-start no longer holds (#389).
   const progress = s.done.length > 0 || equal !== null || checked.some((c) => c.problem === "target" && c.answer.verdict === "right");
   if (progress) s.noStart = false;
-  const misses = finalMisses(s, checked, reading);
+  const misses = finalMisses(s, checked);
   const allowedNow = blocked ? blocked.acts : teachingActs(s, reading, rightResult, progress, misses).acts;
   if (!blocked && !allowedNow.includes(p.act)) {
     const allowed = teachingActs(s, reading, rightResult, progress, misses);
@@ -1233,9 +1260,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   let failed = false;
   let regroup = regroupOf(s);
   if (pkg && scoring) {
-    // A copy of what H3 showed, or on a missing number a help request or a hedged or question turn, is no failed attempt
-    // (lessons 7 and 13): decided by the one rule (notAMiss).
-    const copy = notAMiss(s, reading);
+    // On a missing number only a committed answer in an allowed form is a failed attempt (committedTurn, the one rule).
+    const copy = !committedTurn(s);
     for (const { answer: a, problem } of checked) {
       if (problem !== "target") continue;
       if (a.verdict === "right" && a.step !== "result" && !done.includes(a.step)) done.push(a.step);
@@ -1923,11 +1949,11 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
  * The child's checked wrong final answers once every work step is done, with this reading's (D-199): a wrong final
  * answer counts when the steps done, with the ones this reading checked right, are every work step.
  */
-function finalMisses(s: Session, checked: readonly Checked[], reading: Reading = {}): number {
+function finalMisses(s: Session, checked: readonly Checked[]): number {
   const before = s.finalMisses ?? 0;
   const pkg = s.package;
-  // A turn that is no miss (notAMiss: a copy, or on a missing number help or a hedged question) is no wrong final answer.
-  if (notAMiss(s, reading)) return before;
+  // On a missing number only a committed answer in an allowed form is a wrong final answer (committedTurn).
+  if (!committedTurn(s)) return before;
   // An equal fraction is not a wrong final answer (#407).
   if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && !isEqualForm(pkg, c.answer.value))) return before;
   const done = closeParts(pkg, [...s.done, ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)]);
@@ -2369,7 +2395,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   const regroup = pkg ? regroupAfter(s, checked, done) : { due: [], said: [] };
   const ladderStep = pkg ? guideStep(pkg, done, regroup) : "result";
   const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
-  const misses = finalMisses(s, checked, reading ?? {});
+  const misses = finalMisses(s, checked);
   const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0, misses)).acts;
   // A right final answer the child was not sure of: the confirmation comes before more help (#605).
   const read = session.turn && pkg ? turnRead(session) : null;

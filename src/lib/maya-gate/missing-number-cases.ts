@@ -509,7 +509,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     // The way out with a failing model (wave-b 921ab669): a wrong number at the top hint, then still stuck; code's own
     // fallback gives the easier example, then the honest close. Never technical_issue, never give_answer.
     id: "MN8a",
-    title: "236 × ? = 1416, H3, then a wrong '7.' with a failing model: the easier example, then 'I don't know.' twice: the easier example, then the honest close; never give_answer",
+    title: "236 × ? = 1416, H3, then a wrong '7.' with a failing model (no reading, so no known miss): the easier example, then 'I don't know.' gets the honest close; never give_answer",
     fixture: "M_TRY",
     status: "passing",
     steps: [
@@ -522,7 +522,8 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      // The committed number with no reading (the model failed) is no known miss: the way out at once.
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
       never: ["give_answer", "redirect"],
     },
   },
@@ -551,7 +552,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     // The way out with a failing model (wave-b 921ab669): a wrong number at the top hint, then still stuck; code's own
     // fallback gives the easier example, then the honest close. Never technical_issue, never give_answer.
     id: "MN8b",
-    title: "30 × ? = 1620, H3, then a wrong '1.' with a failing model: the easier example, then 'I don't know.' twice: the easier example, then the honest close; never give_answer",
+    title: "30 × ? = 1620, H3, then a wrong '1.' with a failing model (no reading, so no known miss): the easier example, then 'I don't know.' gets the honest close; never give_answer",
     fixture: "M_DIVIDE",
     status: "passing",
     steps: [
@@ -564,7 +565,8 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_DIVIDE), "close"],
+      // The committed number with no reading (the model failed) is no known miss: the way out at once.
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_DIVIDE), "close"],
       never: ["give_answer", "redirect"],
     },
   },
@@ -593,7 +595,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     // The way out with a failing model (wave-b 921ab669): a wrong number at the top hint, then still stuck; code's own
     // fallback gives the easier example, then the honest close. Never technical_issue, never give_answer.
     id: "MN8c",
-    title: "9000 − ? = 3000, H3, then a wrong '1.' with a failing model: the easier example, then 'I don't know.' twice: the easier example, then the honest close; never give_answer",
+    title: "9000 − ? = 3000, H3, then a wrong '1.' with a failing model (no reading, so no known miss): the easier example, then 'I don't know.' gets the honest close; never give_answer",
     fixture: "M_SUBTRACT",
     status: "passing",
     steps: [
@@ -606,7 +608,8 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_SUBTRACT), "close"],
+      // The committed number with no reading (the model failed) is no known miss: the way out at once.
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_SUBTRACT), "close"],
       never: ["give_answer", "redirect"],
     },
   },
@@ -773,6 +776,152 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
       counts: { refusals: 0 },
       never: ["example_step", "redirect"],
+    },
+  },
+  {
+    // The allow-list (review of 5ad7cf4b): only a committed answer in an allowed form is a miss; this is none.
+    id: "MN13a",
+    title: "236 × ? = 1416, after H3, 'Help, 7.' then 'Help, 8.' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("Help, 7.", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("Help, 8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // The allow-list (review of 5ad7cf4b): only a committed answer in an allowed form is a miss; this is none.
+    id: "MN13b",
+    title: "236 × ? = 1416, after H3, '7, help me.' then '8, help me.' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("7, help me.", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("8, help me.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // The allow-list (review of 5ad7cf4b): only a committed answer in an allowed form is a miss; this is none.
+    id: "MN13c",
+    title: "236 × ? = 1416, after H3, 'I'm not stuck, it's 7.' then 'I'm not stuck, it's 8.' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("I'm not stuck, it's 7.", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I'm not stuck, it's 8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      // The negation or the correction takes the number back, so the model's reading of it is refused (answer_not_heard).
+      refused: ["answer_not_heard"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // The allow-list (review of 5ad7cf4b): only a committed answer in an allowed form is a miss; this is none.
+    id: "MN13d",
+    title: "236 × ? = 1416, after H3, 'I'm stuck I mean 7' then 'I'm stuck I mean 8' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("I'm stuck I mean 7", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("I'm stuck I mean 8", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      // The negation or the correction takes the number back, so the model's reading of it is refused (answer_not_heard).
+      refused: ["answer_not_heard"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // The allow-list (review of 5ad7cf4b): only a committed answer in an allowed form is a miss; this is none.
+    id: "MN13e",
+    title: "236 × ? = 1416, after H3, '7 maybe' then '8 maybe' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("7 maybe", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+      child("8 maybe", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "give_answer" } }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    // The allow-list's plain answer words: "I got 7." is a committed answer, so two of them reach the given answer (D-199).
+    id: "MN10d",
+    title: "236 × ? = 1416, after H3, 'I got 7.' then 'I got 8.' (committed wrong answers): the second reaches the given answer (D-199)",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("I got 7.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 3, lines: ["check.not_yet", "step.show"] }]),
+      child("I got 8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
+      counts: { refusals: 0 },
+      never: ["example_step", "redirect"],
+    },
+  },
+  {
+    // Mixed: a turn outside the allow-list is no miss (the easier example); two later clean answers are, and only then
+    // does the given answer come (D-199).
+    id: "MN14",
+    title: "236 × ? = 1416, after H3, 'I'm stuck I mean 7' (no miss: the easier example), then 'It's 8.' and 'It's 9.' (two committed misses): the given answer only after the second",
+    fixture: "M_TRY",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("I'm stuck I mean 7", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("It's 8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "guide", level: 3, lines: ["check.not_yet", "step.show"] } }]),
+      child("It's 9.", { answers: [[9, "try", "wrong"]] }, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "guide", "give_answer", "close"],
+      refused: ["answer_not_heard", "act_not_allowed"],
+      never: ["redirect"],
     },
   },
   {
