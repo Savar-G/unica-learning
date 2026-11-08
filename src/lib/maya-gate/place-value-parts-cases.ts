@@ -40,6 +40,19 @@ const lines = (id: PlacePartsFixtureId) => packageLines(PLACE_PARTS_FIXTURES[id]
 const texts = (offers: LineOffer[], key: string) => offers.filter((o) => o.key === key).flatMap((o) => o.texts);
 /** "I'm stuck." n times; the model fails each time, so code's fallback raises the help one level a turn. */
 const stuck = (n: number): Step[] => Array.from({ length: n }, () => child("I'm stuck.", { help: "more" }, [{ throws: true }]));
+/** A turn the model cannot answer at all (it throws): code's fallback says Maya's turn. */
+const failing = (text: string): Step => child(text, undefined, [{ throws: true }]);
+/** A wrong answer the model reads right but answers with a guide the top-help rule refuses; its repair fails too. */
+const wrongRefused = (value: number, step: string): Step => child(String(value), { answers: [[value, step, "wrong"]] }, [{
+  act: "guide", repair: { throws: true },
+  raw: {
+    version: 2, act: "guide", step, level: 2, reading: { answers: [{ value: { type: "number", value }, step, verdict: "wrong" }] },
+    parts: [{ line: "check.not_yet", slots: { step, heard: String(value) } }],
+  },
+}]);
+/** The opening "I'm stuck." with the child's start read, then more "I'm stuck." turns. */
+const stuckFromStart = (n: number): Step[] => stuck(n).map((s, i) => (i === 0 ? { ...s, read: { start: "has_work" as const, help: "more" as const } } : s));
+const EXAMPLE_THEN_CLOSE = { outcome: { reason: "child_stopped" as const, assistance: "worked_example" as const }, never: ["give_answer" as const, "accept_answer" as const] };
 /** The compare's three steps said right, one turn each: the thousands digit, the hundreds digit, the bigger one. */
 const compareSteps: Step[] = [
   child("8", { start: "has_work", answers: [[8, "digit-1", "right"]] }, [{ act: "guide", step: "digit-2", level: 0, lines: ["check.right_step", "step.invite"] }]),
@@ -248,5 +261,45 @@ export const PLACE_PARTS_BEHAVIOURS: Behaviour[] = [
     id: "PVBJ1", grade: 3, title: "J06, build, grade 3: 'Why does the point go there?' gets code's answer first, within 25 words", fixture: "PVB", status: "passing",
     steps: [{ child: "Why does the point go there?", within: true, read: { start: "has_work" }, maya: [{ throws: true }] }, child("5.8", { answers: [[5.8, "result", "right"]] }), ...writtenEnd],
     expect: { outcome: { reason: "solved" }, counts: { fallbacks: 1 }, outputs: [{ mayaTurn: 1, lines: [texts(lines("PVB").help("result"), "why.build")] }] },
+  },
+  // ---------- A wrong committed word at the top help, with a model that fails (review of #740) ----------
+  {
+    id: "PVCT1", title: "Compare, model failing: 'It's false.' at the result's top help (H2); the easier example, then on 'It's false.' again the honest close", fixture: "PVC", status: "passing",
+    steps: [...compareSteps, ...stuck(2), failing("It's false."), failing("It's false.")],
+    expect: { ...EXAMPLE_THEN_CLOSE, acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "example_step", "close"] },
+  },
+  {
+    id: "PVCT2", title: "Compare, the same digits, model failing: 'It's true.' at the result's top help; the easier example, then the honest close", fixture: "PVC0", status: "passing",
+    steps: [
+      child("5", { start: "has_work", answers: [[5, "digit-1", "right"]] }, [{ act: "guide", step: "digit-2", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("5", { answers: [[5, "digit-2", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      ...stuck(2), failing("It's true."), failing("It's true."),
+    ],
+    expect: { ...EXAMPLE_THEN_CLOSE, acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "example_step", "close"] },
+  },
+  {
+    id: "PVCT3", title: "Compare, model failing: after the easier example and 'Okay.', a wrong 'It's false.' gets the honest close", fixture: "PVC", status: "passing",
+    steps: [...compareSteps, ...stuck(3), failing("Okay."), failing("It's false.")],
+    expect: { ...EXAMPLE_THEN_CLOSE, acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "example_step", "guide", "close"] },
+  },
+  {
+    id: "PVDT1", title: "Which digit, top help: a wrong '5' whose guide is refused, the model failing on repair; the easier example, then the honest close", fixture: "PVD", status: "passing",
+    steps: [...stuckFromStart(3), wrongRefused(5, "result"), wrongRefused(5, "result")],
+    expect: { ...EXAMPLE_THEN_CLOSE, acts: [OPEN, "guide", "guide", "guide", "example_step", "close"] },
+  },
+  {
+    id: "PVVT1", title: "Value, top help of the last step: a wrong '8000' whose guide is refused, the model failing on repair; the easier example, then the close", fixture: "PVV", status: "passing",
+    steps: [failing("8"), ...stuck(2), wrongRefused(8000, "result"), wrongRefused(8000, "result")],
+    expect: { ...EXAMPLE_THEN_CLOSE, acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "close"] },
+  },
+  {
+    id: "PVST1", title: "Sum, top help: a wrong '11' whose guide is refused, the model failing on repair; the easier example, then the honest close", fixture: "PVSUM", status: "passing",
+    steps: [failing("7000"), failing("40"), ...stuck(2), wrongRefused(11, "result"), wrongRefused(11, "result")],
+    expect: { ...EXAMPLE_THEN_CLOSE, acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"] },
+  },
+  {
+    id: "PVBT1", title: "Build, top help: a wrong '58' whose guide is refused, the model failing on repair; the easier example, then the honest close", fixture: "PVB", status: "passing",
+    steps: [...stuckFromStart(3), wrongRefused(58, "result"), wrongRefused(58, "result")],
+    expect: { ...EXAMPLE_THEN_CLOSE, acts: [OPEN, "guide", "guide", "guide", "example_step", "close"] },
   },
 ];

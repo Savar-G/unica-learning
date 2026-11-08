@@ -13,7 +13,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 |---|---|
 | `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
 | `src/lib/maya-gate/place-value-cases.ts` | Fixtures PVD, PVD0, PVV and PVV0: teaching packages the place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored place-value questions, and their behaviours (PV01 to PVJ2b), added to `FIXTURES` and `BEHAVIOURS`. |
-| `src/lib/maya-gate/place-value-parts-cases.ts` | B1b's fixtures PVC, PVC0, PVCZ, PVSUM and PVB (compare, sum, tenths build) and their behaviours (PVC01 to PVBJ1). |
+| `src/lib/maya-gate/place-value-parts-cases.ts` | B1b's fixtures PVC, PVC0, PVCZ, PVSUM and PVB (compare, sum, tenths build) and their behaviours (PVC01 to PVBJ1, and PVCT1 to PVBT1: a wrong answer at the top help with a failing model). |
 | `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6c, with the J06 cases W5d, W6b and W6c), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
@@ -391,6 +391,13 @@ Fixtures PVC, PVC0, PVCZ, PVSUM and PVB (`src/lib/maya-gate/place-value-parts-ca
 | PVB02 | PVB | passing | Build: '58' leaves out the point; Maya says so, then the child says 5.8 | solved | |
 | PVB03 | PVB | passing | Build: 'I'm stuck.' four times; H0 to H2, the easier example, then an honest close, never the decimal | script ends mid-call | |
 | PVBJ1 | PVB | passing | J06, build, grade 3: 'Why does the point go there?' gets code's answer first, within 25 words | solved | |
+| PVCT1 | PVC | passing | Compare, model failing: 'It's false.' at the result's top help (H2); the easier example, then on 'It's false.' again the honest close | child_stopped, worked_example | |
+| PVCT2 | PVC0 | passing | Compare, the same digits, model failing: 'It's true.' at the result's top help; the easier example, then the honest close | child_stopped, worked_example | |
+| PVCT3 | PVC | passing | Compare, model failing: after the easier example and 'Okay.', a wrong 'It's false.' gets the honest close | child_stopped, worked_example | |
+| PVDT1 | PVD | passing | Which digit, top help: a wrong '5' whose guide is refused, the model failing on repair; the easier example, then the honest close | child_stopped, worked_example | |
+| PVVT1 | PVV | passing | Value, top help of the last step: a wrong '8000' whose guide is refused, the model failing on repair; the easier example, then the close | child_stopped, worked_example | |
+| PVST1 | PVSUM | passing | Sum, top help: a wrong '11' whose guide is refused, the model failing on repair; the easier example, then the honest close | child_stopped, worked_example | |
+| PVBT1 | PVB | passing | Build, top help: a wrong '58' whose guide is refused, the model failing on repair; the easier example, then the honest close | child_stopped, worked_example | |
 
 ### One-step workbook questions through the session adapter (Wave A)
 
