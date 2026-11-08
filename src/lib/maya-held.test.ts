@@ -21,11 +21,15 @@ const TEST_PARENT = "11111111-1111-4111-8111-111111111111";
 const PARENT = "44444444-4444-4444-8444-444444444444";
 const CHILD = "55555555-5555-4555-8555-555555555555";
 const T0 = Date.UTC(2026, 10, 4, 16, 0, 0);
-// The held lines by id, in order (D-304): held.hello, held.cannot, held.next. A hold found during the call, after
-// the hello, says only held.cannot then held.next (as PR #581 did).
-const HELD_IDS = ["held.hello", "held.cannot", "held.next"] as const;
-const HELD = HELD_IDS.map((id) => TEMPLATES[id][0]).join(" ");
-const HELD_MID = HELD_IDS.slice(1).map((id) => TEMPLATES[id][0]).join(" ");
+// The held lines by id and wording, in order (D-304). A hold from the start: held.hello.0, held.cannot.0,
+// held.next.0. A hold found during the call does not repeat the hello (Maya said she is an AI at the opening):
+// held.cannot.0 then held.next.0 only, as PR #581 did.
+const text = (id: "held.hello" | "held.cannot" | "held.next" | "redirect.back", n = 0) => TEMPLATES[id][n];
+const START_IDS = [["held.hello", 0], ["held.cannot", 0], ["held.next", 0]] as const;
+const MID_IDS = [["held.cannot", 0], ["held.next", 0]] as const;
+const HELD = START_IDS.map(([id, n]) => text(id, n)).join(" ");
+const HELD_MID = MID_IDS.map(([id, n]) => text(id, n)).join(" ");
+const HELLO_AND_BACK = [...TEMPLATES["held.hello"], ...TEMPLATES["redirect.back"]];
 const PKG = heldPackage({ source: "workbook", workbookId: "wb-1", page: 4, question: 9 });
 
 function setup() {
@@ -100,7 +104,9 @@ describe("a held question in a call (#527)", () => {
     const s = setup();
     const r = ok(await s.calls.start({ kind: "chat", parentId: PARENT, childId: CHILD, childName: "Leah", startedBy: PARENT, package: PKG }));
     expect(r.output.say).toEqual([HELD]);
+    expect(HELD).toBe([text("held.hello", 0), text("held.cannot", 0), text("held.next", 0)].join(" "));
     expect(r.view.transcript.map((l) => [l.speaker, l.text])).toEqual([["maya", HELD]]);
+    for (const line of TEMPLATES["redirect.back"]) expect(r.output.say.join(" ")).not.toContain(line);
     expect(r.view.transcript.map((l) => l.text).join(" ")).not.toMatch(/had fun/i);
     expect(r.view.status).toBe("ended");
     expect(r.view.outcome).toMatchObject({ reason: "content_issue", assistance: "independent", seconds: 0 });
@@ -146,6 +152,8 @@ describe("a held question in a call (#527)", () => {
     if (!opened.ok) throw new Error(opened.error);
     const turn = await opened.call.start();
     expect(turn.say).toEqual([HELD]);
+    expect(turn.say.join(" ")).toBe([text("held.hello", 0), text("held.cannot", 0), text("held.next", 0)].join(" "));
+    for (const line of TEMPLATES["redirect.back"]) expect(turn.say.join(" ")).not.toContain(line);
     expect(turn.ended).toBe(true);
     // The worker ends the call once the final turn is spoken (a final voice turn stays live until then).
     await opened.call.end({ reason: "child_stopped" });
@@ -170,16 +178,23 @@ describe("a hold found during the call (#527, D-304)", () => {
     return r;
   };
 
-  it("after the hello: code's fallback is held.cannot then held.next, and says them in that order", () => {
+  it("after the opening: exactly held.cannot.0 then held.next.0, with no held.hello and no redirect.back", () => {
     let s = createSession({ callId: "held-mid", package: SAMPLE_PACKAGES["add-27-39"] });
     s = send(s, { type: "start", at: T0 }).session;
     s = send(s, { type: "proposal", at: T0 + 100, proposal: fallbacks(s)[0], fallback: true }).session;
     expect(s.opened).toBe(true);
     s = send(s, { type: "content_problem", at: T0 + 200, detail: "the answer key and the worked steps disagree" }).session;
     const [held] = fallbacks(s);
-    expect(held).toMatchObject({ act: "close", parts: [{ line: "held.cannot" }, { line: "held.next" }] });
+    const parts = held.parts as { line?: string }[];
+    expect(parts.map((p) => p.line)).toEqual(["held.cannot", "held.next"]);
+    // The model may not add the hello again or lead back with redirect.back.
+    for (const extra of ["held.hello", "redirect.back"]) {
+      const r = step(s, { type: "proposal", at: T0 + 250, proposal: { ...held, parts: [{ line: extra, slots: {} }, ...held.parts] } as typeof held });
+      expect(r.refusal).toMatchObject({ code: "content_hold" });
+    }
     const r = send(s, { type: "proposal", at: T0 + 300, proposal: held, fallback: true });
     expect(said(r.effects)).toBe(HELD_MID);
+    for (const line of HELLO_AND_BACK) expect(said(r.effects)).not.toContain(line);
     expect(r.session.outcome?.reason).toBe("content_issue");
   });
 
@@ -188,7 +203,7 @@ describe("a hold found during the call (#527, D-304)", () => {
     s = send(s, { type: "start", at: T0 }).session;
     s = send(s, { type: "content_problem", at: T0 + 100, detail: "the answer key and the worked steps disagree" }).session;
     const [held] = fallbacks(s);
-    expect(held).toMatchObject({ act: "close", parts: HELD_IDS.map((line) => ({ line })) });
+    expect(held).toMatchObject({ act: "close", parts: START_IDS.map(([line]) => ({ line })) });
     expect(said(send(s, { type: "proposal", at: T0 + 200, proposal: held, fallback: true }).effects)).toBe(HELD);
   });
 });
