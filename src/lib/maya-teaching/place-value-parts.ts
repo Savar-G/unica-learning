@@ -24,8 +24,9 @@ const COMPARE_PAIRS = { bigger: [[8, 3], [7, 2], [9, 4]], smaller: [[3, 8], [2, 
 const SUM_PAIRS = [[6, 3], [4, 7], [2, 5]] as const;
 const ONES = [5, 6, 1] as const;
 
-/** The easier example's tenths for a build: the first that is not the question's. */
-const BUILD_TENTHS = [7, 3, 5] as const;
+/** The easier example's wholes and tenths for a build, in order of preference: fewer wholes, and no number of the question's. */
+const BUILD_WHOLES = [2, 1, 3, 4, 5] as const;
+const BUILD_TENTHS = [7, 3, 5, 4, 6, 8, 9, 2, 1] as const;
 
 /**
  * Why a made example gives the question's answer away, or null (brief lesson 11): its answer times a power of 10 is the
@@ -46,7 +47,8 @@ export function exampleGiveaway(o: PlacePartsObject, example: EasierExample): st
     if (digits(o.answer).startsWith(digits(e))) return "the example's answer is the first digits of the question's answer";
   }
   if (o.ask === "build") {
-    if (op.ask !== "build" || op.operands[0] === o.wholes || op.operands[1] === o.tenths) return "the example uses the question's wholes or tenths";
+    // Across positions too (review of #740): 3.7 must not get 2.3, and 2.1 must not get 1.7.
+    if (op.ask !== "build" || op.operands.some((v) => v === o.wholes || v === o.tenths)) return "the example uses the question's wholes or tenths";
     return null;
   }
   if (op.ask === "build") return "the example is not the question's ask";
@@ -62,11 +64,11 @@ export function exampleGiveaway(o: PlacePartsObject, example: EasierExample): st
 function easierExampleOf(o: PlacePartsObject): EasierExample | null {
   const candidates: EasierExample[] = [];
   if (o.ask === "build") {
-    const w = o.wholes > 2 ? 2 : 1;
-    for (const t of BUILD_TENTHS) {
-      if (w >= o.wholes) break;
+    for (const w of BUILD_WHOLES.filter((x) => x < o.wholes)) for (const t of BUILD_TENTHS) {
+      // "2 wholes and 2 tenths" does not show which digit is which.
+      if (t === w) continue;
       const operation: PartsOperation = { kind: "place-value", operands: [w, t], ask: "build", place: "tenths" };
-      candidates.push({ text: `${w} ${w === 1 ? "whole" : "wholes"} and ${t} tenths is ? as a decimal.`, operation, answer: num((w * 10 + t) / 10), steps: workedSteps(operation) });
+      candidates.push({ text: `${w} ${w === 1 ? "whole" : "wholes"} and ${t} ${t === 1 ? "tenth" : "tenths"} is ? as a decimal.`, operation, answer: num((w * 10 + t) / 10), steps: workedSteps(operation) });
     }
   } else {
     const digits = (n: number, place: Parameters<typeof placeIndex>[0]) => Math.floor(n / 10 ** placeIndex(place)) % 10;

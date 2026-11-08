@@ -107,15 +107,42 @@ describe("place-value compare, sum and build: what the stored question asks", ()
         }
       }
     }
+    expect(made).toBeGreaterThan(50);
+  });
+
+  it("a build's easier example uses none of the question's numbers, in any position, for every pair (review of #740)", () => {
+    const held: string[] = [];
     for (let w = 2; w <= 6; w++) for (let t = 1; t <= 9; t++) {
       const stored = storedBuild({ wholes: w, tenths: t });
       const o = placePartsOf(stored);
+      if (!o || "held" in o || o.ask !== "build") throw new Error(`not a build: ${stored.text}`);
       const r = placePartsTeachingPackage(stored);
-      if (!o || "held" in o || !r || "held" in r) throw new Error(`held ${stored.text}`);
-      made++;
-      expect(exampleGiveaway(o, r.package.easierExample!), stored.text).toBeNull();
+      if (!r) throw new Error(`not a B1b template: ${stored.text}`);
+      if ("held" in r) {
+        expect(r.held, stored.text).toBe("code has no easier example of the same shape");
+        held.push(`${w}.${t}`);
+        continue;
+      }
+      const ex = r.package.easierExample!;
+      const [ew, et] = ex.operation!.operands as [number, number];
+      expect([ew, et].some((v) => v === w || v === t), `${stored.text} -> ${ex.text}`).toBe(false);
+      expect(ew, ex.text).toBeLessThan(w);
+      expect(ew, ex.text).not.toBe(et);
+      expect(ex.answer, ex.text).toEqual({ type: "number", value: (ew * 10 + et) / 10 });
+      expect(exampleGiveaway(o, ex), stored.text).toBeNull();
     }
-    expect(made).toBeGreaterThan(100);
+    // 2 wholes leave only 1 whole for the example, so a question with 1 tenth has no example of the same shape.
+    expect(held).toEqual(["2.1"]);
+  });
+
+  it("the review's examples: 3.7 no longer gets 2.3, 3.2 to 6.2 no longer get 2.7, and 2.1 is held instead of getting 1.7", () => {
+    const exOf = (w: number, t: number) => {
+      const r = placePartsTeachingPackage(storedBuild({ wholes: w, tenths: t }));
+      return !r ? null : "held" in r ? r.held : r.package.easierExample!.text;
+    };
+    expect(exOf(3, 7)).toBe("2 wholes and 5 tenths is ? as a decimal.");
+    for (const w of [3, 4, 5, 6]) expect(exOf(w, 2), `${w}.2`).toBe("1 whole and 7 tenths is ? as a decimal.");
+    expect(exOf(2, 1)).toBe("code has no easier example of the same shape");
   });
 
   it("names each giveaway: a power of 10, the first digits, the question's operands, the question's word", () => {
