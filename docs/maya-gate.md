@@ -184,6 +184,10 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | OT6 | DIE | passing | "I'm stuck." after a hello-only opening (as a workbook call's fixed opening): the first guide is the framed question line, then "8 divided by 2 is 4." | solved | |
 | OT7 | DIE | passing | Counts in a full sentence ("2, 4, 6 and 8 are even. That's 4."): on topic (the counted numbers are checked scope numbers), one confirm, accepted | solved, independent | |
 | OT8 | SHAPES | passing | "I'm stuck." after a hello-only opening: the first guide says the shapes' facts, then "6 plus 5 is 11." | solved | |
+| OT9 | DIE12 | passing | Grade 3, hello-only opening, says 5: "not yet" (no technical close), then the topic sentence on "I'm stuck.", then 6 | solved | |
+| OT10 | DIE12 | passing | Grade 3, hello-only opening, a right first step ("1 divided by 2 is 0 remainder 1."): acknowledged (J06), then solved | solved | |
+| OT11 | SHAPES_LONG | passing | Grade 3, hello-only opening, longest shape names, says 4: "not yet", then "2 plus 1 is 3." | solved | |
+| OT12 | SHAPES_LONG | passing | Grade 3, hello-only opening, the right sum first: accepted, not taught again (J06) | solved, independent | |
 
 | S01 | A | passing | Pasted homework sheet: fixed workbook redirect, no teaching or board | solved after return to own question | |
 | S02 | A | passing | Same shape with different numbers: fixed workbook redirect | solved after return | |

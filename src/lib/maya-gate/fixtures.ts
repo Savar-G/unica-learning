@@ -24,6 +24,7 @@ function claimFixture(raw: QuestionPackage): QuestionPackage {
   if (!pkg) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
   return pkg;
 }
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG";
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -179,6 +180,10 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
   // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
   CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
+  // Review of #731: die 12 (two division steps, 12 ÷ 2) and the longest shape names (a rectangle that is not a square and
+  // an isosceles triangle, 2 + 1), for grade 3 turns.
+  DIE12: deriveDieCount(diePrinted(12, "odd"))!,
+  SHAPES_LONG: deriveSymmetry(symmetryPrinted(1, 2))!,
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */

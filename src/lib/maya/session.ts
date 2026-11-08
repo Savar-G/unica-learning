@@ -48,7 +48,7 @@ import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FE
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
-import { frameOwed } from "./topic-frame";
+import { frameOwed, topicFrame } from "./topic-frame";
 import { closeParts, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, withEvaluateExample } from "./evaluate";
 import { claimActs, claimAnswers, claimConfirm, claimRead, claimResultDone, claimReveals, claimSaid, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
@@ -898,6 +898,16 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
     reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+  // An "other-topic" question (topic-frame.ts) whose one step is its answer has no H3 to show. A child who only asks for
+  // help at its top hint gets the easier example, then an honest close with no answer (lessons from review 7 and 10;
+  // controller decision (a)). A wrong answer is a miss, not a help request: D-199 is unchanged.
+  const helpOnly = (reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text))) && !reading.answers?.length;
+  if (s.package && topicFrame(s.package.text, s.package.operation) && s.solved === null && !rightResult && s.turn !== null && helpOnly &&
+      (s.ladder.hint >= 2 || s.exampleShown >= steps)) {
+    return s.exampleShown < steps
+      ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child still only asks for help at the top hint: show the easier example, step by step (example_step)." }
+      : { acts: ["close"], code: "act_not_allowed", reason: "The child still only asks for help after the easier example: close honestly (close.together), never with the answer." };
+  }
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
@@ -2761,11 +2771,14 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "try_target":
       return [...l.tryTarget(), ...l.question()];
     case "guide": {
-      // An "other-topic" question's topic sentence comes first, with the question, before any step line (topic-frame.ts).
-      if (frameOwed(pkg.text, pkg.operation, s.turns.flatMap((t) => (t.speaker === "maya" ? [t.text] : [])))) return l.question().filter((o) => o.line === "question.problem");
+      // An "other-topic" question's topic sentence comes first, with the question, before any step line (topic-frame.ts),
+      // but only on a help-only turn: a turn with work in it (a checked answer or any number) gets the normal guide
+      // ("not yet", the right step), and the sentence stays owed for the next help-only turn (review of #731, P1).
+      const opts = readOptionsFor(pkg);
+      const work = view.checked.some((c) => c.problem === "target") || valuesIn(s.turn?.text ?? "", opts).length > 0;
+      if (!work && frameOwed(pkg.text, pkg.operation, s.turns.flatMap((t) => (t.speaker === "maya" ? [t.text] : [])))) return l.question().filter((o) => o.line === "question.problem");
       // An equal fraction when the question asks for the simplest form (#407): the equal-form check for each equal
       // fraction in the child's turn (it needs code to check that one), and the final step's help to simplify it.
-      const opts = readOptionsFor(pkg);
       const candidates = view.equal ? [view.equal] : valuesIn(s.turn?.text ?? "", opts).filter((v) => isEqualForm(pkg, v));
       const simplify = view.steps.includes("result") ? view.equal ?? s.equalForm ?? null : null;
       const own = [...candidates.flatMap((v) => l.equal(v, simplestWords(pkg))), ...(simplify ? l.simplifyOwn(simplify) : [])];
@@ -2798,8 +2811,10 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      // A claim question whose word Maya may not give (claim.ts) closes as worked together.
-      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : sessionClaim(pkg) ? l.closeSolved("maya") : [];
+      // An "other-topic" question left unsolved closes honestly (topic-frame.ts); a claim question whose word Maya may not
+      // give (claim.ts) closes as worked together.
+      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed")
+        : l.closeHonest().length > 0 ? l.closeHonest() : sessionClaim(pkg) ? l.closeSolved("maya") : [];
     case "confirm": {
       // A claim's word said unsure or with both words: which word the child circles; a bare word: said back (claim.ts).
       const word = claimConfirm(claimTurn(s));

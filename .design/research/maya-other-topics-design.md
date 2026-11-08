@@ -45,6 +45,12 @@ question and the fixed workbook opening, and with the easier example's intro:
   a child who counts stays on topic. Full-sentence gate cases: "8 divided by 2 is 4.", "6 plus 5 is 11.", the counted
   sentence.
 
+- The way out (lessons from review 7 and 10, controller decision (a)): a die count or a symmetry sum has one step, its
+  answer, and no H3. A child who only asks for help at its top hint (H2) gets the easier example, then an honest close
+  (`close.honest`: this one is hard, it is fine to stop, try the easier one on paper or ask a grown-up; no number).
+  The call records the stuck step as a learning event. A wrong answer is a miss, not a help request (D-199 unchanged).
+  Wordings: `docs/maya-practice-lines.md`, pending Savar's approval.
+
 ### Waits on A2: evaluate
 
 - Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "A rectangle has 2 lengths
@@ -102,7 +108,8 @@ template id is not theirs, so the order does not matter.
 - Gate (`src/lib/maya-gate`, fixtures `DIE` and `SHAPES`, synthetic): OT1 cannot start (framed example), OT2 and OT5 the
   answer in the child's own words (one confirm, then accepted, no re-teaching: J06), OT3 "why divide by 2?" answered
   with the topic sentence, OT4 a wrong sum guided, OT6 and OT8 "I'm stuck." after a hello-only opening (the first guide
-  says the topic sentence), OT7 a counted full sentence.
+  says the topic sentence), OT7 a counted full sentence, OT9 to OT12 grade 3 after a hello-only opening (a wrong first
+  answer gets "not yet"; a right first step or sum is acknowledged).
 - Practice (`src/lib/maya-practice/cases.ts`): OT4 and OT5 on `SHAPES` (6 + 5 = 11). A die count has a one-digit answer,
   which a practice case cannot keep behind a stage, so the gate covers it.
 

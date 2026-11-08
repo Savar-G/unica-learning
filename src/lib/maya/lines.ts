@@ -475,6 +475,16 @@ export const TEMPLATES = {
     "Your answer for {expr} is right. Bye for now!", "The answer you gave for {expr} is right. See you next time!",
     "We've checked your answer for {expr}. Goodbye for now!",
   ],
+  // The honest close of an "other-topic" question left unsolved after the easier example (lessons from review 10,
+  // controller decision (a)): this one is hard, it is fine to stop, and one next step. No number, so no hint at the
+  // answer. Pending Savar's approval (D-202).
+  "close.honest": [
+    "This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up to help.",
+    "This is a hard one. It's fine to stop here. You can ask a grown-up to try it with you.",
+    "This one is hard. It's okay to stop for now. Try the easier one on your paper.",
+    "That was a hard one, and stopping is okay. Ask a grown-up to look at it with you.",
+    "This question is hard. It's fine to stop. Try the smaller one on paper first.",
+  ],
   "close.together": [
     "We worked through {expr} together.", "We finished {expr} together today.", "We got through {expr} together.",
     "Together, we finished {expr}.", "We worked on {expr} together today.",
@@ -951,6 +961,8 @@ export function packageLines(given: OperationPackage) {
     workbook: (): LineOffer[] => [offer("redirect.workbook", "redirect.workbook", {})],
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr: asked }) : offer("close.together", "close.together", { expr: asked })],
+    /** The honest close of an "other-topic" question left unsolved after the easier example: never the answer. */
+    closeHonest: (): LineOffer[] => (frame ? [offer("close.together", "close.honest", {})] : []),
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
     stepIds: steps.map((s) => s.id),
@@ -1000,7 +1012,7 @@ export function allLineTexts(given: OperationPackage, heardValues: readonly Answ
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.repair(),
+    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeHonest(), ...l.repair(),
     ...l.together(), ...l.guess(), ...l.which(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createTextSession } from "@/lib/maya-text";
 import { scenarioModel } from "@/lib/maya-gate/gate";
 import { gateWordCount } from "@/lib/maya-gate/word-count";
-import { createSession, heldReason } from "@/lib/maya/session";
+import { createSession, heldReason, learningEvent } from "@/lib/maya/session";
 import { packageLines, workbookOpening } from "@/lib/maya/lines";
 import { speechWords } from "@/lib/maya/speech";
 import { topicFrame } from "@/lib/maya/topic-frame";
@@ -212,5 +212,48 @@ describe("a workbook-confirmed call at grade 3 (review of #731)", () => {
     const out = await s.start();
     expect(s.session.outcome?.reason).toBe("content_issue");
     for (const text of out.say) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
+  });
+});
+
+describe("the honest close (lessons from review 7 and 10)", () => {
+  const cases: [string, QuestionPackage][] = [["die 8", deriveDieCount(diePrinted(8, "odd"))!], ["symmetry (1, 2)", deriveSymmetry(symmetryPrinted(1, 2))!]];
+  it.each(cases)("%s: help-only turns reach the easier example, then an honest close with no answer, and the stuck step is recorded", async (_, pkg) => {
+    for (const grade of [3, 5]) {
+      const script = scenarioModel();
+      // Code's fallbacks decide every turn (the model's parts are always refused).
+      const model = { ...script, propose: async (...args: Parameters<typeof script.propose>) => ({ ...((await script.propose(...args)) as object), parts: "invalid" }) };
+      let t = 1000;
+      const s = createTextSession({ callId: `honest-${grade}`, package: pkg, grade, model, clock: () => t });
+      script.next([{ act: "open" }], undefined);
+      await s.start();
+      const acts: string[] = [];
+      const said: string[] = [];
+      for (let i = 0; i < 10 && !s.session.outcome; i++) {
+        t += 20_000;
+        script.next([{}], { help: "stuck" } as never);
+        const out = await s.child("I'm stuck.");
+        acts.push(...s.trace().turns.filter((x) => x.kind === "maya" && x.output).map((x) => (x as { output: { act: string } }).output.act).slice(acts.length));
+        said.push(...out.say);
+      }
+      expect(s.session.outcome?.reason, `grade ${grade}`).toBe("child_stopped");
+      expect(acts).not.toContain("give_answer");
+      expect(acts).toContain("example_step");
+      expect(acts.at(-1)).toBe("close");
+      expect(s.session.ladder.hint).toBeLessThanOrEqual(2);
+      const close = said.at(-1)!;
+      expect(close).toMatch(/hard/);
+      expect(close).toMatch(/stop/);
+      expect(close).toMatch(/easier one|smaller one|grown-up/);
+      expect(close).not.toMatch(/\d/);
+      for (const text of said) expect(gateWordCount(text), text).toBeLessThanOrEqual(grade <= 3 ? 25 : 45);
+      const event = learningEvent(s.session, { parentId: "p", childId: "c" });
+      expect(event).toMatchObject({ result: "blank", stuckStep: "ones" });
+    }
+  });
+
+  it("is only for other-topic questions: a plain 8 ÷ 2 has no honest close line", () => {
+    const die = deriveDieCount(diePrinted(8, "odd")) as OperationPackage;
+    expect(packageLines(die).closeHonest()).toHaveLength(1);
+    expect(packageLines({ ...die, text: "8 ÷ 2 = ?" }).closeHonest()).toEqual([]);
   });
 });
