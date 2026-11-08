@@ -12,6 +12,7 @@ import { checkQuestionPackage, operationProblem, type OperationPackage, type Que
 import { withWorkbookMayaOperation } from "@/lib/workbook-maya-operation";
 import { countKind, deriveDieCount, dieOperation, exampleDie } from "./die-count";
 import { derivePerimeter } from "./perimeter";
+import { teachingPackage } from "./index";
 import { deriveSymmetry, SYMMETRY_LINES } from "./symmetry";
 import { diePrinted, perimeterPrinted, scalePrinted, symmetryPrinted } from "./topic-samples";
 import { deriveTopicClaim } from "./topic-derivers";
@@ -107,6 +108,20 @@ describe("lines of symmetry", () => {
     const table = structuredClone(p);
     sourceOf(table).derived[0][1] = "[4, 2, 1, 1, 6, 5]";
     expect(deriveSymmetry(table)).toBeNull();
+  });
+});
+
+describe("the session adapter registers the other-topic derivers", () => {
+  it("teachingPackage gives a stored die count and lines of symmetry their operation; a perimeter stays held until A2", () => {
+    const die = teachingPackage(diePrinted(8, "odd")) as QuestionPackage;
+    expect(die.operation).toEqual(dieOperation(8));
+    expect(heldReason(die)).toBeNull();
+    const shapes = teachingPackage(symmetryPrinted(4, 5)) as QuestionPackage;
+    expect(shapes.operation).toEqual({ kind: "add", operands: [6, 5] });
+    expect(heldReason(shapes)).toBeNull();
+    const perimeter = teachingPackage(perimeterPrinted(245, 126)) as QuestionPackage;
+    expect(perimeter.operation).toEqual({ kind: "evaluate", operands: ["2 × (245 + 126)"] });
+    expect(heldReason(perimeter)).not.toBeNull();
   });
 });
 
@@ -272,6 +287,21 @@ describe("the honest close (lessons from review 7 and 10)", () => {
       const event = learningEvent(s.session, { parentId: "p", childId: "c" });
       expect(event, `grade ${grade}`).toMatchObject({ result: "blank", stuckStep });
     }
+  });
+
+  // Pending #735 (the Maya lane's base confirm, not this PR's): another speaker's answer becomes the child's through
+  // "Did you say 4?" and "Yes.". Remove the skip when #735 lands; until then this test fails.
+  it.skip("OT-735: 'My mom said 4.' then 'Yes.' to 'Did you say 4?' is not the child's answer (pending #735)", async () => {
+    const pkg = deriveDieCount(diePrinted(8, "even"))!;
+    const model = scenarioModel();
+    const s = createTextSession({ callId: "ot-735", package: pkg, grade: 5, model, clock: () => 1000 });
+    model.next([{ act: "open" }], undefined);
+    await s.start();
+    model.next([{ act: "accept_answer", repair: { act: "confirm", heard: "4" } }], { start: "has_work", answers: [[4, "result", "right"]] });
+    await s.child("My mom said 4.");
+    model.next([{}], { answers: [[4, "result", "right"]] });
+    await s.child("Yes.");
+    expect(s.session.solved).toBeNull();
   });
 
   it("is only for other-topic questions: a plain 8 ÷ 2 has no honest close line", () => {

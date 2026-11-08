@@ -182,7 +182,7 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | OT7 | DIE | passing | Counts in a full sentence ("2, 4, 6 and 8 are even. That's 4."): on topic (the counted numbers are checked scope numbers), one confirm, accepted | solved, independent | |
 | OT8 | SHAPES | passing | "I'm stuck." after a hello-only opening: the first guide says the shapes' facts, then "6 plus 5 is 11." | solved | |
 | OT9 | DIE12 | passing | Grade 3, hello-only opening, says 5: "not yet" (no technical close), then the topic sentence on "I'm stuck.", then 6 | solved | |
-| OT10 | DIE12 | passing | Grade 3, hello-only opening, a right first step ("1 divided by 2 is 0 remainder 1."): acknowledged (J06), then solved | solved | |
+| OT10 | DIE12 | passing | Grade 3, hello-only opening, a right first step ("1 divided by 2 is 0."): acknowledged in code's line with no fallback (J06), then solved | solved | |
 | OT11 | SHAPES_LONG | passing | Grade 3, hello-only opening, longest shape names, says 4: "not yet", then "2 plus 1 is 3." | solved | |
 | OT12 | SHAPES_LONG | passing | Grade 3, hello-only opening, the right sum first: accepted, not taught again (J06) | solved, independent | |
 | OTC1 | SCALE | passing | C3b scale claim (60 + 2 × 10 = 80 against 80) in full sentences, then "It's true." | solved | |
@@ -194,6 +194,10 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | OTC7 | SCALE | passing | "60 plus 20 is 80." read by the model as part 2, not the compare: code hears the compare (review of #741, P1a), and Maya asks for the word, not 60 + 20 again (J06) | solved, independent | |
 | OTC8 | MINUTE | passing | "35 plus 3 is 38." read by the model as the ones of part 2: code hears the compare, and Maya asks for the word (J06) | solved, independent | |
 | OTC9 | SCALE | passing | A hedged "Maybe 80." that the model reads as the compare gets no credit (lesson 6); "60 plus 20 is 80." then does | solved | |
+| OT13 | DIE | passing | Grade 3, help only through the easier example, "Maybe 1?" gets a confirm, then "I'm stuck.": the honest close, as the child stopping (re-review of #731, P1) | child_stopped | |
+| OT13b | DIE | passing | As OT13, but the last turn is "Help me." (read as help): the same help-only test, so still the child stopping (re-review of #731, P1) | child_stopped | |
+| OT14 | DIE | passing | Grade 3, the honest close proposed as a goodbye with no line: refused, then the honest close line (re-review of #731, P2) | child_stopped | |
+| OT15 | DIE12 | passing | Grade 3, hello-only opening, "Why do I divide by 2?": a question is not work, so the guide says the topic sentence (re-review of #731, P3) | solved | |
 
 | S01 | A | passing | Pasted homework sheet: fixed workbook redirect, no teaching or board | solved after return to own question | |
 | S02 | A | passing | Same shape with different numbers: fixed workbook redirect | solved after return | |
