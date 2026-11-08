@@ -40,6 +40,8 @@ const lines = (id: SpotFixtureId) => packageLines(spotView(SPOT_FIXTURES[id] as 
 const texts = (offers: LineOffer[], key: string) => offers.filter((o) => o.key === key).flatMap((o) => o.texts);
 /** A child turn the model fails on: code's fallback answers it. */
 const down = (text: string, read?: Read): Step => ({ child: text, ...(read ? { read } : {}), maya: [{ throws: true }] });
+/** The easier example's turns, one act each. */
+const examples = (n: number) => Array.from({ length: n }, () => "example_step" as const);
 /** The honest close's wordings (lesson 10). */
 const closeTexts = (id: SpotFixtureId) => lines(id).closeUnsolved().flatMap((o) => o.texts);
 
@@ -192,7 +194,7 @@ export const SPOT_BEHAVIOURS: Behaviour[] = [
     steps: [...Array.from({ length: 7 }, () => down("I'm stuck.")), down("It's right.")],
     expect: {
       outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
-      acts: [OPEN, ...Array.from({ length: 11 }, () => "example_step"), "try_target", "guide", "guide", "guide", "guide", "close"],
+      acts: [OPEN, ...examples(11), "try_target", "guide", "guide", "guide", "guide", "close"],
       outputs: [{ mayaTurn: 17, lines: [closeTexts("SPOT_MUL")] }], never: ["give_answer", "accept_answer"],
     },
   },
@@ -202,7 +204,7 @@ export const SPOT_BEHAVIOURS: Behaviour[] = [
     steps: [down("7 times 640 is 4480.", { start: "has_work" }), down("I'm stuck."), down("I'm stuck."), down("It's right."), down("Okay."), down("I'm stuck.")],
     expect: {
       outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 },
-      acts: [OPEN, "guide", "guide", "guide", ...Array.from({ length: 11 }, () => "example_step"), "close"],
+      acts: [OPEN, "guide", "guide", "guide", ...examples(11), "close"],
       outputs: [{ mayaTurn: 15, lines: [closeTexts("SPOT_MUL")] }], never: ["give_answer", "accept_answer"],
     },
   },
