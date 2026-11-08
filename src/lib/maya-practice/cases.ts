@@ -13,6 +13,7 @@ import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
 import { PLACE_VALUE_PRACTICE } from "./place-value-cases";
 import { ONE_STEP_PRACTICE } from "./one-step-cases";
 import { MISSING_NUMBER_CASES } from "./missing-number-cases";
+import { SPOT_PRACTICE } from "./spot-error-cases";
 
 /** The AI-judge dimensions of the research (section 8, "AI-judge checks"), each scored 0 to 3. */
 export const DIMENSIONS = {
@@ -460,6 +461,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
   ...PLACE_VALUE_PRACTICE,
   ...ONE_STEP_PRACTICE,
   ...MISSING_NUMBER_CASES,
+  ...SPOT_PRACTICE,
   // Claim questions (A4, src/lib/maya/claim.ts): the answer is the circled word, which code reads.
   {
     id: "CL01",

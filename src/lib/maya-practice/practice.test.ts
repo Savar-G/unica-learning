@@ -245,7 +245,7 @@ describe("an invalid simulation never counts as a pass", () => {
       // (B1a, PV1); a missing factor found by trying numbers (MN2).
       const digitAsk = pkg.operation?.kind === "place-value" && pkg.operation.ask === "digit";
       expect([...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
-      if (value <= 9 && !digitAsk) expect(c.id).toBe("MN2");
+      if (Number.isInteger(value) && value <= 9 && !digitAsk) expect(c.id).toBe("MN2");
       const atStart = c.validity.stages.filter((s) => s.opens === "start").flatMap((s) => s.numbers);
       // The personas that solve it on their own: C07, C09, C26, C28, the harmful requests and the free-talk cases (D-197).
       // CL01 knows its claim's product (6 × 8 = 48) from the start; its answer is the circled word, which code reads.

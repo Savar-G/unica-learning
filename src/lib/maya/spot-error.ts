@@ -103,69 +103,95 @@ export const SPOT_TEMPLATES = {
   // Said after "Hi, I'm Maya" in the opening, so it names the question without its numbers (they are on the page): a grade
   // 3 opening fits 25 spoken words.
   "question.spot": [
-    "First we find {opening}, then check the answer given.", "Let's find {opening}, then check the answer given.",
-    "We find {opening}, then check the answer given.", "First, {opening}. Then we check the answer given.",
+    "First, {opening}. Then check the answer given.", "Let's find {opening}. Then check the answer given.",
+    "Find {opening}. Then check the answer given.", "Find {opening} first. Then check the answer given.",
   ],
   "example.intro.spot": [
     "Let's try an easier one first. {ask}", "Here's a smaller one to warm up. {ask}", "Let me show you an easier one. {ask}",
     "First, a smaller one. {ask}", "I'll show you an easier one first. {ask}",
   ],
-  "example.spot.compare": ["{Name} is {value}. The answer given was {shown}.", "We get {value} for {name}. The answer given was {shown}."],
+  "example.spot.compare": [
+    "{Name} is {value}. The answer given was {shown}.", "We get {value} for {name}. The answer given was {shown}.",
+    "So {name} is {value}. The page says {shown}.", "{Name} is {value}. The page shows {shown}.", "We found {value}. The answer given was {shown}.",
+  ],
   "example.spot": [
-    "So it's not right: we tick no, and write {value} in the Fix it box.", "{value} is not {shown}, so we tick no and write {value} to fix it.",
-    "The answer given is not right. We tick no and write {value} in the Fix it box.",
+    "So it's not right. We tick no and write {value} in the Fix it box.", "{value} is not {shown}. We tick no and write {value} to fix it.",
+    "The answer given is not right. We tick no and write {value} in the Fix it box.", "It does not match. We tick no, and the fix is {value}.",
+    "{shown} is not right. We tick no and write {value}.",
   ],
   "try.spot": [
-    "Now yours. Find {name}, then check the answer given, {shown}.", "Your turn: find {name}. Then we check {shown}.",
-    "Now you try. What is {name}? Then we check the answer given.",
+    "Now yours. Find {name}. Then check the answer given, {shown}.", "Your turn: find {name}. Then we check {shown}.",
+    "Now you try. What is {name}? Then we check the answer given.", "Your turn. Work out {name}. Then we look at {shown}.",
+    "Now yours: what is {name}? Then we check {shown}.",
   ],
   // The compare step (lesson 2: each level says the result is checked against the answer given). No H3: it is the fix.
   "invite.spot.find": [
     "What is {name}? Then we check the answer given, {shown}.", "Now find {name}. Then we compare it with {shown}.",
     "So what is {name}? Then we look at {shown}.", "Put it together: what is {name}? Then we check {shown}.",
+    "Tell me {name}. Then we check the answer given, {shown}.",
   ],
   "point.spot.find": [
     "Put your work together to get {name}. Then compare it with {shown}.", "Your steps make {name}. Then we check the answer given, {shown}.",
-    "Join your work for {name}. Then we look at {shown}.",
+    "Join your work for {name}. Then we look at {shown}.", "Use your steps to find {name}. Then we check {shown}.",
+    "Your work gives {name}. Then we compare it with {shown}.",
   ],
   "operation.spot.find": [
     "Work out {name} from your steps. Then check it against {shown}.", "Find {name} from what you worked out. Then compare it with {shown}.",
-    "Finish {name} first. Then we check the answer given, {shown}.",
+    "Finish {name} first. Then we check the answer given, {shown}.", "Finish your work for {name}. Then we look at {shown}.",
+    "Use what you worked out to get {name}. Then we check {shown}.",
   ],
-  // The framing a place-value help line carries on the compare step.
-  "frame.spot": ["Then check {shown}."],
-  "right.spot.find": ["That's it: {name} is {value}.", "Good work: {name} is {value}.", "You got it: {name} is {value}.", "Nice: {name} is {value}."],
+  "right.spot.find": ["That's it: {name} is {value}.", "Good work: {name} is {value}.", "You got it: {name} is {value}.", "Nice: {name} is {value}.", "Great: {name} is {value}."],
   // The word: each level ends with the two words, so a bare word after it answers it (lesson 5).
   "invite.spot": [
     "Is the answer given right? Tick yes or no.", "Now check it. Is {shown} right? Tick yes or no.", "Last part. Is the answer given right? Tick yes or no.",
-    "Let's check. Is the answer given, {shown}, right? Tick yes or no.",
+    "Let's check. Is the answer given, {shown}, right? Tick yes or no.", "Now look at the answer given. Is it right? Tick yes or no.",
   ],
   "point.spot": [
     "We found {value}. The answer given is {shown}. Is it right? Tick yes or no.", "Our number is {value}. The page says {shown}. Tick yes or no.",
-    "Look at {value} and {shown}. Is the answer given right? Tick yes or no.",
+    "Look at {value} and {shown}. Is the answer given right? Tick yes or no.", "You found {value}. The answer given says {shown}. Tick yes or no.",
+    "Compare {value} with {shown}. Is the answer given right? Tick yes or no.",
   ],
-  "compare.spot": ["{compare} Is the answer given right? Tick yes or no.", "Look: {compare} So, tick yes or no?", "{compare} Do you tick yes or no?"],
+  "compare.spot": [
+    "{compare} Is the answer given right? Tick yes or no.", "Look: {compare} So, tick yes or no?", "{compare} Do you tick yes or no?",
+    "Here is the check: {compare} Tick yes or no?", "{compare} So is the answer given right? Tick yes or no.",
+  ],
   "answer.spot": [
     "Well done! {Name} is {value}, not {shown}. You tick no.", "That's it! {Name} is {value}, not {shown}. So you tick no.",
-    "Exactly! The answer given, {shown}, is not right. It's {value}. You tick no.", "You got it! {Name} is {value}, so {shown} is not right.",
+    "Exactly! The answer given, {shown}, is not right. It's {value}. You tick no.", "You got it! {Name} is {value}. So {shown} is not right.",
+    "Great work! {Name} is {value}. The answer given, {shown}, is not right.",
   ],
   "answer.spot.holds": [
     "Well done! {Name} is {value}, the same as the answer given. You tick yes.", "That's it! {Name} is {value}. The answer given is right.",
-    "You got it! {value} matches the answer given. You tick yes.",
+    "You got it! {value} matches the answer given. You tick yes.", "Great work! {Name} is {value}. It matches the answer given.",
+    "Nice work! {value} is the answer given. You tick yes.",
   ],
   "write.spot": [
     "Tick no, and write {value} in the Fix it box.", "Now tick no on your page, and write {value} in the Fix it box.",
-    "Please tick no, then write {value} in the Fix it box.",
+    "Please tick no. Write {value} in the Fix it box.", "Tick no on your page. Then write {value} in the Fix it box.",
+    "On your page, tick no and write {value} in the Fix it box.",
   ],
-  "write.spot.holds": ["Tick yes on your page. The Fix it box stays empty.", "Please tick yes. There is nothing to fix.", "Now tick yes on your page. No fix needed."],
+  "write.spot.holds": [
+    "Tick yes on your page. The Fix it box stays empty.", "Please tick yes. There is nothing to fix.", "Now tick yes on your page. No fix needed.",
+    "Tick yes on your page. You don't need a fix.", "Please tick yes. Leave the Fix it box empty.",
+  ],
   "write.spot.yours": [
-    "Please tick your answer, and write your fix in the Fix it box.", "Go ahead and tick your answer, then fix it if it needs it.",
-    "Tick your answer on your page, and fix it in the box if it needs it.",
+    "Please tick your answer, and write your fix in the Fix it box.", "Go ahead and tick your answer. Then fix it if it needs it.",
+    "Tick your answer on your page, and fix it in the box if it needs it.", "Please tick your answer. Then write your fix in the box if it needs one.",
+    "Tick yes or no on your page. Fix it in the box if it needs it.",
   ],
-  "confirm.spot.said": ["You said {heard}. Do you tick {heard}?", "So you tick {heard}?", "Just checking: do you tick {heard}?", "I heard {heard}. Is that what you tick?"],
-  "confirm.spot": ["Do you tick yes or no?", "Is the answer given right: yes or no?", "Tell me one word: yes or no?", "Which do you tick: yes or no?"],
+  "confirm.spot.said": [
+    "You said {heard}. Do you tick {heard}?", "So you tick {heard}?", "Just checking: do you tick {heard}?", "I heard {heard}. Is that what you tick?",
+    "Did you mean {heard}? Is that the one you tick?",
+  ],
+  "confirm.spot": ["Do you tick yes or no?", "Is the answer given right: yes or no?", "Tell me one word: yes or no?", "Which do you tick: yes or no?", "Yes or no: which do you tick?"],
 } as const satisfies Record<string, readonly string[]>;
 export type SpotTemplateKey = keyof typeof SPOT_TEMPLATES;
+
+/**
+ * The framing a place-value help line carries on the compare step ("Which digit is in the hundred thousands place? Then
+ * check 7."): one fixed wording after the place-value line's own, pending Savar's approval (D-202). Not a line by itself.
+ */
+export const SPOT_FRAME = "Then check {shown}.";
 
 /** How lines.ts builds an offer from a template; passed in, so this module does not import lines.ts. */
 export type SpotOffer = (line: LineId, key: SpotTemplateKey, vars: Record<string, string | number>, extra?: Omit<LineOffer, "line" | "texts" | "key">) => LineOffer;
@@ -180,7 +206,15 @@ const onStep = (offers: LineOffer[], step: string): LineOffer[] => offers.map((o
  * The spot-the-error lines of a session package, over its package lines (`lines`: the place-value lines for a place-value
  * question, else the shared ones, `shared`), or the lines unchanged for any other package.
  */
-export function spotLines(pkg: OperationPackage, lines: PackageLines, shared: PackageLines, offer: SpotOffer): PackageLines {
+export function spotLines(pkg: OperationPackage, lines: PackageLines, shared: PackageLines, makeOffer: SpotOffer): PackageLines {
+  // A wording the book's numbers would take past 25 spoken words (a grade 3 turn, lesson 3) is left out. If none fits,
+  // the shortest stays, and the session's turn check refuses it (the tests prove the book's longest wordings fit).
+  const offer: SpotOffer = (...args) => {
+    const o = makeOffer(...args);
+    const fits = o.texts.map((_, i) => i).filter((i) => speechWords(o.texts[i]) <= 25);
+    const keep = fits.length > 0 ? fits : [o.texts.reduce((best, t, i) => (speechWords(t) < speechWords(o.texts[best]) ? i : best), 0)];
+    return { ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => o.wordingIds?.[i] ?? `${o.key}#${i}`) };
+  };
   const compare = compareIn(pkg.steps);
   const exCompare = compareIn(pkg.easierExample.steps);
   if (!isSpot(pkg) || pkg.answer.value.type !== "choice" || !compare || !exCompare) return lines;
@@ -197,7 +231,7 @@ export function spotLines(pkg: OperationPackage, lines: PackageLines, shared: Pa
     const keep = o.texts.map((_, i) => i).filter((i) => !valuesIn(o.texts[i]).some((v) => equivalent(v, { type: "number", value })));
     return { ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => o.wordingIds?.[i] ?? `${o.key}#${i}`) };
   }).filter((o) => o.texts.length > 0);
-  const frame = SPOT_TEMPLATES["frame.spot"][0].replace("{shown}", String(shown));
+  const frame = SPOT_FRAME.replace("{shown}", String(shown));
   const compareHelp = (): LineOffer[] => {
     if (pkg.operation.kind !== "place-value") {
       return [

@@ -166,6 +166,9 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 | CL01 | CLAIM_TF (True or false: 6 × 8 = 48.) | Knows the fact and says it's true | solved |
 | CL02 | CLAIM_GT (Is 4 × 360 greater than 1436?) | Not sure; works 360 × 4 with help, then says yes | solved |
 | CL03 | CLAIM_DEC (True or false: 3.45 + 2.38 = 5.93.) | Says true at first; adds the columns with help, then says false | solved |
+| SE1 | SPOT_MUL (Spot the error: 7 × 640, answer given 448) | Says the answer given is right; works 7 × 640 with help, then says it is wrong and should be 4480 | solved |
+| SE2 | SPOT_MISS (Spot the error: 4 × ? = 680, answer given 17) | Asks why to divide; divides 680 by 4 with help, then says 170, so the answer given is wrong | solved |
+| SE3 | SPOT_PVV (Spot the error: the value of the ten thousands digit of 46213, answer given 4000) | Says the digit 4 early, then that 4000 is right; corrects it to 40000 | solved |
 
 Not here on purpose: cases that need injected speech-to-text alternatives, exact silences or the clock at a set time (C12 to C18, C21, C35, C39), or a broken package (C36). C38 covers proper-operand fraction addition with typed exact fraction validity. It does not claim all fraction operations or forms. The scripted gate runs those exactly; a model child cannot make them happen on cue. The research's pending items (#383) stay pending here too.
 

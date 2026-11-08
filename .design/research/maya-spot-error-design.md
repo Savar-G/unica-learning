@@ -39,6 +39,8 @@ READY → OPEN → (MODEL_EXAMPLE) → the underlying path's own steps → the c
 - **No early word.** A committed "It's wrong." before the fix is known (the compare step not done and not said in the same turn) is not an answer yet: the fix would be missing, and Maya's answer line would say it. Maya goes on with the work.
 - **Accept and write.** "Well done! 6 × 830 is 4980, not 498. You tick no." Then "Tick no, and write 4980 in the Fix it box." The fix is the child's own result: the compare step was credited from their words.
 - **J06.** A result said early or in a full sentence ("6 times 830 is 4980, so it's wrong.") credits the compare step once (claim.ts templates, plus the spot forms "it should be N", "the right answer is N", "the missing number is N", "the value is N", "the digit is N"), and Maya goes on to the word, never repeating the step. A question about the step ("Why do I compare?") gets code's why line.
+- **A number with its conclusion.** "It's 4980, so it's wrong." and "The answer is 4980, so it's not right." are read as "4980, so it's no" (spot-words.ts, an allow-list of leads), because claim.ts's reader stops at a leading "it's" before its ", so it's no" form.
+- **Turn length (lesson 3).** Each spot line offers only the wordings that fit 25 spoken words with the question's numbers; the tests check the book's longest names at grade 3, the opening with the longest hello included.
 - **Way out (lessons 7, 10).** At the top of a step (H2 on the compare and word steps), a child who only asks for help gets the easier example, then A4's honest close. No `give_answer` anywhere.
 
 ## 4. The easier example (lesson 11)
@@ -52,3 +54,9 @@ Small hooks only: `session.ts` (the session package, the step credit, the reveal
 ## 6. Held
 
 - `d7p2s2.1` (5.10-pattern-rule story): its underlying question is a pattern rule, C1's path, which has not landed. It stays held.
+
+## 7. Found, not changed here
+
+- **A1, scope.** On the one-step multiply path (7 × 640 taught as two rows), the child's row in a sentence, "7 times 40 is 280." or "7 times 600 is 4200.", is out of scope (`changed_problem`), with or without a spot item. It belongs to A1's `allowedMath`.
+- **A1 and the text adapter, example length.** The multiply example 6 × 64 has 9 steps, the spot form 11 with its compare and word. `MAX_MAYA_TURNS` is 8, so Maya pauses once in the example and goes on at the child's next turn. `example-flow.test.ts` accepts exactly that one pause for an example longer than the limit.
+- **A4, the word reader.** `readClaimWord("It's 48, so it's true.")` returns nothing: the committed "it's" form returns before the ", so it's true" form. Spot the error works around it in its own allow-list; claim questions still miss it.

@@ -18,6 +18,9 @@ export function spotWordsAsClaim(text: string): string {
   t = t.replace(/\bthe answer (?:given|on the page|on my page) is\b/g, "it is");
   t = t.replace(/\b(?:is not|isn't|not)\s+(?:right|correct)\b/g, "wrong");
   t = t.replace(/\b(?:right|correct)\b/g, "yes").replace(/\b(?:wrong|incorrect)\b/g, "no");
+  // A number with its conclusion: "it's 4980, so it's no" and "the answer is 4980, so it's no" read as "4980, so it's no"
+  // (the reader's ", so it's no" form; its committed "it's ..." form would want the word first).
+  t = t.replace(new RegExp(`^${FILLER}(?:it's|it is|that's|that is|the answer is|the fix is|i got)\\s+(\\d[\\d,]*(?:\\.\\d+)?)(,?\\s+so\\s+)`), "$1$2");
   // One word said twice: "no, it's no, it should be 4980" reads as "it's no, it should be 4980".
   t = t.replace(new RegExp(`^${FILLER}(yes|no)[,.!]?\\s+((?:it's|it is|that's|that is)\\s+\\1)\\b`), "$2");
   return t;
