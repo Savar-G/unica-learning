@@ -205,6 +205,8 @@ export function stepWords(step: WorkedStep): string {
       return "taking the same zeros off both numbers";
     case "try-factor":
       return "trying numbers for the missing number";
+    case "claim-compare":
+      return "comparing the result with the question's number";
     case "result":
       return "writing the final answer";
   }

@@ -23,6 +23,8 @@ export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   "missing-frame", "drop-zeros", "try-factor",
   // An evaluate question's parts (evaluate.ts): each part is taught with its own column steps.
   "operate",
+  // A claim's compare step (claim.ts), only in the session package of a checked claim question.
+  "claim-compare",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */

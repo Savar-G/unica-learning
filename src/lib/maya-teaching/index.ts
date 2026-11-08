@@ -11,6 +11,7 @@ import { TEACHING_SOURCE } from "./limits";
 import { deriveOneStep } from "./one-step";
 import { deriveMultiStep } from "./multi-step";
 import { deriveMissingNumber } from "./missing-number";
+import { claimTeaching } from "./claim";
 
 /**
  * Makes a teaching package from a printed workbook question, or null. It gets the printed package: no teaching data,
@@ -23,6 +24,7 @@ const DERIVERS: readonly Deriver[] = [
   deriveMissingNumber, // A3: "a × ? = c", "? × a = c", "a − ? = c" (first: only its exact printed forms match)
   deriveOneStep, // A1: one add, subtract or multiply
   deriveMultiStep, // A1: multi-step stories, as evaluate (taught from A2)
+  claimTeaching, // A4: a true/false or yes/no claim on a computed side
 ];
 
 /** The fields a deriver may add. Every other field must stay exactly as stored. */

@@ -5,6 +5,7 @@
 // disclosure, or a request for harmful content) runs through the saved call, so its flag and alert are judged too (#395).
 import { readNumbers } from "@/lib/maya";
 import { packageLines, type LineOffer, type TemplateKey } from "@/lib/maya/lines";
+import { CLAIM_TEMPLATES, claimView } from "@/lib/maya/claim";
 import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
@@ -27,6 +28,32 @@ const num = (value: number) => ({ type: "number" as const, value });
 const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.filter((line) => line.key === key).flatMap((line) => line.texts);
 const fractionLines = packageLines(FIXTURES.D as OperationPackage);
 const simplestLines = packageLines(FIXTURES.D_SIMPLEST as OperationPackage);
+/** A claim question's lines as its session teaches them (claim.ts). */
+const claimLinesOf = (id: "CLAIM_GT" | "CLAIM_WIDE") => packageLines(claimView(FIXTURES[id] as OperationPackage));
+const gtLines = claimLinesOf("CLAIM_GT");
+const wideLines = claimLinesOf("CLAIM_WIDE");
+/** The honest close's approved wordings (claim.ts, pending Savar's approval under D-202). */
+const TEMPLATES_CLOSE_HONEST = [...CLAIM_TEMPLATES["close.honest"]];
+/** The given word of a claim (D-199), each wording with the fixture's values. */
+const giveOf = (id: "CLAIM_TF" | "CLAIM_GT") => packageLines(claimView(FIXTURES[id] as OperationPackage)).answerGive()[0]?.texts ?? [];
+const tfGive = giveOf("CLAIM_TF");
+/** "My mom said 1440.": the model proposes the confirm; code refuses it, and the yes after it credits nothing (#737 P1). */
+const otherSpeaker = (id: string, fixture: "CLAIM_GT" | "CLAIM_DEC", said: string, heard: string, title: string): Behaviour => ({
+  id, title, fixture, status: "passing",
+  steps: [
+    child(said, { start: "has_work" }, [{ act: "confirm", heard }]),
+    child("Yes.", undefined, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+    child("Can we stop now?", { stop: true }),
+  ],
+  expect: {
+    outcome: { reason: "child_stopped" },
+    acts: [OPEN, "guide", "guide", "close"],
+    // The confirm is not allowed; the yes is no result, so a guide to the claim's question is the wrong step.
+    refused: ["act_not_allowed", "wrong_step"],
+    counts: { confirmations: 0 },
+    never: ["confirm", "accept_answer", "give_answer"],
+  },
+});
 /** Evaluate (Wave A, A2): the acknowledgement of part 1, part 2's question, and why part 1 comes first, as code fills them. */
 const evaluateLines = packageLines(FIXTURES.EV_TWO as OperationPackage);
 const partLine = (id: string, line: string) => evaluateLines.help(id).filter((o) => o.line === line).flatMap((o) => o.texts);
@@ -2048,6 +2075,568 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
     },
   },
+
+  // Claim questions (A4, src/lib/maya/claim.ts): the circled word is the final answer, read by code.
+  {
+    id: "CL01",
+    title: "True/false product claim worked step by step; a bare 'True.' is said back, and the plain yes to that commits it",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "r1-ones", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("I write the 4.", { answers: [[4, "r1-tens", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("48.", { answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("True.", undefined, [{ act: "confirm", lines: ["confirm.word"] }]),
+      child("Yes.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "guide", "guide", "confirm", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, confirmations: 1 },
+      never: ["give_answer"],
+    },
+  },
+  {
+    id: "CL02",
+    title: "Yes/no 'greater than' claim answered at once with a reason: accepted, circled, closed",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("It's yes, because 360 times 4 is 1440.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Because 1440 is more than 1436.", undefined, [{ act: "ask_write", understanding: "evidence_observed" }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", understanding: "evidence_observed", paperStatus: "child_confirmed" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
+  {
+    id: "CL03",
+    title: "Decimal-add claim: the wrong word is not accepted; the right word with its reason is",
+    fixture: "CLAIM_DEC",
+    status: "passing",
+    steps: [
+      child("It's true.", { start: "has_work" }, [{ act: "guide", level: 1 }]),
+      child("It's false, because 3.45 plus 2.38 is 5.83.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1, paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer"],
+    },
+  },
+  {
+    id: "CL04",
+    title: "After Maya's claim question, 'Maybe true?' is unclear: Maya asks which word, then accepts the committed word",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("Maybe true?", undefined, [{ act: "confirm", lines: ["confirm.claim"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Because 6 times 8 is 48.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "confirm", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, confirmations: 1 },
+    },
+  },
+  {
+    id: "CL05",
+    title: "A plain yes to 'Did you say 1440?' confirms the result, never the claim's word",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("Maybe 1440.", { start: "has_work", unclear: true }, [{ act: "confirm" }]),
+      child("Yes.", undefined, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("It's yes, because 1440 is greater than 1436.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "confirm", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, confirmations: 1 },
+    },
+  },
+  {
+    id: "CL06",
+    title: "The result in the child's own words is acknowledged once; a question about the step gets code's help line",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "r1-ones", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("I write the 4.", { answers: [[4, "r1-tens", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("6 times 8 makes 48.", { answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("How do I know if it's true?", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("It's true, because 48 is 48.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1, paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer"],
+    },
+  },
+  {
+    id: "CL07",
+    title: "After Maya's claim question a bare 'Yes.' is said back; the child's 'No.' answers that question, not the claim",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("4 times 360 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("Yes.", undefined, [{ act: "confirm", lines: ["confirm.word"] }]),
+      child("No.", undefined, [{ act: "guide", level: 0, step: "result" }]),
+      child("I circle yes, because 1440 is more than 1436.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "confirm", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, confirmations: 1 },
+    },
+  },
+  {
+    id: "CL08",
+    title: "The result given before its columns is acknowledged, and Maya goes on to the claim's question, not the columns",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("It's yes, because 1440 is more than 1436.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer", "example_step"],
+    },
+  },
+  // Lessons from review: the child's work in a full sentence is this question's math (scope), and at grade 3 the claim's
+  // framing reaches a child who is stuck from the first turn.
+  {
+    id: "CL09",
+    grade: 3,
+    title: "Grade 3, 'I'm stuck.' first: the easier example says its claim's question, within 25 words a turn",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    open: [{ act: "open", lines: ["open.hello", "question.problem"] }],
+    steps: [
+      child("I'm stuck.", { start: "no_start" }, [{ act: "example_step" }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      never: ["give_answer", "guide"],
+    },
+  },
+  {
+    id: "CL10",
+    grade: 3,
+    title: "Grade 3: '6 times 8 is 48, so it's true.' is this question's work, accepted as the circled word",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    open: [{ act: "open", lines: ["open.hello", "question.problem"] }],
+    steps: [
+      { child: "6 times 8 is 48, so it's true.", within: true, read: { start: "has_work" }, maya: [{ act: "accept_answer" }] },
+      child("Because 6 times 8 is 48.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "CL11",
+    title: "'1440 minus 1436 is 4, so it's yes.': the compare in a full sentence is this question's math",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      { child: "4 times 360 is 1440.", within: true, read: { start: "has_work", answers: [[1440, "claim", "right"]] }, maya: [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }] },
+      { child: "1440 minus 1436 is 4, so it's yes.", within: true, maya: [{ act: "accept_answer" }] },
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "CL12",
+    title: "A claim checked by division: '6 times 8 is 48.' and '56 divided by 8 is 7, so it's no.' are this question's math",
+    fixture: "CLAIM_DIV",
+    status: "passing",
+    steps: [
+      { child: "6 times 8 is 48.", within: true, read: { start: "has_work" }, maya: [{ act: "guide", level: 0 }] },
+      { child: "56 divided by 8 is 7, so it's no.", within: true, maya: [{ act: "accept_answer" }] },
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["redirect", "give_answer"],
+    },
+  },
+  // Review of #737 (P1a, P1b, P2, P3): each chain a reviewer stepped through the real session.
+  {
+    id: "CL13",
+    title: "'Is it 1440?', 'Was that 1440?', 'Yes.': the yes confirms the result; a model that tries the word's say-back is refused",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("Is it 1440?", { start: "has_work" }, [{ act: "confirm" }]),
+      child("Yes.", undefined, [{ act: "confirm" }]),
+      child("It's yes, because 1440 is more than 1436.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "confirm", "guide", "accept_answer", "ask_write", "close"],
+      refused: ["act_not_allowed"],
+      counts: { confirmations: 1 },
+      never: ["give_answer"],
+    },
+  },
+  {
+    id: "CL14",
+    title: "'Yeah!' to Maya's opening question is no claim turn: no say-back, no confirm, no answer",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("Yeah!", { start: "has_work" }, [{ act: "confirm" }]),
+      child("Yes.", undefined, [{ act: "confirm" }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["act_not_allowed", "act_not_allowed"],
+      counts: { confirmations: 0 },
+      never: ["confirm", "accept_answer", "give_answer"],
+    },
+  },
+  {
+    id: "CL15",
+    title: "'Maybe 1440.' gives the result no credit: Maya confirms it first, then the yes credits it",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("Maybe 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("Yes.", undefined, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("It's yes, because 1440 is more than 1436.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "confirm", "guide", "accept_answer", "ask_write", "close"],
+      refused: ["answer_not_committed"],
+      counts: { confirmations: 1 },
+    },
+  },
+  {
+    id: "CL16",
+    title: "'My mom said 1440.' and 'I copied 1440 from my friend.' give the result no credit, and no confirm (a speaker or a verb)",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("My mom said 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("I copied 1440 from my friend.", { answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["answer_not_committed", "answer_not_committed"],
+      never: ["confirm", "accept_answer", "give_answer"],
+      // Maya asks for the child's own work on the step (step.invite), never "How do you know?" (#737 review P3).
+      outputs: [
+        { mayaTurn: 1, lines: [variants(gtLines.help("r1-ones"), "step.invite")] },
+        { mayaTurn: 2, lines: [variants(gtLines.help("r1-ones"), "step.invite")] },
+      ],
+    },
+  },
+  {
+    id: "CL17",
+    title: "After H3 shows the result, '48.' only copies it: no credit; the committed word is still the child's",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "r1-ones", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("I write the 4.", { answers: [[4, "r1-tens", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("Show me.", { help: "show" }, [{ act: "guide", level: 3, step: "claim" }]),
+      child("48.", { answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("It's true, because 6 times 8 is 48.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "guided", paperStatus: "child_confirmed" },
+      refused: ["answer_not_committed"],
+      never: ["give_answer", "confirm"],
+    },
+  },
+  {
+    id: "CL18",
+    title: "With the model down, code's own reading credits a bare '5.83.' on the compare step",
+    fixture: "CLAIM_DEC",
+    status: "passing",
+    steps: [
+      child("5 plus 8 is 13.", { start: "has_work", answers: [[13, "hundredths", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("8.", { answers: [[8, "tenths", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("5.", { answers: [[5, "ones", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("5.83.", undefined, [{ throws: true }]),
+      child("It's false, because 5.83 is not 5.93.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      never: ["give_answer"],
+    },
+  },
+  // The honest close (controller decision (a), #735, brief lessons 7 and 10): a child who only asks for help reaches the
+  // easier example where it can start, the top hint, then a close with no answer and one next step.
+  {
+    id: "CL19",
+    title: "Only 'I'm stuck.' at the claim's final step: H0 to H2, then the honest close, with no answer",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1, step: "result" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2, step: "result" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close", lines: ["close.honest"] }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "hint", highestHint: 2 },
+      acts: [OPEN, "guide", "guide", "guide", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer", "accept_answer"],
+    },
+  },
+  {
+    id: "CL20",
+    title: "Only 'I'm stuck.' from the start: the easier example, the try, H1 to H3, then the honest close, never the answer",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "no_start" }, [{ act: "example_step" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "try_target" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "show" }, [{ act: "guide", level: 3 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      // The model's close had only warm talk: refused, and code's fallback says the honest close.
+      refused: ["line_not_offered"],
+      never: ["give_answer", "accept_answer"],
+    },
+  },
+  // Review of #737 at d3aaff46. P1: another person's or a copied number never becomes the child's through a confirm.
+  otherSpeaker("CL21", "CLAIM_GT", "My mom said 1440.", "1440", "'My mom said 1440.': a proposed 'Was that 1440?' is refused, and the yes after it credits no result"),
+  otherSpeaker("CL22", "CLAIM_GT", "I copied 1440 from my friend.", "1440", "'I copied 1440 from my friend.': no confirm, and the yes after it credits no result"),
+  otherSpeaker("CL23", "CLAIM_GT", "I copied 1440.", "1440", "'I copied 1440.': no confirm, and the yes after it credits no result"),
+  otherSpeaker("CL24", "CLAIM_DEC", "I copied 5.83 from my friend.", "5.83", "Decimal claim, 'I copied 5.83 from my friend.': no confirm, and the yes after it credits no result"),
+  {
+    id: "CL25",
+    title: "'My mom said 1440 or 1436.' may get 'Was that 1440?' (a choice), but its yes credits no result: only the claim's own confirm does",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("My mom said 1440 or 1436.", { start: "has_work" }, [{ act: "confirm", heard: "1440" }]),
+      child("Yes.", undefined, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "confirm", "guide", "close"],
+      refused: ["wrong_step"],
+      counts: { confirmations: 1 },
+      never: ["accept_answer", "give_answer"],
+    },
+  },
+  // P2: at grade 3 (25 words a turn) the result is acknowledged and the claim's question asked in one turn, with the
+  // longest spoken numbers: the short acknowledgement, never a refused turn and a fallback that asks for the step again.
+  {
+    id: "CL26",
+    grade: 3,
+    title: "Grade 3, 777 × 7: '777 times 7 is 5439.' is acknowledged and the claim's question asked in one turn of 25 words or less",
+    fixture: "CLAIM_WIDE",
+    status: "passing",
+    open: [{ act: "open", lines: ["open.hello", "question.problem"] }],
+    steps: [
+      { child: "777 times 7 is 5439.", within: true, read: { start: "has_work", answers: [[5439, "claim", "right"]] }, maya: [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }] },
+      { child: "It's yes, because 5439 is more than 4662.", within: true, maya: [{ act: "accept_answer" }] },
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 1, lines: [variants(wideLines.rightStepShort("claim"), "check.right_step.plain"), variants(wideLines.help("result"), "invite.claim")] }],
+      never: ["give_answer", "example_step"],
+    },
+  },
+  {
+    id: "CL27",
+    grade: 3,
+    title: "Grade 3, 777 × 7, the model down: code's own turn acknowledges the result and asks the claim's question, never the step again",
+    fixture: "CLAIM_WIDE",
+    status: "passing",
+    open: [{ act: "open", lines: ["open.hello", "question.problem"] }],
+    steps: [
+      { child: "777 times 7 is 5439.", within: true, read: { start: "has_work" }, maya: [{ throws: true }] },
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(wideLines.rightStepShort("claim"), "check.right_step.plain"), variants(wideLines.help("result"), "invite.claim")] }],
+      never: ["give_answer", "example_step"],
+    },
+  },
+  // Lesson 10: a model that guides first, and a child who only says "I'm stuck.": the ladder, then the easier example
+  // (never the honest close before it), then the honest close with no answer.
+  {
+    id: "CL28",
+    title: "The model guides first, then only 'I'm stuck.': H0 to H3, the easier example instead of the close, then the honest close",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "show" }, [{ act: "guide", level: 3 }]),
+      // The model tries the close: only the easier example is allowed now.
+      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+      child("Okay."),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("I'm stuck.", { help: "more" }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "try_target", "guide", "close"],
+      refused: ["act_not_allowed", "line_not_offered"],
+      outputs: [{ mayaTurn: 10, lines: [TEMPLATES_CLOSE_HONEST] }],
+      never: ["give_answer", "accept_answer"],
+    },
+  },
+  {
+    id: "CL29",
+    title: "The model down, only 'I'm stuck.' from the start: code's fallback shows the easier example first, then the ladder, then the honest close",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", undefined, [{ throws: true }]),
+      ...Array.from({ length: 6 }, () => child("I'm stuck.", undefined, [{ throws: true }])),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "guide", "close"],
+      outputs: [{ mayaTurn: 9, lines: [TEMPLATES_CLOSE_HONEST] }],
+      never: ["give_answer", "accept_answer"],
+    },
+  },
+  // Review of #743 (the same reader): what comes before ", so" is the child's own work or nothing. Another person's
+  // number or word, or a copy, is no answer, whatever the model proposes: accept on every turn, and confirm in repair.
+  ...([["CLAIM_TF", "48", "true"], ["CLAIM_GT", "1440", "yes"]] as const).flatMap(([fixture, n, word], f) => [
+    `My mom said ${n}, so it's ${word}.`,
+    `I copied ${n}, so it's ${word}.`,
+    `My teacher said it's ${n}, so it's ${word}.`,
+    `Mom told me, so it's ${word}.`,
+    `I copied it, so it's ${word}.`,
+  ].map((said, i): Behaviour => ({
+    id: `CL${30 + f * 5 + i}`,
+    title: `'${said}' is no answer: an accept or a confirm the model proposes never credits it`,
+    fixture,
+    status: "passing",
+    steps: [
+      child(said, { start: "has_work" }, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Yes.", undefined, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["accepts_wrong_answer"],
+      never: ["accept_answer", "give_answer"],
+    },
+  }))),
+  // Review of #737 at fe7a5ff8, P1: the model down, "I'm stuck." 3 to 6 times, then the wrong committed word twice. The
+  // wrong word on a column's ladder must never leave code with no line (technical_issue): "Not quite." for the answer, the
+  // step's help, then the honest close, after the easier example.
+  ...([["CLAIM_GT", "It's no.", 3], ["CLAIM_TF", "It's false.", 3], ["CLAIM_DEC", "It's true.", 4], ["CLAIM_DIV", "It's yes.", 3]] as const).flatMap(([fixture, wrong, example], f) =>
+    [3, 4, 5, 6].map((stuck, i): Behaviour => {
+      const acts = [OPEN, ...Array.from({ length: example }, () => "example_step" as const), "try_target", "guide", "guide", "guide", "guide", "close"] as const;
+      return {
+        id: `CL${40 + f * 4 + i}`,
+        title: `The model down, 'I'm stuck.' ${stuck} times, then '${wrong}' twice: the easier example, then the honest close, never technical_issue`,
+        fixture,
+        status: "passing",
+        steps: [
+          ...Array.from({ length: stuck }, () => child("I'm stuck.", undefined, [{ throws: true }])),
+          child(wrong, undefined, [{ throws: true }]),
+          child(wrong, undefined, [{ throws: true }]),
+          ...Array.from({ length: 4 }, () => child("I'm stuck.", undefined, [{ throws: true }])),
+        ],
+        expect: {
+          outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+          acts: [...acts],
+          outputs: [{ mayaTurn: acts.length - 1, lines: [TEMPLATES_CLOSE_HONEST] }],
+          never: ["give_answer", "accept_answer"],
+        },
+      };
+    })),
+  // P2: the child's own work beside the word is checked against the true numbers: the order, equal or not, the result.
+  ...([
+    ["CLAIM_GT", "1440 is less than 1436, so it's yes."],
+    ["CLAIM_GT", "1436 is more than 1440, so it's yes."],
+    ["CLAIM_GT", "1440 is 1436, so it's yes."],
+    ["CLAIM_GT", "7, so it's yes."],
+    ["CLAIM_GT", "It's yes, 7."],
+    ["CLAIM_TF", "48 is not 48, so it's true."],
+    ["CLAIM_DEC", "5.83 is 5.93, so it's false."],
+  ] as const).map(([fixture, said], i): Behaviour => ({
+    id: `CL${56 + i}`,
+    title: `'${said}' is no answer: its work is not true, so an accept or a confirm the model proposes never credits it`,
+    fixture,
+    status: "passing",
+    steps: [
+      child(said, { start: "has_work" }, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Yes.", undefined, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["accepts_wrong_answer"],
+      never: ["accept_answer", "give_answer"],
+    },
+  })),
   // Evaluate questions (Wave A, A2): each part in the order of operations; the part's columns when the child is stuck.
   {
     id: "EV01",
@@ -2243,6 +2832,109 @@ export const BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  // Review of #737 at 6dce58ee, D-199 (Savar Brain P6, "give the answer after two misses"): two real committed wrong words
+  // once the work is done release the word, as two wrong final answers release a number. Help, doubt and questions are
+  // never misses (claimNotAMiss), and a child who only asks for help still gets the easier example, then the honest close.
+  {
+    id: "CL63",
+    title: "The work done, then 'It's false.' twice: Maya gives the word with code's comparison (D-199), then closes",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "r1-ones", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("I write the 4.", { answers: [[4, "r1-tens", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("48.", { answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's false.", undefined, [{ act: "guide", level: 0 }]),
+      child("It's false.", undefined, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
+      outputs: [{ mayaTurn: 5, lines: [tfGive] }],
+      never: ["accept_answer"],
+    },
+  },
+  {
+    id: "CL64",
+    title: "The model down: the product, then 'It's no.' twice: code's fallback gives the word (D-199), never the honest close",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work" }, [{ throws: true }]),
+      child("It's no.", undefined, [{ throws: true }]),
+      child("It's no.", undefined, [{ throws: true }]),
+      child("Okay.", undefined, [{ throws: true }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "give_answer", "close"],
+      never: ["accept_answer"],
+    },
+  },
+  ...([
+    ["CL65", "I'm stuck, but it's no."],
+    ["CL66", "I think it's no."],
+    // Help beside a word, before or after it (round 9 of #732: the one fail-closed rule, committedTurn).
+    ["CL69", "Help, no."],
+    ["CL70", "No, help me."],
+  ] as const).map(([id, said]): Behaviour => ({
+    id,
+    title: `The product, then '${said}' twice: no miss (help or doubt), so a give_answer the model proposes is refused`,
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child(said, undefined, [{ act: "give_answer" }]),
+      child(said, undefined, [{ act: "give_answer" }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "accept_answer"],
+    },
+  })),
+  {
+    id: "CL67",
+    title: "'It's no.', then 'I'm stuck, but it's no.', then 'It's no.': the help turn is no miss, so the word comes only after the second real one",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's no.", undefined, [{ act: "guide", level: 1 }]),
+      child("I'm stuck, but it's no.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 2 } }]),
+      child("It's no.", undefined, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "guide", "give_answer", "close"],
+      refused: ["act_not_allowed"],
+      never: ["accept_answer"],
+    },
+  },
+  {
+    id: "CL68",
+    title: "Only 'I'm stuck.', the model asking to give the answer each turn: refused every time; the easier example, H1 to H3, then the honest close",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "no_start" }, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "try_target" } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 1 } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 2 } }]),
+      child("I'm stuck.", { help: "show" }, [{ act: "give_answer", repair: { act: "guide", level: 3 } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "close"],
+      outputs: [{ mayaTurn: 8, lines: [TEMPLATES_CLOSE_HONEST] }],
+      refused: ["act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "accept_answer"],
     },
   },
   ...ONE_STEP_BEHAVIOURS,
