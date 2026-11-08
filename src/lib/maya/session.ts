@@ -830,6 +830,15 @@ function topHint(s: Session): number {
     .reduce((top, o) => Math.max(top, o.level ?? 0), 0);
 }
 
+/** Refuse an example if any of its offered words or board text can reveal the target answer. */
+function exampleRevealsAnswer(s: Session): boolean {
+  const pkg = s.package!;
+  const lines = packageLines(pkg);
+  const offers = [...lines.exampleIntro(), ...pkg.easierExample.steps.flatMap((step) => lines.exampleStep(step.id))];
+  return offers.some((offer) => [...offer.texts, ...(offer.board ? [offer.board] : [])]
+    .some((text) => valuesIn(text, readOptionsFor(pkg)).some((value) => equivalent(value, pkg.answer.value))));
+}
+
 /**
  * The way out of the help ladder (#735, decision (a); D-199 for misses). A turn that only asks for help ("I'm stuck.",
  * "Show me.", a reading of help), with no answer in it, after Maya gave this step's top hint, never gets the answer: first
@@ -847,7 +856,7 @@ function stuckWayOut(s: Session, reading: Reading, rightResult: boolean): "examp
   if ((reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && (a.verdict !== "wrong" || committedValue(s, a)))) return null;
   if (reading.help === undefined && !asksForHelp(s.turn.text)) return null;
   if (copiedStep(s) !== null || s.ladder.hint < topHint(s)) return null;
-  return s.exampleShown < steps ? "example" : "close";
+  return s.exampleShown < steps && !exampleRevealsAnswer(s) ? "example" : "close";
 }
 
 function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
@@ -880,6 +889,9 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   if (!main) return { acts: [], code: "act_not_allowed", reason: "No act fits now." };
   const steps = s.package!.easierExample.steps.length;
   const noStart = s.noStart && !progress;
+  if (s.solved === null && !rightResult && exampleRevealsAnswer(s) && (noStart || reading.start === "no_start" || main === "MODEL_EXAMPLE")) {
+    return { acts: ["close"], code: "act_not_allowed", reason: "The easier example cannot be said safely. Close without the answer." };
+  }
   let acts = MAIN_ACTS[main].filter((act) => {
     switch (act) {
       case "open":
@@ -887,6 +899,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
       case "clarify":
         return !s.clarified;
       case "example_step":
+        if (exampleRevealsAnswer(s)) return false;
         // The easier example starts only before the child has done a step of their question, and only for a child who
         // cannot start or asks for help (practice: "Okay, let's do 27 plus 39." got the example). The model is offered
         // it before it reads the turn (`offering`); its reading then decides.
