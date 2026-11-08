@@ -64,7 +64,7 @@ describe("the report email to the parent", () => {
     const rendered = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(2)), parentName: "Priya", url: URL });
     for (const body of [rendered.text, rendered.html]) {
       expect(body).toContain("so grade 2 is an estimate.");
-      expect(body).toContain("How sure: Early sign: workbook 1 checks this");
+      expect(body).toContain("How sure: Early sign");
       expect(body).not.toContain("How sure: Clear");
     }
   });
@@ -120,17 +120,17 @@ describe("the report email to the parent", () => {
     expect(email.html).toMatch(/>See Maya&#39;s full report<\/a>/);
     expect(email.text).toContain(`See Maya's full report: ${URL}`);
   });
-  it("carries the help warning and the retake date when help is likely (#71), and never the flags", () => {
+  it("never says the level may be too high, even when help is likely (D-305), and never the flags", () => {
     const v = view(knowsUpTo(3));
     const warned = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: { ...v.model, helpWarning: true } }, parentName: "Priya", url: URL });
-    for (const body of [warned.text, warned.html]) {
-      expect(body).toContain("This level may be too high");
-      expect(body).toContain("from November 10, 2026.");
+    for (const body of [warned.text, warned.html, email.text, email.html]) {
+      expect(body).not.toMatch(/may be too high/);
       expect(body).not.toMatch(/too-fast|pause-then-perfect|helped/);
     }
   });
-  it("has no help warning when help is not likely", () => {
-    for (const body of [email.text, email.html]) expect(body).not.toMatch(/may be too high/);
+  it("says what the working level means, under the level (D-305)", () => {
+    expect(email.text).toContain(`How sure: Clear\nWhat "working level" means: Working level is`);
+    expect(email.html).toContain("What &quot;working level&quot; means.");
   });
   it("ends with the sender, the mailing address, the website and an unsubscribe link (CASL: it offers a plan)", () => {
     expect(email.text).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
@@ -179,7 +179,7 @@ describe("the report email to the parent", () => {
 
     it("follows the verdict, with the child's name, in the text and the HTML (escaped)", () => {
       const email = reportEmail({ unsubscribeUrl: UNSUB, view: withSummary("{name} is working at a grade 3 level & {name}'s best area is Patterns and algebra."), parentName: "Priya", url: URL });
-      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nHow sure: Clear\nMaya is working at a grade 3 level & Maya's best area is Patterns and algebra.");
+      expect(email.text).toMatch(/That is one grade below Maya's school grade \(grade 4\)\.\nHow sure: Clear\nWhat "working level" means: [^\n]+\nMaya is working at a grade 3 level & Maya's best area is Patterns and algebra\./);
       expect(email.html).toContain("Maya is working at a grade 3 level &amp; Maya&#39;s best area is Patterns and algebra.");
     });
 
@@ -194,7 +194,7 @@ describe("the report email to the parent", () => {
 
     it("is absent without AI text", () => {
       const email = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
-      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nHow sure: Clear\n\nFor context");
+      expect(email.text).toMatch(/That is one grade below Maya's school grade \(grade 4\)\.\nHow sure: Clear\nWhat "working level" means: [^\n]+\n\nFor context/);
       expect(email.text).not.toContain("{name}");
     });
   });
@@ -275,7 +275,7 @@ describe("the alert to Savar for each finished test", () => {
     expect(alert().text).toContain("Help likely: no");
     const v = view(knowsUpTo(3));
     expect(alert({ view: { ...v, model: { ...v.model, helpWarning: true } }, flags: [{ kind: "helped", answer: "yes" }] }).text).toContain(
-      "Help likely: yes. The report says the level may be too high and suggests a retake.",
+      "Help likely: yes. The parent's report does not say so (D-305).",
     );
   });
   it("gives the number facts, or none; with the speed at every grade, as Savar is an admin", () => {

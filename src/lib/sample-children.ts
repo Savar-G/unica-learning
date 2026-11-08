@@ -234,6 +234,7 @@ export function sampleReportView(): ReportView {
     work: { required: questions[i].showWork === true, drawing: false, typed: false }, readAloud: null, away: null,
   }));
   const learner = learnerProfile({ placement, answers, help: "no", learning: null });
+  sampleLearner = learner;
   return {
     id: "sample",
     childName: SAMPLE_CHILDREN.a.name,
@@ -244,4 +245,15 @@ export function sampleReportView(): ReportView {
     model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
     findings: learner ? reportFindings(samplePlan(learner)) : null,
   };
+}
+
+let sampleLearner: LearnerProfile | null | undefined;
+
+/**
+ * D-305: the learner profile behind Leah's sample report, for her workbook 1 (src/lib/sample-book-one.ts). Kept out of
+ * sampleReportView, which browser code also calls: the planner's curriculum must not reach a browser bundle.
+ */
+export function sampleLearnerProfile(): LearnerProfile | null {
+  if (sampleLearner === undefined) sampleReportView();
+  return sampleLearner ?? null;
 }
