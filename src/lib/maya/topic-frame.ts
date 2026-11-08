@@ -57,14 +57,17 @@ export function topicNumbers(text: string, operation: Operation): number[] {
 
 const SCALE = /^A scale's marks are (\d+), (\d+), (\d+)\. True or false: (\d+) intervals above \2 is (\d+)\.$/;
 const MINUTE = /^True or false: the minute hand (\d) marks past the (\d{1,2}) shows (\d+) minutes\.$/;
+const MARBLES = /^True or false: with (\d+) red, (\d+) blue and (\d+) green marbles, red is more likely than the other colours together\.$/;
+const AREA = /^True or false: (\d+) by (\d+) squares is bigger than (\d+) by (\d+) squares\.$/;
 const MONEY = /^True or false: (\d+) \$20 bills and (\d+) quarters is \$\d+\.\d\d\.$/;
 /** "$60", "$0.75". */
 const dollars = (n: number) => "$" + (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
 /**
- * The topic sentence of a scale, minute-hand or money claim (C3b), by its closed form, when the operation is the one
- * that form gives: the scale's step between marks, the minute hand's 5 minutes a number, the bills' and quarters'
- * dollars. The claim's own question line follows it.
+ * The topic sentence of a scale, minute-hand or money claim (C3b), or a marbles or area claim (C3c), by its closed form,
+ * when the operation is the one that form gives: the scale's step between marks, the minute hand's 5 minutes a number,
+ * the bills' and quarters' dollars, when red is more likely, and the other area (code's product). The claim's own
+ * question line follows it.
  */
 function claimFrame(text: string, operation: Operation): string | null {
   const t = text.trim();
@@ -77,6 +80,14 @@ function claimFrame(text: string, operation: Operation): string | null {
   const minute = MINUTE.exec(t);
   if (minute && same(operation, { kind: "evaluate", operands: [`${minute[2]} × 5 + ${minute[1]}`] })) {
     return "Each number on the clock is 5 minutes. Each small mark is 1 more minute.";
+  }
+  const marbles = MARBLES.exec(t);
+  if (marbles && same(operation, { kind: "add", operands: [+marbles[2], +marbles[3]] })) {
+    return "Red is more likely only if there are more red marbles than blue and green together.";
+  }
+  const area = AREA.exec(t);
+  if (area && same(operation, { kind: "multiply", operands: [+area[1], +area[2]] })) {
+    return `${area[3]} by ${area[4]} squares is ${+area[3] * +area[4]} squares. Bigger means more squares.`;
   }
   const cash = MONEY.exec(t);
   if (cash) {

@@ -14,7 +14,7 @@ import { withTeachingOperation } from "@/lib/workbook-maya-operation";
 import { givesAway } from "./examples";
 import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "./limits";
 import { readTopicQuestion } from "./topic-claims";
-import { claimOperation, resultOf } from "./topic-claim";
+import { claimOperation, claimReading, resultOf } from "./topic-claim";
 import type { Deriver } from "./index";
 
 /**
@@ -23,6 +23,22 @@ import type { Deriver } from "./index";
  */
 const MONEY_EXAMPLES: Operation[] = [[20, 0.5], [20, 0.25], [20, 0.75], [10, 0.5], [2, 0.5], [2, 0.25], [1, 0.5]]
   .map(([d, q]) => ({ kind: "decimal-add", operands: [d, q] }));
+
+/**
+ * A sum's or a product's easier examples (marbles, area: C3c): two one-digit numbers that are none of the question's,
+ * with a smaller result, smallest first (lesson 11).
+ */
+function freshPairs(operation: Operation): Operation[] {
+  if (operation.kind !== "add" && operation.kind !== "multiply") return [];
+  const [a, b] = operation.operands as [number, number];
+  const result = operation.kind === "add" ? a + b : a * b;
+  const out: Operation[] = [];
+  for (let x = 2; x <= 9; x++) for (let y = 2; y <= x; y++) {
+    if ([a, b].includes(x) || [a, b].includes(y)) continue;
+    if ((operation.kind === "add" ? x + y : x * y) < result) out.push({ kind: operation.kind, operands: [x, y] });
+  }
+  return out;
+}
 
 /** The numbers of an expression, as written. */
 const numbersOf = (expr: string) => (expr.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
@@ -47,15 +63,17 @@ function freshExamples(operation: Operation, topic: "scale" | "minute-hand"): Op
 
 /** The teaching package of a scale, minute-hand or money claim, or null. */
 export function deriveTopicClaim(printed: QuestionPackage): QuestionPackage | null {
-  const reading = readTopicQuestion(printed);
-  if (!reading || (reading.topic !== "scale" && reading.topic !== "money" && reading.topic !== "minute-hand")) return null;
+  const reading = claimReading(printed);
+  if (!reading || !readTopicQuestion(printed)) return null;
   const operation = claimOperation(reading);
   const value = operation && resultOf(operation);
   if (!operation || value === null) return null;
   // The money operation must give what code's evaluate of the bills and quarters gives.
   if (reading.topic === "money" && !sameValue(operationResult(reading.work), { type: "number", value })) return null;
   const answer = { type: "number" as const, value };
-  for (const example of reading.topic === "money" ? MONEY_EXAMPLES : freshExamples(operation, reading.topic)) {
+  const examples = reading.topic === "money" ? MONEY_EXAMPLES
+    : reading.topic === "marbles" || reading.topic === "area" ? freshPairs(operation) : freshExamples(operation, reading.topic);
+  for (const example of examples) {
     const made = withTeachingOperation(printed, operation, answer, { source: TEACHING_SOURCE, limits: MAYA_TEACHING_LIMITS, examples: [example] });
     if (made?.easierExample && !givesAway(answer, made.easierExample.answer) && heldReason(made) === null) return made;
   }
