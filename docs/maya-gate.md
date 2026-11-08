@@ -13,6 +13,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 |---|---|
 | `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). |
 | `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6c, with the J06 cases W5d, W6b and W6c), added to `FIXTURES` and `BEHAVIOURS`. |
+| `src/lib/maya-gate/place-value-cases.ts` | Fixtures PVD, PVD0, PVV and PVV0: teaching packages the place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored place-value questions, and their behaviours (PV01 to PVJ2b), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -308,6 +309,38 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P5c | A | passing | Numeric work after an answer requires confirmation | checked answer retained | |
 | P5d | A | passing | The child already wrote the answer | checked answer | |
 
+### Place-value questions through the session adapter (B1a)
+
+Fixtures PVD, PVD0, PVV and PVV0 (`src/lib/maya-gate/place-value-cases.ts`) are the teaching packages Maya's place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored "which digit" and "value of the digit" questions. A digit question's chart has no digits on it; its H2 stripes the asked column, and it has no H3. A zero is said only after the child says it. Two misses on the last step get the easier example, then an honest close: there is no given answer for place value. The J06 cases show an early correct digit acknowledged, and a question about a place or a "why" answered, by the model and by code's fallback. Every first line on a step carries its framing (where the place is, or what each of it is worth), and a line that says Maya drew the chart, a stripe or a circle comes with that drawing, at any hint level (PV15 to PV17). Full-sentence work ("8 times 10,000 is 80,000.") is this question's work for the scope check (PVS1 to PVS4).
+
+| Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
+|---|---|---|---|---|---|
+| PV01 | PVD | passing | Which digit: says the right digit alone; accepted with no hint, the chart's digit and answer written in that turn | solved, independent | |
+| PV02 | PVD | passing | Which digit: says the left neighbour's digit, gets the places named from the right (no stripe), then says it | solved, hint | |
+| PV03 | PVD | passing | Which digit: says the value (3000); Maya says that is the value and asks for the digit, no credit | solved, independent | |
+| PV04 | PVV | passing | Value: the digit, then the value; the digit step is credited and the chart shows the value with its sentence | solved, independent | |
+| PV05 | PVV | passing | Value: one zero too few (8000); H1 says what each ten thousand is worth, then the child says 80000 | solved, hint | |
+| PV06 | PVV | passing | Value: says only the digit again after the digit step; Maya says that is the digit and asks for its value | solved, independent | |
+| PV07a | PVD0 | passing | Which digit, zero: Maya says 0 only after the child says it | solved, independent | |
+| PV07b | PVV0 | passing | Value, zero: the child says the digit is 0, which is also the value; accepted with the zero line | solved | |
+| PV10 | PVD | passing | Which digit: the child asks to be shown; the last step has no H3, so Maya helps one level up instead | solved | |
+| PV11 | PVD | passing | Which digit: two wrong answers; the easier example, then an honest close with no answer given | child_stopped, worked_example | |
+| PV14 | PVD | passing | Which digit: cannot start; the easier example of the same shape, then the child's own digit | solved, worked_example | |
+| PVJ1 | PVV | passing | J06, value: the child gives the digit before Maya asks; it is acknowledged and the help goes on to the value | solved, independent | |
+| PVJ1b | PVV | passing | J06, value: the model fails on an early digit; code hears the whole turn, acknowledges it and asks for the value | solved, independent | |
+| PVJ2 | PVD | passing | J06, which digit: the child asks which place is the thousands; Maya answers with code's line, then the child says the digit | solved, independent | |
+| PVJ2b | PVD | passing | J06, which digit: the model fails on a question about a place; code's fallback answers it first | solved | |
+| PV15 | PVD | passing | Which digit: 'I'm stuck.' first; code's first line says where the place is, counted from the right | solved | |
+| PV16 | PVD | passing | Which digit: 'I'm stuck.' first and the model starts at H2; code draws the chart and the stripe its line names | solved | |
+| PV17 | PVV | passing | Value: 'I'm stuck.' on the value step; code's first line says what each ten thousand is worth | solved | |
+| PVS1 | PVV | passing | Value: '8 times 10,000 is 80,000.' in a full sentence is the answer, not another problem | solved, independent | |
+| PVS2 | PVV | passing | Value: 'The 8 is in the ten thousands place.' is work on this question; Maya goes on to the value | solved | |
+| PVS3 | PVV | passing | Value: '8 times 1000 is 8000.' (one place too small) is checked as wrong work, never sent off topic | solved | |
+| PVS4 | PVD | passing | Which digit: '3 times 1000 is 3000.' is this question's work; Maya says that is the value and asks for the digit | solved | |
+| PVJ3 | PVV | passing | J06, value: 'Why do I multiply by 10,000?' gets code's answer, then the child says the value | solved, independent | |
+| PVJ3b | PVV | passing | J06, value: the model fails on 'Why do I multiply?'; code's fallback answers it first | solved | |
+| PV18 | PVV0 | passing | Value, zero digit: stuck twice; H1 names the places with no stripe, H2 stripes the empty column of a chart with no digits | solved | |
+| PV19 | PVD | passing | Which digit: 'I'm stuck.' four times; help rises to H2, the top of a last step, then the easier example, then the honest close | child_stopped, worked_example | |
 ### One-step workbook questions through the session adapter (Wave A)
 
 Fixtures W5, W3 and W6 (`src/lib/maya-gate/one-step-cases.ts`) are the teaching packages Maya's session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, as a call gets them. Each easier example has the question's own shape, one place smaller at a time, and the first one whose every step fits the strictest turn (25 words) is taken (`examples.ts`: 10 − 3 for 10000 − 3615, as each regroup across zeros is 33 words). W5 (10000 − 3615) and W6 (352418 + 41275) are above today's limits, so they run under Maya's wider limits only: they show her 5- and 6-digit columns, the place names she says, and the child's "ten thousands" and "hundred thousands" read as places, never as 10 or 100.

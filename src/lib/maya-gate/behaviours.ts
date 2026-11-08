@@ -8,6 +8,7 @@ import { packageLines, type LineOffer, type TemplateKey } from "@/lib/maya/lines
 import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
+import { PLACE_VALUE_BEHAVIOURS } from "./place-value-cases";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
@@ -2039,6 +2040,7 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
     },
   },
+  ...PLACE_VALUE_BEHAVIOURS,
   ...ONE_STEP_BEHAVIOURS,
 ];
 

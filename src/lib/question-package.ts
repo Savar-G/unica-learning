@@ -157,7 +157,9 @@ export type Operation =
   | { kind: "time-add"; operands: [ClockTime, Duration] }
   | { kind: "clock-convert"; operands: [ClockTime] }
   | { kind: "evaluate"; operands: [string]; values?: Record<string, number> }
-  | { kind: "solve"; operands: [string] };
+  | { kind: "solve"; operands: [string] }
+  /** Place value (Maya's session adapter only, never stored): the digit in a place of a whole number, or its value. */
+  | { kind: "place-value"; operands: [number]; ask: "digit" | "value"; place: Place };
 
 /** One operation shape for each kind, so a kind picks its shape. */
 type KindsOf<K extends string, O> = K extends string ? { kind: K; operands: O } : never;
@@ -339,6 +341,8 @@ export type WorkedStep =
       expression: string;
       total: number;
     }
+  /** The digit in one place of a place-value number (question-package-place-value.ts); `worth` is that place's value. */
+  | { id: string; kind: "read-digit"; place: Place; digit: number; worth: number }
   | { id: "result"; kind: "result"; value: AnswerValue };
 
 /** An expected wrong answer and its cause: a misconception id ("O3") and its plain description. */

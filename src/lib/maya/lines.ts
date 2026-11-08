@@ -22,6 +22,8 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { simplestWords, teachSteps } from "./fractions";
+import { placeValueLines, type PlaceValueTemplateKey } from "./place-value-lines";
+import { placeOpeningText } from "@/lib/question-package-place-value";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -34,8 +36,9 @@ import { simplestWords, teachSteps } from "./fractions";
  * step.order; check.not_yet never praises wrong work.
  * Version 11 (#605): a held question invites another question on the page, without an inability claim.
  * Version 13: answer-only clarification and checked regroup explanations from full practice.
+ * Version 14 (B1a): place value (place-value-lines.ts): chart.open, and the place-value templates of the shared ids.
  */
-export const LINES_VERSION = 13;
+export const LINES_VERSION = 14;
 
 export const LINE_IDS = [
   "about.ai",
@@ -45,6 +48,7 @@ export const LINE_IDS = [
   "open.hello",
   "question.problem",
   "question.read",
+  "chart.open",
   "assess.ask",
   "example.intro",
   "example.step",
@@ -115,8 +119,8 @@ export interface LineOffer {
   texts: string[];
   /** Original wording ids when spoken help removes visual variants. */
   wordingIds?: string[];
-  /** The template the variants come from. */
-  key: TemplateKey;
+  /** The template the variants come from: a shared one, or a place-value one (place-value-lines.ts). */
+  key: TemplateKey | PlaceValueTemplateKey;
   /** The text Maya may write on the board with this line: its expression or its equation. */
   board?: string;
 }
@@ -774,8 +778,10 @@ const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+/).map((s) => s.t
 
 /** Controller-owned opening. Only checked operation data is read aloud, never arbitrary workbook prose. */
 export function workbookOpening(pkg: OperationPackage): string | null {
+  // A place-value question is named without its number, so the opening fits a grade 3 turn (the number is on the page).
+  const expr = pkg.operation.kind === "place-value" ? placeOpeningText(pkg.operation) : operationText(pkg.operation);
   return pkg.ref.source === "workbook" ? WORKBOOK_OPENING
-    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", operationText(pkg.operation)) : null;
+    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", expr) : null;
 }
 
 /** One fixed confirmation, outside the model's selectable wordings. */
@@ -783,9 +789,14 @@ export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page
 
 /**
  * The lines of one checked question package, by situation. The session picks the ones an act may use now; every line
- * is filled from the package's checked numbers and steps.
+ * is filled from the package's checked numbers and steps. A place-value package has its own (place-value-lines.ts).
  */
-export function packageLines(pkg: OperationPackage) {
+export function packageLines(pkg: OperationPackage): PackageLines {
+  return pkg.operation.kind === "place-value" ? placeValueLines(pkg as Parameters<typeof placeValueLines>[0], sharedLines(pkg)) : sharedLines(pkg);
+}
+export type PackageLines = ReturnType<typeof sharedLines>;
+
+function sharedLines(pkg: OperationPackage) {
   const expr = operationText(pkg.operation);
   const exampleExpr = operationText(pkg.easierExample.operation);
   const answer = valueText(pkg.answer.value);
@@ -886,6 +897,8 @@ export function packageLines(pkg: OperationPackage) {
     workbook: (): LineOffer[] => [offer("redirect.workbook", "redirect.workbook", {})],
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr }) : offer("close.together", "close.together", { expr })],
+    /** An honest close of a question left unsolved (place value only, after the easier example): never the answer. */
+    closeUnsolved: (): LineOffer[] => [],
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
     stepIds: steps.map((s) => s.id),
@@ -927,7 +940,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.repair(),
+    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeUnsolved(), ...l.repair(),
     ...l.together(), ...l.guess(),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];
@@ -962,7 +975,7 @@ export function areaOffers(pkg: OperationPackage): LineOffer[] {
 /** Spoken versions keep the same checked math and require no visual action. */
 export function spokenOffer(o: LineOffer): LineOffer {
   if (o.line === "input.other") return offer("input.other", "input.spoken", {});
-  const keep = o.texts.map((_, i) => i).filter((i) => !/\b(?:look|watch|see|show me|follow along|find|bring down|write|put|on top|below|underneath|at the bottom)\b/i.test(o.texts[i]));
+  const keep = o.texts.map((_, i) => i).filter((i) => !/\b(?:look|watch|see|show me|follow along|find|bring down|write|put|on top|below|underneath|at the bottom|circle|circled|color|colored|chart)\b/i.test(o.texts[i]));
   // An equation says the same checked step aloud when every wording needs a visual action.
   if (keep.length) return { ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => `${o.key}#${i}`) };
   if (o.board) return { ...o, texts: [`${o.board}.`], wordingIds: [`spoken:${o.key}:${o.slots.step ?? ""}#0`] };
