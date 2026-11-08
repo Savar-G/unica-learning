@@ -1,0 +1,50 @@
+{
+  "round": "r-report-clarity",
+  "decision": "How should the parent report show where the child is, what they struggle with, and what workbook 1 holds?",
+  "evidence": "Cedric's results call with a parent on 2026-11-08: she read 'working at a grade 5 level' as 'only grade 5 work'; both her children's reports showed the 'level may be too high' warning.",
+  "primary_axis": "information hierarchy",
+  "invariants": [
+    "same sample child (Leah, Grade 3, working at grade 2) and the same computed test results",
+    "workbook 1 content from the real planner (planNextWorkbook, U9: unit 2.4 taught, Remember these from 1.2, 1.3, 1.7, 2.3, Challenge on 2.4)",
+    "no 'level may be too high' warning; working level defined under the headline",
+    "certainty shown once per section; plain topic names (UNIT_TITLES) with the BC wording small",
+    "the call offer beside the card offer, framed as changing workbook 1",
+    "existing report tokens and components (src/components/report.css)"
+  ],
+  "baseline": "current.html",
+  "options": [
+    {
+      "id": "A",
+      "artifact": "a-fix-in-place.html",
+      "bet": "Keep today's order; fix each section where it is",
+      "benefit": "Smallest change; parents who know the report find everything where it was",
+      "cost": "The answer to 'what will my child get' is still near the bottom, after the evidence",
+      "risk": "Parents stop reading before 'What's in workbook 1'"
+    },
+    {
+      "id": "B",
+      "artifact": "b-answer-first.html",
+      "bet": "Answer the three questions first (where, gaps, workbook 1, next step), then 'The details'",
+      "benefit": "A parent gets the whole story in the first two screens; the evidence becomes proof below",
+      "cost": "Topic names appear twice (summary and details); a longer page",
+      "risk": "The three-column summary can feel like a list of labels without the answers that explain them"
+    },
+    {
+      "id": "C",
+      "artifact": "c-grade-ladder.html",
+      "bet": "Replace the K-8 ruler with a grade ladder that shows test results and workbook 1 on the same rows",
+      "benefit": "One picture shows that workbook 1 spans grades: review below, main work at the working level, later books above",
+      "cost": "The densest graphic; the most new markup; harder in the email",
+      "risk": "Too many chips at once on a phone; a parent with a long list of topics sees a wall of chips"
+    }
+  ],
+  "screenshots": "shots/",
+  "chosen": {
+    "option": "B",
+    "by": "Savar",
+    "date": "2026-11-08",
+    "decision": "D-305",
+    "changes": "The call card keeps today's text ('Questions about {child}'s results?'), not the mockup's 'Want to change workbook 1?'.",
+    "built": "shots/built--*.jpg"
+  }
+}
