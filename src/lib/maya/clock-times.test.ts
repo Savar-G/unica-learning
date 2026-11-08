@@ -10,6 +10,7 @@ describe("clock times in a clock-time call", () => {
     ["6:53", time(6, 53)],
     ["7:03", time(7, 3)],
     ["12:05", time(12, 5)],
+    ["08:35", time(8, 35)],
     ["six fifty-three", time(6, 53)],
     ["six fifty three", time(6, 53)],
     ["seven oh three", time(7, 3)],
@@ -22,7 +23,7 @@ describe("clock times in a clock-time call", () => {
     expect(valuesIn(text, T)).toEqual([value]);
   });
 
-  it.each(["seven three", "half past six", "7.03", "703", "13:05", "6:75", "seven sixty", "quarter to seven"])("never reads %s as a time", (text) => {
+  it.each(["seven three", "half past six", "7.03", "703", "13:05", "6:75", "00:35", "seven sixty", "quarter to seven"])("never reads %s as a time", (text) => {
     expect(valuesIn(text, T).some((v) => v.type === "time")).toBe(false);
   });
 
