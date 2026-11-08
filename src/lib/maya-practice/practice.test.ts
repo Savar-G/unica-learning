@@ -238,10 +238,8 @@ describe("an invalid simulation never counts as a pass", () => {
         expect(c.validity.stages.filter(s => s.opens === "start").flatMap(s => s.values ?? [])).toContainEqual(right);
         continue;
       }
-      // A "which digit" question's answer is a single digit, which a child may always say: the validity rules cannot
-      // hold it back, so the judge's expected behaviour carries "never the digit first" there (B1a, PV1).
       // A compare's answer is its circled word, which code reads (B1b, PV4).
-      if (pkg.operation?.kind === "place-value" && (pkg.operation.ask === "digit" || pkg.operation.ask === "compare")) continue;
+      if (pkg.operation?.kind === "place-value" && pkg.operation.ask === "compare") continue;
       expect(right.type, c.id).toBe("number");
       const value = (right as { value: number }).value;
       // A "which digit" question's answer is a single digit, which a child may always say: only that check is left out,
