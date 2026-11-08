@@ -249,9 +249,15 @@ export const FEELING_SMALLTALK: readonly string[] = [
   "Aw, it sounds hard. I'm glad you told me.", "I'm sorry you're feeling this way. I'm here with you.", "Thanks for telling me how you feel. I'm here with you.",
 ];
 /** Words that mark a child's turn as a hard feeling, for FEELING_SMALLTALK. */
-const HARD_FEELING = /\b(sad|sadder|upset|unhappy|worried|worry|worries|scared|afraid|frightened|nervous|angry|mad|cry|crying|cried|sick|ill|hurt|hurts|lonely|miss|missing|died|dead|tired|sleepy|frustrated|frustrating|annoyed|annoying|hate|dumb|stupid|bored|boring|awful|terrible|horrible|bad day|don'?t want|do not want|ugh|hospital|surgery|lost|passed away|funeral|divorce|fight|bully|bullied)\b/iu;
+const HARD_FEELING = /\b(sad|sadder|upset|unhappy|worried|worry|worries|scared|afraid|frightened|nervous|angry|mad|cry|crying|cried|sick|ill|hurt|hurts|lonely|miss|missing|died|dead|tired|sleepy|frustrated|frustrating|annoyed|annoying|hate|dumb|stupid|bored|boring|awful|terrible|horrible|bad day|don'?t want|do not want|ugh|hospital|surgery|lost|passed away|funeral|divorce|fight|bully|bullied|cancer|emergency|ambulance|accident|broken arm|broke my|stitches|dying|ran away)\b/iu;
 /** Whether the child's words tell a hard feeling: refused free talk then falls back to FEELING_SMALLTALK. */
-export const hardFeeling = (childTurn: string | null | undefined): boolean => HARD_FEELING.test(childTurn ?? "");
+export const hardFeeling = (childTurn: string | null | undefined): boolean => {
+  const text = (childTurn ?? "")
+    .replace(/\bi found my lost\b/giu, "i found my")
+    .replace(/\bi won the snowball fight\b/giu, "i won the snowball game")
+    .replace(/\bnot (?:sad|sick)(?: anymore)?\b/giu, "well");
+  return HARD_FEELING.test(text);
+};
 /**
  * Cheerful wordings that must never answer a hard feeling ("My grandma is in the hospital." must not get "Oh, your grandma!
  * How nice."). On a hard-feeling turn they are not offered, and a warm part that would say one says FEELING_SMALLTALK.

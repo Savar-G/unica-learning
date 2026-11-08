@@ -510,7 +510,7 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
       const said = c.say({ act, ...(act === "redirect" ? { reading: { offTopic: true } } : {}), parts: [{ talk }, { warm: "back" }] }, passed(talk));
       expect(said.text.startsWith(`${talk} `)).toBe(true);
       const back = said.text.slice(talk.length + 1);
-      expect(PHRASES.back).toContain(back);
+      expect([...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK]).toContain(back);
       expect(talkMath(back)).toBeNull();
     }
   });
@@ -590,6 +590,23 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
       }
     });
 
+    it("offers only neutral or empathy phrases for serious disclosures", () => {
+      for (const text of ["My grandma has cancer.", "There was an emergency.", "An ambulance came.", "I had an accident.", "I broke my arm.", "I have a broken arm.", "I needed stitches.", GRANDMA]) {
+        expect(hardFeeling(text), text).toBe(true);
+        const c = call(); c.child(text);
+        for (const group of PHRASE_GROUPS) {
+          for (const offer of phraseOffers(c.s, group)) {
+            expect(group === "empathy" || (group === "smalltalk" && [...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].includes(offer.text)), `${text}: ${group}: ${offer.text}`).toBe(true);
+          }
+        }
+      }
+    });
+
+    it("recognises narrow happy and resolved statements without hiding mixed distress", () => {
+      for (const text of ["I found my lost dog!", "My grandma is not sick anymore!", "I am not sad, I am happy!", "I won the snowball fight!"]) expect(hardFeeling(text), text).toBe(false);
+      for (const text of ["I found my lost dog, but my grandma is sick.", "I am not sad but I am scared.", "I won but I hurt my arm.", "I have not found my lost dog."]) expect(hardFeeling(text), text).toBe(true);
+    });
+
     it("reads the new hard-feeling words; a cheerful pick on one is refused", () => {
       for (const turn of [GRANDMA, "My grandpa had surgery.", "My cat passed away.", "We went to a funeral.", "My parents are getting a divorce.", "I got in a fight.", "Someone bullied me.", "There is a bully at school.", "I lost my dog."]) {
         expect(hardFeeling(turn), turn).toBe(true);
@@ -607,7 +624,7 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
         c.child("This is so dumb and you're stupid.");
         const said = c.say({ act: "clarify", parts: [{ warm: "frustrated", echo }] });
         expect(said.text, echo).not.toMatch(/dumb|stupid/i);
-        expect(PHRASES.frustrated.filter((p) => !p.includes("{echo}")).map(bare)).toContain(said.text);
+        expect([...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].map(bare)).toContain(said.text);
       }
     });
 
