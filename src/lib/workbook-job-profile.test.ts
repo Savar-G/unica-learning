@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
+const policy = vi.hoisted(() => ({ countsCalls: false }));
+vi.mock("@/lib/workbook-call-policy", () => ({ get WORKBOOK_COUNTS_CALL_EVENTS() { return policy.countsCalls; } }));
 import { createSession, learnerProfile, storedTest } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { fakeAiClient } from "@/lib/ai-client-fake";
@@ -42,7 +44,7 @@ function setup({ test = true, ahead = false }: { test?: boolean; ahead?: boolean
   };
   const readers = memoryReportReaders(tables);
   const learner = memoryLearnerProfileStore(tables);
-  const family = memoryChildProfiles({ children: [{ id: CHILD, parentId: PARENT, grade: 4 }], tests: [] });
+  const family = memoryChildProfiles({ children: [{ id: CHILD, parentId: PARENT, grade: 4 }], tests: [{ id: TEST, childId: CHILD, completedAt: COMPLETED, profile: null }] });
   // Both adapters read the same in-memory learner profile rows, as the live stores do.
   const profiles: ChildProfileStore = {
     ...family.profiles,
@@ -99,7 +101,7 @@ function setup({ test = true, ahead = false }: { test?: boolean; ahead?: boolean
   const store = (profile: unknown, schemaVersion = 1, assessmentId = TEST) => {
     learner.rows().push({ assessmentId, parentId: PARENT, childId: CHILD, schemaVersion, profile });
   };
-  return { runs, drafts, deps, start, seams, profiles, rebuilds, learner, tables, facts, store, ai, reader: readers.key() };
+  return { runs, drafts, deps, start, seams, profiles, events: family.events, rebuilds, learner, tables, facts, store, ai, reader: readers.key() };
 }
 
 describe("P2 profile at plan time", () => {
@@ -349,4 +351,89 @@ describe("P2 profile at plan time", () => {
     expect(await readChildProfile(s.profiles, CHILD)).toBeNull();
     expect(s.rebuilds).toEqual({ prepare: 1, learner: 0, child: 1 });
   });
+});
+
+
+it("leaves call events out of the workbook plan", async () => {
+  const plain = setup({ test: false });
+  const calls = setup({ test: false });
+  for (let i = 0; i < 8; i++) {
+    await calls.events.insert({ key: `call:${i}`, parentId: PARENT, childId: CHILD, source: "call",
+      question: { source: "workbook", workbookId: TEST, page: 1, question: i + 1 },
+      skill: { standard: "3.3", skills: [] }, result: "right", stuckStep: null, mistake: null,
+      hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: { kind: "call", id: `call:${i}` } });
+  }
+  const plainId = await plain.start();
+  const callId = await calls.start();
+  expect(await runWorkbookJob(plainId, plain.deps)).toBe("handed-on");
+  expect(await runWorkbookJob(callId, calls.deps)).toBe("handed-on");
+  expect((await calls.runs.frame(callId))!.plan).toEqual((await plain.runs.frame(plainId))!.plan);
+  expect((await readChildProfile(calls.profiles, CHILD))!.profile.events.counted).toBe(8);
+});
+
+
+it.each(["marking", "assessment"] as const)("keeps %s events in the workbook plan", async (source) => {
+  const plain = setup({ test: false });
+  const withEvents = setup({ test: false });
+  for (const fixture of [plain, withEvents]) {
+    await fixture.events.insert({ key: "call:guard", parentId: PARENT, childId: CHILD, source: "call",
+      question: { source: "workbook", workbookId: TEST, page: 1, question: 99 },
+      skill: { standard: "3.1", skills: [] }, result: "right", stuckStep: null, mistake: null,
+      hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  }
+  for (let i = 0; i < 8; i++) {
+    const inserted = await withEvents.events.insert({ key: `${source}:${i}`, parentId: PARENT, childId: CHILD, source,
+      question: source === "assessment" ? { source: "assessment", assessmentId: TEST, questionId: `q-${i}` } : { source: "workbook", workbookId: TEST, page: 1, question: i + 1 },
+      skill: { standard: "3.3", skills: [] }, result: "right", stuckStep: null, mistake: null,
+      hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+    expect(inserted).toHaveProperty("created", true);
+  }
+  const plainId = await plain.start();
+  const eventId = await withEvents.start();
+  expect(await runWorkbookJob(plainId, plain.deps)).toBe("handed-on");
+  expect(await runWorkbookJob(eventId, withEvents.deps)).toBe("handed-on");
+  expect((await withEvents.runs.frame(eventId))!.plan).not.toEqual((await plain.runs.frame(plainId))!.plan);
+});
+
+it("counts calls when enabled and keeps the stored profile unchanged by the filtered read", async () => {
+  const s = setup({ test: false });
+  const plain = setup({ test: false });
+  for (let i = 0; i < 8; i++) {
+    await s.events.insert({ key: `call:${i}`, parentId: PARENT, childId: CHILD, source: "call",
+      question: { source: "workbook", workbookId: TEST, page: 1, question: i + 1 },
+      skill: { standard: "3.3", skills: [] }, result: "right", stuckStep: null, mistake: null,
+      hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  }
+  const plainId = await plain.start();
+  expect(await runWorkbookJob(plainId, plain.deps)).toBe("handed-on");
+  policy.countsCalls = true;
+  const enabledId = await s.start();
+  try {
+    expect(await runWorkbookJob(enabledId, s.deps)).toBe("handed-on");
+  } finally {
+    policy.countsCalls = false;
+  }
+  const enabledPlan = (await s.runs.frame(enabledId))!.plan;
+  expect(enabledPlan).not.toEqual((await plain.runs.frame(plainId))!.plan);
+  const full = await readChildProfile(s.profiles, CHILD);
+  expect(full?.profile.events.counted).toBe(8);
+  const filtered = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  expect(filtered.ok && filtered.profile).toBeNull();
+  const stored = await readChildProfile(s.profiles, CHILD);
+  expect(stored?.profile).toEqual(full?.profile);
+});
+
+it("refuses to resume a frame made with another call event policy", async () => {
+  const s = setup({ test: false });
+  const id = await s.start();
+  expect(await runWorkbookJob(id, s.deps)).toBe("handed-on");
+  const frame = (await s.runs.frame(id))!;
+  expect(frame.countsCallEvents).toBe(false);
+  const original = s.deps.runs.frame;
+  s.deps.runs.frame = async (runId) => {
+    const saved = await original(runId);
+    return saved ? { ...saved, countsCallEvents: true } : saved;
+  };
+  expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
+  expect((await s.runs.run(id))?.error).toContain("call event policy changed");
 });
