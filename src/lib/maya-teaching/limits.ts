@@ -3,7 +3,12 @@
 // limits: nothing here is used unless a caller passes it. Pure TypeScript.
 import type { OperationLimits } from "@/lib/question-package";
 
-/** The marker the session adapter puts on a package it made. A stored package never carries it (index.ts re-derives one that does). */
+/**
+ * The marker the session adapter puts on a package it made. A workbook's stored package never carries it. A live call's
+ * saved record does (`maya_calls.live.package`), and a resumed call keeps that package as it is, on purpose: the saved
+ * session holds its own copy, and making it again mid-call could part the record from the package the call taught.
+ * Given a marked package, `teachingPackage` (index.ts) drops its teaching data and makes it again.
+ */
 export const TEACHING_SOURCE = "maya-teaching";
 
 /**

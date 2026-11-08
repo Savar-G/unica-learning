@@ -20,7 +20,8 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Above the sum of its step limits (checkout 2, setup 1, npm ci 5, Chromium 2, tests 35, eslint 5, build 10).
+    timeout-minutes: 65
     permissions:
       contents: read
     outputs:
@@ -59,8 +60,10 @@ jobs:
         run: node -e 'import("@sparticuz/chromium").then(async (m) => console.log(await m.default.executablePath()))'
         timeout-minutes: 2
       # The 2-core runner is slower than a laptop: the assessment bank tests pass the 5 s default locally but not here.
+      # One job merges and pushes main, so the suite is not sharded here. On 2026-11-08 one full run took over 20 minutes
+      # on this runner type (main CI run 42452867626 timed out at 22); 35 leaves a margin.
       - run: npm test -- --testTimeout=60000
-        timeout-minutes: 10
+        timeout-minutes: 35
       - run: npx eslint src
         timeout-minutes: 5
       - run: npm run build

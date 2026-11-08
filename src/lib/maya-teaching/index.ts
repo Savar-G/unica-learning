@@ -32,8 +32,9 @@ const TEACHING_FIELDS: readonly string[] = ["operation", "answer", "steps", "wro
 
 /**
  * The package Maya teaches from: a stored workbook package with no operation gets checked teaching data from the first
- * deriver that makes it; anything else comes back unchanged. A package already marked as made here is never trusted:
- * its teaching data is dropped and made again from the printed question.
+ * deriver that makes it; anything else comes back unchanged. A package given here already marked as made here is never
+ * trusted: its teaching data is dropped and made again from the printed question. (A resumed call does not come here: it
+ * keeps the package its saved session started with, limits.ts.)
  */
 export function teachingPackage(stored: unknown): unknown {
   const base = marked(stored) ? printedWorkbookQuestion(stored as QuestionPackage) : stored;

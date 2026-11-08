@@ -18,29 +18,32 @@ function action(button: string, on: NotePage, pages: readonly NotePage[], link: 
 const ACCOUNT_PAGE = { href: ACCOUNT_PATH, label: "account page" };
 const PLAN_PAGE = { href: "/account/plan", label: "plan page" };
 
+/** The class beside acct-alert gives the note its own spacing under the page's heading (src/ds/styles/support.css). */
+const Note = ({ children }: { children: ReactNode }) => <div role="status" className="acct-alert plan-closed-note">{children}</div>;
+
 /** What a closed family reads: why the product is closed, and which button helps. The pages it names stay open to the family. */
 export function PlanClosedNote({ closed: { reason, child }, on }: { closed: ClosedPlan; on: NotePage }) {
   const plan = child ? `${child}'s plan` : "Your family's plan";
-  const closed = "so Scan pages and Maya are closed";
+  const closed = "so Scan pages, Maya and your dashboard are closed";
   switch (reason) {
     case "payment_failed":
       return (
-        <div role="status" className="acct-alert">
+        <Note>
           <p>Your last payment{child ? ` for ${child}` : ""} did not go through, {closed} for now.</p>
           <p>To pay, {action("Update card", on, ["account"], ACCOUNT_PAGE)}. Access comes back after the next payment goes through, which can take a few days.</p>
           <p>To stop the plan, {action("Cancel plan", on, ["plan"], PLAN_PAGE)}.</p>
-        </div>
+        </Note>
       );
     case "ended":
       return (
-        <div role="status" className="acct-alert">
+        <Note>
           <p>{plan} has ended, {closed}.</p>
           <p>To start again, {action("Restart plan", on, ["plan", "account"], PLAN_PAGE)}.</p>
-        </div>
+        </Note>
       );
     case "paused":
-      return <div role="status" className="acct-alert"><p>{plan} is paused, {closed} until it resumes.</p></div>;
+      return <Note><p>{plan} is paused, {closed} until it resumes.</p></Note>;
     default:
-      return <div role="status" className="acct-alert"><p>{plan} is not running, {closed} for now.</p></div>;
+      return <Note><p>{plan} is not running, {closed} for now.</p></Note>;
   }
 }

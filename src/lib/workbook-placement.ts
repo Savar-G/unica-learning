@@ -2,7 +2,7 @@
 import type { Grade } from "@/lib/assessment";
 import type { ChildLearnerProfile } from "@/lib/child-profile";
 import type { Curriculum, CurriculumLevel } from "@/lib/workbook-curriculum";
-import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
+import { planLevel, planWorkbook, type WorkbookPlan, type PlanInput } from "@/lib/workbook-plan";
 import { bookSignals, type BookSignals, type BookStandard } from "@/lib/workbook-signals";
 import { workbookWhy } from "@/lib/workbook-why";
 
@@ -89,7 +89,7 @@ export function placeChild(o: PlacementInput): PlacedChild {
 }
 
 /** Plans from clear secure results only at the first start level. Legacy input keeps the previous plan unchanged. */
-export function planNextWorkbook(o: PlacementInput & { number: number }): NextWorkbookResult {
+export function planNextWorkbook(o: PlacementInput & { number: number }, capture?: (input: PlanInput) => void): NextWorkbookResult {
   const place = placeChild(o);
   const level = planLevel(o.curriculum, place.level.id);
   if (!level) return { ok: false, reason: `the curriculum has no level ${place.level.id}` };
@@ -98,13 +98,16 @@ export function planNextWorkbook(o: PlacementInput & { number: number }): NextWo
   const own = new Set(place.level.units);
   const standards = (o.profile?.standards ?? []).map(s => signals.hasAssessment && place.first && own.has(s.code) && s.status === "secure" && s.certainty !== "clear" ? { code: s.code, status: "developing" as const } : s);
   const unassessedUnits = place.first ? place.level.units.filter(u => !known.has(u)) : [];
-  const result = planWorkbook({
+  const planning: PlanInput = {
     profile: { standards }, grade: o.grade, level, passed: {},
     ...(signals.hasAssessment ? { personal: signals } : {}),
     workbook: { number: o.number, inLevel: place.inLevel },
     reviews: [], missedReviews: [], misses: [], pausedWeeks: 0,
     support: place.support, unassessedUnits,
-  });
+  };
+  // Capture the exact public planner input. A consumer cannot change the plan through this copy.
+  capture?.(structuredClone(planning));
+  const result = planWorkbook(planning);
   if (!result.ok) return { ...result, levelId: place.level.id, placement: place.trace };
   const trace: PlacementTrace = { ...place.trace, rules: [...place.trace.rules] };
   if (signals.hasAssessment) {

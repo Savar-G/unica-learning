@@ -45,6 +45,17 @@ it("gives a closed family with a failed payment the way to pay, the cancel butto
   expect(out).toContain('Please <a href="/account/settings">update your card</a>.');
   expect(out).toContain("Cancel plan");
   expect(out).not.toContain("To update your card, email");
+  // The note gives the reason. The note is mocked here, so only the card's own sentence could say it.
+  expect(out).not.toContain("did not go through");
+});
+
+it("keeps the card's reason when the note does not give it", async () => {
+  f.manage = true; f.closed = null;
+  expect(await page()).toContain("Your last payment did not go through.");
+  f.closed = { reason: "unknown", child: null };
+  expect(await page()).toContain("Your last payment did not go through.");
+  f.closed = { reason: "payment_failed", child: "Mia" };
+  expect(await page()).toContain("Your last payment did not go through.");
 });
 
 it("offers Restart to a closed family whose plan ended", async () => {

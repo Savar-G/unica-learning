@@ -59,6 +59,50 @@ export const ONE_STEP_BEHAVIOURS: Behaviour[] = [
     ],
     expect: { outcome: { reason: "solved", assistance: "worked_example" }, acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "accept_answer", "ask_write", "close"], counts: { refusals: 0 } },
   },
+  // J06 (#698 practice, wave-a-brief): an early, own-words right step is acknowledged and not asked again; a question
+  // about the current step gets a code-written answer before going on. Both on the credit rules of #698, unchanged.
+  {
+    id: "W6b", title: "352418 + 41275, J06: the ones given early in the child's own words ('I wrote 3 and carried 1.') is acknowledged once and never asked again", fixture: "W6", status: "passing",
+    steps: [
+      child("I wrote 3 and carried 1.", { start: "has_work", answers: [[3, "ones", "right"]] }, next("tens")),
+      child("1 plus 7 plus 1 is 9.", { answers: [[9, "tens", "right"]] }, next("hundreds")),
+      child("4 plus 2 is 6.", { answers: [[6, "hundreds", "right"]] }, next("thousands")),
+      child("2 plus 1 is 3.", { answers: [[3, "thousands", "right"]] }, next("ten thousands")),
+      child("5 plus 4 is 9.", { answers: [[9, "ten thousands", "right"]] }, next("hundred thousands")),
+      child("3 hundred thousands, so 393693.", { answers: [[393693, "result", "right"]] }),
+      ...solvedEnd,
+    ],
+    expect: { outcome: { reason: "solved" }, acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"], counts: { refusals: 0, confirmations: 0 } },
+  },
+  {
+    id: "W6c", title: "352418 + 41275, J06: 'Why does the 1 go to the tens?' gets the code-written answer (where the carried ten comes from), then the tens", fixture: "W6", status: "passing",
+    steps: [
+      child("8 plus 5 is 13.", { start: "has_work", answers: [[13, "ones", "right"]] }, next("tens")),
+      child("Why does the 1 go to the tens?", { help: "more" }, [{ act: "guide", step: "tens", level: 1, lines: ["step.regroup"] }]),
+      child("1 plus 7 plus 1 is 9.", { answers: [[9, "tens", "right"]] }, next("hundreds")),
+      child("4 plus 2 is 6.", { answers: [[6, "hundreds", "right"]] }, next("thousands")),
+      child("2 plus 1 is 3.", { answers: [[3, "thousands", "right"]] }, next("ten thousands")),
+      child("5 plus 4 is 9.", { answers: [[9, "ten thousands", "right"]] }, next("hundred thousands")),
+      child("3 hundred thousands, so 393693.", { answers: [[393693, "result", "right"]] }),
+      ...solvedEnd,
+    ],
+    expect: { outcome: { reason: "solved", assistance: "hint" }, acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"], counts: { refusals: 0 } },
+  },
+  {
+    id: "W5d", title: "10000 − 3615, J06: 'Why do I have to regroup?' on the ones gets the code-written answer; the full sentence '10000 minus 3615 is 6385.' is confirmed once, then accepted", fixture: "W5", status: "passing",
+    steps: [
+      child("I got 7615.", { start: "has_work", answers: [[7615, "result", "wrong"]] }, [{ act: "guide", step: "ones", level: 1 }]),
+      child("Why do I have to regroup?", { help: "more" }, [{ act: "guide", step: "ones", level: 2, lines: ["step.regroup"] }]),
+      child("10 take away 5 is 5.", { answers: [[5, "ones", "right"]] }, next("tens")),
+      child("9 take away 1 is 8.", { answers: [[8, "tens", "right"]] }, next("hundreds")),
+      child("9 take away 6 is 3.", { answers: [[3, "hundreds", "right"]] }, next("thousands")),
+      // A subtraction said in full ("minus") is read as not sure, as for 52 − 28: one confirm, then a yes accepts it.
+      child("10000 minus 3615 is 6385.", undefined, [{ act: "confirm", heard: "6385" }]),
+      child("Yes.", { answers: [[6385, "result", "right"]] }),
+      ...solvedEnd,
+    ],
+    expect: { outcome: { reason: "solved", assistance: "hint", highestHint: 2 }, acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "confirm", "accept_answer", "ask_write", "close"], counts: { refusals: 0, confirmations: 1 } },
+  },
   {
     id: "W3a", title: "284 × 7 'Each crate has' story, says 1488 (drops the carries): each row digit with its carry is guided", fixture: "W3", status: "passing",
     steps: [

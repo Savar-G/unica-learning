@@ -2808,6 +2808,9 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
  * the gentlest invite, so no line names a carried digit before the child hears where it comes from. The regroup line
  * of the column a carry comes from is offered only then (it says that column's sum).
  */
+/** The step.why keys that answer a question about the step itself, not a regroup: offered before any regroup line. */
+const STEP_WHY_KEYS: readonly string[] = ["frame.why", "trial.why", "pattern.why"];
+
 function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View, framing = false): LineOffer[] {
   const pending = (view.regroup ?? []).filter((c) => c.at === id);
   const own = l.help(id, framing);
@@ -2815,8 +2818,9 @@ function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View,
   const said = (view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= 1;
   // The second way (step.why, #605) comes only after the regroup line, for "why?" or when the first did not land.
   if (pending.length === 0) {
-    // A missing number's step.why (missing-number.ts) answers a question about its first step; it is no regroup line.
-    return own.filter((o) => (o.line === "step.why" ? said || o.key !== "regroup.why"
+    // A missing number's and a pattern's step.why (missing-number.ts, pattern-lines.ts) answer a question about the step;
+    // they are no regroup line. An exact list: every other step.why is a regroup's second way (#605).
+    return own.filter((o) => (o.line === "step.why" ? said || STEP_WHY_KEYS.includes(o.key)
       : o.line !== "step.regroup" || !((view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= MAX_REGROUP_SAYS)));
   }
   // Explain an incoming carry before any outgoing explanation that uses it.
