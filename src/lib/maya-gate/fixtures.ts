@@ -3,7 +3,9 @@
 // worked-steps code, with its wrong answers and an easier example, checked by `checkQuestionPackage` like any package.
 // `A_BAD_KEY` is fixture A with a wrong answer key (56 while the checked steps total 66), for the content hold (C36).
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
-// not teach yet (equivalent fractions, C36b).
+// not teach yet (equivalent fractions, C36b). `EV_TWO`, `EV_STORY` and `EV_MISSING` are evaluate questions (Wave A, A2):
+// a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
+// numbers, in the shapes of the workbook's multi-step templates.
 import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { deriveDieCount } from "@/lib/maya-teaching/die-count";
 import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
@@ -15,6 +17,7 @@ import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, ty
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId;
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "EV_TWO" | "EV_STORY" | "EV_MISSING";
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -124,6 +127,37 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     level: 17,
     wrong: [{ value: frac(11, 12), cause: "F9", description: "Adds the same number to the top and the bottom", step: null }],
     easier: { text: "1/2 = ?/4", operation: { kind: "fraction-equivalent", operands: [frac(1, 2)], denominator: 4 }, answer: frac(2, 4) },
+  }),
+  // Evaluate (Wave A, A2): each part in the order of operations, with an easier example of the same shape.
+  EV_TWO: fixture({
+    id: "gate-EV-7x640+7x30",
+    text: "What is 7 × 640 + 7 × 30?",
+    operation: { kind: "evaluate", operands: ["7 × 640 + 7 × 30"] },
+    answer: num(4690),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(4480), cause: "stops-early", description: "Works out only the first part", step: null }],
+    easier: { text: "2 × 30 + 2 × 4 = ?", operation: { kind: "evaluate", operands: ["2 × 30 + 2 × 4"] }, answer: num(68) },
+  }),
+  EV_STORY: fixture({
+    id: "gate-EV-4x260-590",
+    text: "A shop has 4 boxes with 260 beads in each. It sells 590 beads. How many beads does it have now?",
+    operation: { kind: "evaluate", operands: ["4 × 260 − 590"] },
+    answer: num(450),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(1630), cause: "wrong-operation", description: "Adds the beads sold", step: null }],
+    easier: { text: "3 × 20 − 15 = ?", operation: { kind: "evaluate", operands: ["3 × 20 − 15"] }, answer: num(45) },
+  }),
+  EV_MISSING: fixture({
+    id: "gate-EV-8x?=7360-400",
+    text: "8 × ? = 7360 − 400",
+    operation: { kind: "evaluate", operands: ["(7360 − 400) ÷ 8"] },
+    answer: num(870),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(6960), cause: "stops-early", description: "Works out the other side and stops", step: null }],
+    easier: { text: "(20 − 4) ÷ 8 = ?", operation: { kind: "evaluate", operands: ["(20 − 4) ÷ 8"] }, answer: num(2) },
   }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },

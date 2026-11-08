@@ -154,6 +154,10 @@ const A_SOLVES: Stage = { name: "first try", opens: "start", numbers: [...A_WORK
  */
 const CARRY_SLIPS = [56, 5, 516, 616] as const;
 const A_CARRY_SLIPS: Stage = { name: "carry slips", opens: "example", numbers: [...CARRY_SLIPS] };
+/** 7 × 640 + 7 × 30 = 4690 part by part (Wave A, A2): each part, its columns (4 × 7 = 28, 6 × 7 + 2 = 44, 3 × 7 = 21) and the sum. */
+const EV_TWO_WORK = [4480, 210, 28, 44, 21] as const;
+/** 4 × 260 − 590 = 450 part by part: 4 × 260 = 1040 by its columns (6 × 4 = 24, 2 × 4 + 2 = 10), then 1040 − 590. */
+const EV_STORY_WORK = [1040, 24, 10, 14, 5] as const;
 
 export interface PracticeCase {
   /** The research id. */
@@ -480,6 +484,29 @@ export const PRACTICE_CASES: PracticeCase[] = [
     fakeScript: ["The hexagon has 6 and the pentagon has 5, so I got 11.", "Because 6 and 5 make 11.", "I wrote it."],
   },
   ...ONE_STEP_PRACTICE,
+  // Evaluate questions (Wave A, A2): a two-part expression, and a story's two operations.
+  {
+    id: "EV1",
+    title: "Works a two-part expression from left to right",
+    fixture: "EV_TWO",
+    persona: { name: "Maddie", age: 10, question: "What is 7 × 640 + 7 × 30?", knows: "You know your multiplication facts and how to multiply by a one-digit number. You think you always work from left to right, so you want to do 640 + 7 first and get 647. Once someone tells you to multiply first, you can do 7 × 640 = 4480 and 7 × 30 = 210, then 4480 + 210 = 4690.", behaviour: "Start by saying you did 640 + 7 first and got 647. Then follow Maya's help one part at a time." },
+    expected: "Do not accept 647. Say in code's words that multiplying comes before adding, then guide each part in order: 7 × 640, then 7 × 30, then the sum. Check each part the child gives. Do not give a part's result or the answer.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [647, 640, 7, 30] }, { name: "after help", opens: "help", numbers: [...EV_TWO_WORK, 4690] }], firstNumbers: [647, 640, 7] },
+    fakeScript: ["I did 640 plus 7 first. It's 647.", "Oh. 7 times 640 is 4480.", "7 times 30 is 210.", "I got 4690.", "Because I multiplied first.", "I wrote it."],
+  },
+  {
+    id: "EV2",
+    title: "Cannot start a two-step story",
+    fixture: "EV_STORY",
+    persona: { name: "Omar", age: 10, question: "A shop has 4 boxes with 260 beads in each. It sells 590 beads. How many beads does it have now?", knows: "You can multiply by a one-digit number and subtract with regrouping. You do not know which step to do first in a story with two steps. After you see an example, you do 4 × 260 = 1040 first, then 1040 − 590 = 450.", behaviour: "Start by saying you don't know how to start. Follow Maya's help one step at a time. After you have seen an example, try your own question." },
+    expected: "Show the easier example of the same shape (a product, then a subtraction), then return to the story for a child attempt. Guide 4 × 260 first, then 1040 − 590, and check each part. Do not reveal 450.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [4, 260, 590] }, { name: "easier example", opens: "example", numbers: exampleNumbers("EV_STORY") }, { name: "after help", opens: "help", numbers: [...EV_STORY_WORK, 450] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    fakeScript: ["I don't know how to start.", "okay", "okay", "4 times 260 is 1040.", "I got 450.", "Because I did the boxes first.", "I wrote it."],
+  },
 ];
 
 /** How many times each case runs (research, section 8: three recorded repetitions). */

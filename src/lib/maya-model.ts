@@ -20,6 +20,7 @@ import {
 } from "@/lib/maya";
 import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
+import { evaluateModelSteps } from "@/lib/maya/evaluate";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
 export const PROMPT_VERSION = "maya-text-chat-29";
@@ -88,7 +89,8 @@ export function modelInput(session: Session, repair: ModelInput["repair"] = null
       ? {
           text: pkg.text,
           answer: valueText(pkg.answer.value),
-          steps: pkg.steps.filter((s) => s.kind !== "result").map((s) => ({ id: s.id, text: stepText(s, pkg.operation) })),
+          // An evaluate question's steps are its parts and each part's columns (src/lib/maya/evaluate.ts).
+          steps: evaluateModelSteps(pkg) ?? pkg.steps.filter((s) => s.kind !== "result").map((s) => ({ id: s.id, text: stepText(s, pkg.operation) })),
           easierExample: pkg.easierExample.text,
         }
       : null,
