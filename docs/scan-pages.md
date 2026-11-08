@@ -175,7 +175,41 @@ Savar decided on 7 November that AI does all marking and a parent marks no quest
 
 The printed item has two work areas and one final-answer box. The model reads all three regions on the whole page. It transcribes each method as written, one step per line, and it never leaves out or tidies a step. It receives the question with each method region and no answer. For each method it also gives a verdict: `solves`, `does-not-solve` or `unsure`, with a short reason. The reason is evidence for the team and is never shown to a parent.
 
-Until the method rules ship (`TWO_WAYS_METHOD_MARKS` in `src/lib/scan-marking.ts` is off), every two-ways item waits for our team, whatever the reading shows. It is never Right, Wrong or Blank by code. The parent sees "Our team is checking this answer.", with the retake line only for a blurry or cut-off part (#717). Our team's mark finishes the item and publishes its event. The rules, their method kinds and their strategy families are in D-302 and ship apart.
+Code marks the item with the method rules in `src/lib/scan-marking-methods.ts` (`TWO_WAYS_METHOD_MARKS` on, D-302). It uses an allow-list and fails closed. A method is valid only when the AI says `solves`, every written step is true arithmetic, and code recognizes the whole method as one kind from the fixed list for the question's shape:
+
+| Question shape | Kinds |
+| --- | --- |
+| `a + b = ?` | split one addend, partial sums, compensation, column, counting on |
+| `a - b = ?` | split the subtrahend, partial differences, compensation, column, counting back, counting up |
+| `a × b = ?` | split a factor, round and adjust, strip zeros, strip zeros from one factor, repeated addition, skip counting |
+| `a ÷ b = ?` | repeated subtraction, skip counting, repeated addition, division with tens, build-up |
+| `a × ? = c`, `c ÷ ? = a` | the inverse division, plus the division kinds |
+| `a + ? = c`, `a - ? = c` | the inverse subtraction, plus the subtraction kinds |
+| `? - a = c` | the inverse addition, plus the addition kinds |
+| `? ÷ a = c` | the inverse multiplication, plus the multiplication kinds |
+
+Each kind accounts for every number, so padding, an extra line, a copied question and a check that uses the answer have no kind. For multiplication and division, no line may be the question's own operation on its own numbers, and no line may use the answer as an operand, unless it carries an earlier result or the question prints the same number.
+
+Two ways means two different strategies. Kinds group into families, and two kinds of one family are one strategy written twice, so the item waits for our team:
+
+| Family | Kinds |
+| --- | --- |
+| jump | split one addend, counting on |
+| split by place | partial sums, partial differences |
+| compensation | compensation, round and adjust |
+| column | column |
+| jump back | split the subtrahend, counting back |
+| count up | counting up |
+| split a factor | split a factor |
+| tens | strip zeros, strip zeros from one factor |
+| groups up | repeated addition, skip counting |
+| groups down | repeated subtraction |
+| divide | division with tens, the inverse division |
+| build-up | build-up |
+
+A one-line inverse is the same strategy as working out that operation: the inverse subtraction conflicts with jump back, split by place, compensation and column. The inverse addition conflicts with jump, split by place, compensation and column. The inverse multiplication conflicts with split a factor, compensation and tens.
+
+An item is Right only when the answer is right and both methods are valid and of different strategies. A false step or `does-not-solve` makes it Wrong, and so does a missing method. Anything else waits for our team ("Our team is checking this answer."). The 7 two-ways questions of the first book each have two possible strategies: `7 × 360` (split a factor and tens), `50 × 80` (tens and round and adjust) and the five missing factors (the inverse division and a build-up).
 
 The item keeps one crop of both work areas and the answer box, one canonical result and one event key. It follows its frozen mastery decision. The stored package and print contract stay unchanged. Missing or invalid measured regions make no crop and no reading.
 
@@ -183,7 +217,7 @@ Prompt v8 adds the method reading. It is frozen for the paid run: a test pins th
 
 ### Round 9 coverage
 
-The first-customer round 9 contract (`bfc5542e`) has 582 questions: 582 have an AI reading path, 0 have a parent marking path and 0 are unsupported ([coverage record](scan-marking-first-book-coverage-ai-only-20261107.json)). The 7 two-ways items wait for our team on every supplied reading. No label, on any path, asks a parent to judge, and no page history status does (#717). This is supplied-reading route proof. It does not prove recognition.
+The first-customer round 9 contract (`bfc5542e`) has 582 questions: 582 have an AI reading path, 0 have a parent marking path and 0 are unsupported ([coverage record](scan-marking-first-book-coverage-ai-only-20261107.json)). Each of the 7 two-ways items gives its expected mark on every supplied reading. No label, on any path, asks a parent to judge, and no page history status does (#717). This is supplied-reading route proof. It does not prove recognition.
 
 ### Database
 

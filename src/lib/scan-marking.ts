@@ -5,7 +5,7 @@ import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { expectedItems, firstObservation, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { checkFractionReading } from "@/lib/scan-marking-fractions";
-import { checkMethodReading, METHOD_JUDGMENTS, type MethodJudgment } from "@/lib/scan-marking-methods";
+import { checkMethodReading, differentStrategies, METHOD_JUDGMENTS, type MethodJudgment } from "@/lib/scan-marking-methods";
 import { exactNumber } from "@/lib/scan-marking-numbers";
 import { checkWordsReading } from "@/lib/scan-marking-words";
 import type { PrintedRegion } from "@/lib/workbook-print-contract";
@@ -18,7 +18,7 @@ export const MARKING_MODEL = "anthropic/claude-sonnet-5.5";
  * Off: the AI reads every two-ways item (both methods and the answer), and every one waits for our team, never Right.
  * On: code's method rules (`src/lib/scan-marking-methods.ts`, D-302) can mark a valid pair. The method rules ship apart.
  */
-export const TWO_WAYS_METHOD_MARKS = false;
+export const TWO_WAYS_METHOD_MARKS = true;
 export const MARKING_MAX_TOKENS = 4096;
 export const MARKING_MAX_DISPATCHES = 2;
 const MAX_VERDICT_REASON = 120;
@@ -161,11 +161,12 @@ function readRegion(a: Alias, readings: unknown[]): RegionReading {
   return { regionId: a.regionId, text: blank ? "" : text, value: value === null ? null : String(value), certainty: certain ? "certain" : "uncertain",
     result, issue: certain ? result === null ? a.kind === "method" ? "method-form" : "answer-form" : null : issue ?? "unreadable", ...evidence };
 }
-/** The two methods must be two kinds of work. Code compares the kinds, never the text. No two-ways reason asks a parent to check. */
+/** The two methods must be two different strategies (D-302). Code compares their families, never the text. */
 function twoWaysRegions(group: readonly Alias[], regions: readonly RegionReading[]): RegionReading[] {
   const plain = regions.map((r, n) => r.issue !== "answer-form" ? r : { ...r, issue: group[n].kind === "method" ? "method-form" as const : "answer-check" as const });
   const methods = plain.filter((_, n) => group[n].kind === "method");
-  if (methods.length !== 2 || methods.some(m => m.result !== "right") || methods[0].methodKind !== methods[1].methodKind) return plain;
+  const first = group.find(a => a.kind === "method"), shape = first?.kind === "method" ? first.shape : null;
+  if (methods.length !== 2 || methods.some(m => m.result !== "right") || (shape && differentStrategies(shape, methods[0].methodKind!, methods[1].methodKind!))) return plain;
   return plain.map(r => r === methods[1] ? { ...r, result: null, issue: "method-form" as const } : r);
 }
 /**
