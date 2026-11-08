@@ -209,3 +209,5 @@ The honest close (`close.honest`, controller decision (a) on #735) is new: after
 | `confirm.claim#2` | No line at this id. | Which one is it: {first} or {second}? |
 | `confirm.claim#3` | No line at this id. | Tell me one word: {first} or {second}? |
 | `confirm.claim#4` | No line at this id. | Which word is your answer: {first} or {second}? |
+
+Review round 3 (#737 at d3aaff46) adds no wording. In a 25-word turn, the claim's result may now be acknowledged with the existing `check.right_step.plain` wordings, with "the result" as `{where}` ("Good, the result is done.", "That's right. The result is done."), when its equation does not fit beside the claim's question.

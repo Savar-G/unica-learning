@@ -79,6 +79,15 @@ describe("a claim question's session (A4)", () => {
     expect(claimActs(FIXTURES.A as OperationPackage, ["give_answer"])).toEqual(["give_answer"]);
   });
 
+  it("puts the easier example before the honest close while it is not worked and the child did nothing (lesson 10, #737 P2)", () => {
+    const pkg = claimView(tf);
+    expect(claimActs(pkg, ["give_answer", "confirm"], false, true)).toEqual(["example_step", "confirm"]);
+    expect(claimActs(pkg, ["accept_answer", "guide"], true, true)).toEqual(["example_step"]);
+    expect(claimActs(pkg, ["accept_answer", "guide"], false, true)).toEqual(["accept_answer", "guide", "example_step"]);
+    expect(claimActs(pkg, ["accept_answer", "guide"], false, false)).toEqual(["accept_answer", "guide"]);
+    expect(claimActs(FIXTURES.A as OperationPackage, ["guide"], false, true)).toEqual(["guide"]);
+  });
+
   it("knows when Maya's words give the word away before it is released", () => {
     const pkg = claimView(tf);
     expect(claimReveals(pkg, "guide", ["Good thinking. It's true!"])).toBe(true);
@@ -242,8 +251,8 @@ describe("claim lines fit the word limits and the scope check (A4, lessons from 
 describe("the compare step's credit (A4, review of #737): a whole-turn allow-list", () => {
   const mul = { kind: "multiply", operands: [360, 4] } as Operation;
   const yes1440 = { type: "number", value: 1440 } as const;
-  const heard = (text: string, o: Partial<{ heardAsked: typeof yes1440 | null; shown: boolean; operation: Operation; value: number }> = {}) =>
-    claimStepHeard({ text, uncertain: false, operation: o.operation ?? mul, value: o.value ?? 1440, heardAsked: o.heardAsked ?? null, shown: o.shown ?? false });
+  const heard = (text: string, o: Partial<{ resultAsked: typeof yes1440 | null; shown: boolean; operation: Operation; value: number }> = {}) =>
+    claimStepHeard({ text, uncertain: false, operation: o.operation ?? mul, value: o.value ?? 1440, resultAsked: o.resultAsked ?? null, shown: o.shown ?? false });
 
   it.each([
     "1440", "1440.", "It's 1440.", "I got 1440.", "360 times 4 is 1440.", "4 times 360 is 1440.", "So 4 × 360 = 1440.", "I wrote 1440.", "1440 is on my paper.",
@@ -255,12 +264,12 @@ describe("the compare step's credit (A4, review of #737): a whole-turn allow-lis
   ])("gives no credit for %j", (text) => expect(heard(text)).toBe(false));
 
   it("a plain yes credits only Maya's own 'Did you say 1440?', and after H3 only the claim about the child's own paper counts", () => {
-    expect(heard("Yes.", { heardAsked: yes1440 })).toBe(true);
-    expect(heard("Yes, 1440.", { heardAsked: yes1440 })).toBe(true);
-    expect(heard("Yes.", { heardAsked: { type: "number", value: 1436 } as never })).toBe(false);
+    expect(heard("Yes.", { resultAsked: yes1440 })).toBe(true);
+    expect(heard("Yes, 1440.", { resultAsked: yes1440 })).toBe(true);
+    expect(heard("Yes.", { resultAsked: { type: "number", value: 1436 } as never })).toBe(false);
     expect(heard("1440.", { shown: true })).toBe(false);
     expect(heard("360 times 4 is 1440.", { shown: true })).toBe(false);
-    expect(heard("Yes.", { heardAsked: yes1440, shown: true })).toBe(false);
+    expect(heard("Yes.", { resultAsked: yes1440, shown: true })).toBe(false);
     expect(heard("I wrote 1440.", { shown: true })).toBe(true);
     expect(heard("5.83.", { operation: { kind: "decimal-add", operands: [3.45, 2.38] }, value: 5.83 })).toBe(true);
     expect(heard("56 divided by 8 is 7.", { operation: { kind: "divide", operands: [56, 8] }, value: 7 })).toBe(true);

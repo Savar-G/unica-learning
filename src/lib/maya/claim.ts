@@ -433,14 +433,27 @@ export function claimAnswers(t: ClaimTurn, answers: readonly ChildAnswer[] | und
  * The acts allowed in a claim call: Maya never gives the word (no give_answer). Where giving it was the only way on (H3
  * shown and more help asked, or two wrong words), and where a child who only asks for help is at the top of the final
  * step's ladder (`stuck`: H2, the final step has no H3), the way out is the honest close (controller decision (a), #735,
- * brief lesson 10): no endless top hint, no answer.
+ * brief lesson 10): no endless top hint, no answer. `exampleDue`: the easier example comes before that close.
  */
-export function claimActs(pkg: OperationPackage | null, acts: Act[], stuck = false): Act[] {
+export function claimActs(pkg: OperationPackage | null, acts: Act[], stuck = false, exampleDue = false): Act[] {
   if (!sessionClaim(pkg)) return acts;
+  const out = claimActsOf(acts, stuck);
+  // The honest close comes only after the easier example (brief lessons 7 and 10): when it would close a child who only
+  // asks for help, who has done no step and has not seen the example (`exampleDue`), the example comes instead.
+  // On any help-only turn before that, the example is offered beside the guide (code's fallback says it first).
+  const closing = out.includes("close") && !out.some((a) => TEACHING.includes(a));
+  if (!exampleDue) return out;
+  if (closing) return ["example_step", ...out.filter((a) => a === "confirm")];
+  return out.includes("guide") && !out.includes("example_step") ? [...out, "example_step"] : out;
+}
+
+const TEACHING: readonly Act[] = ["accept_answer", "guide", "try_target", "example_step", "clarify", "ask_write"];
+
+function claimActsOf(acts: Act[], stuck: boolean): Act[] {
   if (stuck && acts.includes("guide")) return ["close", ...acts.filter((a) => a === "confirm")];
   if (!acts.includes("give_answer")) return acts;
   const rest = acts.filter((a) => a !== "give_answer");
-  const teaching = rest.some((a) => ["accept_answer", "guide", "try_target", "example_step", "clarify", "ask_write"].includes(a));
+  const teaching = rest.some((a) => TEACHING.includes(a));
   return teaching ? rest : [...new Set<Act>([...rest.filter((a) => a !== "close"), "close"])];
 }
 
@@ -481,11 +494,12 @@ const OPERATION_WORDS: Partial<Record<Operation["kind"], { words: string; swap: 
 /**
  * The child's whole turn says the claim's result, in one of these forms only (an allow-list, as stepTurnHeard for a
  * column): the value alone or "it's / it is / i got / that's N"; "<a> times <b> is N" with the operation's own numbers
- * (either order for + and ×); a plain yes to Maya's own "Did you say N?" (`heardAsked`); or a claim about the child's own
+ * (either order for + and ×); a plain yes to Maya's own "Did you say N?" about this result (`resultAsked`: only the confirm
+ * the session asked for the claim's result, never one for another reason, #737 review P1); or a claim about the child's own
  * paper ("I wrote N", "N is on my paper"). A question, a hedge, another sentence, another speaker, a copy or any other
  * word fits none. After H3 (`shown`) only the paper claim counts: the rest copies what Maya showed.
  */
-export function claimStepHeard(input: { text: string; uncertain: boolean; operation: Operation; value: number; heardAsked: AnswerValue | null; shown: boolean }): boolean {
+export function claimStepHeard(input: { text: string; uncertain: boolean; operation: Operation; value: number; resultAsked: AnswerValue | null; shown: boolean }): boolean {
   const body = input.uncertain ? null : wholeTurn(input.text);
   if (body === null) return false;
   const is = (n: number | null) => n !== null && equivalent({ type: "number", value: n }, { type: "number", value: input.value });
@@ -493,7 +507,7 @@ export function claimStepHeard(input: { text: string; uncertain: boolean; operat
   if (paper && is(numberIn(paper[1]))) return true;
   if (input.shown) return false;
   const yes = wholeYes(body);
-  if (yes) return input.heardAsked?.type === "number" && is(input.heardAsked.value) && (yes.value === null || is(yes.value));
+  if (yes) return input.resultAsked?.type === "number" && is(input.resultAsked.value) && (yes.value === null || is(yes.value));
   const bare = /^(?:it's|it is|i got|that's)\s+(.+)$/.exec(body);
   if (is(numberIn(bare ? bare[1] : body))) return true;
   const op = OPERATION_WORDS[input.operation.kind];

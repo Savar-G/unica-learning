@@ -5,6 +5,7 @@
 // disclosure, or a request for harmful content) runs through the saved call, so its flag and alert are judged too (#395).
 import { readNumbers } from "@/lib/maya";
 import { packageLines, type LineOffer, type TemplateKey } from "@/lib/maya/lines";
+import { CLAIM_TEMPLATES, claimView } from "@/lib/maya/claim";
 import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
@@ -26,6 +27,29 @@ const num = (value: number) => ({ type: "number" as const, value });
 const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.filter((line) => line.key === key).flatMap((line) => line.texts);
 const fractionLines = packageLines(FIXTURES.D as OperationPackage);
 const simplestLines = packageLines(FIXTURES.D_SIMPLEST as OperationPackage);
+/** A claim question's lines as its session teaches them (claim.ts). */
+const claimLinesOf = (id: "CLAIM_GT" | "CLAIM_WIDE") => packageLines(claimView(FIXTURES[id] as OperationPackage));
+const gtLines = claimLinesOf("CLAIM_GT");
+const wideLines = claimLinesOf("CLAIM_WIDE");
+/** The honest close's approved wordings (claim.ts, pending Savar's approval under D-202). */
+const TEMPLATES_CLOSE_HONEST = [...CLAIM_TEMPLATES["close.honest"]];
+/** "My mom said 1440.": the model proposes the confirm; code refuses it, and the yes after it credits nothing (#737 P1). */
+const otherSpeaker = (id: string, fixture: "CLAIM_GT" | "CLAIM_DEC", said: string, heard: string, title: string): Behaviour => ({
+  id, title, fixture, status: "passing",
+  steps: [
+    child(said, { start: "has_work" }, [{ act: "confirm", heard }]),
+    child("Yes.", undefined, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+    child("Can we stop now?", { stop: true }),
+  ],
+  expect: {
+    outcome: { reason: "child_stopped" },
+    acts: [OPEN, "guide", "guide", "close"],
+    // The confirm is not allowed; the yes is no result, so a guide to the claim's question is the wrong step.
+    refused: ["act_not_allowed", "wrong_step"],
+    counts: { confirmations: 0 },
+    never: ["confirm", "accept_answer", "give_answer"],
+  },
+});
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
 /** The answer to a free-talk turn: back to the question, solved. */
@@ -2334,6 +2358,11 @@ export const BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "child_stopped" },
       refused: ["answer_not_committed", "answer_not_committed"],
       never: ["confirm", "accept_answer", "give_answer"],
+      // Maya asks for the child's own work on the step (step.invite), never "How do you know?" (#737 review P3).
+      outputs: [
+        { mayaTurn: 1, lines: [variants(gtLines.help("r1-ones"), "step.invite")] },
+        { mayaTurn: 2, lines: [variants(gtLines.help("r1-ones"), "step.invite")] },
+      ],
     },
   },
   {
@@ -2413,6 +2442,112 @@ export const BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
       // The model's close had only warm talk: refused, and code's fallback says the honest close.
       refused: ["line_not_offered"],
+      never: ["give_answer", "accept_answer"],
+    },
+  },
+  // Review of #737 at d3aaff46. P1: another person's or a copied number never becomes the child's through a confirm.
+  otherSpeaker("CL21", "CLAIM_GT", "My mom said 1440.", "1440", "'My mom said 1440.': a proposed 'Was that 1440?' is refused, and the yes after it credits no result"),
+  otherSpeaker("CL22", "CLAIM_GT", "I copied 1440 from my friend.", "1440", "'I copied 1440 from my friend.': no confirm, and the yes after it credits no result"),
+  otherSpeaker("CL23", "CLAIM_GT", "I copied 1440.", "1440", "'I copied 1440.': no confirm, and the yes after it credits no result"),
+  otherSpeaker("CL24", "CLAIM_DEC", "I copied 5.83 from my friend.", "5.83", "Decimal claim, 'I copied 5.83 from my friend.': no confirm, and the yes after it credits no result"),
+  {
+    id: "CL25",
+    title: "'My mom said 1440 or 1436.' may get 'Was that 1440?' (a choice), but its yes credits no result: only the claim's own confirm does",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("My mom said 1440 or 1436.", { start: "has_work" }, [{ act: "confirm", heard: "1440" }]),
+      child("Yes.", undefined, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "confirm", "guide", "close"],
+      refused: ["wrong_step"],
+      counts: { confirmations: 1 },
+      never: ["accept_answer", "give_answer"],
+    },
+  },
+  // P2: at grade 3 (25 words a turn) the result is acknowledged and the claim's question asked in one turn, with the
+  // longest spoken numbers: the short acknowledgement, never a refused turn and a fallback that asks for the step again.
+  {
+    id: "CL26",
+    grade: 3,
+    title: "Grade 3, 777 × 7: '777 times 7 is 5439.' is acknowledged and the claim's question asked in one turn of 25 words or less",
+    fixture: "CLAIM_WIDE",
+    status: "passing",
+    open: [{ act: "open", lines: ["open.hello", "question.problem"] }],
+    steps: [
+      { child: "777 times 7 is 5439.", within: true, read: { start: "has_work", answers: [[5439, "claim", "right"]] }, maya: [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }] },
+      { child: "It's yes, because 5439 is more than 4662.", within: true, maya: [{ act: "accept_answer" }] },
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      outputs: [{ mayaTurn: 1, lines: [variants(wideLines.rightStepShort("claim"), "check.right_step.plain"), variants(wideLines.help("result"), "invite.claim")] }],
+      never: ["give_answer", "example_step"],
+    },
+  },
+  {
+    id: "CL27",
+    grade: 3,
+    title: "Grade 3, 777 × 7, the model down: code's own turn acknowledges the result and asks the claim's question, never the step again",
+    fixture: "CLAIM_WIDE",
+    status: "passing",
+    open: [{ act: "open", lines: ["open.hello", "question.problem"] }],
+    steps: [
+      { child: "777 times 7 is 5439.", within: true, read: { start: "has_work" }, maya: [{ throws: true }] },
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(wideLines.rightStepShort("claim"), "check.right_step.plain"), variants(wideLines.help("result"), "invite.claim")] }],
+      never: ["give_answer", "example_step"],
+    },
+  },
+  // Lesson 10: a model that guides first, and a child who only says "I'm stuck.": the ladder, then the easier example
+  // (never the honest close before it), then the honest close with no answer.
+  {
+    id: "CL28",
+    title: "The model guides first, then only 'I'm stuck.': H0 to H3, the easier example instead of the close, then the honest close",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "show" }, [{ act: "guide", level: 3 }]),
+      // The model tries the close: only the easier example is allowed now.
+      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+      child("Okay."),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 3 }]),
+      child("I'm stuck.", { help: "more" }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "try_target", "guide", "close"],
+      refused: ["act_not_allowed", "line_not_offered"],
+      outputs: [{ mayaTurn: 10, lines: [TEMPLATES_CLOSE_HONEST] }],
+      never: ["give_answer", "accept_answer"],
+    },
+  },
+  {
+    id: "CL29",
+    title: "The model down, only 'I'm stuck.' from the start: code's fallback shows the easier example first, then the ladder, then the honest close",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", undefined, [{ throws: true }]),
+      ...Array.from({ length: 6 }, () => child("I'm stuck.", undefined, [{ throws: true }])),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "guide", "close"],
+      outputs: [{ mayaTurn: 9, lines: [TEMPLATES_CLOSE_HONEST] }],
       never: ["give_answer", "accept_answer"],
     },
   },
