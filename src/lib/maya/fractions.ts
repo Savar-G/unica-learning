@@ -22,6 +22,8 @@ export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   "read-digit",
   // Missing numbers (missing-number.ts): the framing and zeros steps Maya says, and the try step the child does.
   "missing-frame", "drop-zeros", "try-factor",
+  // A claim's compare step (claim.ts), only in the session package of a checked claim question.
+  "claim-compare",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */

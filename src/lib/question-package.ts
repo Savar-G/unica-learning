@@ -344,6 +344,19 @@ export type WorkedStep =
   /** The digit in one place of a place-value number (question-package-place-value.ts); `worth` is that place's value. */
   | { id: string; kind: "read-digit"; place: Place; digit: number; worth: number }
   | MissingNumberStep
+  | {
+      /**
+       * A printed claim checked against its computed side (Maya only, src/lib/maya/claim.ts; never a stored step of an
+       * operation): the value the operation makes, the printed number it is compared with, the relation the claim states
+       * ("equal": the same number; "greater": more than the printed number), and whether the claim holds.
+       */
+      id: "claim";
+      kind: "claim-compare";
+      relation: "equal" | "greater";
+      value: number;
+      shown: number;
+      holds: boolean;
+    }
   | { id: "result"; kind: "result"; value: AnswerValue };
 
 /**

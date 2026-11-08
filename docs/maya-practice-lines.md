@@ -120,3 +120,92 @@ These are the scoped additions and replacements on the chat repair branch. Revie
 | close.checked.4 | We've checked your answer for {expr}. Goodbye for now! |
 | held.hello.0 | Hi, I'm Maya, an AI. |
 | held.next.0 | Want to pick another question on this page? |
+
+## Claim questions (A4, #737), 2026-11-08
+
+Status: pending Savar (D-202). New wordings for true/false and yes/no claim questions (`src/lib/maya/claim.ts`, `CLAIM_TEMPLATES`). Values in braces come from the checked package: `{expr}` the operation Maya works ("870 × 6"), `{printed}` the product as printed ("6 × 870"), `{shown}` the page's number, `{value}` the result, `{word}` the word to circle, `{first}` and `{second}` the two printed words, `{heard}` the word the child said, `{ask}` the claim's question ("Is 870 × 6 greater than 5226? Circle yes or no.", or for an equal claim "Is the sentence on your page true or false?"), `{compare}` how the two numbers compare ("5220 is less than 5226."), `{show}` a worked example step.
+
+The honest close (`close.honest`, controller decision (a) on #735) is new: after the easier example and the top hint, a child who only asks for help hears that this one is hard and it is fine to stop, with one next step, and never the answer. Examples: "This one is hard, and it's okay to stop. You can try the easier one on paper." and "This is a tricky one. It's fine to stop here. You could ask a grown-up to try it with you."
+
+| Id | Before | After, pending approval |
+|---|---|---|
+| `question.claim#0` | No line at this id. | First we work out {expr}. |
+| `question.claim#1` | No line at this id. | Let's work out {expr} first. |
+| `question.claim#2` | No line at this id. | We start with {expr}. |
+| `question.claim#3` | No line at this id. | Let's find {expr} first. |
+| `question.claim#4` | No line at this id. | First, let's find {expr}. |
+| `question.claim.swap#0` | No line at this id. | {printed} is the same as {expr}. |
+| `question.claim.swap#1` | No line at this id. | We can swap them: {printed} is the same as {expr}. |
+| `question.claim.swap#2` | No line at this id. | {printed} makes the same number as {expr}. |
+| `question.claim.swap#3` | No line at this id. | Swap the numbers: {printed} is the same as {expr}. |
+| `question.claim.swap#4` | No line at this id. | {printed} and {expr} make the same number. |
+| `example.intro.claim#0` | No line at this id. | Let's try an easier one first. {ask} |
+| `example.intro.claim#1` | No line at this id. | Here's a smaller one to warm up. {ask} |
+| `example.intro.claim#2` | No line at this id. | Let me show you an easier one. {ask} |
+| `example.intro.claim#3` | No line at this id. | First, a smaller one. {ask} |
+| `example.intro.claim#4` | No line at this id. | I'll show you an easier one first. {ask} |
+| `example.claim#0` | No line at this id. | So {show}. |
+| `example.claim#1` | No line at this id. | And that's it: {show}. |
+| `example.claim#2` | No line at this id. | There we go: {show}. |
+| `example.claim#3` | No line at this id. | All done: {show}. |
+| `example.claim#4` | No line at this id. | So in the end, {show}. |
+| `invite.claim.product#0` | No line at this id. | What is {expr}? Then we compare it with {shown}. |
+| `invite.claim.product#1` | No line at this id. | Now find {expr}. Then we compare it with {shown}. |
+| `invite.claim.product#2` | No line at this id. | What does {expr} make? Then we check {shown}. |
+| `invite.claim.product#3` | No line at this id. | So what is {expr}? Then we look at {shown}. |
+| `invite.claim.product#4` | No line at this id. | Put it together: what is {expr}? Then we check {shown}. |
+| `point.claim.product#0` | No line at this id. | Put the parts together to get {expr}. Then compare it with {shown}. |
+| `point.claim.product#1` | No line at this id. | Your columns make {expr}. Then we compare it with {shown}. |
+| `point.claim.product#2` | No line at this id. | Join the parts of {expr}. Then we look at {shown}. |
+| `point.claim.product#3` | No line at this id. | Put your columns together for {expr}. Then check {shown}. |
+| `point.claim.product#4` | No line at this id. | The columns together make {expr}. Then compare it with {shown}. |
+| `operation.claim.product#0` | No line at this id. | First find {expr}. Then we compare it with {shown}. |
+| `operation.claim.product#1` | No line at this id. | We need {expr} first. Then we look at {shown}. |
+| `operation.claim.product#2` | No line at this id. | Work out {expr}. Then check it against {shown}. |
+| `operation.claim.product#3` | No line at this id. | Find {expr}. After that, compare it with {shown}. |
+| `operation.claim.product#4` | No line at this id. | Let's finish {expr}. Then we check {shown}. |
+| `invite.claim#0` | No line at this id. | {ask} |
+| `invite.claim#1` | No line at this id. | Now check it. {ask} |
+| `invite.claim#2` | No line at this id. | Last part. {ask} |
+| `invite.claim#3` | No line at this id. | Let's check. {ask} |
+| `invite.claim#4` | No line at this id. | Now the question. {ask} |
+| `point.claim#0` | No line at this id. | Compare {value} with {shown}. Circle {first} or {second}. |
+| `point.claim#1` | No line at this id. | We found {value}. The page says {shown}. Circle {first} or {second}. |
+| `point.claim#2` | No line at this id. | Look at {value} and {shown}. Circle {first} or {second}. |
+| `point.claim#3` | No line at this id. | Our number is {value}. The page has {shown}. Circle {first} or {second}. |
+| `point.claim#4` | No line at this id. | Check {value} against {shown}. Circle {first} or {second}. |
+| `compare.claim#0` | No line at this id. | {compare} Circle {first} or {second}. |
+| `compare.claim#1` | No line at this id. | Look: {compare} Circle {first} or {second}. |
+| `compare.claim#2` | No line at this id. | Let's compare. {compare} Circle {first} or {second}. |
+| `compare.claim#3` | No line at this id. | Here's the check. {compare} Circle {first} or {second}. |
+| `compare.claim#4` | No line at this id. | {compare} Which word do you circle? |
+| `answer.claim#0` | No line at this id. | Yes! {expr} = {value}. So you circle {word}. |
+| `answer.claim#1` | No line at this id. | That's right: {expr} = {value}. You circle {word}. |
+| `answer.claim#2` | No line at this id. | You got it! {expr} = {value}. It's {word}. |
+| `answer.claim#3` | No line at this id. | Well done! {expr} = {value}. You circle {word}. |
+| `answer.claim#4` | No line at this id. | Exactly! {expr} = {value}. The answer is {word}. |
+| `write.claim#0` | No line at this id. | Please circle {word} on your page. |
+| `write.claim#1` | No line at this id. | Can you circle {word} on your page? |
+| `write.claim#2` | No line at this id. | Now circle {word} on your page. |
+| `write.claim#3` | No line at this id. | Go ahead and circle {word} on your paper. |
+| `write.claim#4` | No line at this id. | Circle {word} on your page, please. |
+| `write.claim.yours#0` | No line at this id. | Please circle your answer on your page. |
+| `write.claim.yours#1` | No line at this id. | Can you circle your answer on your page? |
+| `write.claim.yours#2` | No line at this id. | Go ahead and circle your answer on your paper. |
+| `write.claim.yours#3` | No line at this id. | Now circle your answer on your page. |
+| `write.claim.yours#4` | No line at this id. | Circle your answer on your page, please. |
+| `close.honest#0` | No line at this id. | This one is hard, and it's okay to stop. You can try the easier one on paper. |
+| `close.honest#1` | No line at this id. | This is a tricky one. It's fine to stop here. You could ask a grown-up to try it with you. |
+| `close.honest#2` | No line at this id. | This one is hard. We can stop for now. Try the easier one on your paper later. |
+| `close.honest#3` | No line at this id. | This one is tough, and stopping is fine. A grown-up can help you try it. |
+| `close.honest#4` | No line at this id. | This question is hard, and that's okay. Let's stop here. Try the smaller one on paper. |
+| `confirm.claim.said#0` | No line at this id. | You said {heard}. Is {heard} the word you circle? |
+| `confirm.claim.said#1` | No line at this id. | I heard {heard}. Do you circle {heard}? |
+| `confirm.claim.said#2` | No line at this id. | So you circle {heard}? |
+| `confirm.claim.said#3` | No line at this id. | Is {heard} your answer? |
+| `confirm.claim.said#4` | No line at this id. | Just checking: do you circle {heard}? |
+| `confirm.claim#0` | No line at this id. | Which word do you circle: {first} or {second}? |
+| `confirm.claim#1` | No line at this id. | Do you circle {first} or {second}? |
+| `confirm.claim#2` | No line at this id. | Which one is it: {first} or {second}? |
+| `confirm.claim#3` | No line at this id. | Tell me one word: {first} or {second}? |
+| `confirm.claim#4` | No line at this id. | Which word is your answer: {first} or {second}? |

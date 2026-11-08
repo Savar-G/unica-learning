@@ -6,13 +6,23 @@
 // not teach yet (equivalent fractions, C36b). `M_DIVIDE`, `M_TRY` and `M_SUBTRACT` are missing numbers (Wave A),
 // made by Maya's session adapter from synthetic printed packages and checked by Maya's check (mayaPackageCheck).
 import { mayaPackageCheck } from "@/lib/maya";
+import { claimTeaching } from "@/lib/maya-teaching/claim";
 import { deriveMissingNumber } from "@/lib/maya-teaching/missing-number";
 import { printedMissing, type PrintedMissing } from "@/lib/maya-teaching/missing-number-fixtures";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 import { PLACE_VALUE_FIXTURES, type PlaceValueFixtureId } from "./place-value-cases";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId | PlaceValueFixtureId | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId | PlaceValueFixtureId | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT"
+  | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV";
+
+/** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
+function claimFixture(raw: QuestionPackage): QuestionPackage {
+  const pkg = claimTeaching(raw);
+  if (!pkg) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
+  return pkg;
+}
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -140,6 +150,12 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   M_DIVIDE: missing({ id: "gate-M-30x?=1620", known: 30, missing: 54, sign: "×" }),
   M_TRY: missing({ id: "gate-M-236x?=1416", known: 236, missing: 6, sign: "×" }),
   M_SUBTRACT: missing({ id: "gate-M-9000-?=3000", known: 9000, missing: 6000, sign: "−" }),
+  // Claim questions (A4): "True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436?", "True or false: 3.45 + 2.38 = 5.93."
+  CLAIM_TF: claimFixture(CLAIM_TRUE_FALSE),
+  CLAIM_GT: claimFixture(CLAIM_GREATER),
+  CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
+  // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
+  CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
 };
 
 /** Fixtures that must pass Maya's package check (the default check, or hers for a missing number); the bad key must fail it. */

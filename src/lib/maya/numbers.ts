@@ -1187,8 +1187,9 @@ export function saysWritten(text: string): boolean {
   const plain = text.replace(/’/g, "'");
   if (NEGATIVE.test(plain)) return false;
   if (/\b(?:done|finished)\s+writing\b/i.test(plain)) return true;
-  if (/\b(?:i'?m|am|are|still|keep|will|gonna|going to|need to|have to|let me|can i|should i|i'?ll)\b[^.!?\n]*\b(?:writ|put)/i.test(plain)) return false;
-  return /\b(?:wrote|written)\b|\bput (?:it|that|\w+) (?:down|on)\b|\b(?:is|it's|its|that's) (?:on|in) my (?:paper|page|sheet|notebook)\b/i.test(plain);
+  if (/\b(?:i'?m|am|are|still|keep|will|gonna|going to|need to|have to|let me|can i|should i|i'?ll)\b[^.!?\n]*\b(?:writ|put|circl)/i.test(plain)) return false;
+  // "I circled it": a claim question's word (claim.ts) is circled, not written.
+  return /\b(?:wrote|written|circled)\b|\bput (?:it|that|\w+) (?:down|on)\b|\b(?:is|it's|its|that's) (?:on|in) my (?:paper|page|sheet|notebook)\b/i.test(plain);
 }
 
 /**

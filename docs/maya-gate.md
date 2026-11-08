@@ -11,7 +11,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 
 | File | What it holds |
 |---|---|
-| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). |
+| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
 | `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6c, with the J06 cases W5d, W6b and W6c), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/place-value-cases.ts` | Fixtures PVD, PVD0, PVV and PVV0: teaching packages the place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored place-value questions, and their behaviours (PV01 to PVJ2b), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
@@ -308,6 +308,30 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |
 | P5c | A | passing | Numeric work after an answer requires confirmation | checked answer retained | |
 | P5d | A | passing | The child already wrote the answer | checked answer | |
+| CL01 | CLAIM_TF | passing | True/false product claim worked step by step; a bare 'True.' is said back, and the plain yes to that commits it | solved, independent | |
+| CL02 | CLAIM_GT | passing | Yes/no 'greater than' claim answered at once with a reason: accepted, circled, closed | solved, independent | |
+| CL03 | CLAIM_DEC | passing | Decimal-add claim: the wrong word is not accepted; the right word with its reason is | solved, hint | |
+| CL04 | CLAIM_TF | passing | After Maya's claim question, 'Maybe true?' is unclear: Maya asks which word, then accepts the committed word | solved | |
+| CL05 | CLAIM_GT | passing | A plain yes to 'Did you say 1440?' confirms the result, never the claim's word | solved | |
+| CL06 | CLAIM_TF | passing | The result in the child's own words is acknowledged once; a question about the step gets code's help line | solved, hint | |
+| CL07 | CLAIM_GT | passing | After Maya's claim question a bare 'Yes.' is said back; the child's 'No.' answers that question, not the claim | solved | |
+| CL08 | CLAIM_GT | passing | The result given before its columns is acknowledged, and Maya goes on to the claim's question, not the columns | solved, independent | |
+| CL09 | CLAIM_GT | passing | Grade 3, 'I'm stuck.' first: the easier example says its claim's question, within 25 words a turn | child_stopped | |
+| CL10 | CLAIM_TF | passing | Grade 3: '6 times 8 is 48, so it's true.' is this question's work, accepted as the circled word | solved, independent | |
+| CL11 | CLAIM_GT | passing | '1440 minus 1436 is 4, so it's yes.': the compare in a full sentence is this question's math | solved, independent | |
+| CL12 | CLAIM_DIV | passing | A claim checked by division: '6 times 8 is 48.' and '56 divided by 8 is 7, so it's no.' are this question's math | solved | |
+| CL13 | CLAIM_GT | passing | 'Is it 1440?', 'Was that 1440?', 'Yes.': the yes confirms the result; a model that tries the word's say-back is refused | solved | |
+| CL14 | CLAIM_GT | passing | 'Yeah!' to Maya's opening question is no claim turn: no say-back, no confirm, no answer | child_stopped | |
+| CL15 | CLAIM_GT | passing | 'Maybe 1440.' gives the result no credit: Maya confirms it first, then the yes credits it | solved | |
+| CL16 | CLAIM_GT | passing | 'My mom said 1440.' and 'I copied 1440 from my friend.' give the result no credit, and no confirm (a speaker or a verb) | child_stopped | |
+| CL17 | CLAIM_TF | passing | After H3 shows the result, '48.' only copies it: no credit; the committed word is still the child's | solved, guided | |
+| CL18 | CLAIM_DEC | passing | With the model down, code's own reading credits a bare '5.83.' on the compare step | solved | |
+| CL19 | CLAIM_TF | passing | Only 'I'm stuck.' at the claim's final step: H0 to H2, then the honest close, with no answer | child_stopped, hint | |
+| CL20 | CLAIM_TF | passing | Only 'I'm stuck.' from the start: the easier example, the try, H1 to H3, then the honest close, never the answer | child_stopped, guided | |
+
+### Claim questions (A4)
+
+A claim question ("True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436? Circle yes or no.") is judged as its session teaches it (`claimView` in `src/lib/maya/claim.ts`): the operation's steps, the compare step `claim`, and the circled word as the answer. Code reads the word with the claim reader's allow-list; the scripted model reads only the numbers. An accepted word must be the word the claim gives, in a committed form ("It's yes, because ..."). A bare word is never the answer (controller rule 4). After Maya's own claim question (`claimAsked`: her last accepted turn chose the final step's invite, point or operation line, or confirm.claim), Maya says it back ("You said true. Is true the word you circle?"), and only a plain yes to that commits it (CL01). After any other Maya question a bare yes, no, true or false is no claim turn at all: no say-back and no confirm (CL13, CL14). The compare step is credited only from a whole-turn template, as a column is: the value, "it's N", "a times b is N" with the operation's own numbers, a plain yes to "Did you say N?", or a claim about the child's own paper; never a hedge or a question (confirmed first, CL15), another speaker or a copy (CL16), or a copy of H3 (CL17). A child who only asks for help reaches the easier example where it may start, the top hint, then the honest close (`close.honest`, controller decision (a), #735): no answer, one next step, and a warm-only close is refused (CL19, CL20). A plain yes to "Did you say 1440?" is never the word (CL05), and a "No." to the said-back question is not the word "no" (CL07). Against J06 (#698 practice): the result in the child's own words is acknowledged once and Maya goes on (CL06), a question about the step gets code's help line (CL06), and a checked right result given before its columns shows those columns done, as an equal fraction does (#407), so Maya does not ask for them again (CL08). Before the word is released, no Maya turn but the easier example may say "circle", "it's" or "the answer is" with the word (`answer_too_early`). No claim call gives the word (`give_answer`).
 
 ### Place-value questions through the session adapter (B1a)
 
