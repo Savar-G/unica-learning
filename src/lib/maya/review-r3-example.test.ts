@@ -58,7 +58,7 @@ it("always finds a fallback for H3, passed columns and example readings", () => 
       if (stage === "example") {
         child("I'm stuck.");
         for (let i = 0; i < 8 && session.expect === "maya" && !session.outcome; i++) expect(fallback()).toBe(true);
-        expect(session.exampleShown).toBe(FIXTURES.A.easierExample.steps.length);
+        expect(session.exampleShown).toBe(FIXTURES.A.easierExample!.steps.length);
       }
       if (session.outcome) continue;
       child(text);

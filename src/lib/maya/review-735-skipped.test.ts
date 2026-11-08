@@ -1,5 +1,6 @@
 // #735: credit needs a committed value.
 import { createSession, step, fallbacks, teachSteps, type Proposal, type SessionEvent } from '@/lib/maya';
+import type { OperationPackage } from '@/lib/question-package';
 import { it, expect } from 'vitest';
 import { FIXTURES } from '@/lib/maya-gate/fixtures';
 const n=(value:number)=>({type:'number' as const,value});
@@ -27,7 +28,7 @@ function setup(kind='h3'){
 
 it.skip('does not credit uncommitted subtraction and multiplication steps',()=>{
  for(const [pkg,value] of [[FIXTURES.B,4],[FIXTURES.C,24]] as const) {
-  const steps=teachSteps(pkg);const first=steps[0].id;const next=steps[1]?.id ?? 'result';
+  const steps=teachSteps(pkg as OperationPackage);const first=steps[0].id;const next=steps[1]?.id ?? 'result';
   for(const text of [`Is it ${value}?`,`Maybe ${value}.`,`My friend said ${value}.`,`Please help me with ${value}.`,`You said ${value}.`]){
    const r=rig(pkg);r.child(text);const p={act:'guide',step:next,level:0,parts:[{line:'check.right_step',slots:{step:first}},{line:'step.invite',slots:{step:next}}],reading:{answers:[{value:n(value),step:first,verdict:'right'}]}};
    r.prop(p);r.fb([p]);expect(r.s.done,`${pkg.text} ${text}`).not.toContain(first);
