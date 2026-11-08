@@ -196,6 +196,24 @@ describe("passed columns and final misses", () => {
   });
 });
 
+describe("bare final fallback boundary", () => {
+  it.each(["Maybe 67.", "Is it 67?", "My friend said 67.", "You said 67.", "67, no I don't know.", "16.", "6."])("does not count %s as a committed miss", (text) => {
+    let session = createSession({ callId: "boundary", package: FIXTURES.A });
+    let at = 1000;
+    const send = (event: SessionEvent) => { const r = step(session, event); session = r.session; return r; };
+    const child = (text: string) => send({ type: "child_turn", at: at += 4000, text });
+    const fallback = () => { const r = fallbacks(session).map((proposal) => send({ type: "proposal", at, proposal })).find((x) => !x.refusal); expect(r).toBeDefined(); };
+    const show = (id: string) => expect(send({ type: "proposal", at, proposal: { version: 2, act: "guide", step: id, level: 3, parts: [{ line: "step.show", slots: { step: id } }], reading: { help: "show" } } }).refusal).toBeNull();
+    send({ type: "start", at }); fallback();
+    child("Show me the ones."); show("ones"); child("16."); fallback();
+    child("Show me the tens."); show("tens"); child("6."); fallback();
+    expect(session.passed).toEqual(["ones", "tens"]);
+    child(text); fallback();
+    expect(session.finalMisses).toBe(0);
+    expect(session.assistance).not.toContain("answer_given");
+  });
+});
+
 describe("numbers in help questions", () => {
   it.each(["Can you show me 7 plus 9?", "Is 9 right?"])("refuses a wrong reading of %s and keeps a safe fallback", (text) => {
     let s = createSession({ callId: "help-question", package: FIXTURES.A });

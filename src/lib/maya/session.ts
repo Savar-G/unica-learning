@@ -1736,7 +1736,7 @@ function yesAnswer(s: Session): ChildAnswer | null {
   const value = yesValue(s);
   if (!value || s.solved !== null || !s.package) return null;
   if (rightForQuestion(s.package, value)) return { value, step: "result", verdict: "right" };
-  const st = workSteps(s.package).find((x) => !s.done.includes(x.id));
+  const st = workSteps(s.package).find((x) => !behind(s).includes(x.id));
   return st && stepTurnHeard(s, st, value) ? { value, step: st.id, verdict: "right" } : null;
 }
 
@@ -2398,7 +2398,8 @@ function heardAnswers(session: Session): ChildAnswer[] {
   const twoNumbers = !!equated && plainNumber(equated[1]) !== null && plainNumber(equated[2]) !== null;
   if (session.solved === null && read.final && read.sure && !twoNumbers && !notClear(session, {}) && !saysGuess(session.turn.text) && rightForQuestion(pkg, read.final)) found.push({ value: read.final, step: "result", verdict: "right" });
   // A plain final number on the last step is a committed miss, even when the model is unavailable.
-  if (session.solved === null && session.ladder.step === "result" && body !== null && plainNumber(body) !== null && read.final && read.sure && !rightForQuestion(pkg, read.final)) {
+  const copiedValue = read.final && workSteps(pkg).some((st) => (session.passed ?? []).includes(st.id) && stepAnswers(st).some((value) => equivalent(value, read.final!)));
+  if (session.solved === null && session.ladder.step === "result" && body !== null && plainNumber(body) !== null && read.final && read.sure && !copiedValue && !rightForQuestion(pkg, read.final)) {
     found.push({ value: read.final, step: "result", verdict: "wrong" });
   }
   return found.filter((a) => checkAnswers(session, [a], []) === null);
