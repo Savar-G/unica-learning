@@ -429,8 +429,12 @@ function sentTexts(log: SimulatorLog): { texts: string[]; lastMayDrop: boolean }
   return { texts, lastMayDrop };
 }
 
-/** A child's claim that Maya showed or taught it something ("Like you showed me", "you taught me"). */
-const TEACHING_CLAIM = /\b(?:you (?:showed|taught)|(?:like|as|the way) you (?:showed|said|did|taught|told))\b/i;
+/**
+ * A child's claim that Maya showed or taught it something ("Like you showed me", "you taught me"), with an optional
+ * "like", "as" or "the way" before it. Only showed or taught: "like you said", "as you told me" or "the way you did"
+ * claim no teaching (review of be8accf0: "I wrote it, like you said." after a request to write made a real run invalid).
+ */
+const TEACHING_CLAIM = /\b(?:(?:like|as|the way)\s+)?you\s+(?:showed|taught)\b/i;
 
 /**
  * The validity problems of a run. The rules run on the simulator log's raw child turns, which must be exactly the
@@ -557,6 +561,22 @@ function integrity(id: string, store: PracticeStore): string[] {
   return out;
 }
 
+/** What one board command shows: its words, or its kind and its numbers ("columns: 27, 39"). Never ids or places. */
+function boardWords(command: unknown): string {
+  if (typeof command !== "object" || command === null) return "";
+  const c = command as Record<string, unknown>;
+  for (const key of ["text", "label"]) if (typeof c[key] === "string" && (c[key] as string).trim()) return (c[key] as string).trim();
+  const numbers: number[] = [];
+  const walk = (x: unknown, key = "") => {
+    if (["id", "place", "target", "below", "region"].includes(key)) return;
+    if (typeof x === "number" && Number.isFinite(x)) numbers.push(x);
+    else if (Array.isArray(x)) x.forEach((v) => walk(v));
+    else if (x && typeof x === "object") for (const [k, v] of Object.entries(x)) walk(v, k);
+  };
+  walk(c);
+  return typeof c.op === "string" && numbers.length > 0 ? `${c.op}: ${numbers.join(", ")}` : "";
+}
+
 /**
  * What the validity judge reads: the persona card, the child's turns (their raw words), and the call in order with
  * Maya's turns as she said them (review of 8ce1adff: without them it could not tell taught from untaught, nor check a
@@ -567,9 +587,14 @@ export function validityInput(c: PracticeCase, trace: MayaTrace, log: SimulatorL
   const texts = sentTexts(log).texts.slice(0, count);
   const call: ValidityInput["call"] = [];
   let n = 0;
+  // What Maya showed on the board (review of be8accf0): a step she wrote there teaches as much as one she said.
+  const batches = new Map((Array.isArray(trace.board) ? trace.board : []).map((b) => [b.transactionId, b.commands] as const));
   for (const t of trace.turns) {
-    if (t.kind === "maya" && t.output && t.output.say.length > 0) call.push({ speaker: "maya", text: t.output.say.join(" ") });
-    else if (t.kind === "child" && n < texts.length) { call.push({ speaker: "child", text: texts[n], childTurn: n + 1 }); n++; }
+    if (t.kind === "maya" && t.output) {
+      const shown = (t.output.board ?? []).flatMap((id) => batches.get(id) ?? []).map(boardWords).filter((x) => x !== "");
+      const text = [t.output.say.join(" "), shown.length > 0 ? `(On the board: ${shown.join("; ")}.)` : ""].filter(Boolean).join(" ");
+      if (text) call.push({ speaker: "maya", text });
+    } else if (t.kind === "child" && n < texts.length) { call.push({ speaker: "child", text: texts[n], childTurn: n + 1 }); n++; }
   }
   return { promptVersion: VALIDITY_PROMPT_VERSION, persona: c.persona, childTurns: texts.map((text, i) => ({ id: i + 1, text })), call };
 }

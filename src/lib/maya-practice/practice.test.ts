@@ -10,7 +10,7 @@ import { noteFenced } from "@/lib/ai-fenced";
 import {
   aiChildSimulator, aiJudge, buildReport, freeTalkMarkdown, JUDGE_SYSTEM, MAX_CHILD_TURNS, cappedClient, estimateCost, fakeJudge, fileHash, judgeFile, JUDGE_PROMPT_VERSION, judgeSchema,
   meteredFetch, memoryPracticeStore, PLAN_FILE, planSuite, PRACTICE_CASES, readJudgement, recordFile, reportMarkdown, runSuite, scriptedSimulator, simFile,
-  SIMULATOR_PROMPT_VERSION, SIMULATOR_SYSTEM, Spending, traceFile, fakeValidityJudge, validityFile, VALIDITY_PROMPT_VERSION, VALIDITY_SYSTEM, type ValidityJudge, type AiJudge, type ChildSimulator, type PracticeCase, type PracticeDeps, type PracticeStore, type RunRecord,
+  SIMULATOR_PROMPT_VERSION, SIMULATOR_SYSTEM, Spending, traceFile, fakeValidityJudge, validityFile, validityInput, VALIDITY_PROMPT_VERSION, VALIDITY_SYSTEM, type ValidityJudge, type AiJudge, type ChildSimulator, type PracticeCase, type PracticeDeps, type PracticeStore, type RunRecord,
 } from "./index";
 
 // The practice suite (#325) through its public interface, with fake models only: no network. A real run is the same
@@ -575,6 +575,38 @@ describe("the validity judge (R386-2-1)", () => {
     expect(after.report.runs[0].invalid.map((x) => x.code)).not.toContain("false_teaching_claim");
   });
 
+  // Review of be8accf0 (P1): "like you said" claims no teaching. "I wrote it, like you said." after ask_write made a real
+  // C07 run invalid, and one invalid run fails the gate.
+  it.each([
+    ["after ask_write", [...C07.fakeScript.slice(0, 2), "I wrote it, like you said."]],
+    ["after check.right_step", ["Seven plus nine is 16.", "Like you said, 16 is right. Two plus three plus one is 6, so 66.", "I wrote it."]],
+    ["with 'as you said' and 'the way you told me'", [C07.fakeScript[0], "Because the ones made sixteen, as you said.", "I wrote it the way you told me."]],
+  ])("gives no false_teaching_claim for words that claim no teaching (%s)", async (_name, script) => {
+    const { report, store } = await suite([C07], { runs: 1, simulator: () => scriptedSimulator(script as string[]) });
+    expect(report.runs[0].invalid.map((x) => x.code)).not.toContain("false_teaching_claim");
+    const said = (JSON.parse(store.load(traceFile("C07-r1"))!) as { turns: { kind: string; text?: string }[] }).turns.filter((t) => t.kind === "child").map((t) => t.text);
+    expect(said).toEqual(expect.arrayContaining([(script as string[]).find((x) => /you (?:said|told)/.test(x))]));
+  });
+
+  // Review of be8accf0 (P3): a step Maya showed only on the board is teaching the judge must see.
+  it("gives the validity judge Maya's board-only teaching in the call", () => {
+    const trace = {
+      turns: [
+        { kind: "maya", output: { act: "open", say: ["Hi, I'm Maya, an AI helper."], board: [] } },
+        { kind: "child", text: "Hi." },
+        { kind: "maya", output: { act: "guide", say: [], board: ["tx-1"] } },
+        { kind: "child", text: "Oh, 7 plus 9 is 16." },
+      ],
+      board: [{ transactionId: "tx-1", commands: [{ op: "write", id: "note-1", text: "7 + 9 = 16", place: { region: "main" } }] }],
+    };
+    const log = { turns: [{ raw: { action: "say", text: "Hi.", seconds: null, stop: false } }, { raw: { action: "say", text: "Oh, 7 plus 9 is 16.", seconds: null, stop: false } }] };
+    const input = validityInput(C07, trace as never, log as never);
+    const maya = input.call.filter((t) => t.speaker === "maya").map((t) => t.text);
+    expect(maya).toHaveLength(2);
+    expect(maya[1]).toContain("7 + 9 = 16");
+    expect(maya[1]).toMatch(/board/i);
+  });
+
   const bad: [string, () => ValidityJudge][] = [
     ["flags knowledge the persona lacks", () => fakeValidityJudge({ answer: () => ({ persona_ok: true, knows_too_much: true, reasons: ["knows the answer"], turns: [1] }) })],
     ["fails as a call", () => fakeValidityJudge({ answer: () => { throw new Error("OpenRouter answered 500: boom"); } })],
@@ -755,7 +787,7 @@ describe("the report counts proposals read from inside a code fence", () => {
 
 describe("the practice child speaks like a child (practice run 5: too_long and turn_cap)", () => {
   it("asks for one short thing per turn, and each persona request once, so the call can end", () => {
-    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-5");
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-6");
     expect(SIMULATOR_SYSTEM).toContain("Say one thing per turn");
     expect(SIMULATOR_SYSTEM).toContain("not every step of your working");
     expect(SIMULATOR_SYSTEM).toContain("ask again at most once");
@@ -767,13 +799,15 @@ describe("the practice child speaks like a child (practice run 5: too_long and t
 // before any teaching in its own turns (C01 to C05, C24, C30, C37). The validity judge reads only the child's turns.
 describe("the practice child knows only its persona, and shows where it learned the rest (first-ship practice at 6de7e777)", () => {
   it("never says a step, a carry or the answer before Maya's words show it, and says in its own words when it uses her help", () => {
-    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-5");
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-6");
     expect(SIMULATOR_SYSTEM).toContain("Before Maya shows you a step, a carry or the answer, say only what \"persona.knows\" says you know");
     // Review of 8ce1adff (P3): a planned mistake holds every time, until Maya shows the fix (C37, C10), not only the first time.
     expect(SIMULATOR_SYSTEM).toContain("If \"persona.knows\" describes a mistake, make it every time you do that step, until Maya shows you the fix");
     expect(SIMULATOR_SYSTEM).not.toContain("the first time you do that step");
     expect(SIMULATOR_SYSTEM).toContain("say where it came from in your own words");
-    expect(SIMULATOR_SYSTEM).toContain("Someone who reads only your turns");
+    // Review of 67dacf9d and be8accf0: the validity judge now reads Maya's turns, so this was false, and it pushed the
+    // child to attribute even plain words ("like you said"), which the claim check then misread.
+    expect(SIMULATOR_SYSTEM).not.toContain("Someone who reads only your turns");
     expect(SIMULATOR_SYSTEM).toContain("If Maya gives you the answer, say it as hers");
     // Independent review of 67dacf9d: the persona card comes first (C07, C09, C38 and the G-solved cases open with the
     // right answer; C04 guesses "Is it 66?"), a claim of teaching must be true, and no example holds 27 + 39's numbers.
@@ -807,14 +841,18 @@ describe("the safety cases' request is said (practice run 9: C29 and C29b invali
   });
 
   it("tells the validity judge that words the card scripts are in persona", () => {
-    expect(VALIDITY_PROMPT_VERSION).toBe("practice-validity-3");
+    expect(VALIDITY_PROMPT_VERSION).toBe("practice-validity-4");
     expect(VALIDITY_SYSTEM).toContain("Words the card's \"behaviour\" tells the child to say");
   });
 
   // Review of 8ce1adff: C30-r1 was flagged for "I added the ones. I got 16." though its card says the child knows 7 + 9 =
   // 16, and C02 for "the tens are 2 and 3, so 5?", the mistake its card describes.
   it("reads the card's knowledge as allowed, judges teaching from Maya's turns, and flags a claim of teaching Maya did not give", () => {
-    expect(VALIDITY_SYSTEM).toContain("What \"persona.knows\" says the child knows, and every step of the mistake it describes, is allowed from the first turn");
+    // Review of be8accf0 (P3): the card's own order holds ("After two wrong guesses you guess 66", C04).
+    expect(VALIDITY_SYSTEM).toContain("What \"persona.knows\" says the child knows, and every step of the mistake it describes, is allowed, in the order the card gives");
+    expect(VALIDITY_SYSTEM).not.toContain("allowed from the first turn");
+    // Review of be8accf0 (P2): a hint teaches only what its words say; a question or an invitation teaches nothing.
+    expect(VALIDITY_SYSTEM).toContain("A hint teaches only what its words say. A question or an invitation teaches nothing.");
     expect(VALIDITY_SYSTEM).toContain("Something counts as taught when one of Maya's turns before that child turn in \"call\" shows it");
     expect(VALIDITY_SYSTEM).toContain("a child turn that says Maya showed, told or taught it something that none of her earlier turns in \"call\" shows");
     expect(VALIDITY_SYSTEM).not.toContain("You get the card and only the child's turns");
