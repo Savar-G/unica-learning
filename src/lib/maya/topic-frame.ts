@@ -24,6 +24,8 @@ export function topicFrame(text: string, operation: Operation): string | null {
     const [[a, x], [b, y]] = shapes.map((i) => SYMMETRY_LINES[i]);
     return `${capital(a)} has ${lines(x)}. ${capital(b)} has ${y}.`;
   }
+  const claim = claimFrame(text, operation);
+  if (claim) return claim;
   const rectangle = readPerimeter(text);
   if (rectangle && same(operation, perimeterOperation(rectangle.length, rectangle.width))) {
     return "A rectangle has 2 lengths and 2 widths. Add one length and one width. Then double it.";
@@ -49,4 +51,37 @@ export function topicNumbers(text: string, operation: Operation): number[] {
   const die = readDieCount(text);
   if (!die || !same(operation, dieOperation(die.last))) return [];
   return Array.from({ length: die.last }, (_, i) => i + 1).filter((x) => (x % 2 === 1) === (die.kind === "odd"));
+}
+
+const SCALE = /^A scale's marks are (\d+), (\d+), (\d+)\. True or false: (\d+) intervals above \2 is (\d+)\.$/;
+const MINUTE = /^True or false: the minute hand (\d) marks past the (\d{1,2}) shows (\d+) minutes\.$/;
+const MONEY = /^True or false: (\d+) \$20 bills and (\d+) quarters is \$\d+\.\d\d\.$/;
+/** "$60", "$0.75". */
+const dollars = (n: number) => "$" + (Number.isInteger(n) ? String(n) : n.toFixed(2));
+
+/**
+ * The topic sentence of a scale, minute-hand or money claim (C3b), by its closed form, when the operation is the one
+ * that form gives: the scale's step between marks, the minute hand's 5 minutes a number, the bills' and quarters'
+ * dollars. The claim's own question line follows it.
+ */
+function claimFrame(text: string, operation: Operation): string | null {
+  const t = text.trim();
+  const scale = SCALE.exec(t);
+  if (scale) {
+    const [a, b, c, m] = [+scale[1], +scale[2], +scale[3], +scale[4]];
+    const k = b - a;
+    if (k > 0 && c - b === k && same(operation, { kind: "evaluate", operands: [`${b} + ${m} × ${k}`] })) return `The marks go up by ${k} each time. So each interval is ${k}.`;
+  }
+  const minute = MINUTE.exec(t);
+  if (minute && same(operation, { kind: "evaluate", operands: [`${minute[2]} × 5 + ${minute[1]}`] })) {
+    return "Each number on the clock is 5 minutes. Each small mark is 1 more minute.";
+  }
+  const cash = MONEY.exec(t);
+  if (cash) {
+    const [bills, quarters] = [+cash[1], +cash[2]];
+    if (same(operation, { kind: "decimal-add", operands: [bills * 20, (quarters * 25) / 100] })) {
+      return `${bills} $20 bills make ${dollars(bills * 20)}. ${quarters} quarters make ${dollars((quarters * 25) / 100)}.`;
+    }
+  }
+  return null;
 }

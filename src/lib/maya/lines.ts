@@ -163,6 +163,12 @@ export const TEMPLATES = {
     "How far did you get with {expr}?", "Can you show me how you began {expr}?",
   ],
   // The first question of an "other-topic" call (Wave C): code's topic sentence, then the usual question.
+  // A scale, minute-hand or money claim (C3b): code's topic sentence, then the work the claim needs. Pending Savar's
+  // approval (D-202).
+  "question.claim.framed": [
+    "{frame} First we work out {expr}.", "{frame} Let's work out {expr} first.", "{frame} We start with {expr}.",
+    "{frame} Let's find {expr} first.", "{frame} First, let's find {expr}.",
+  ],
   "assess.framed": [
     "{frame} What did you try for {expr}?", "{frame} How did you start {expr}?", "{frame} What have you done on {expr}?",
     "{frame} What did you do for {expr}?", "{frame} How did you begin {expr}?",
@@ -857,7 +863,7 @@ export function packageLines(given: OperationPackage) {
   return {
     hello: (): LineOffer[] => [offer("open.hello", "open.hello", {})],
     question: (): LineOffer[] => [
-      ...(claim ? claim.question() : [frame ? offer("question.problem", "question.framed", { frame, expr: asked }, { slots: {}, board: asked }) : offer("question.problem", "question.problem", { expr: asked }, { slots: {}, board: asked })]),
+      ...(claim ? (frame ? [offer("question.problem", "question.claim.framed", { frame, expr }, { slots: {}, board: expr })] : claim.question()) : [frame ? offer("question.problem", "question.framed", { frame, expr: asked }, { slots: {}, board: asked }) : offer("question.problem", "question.problem", { expr: asked }, { slots: {}, board: asked })]),
       ...sentencesOf(pkg.text).map((s, i) => offer("question.read", "question.read", { sentence: s }, { slots: { sentence: i } })),
     ],
     assess: (): LineOffer[] => [frame ? offer("assess.ask", "assess.framed", { frame, expr: asked }) : offer("assess.ask", "assess.ask", { expr: asked })],

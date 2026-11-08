@@ -392,6 +392,9 @@ export function evaluateModelSteps(pkg: OperationPackage): { id: string; text: s
  * Any other package as it is. The stored package never changes: this is a copy.
  */
 export function withEvaluateExample<P extends OperationPackage>(pkg: P): P {
+  // A claim's session package (claim.ts, A4) already has its example: the evaluate example plus its compare step and
+  // word. Making it again here would drop the claim from the example (C3b integration).
+  if (pkg.steps.some((s) => s.kind === "claim-compare")) return pkg;
   const t = teachingOf(pkg);
   return t && t.example !== pkg.easierExample && JSON.stringify(t.example) !== JSON.stringify(pkg.easierExample) ? { ...pkg, easierExample: t.example } : pkg;
 }
