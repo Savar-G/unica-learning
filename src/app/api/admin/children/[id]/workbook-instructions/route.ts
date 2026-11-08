@@ -22,7 +22,7 @@ async function guard(request: Request, ctx: RouteContext<"/api/admin/children/[i
 
 export async function PUT(request: Request, ctx: RouteContext<"/api/admin/children/[id]/workbook-instructions">) {
   const g = await guard(request, ctx);
-  if ("response" in g) return g.response;
+  if (g.response) return g.response;
   const body = await request.json().catch(() => null);
   const instructions = workbookInstructions(body);
   if (!instructions) return Response.json({ ok: false, error: "These instructions are not in the expected form. Reload the page and try again." }, { status: 400 });
@@ -44,7 +44,7 @@ export async function PUT(request: Request, ctx: RouteContext<"/api/admin/childr
 
 export async function DELETE(request: Request, ctx: RouteContext<"/api/admin/children/[id]/workbook-instructions">) {
   const g = await guard(request, ctx);
-  if ("response" in g) return g.response;
+  if (g.response) return g.response;
   try {
     await clearWorkbookInstructions(g.db, g.id);
     return Response.json({ ok: true });

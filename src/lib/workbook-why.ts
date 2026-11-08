@@ -167,7 +167,7 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
       if (s.preferences.interests.length) choices.push(`Story settings requested: ${s.preferences.interests.map(interestLabel).join(", ")}.`);
       if (s.preferences.styles.length) choices.push(`Ways of learning requested: ${s.preferences.styles.map(styleLabel).join(", ")}.`);
     }
-    if (s.hasAssessment && s.adjustments.stretchShift > 0) choices.push(`Harder work starts ${s.adjustments.stretchShift} days earlier because of the working level and test results.`);
+    if (s.hasAssessment && s.adjustments.stretchShift > 0) choices.push(`Harder work starts ${s.adjustments.stretchShift} days earlier because ${asked?.difficulty === "harder" ? "the team asked for harder work" : "of the working level and test results"}.`);
     if (day.shortStories && page.parts.some(p => p.kind === "word-problems" || p.kind === "picture-stories")) choices.push("Shorter stories follow the recorded read-aloud use.");
     if (s.hasAssessment && page.parts.some(p => p.kind === "new-idea")) choices.push(`Picture support stays through Day ${s.adjustments.picturesThrough}.`);
     for (const part of page.parts) {
