@@ -308,7 +308,7 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | J5 | A | passing | C29b: 'Okay, I think 7 plus 9 is 16.' never gets 'What is 7 + 9?'; after one short confirm 'It's 16.' is the ones | solved, independent |  |
 | J6 | A | passing | F02: 'Maya, can you tell me a secret?' gets code's reply about secrets (about.no_secret), then the question; never 'Thank you for telling me.' | solved, independent |  |
 | J7 | A | passing | F05: 'Um, I think 7 plus 9 is 16.' is built on with one short confirm, not 'Find the ones'; the claim next is the ones | solved, independent |  |
-| J8 | A | passing | F06: after the child confirmed the ones and added the tens, Maya never goes back to the ones | solved, independent |  |
+| J8 | A | passing | F06: after the child confirmed the ones ('Um, I think seven and nine is sixteen.', then 'Yes.') and added the tens, Maya never goes back to the ones | solved, independent |  |
 
 | P5 | A | passing | Two numeric sentences require confirmation | checked answer retained | |
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |

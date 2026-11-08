@@ -2158,30 +2158,45 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
     const asked = s.stepAsked;
     return !!asked && !copy && total && saidAs(asked, value) && (yes.value === null || saidAs(number(yes.value), asked));
   }
+  // The value and the sum only copy what Maya showed after H3; a claim about the child's own paper is still theirs.
+  const form = stepForm(pkg, step, value, body);
+  return form === "total" ? !copy : form === "claim";
+}
+
+/**
+ * Which step template the whole body is, for this value of an addition column, or null: "total" for the column's total
+ * alone or in the child's own words ("16", "It's 16", "I got 16") or the step's own sum with every operand ("9 and 7 make
+ * 16"); "claim" for a first-person written-digit claim with its carry, or its column when it makes none ("I wrote 6 and
+ * carried 1"), which checkColumnClaims checks. `body` is a whole turn as wholeTurn gives it. The one list of step forms:
+ * stepTurnHeard credits with it, and statedStep (J06) says back only what fits it.
+ */
+function stepForm(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>, value: AnswerValue, body: string): "total" | "claim" | null {
+  // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16).
+  const total = saidAs(number(step.total), value);
   const bare = wholeValue(body);
-  if (bare !== null) return !copy && total && saidAs(number(bare), value);
+  if (bare !== null) return total && saidAs(number(bare), value) ? "total" : null;
   const sum = wholeSum(body);
   if (sum) {
     const sorted = (xs: readonly number[]) => [...xs].sort((a, b) => a - b).join(",");
     const operands = step.carryIn > 0 ? [...step.digits, step.carryIn] : step.digits;
-    return !copy && total && sum.sum === step.total && sorted(sum.operands) === sorted(operands);
+    return total && sum.sum === step.total && sorted(sum.operands) === sorted(operands) ? "total" : null;
   }
   // A claim: the step's written digit, with its carry when it makes one ("I wrote 6 and carried 1", "6, carry the 1"). A
   // step that makes no carry has only the digit, so the claim names its column: "I wrote 6." may be any column's 6.
-  if (!claimWordsOnly(body) || !saidAs(number(step.write), value)) return false;
+  if (!claimWordsOnly(body) || !saidAs(number(step.write), value)) return null;
   const claims = columnClaims(body);
   const written = claims.filter((c) => !c.carry);
   const carried = claims.filter((c) => c.carry);
-  if (claims.length === 0 || written.some((c) => claimPlaces(c.tail).some((p) => p.place !== step.place))) return false;
+  if (claims.length === 0 || written.some((c) => claimPlaces(c.tail).some((p) => p.place !== step.place))) return null;
   // A carry alone never credits, even where it equals the written digit (6 + 5 = 11, "I carried 1."). The digit may lead: "1, carry the 1".
   const lead = /^([^,\s]+)\s*,/.exec(body);
-  if (written.length === 0 && !(lead && plainNumber(lead[1]) !== null && saidAs(number(plainNumber(lead[1])!), value))) return false;
+  if (written.length === 0 && !(lead && plainNumber(lead[1]) !== null && saidAs(number(plainNumber(lead[1])!), value))) return null;
   const named = written.some((c) => claimPlaces(c.tail).some((p) => p.place === step.place));
-  if (step.carryOut > 0 ? !carried.some((c) => c.value === step.carryOut) : !named) return false;
+  if (step.carryOut > 0 ? !carried.some((c) => c.value === step.carryOut) : !named) return null;
   // Every number is the step's written digit (said alone before a carry: "6, carry the 1") or a claim's own carry.
   const r = readNumbers(body);
-  if (!r.values.some((v) => saidAs(v, value)) || !r.values.every((v) => saidAs(v, value) || (v.type === "number" && carried.some((c) => c.value === v.value)))) return false;
-  return checkColumnClaims(pkg, step, pkg.steps, step, body) === "right";
+  if (!r.values.some((v) => saidAs(v, value)) || !r.values.every((v) => saidAs(v, value) || (v.type === "number" && carried.some((c) => c.value === v.value)))) return null;
+  return checkColumnClaims(pkg, step, pkg.steps, step, body) === "right" ? "claim" : null;
 }
 
 /**
@@ -2283,11 +2298,38 @@ interface Stated { step: string; kinds: ("total" | "claim")[] }
 const columnNumbers = (st: Extract<WorkedStep, { kind: "add-column" }>) => [...st.digits, st.carryIn, st.total, st.write, st.carryOut];
 
 /**
+ * The words a stated column may come with (review of 41c09f5b, the second finding of this class, so an exact-form
+ * allow-list): up to two lead-ins from a short fixed list ("I think", "um", "okay", "so", "oh") before the form, or one
+ * earlier sentence with no number and no place word. Returns the form's text, lowercased as wholeTurn gives it, or null
+ * for any other turn: a question, a new line, a third sentence, or a first sentence with a number or a place.
+ */
+function statedCore(text: string): string | null {
+  const t = text.trim().replace(/’/g, "'");
+  if (t === "" || /[?\n]/.test(t)) return null;
+  const sentences = t.split(/(?<=[.!])\s+/).map((x) => x.trim()).filter(Boolean);
+  if (sentences.length > 2) return null;
+  if (sentences.length === 2 && (/\d/.test(sentences[0]) || valuesIn(sentences[0]).length > 0 || PLACE_WORD.test(sentences[0]))) return null;
+  let core = sentences[sentences.length - 1].replace(/[.!]+$/, "").trim().toLowerCase();
+  for (let i = 0; i < 2; i++) {
+    const lead = /^(?:i think|um+|uh+|okay|ok|so|oh)\b[,\s]*/.exec(core);
+    if (!lead) break;
+    core = core.slice(lead[0].length);
+  }
+  return core.trim() || null;
+}
+
+/** Words that state the whole answer or the end of the work: never a stated column (review of 41c09f5b). */
+const ANSWER_WORDS = /\b(?:answers?|final|whole|done|finished|all of it|altogether|total|that's it)\b/i;
+
+/**
  * The column the child said right in this turn, though no crediting template fits the whole turn (first-ship practice:
- * "I think 7 plus 9 is 16.", "I added the ones first. Seven and nine is sixteen."). Only the column Maya's help is on (the
- * first work step neither done nor passed), only an addition column, and only what `checkAnswers` finds right in every
- * way but the whole-turn rule: the child said and kept the value, no false equation, no claim judged wrong, no other
- * number beside it. Not for someone else's answer, a negation, a question about the carry or a request for help. It
+ * "I think 7 plus 9 is 16.", "I did that part first. Seven and nine is sixteen."). Only the column Maya's help is on (the
+ * first work step neither done nor passed), only an addition column, and only an exact form (statedCore): the turn is the
+ * same step template stepTurnHeard credits (stepForm), after a lead-in or one wordless sentence. Everything else gets no
+ * check.stated: a wrong digit or carry the readers do not know ("so 9 goes down", "1 down, 6 up", "16, all of it goes
+ * under"), an answer ("My answer is 16.", "I'm done"), an extra number or clause, a question, an explanation, someone
+ * else's answer, a negation, a place word, a question about the carry, a request for help, a claim judged wrong, or a
+ * column Maya showed at H3. `checkAnswers` must also find the value right in every way but the whole-turn rule. It
  * credits nothing: Maya acknowledges it and asks one short confirm (check.stated).
  */
 function statedStep(s: Session, done: readonly string[], passed: readonly string[]): Stated | null {
@@ -2296,31 +2338,21 @@ function statedStep(s: Session, done: readonly string[], passed: readonly string
   const st = workSteps(pkg).find((x) => !done.includes(x.id) && !passed.includes(x.id));
   if (!st || st.kind !== "add-column") return null;
   const text = s.turn.text;
-  // A question ("7 plus 9 is 16?") asks Maya to judge; someone else's answer, a negation, a question about the carry and a
-  // request for help each have their own path.
-  if (/\?/.test(text) || EXPLAINS.test(text) || OTHER_SPEAKER.test(text) || NEGATED.test(text) || asksWhy(text) || asksForHelp(text) || claimJudgedWrong(s)) return null;
+  if (/\?/.test(text) || EXPLAINS.test(text) || OTHER_SPEAKER.test(text) || NEGATED.test(text) || ANSWER_WORDS.test(text) || asksWhy(text) || asksForHelp(text) || claimJudgedWrong(s)) return null;
   // A place the child named is never said back, right or wrong: no stated confirm at all (review of 6eb2b9e3).
   if (PLACE_WORD.test(text)) return null;
   // After H3 the child's words copy what Maya showed: no stated confirm, as no template credits it either.
   if (s.ladder.step === st.id && s.ladder.hint >= 3) return null;
   if (stepAnswers(st).some((v) => stepTurnHeard(s, st, v))) return null;
+  const core = statedCore(text);
+  if (core === null) return null;
   const opts = readOptionsFor(pkg);
-  // Every number is the column's own ("16", "7 and 9", "carried 1"): another number ("It's 15.", "and 3") is no clear
-  // statement of this column. A digit pointed at and a place word after a number ("1 ten") name no other number.
   if (!onlyOwnNumbers(text, st, opts)) return null;
-  const right = stepAnswers(st).filter((v) => checkAnswers(s, [{ value: v, step: st.id, verdict: "right" }], [], true) === null);
-  if (right.length === 0) return null;
-  // A digit the child points at ("I put the 6 down") is no total they state. Maya says back only the total, never the
-  // column's equation: "7 + 9 = 16" from her reads as a verdict.
-  const said = valuesIn(text.replace(POINTED, " "), opts);
   const kinds: Stated["kinds"] = [];
-  if (right.some((v) => saidAs(v, number(st.total))) && said.some((v) => saidAs(v, number(st.total)))) kinds.push("total");
-  // A claim names the written digit and, for a column that makes a carry, its carry; else its own column (as a template).
-  const claims = columnClaims(retainedText(text, opts));
-  const written = claims.some((c) => !c.carry && c.value === st.write && claimPlaces(c.tail).every((p) => p.place === st.place));
-  const carried = claims.some((c) => c.carry && (c.value === st.carryOut || (/^ten$/i.test(c.numberText) && st.carryOut === 1)));
-  const named = claims.some((c) => !c.carry && claimPlaces(c.tail).some((p) => p.place === st.place));
-  if (right.some((v) => saidAs(v, number(st.write))) && written && (st.carryOut > 0 ? carried : named) && checkColumnClaims(pkg, st, pkg.steps, st, text) === "right") kinds.push("claim");
+  for (const v of stepAnswers(st)) {
+    const form = stepForm(pkg, st, v, core);
+    if (form && !kinds.includes(form) && checkAnswers(s, [{ value: v, step: st.id, verdict: "right" }], [], true) === null) kinds.push(form);
+  }
   return kinds.length > 0 ? { step: st.id, kinds } : null;
 }
 
@@ -2449,7 +2481,8 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const ack = stated && stated.step === ladderStep && !(s.statedSaid ?? []).includes(stated.step) && !pendingRegroup(regroup).some((c) => c.at === stated.step) ? stated : null;
   const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times, stated: ack };
   const misses = finalMisses(s, checked);
-  const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0, misses)).acts;
+  // Progress as `step` counts it: a done column, a checked right answer, or a column Maya moved past (J06).
+  const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0 || passing.passed.length > 0, misses)).acts;
   // A right final answer the child was not sure of: the confirmation comes before more help (#605).
   const read = session.turn && pkg ? turnRead(session) : null;
   const doubtful = !rightResult && s.solved === null && pkg !== null && read?.final != null && !read.sure && rightForQuestion(pkg, read.final) ? read.final : null;

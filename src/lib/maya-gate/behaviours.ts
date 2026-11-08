@@ -2183,7 +2183,8 @@ export const BEHAVIOURS: Behaviour[] = [
     fixture: "A",
     status: "passing",
     steps: [
-      child("Seven and nine is sixteen, so I put the 6.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
+      // Only an exact form gets a stated confirm (review of 41c09f5b): "…, so I put the 6." is a second clause.
+      child("Um, I think seven and nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
       child("Yes.", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
       child("Okay. Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
       child("So the answer is sixty-six.", { answers: [[66, "result", "right"]] }),

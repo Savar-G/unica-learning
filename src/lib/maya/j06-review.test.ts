@@ -92,7 +92,7 @@ describe("check.stated never says a place (P1-b)", () => {
 
 describe("the rest of the review", () => {
   it("says one check.stated line in a turn, never two (P3)", async () => {
-    const two: Step = { child: "Seven and nine is sixteen, so I wrote 6 and carried 1.", read: { start: "has_work" }, maya: [{ act: "guide", step: "ones", level: 0, lines: ["check.stated", "check.stated"], repair: { throws: true } }] };
+    const two: Step = { child: "I think seven and nine is sixteen.", read: { start: "has_work" }, maya: [{ act: "guide", step: "ones", level: 0, lines: ["check.stated", "check.stated"], repair: { throws: true } }] };
     const { told } = await play([two]);
     expect(told[1].refusals).toContain("invalid_proposal");
     expect(told[1].lines).toEqual(["check.stated"]);
@@ -130,3 +130,57 @@ describe("the rest of the review", () => {
     expect(told[1].refusals).not.toContain("fixed_reply_first");
   });
 });
+
+// Independent review of 41c09f5b (commits 1, 3 and 6): which turns get check.stated. Only an exact form: a lead-in or one
+// wordless sentence, then a step template stepTurnHeard credits. Each phrase runs on three paths: the model picks
+// check.stated itself, the model's repair fails (code decides), and the model call fails (a 503: code decides).
+const HOSTILE = [
+  // A wrong written digit or carry the readers do not know (P1).
+  "7 plus 9 is 16 so 9 goes down.", "7 plus 9 is 16, 1 down, 6 up.", "7 plus 9 is 16, so 1.", "7 and 9, 16, 7.", "16, all of it goes under.",
+  "7 plus 9 is 16, 1 goes down and 6 goes up.", "7 plus 9 is 16, I keep the 1 and give away 6.", "7 plus 9 is 16 so I put down 7.", "7 plus 9 is 16 and I put 1 on top.",
+  "7 plus 9 is 16, 6 carry.", "Seven and nine is sixteen, carry six.", "7 plus 9 is 16, then 9.", "7 plus 9 is 16, I wrote 7.", "16 so 1 goes on the 2.", "16, so I give the 6 to the 2.",
+  "7 plus 9 is 16, I write the 9.", "9 and 7 is 16, 9 and 7.", "I put 16 at the bottom.",
+  // A final answer said back and never judged (P2).
+  "My answer is 16.", "the answer is 16.", "16 is my final answer.", "I got 16 for the whole thing.", "7 plus 9 is 16 and I'm done.", "7 plus 9 is 16 so the answer is 16.",
+  "So 16 is my answer.", "16 is the answer.", "I added everything and got 16.", "The whole sum is 16.", "Sixteen. That's it, I'm finished.", "7 plus 9 is 16 so it's 16.",
+  // The readers' own list (zz-probe): parsed phrases that must stay refused.
+  "7 plus 9 is 16, I wrote 1 and carried 6.", "7 plus 9 is 16 and I carried 7.", "7 plus 9 is 16 and I carried 0.", "7 plus 9 is 16. I wrote 16.", "I wrote sixteen.",
+  "Seven and nine is sixteen, I put 16 down.", "16 I mean 61", "7 plus 6 is 16.", "9 plus 9 is 16.", "7 plus 9 is 16 and 7 plus 9 is 9.", "I got 16 then 6 then 1", "16 or 16",
+  "Grandpa 16.", "they told me 16", "Teacher: 16.", "Ms Lee says 16", "16, 16, 16.", "I wrote 1 and carried 6.", "I carried 1 and wrote 7.", "I write 6, carry 1, then 2 plus 3 is 5.",
+  "16. Then 5.", "I write 9 and carry 7.", "sixteen. sixty-six.", "16 then 66", "First 7 and 9 makes 16 then I put 16 under", "7 + 9 = 16, put down the 1", "7 + 9 = 16, write the 1, carry the 6",
+  "wrote the 1 carried the 6, 16", "I wrote 1. 16.", "I write 1 carry 6 because 16", "7 plus 9 is 16 and 2 plus 3 is 6.",
+];
+
+describe("only an exact form gets check.stated, on every path (review of 41c09f5b)", () => {
+  const paths: [string, (text: string) => Step][] = [
+    ["the model picks check.stated", (text) => ({ child: text, read: { start: "has_work" }, maya: [{ act: "guide", step: "ones", level: 0, lines: ["check.stated"], repair: { throws: true } }] })],
+    ["the repair fails", (text) => named(text, { start: "has_work", answers: [[16, "ones", "right"]] })],
+    ["the model call fails (503)", (text) => ({ child: text, maya: [{ throws: true }, { throws: true }] })],
+  ];
+  for (const [path, first] of paths) {
+    it.each(HOSTILE)(`${path}: %j gets no check.stated, and a yes after it moves nothing on`, async (text) => {
+      const { told } = await play([first(text), { child: "Yes.", maya: [{ throws: true }, { throws: true }] }]);
+      expect(told[1].lines).not.toContain("check.stated");
+      expect(told.slice(1).every((t) => t.step !== "tens")).toBe(true);
+    });
+  }
+
+  it("lets the model judge 'My answer is 16.' as a wrong final answer: no forced check.stated", async () => {
+    const { told } = await play([{ child: "My answer is 16.", read: { start: "has_work", answers: [[16, "result", "wrong"]] }, maya: [{ act: "guide", step: "ones", level: 0, lines: ["check.not_yet", "step.invite"] }] }]);
+    expect(told[1]).toMatchObject({ act: "guide", step: "ones", lines: ["check.not_yet", "step.invite"] });
+    expect(told[1].refusals).toEqual([]);
+  });
+
+  // ("Um, 7 plus 9 is 16." is a whole template and is credited; "I think it's 16." gets the step confirm, "Did you say 16?".)
+  it.each(["I think 7 plus 9 is 16.", "Okay, I think 7 plus 9 is 16.", "Um, so 7 plus 9 is 16.", "I did that part first. Seven and nine is sixteen.", "Oh, so 9 and 7 make 16."])("still says check.stated for the exact form %j", async (text) => {
+    const { told } = await play([named(text, { start: "has_work", answers: [[16, "ones", "right"]] })]);
+    expect(told[1].lines).toEqual(["check.stated"]);
+  });
+
+  it("counts a passed column as progress in code's fallback: no easier example after it (P3)", async () => {
+    const { told } = await play([stated, { child: "Yes.", maya: [{ throws: true }, { throws: true }] }, { child: "I don't know.", maya: [{ throws: true }, { throws: true }] }]);
+    expect(told[2].step).toBe("tens");
+    expect(told.map((t) => t.act)).not.toContain("example_step");
+  });
+});
+
