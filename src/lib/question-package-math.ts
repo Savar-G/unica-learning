@@ -607,7 +607,14 @@ export function stepText(step: WorkedStep, operation: Operation): string {
       return algebraStepText(step);
     case "read-digit":
       return readDigitText(step);
+    case "claim-compare": {
+      const { relation, value, shown, holds } = step;
+      const said = `${operationText(operation)} = ${valueText({ type: "number", value })}.`;
+      if (relation === "equal") return `${said} ${value} ${holds ? "is the same number as" : "is not"} ${shown}.`;
+      return `${said} ${value} is ${holds ? "" : "not "}greater than ${shown}.`;
+    }
     case "result": {
+      if (step.value.type === "choice") return `The answer is ${step.value.value}.`;
       const rules = computation(operation);
       return rules.say ? rules.say(operation, step.value) : `${rules.statement(operation)} = ${valueText(step.value)}`;
     }

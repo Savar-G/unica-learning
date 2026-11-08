@@ -4,10 +4,19 @@
 // `A_BAD_KEY` is fixture A with a wrong answer key (56 while the checked steps total 66), for the content hold (C36).
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
 // not teach yet (equivalent fractions, C36b).
+import { claimTeaching } from "@/lib/maya-teaching/claim";
 import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { PLACE_VALUE_FIXTURES, type PlaceValueFixtureId } from "./place-value-cases";
+import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | PlaceValueFixtureId;
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | PlaceValueFixtureId;
+
+/** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
+function claimFixture(raw: QuestionPackage): QuestionPackage {
+  const pkg = claimTeaching(raw);
+  if (!pkg) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
+  return pkg;
+}
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -121,6 +130,12 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
   ...PLACE_VALUE_FIXTURES,
+  // Claim questions (A4): "True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436?", "True or false: 3.45 + 2.38 = 5.93."
+  CLAIM_TF: claimFixture(CLAIM_TRUE_FALSE),
+  CLAIM_GT: claimFixture(CLAIM_GREATER),
+  CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
+  // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
+  CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */

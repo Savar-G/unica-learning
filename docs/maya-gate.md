@@ -13,6 +13,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 |---|---|
 | `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). |
 | `src/lib/maya-gate/place-value-cases.ts` | Fixtures PVD, PVD0, PVV and PVV0: teaching packages the place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored place-value questions, and their behaviours (PV01 to PVJ2b), added to `FIXTURES` and `BEHAVIOURS`. |
+| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -307,6 +308,22 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |
 | P5c | A | passing | Numeric work after an answer requires confirmation | checked answer retained | |
 | P5d | A | passing | The child already wrote the answer | checked answer | |
+| CL01 | CLAIM_TF | passing | True/false product claim worked step by step; a bare 'True.' is said back, and the plain yes to that commits it | solved, independent | |
+| CL02 | CLAIM_GT | passing | Yes/no 'greater than' claim answered at once with a reason: accepted, circled, closed | solved, independent | |
+| CL03 | CLAIM_DEC | passing | Decimal-add claim: the wrong word is not accepted; the right word with its reason is | solved, hint | |
+| CL04 | CLAIM_TF | passing | 'Maybe true?' is unclear: Maya asks which word, then accepts the committed word | solved | |
+| CL05 | CLAIM_GT | passing | A plain yes to 'Did you say 1440?' answers that question, not the claim | solved | |
+| CL06 | CLAIM_TF | passing | The result in the child's own words is acknowledged once; a question about the step gets code's help line | solved, hint | |
+| CL07 | CLAIM_GT | passing | A bare 'Yes.' is said back; the child's 'No.' answers that question, not the claim | solved | |
+| CL08 | CLAIM_GT | passing | The result given before its columns is acknowledged, and Maya goes on to the claim's question, not the columns | solved, independent | |
+| CL09 | CLAIM_GT | passing | Grade 3, 'I'm stuck.' first: the easier example says its claim's question, within 25 words a turn | child_stopped | |
+| CL10 | CLAIM_TF | passing | Grade 3: '6 times 8 is 48, so it's true.' is this question's work, accepted as the circled word | solved, independent | |
+| CL11 | CLAIM_GT | passing | '1440 minus 1436 is 4, so it's yes.': the compare in a full sentence is this question's math | solved, independent | |
+| CL12 | CLAIM_DIV | passing | A claim checked by division: '6 times 8 is 48.' and '56 divided by 8 is 7, so it's no.' are this question's math | solved | |
+
+### Claim questions (A4)
+
+A claim question ("True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436? Circle yes or no.") is judged as its session teaches it (`claimView` in `src/lib/maya/claim.ts`): the operation's steps, the compare step `claim`, and the circled word as the answer. Code reads the word with the claim reader's allow-list; the scripted model reads only the numbers. An accepted word must be the word the claim gives, in a committed form ("It's yes, because ..."). A bare word after any Maya question is never the answer (controller rule 4): Maya says it back ("You said true. Is true the word you circle?"), and only a plain yes to that commits it (CL01). A plain yes to "Did you say 1440?" is never the word (CL05), and a "No." to the said-back question is not the word "no" (CL07). Against J06 (#698 practice): the result in the child's own words is acknowledged once and Maya goes on (CL06), a question about the step gets code's help line (CL06), and a checked right result given before its columns shows those columns done, as an equal fraction does (#407), so Maya does not ask for them again (CL08). Before the word is released, no Maya turn but the easier example may say "circle", "it's" or "the answer is" with the word (`answer_too_early`). No claim call gives the word (`give_answer`).
 
 ### Place-value questions through the session adapter (B1a)
 
