@@ -308,7 +308,7 @@ const FIX_FORMS = /^(?:it should be|it should say|should be|it's supposed to be|
  * fix named ("It should be 4980, not 498."); a place value's digit times its place ("3 times 10000 is 30000"). An allow-list over the whole turn: a hedge, a question, another speaker or a
  * copy fits none. After H3 nothing counts (the compare step has none, so this never meets one).
  */
-export function spotStepHeard(input: { pkg: OperationPackage; text: string; uncertain: boolean; value: number; heardAsked: AnswerValue | null; shown: boolean }): boolean {
+export function spotStepHeard(input: { pkg: OperationPackage; text: string; uncertain: boolean; value: number; resultAsked: AnswerValue | null; shown: boolean }): boolean {
   const { pkg, value } = input;
   if (!isSpot(pkg) || input.uncertain || input.shown) return false;
   const body = wholeTurn(input.text);
@@ -318,7 +318,7 @@ export function spotStepHeard(input: { pkg: OperationPackage; text: string; unce
   const notShown = NOT_SHOWN.exec(core);
   if (notShown && step && numberIn(notShown[1]) !== step.shown) return false;
   const said = notShown ? core.slice(0, notShown.index).trim() : core;
-  if (said !== body && claimStepHeard({ text: said, uncertain: false, operation: pkg.operation, value, heardAsked: null, shown: false })) return true;
+  if (said !== body && claimStepHeard({ text: said, uncertain: false, operation: pkg.operation, value, resultAsked: null, shown: false })) return true;
   const fix = FIX_FORMS.exec(said);
   if (fix) return numberIn(fix[1]) === value;
   const times = /^(.+?)\s+(?:times|x|×)\s+(.+?)\s+(?:is|equals|makes|=)\s+(.+)$/.exec(said);

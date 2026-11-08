@@ -10,13 +10,13 @@ import { teachingPackage } from "@/lib/maya-teaching";
 import { deriveMissingNumber } from "@/lib/maya-teaching/missing-number";
 import { printedMissing, type PrintedMissing } from "@/lib/maya-teaching/missing-number-fixtures";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
-import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
+import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE, CLAIM_WIDE } from "./claim-fixtures";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 import { PLACE_VALUE_FIXTURES, type PlaceValueFixtureId } from "./place-value-cases";
 import { SPOT_FIXTURES, type SpotFixtureId } from "./spot-error-cases";
 
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId | PlaceValueFixtureId | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT"
-  | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | SpotFixtureId;
+  | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "CLAIM_WIDE" | SpotFixtureId;
 
 /** A claim question's teaching package (A4): the stored synthetic package through the session adapter (claimTeaching). */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
@@ -159,6 +159,8 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
   // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
   CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
+  // "Is 777 × 7 greater than 4662?": the longest spoken claim shape, for the 25-word turns (#737 review P2).
+  CLAIM_WIDE: claimFixture(CLAIM_WIDE),
 };
 
 /** Fixtures that must pass Maya's package check (the default check, or hers for a missing number); the bad key must fail it. */

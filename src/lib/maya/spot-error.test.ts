@@ -128,8 +128,12 @@ describe("spot the error in the controller", () => {
       expect(texts[0]).not.toMatch(new RegExp(`\\b${fix}\\b`));
       expect(texts[0]).not.toMatch(/\btick (?:no|yes)\b(?! or)/i);
     }
-    // The compare step is the first step of a "which digit" item: its help says to check the answer given.
-    expect(fallbackCall(DIGIT, ["I'm stuck."], 3).texts[0]).toMatch(/Then check 7\./);
+    // The compare step is the first step of a "which digit" item. A child stuck from the start sees the easier example
+    // first (#737); the first help line on the compare step, when it comes, says to check the answer given.
+    const stuck = fallbackCall(DIGIT, Array.from({ length: 6 }, () => "I'm stuck."), 3);
+    const firstGuide = stuck.texts[stuck.acts.indexOf("guide")];
+    expect(firstGuide).toMatch(/Then check 7\./);
+    expect(speechWords(firstGuide)).toBeLessThanOrEqual(limit);
   });
 
   it("keeps the child's full sentences on this question in scope (lesson 1)", () => {
@@ -162,7 +166,7 @@ describe("the child's words on a spot-the-error question", () => {
   it("credits the compare step only from a committed whole turn of the child's own", () => {
     const pkg = view(MUL) as OperationPackage;
     const heard = (text: string, extra: Partial<Parameters<typeof spotStepHeard>[0]> = {}) =>
-      spotStepHeard({ pkg, text, uncertain: false, value: 4480, heardAsked: null, shown: false, ...extra });
+      spotStepHeard({ pkg, text, uncertain: false, value: 4480, resultAsked: null, shown: false, ...extra });
     for (const t of ["It should be 4480.", "It should be 4480, not 448.", "No, 7 times 640 is 4480.", "7 times 640 is 4480, so it's wrong.", "The right answer is 4480."]) {
       expect(heard(t), t).toBe(true);
     }
@@ -173,7 +177,7 @@ describe("the child's words on a spot-the-error question", () => {
     expect(heard("It should be 4480.", { shown: true })).toBe(false);
     // A value's digit times its place, on a place-value question.
     const pv = view(VALUE) as OperationPackage;
-    expect(spotStepHeard({ pkg: pv, text: "4 times 10000 is 40000.", uncertain: false, value: 40000, heardAsked: null, shown: false })).toBe(true);
+    expect(spotStepHeard({ pkg: pv, text: "4 times 10000 is 40000.", uncertain: false, value: 40000, resultAsked: null, shown: false })).toBe(true);
   });
 
   it("holds back a right word until the fix is known", () => {
