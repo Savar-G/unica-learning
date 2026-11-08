@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { claimTeaching, readClaim } from "@/lib/maya-teaching/claim";
+import { claimTeaching, exampleGivesAway, readClaim } from "@/lib/maya-teaching/claim";
+import * as CLAIMS from "@/lib/maya-gate/claim-fixtures";
 import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_RIGHT, CLAIM_TRUE_FALSE } from "@/lib/maya-gate/claim-fixtures";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { checkQuestionPackage, operationProblem, workedSteps, type QuestionPackage } from "@/lib/question-package";
@@ -94,3 +95,28 @@ describe("the generator's workbook teaching data is unchanged (A4)", () => {
     for (const pkg of Object.values(FIXTURES).filter((p) => p.operation !== null && p.operationSource === undefined)) expect(withWorkbookMayaOperation(pkg)).toEqual(pkg);
   });
 });
+
+describe("the easier example never gives the answer away (lesson 11, #724's review)", () => {
+  const mul = (a: number, b: number) => ({ kind: "multiply", operands: [a, b] }) as const;
+
+  it("knows a giveaway: the question's own number, the result times a power of 10, or the result's first digits", () => {
+    expect(exampleGivesAway(mul(2, 3), mul(20, 3))).toBe(true); // 6 and 60, and the 3
+    expect(exampleGivesAway(mul(2, 3), mul(600, 10))).toBe(true); // 6 and 6000
+    expect(exampleGivesAway(mul(2, 3), mul(850, 8))).toBe(true); // 6800 begins with 6
+    expect(exampleGivesAway(mul(8, 2), mul(850, 8))).toBe(true); // the question's own 8
+    expect(exampleGivesAway(mul(2, 2), mul(850, 8))).toBe(false);
+    expect(exampleGivesAway({ kind: "decimal-add", operands: [1.2, 1.3] }, { kind: "decimal-add", operands: [6.67, 2.55] })).toBe(false);
+  });
+
+  it("every claim's made example passes the check against its real question", () => {
+    for (const raw of Object.values(CLAIMS)) {
+      const pkg = claimTeaching(raw)!;
+      expect(pkg, raw.id).not.toBeNull();
+      expect(exampleGivesAway(pkg.easierExample!.operation, pkg.operation!), `${raw.id}: ${pkg.easierExample!.text}`).toBe(false);
+    }
+    // The round product: 2 × 3 = 6 would give 60 away, so the example is another fact.
+    const round = claimTeaching(CLAIMS.CLAIM_ROUND)!;
+    expect(round.easierExample!.operation).not.toEqual(mul(2, 3));
+  });
+});
+
