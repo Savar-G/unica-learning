@@ -16,7 +16,7 @@ import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
 export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId
-  | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES";
+  | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG";
 
 /** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
@@ -24,7 +24,6 @@ function claimFixture(raw: QuestionPackage): QuestionPackage {
   if (!pkg) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
   return pkg;
 }
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG";
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });

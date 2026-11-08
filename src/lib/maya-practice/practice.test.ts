@@ -243,11 +243,9 @@ describe("an invalid simulation never counts as a pass", () => {
       expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
       const atStart = c.validity.stages.filter((s) => s.opens === "start").flatMap((s) => s.numbers);
       // The personas that solve it on their own: C07, C09, C26, C28, the harmful requests, the free-talk cases (D-197) and
-      // OT5 (Wave C, the child's own words).
-      expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28", "C29", "C29b", "OT5"].includes(c.id) || c.id.startsWith("F"));
-      // The personas that solve it on their own: C07, C09, C26, C28, the harmful requests and the free-talk cases (D-197).
-      // CL01 knows its claim's product (6 × 8 = 48) from the start; its answer is the circled word, which code reads.
-      expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28", "C29", "C29b", "CL01"].includes(c.id) || c.id.startsWith("F"));
+      // OT5 (Wave C, the child's own words). CL01 knows its claim's product (6 × 8 = 48) from the start; its answer is the
+      // circled word, which code reads.
+      expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28", "C29", "C29b", "OT5", "CL01"].includes(c.id) || c.id.startsWith("F"));
     }
   });
 

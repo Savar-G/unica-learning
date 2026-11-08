@@ -506,6 +506,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
     reasons: ["solved"],
     validity: { stages: [{ name: "first try", opens: "start", numbers: [4, 260, 590] }, { name: "easier example", opens: "example", numbers: exampleNumbers("EV_STORY") }, { name: "after help", opens: "help", numbers: [...EV_STORY_WORK, 450] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
     fakeScript: ["I don't know how to start.", "okay", "okay", "4 times 260 is 1040.", "I got 450.", "Because I did the boxes first.", "I wrote it."],
+  },
   // Claim questions (A4, src/lib/maya/claim.ts): the answer is the circled word, which code reads.
   {
     id: "CL01",

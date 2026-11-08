@@ -14,6 +14,7 @@
 // child to circle it, never to write a number. Pure TypeScript: no clock, network or randomness.
 import { equivalent, operationText, type AnswerValue, type OperationPackage, type WorkedStep } from "@/lib/question-package";
 import { claimExample, claimStep, readClaim, type Claim } from "@/lib/maya-teaching/claim";
+import { topicClaim } from "@/lib/maya-teaching/topic-claim";
 import type { Act, ChildAnswer } from "./proposal";
 import type { AnswerRead } from "./numbers";
 import type { LineId, LineOffer, Slots } from "./lines";
@@ -59,7 +60,8 @@ const isClaimItem = (pkg: OperationPackage) => pkg.item?.format === "circle" && 
 export function claimSessionPackage(pkg: OperationPackage): { pkg: OperationPackage } | { held: string } | null {
   if (!isClaimItem(pkg)) return null;
   const held = { held: "Maya cannot teach this circle question yet" };
-  const claim = readClaim(pkg, pkg.operation);
+  // A4's own closed forms first, then an "other-topic" claim (scale, minute hand, money: topic-claim.ts, C3b).
+  const claim = readClaim(pkg, pkg.operation) ?? topicClaim(pkg);
   if (!claim || !equivalent(pkg.answer.value, { type: "number", value: claim.value })) return held;
   const example = claimExample(claim, pkg);
   if (!example) return held;

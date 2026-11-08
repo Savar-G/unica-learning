@@ -2391,6 +2391,8 @@ export const BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0, fallbacks: 0, boardBatches: 1 },
       outputs: [{ mayaTurn: 1, lines: [PART1_POINT] }],
+    },
+  },
 
   // Claim questions (A4, src/lib/maya/claim.ts): the circled word is the final answer, read by code.
   {

@@ -84,21 +84,23 @@ describe("the session adapter: one-step questions", () => {
 });
 
 describe("the session adapter: multi-step stories", () => {
-  it("derives the story's operations in printed order as an evaluate, which stays held until Maya teaches evaluate", () => {
+  it("derives the story's operations in printed order as an evaluate, which Maya teaches (A2, #734)", () => {
     const stored = boxesThenSells("Mo", 4, 236, "beads");
     expect(stored.text).toBe("Mo's shop has 4 boxes with 230 beads in each. It sells 460 beads. How many beads are left?");
     expect(multiStepOperation(stored)).toEqual({ kind: "evaluate", operands: ["4 × 230 − 460"] });
     const made = teach(stored);
     expect(made.operation).toEqual({ kind: "evaluate", operands: ["4 × 230 − 460"] });
     expect(mayaPackageCheck(made).ok).toBe(true);
-    expect(held(made)).toMatch(/evaluate/);
+    expect(held(made)).toBeNull();
     expect(printedWorkbookQuestion(made)).toEqual(stored);
   });
 
   it("reads a printed chain as written, not as the template's one-step expression", () => {
+    expect(multiStepOperation(addsThousandChain(73562))).toEqual({ kind: "evaluate", operands: ["73562 + 1000 + 100"] });
+    // Integration with A2 (#734): a part above 9999 is held, so the adapter adds no teaching data and the call is held.
     const made = teach(addsThousandChain(73562));
-    expect(made.operation).toEqual({ kind: "evaluate", operands: ["73562 + 1000 + 100"] });
-    expect(held(made)).toMatch(/evaluate/);
+    expect(made.operation).toBeNull();
+    expect(held(made)).not.toBeNull();
   });
 });
 

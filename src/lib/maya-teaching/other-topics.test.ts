@@ -110,12 +110,12 @@ describe("lines of symmetry", () => {
 });
 
 describe("perimeter", () => {
-  it("makes 2 × (length + width), held until Maya teaches evaluate steps", () => {
+  it("makes 2 × (length + width), which Maya teaches part by part (A2's evaluate, #734)", () => {
     const made = derivePerimeter(perimeterPrinted(84, 37));
     expect(made?.operation).toEqual({ kind: "evaluate", operands: ["2 × (84 + 37)"] });
     expect(made?.answer?.value).toEqual({ type: "number", value: 242 });
     expect(checkQuestionPackage(made).ok).toBe(true);
-    expect(heldReason(made)).toMatch(/operate step of evaluate/);
+    expect(heldReason(made)).toBeNull();
   });
 
   it("stays held when the text, the slots or the key disagree", () => {
@@ -206,11 +206,16 @@ describe("a workbook-confirmed call at grade 3 (review of #731)", () => {
     for (const text of out.say) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
   });
 
-  it("perimeter: held until A2, so the call ends at once in the held lines only", async () => {
+  it("perimeter (taught with A2's evaluate): the fixed opening fits 25 words, and the call leaves OPEN", async () => {
     const model = scenarioModel();
-    const s = createTextSession({ callId: "grade-3-held", package: derivePerimeter(perimeterPrinted(245, 126))!, grade: 3, confirmWorkbook: true, model, clock: () => 1000 });
+    const s = createTextSession({ callId: "grade-3-perimeter", package: derivePerimeter(perimeterPrinted(245, 126))!, grade: 3, confirmWorkbook: true, model, clock: () => 1000 });
+    model.next([{ act: "open" }], undefined);
     const out = await s.start();
-    expect(s.session.outcome?.reason).toBe("content_issue");
+    expect(s.session.opened).toBe(true);
+    model.next([{ act: "example_step" }], { start: "no_start" });
+    out.say.push(...(await s.child("I don't know how to start.")).say);
+    expect(s.session.state).not.toBe("OPEN");
+    expect(s.session.outcome).toBeNull();
     for (const text of out.say) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
   });
 });
