@@ -301,14 +301,14 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P22 | A | passing | 'I'm done!' once 66 stands: a warm close, with no request to write or explain | checked controller behavior | |
 | P13 | A | passing | 'I don't know about the ten.': a child who says they are stuck gets one level more help, though the model's reading left the request out | checked controller behavior | |
 | P14 | A | passing | An ask to write with no understanding field is said as it is, read as uncertain | checked controller behavior | |
-| J1 | A | passing | C07 (first-ship practice, J06): 'Seven and nine is sixteen.' after another sentence gets one short confirm (check.stated), never the step again; only a bare 'Yes.' next moves her help on to the tens, with no credit | solved, independent |  |
+| J1 | A | passing | C07 (first-ship practice, J06): 'I added the ones first. Seven and nine is sixteen.' keeps Maya on the ones with no credit; 'Seven and nine is sixteen.' next is the ones, and a reply asking for them again is refused | solved, independent |  |
 | J2 | A | passing | C09: a right answer by another method ('27 plus 40, then took away one') is accepted with no column question that doubts it | solved, independent |  |
-| J3 | A | passing | C10: 'Oh, so 2 plus 3 plus 1 is 6.' gets one short confirm; after a bare 'Yes.' Maya asks for the whole answer, not the tens again | solved, independent |  |
-| J4 | A | passing | C26: one short confirm for 'I think 7 plus 9 is 16.'; a bare 'Yes.' moves on; 'What do I do with the 1 I carried?' gets where the carried 1 goes, never the answer | solved, hint |  |
-| J5 | A | passing | C29b: 'Okay, I think 7 plus 9 is 16.' never gets 'What is 7 + 9?'; after one short confirm 'It's 16.' is the ones | solved, independent |  |
+| J3 | A | passing | C10: 'Oh, so 2 plus 3 plus 1 is 6.' keeps Maya on the tens with no credit (code's next help there); 'It's 6.' next is the tens, and a reply asking for them again is refused | solved, hint |  |
+| J4 | A | passing | C26: 'I think 7 plus 9 is 16.' keeps Maya on the ones; after '16.', 'What do I do with the 1 I carried?' gets where the carried 1 goes, never the invitation again or the answer | solved, hint |  |
+| J5 | A | passing | C29b: 'It's 16.' never gets 'What is 7 + 9?': the ones are credited and Maya goes on to the tens | solved, independent |  |
 | J6 | A | passing | F02: 'Maya, can you tell me a secret?' gets code's reply about secrets (about.no_secret), then the question; never 'Thank you for telling me.' | solved, independent |  |
-| J7 | A | passing | F05: 'Um, I think 7 plus 9 is 16.' is built on with one short confirm, not 'Find the ones'; the claim next is the ones | solved, independent |  |
-| J8 | A | passing | F06: after the child confirmed the ones ('Um, I think seven and nine is sixteen.', then 'Yes.') and added the tens, Maya never goes back to the ones | solved, independent |  |
+| J7 | A | passing | F05: 'Um, I think 7 plus 9 is 16.' keeps Maya on the ones with no credit; '7 plus 9 is 16.' is built on, and the ones invitation again is refused | solved, independent |  |
+| J8 | A | passing | F06: 'Seven plus nine is sixteen.' right after the easier example is the ones: 'Now you try yours' over it is refused, and Maya goes on to the tens | solved, worked_example |  |
 
 | P5 | A | passing | Two numeric sentences require confirmation | checked answer retained | |
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |

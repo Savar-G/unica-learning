@@ -382,17 +382,6 @@ export interface Session {
   heardAsked?: AnswerValue | null;
   /** The column total Maya asked about in that confirmation (stepConfirmable): the only number a yes credits for a step. */
   stepAsked?: AnswerValue | null;
-  /**
-   * First-ship practice (J06): columns Maya acknowledged with check.stated (the child said them right in words no
-   * crediting template fits), and the one her last turn asked about. A saved session from before has none.
-   */
-  statedSaid?: string[];
-  statedAsked?: string | null;
-  /**
-   * Columns Maya moved past after the child said them right and then confirmed or said them again (J06). Never a credit:
-   * `done` and the outcome do not count them, and no later step is credited before them; only her help moves on.
-   */
-  passed?: string[];
   confirmTries: number;
   offeredOtherInput: boolean;
   redirects: number;
@@ -1177,7 +1166,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // An equal fraction when the question asks for the simplest form (#407): the adding is done, not the form.
   const equal = equalIn(pkg, checked);
   // A checked right answer on the child's question shows they have started: a no-start no longer holds (#389).
-  const progress = s.done.length > 0 || (s.passed ?? []).length > 0 || equal !== null || checked.some((c) => c.problem === "target" && c.answer.verdict === "right");
+  const progress = s.done.length > 0 || equal !== null || checked.some((c) => c.problem === "target" && c.answer.verdict === "right");
   if (progress) s.noStart = false;
   const misses = finalMisses(s, checked);
   const allowedNow = blocked ? blocked.acts : teachingActs(s, reading, rightResult, progress, misses).acts;
@@ -1192,8 +1181,6 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const done = [...s.done];
   let failed = false;
   let regroup = regroupOf(s);
-  // Columns Maya moves past (J06): never a credit, so `done` stays as it is; only her help moves on.
-  let passing: { passed: string[]; now: string | null } = { passed: (s.passed ?? []).filter((id) => !done.includes(id)), now: null };
   if (pkg && scoring) {
     for (const { answer: a, problem } of checked) {
       if (problem !== "target") continue;
@@ -1203,9 +1190,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     }
     // An equal fraction shows every work step done: the final step simplifies the child's own fraction (#407).
     if (equal) for (const st of workSteps(pkg)) if (!done.includes(st.id)) done.push(st.id);
-    regroup = regroupAfter(s, checked, done, s.passed ?? []);
-    passing = passedNow(s, done, checked);
-    const next = guideStep(pkg, [...done, ...passing.passed], regroup);
+    regroup = regroupAfter(s, checked, done);
+    const next = guideStep(pkg, done, regroup);
     if (next !== ladder.step) Object.assign(ladder, { step: next, hint: -1, unlocked: Math.max(0, ladder.hint - 1), failures: 0 });
     if (failed) {
       ladder.failures += 1;
@@ -1224,10 +1210,6 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (pendingRegroup(regroup).some((c) => c.at === ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 1);
   }
 
-  // A column the child said right in words no template fits (J06): Maya acknowledges it once, with one short confirm.
-  const stated = pkg && scoring && !passing.now && checked.length === 0 ? statedStep(s, done, passing.passed) : null;
-  const ack = stated && stated.step === ladder.step && !(s.statedSaid ?? []).includes(stated.step) &&
-    !pendingRegroup(regroup).some((c) => c.at === stated.step) ? stated : null;
   const main = isTeaching(s.state) ? s.state : s.resume;
   // The step a guide or an example step is about comes before its words: its lines are that step's lines.
   if (p.act === "example_step") {
@@ -1235,15 +1217,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (p.step !== next.id) return no("wrong_step", `The next example step is "${next.id}".`, allowedNow);
   }
   const regroupNote = pendingRegroup(regroup).some((c) => c.at === ladder.step) ? ` The child has not regrouped there: say "step.regroup" for "${ladder.step}" before any line about a carried digit.` : "";
-  if (ack && p.act !== "guide" && ["try_target", "clarify", "example_step"].includes(p.act) && allowedNow.includes("guide")) {
-    return no("invalid_proposal", `The child said "${ladder.step}" right in their own words: guide it with check.stated (what they said, and one short confirm).`, allowedNow);
-  }
   if (p.act === "guide" && p.step !== ladder.step) return no("wrong_step", `Guide the next step or required carry explanation: "${ladder.step}".${regroupNote}`, allowedNow);
   if (p.act === "accept_answer" && !rightResult) return no("accepts_wrong_answer", "Only a right final answer the child said and kept can be accepted.", allowedNow);
 
   // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
-  const view: View = { steps: [ladder.step], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times, stated: ack };
-  let statedAsked: string | null = null;
+  const view: View = { steps: [ladder.step], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
   const forcedOpening = p.act === "open" && s.confirmWorkbook && pkg ? workbookOpening(pkg) : null;
   // Do not select or record model wordings that this fixed opening will not say.
   const spoken: Spoken | { code: RefusalCode; reason: string } = forcedOpening
@@ -1327,19 +1305,6 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // is allowed at any cap and is no new help (#605 practice run 1: C01-r2, F04-r3).
       // A check of the child's own right answer (check.together, check.guess, #605) may ask the step's question (up to
       // H2: "Let's check it together. What is 7 + 9?"); it checks an answer the child gave, so it is no new help either.
-      // The child said this column right in words no template fits (J06): Maya says it back and asks one short confirm,
-      // and does not ask the step again. No new help and no credit.
-      const acked = spoken.chosen.some((o) => o.line === "check.stated");
-      if (ack && !acked) {
-        return no("invalid_proposal", `The child said "${ladder.step}" right in their own words: say check.stated alone (what they said, and one short confirm), not the step again, and do not say it is right.`, allowedNow);
-      }
-      if (acked) {
-        if (spoken.chosen.length !== 1) return no("invalid_proposal", "check.stated is said alone and once: one short confirm, with no other line.", allowedNow);
-        s.statedSaid = [...(s.statedSaid ?? []), ladder.step];
-        statedAsked = ladder.step;
-        moveTo(s, "GUIDE_TARGET");
-        break;
-      }
       const checking = spoken.chosen.some((o) => o.line === "check.together" || o.line === "check.guess") && p.level <= 2;
       const echo = checking || (s.turn !== null && spoken.chosen.length > 0 && spoken.chosen.every((o) => o.line === "step.operation") &&
         saidSetup(pkg!, ladder.step, s.turn.text));
@@ -1543,7 +1508,6 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (scoring) {
     if (failed) s.stuckStep ??= ladder.step;
     s.done = done;
-    s.passed = passing.passed;
     s.ladder = ladder;
     s.finalMisses = misses;
   }
@@ -1560,7 +1524,6 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     delete s.heardAsked;
     delete s.stepAsked;
   }
-  s.statedAsked = statedAsked;
   if (p.act !== "confirm" && p.act !== "offer_other_input") {
     s.confirmTries = 0;
     s.offeredOtherInput = false;
@@ -1854,7 +1817,7 @@ function turnRead(s: Session): AnswerRead {
  * a final answer is the last number kept outside the child's explanations, readAnswer, D-199), and each verdict is what
  * code computes. Fills `checked`; returns the first problem.
  */
-function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[], stated = false): { code: RefusalCode; reason: string; unheard?: boolean } | null {
+function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): { code: RefusalCode; reason: string; unheard?: boolean } | null {
   const pkg = s.package!;
   if (!s.turn) return { code: "answer_not_heard", reason: "There is no child turn to read an answer from." };
   const read = turnRead(s);
@@ -1896,16 +1859,12 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[], st
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    // `stated` (statedStep) asks only whether the rest holds: it credits nothing.
-    if (!stated && a.verdict === "right" && a.step !== "result" && problem === "target" && at.kind === "add-column" && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && at.kind === "add-column" && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
       const unheard = stepSaidUnheard(s);
-      const said = !unheard && statedStep(s, s.done, (s.passed ?? []).filter((id) => !s.done.includes(id)))?.step === a.step;
-      return { code: "answer_not_committed", reason: `The child's whole turn does not say ${valueText(a.value)} for ${a.step} clearly: ${unheard ? "confirm what they said (confirm)"
-        : said ? `guide "${a.step}" with check.stated (say back what they said and ask one short confirm), with no answer for it in the reading, and do not say it is right or ask the step again`
-        : "help with this step, and do not say it is right"}.`, unheard };
+      return { code: "answer_not_committed", reason: `The child's whole turn does not say ${valueText(a.value)} for ${a.step} clearly: ${unheard ? "confirm what they said (confirm)" : "help with this step, and do not say it is right"}.`, unheard };
     }
     if (a.verdict === "wrong" && right) return { code: "rejects_right_answer", reason: `${valueText(a.value)} is right for ${a.step}.` };
     // The child's sure final answer is right: never "not yet" for it as a step (practice: "I think the tens make 66."
@@ -1927,9 +1886,7 @@ function finalMisses(s: Session, checked: readonly Checked[]): number {
   const pkg = s.package;
   // An equal fraction is not a wrong final answer (#407).
   if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && !isEqualForm(pkg, c.answer.value))) return before;
-  // A column Maya moved past (J06) counts as done here, so the given answer after two misses stays reachable (D-199).
-  const wrongAt = new Set(checked.filter((c) => c.problem === "target" && c.answer.verdict === "wrong").map((c) => c.answer.step));
-  const done = [...s.done, ...(s.passed ?? []).filter((id) => !wrongAt.has(id)), ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)];
+  const done = [...s.done, ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)];
   return currentStep(pkg, done) === "result" ? before + 1 : before;
 }
 
@@ -2030,7 +1987,7 @@ function asksWriteTotal(text: string, column: Extract<WorkedStep, { kind: "add-c
  * not carry, or they plan to write a column's two-digit sum as one number; that last column is not done, whatever the
  * reading says (it is taken out of `done`).
  */
-function regroupAfter(s: Session, checked: readonly Checked[], done: string[], passed: readonly string[] = []): Regroup {
+function regroupAfter(s: Session, checked: readonly Checked[], done: string[]): Regroup {
   const pkg = s.package;
   const previous = regroupOf(s);
   const due = [...previous.due];
@@ -2051,9 +2008,7 @@ function regroupAfter(s: Session, checked: readonly Checked[], done: string[], p
     const pair = pairs.find((x) => x.in.id === c.answer.step);
     const sum = pair ? pair.in.digits.reduce((a, b) => a + b, 0) : null;
     if (pair && sum !== null && (v === sum || v === sum % 10)) requireCarry(pair, pair.in.id);
-    // A column the child said with its carry and confirmed (passed, J06) is not reopened by a no-carry final answer: the
-    // given answer after two misses must stay reachable (D-199, review of 6eb2b9e3).
-    if (c.answer.step === "result" && v === noCarryAnswer(pkg)) for (const x of pairs) if (!done.includes(x.in.id) && !passed.includes(x.in.id)) requireCarry(x, x.in.id);
+    if (c.answer.step === "result" && v === noCarryAnswer(pkg)) for (const x of pairs) if (!done.includes(x.in.id)) requireCarry(x, x.in.id);
   }
   const committed = committedText(text).replace(/’/g, "'");
   if (CARRY_DENIAL.test(committed)) {
@@ -2168,7 +2123,7 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
  * alone or in the child's own words ("16", "It's 16", "I got 16") or the step's own sum with every operand ("9 and 7 make
  * 16"); "claim" for a first-person written-digit claim with its carry, or its column when it makes none ("I wrote 6 and
  * carried 1"), which checkColumnClaims checks. `body` is a whole turn as wholeTurn gives it. The one list of step forms:
- * stepTurnHeard credits with it, and statedStep (J06) says back only what fits it.
+ * stepTurnHeard credits with it.
  */
 function stepForm(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>, value: AnswerValue, body: string): "total" | "claim" | null {
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16).
@@ -2263,124 +2218,6 @@ function stepOnlyTurn(s: Session): boolean {
   return final ? answersStep(st, final) && !rightForQuestion(s.package, final) : valuesIn(s.turn.text, opts).some((v) => answersStep(st, v));
 }
 
-// ---------- A column said right in words no template fits (first-ship practice, J06) ----------
-
-/** A hedge: the child is not sure ("I guess", "maybe"). */
-const HEDGE = /\b(?:i guess|i think|maybe|probably|not sure|might)\b/i;
-/**
- * Any place or column word, or a number with "ten" after it ("1 ten"): the child named a place, so Maya says nothing back
- * as a stated column (review of 6eb2b9e3: "16 in the tens." got "So the ones make 16?"). Fail-closed: no place is checked.
- */
-const PLACE_WORD = /\b(?:ones|tens|hundreds?|thousands?|tenths|hundredths|thousandths|columns?|places?)\b|\b(?:\d+|one|a)\s+ten\b/i;
-/** Someone else's answer ("My mom said 16."): never the child's own statement. */
-const OTHER_SPEAKER = /\b(?!(?:i|we|you)\b)[a-z']+\s+(?:said|says|told|tells|thinks?|thought)\b|\b(?:mom|mum|dad|teacher|sister|brother|friend|grandma|grandpa)\b/i;
-const NEGATED = /\b(?:not|no|never)\b|n['’]t\b/i;
-/** A digit the child points at ("the 6", "that 1"): not a column total they state. */
-const POINTED = /\b(?:the|this|that)\s+(?:\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)\b/gi;
-
-/** An explanation ("Because seven and nine make sixteen."): its numbers are no statement of a step (D-199). */
-const EXPLAINS = /\b(?:because|since|cause|cuz|coz)\b/i;
-
-/**
- * Every number in the turn is the column's own ("16", "7 and 9", "carried 1"): another number ("It's 15.", "and 3") is no
- * clear statement of this column. A place word after a number ("1 ten") and a digit pointed at ("the 6") name no other.
- */
-function onlyOwnNumbers(text: string, st: Extract<WorkedStep, { kind: "add-column" }>, opts: ReadOptions): boolean {
-  const plain = text.replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine))\s+(?:tens?|ones?|hundreds?)\b/gi, "$1").replace(POINTED, " ");
-  const own = columnNumbers(st);
-  return valuesIn(plain, opts).every((v) => v.type === "number" && own.includes(v.value));
-}
-
-/** What a turn says right about a column, in words no crediting template fits: its total, its written digit and carry. */
-interface Stated { step: string; kinds: ("total" | "claim")[] }
-
-/** Every number a column of an addition shows: its digits, the carry it takes, its total, its written digit and its carry. */
-const columnNumbers = (st: Extract<WorkedStep, { kind: "add-column" }>) => [...st.digits, st.carryIn, st.total, st.write, st.carryOut];
-
-/**
- * The words a stated column may come with (review of 41c09f5b, the second finding of this class, so an exact-form
- * allow-list): up to two lead-ins from a short fixed list ("I think", "um", "okay", "so", "oh") before the form, or one
- * earlier sentence with no number and no place word. Returns the form's text, lowercased as wholeTurn gives it, or null
- * for any other turn: a question, a new line, a third sentence, or a first sentence with a number or a place.
- */
-function statedCore(text: string): string | null {
-  const t = text.trim().replace(/’/g, "'");
-  if (t === "" || /[?\n]/.test(t)) return null;
-  const sentences = t.split(/(?<=[.!])\s+/).map((x) => x.trim()).filter(Boolean);
-  if (sentences.length > 2) return null;
-  if (sentences.length === 2 && (/\d/.test(sentences[0]) || valuesIn(sentences[0]).length > 0 || PLACE_WORD.test(sentences[0]))) return null;
-  let core = sentences[sentences.length - 1].replace(/[.!]+$/, "").trim().toLowerCase();
-  for (let i = 0; i < 2; i++) {
-    const lead = /^(?:i think|um+|uh+|okay|ok|so|oh)\b[,\s]*/.exec(core);
-    if (!lead) break;
-    core = core.slice(lead[0].length);
-  }
-  return core.trim() || null;
-}
-
-/** Words that state the whole answer or the end of the work: never a stated column (review of 41c09f5b). */
-const ANSWER_WORDS = /\b(?:answers?|final|whole|done|finished|all of it|altogether|total|that's it)\b/i;
-
-/**
- * The column the child said right in this turn, though no crediting template fits the whole turn (first-ship practice:
- * "I think 7 plus 9 is 16.", "I did that part first. Seven and nine is sixteen."). Only the column Maya's help is on (the
- * first work step neither done nor passed), only an addition column, and only an exact form (statedCore): the turn is the
- * same step template stepTurnHeard credits (stepForm), after a lead-in or one wordless sentence. Everything else gets no
- * check.stated: a wrong digit or carry the readers do not know ("so 9 goes down", "1 down, 6 up", "16, all of it goes
- * under"), an answer ("My answer is 16.", "I'm done"), an extra number or clause, a question, an explanation, someone
- * else's answer, a negation, a place word, a question about the carry, a request for help, a claim judged wrong, or a
- * column Maya showed at H3. `checkAnswers` must also find the value right in every way but the whole-turn rule. It
- * credits nothing: Maya acknowledges it and asks one short confirm (check.stated).
- */
-function statedStep(s: Session, done: readonly string[], passed: readonly string[]): Stated | null {
-  const pkg = s.package;
-  if (!pkg || !s.turn || s.turn.uncertain || s.solved !== null) return null;
-  const st = workSteps(pkg).find((x) => !done.includes(x.id) && !passed.includes(x.id));
-  if (!st || st.kind !== "add-column") return null;
-  const text = s.turn.text;
-  if (/\?/.test(text) || EXPLAINS.test(text) || OTHER_SPEAKER.test(text) || NEGATED.test(text) || ANSWER_WORDS.test(text) || asksWhy(text) || asksForHelp(text) || claimJudgedWrong(s)) return null;
-  // A place the child named is never said back, right or wrong: no stated confirm at all (review of 6eb2b9e3).
-  if (PLACE_WORD.test(text)) return null;
-  // After H3 the child's words copy what Maya showed: no stated confirm, as no template credits it either.
-  if (s.ladder.step === st.id && s.ladder.hint >= 3) return null;
-  if (stepAnswers(st).some((v) => stepTurnHeard(s, st, v))) return null;
-  const core = statedCore(text);
-  if (core === null) return null;
-  const opts = readOptionsFor(pkg);
-  if (!onlyOwnNumbers(text, st, opts)) return null;
-  const kinds: Stated["kinds"] = [];
-  for (const v of stepAnswers(st)) {
-    const form = stepForm(pkg, st, v, core);
-    if (form && !kinds.includes(form) && checkAnswers(s, [{ value: v, step: st.id, verdict: "right" }], [], true) === null) kinds.push(form);
-  }
-  return kinds.length > 0 ? { step: st.id, kinds } : null;
-}
-
-/**
- * The columns Maya moves past now (J06): those passed before, less any the child now gets wrong (a pass never overrides a
- * wrong verdict: the help goes back to that column), and the column her last turn acknowledged with check.stated when
- * this turn is an exact bare yes to that confirm and nothing else ("Yes.", "Yeah!", the whole-turn yes of the step
- * confirm, `wholeYes` with no number). Fail-closed (review of 6eb2b9e3): a yes with anything else in the turn ("Yes, I
- * wrote 1 in the ones", "Yes, 9.", "Yes? Is it 7?", "Yeah I guess."), a turn code could not hear for sure, a claim judged
- * wrong, a wrong answer for that column, or a column Maya showed at H3 stays on the step, as before. Never a credit: only
- * her help moves on, so she does not ask the child again for what they said.
- */
-function passedNow(s: Session, done: readonly string[], checked: readonly Checked[] = []): { passed: string[]; now: string | null } {
-  const wrongAt = new Set(checked.filter((c) => c.problem === "target" && c.answer.verdict === "wrong").map((c) => c.answer.step));
-  const passed = (s.passed ?? []).filter((id) => !done.includes(id) && !wrongAt.has(id));
-  const pkg = s.package;
-  if (!pkg || !s.turn || s.turn.uncertain || s.solved !== null) return { passed, now: null };
-  const st = workSteps(pkg).find((x) => !done.includes(x.id) && !passed.includes(x.id));
-  if (!st || st.kind !== "add-column" || s.statedAsked !== st.id || wrongAt.has(st.id)) return { passed, now: null };
-  if (s.ladder.step === st.id && s.ladder.hint >= 3) return { passed, now: null };
-  const text = s.turn.text;
-  const body = wholeTurn(text);
-  const yes = body === null ? null : wholeYes(body);
-  const bare = yes !== null && yes.value === null && !/\?/.test(text) && !HEDGE.test(text);
-  const clean = !claimJudgedWrong(s) && checkColumnClaims(pkg, st, pkg.steps, st, text) !== "wrong";
-  return bare && clean ? { passed: [...passed, st.id], now: st.id } : { passed, now: null };
-}
-
 /**
  * The answers code reads in the child's own words, for a turn the model did not read (its call failed, or its reading named
  * none): first-ship practice, C28-r1 and C29-r1, where "7 plus 9 is 16." got "Find the ones." and "Yes, it's 66." got the
@@ -2473,16 +2310,11 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const done = pkg ? workSteps(pkg).map((st) => st.id)
     .filter((id) => equal !== null || session.done.includes(id) || checked.some((c) => c.problem === "target" && c.answer.step === id && c.answer.verdict === "right")) : [];
   // As `step` will see it: a write plan takes its column out of `done`, and a lost carry makes the regroup due.
-  const regroup = pkg ? regroupAfter(s, checked, done, session.passed ?? []) : { due: [], said: [] };
-  // As `step` will see it: the columns Maya moves past (J06), and a column to acknowledge with check.stated.
-  const passing = pkg ? passedNow(s, done, checked) : { passed: [], now: null };
-  const ladderStep = pkg ? guideStep(pkg, [...done, ...passing.passed], regroup) : "result";
-  const stated = pkg && !passing.now && answers.length === 0 ? statedStep(s, done, passing.passed) : null;
-  const ack = stated && stated.step === ladderStep && !(s.statedSaid ?? []).includes(stated.step) && !pendingRegroup(regroup).some((c) => c.at === stated.step) ? stated : null;
-  const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times, stated: ack };
+  const regroup = pkg ? regroupAfter(s, checked, done) : { due: [], said: [] };
+  const ladderStep = pkg ? guideStep(pkg, done, regroup) : "result";
+  const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
   const misses = finalMisses(s, checked);
-  // Progress as `step` counts it: a done column, a checked right answer, or a column Maya moved past (J06).
-  const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0 || passing.passed.length > 0, misses)).acts;
+  const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0, misses)).acts;
   // A right final answer the child was not sure of: the confirmation comes before more help (#605).
   const read = session.turn && pkg ? turnRead(session) : null;
   const doubtful = !rightResult && s.solved === null && pkg !== null && read?.final != null && !read.sure && rightForQuestion(pkg, read.final) ? read.final : null;
@@ -2526,9 +2358,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
         // A right final answer said with doubt or as a guess: check it together, with the step's question (#605).
         const lead = offers.find((o) => o.line === "check.guess") ?? offers.find((o) => o.line === "check.together");
         const asks = lead ? byLevel(free).filter((o) => o.slots.step === ladderStep && (o.line === "step.operation" || o.line === "step.invite")).reverse() : [];
-        // A column the child said right in words no template fits: check.stated alone, with no new help (J06).
-        const acks = offers.filter((o) => o.line === "check.stated");
-        lineSets = [...acks.map((o) => [o]), ...asks.map((h) => [lead!, h]), ...(judge ? help.map((h) => [judge, h]) : []), ...help.map((h) => [h])]
+        lineSets = [...asks.map((h) => [lead!, h]), ...(judge ? help.map((h) => [judge, h]) : []), ...help.map((h) => [h])]
           .map((set) => make(act, set, { step: ladderStep, level: (set.at(-1)!.level ?? 0) as HintLevel }));
         break;
       }
@@ -2738,8 +2568,6 @@ interface View {
   regroupSaid?: readonly CarryRef[];
   /** How many times each regroup line was said (Regroup.times), to limit a subtraction's, which has no carry state. */
   regroupTimes?: Readonly<Record<string, number>>;
-  /** The column the child said right in words no template fits, still to acknowledge (check.stated, J06). */
-  stated?: Stated | null;
 }
 
 /** The equal fraction (#407) among a reading's checked final answers, or null. */
@@ -2960,8 +2788,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       // child saw, and the given answer must follow H3 (first-ship practice, C04-r1, hint_skipped). The help goes on instead.
       const shownHere = view.steps[0] === s.ladder.step && s.ladder.hint >= 3;
       const check = s.solved === null && s.turn && !shownHere ? (saysGuess(s.turn.text) ? l.guess() : doubtfulRight(s) ? l.together() : []) : [];
-      const stated = view.stated ? l.stated(view.stated.step, view.stated.kinds) : [];
-      return [...stated, ...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...l.thinking()];
+      return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...l.thinking()];
     }
     case "accept_answer": {
       const form = view.checked.find((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right")?.answer.value ?? s.answerForm ?? undefined;
@@ -3377,12 +3204,7 @@ export function lineOffers(session: Session): Partial<Record<Act, LineOffer[]>> 
   const done = [...session.done];
   const after = regroupAfter(session, [], done);
   const regroup = pendingRegroup(after);
-  // A column the child said right in words no template fits (J06): its check.stated, before any reading, as `step` will
-  // offer it, so the model can pick it (review of 6eb2b9e3: it was offered only to code's fallback).
-  const passing = passedNow(session, done);
-  const stated = passing.now ? null : statedStep(session, done, passing.passed);
-  const ack = stated && !(session.statedSaid ?? []).includes(stated.step) && !regroup.some((c) => c.at === stated.step) ? stated : null;
-  const view: View = { steps: openSteps(pkg, done, regroup), done, checked: [], rightResult: false, regroup, regroupSaid: after.said, regroupTimes: after.times, stated: ack };
+  const view: View = { steps: openSteps(pkg, done, regroup), done, checked: [], rightResult: false, regroup, regroupSaid: after.said, regroupTimes: after.times };
   return Object.fromEntries(acts.map((act) => [act, offersFor(session, act, act === "accept_answer" ? { ...view, rightResult: true } : view)]));
 }
 

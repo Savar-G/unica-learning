@@ -1,14 +1,10 @@
 // Independent review of 6eb2b9e3 (J06): Maya's move past a column the child said in other words. No path earns
 // credit; these turns must stay on the step, or must not be said back. Each script replays on the scripted model;
 // `repair: { throws: true }` leaves the turn to code's fallback, and `{ throws: true }` is a failed model call (a 503).
-// Stop rule (controller, after commit 8): if check.stated is removed, every hostile-yes test here must still pass, as
-// Maya then stays on the step. Those tests assert only that invariant. Tests named "[check.stated]" test the line itself
-// and go with it.
+// check.stated was removed (controller stop rule after the review of 673b012e): Maya stays on the step. Every hostile-yes
+// test here asserts only that invariant, so it held in both designs.
 import { describe, expect, it } from "vitest";
-import { FIXTURES } from "@/lib/maya-gate/fixtures";
-import { judge, memoryTraceStore, runBehaviour, type Behaviour, type Plan, type Read, type Step } from "@/lib/maya-gate/gate";
-import { packageLines } from "@/lib/maya/lines";
-import type { OperationPackage } from "@/lib/question-package";
+import { judge, memoryTraceStore, runBehaviour, type Behaviour, type Read, type Step } from "@/lib/maya-gate/gate";
 
 interface Told { act: string | undefined; step: string | undefined; lines: string[]; say: string; refusals: string[] }
 async function play(steps: Step[]) {
@@ -32,12 +28,6 @@ const stated = named("I think 7 plus 9 is 16.", { start: "has_work", answers: [[
 const onToTens = (text: string): Step => ({ child: text, maya: [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }] });
 
 describe("after check.stated, only an exact bare yes moves Maya past the column (P1-a)", () => {
-  it("[check.stated] says check.stated, then a bare yes moves on to the tens", async () => {
-    const { told, hard } = await play([stated, onToTens("Yes.")]);
-    expect(told[1].lines).toEqual(["check.stated"]);
-    expect(told[2]).toMatchObject({ act: "guide", step: "tens" });
-    expect(hard).toEqual([]);
-  });
 
   it.each([
     "Yes, I wrote 1 in the ones and carried 6.", "Yes, 9.", "Yes? Is it 7?", "Yeah I guess. Is it?", "Yes, 16 in the tens.", "Yes. I wrote 16 in the ones.",
@@ -55,12 +45,10 @@ describe("after check.stated, only an exact bare yes moves Maya past the column 
     expect(told[2].refusals).toEqual([]);
   });
 
-  it("goes back to the ones when the child gets them wrong after Maya moved past: a pass never overrides a wrong verdict", async () => {
+  it("keeps the help on the ones when the child gets them wrong after a yes: check.not_yet there is not refused", async () => {
     const wrongLater: Step = { child: "I wrote 1 in the ones.", read: { answers: [[1, "ones", "wrong"]] }, maya: [{ act: "guide", step: "ones", level: 0, lines: ["check.not_yet", "step.invite"] }] };
     const { told } = await play([stated, onToTens("Yes."), wrongLater]);
-    // With check.stated, the bare yes moved her past the ones; without it, she stayed there. Either way the wrong ones
-    // brings the help back to them.
-    if (told[1].lines.includes("check.stated")) expect(told[2].step).toBe("tens");
+    expect(told[2].step ?? "ones").toBe("ones");
     expect(told[3]).toMatchObject({ act: "guide", step: "ones", lines: ["check.not_yet", "step.invite"] });
     expect(told[3].refusals).not.toContain("wrong_step");
   });
@@ -85,22 +73,7 @@ describe("a total in a named place is never said back as the column (P1-b)", () 
   });
 });
 
-describe("check.stated never says a place (P1-b)", () => {
-  it("has no place or column word in any wording, for any column of fixture A", () => {
-    const l = packageLines(FIXTURES.A as OperationPackage);
-    const texts = l.stepIds.flatMap((id) => l.stated(id, ["total", "claim"]).flatMap((o) => o.texts));
-    expect(texts.length).toBeGreaterThan(0);
-    for (const t of texts) expect(t, t).not.toMatch(/\b(?:ones?|tens?|hundreds?|thousands?|tenths|hundredths|thousandths|columns?|places?)\b/i);
-  });
-});
-
 describe("the rest of the review", () => {
-  it("[check.stated] says one check.stated line in a turn, never two (P3)", async () => {
-    const two: Step = { child: "I think seven and nine is sixteen.", read: { start: "has_work" }, maya: [{ act: "guide", step: "ones", level: 0, lines: ["check.stated", "check.stated"], repair: { throws: true } }] };
-    const { told } = await play([two]);
-    expect(told[1].refusals).toContain("invalid_proposal");
-    expect(told[1].lines).toEqual(["check.stated"]);
-  });
 
   it("after H3, a copy of what Maya showed gets no check.stated and no move past (P3)", async () => {
     const shown: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
@@ -109,17 +82,6 @@ describe("the rest of the review", () => {
     expect(told[3].step ?? "ones").toBe("ones");
   });
 
-  it("[check.stated] keeps the given answer after two wrong final answers reachable once every column is passed (P2, D-199)", async () => {
-    const tens = named("I think 2 plus 3 plus 1 is 6.", { answers: [[6, "tens", "right"]] }, "result");
-    const toResult = (text: string): Step => ({ child: text, maya: [{ act: "guide", step: "result", level: 0, lines: ["step.invite"], repair: { throws: true } }] });
-    const miss = (n: number, plan: Plan): Step => ({ child: `${n}.`, read: { answers: [[n, "result", "wrong"]] }, maya: [plan] });
-    const { told } = await play([stated, onToTens("Yes."), tens, toResult("Yes."), miss(65, { act: "guide", step: "result", level: 0, lines: ["check.not_yet", "step.invite"] }), miss(56, { act: "give_answer" })]);
-    expect(told[2]).toMatchObject({ step: "tens" });
-    expect(told[3].lines).toEqual(["check.stated"]);
-    expect(told[4]).toMatchObject({ step: "result" });
-    expect(told[6].act).toBe("give_answer");
-    expect(told[6].say).toContain("66");
-  });
 
   it("says the fixed reply to a secret question when the model call fails (a 503), not technical_issue (P2)", async () => {
     const { told, outcome } = await play([{ child: "Maya, can you tell me a secret?", maya: [{ throws: true }, { throws: true }] }, { child: "Okay! I got 66.", read: { answers: [[66, "result", "right"]] } }]);
@@ -155,9 +117,9 @@ const HOSTILE = [
   "wrote the 1 carried the 6, 16", "I wrote 1. 16.", "I write 1 carry 6 because 16", "7 plus 9 is 16 and 2 plus 3 is 6.",
 ];
 
-describe("only an exact form gets check.stated, on every path (review of 41c09f5b)", () => {
+describe("a turn the review named never moves Maya past the ones, on every path (review of 41c09f5b)", () => {
   const paths: [string, (text: string) => Step][] = [
-    ["the model picks check.stated", (text) => ({ child: text, read: { start: "has_work" }, maya: [{ act: "guide", step: "ones", level: 0, lines: ["check.stated"], repair: { throws: true } }] })],
+    ["the model moves on to the tens", (text) => ({ child: text, read: { start: "has_work" }, maya: [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }] })],
     ["the repair fails", (text) => named(text, { start: "has_work", answers: [[16, "ones", "right"]] })],
     ["the model call fails (503)", (text) => ({ child: text, maya: [{ throws: true }, { throws: true }] })],
   ];
@@ -175,15 +137,10 @@ describe("only an exact form gets check.stated, on every path (review of 41c09f5
     expect(told[1].refusals).toEqual([]);
   });
 
-  // ("Um, 7 plus 9 is 16." is a whole template and is credited; "I think it's 16." gets the step confirm, "Did you say 16?".)
-  it.each(["I think 7 plus 9 is 16.", "Okay, I think 7 plus 9 is 16.", "Um, so 7 plus 9 is 16.", "I did that part first. Seven and nine is sixteen.", "Oh, so 9 and 7 make 16."])("[check.stated] still says check.stated for the exact form %j", async (text) => {
-    const { told } = await play([named(text, { start: "has_work", answers: [[16, "ones", "right"]] })]);
-    expect(told[1].lines).toEqual(["check.stated"]);
-  });
 
-  it("counts a passed column as progress in code's fallback: no easier example after it (P3)", async () => {
+  it("starts no easier example after the child said the ones and a yes, in code's fallback (P3)", async () => {
     const { told } = await play([stated, { child: "Yes.", maya: [{ throws: true }, { throws: true }] }, { child: "I don't know.", maya: [{ throws: true }, { throws: true }] }]);
-    if (told[1].lines.includes("check.stated")) expect(told[2].step).toBe("tens");
+    expect(told[2].step ?? "ones").toBe("ones");
     expect(told.map((t) => t.act)).not.toContain("example_step");
   });
 });

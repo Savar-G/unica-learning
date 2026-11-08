@@ -120,20 +120,3 @@ These are the scoped additions and replacements on the chat repair branch. Revie
 | close.checked.4 | We've checked your answer for {expr}. Goodbye for now! |
 | held.hello.0 | Hi, I'm Maya, an AI. |
 | held.next.0 | Want to pick another question on this page? |
-
-## check.stated (first-ship practice at 6de7e777, J06), pending approval
-
-Said once per column when the child said it right in words no crediting template fits. Values in braces come from the checked column and are numbers the child said in that turn. No wording says a place: a turn that names one gets no confirm at all (review of 6eb2b9e3).
-
-| Id | Before | After, pending approval |
-|---|---|---|
-| `stated.total#0` | No line at this id. | You said {total}. Is that right? |
-| `stated.total#1` | No line at this id. | I heard {total}. Is that your answer? |
-| `stated.total#2` | No line at this id. | So you got {total}? Is that right? |
-| `stated.total#3` | No line at this id. | Okay, {total}. Is that your number? |
-| `stated.total#4` | No line at this id. | You said {total}. Is that what you got? |
-| `stated.claim#0` | No line at this id. | You wrote {write} and carried {carry}. Is that right? |
-| `stated.claim#1` | No line at this id. | So you wrote {write} and carried {carry}? |
-| `stated.claim#2` | No line at this id. | I heard you wrote {write} and carried {carry}. Is that right? |
-| `stated.claim#3` | No line at this id. | Okay, you wrote {write} and carried {carry}. Is that what you did? |
-| `stated.claim#4` | No line at this id. | So {write}, and you carried {carry}? Is that what you did? |

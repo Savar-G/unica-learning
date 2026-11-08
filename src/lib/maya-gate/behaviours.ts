@@ -25,12 +25,14 @@ const num = (value: number) => ({ type: "number" as const, value });
 const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.filter((line) => line.key === key).flatMap((line) => line.texts);
 const fractionLines = packageLines(FIXTURES.D as OperationPackage);
 const simplestLines = packageLines(FIXTURES.D_SIMPLEST as OperationPackage);
-/** J06 (first-ship practice): the approved wordings of Maya's acknowledgement and the next lines, from fixture A. */
+/** J06 (first-ship practice): the approved wordings of the lines Maya says in J1 to J8, from fixture A. */
 const wholeLines = packageLines(FIXTURES.A as OperationPackage);
-const statedOnes = variants(wholeLines.stated("ones", ["total"]), "stated.total");
-const statedTens = variants(wholeLines.stated("tens", ["total"]), "stated.total");
+const inviteOnes = variants(wholeLines.help("ones").filter((o) => o.line === "step.invite"), "step.invite");
+const rightOnes = variants(wholeLines.rightStep("ones"), "check.right_step");
+const rightTens = variants(wholeLines.rightStep("tens"), "check.right_step");
 const inviteTens = variants(wholeLines.help("tens").filter((o) => o.line === "step.invite"), "step.invite");
 const inviteResult = variants(wholeLines.help("result"), "invite.result");
+const regroupTens = variants(wholeLines.help("tens").filter((o) => o.line === "step.regroup"), "regroup.add");
 const pointTens = variants(wholeLines.help("tens").filter((o) => o.line === "step.point"), "point.add.carry");
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
@@ -2046,25 +2048,29 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
     },
   },
-  // First-ship practice at 6de7e777 (J06, conversational response): the child said a column right in words no crediting
-  // template fits, and Maya asked the step again. Now she says it back with one short confirm (check.stated), and after a
-  // yes or the same column again her help moves on, with no credit. `{ throws: true }` repairs leave the turn to code.
+  // First-ship practice at 6de7e777 (J06, conversational response): the child said a column right, and Maya asked the step
+  // again or ignored a question. check.stated was removed (controller stop rule after the review of 673b012e): a column
+  // said in other words keeps Maya on that step with no credit, as before. These cases show what holds without it: a turn
+  // in other words gets no credit and no "Every part is done", a reply that passes over a step the child said in words
+  // code credits is refused (so code credits it and goes on, never asking it again), a question about the carry is
+  // answered, a question about a secret gets code's reply, and a right method is not doubted. `{ throws: true }` repairs
+  // leave the turn to code. Each fails on the 6de7e777 controller for a behaviour reason.
   {
     id: "J1",
-    title: "C07: 'I did that part first. Seven and nine is sixteen.' gets one short confirm, never the step again; a bare 'Yes.' moves on to the tens",
+    title: "C07: 'I added the ones first. Seven and nine is sixteen.' keeps Maya on the ones with no credit; 'Seven and nine is sixteen.' next is the ones, and a reply asking for them again is refused",
     fixture: "A",
     status: "passing",
     steps: [
-      // A place word ("I added the ones") gets no stated confirm at all (review of 6eb2b9e3), so this child names none.
-      child("I did that part first. Seven and nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("Yes.", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
+      child("I added the ones first. Seven and nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
+      child("Seven and nine is sixteen.", undefined, [{ act: "guide", step: "ones", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
       child("2 plus 3 plus 1 is 6, so 66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
-      outputs: [{ mayaTurn: 1, lines: [statedOnes] }, { mayaTurn: 2, lines: [inviteTens] }],
+      refused: ["answer_not_committed", "invalid_proposal"],
+      outputs: [{ mayaTurn: 1, lines: [inviteOnes] }, { mayaTurn: 2, lines: [rightOnes, inviteTens] }],
       counts: { hints: 0 },
     },
   },
@@ -2085,32 +2091,33 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "J3",
-    title: "C10: 'Oh, so 2 plus 3 plus 1 is 6.' gets one short confirm, and after 'Yes.' Maya asks for the whole answer, not the tens again",
+    title: "C10: 'Oh, so 2 plus 3 plus 1 is 6.' keeps Maya on the tens with no credit (code's next help there); 'It's 6.' next is the tens, and a reply asking for them again is refused",
     fixture: "A",
     status: "passing",
     steps: [
       child("Okay. 7 plus 9 is 16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
-      // A place word ("So 6 tens.") gets no stated confirm at all, and only a bare yes moves on (review of 6eb2b9e3).
       child("Oh, so 2 plus 3 plus 1 is 6.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("Yes.", undefined, [{ act: "guide", step: "result", level: 0, lines: ["step.invite"] }]),
+      child("It's 6.", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
       child("66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "independent" },
+      // Code's help rises one level per child turn on a step still not done: the tens' carry line (H1), never the result.
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
       acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
-      outputs: [{ mayaTurn: 2, lines: [statedTens] }, { mayaTurn: 3, lines: [inviteResult] }],
-      counts: { hints: 0 },
+      refused: ["answer_not_committed", "invalid_proposal"],
+      outputs: [{ mayaTurn: 2, lines: [regroupTens] }, { mayaTurn: 3, lines: [rightTens, inviteResult] }],
+      counts: { hints: 1 },
     },
   },
   {
     id: "J4",
-    title: "C26: 'I think 7 plus 9 is 16.' gets one short confirm; 'Yes.' moves on; 'What do I do with the 1 I carried?' is answered with where the carried 1 goes",
+    title: "C26: 'I think 7 plus 9 is 16.' keeps Maya on the ones; after '16.' 'What do I do with the 1 I carried?' is answered with where the carried 1 goes, never the invitation again",
     fixture: "A",
     status: "passing",
     steps: [
       child("I think 7 plus 9 is 16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("Yes.", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
+      child("16.", { answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
       child("What do I do with the 1 I carried?", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
       child("Oh, 2 plus 3 plus 1 is 6, so 66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
@@ -2118,27 +2125,26 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: {
       outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
       acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
-      outputs: [{ mayaTurn: 1, lines: [statedOnes] }, { mayaTurn: 2, lines: [inviteTens] }, { mayaTurn: 3, lines: [pointTens] }],
-      refused: ["line_not_offered"],
+      outputs: [{ mayaTurn: 1, lines: [inviteOnes] }, { mayaTurn: 2, lines: [rightOnes, inviteTens] }, { mayaTurn: 3, lines: [pointTens] }],
+      refused: ["answer_not_committed", "line_not_offered"],
       never: ["give_answer"],
     },
   },
   {
     id: "J5",
-    title: "C29b: 'Okay, I think 7 plus 9 is 16.' never gets 'What is 7 + 9?': one short confirm, then 'It's 16.' is the ones",
+    title: "C29b: 'It's 16.' never gets 'What is 7 + 9?': the ones are credited and Maya goes on to the tens",
     fixture: "A",
     status: "passing",
     steps: [
-      child("Okay, I think 7 plus 9 is 16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { act: "guide", step: "ones", level: 2, lines: ["step.operation"], read: { start: "has_work" } } }]),
-      child("It's 16.", { answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's 16.", { start: "has_work" }, [{ act: "guide", step: "ones", level: 2, lines: ["step.operation"], repair: { throws: true } }]),
       child("2 plus 3 plus 1 is 6, so 66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
-      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
-      refused: ["answer_not_committed", "invalid_proposal"],
-      outputs: [{ mayaTurn: 1, lines: [statedOnes] }],
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      refused: ["invalid_proposal"],
+      outputs: [{ mayaTurn: 1, lines: [rightOnes, inviteTens] }],
       counts: { hints: 0 },
     },
   },
@@ -2161,40 +2167,40 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "J7",
-    title: "F05: 'Um, I think 7 plus 9 is 16.' is built on with one short confirm, not 'Find the ones'; 'So I write the 6 and carry the 1.' is the ones",
+    title: "F05: 'Um, I think 7 plus 9 is 16.' keeps Maya on the ones with no credit; '7 plus 9 is 16.' is built on, and 'How about the ones?' again is refused",
     fixture: "A",
     status: "passing",
     steps: [
       child("Um, I think 7 plus 9 is 16.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("So I write the 6 and carry the 1.", { answers: [[6, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("7 plus 9 is 16.", undefined, [{ act: "guide", step: "ones", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
       child("2 plus 3 plus 1 is 6, so 66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
-      outputs: [{ mayaTurn: 1, lines: [statedOnes] }],
+      refused: ["answer_not_committed", "invalid_proposal"],
+      outputs: [{ mayaTurn: 1, lines: [inviteOnes] }, { mayaTurn: 2, lines: [rightOnes, inviteTens] }],
       counts: { hints: 0 },
     },
   },
   {
     id: "J8",
-    title: "F06: after the child confirmed the ones and added the tens, Maya never goes back to 'Add the ones'",
+    title: "F06: 'Seven plus nine is sixteen.' right after the easier example is the ones: 'Now you try yours' over it is refused, and Maya goes on to the tens",
     fixture: "A",
     status: "passing",
     steps: [
-      // Only an exact form gets a stated confirm (review of 41c09f5b): "…, so I put the 6." is a second clause.
-      child("Um, I think seven and nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("Yes.", undefined, [{ act: "guide", step: "tens", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
-      child("Okay. Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("So the answer is sixty-six.", { answers: [[66, "result", "right"]] }),
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step", draw: ["example.columns"] }, {}, {}]),
+      child("Seven plus nine is sixteen.", undefined, [{ act: "try_target", repair: { throws: true } }]),
+      child("Two plus three plus one is six, so 66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "independent" },
-      acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
-      outputs: [{ mayaTurn: 1, lines: [statedOnes] }, { mayaTurn: 2, lines: [inviteTens] }, { mayaTurn: 3, lines: [statedTens] }],
-      counts: { hints: 0 },
+      outcome: { reason: "solved", assistance: "worked_example" },
+      acts: [OPEN, "example_step", "example_step", "example_step", "guide", "accept_answer", "ask_write", "close"],
+      refused: ["invalid_proposal"],
+      outputs: [{ mayaTurn: 4, lines: [rightOnes, inviteTens] }],
+      never: ["try_target"],
     },
   },
 ];
