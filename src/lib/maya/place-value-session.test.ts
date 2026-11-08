@@ -1,6 +1,8 @@
 // B1a: place value in Maya's controller, through createSession, step, nextActs and fallbacks. Synthetic numbers only.
 import { describe, expect, it } from "vitest";
-import { createSession, fallbacks, heldReason, nextActs, step, turnWordLimit, TIME_LIMITS, type Session } from "./session";
+import { createSession, fallbacks, heldReason, learningEvent, nextActs, step, turnWordLimit, TIME_LIMITS, type Session } from "./session";
+import { packageLines } from "./lines";
+import type { OperationPackage } from "@/lib/question-package";
 import { scopeReason } from "./scope";
 import { speechWords } from "./speech";
 import { PROPOSAL_VERSION } from "./proposal";
@@ -85,6 +87,50 @@ describe("place value in the controller", () => {
     expect(scopeReason(DIGIT as never, "3 times 1000 is 3000.", false)).toBeNull();
     // Another problem's numbers are still another problem.
     expect(scopeReason(VALUE as never, "6 times 7 is 42.", false)).toBe("changed_problem");
+  });
+
+  /** Each child turn answered by code's first fallback, as when the model fails; returns the acts and the session. */
+  function stuckCall(p: QuestionPackage, turns: string[]): { acts: string[]; s: Session; last: string } {
+    let s = opened(p, turns[0]);
+    let at = 3;
+    const acts: string[] = [];
+    let last = "";
+    const answer = () => {
+      while (s.expect === "maya" && !s.outcome) {
+        const r = step(s, { type: "proposal", at: at++, proposal: fallbacks(s)[0], fallback: true });
+        expect(r.refusal).toBeNull();
+        s = r.session;
+        const said = r.effects.find((e) => e.kind === "say");
+        if (said && said.kind === "say") { acts.push(said.act); last = said.text; }
+      }
+    };
+    answer();
+    for (const t of turns.slice(1)) {
+      if (s.outcome) break;
+      s = step(s, { type: "child_turn", at: at++, text: t }).session;
+      answer();
+    }
+    return { acts, s, last };
+  }
+
+  it("closes honestly after the easier example and writes the stuck step as a learning event (brief lesson 10)", () => {
+    const { acts, s, last } = stuckCall(DIGIT, ["I'm stuck.", "I'm stuck.", "I'm stuck.", "I'm stuck.", "I don't know."]);
+    expect(acts).toEqual(["guide", "guide", "guide", "example_step", "close"]);
+    expect(acts).not.toContain("give_answer");
+    // The close: hard, fine to stop, one next step, from code's lines, with no hint at the answer (3).
+    expect(packageLines(DIGIT as OperationPackage).closeUnsolved().flatMap((o) => o.texts)).toContain(last);
+    expect(last).not.toMatch(/\b3\b|three/i);
+    expect(s.outcome).toMatchObject({ reason: "child_stopped", assistance: "worked_example" });
+    expect(learningEvent(s, { parentId: "parent-1", childId: "child-1" })).toMatchObject({
+      key: "call:pv", source: "call", question: DIGIT.ref, skill: DIGIT.skill, result: "blank", stuckStep: "result", mistake: null,
+    });
+  });
+
+  it("writes the digit step as the stuck step of a value question left on it", () => {
+    const { acts, s } = stuckCall(VALUE, ["I'm stuck.", "I'm stuck.", "I'm still stuck.", "I'm stuck.", "I'm stuck.", "I still don't know."]);
+    expect(acts.slice(-3)).toEqual(["example_step", "example_step", "close"]);
+    expect(acts).not.toContain("give_answer");
+    expect(learningEvent(s, { parentId: "parent-1", childId: "child-1" })).toMatchObject({ result: "blank", stuckStep: "digit" });
   });
 });
 

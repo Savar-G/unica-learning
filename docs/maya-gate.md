@@ -339,6 +339,8 @@ Fixtures PVD, PVD0, PVV and PVV0 (`src/lib/maya-gate/place-value-cases.ts`) are 
 | PVS4 | PVD | passing | Which digit: '3 times 1000 is 3000.' is this question's work; Maya says that is the value and asks for the digit | solved | |
 | PVJ3 | PVV | passing | J06, value: 'Why do I multiply by 10,000?' gets code's answer, then the child says the value | solved, independent | |
 | PVJ3b | PVV | passing | J06, value: the model fails on 'Why do I multiply?'; code's fallback answers it first | solved | |
+| PV18 | PVV0 | passing | Value, zero digit: stuck twice; H1 names the places with no stripe, H2 stripes the empty column of a chart with no digits | solved | |
+| PV19 | PVD | passing | Which digit: 'I'm stuck.' four times; help rises to H2, the top of a last step, then the easier example, then the honest close | child_stopped, worked_example | |
 ### One-step workbook questions through the session adapter (Wave A)
 
 Fixtures W5, W3 and W6 (`src/lib/maya-gate/one-step-cases.ts`) are the teaching packages Maya's session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, as a call gets them. Each easier example has the question's own shape, one place smaller at a time, and the first one whose every step fits the strictest turn (25 words) is taken (`examples.ts`: 10 − 3 for 10000 − 3615, as each regroup across zeros is 33 words). W5 (10000 − 3615) and W6 (352418 + 41275) are above today's limits, so they run under Maya's wider limits only: they show her 5- and 6-digit columns, the place names she says, and the child's "ten thousands" and "hundred thousands" read as places, never as 10 or 100.

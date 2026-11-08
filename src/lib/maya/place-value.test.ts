@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { compileExpression, formatValue, EvaluationBudget } from "@/lib/workbook-curriculum/expression";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { evaluate, placeValueOf, type ExprValue } from "./place-value";
+import { mayaPackageCheck } from "./session";
 import { storedPlaceValue, zeroPrinted, ZERO_DERIVED, type PlaceValueVariant } from "@/lib/maya-teaching/place-value-samples";
 import { placeValueTeachingPackage } from "@/lib/maya-teaching/place-value";
 
@@ -116,7 +117,9 @@ describe("placeValueTeachingPackage", () => {
     const made = placeValueTeachingPackage(stored);
     if (!("package" in made)) throw new Error(made.held);
     const p = made.package;
-    expect(checkQuestionPackage(p).status).toBe("checked");
+    // Only Maya's own check knows the place-value kind; the default check leaves it "beyond code", as before (review of #738).
+    expect(checkQuestionPackage(p).status).toBe("unsupported");
+    expect(mayaPackageCheck(p).status).toBe("checked");
     expect(p.operation).toEqual({ kind: "place-value", operands: [785243], ask: "value", place: "ten thousands" });
     expect(p.answer?.value).toEqual({ type: "number", value: 80000 });
     expect(p.steps.map((s) => s.kind)).toEqual(["read-digit", "result"]);
@@ -137,3 +140,38 @@ describe("placeValueTeachingPackage", () => {
     expect(made.package.easierExample?.operation).toMatchObject({ place: "tens" });
   });
 });
+
+describe("the easier example never gives the answer away (brief lesson 11)", () => {
+  it("over many synthetic questions of every variant: no power-of-10 copy, no first digits, no shared asked digit, never the question's number", () => {
+    const random = seeded(23);
+    const cases: [PlaceValueVariant, "tens" | "hundreds" | "thousands" | "ten thousands" | "hundred thousands"][] = [
+      ["1.1", "thousands"], ["1.2", "ten thousands"], ["1.3", "hundreds"], ["2.1", "hundred thousands"], ["2.2", "ten thousands"],
+      ["2.3", "thousands"], ["3.1", "thousands"], ["3.2", "hundreds"], ["3.3", "tens"], ["3.2", "ten thousands"], ["1.3", "tens"],
+    ];
+    let checked = 0;
+    for (let i = 0; i < 1500; i++) {
+      const [variant, place] = cases[i % cases.length];
+      const n0 = (variant[0] === "1" ? 10000 : 100000) + Math.floor(random() * (variant[0] === "1" ? 89999 : 899999));
+      if (variant[0] !== "3" && String(n0).includes("0")) continue;
+      const r = placeValueTeachingPackage(storedPlaceValue({ variant, n0, place }));
+      if ("held" in r) continue;
+      const p = r.package;
+      const op = p.operation as { operands: [number]; place: string };
+      const k = { tens: 1, hundreds: 2, thousands: 3, "ten thousands": 4, "hundred thousands": 5 }[place];
+      const answer = (p.answer!.value as { value: number }).value;
+      const exNumber = (p.easierExample!.operation.operands as number[])[0];
+      const exAnswer = (p.easierExample!.answer as { value: number }).value;
+      // Computed here, apart from the builder's own check.
+      for (let j = 0; j <= 7; j++) {
+        expect(exAnswer * 10 ** j, p.text).not.toBe(answer);
+        expect(answer * 10 ** j, p.text).not.toBe(exAnswer);
+      }
+      expect(String(answer).startsWith(String(exAnswer)), p.text).toBe(false);
+      if (String(exNumber).length > k) expect(String(exNumber).at(-1 - k), p.text).not.toBe(String(op.operands[0]).at(-1 - k));
+      expect(exNumber).not.toBe(op.operands[0]);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(800);
+  });
+});
+

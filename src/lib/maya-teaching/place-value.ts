@@ -7,12 +7,26 @@
 import { checkQuestionPackage, workedSteps, type AnswerValue, type EasierExample, type Operation, type Place, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { digitAt, placeIndex, WHOLE_PLACES } from "@/lib/question-package-place-value";
 import { placeValueOf, type PlaceValueObject } from "@/lib/maya/place-value";
+import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "./limits";
 
 type PlaceValueOperation = Extract<Operation, { kind: "place-value" }>;
 const num = (value: number): AnswerValue => ({ type: "number", value });
 
 /** The easier example's digits (design 4.5): three rows with no zero and no digit twice; the first that differs wins. */
 const EXAMPLE_ROWS: readonly (readonly number[])[] = [[8, 4, 7], [6, 3, 9], [2, 5, 8]];
+
+/**
+ * An example that would give the question's answer away (brief lesson 11, from #724's review): its answer times a power
+ * of 10 is the answer (600 for 6000), or it is the answer's first digits, or the example shares the asked digit in the
+ * asked place, or it is the question's own number.
+ */
+export function givesAway(o: Pick<PlaceValueObject, "number" | "place" | "answer">, exampleNumber: number, exampleAnswer: number): boolean {
+  const k = placeIndex(o.place);
+  const powers = [0, 1, 2, 3, 4, 5, 6, 7].some((j) => exampleAnswer * 10 ** j === o.answer || o.answer * 10 ** j === exampleAnswer);
+  const firstDigits = String(o.answer).startsWith(String(exampleAnswer));
+  const sharedDigit = k < String(exampleNumber).length && digitAt(exampleNumber, k) === digitAt(o.number, k);
+  return powers || firstDigits || sharedDigit || exampleNumber === o.number;
+}
 
 /**
  * The easier example: the same ask, a number with fewer digits (at most 3), the place capped at the hundreds, and a
@@ -30,7 +44,7 @@ function easierExampleOf(o: PlaceValueObject): EasierExample | null {
     const answer = o.ask === "value" ? digitAt(number, k) * 10 ** k : digitAt(number, k);
     // Never the question's digit or answer, and for a value never the place's own worth when that is the answer
     // (the example says "6 × 100": a question whose answer is 100 would hear it).
-    if (digitAt(number, k) === questionDigit || answer === o.answer || (o.ask === "value" && 10 ** k === o.answer)) continue;
+    if (digitAt(number, k) === questionDigit || answer === o.answer || (o.ask === "value" && 10 ** k === o.answer) || givesAway(o, number, answer)) continue;
     const text = o.ask === "digit"
       ? `In ${number}, which digit is in the ${operation.place} place?`
       : `What is the value of the digit in the ${operation.place} place of ${number}?`;
@@ -82,8 +96,10 @@ export function placeValueTeachingPackage(printed: QuestionPackage): { package: 
     steps: workedSteps(operation),
     wrongAnswers,
     easierExample,
+    // Marked as made by the session adapter: only Maya's check (mayaPackageCheck) knows the place-value kind.
+    operationSource: TEACHING_SOURCE,
   };
-  const check = checkQuestionPackage(made);
+  const check = checkQuestionPackage(made, undefined, MAYA_TEACHING_LIMITS);
   return check.ok ? { package: made } : { held: `the teaching package does not check: ${check.reason}` };
 }
 

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { checkQuestionPackage, operationProblem, type QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, operationProblem, QUESTION_PACKAGE_VERSION, type QuestionPackage } from "@/lib/question-package";
+import { storedContent } from "@/lib/workbook-content";
+import { placeValueTeachingPackage } from "./place-value";
+import { MAYA_TEACHING_LIMITS } from "./limits";
 import { attachWorkbookMayaOperations, withWorkbookMayaOperation } from "@/lib/workbook-maya-operation";
 import { ITEMS_SCHEMA } from "@/lib/workbook-generator-items";
 import type { GeneratedWorkbook } from "@/lib/workbook-generator";
@@ -46,5 +49,22 @@ describe("the generator is unchanged by the place-value kind", () => {
     const draft = { pages: [{ number: 1, questions: FIXED.map((p, i) => ({ number: i + 1, package: p })) }] } as unknown as GeneratedWorkbook;
     const attached = attachWorkbookMayaOperations(draft);
     expect(attached.pages[0].questions.map((q) => q.package)).toMatchSnapshot();
+  });
+
+  it("keeps the place-value kind out of every default check: only Maya's explicit limits know it (review of #738)", () => {
+    const made = placeValueTeachingPackage(FIXED[4]);
+    if (!("package" in made)) throw new Error(made.held);
+    const p = made.package;
+    // The default package check gives "beyond code", as on the base commit.
+    expect(checkQuestionPackage(p)).toMatchObject({ ok: false, status: "unsupported", reason: "code cannot check the operation place-value" });
+    expect(checkQuestionPackage(p, undefined, MAYA_TEACHING_LIMITS).status).toBe("checked");
+    // A stored copy would be "content unavailable", never taught or marked from.
+    const at = { source: "workbook" as const, workbookId: p.ref.source === "workbook" ? p.ref.workbookId : "", page: 4, question: 1 };
+    const stored = storedContent({ number: 1, box: { x: 0, y: 0, w: 1, h: 1 } as never, schemaVersion: QUESTION_PACKAGE_VERSION, package: p }, at);
+    expect(stored.status).toBe("unavailable");
+    // The operation check refuses the kind by default, and checks it only with Maya's limits.
+    expect(operationProblem(p.operation)).toBe("code cannot check the operation place-value");
+    expect(operationProblem(p.operation, MAYA_TEACHING_LIMITS)).toBeNull();
+    expect(operationProblem({ kind: "place-value", operands: [53172], ask: "digit", place: "thousands" }, { wholeResult: 999_999 })).toBe("code cannot check the operation place-value");
   });
 });

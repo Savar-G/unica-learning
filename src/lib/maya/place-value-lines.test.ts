@@ -90,7 +90,7 @@ describe("the lines of a question", () => {
   it("lists every place-value line in allLineTexts, for the gate", () => {
     const all = allLineTexts(value);
     expect(all).toContain("Yes! 8 ten thousands is 80,000.");
-    expect(all).toContain("Let's stop here for now. You can try this question again later.");
+    expect(all).toContain("This question is hard, and it is fine to stop now. You can try the value of the hundreds digit of 639 on paper.");
   });
 });
 
@@ -128,4 +128,21 @@ describe("the board offers", () => {
     expect(answer.map((c) => (c as { value?: string }).value)).toEqual(["80000", "8 × 10,000 = 80,000", "80,000"]);
     expect(() => draw([chart, answer])).not.toThrow();
   });
+
+  it("teaches a zero digit's step as a digit question: blank chart, no stripe at H1, stripe and no circle at H2 (review of #738)", () => {
+    const zero = make("3.2", 402561, "ten thousands");
+    const help = packageLines(zero).help("digit");
+    expect(help.filter((o) => o.level === 1 && o.line === "step.point").map((o) => o.key)).toEqual(["point.place"]);
+    expect(help.filter((o) => o.level === 2).map((o) => o.key)).toEqual(["operation.place"]);
+    expect(help.some((o) => o.level === 3)).toBe(false);
+    const chart = offersFor(zero, "guide").find((o) => o.id === "question.chart")!.commands(at);
+    expect(chart[0]).toMatchObject({ blank: true });
+    expect(offersFor(zero, "guide", ["point.place"], { question: "target" }).map((o) => o.id)).toEqual([]);
+    const h2 = offersFor(zero, "guide", ["operation.place"], { question: "target" }).map((o) => o.id);
+    expect(h2).toEqual(["question.band"]);
+    const answer = offersFor(zero, "accept_answer", ["answer.value.zero"], { question: "target" }).find((o) => o.id === "question.answer")!.commands(at);
+    const band = offersFor(zero, "guide", ["operation.place"], { question: "target" }).find((o) => o.id === "question.band")!.commands(at);
+    expect(() => draw([chart, band, answer])).not.toThrow();
+  });
 });
+

@@ -274,4 +274,38 @@ export const PLACE_VALUE_BEHAVIOURS: Behaviour[] = [
       outputs: [{ mayaTurn: 2, lines: [texts(lines("PVV").help("result"), "why.value")] }],
     },
   },
+  // Review of #738, P2b: a value question whose digit is 0 never shows the 0 before the child says it.
+  {
+    id: "PV18", title: "Value, zero digit: stuck twice; H1 names the places with no stripe, H2 stripes the empty column of a chart with no digits", fixture: "PVV0", status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", step: "digit", level: 1, lines: ["step.point"] }]),
+      child("I'm stuck.", undefined, [{ act: "guide", step: "digit", level: 2, lines: ["step.operation"] }]),
+      child("0", { answers: [[0, "digit", "right"], [0, "result", "right"]] }),
+      ...solvedEnd,
+    ],
+    expect: {
+      outcome: { reason: "solved", highestHint: 2 }, acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"], counts: { refusals: 0, boardBatches: 1 },
+      outputs: [
+        { mayaTurn: 1, lines: [texts(lines("PVV0").help("digit"), "point.place")] },
+        { mayaTurn: 2, lines: [texts(lines("PVV0").help("digit"), "operation.place")] },
+      ],
+    },
+  },
+  // Review of #738, P2c: a child who keeps asking for help on a last step gets out: the top help, then the example, then a close.
+  {
+    id: "PV19", title: "Which digit: 'I'm stuck.' four times; help rises to H2, the top of a last step, then the easier example, then the honest close", fixture: "PVD", status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ throws: true }]),
+      child("I'm stuck.", undefined, [{ throws: true }]),
+      child("I'm stuck.", undefined, [{ throws: true }]),
+      child("I'm stuck.", undefined, [{ throws: true }]),
+      child("I don't know.", undefined, [{ throws: true }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 }, acts: [OPEN, "guide", "guide", "guide", "example_step", "close"],
+      never: ["give_answer", "accept_answer"],
+      // The honest close (brief lesson 10): hard, fine to stop, one next step, never the answer.
+      outputs: [{ mayaTurn: 5, lines: [texts(lines("PVD").closeUnsolved(), "close.later")] }],
+    },
+  },
 ];

@@ -10,6 +10,7 @@ import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { TEACHING_SOURCE } from "./limits";
 import { deriveOneStep } from "./one-step";
 import { deriveMultiStep } from "./multi-step";
+import { derivePlaceValue } from "./place-value";
 
 /**
  * Makes a teaching package from a printed workbook question, or null. It gets the printed package: no teaching data,
@@ -21,6 +22,7 @@ export type Deriver = (printed: QuestionPackage) => QuestionPackage | null;
 const DERIVERS: readonly Deriver[] = [
   deriveOneStep, // A1: one add, subtract or multiply
   deriveMultiStep, // A1: multi-step stories, as evaluate (taught from A2)
+  derivePlaceValue, // B1a: place value, the digit and value asks
 ];
 
 /** The fields a deriver may add. Every other field must stay exactly as stored. */

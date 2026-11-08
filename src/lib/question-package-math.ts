@@ -458,7 +458,15 @@ function decimalResult(op: { operands: [number, number] }, how: "add" | "subtrac
 }
 
 /** The operation kinds code computes. */
-export const isOperationKind = (kind: unknown): kind is OperationKind => typeof kind === "string" && Object.hasOwn(KINDS, kind);
+/**
+ * The kinds only Maya's session adapter makes (src/lib/maya-teaching): no default check knows them, so a stored package
+ * or a generator output that claims one stays "beyond code", as before they existed. Only a caller that passes Maya's
+ * limits explicitly (`OperationLimits.placeValue`) has them checked.
+ */
+const MAYA_ONLY_KINDS: readonly string[] = ["place-value"];
+
+/** The operation kinds every default check computes (never the Maya-only kinds). */
+export const isOperationKind = (kind: unknown): kind is OperationKind => typeof kind === "string" && Object.hasOwn(KINDS, kind) && !MAYA_ONLY_KINDS.includes(kind);
 
 /** The computation of an operation whose kind is known. */
 export function computation(op: Operation): Computation {
@@ -476,6 +484,8 @@ export interface OperationLimits {
   readonly wholeResult: number;
   /** The largest divisor of a whole-number ÷; none keeps today's 99. */
   readonly divisor?: number;
+  /** Check the place-value kind (B1a), which no default check knows. */
+  readonly placeValue?: boolean;
 }
 
 /** Within the wider limits: the kind's own other rules (a multiplier to 999, a divisor from 1 to 99, no result below zero). */
@@ -490,9 +500,11 @@ const WIDER: Partial<Record<OperationKind, (a: number, b: number, limits: Operat
 export function operationCheck(operation: unknown, limits?: OperationLimits): OperationProblem | null {
   if (typeof operation !== "object" || operation === null || Array.isArray(operation)) return fail("the operation is missing");
   const op = operation as Fields;
-  if (!isOperationKind(op.kind)) return typeof op.kind === "string" ? beyond(`code cannot check the operation ${op.kind}`) : fail("the operation has no kind");
-  const problem = KINDS[op.kind].problem(op);
-  const wider = WIDER[op.kind];
+  const mayaOnly = op.kind === "place-value" && limits?.placeValue === true;
+  if (!isOperationKind(op.kind) && !mayaOnly) return typeof op.kind === "string" ? beyond(`code cannot check the operation ${op.kind}`) : fail("the operation has no kind");
+  const kind = op.kind as OperationKind;
+  const problem = KINDS[kind].problem(op);
+  const wider = WIDER[kind];
   // Only "beyond code" can be widened, and only for two whole numbers (anything else failed before the size check).
   if (problem?.status !== "unsupported" || !limits || !wider || !isTwo(op.operands) || !op.operands.every(isCount)) return problem;
   const [a, b] = op.operands as [number, number];

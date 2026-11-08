@@ -1191,9 +1191,10 @@ export function saysWritten(text: string): boolean {
 /**
  * One sentence in which the child says, in the first person, that they are stuck: "I don't know", "I don't know about
  * the ten", "I don't get it", "I don't understand", "I'm stuck", "I have no idea", "I'm confused" (#605 practice run 2:
- * C24-r2; PR #624 review). The words after "about", "how", "what", "where" or "why" hold no negative.
+ * C24-r2; PR #624 review), each also with "still" ("I'm still stuck", "I still don't know": the honest close needs a child
+ * who keeps asking to be heard, brief lesson 10). The words after "about", "how", "what", "where" or "why" hold no negative.
  */
-const STUCK_SENTENCE = /^(?:(?:um+|uh+|oh|well|hmm+|okay|ok)[\s,]+)*(?:i (?:don'?t|do not) (?:know|get it|understand(?: it)?)(?: (about|how|what|where|why)((?: [a-z']+){1,6}))?|i(?:'m| am) stuck|i have no idea|i(?:'m| am) (?:really |so )?confused)$/;
+const STUCK_SENTENCE = /^(?:(?:um+|uh+|oh|well|hmm+|okay|ok)[\s,]+)*(?:i (?:still )?(?:don'?t|do not) (?:know|get it|understand(?: it)?)(?: (about|how|what|where|why)((?: [a-z']+){1,6}))?|i(?:'m| am) (?:still )?stuck|i (?:still )?have no idea|i(?:'m| am) (?:still |really |so )?confused)$/;
 const NEGATIVE_WORD = /\b(?:not|no|never|nothing)\b|n't\b/;
 
 /**

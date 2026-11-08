@@ -1,6 +1,7 @@
 // B1a: how a child's turn is read on a place-value digit step, through the public readers. Synthetic numbers only.
 import { describe, expect, it } from "vitest";
 import { asksPlace, digitTemplate, placeStepHeard } from "./place-value-turns";
+import { saysStuck } from "./numbers";
 
 const step = { id: "digit", kind: "read-digit" as const, place: "ten thousands" as const, digit: 5, worth: 10000 };
 const heard = (text: string, extra: Partial<{ uncertain: boolean; copy: boolean; asked: { type: "number"; value: number } | null }> = {}) =>
@@ -45,5 +46,12 @@ describe("a question about a place", () => {
   });
   it("is not read in an answer or a statement", () => {
     for (const t of ["5", "It's 5 ten thousands.", "I counted the places.", "I don't know."]) expect(asksPlace(t), t).toBe(false);
+  });
+});
+
+describe("a child who keeps asking for help is heard (brief lesson 10)", () => {
+  it("reads 'still' in the stuck forms, and nothing wider", () => {
+    for (const t of ["I'm still stuck.", "I still don't know.", "I still don't get it.", "I'm still confused."]) expect(saysStuck(t), t).toBe(true);
+    for (const t of ["I'm still working.", "I still think it's 5.", "Still?"]) expect(saysStuck(t), t).toBe(false);
   });
 });

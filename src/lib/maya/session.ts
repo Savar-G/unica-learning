@@ -881,7 +881,10 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
     reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
   // Place value has no given answer (parent lane, 2026-11-07): a child still stuck gets the easier example, then an honest close.
-  if (isPlaceValue(s.package) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.step !== "result" && s.ladder.hint >= 3 && needsMore) ||
+  // The step's top help is its highest line: H2 on a last step (and a zero digit's step), else H3 (review of #738: "I'm stuck."
+  // again and again on a last step met H2 forever).
+  const placeTop = isPlaceValue(s.package) ? Math.max(0, ...packageLines(s.package).help(s.ladder.step).map((o) => o.level ?? 0)) : 3;
+  if (isPlaceValue(s.package) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= placeTop && needsMore) ||
       (misses >= 2 && FINAL_GIVE_STATES.includes(main)))) {
     return s.exampleShown < steps
       ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child is still stuck: show the easier example, step by step (example_step). There is no given answer for place value." }
