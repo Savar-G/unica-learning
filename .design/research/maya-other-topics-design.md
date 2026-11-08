@@ -53,8 +53,9 @@ question and the fixed workbook opening, and with the easier example's intro:
 
 ### Waits on A2: evaluate
 
-- Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "A rectangle has 2 lengths
-  and 2 widths. Add one length and one width. Then double it." Built and hooked. The session holds it for two reasons
+- Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "Add one length and one
+  width, then double it." (9 words, so it fits a 25-word grade-3 turn with the question line; the first wording, 17
+  words, did not: review of #741, P1b). Built and hooked. The session holds it for two reasons
   until A2's evaluate teaching lands: `evaluate` is not in `TEACHABLE_KINDS`, and Maya has no lines for its `operate`
   steps. No change is needed here then.
 
@@ -112,6 +113,36 @@ template id is not theirs, so the order does not matter.
   answer gets "not yet"; a right first step or sum is acknowledged).
 - Practice (`src/lib/maya-practice/cases.ts`): OT4 and OT5 on `SHAPES` (6 + 5 = 11). A die count has a one-digit answer,
   which a practice case cannot keep behind a stage, so the gate covers it.
+
+## C3b (second PR): what this round teaches, and what is left
+
+Branch `site/maya-other-topics-b`, from #731 at `32d3445d`, merged with A1's adapter (`e4d5048e`), A2's evaluate (#734,
+`e03ffde3`) and A4's claims (#737, `788ea9d3`). The derivers are registered in A1's `DERIVERS`.
+
+Taught now (12 more): the 8 scale claims, the 2 money claims, the 1 minute-hand claim and the perimeter question.
+- The claim's computed side is the operation: the scale's `mark + m × interval` and the minute hand's `number × 5 +
+  marks` as an `evaluate` (A2), money's bills and quarters as one decimal addition (`60 + 0.75`; A2 holds decimal
+  parts). `topicClaim` (`src/lib/maya-teaching/topic-claim.ts`) gives A4's claim session the claim when A4's own forms
+  do not match (one line in `src/lib/maya/claim.ts`). A4 teaches the compare and reads the circled word.
+- Topic sentences (code's facts): "The marks go up by 10 each time. So each interval is 10.", "Each number on the
+  clock is 5 minutes. Each small mark is 1 more minute.", "2 $20 bills make $40. 2 quarters make $0.50." They come with
+  A4's question line (`question.claim.framed`), on the first guide after a hello-only opening, and the honest close is
+  their way out.
+- Two integration fixes, A2 x A4: `withEvaluateExample` keeps a claim's own easier example, and `evaluateSteps` keeps
+  the claim's compare step after the parts, so "60 plus 20 is 80." does the compare step.
+
+Left for the next round (17), with the reason:
+- Same-denominator fractions (8): no operation to work. They need a compare step with no operation before it ("the
+  denominators are the same, so compare the numerators"), on A4's word reader. The session needs a package kind with
+  no operation, or a claim whose work is the compare alone.
+- Marbles (2): red against the others added; the claim holds when the sum is less than red, so A4's claim needs a
+  "less" relation (step type, compare words, the ask).
+- Area true/false (1): two products compared; A4's true/false ask says "Is 5 × 3 = 8 true or false?" for a "greater"
+  claim, so its true/false ask needs a "greater" form, and the second product needs its own step.
+- Area compare (2) and die compare (1): word answers ("7 by 6", "even") are not true/false or yes/no, so A4's reader
+  does not read them; they need the reader to take the printed pair of words from code.
+- Clock times (3): `time-add` with `count-on` steps; they need count-on lines and a strict reader for spoken times
+  ("nine forty", "7:03").
 
 ## The 34 questions
 

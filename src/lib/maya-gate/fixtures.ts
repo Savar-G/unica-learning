@@ -3,15 +3,29 @@
 // worked-steps code, with its wrong answers and an easier example, checked by `checkQuestionPackage` like any package.
 // `A_BAD_KEY` is fixture A with a wrong answer key (56 while the checked steps total 66), for the content hold (C36).
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
-// not teach yet (equivalent fractions, C36b).
+// not teach yet (equivalent fractions, C36b). `EV_TWO`, `EV_STORY` and `EV_MISSING` are evaluate questions (Wave A, A2):
+// a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
+// numbers, in the shapes of the workbook's multi-step templates.
 import { mayaPackageCheck } from "@/lib/maya";
-import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { teachingPackage } from "@/lib/maya-teaching";
 import { deriveDieCount } from "@/lib/maya-teaching/die-count";
 import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
-import { diePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
+import { diePrinted, minutePrinted, moneyPrinted, scalePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
+import { deriveTopicClaim } from "@/lib/maya-teaching/topic-derivers";
+import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE, CLAIM_WIDE } from "./claim-fixtures";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG" | OneStepFixtureId;
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId
+  | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG"
+  | "SCALE" | "MONEY" | "MINUTE" | "CLAIM_WIDE";
+
+/** A claim question's teaching package (A4): the stored synthetic package through the session adapter (claimTeaching). */
+function claimFixture(raw: QuestionPackage): QuestionPackage {
+  const pkg = teachingPackage(raw) as QuestionPackage;
+  if (pkg === raw || pkg.operation === null) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
+  return pkg;
+}
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -122,6 +136,37 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     wrong: [{ value: frac(11, 12), cause: "F9", description: "Adds the same number to the top and the bottom", step: null }],
     easier: { text: "1/2 = ?/4", operation: { kind: "fraction-equivalent", operands: [frac(1, 2)], denominator: 4 }, answer: frac(2, 4) },
   }),
+  // Evaluate (Wave A, A2): each part in the order of operations, with an easier example of the same shape.
+  EV_TWO: fixture({
+    id: "gate-EV-7x640+7x30",
+    text: "What is 7 × 640 + 7 × 30?",
+    operation: { kind: "evaluate", operands: ["7 × 640 + 7 × 30"] },
+    answer: num(4690),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(4480), cause: "stops-early", description: "Works out only the first part", step: null }],
+    easier: { text: "2 × 30 + 2 × 4 = ?", operation: { kind: "evaluate", operands: ["2 × 30 + 2 × 4"] }, answer: num(68) },
+  }),
+  EV_STORY: fixture({
+    id: "gate-EV-4x260-590",
+    text: "A shop has 4 boxes with 260 beads in each. It sells 590 beads. How many beads does it have now?",
+    operation: { kind: "evaluate", operands: ["4 × 260 − 590"] },
+    answer: num(450),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(1630), cause: "wrong-operation", description: "Adds the beads sold", step: null }],
+    easier: { text: "3 × 20 − 15 = ?", operation: { kind: "evaluate", operands: ["3 × 20 − 15"] }, answer: num(45) },
+  }),
+  EV_MISSING: fixture({
+    id: "gate-EV-8x?=7360-400",
+    text: "8 × ? = 7360 − 400",
+    operation: { kind: "evaluate", operands: ["(7360 − 400) ÷ 8"] },
+    answer: num(870),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(6960), cause: "stops-early", description: "Works out the other side and stops", step: null }],
+    easier: { text: "(20 − 4) ÷ 8 = ?", operation: { kind: "evaluate", operands: ["(20 − 4) ÷ 8"] }, answer: num(2) },
+  }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
   // Wave C "other-topic" (src/lib/maya-teaching): made by the derivers from synthetic printed packages. DIE: "Roll a die
@@ -129,11 +174,26 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // 6 + 5 lines of symmetry from code's table.
   DIE: deriveDieCount(diePrinted(8, "even"))!,
   SHAPES: deriveSymmetry(symmetryPrinted(4, 5))!,
+  ...ONE_STEP_FIXTURES,
+  // Claim questions (A4): "True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436?", "True or false: 3.45 + 2.38 = 5.93."
+  CLAIM_TF: claimFixture(CLAIM_TRUE_FALSE),
+  CLAIM_GT: claimFixture(CLAIM_GREATER),
+  CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
+  // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
+  CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
   // Review of #731: die 12 (two division steps, 12 ÷ 2) and the longest shape names (a rectangle that is not a square and
   // an isosceles triangle, 2 + 1), for grade 3 turns.
   DIE12: deriveDieCount(diePrinted(12, "odd"))!,
   SHAPES_LONG: deriveSymmetry(symmetryPrinted(1, 2))!,
-  ...ONE_STEP_FIXTURES,
+  // C3b: other-topic claims taught through A4's claim session. SCALE: "A scale's marks are 50, 60, 70. True or false: 2
+  // intervals above 60 is 80." (60 + 2 × 10, an evaluate); MONEY: "True or false: 2 $20 bills and 3 quarters is
+  // $40.75." (40 + 0.75; 2 quarters are held, review of #741 P2-1); MINUTE: "True or false: the minute hand 3 marks
+  // past the 7 shows 38 minutes." (7 × 5 + 3).
+  SCALE: deriveTopicClaim(scalePrinted(10, 60, 2, true))!,
+  MONEY: deriveTopicClaim(moneyPrinted(2, 3, true))!,
+  MINUTE: deriveTopicClaim(minutePrinted(3, 7, true))!,
+  // "Is 777 × 7 greater than 4662?": the longest spoken claim shape, for the 25-word turns (#737 review P2).
+  CLAIM_WIDE: claimFixture(CLAIM_WIDE),
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */

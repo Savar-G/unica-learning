@@ -4,6 +4,7 @@ import { BC_SKILL_MAP } from "@/lib/assessment";
 import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
 import { completeExpression, readNumbers } from "./numbers";
 import { topicNumbers } from "./topic-frame";
+import { partProblems } from "./evaluate";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
@@ -57,9 +58,11 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
       Object.values(v).forEach(collect);
     }
   };
-  for (const p of [pkg, ...(exampleChosen ? [pkg.easierExample] : [])]) {
+  const problems = [pkg, ...(exampleChosen ? [pkg.easierExample] : [])];
+  // An evaluate question's parts are one-step problems of their own (evaluate.ts).
+  for (const p of [...problems, ...problems.flatMap((x) => partProblems(x.operation))]) {
     const op = family(p.operation);
-    collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : pkg.easierExample.answer);
+    collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : p.answer);
     // An "other-topic" question's checked counted numbers (topic-frame.ts): the die's odd or even numbers.
     collect(topicNumbers(p.text, p.operation));
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
@@ -98,6 +101,17 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
         add("divide", [num(st.current), num(p.operation.operands[1])]);
         add("multiply", [num(st.quotient), num(p.operation.operands[1])]);
         add("subtract", [num(st.current), num(st.product)]);
+      }
+      // A claim's compare (A4, claim.ts): the difference of the result and the printed number, either way round, and for a
+      // claim checked by division ("Mia says 6 × 8 = 56. Check with 56 ÷ 8.") the printed product and the checked one.
+      if (st.kind === "claim-compare") {
+        const [hi, lo] = st.value >= st.shown ? [st.value, st.shown] : [st.shown, st.value];
+        add("subtract", [num(hi), num(lo)]);
+        flip(hi, lo);
+        if (p.operation.kind === "divide") {
+          add("multiply", [num(st.shown), num(p.operation.operands[1])]);
+          add("multiply", [num(st.value), num(p.operation.operands[1])]);
+        }
       }
       if (st.kind === "combine-numerators") add(st.op, st.numerators.map(num));
       if (st.kind === "common-denominator") for (let i = 0; i < st.from.length; i++) {

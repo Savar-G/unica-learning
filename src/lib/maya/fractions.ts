@@ -3,6 +3,7 @@
 // rules. Pure TypeScript: no clock, network or randomness.
 import { equivalent, isRightAnswer, sameValue, type AnswerValue, type OperationKind, type OperationPackage, type WorkedStep } from "@/lib/question-package";
 import type { ReadOptions } from "./numbers";
+import { evaluateSteps } from "./evaluate";
 
 /** The fraction operation kinds the question package computes. */
 const FRACTION_KINDS: readonly OperationKind[] = ["fraction-add", "fraction-subtract", "fraction-multiply", "fraction-divide", "fraction-simplify", "fraction-equivalent"];
@@ -18,6 +19,10 @@ const EQUAL_FORM_KINDS: readonly OperationKind[] = ["fraction-add", "fraction-su
 export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   "add-column", "subtract-column", "multiply-digit", "partial-product", "place-point", "divide-digit",
   "common-denominator", "combine-numerators", "simplify", "to-mixed", "result",
+  // An evaluate question's parts (evaluate.ts): each part is taught with its own column steps.
+  "operate",
+  // A claim's compare step (claim.ts), only in the session package of a checked claim question.
+  "claim-compare",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */
@@ -30,7 +35,7 @@ export const untaughtSteps = (pkg: OperationPackage): string[] =>
  * simplest form) and, unless the question asks for the simplest form, the simplifying (2/4 is right then, research C38).
  */
 export const teachSteps = (pkg: OperationPackage): WorkedStep[] =>
-  pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "to-mixed" && (s.kind !== "simplify" || asksSimplest(pkg)));
+  evaluateSteps(pkg) ?? pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "to-mixed" && (s.kind !== "simplify" || asksSimplest(pkg)));
 
 /** The question is a fraction question. */
 export const isFractionQuestion = (pkg: OperationPackage) => FRACTION_KINDS.includes(pkg.operation.kind);
@@ -39,7 +44,7 @@ export const isFractionQuestion = (pkg: OperationPackage) => FRACTION_KINDS.incl
 export const readOptionsFor = (pkg: OperationPackage | null): ReadOptions => ({
   fractions: pkg !== null && isFractionQuestion(pkg),
   known: pkg === null ? [] : knownNumbers(pkg),
-  carries: pkg === null ? [] : pkg.steps.flatMap((st) => ("carryOut" in st && st.carryOut > 0 ? [st.carryOut] : [])),
+  carries: pkg === null ? [] : [...pkg.steps, ...(evaluateSteps(pkg) ?? [])].flatMap((st) => ("carryOut" in st && st.carryOut > 0 ? [st.carryOut] : [])),
 });
 
 /** The question's own numbers: its printed operands and every number in its worked steps (PR #624 review). */
@@ -52,6 +57,7 @@ function knownNumbers(pkg: OperationPackage): number[] {
   };
   walk(pkg.operation.operands);
   walk(pkg.steps);
+  walk(evaluateSteps(pkg) ?? []);
   return [...out];
 }
 

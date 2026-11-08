@@ -10,9 +10,11 @@ import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { TEACHING_SOURCE } from "./limits";
 import { deriveOneStep } from "./one-step";
 import { deriveMultiStep } from "./multi-step";
+import { claimTeaching } from "./claim";
 import { deriveDieCount } from "./die-count";
 import { derivePerimeter } from "./perimeter";
 import { deriveSymmetry } from "./symmetry";
+import { TOPIC_DERIVERS } from "./topic-derivers";
 
 /**
  * Makes a teaching package from a printed workbook question, or null. It gets the printed package: no teaching data,
@@ -24,9 +26,11 @@ export type Deriver = (printed: QuestionPackage) => QuestionPackage | null;
 const DERIVERS: readonly Deriver[] = [
   deriveOneStep, // A1: one add, subtract or multiply
   deriveMultiStep, // A1: multi-step stories, as evaluate (taught from A2)
+  claimTeaching, // A4: a true/false or yes/no claim on a computed side
   deriveDieCount, // C3 (#731): "How many of the numbers 1 to 8 are odd?" as 8 ÷ 2
   deriveSymmetry, // C3 (#731): lines of symmetry of two shapes, from code's table
-  derivePerimeter, // C3 (#731): a rectangle's perimeter as 2 × (l + w), held until A2 teaches evaluate
+  derivePerimeter, // C3 (#731): a rectangle's perimeter as 2 × (l + w), taught from A2
+  ...TOPIC_DERIVERS, // C3b: the other-topic claims, compares and clock times
 ];
 
 /** The fields a deriver may add. Every other field must stay exactly as stored. */
