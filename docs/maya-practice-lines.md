@@ -76,7 +76,9 @@ Status: approved by Savar on 2026-11-05 (D-262), without "Mm-hm" and without "I'
 
 ## First shipment chat repair wordings, 2026-11-06
 
-These are the scoped additions and replacements on the chat repair branch. Review and API practice remain required. The safety-close, secret, and wrong-explanation policy changes from the saved work are excluded.
+Status: approved by Savar on 2026-11-08 ("New lines are approved"): all 40 wordings below, as they stand at 361a05c9, including `check.guess.0` "Lucky guess? Let's check it together." A wording that a later fix changes, or a new wording, needs Savar's approval again.
+
+These are the scoped additions and replacements on the chat repair branch. The safety-close, secret, and wrong-explanation policy changes from the saved work are excluded.
 
 | Id | Wording |
 |---|---|
