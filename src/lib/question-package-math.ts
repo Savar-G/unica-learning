@@ -40,6 +40,7 @@ import {
 } from "@/lib/question-package-columns";
 import { ALGEBRA_KINDS, algebraStepText } from "@/lib/question-package-algebra";
 import { MEASURE_KINDS, amountText, measureStepText } from "@/lib/question-package-measures";
+import { PLACE_VALUE_RULES, readDigitText } from "@/lib/question-package-place-value";
 
 /** A place's unit name, for "carry 1 ten". */
 const UNIT: Record<Place, string> = {
@@ -444,6 +445,7 @@ const KINDS: { [K in OperationKind]: KindRules<Of<K>> } = {
   },
   ...MEASURE_KINDS,
   ...ALGEBRA_KINDS,
+  "place-value": PLACE_VALUE_RULES,
 };
 
 function decimalResult(op: { operands: [number, number] }, how: "add" | "subtract" | "multiply"): AnswerValue {
@@ -603,6 +605,8 @@ export function stepText(step: WorkedStep, operation: Operation): string {
     case "inverse":
     case "check":
       return algebraStepText(step);
+    case "read-digit":
+      return readDigitText(step);
     case "result": {
       const rules = computation(operation);
       return rules.say ? rules.say(operation, step.value) : `${rules.statement(operation)} = ${valueText(step.value)}`;

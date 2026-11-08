@@ -46,6 +46,8 @@ import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FE
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
+import { isPlaceValue, placeAutoDraw, placeBoardOffers, WHY_KEYS } from "./place-value-lines";
+import { asksPlace, placeStepHeard } from "./place-value-turns";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -84,6 +86,8 @@ export const SAFETY_GUIDANCE = {
  */
 export const TEACHABLE_KINDS: readonly OperationKind[] = [
   "add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply", "fraction-add", "fraction-subtract",
+  // B1a: the digit in a place, and its value (src/lib/maya/place-value*.ts).
+  "place-value",
 ];
 
 export const MAIN_STATES = ["READY", "OPEN", "ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET", "CHECK", "WRITE_CLOSE", "CLOSE", "CONTENT_HOLD"] as const;
@@ -593,6 +597,8 @@ function stepAnswers(step: WorkedStep): AnswerValue[] {
       return [number(step.numerator), fraction({ numerator: step.numerator, denominator: step.denominator })];
     case "simplify":
       return [fraction(step.to)];
+    case "read-digit":
+      return [number(step.digit)];
     default:
       return [];
   }
@@ -787,6 +793,8 @@ function asksForHelp(text: string): boolean {
 function asksWhy(text: string): boolean {
   return /^\s*why\W*$/i.test(text) || /\b(?:why|where|what|how)\b[^.!\n]*\b(?:carry|carried|regroup\w*|trad\w*|ten|10|one|1)\b/i.test(text);
 }
+/** The child asks why (asksWhy), or, on a place-value question, which place is which (asksPlace, J06). */
+const asksWhyIn = (s: Session): boolean => s.turn !== null && (asksWhy(s.turn.text) || (isPlaceValue(s.package) && asksPlace(s.turn.text)));
 
 function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
   // Maya may check what she heard before she goes on, but not a third time in a row (practice run 6, F06: "16 or
@@ -798,8 +806,8 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // read as unclear, numbers speech heard two ways, a choice, or a final answer the child is not sure of.
   const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && (stepSaidUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
-    const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
-      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
+    const acts: Act[] = (s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
+      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"]).filter((a): a is Act => a !== "give_answer" || !isPlaceValue(s.package));
     return { acts: [...acts, ...confirm], code: "act_not_allowed", reason: "Time is almost up: finish the question and close." };
   }
   // A child who says they wrote it is done writing, whatever the model reads (#605). "I'm writing" keeps its time.
@@ -862,6 +870,14 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
     reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+  // Place value has no given answer (parent lane, 2026-11-07): a child still stuck gets the easier example, then an honest close.
+  if (isPlaceValue(s.package) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.step !== "result" && s.ladder.hint >= 3 && needsMore) ||
+      (misses >= 2 && FINAL_GIVE_STATES.includes(main)))) {
+    return s.exampleShown < steps
+      ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child is still stuck: show the easier example, step by step (example_step). There is no given answer for place value." }
+      : { acts: ["close"], code: "act_not_allowed", reason: "The child is still stuck after the easier example: close kindly (close.together), never with the answer." };
+  }
+  if (isPlaceValue(s.package)) acts = acts.filter((a) => a !== "give_answer");
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
@@ -1210,7 +1226,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (p.board && !s.modelBoard) {
     return no("board_not_code", "Maya does not build board commands: pick code's board offers with `draw` (see drawOffers).", allowedNow);
   }
-  const drawn = p.draw ? drawBoard(s, p, view, spoken) : [];
+  // A place-value line that says Maya drew the chart, a stripe or a circle comes with it, at any hint level (B1a).
+  const auto = isPlaceValue(pkg) && !s.noBoard && BOARD_ACTS.includes(p.act) && p.act !== "example_step"
+    ? placeAutoDraw(spoken.chosen, Object.hasOwn(s.boardRoles, "question"), (p.draw ?? []).map((d) => d.offer)).map((offer) => ({ offer })) : [];
+  const drawn = p.draw || auto.length ? drawBoard(s, { ...p, draw: [...(p.draw ?? []), ...auto] }, view, spoken) : [];
   if (typeof drawn === "string") return no("board_not_code", drawn, allowedNow);
   const commands = [...(p.board ?? []), ...drawn];
   const pb: Proposal = { ...p, board: commands.length > 0 ? commands : undefined };
@@ -1278,7 +1297,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // A check of the child's own right answer (check.together, check.guess, #605) may ask the step's question (up to
       // H2: "Let's check it together. What is 7 + 9?"); it checks an answer the child gave, so it is no new help either.
       const checking = spoken.chosen.some((o) => o.line === "check.together" || o.line === "check.guess") && p.level <= 2;
-      const echo = checking || (s.turn !== null && spoken.chosen.length > 0 && spoken.chosen.every((o) => o.line === "step.operation") &&
+      // The answer to the child's question about a place (where.place, J06) answers what they asked: no new help either.
+      const answersPlace = isPlaceValue(pkg) && s.turn !== null && asksPlace(s.turn.text) && spoken.chosen.some((o) => WHY_KEYS.includes(o.key)) && p.level <= 1;
+      const echo = checking || answersPlace || (s.turn !== null && spoken.chosen.length > 0 && spoken.chosen.every((o) => o.line === "step.operation") &&
         saidSetup(pkg!, ladder.step, s.turn.text));
       if (p.level > cap && !echo) return no("hint_too_high", `Help may rise to H${cap} now: more help needs a failed attempt or a request, not silence.`, allowedNow);
       if (echo) {
@@ -1287,7 +1308,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       }
       // The regroup explanation is new help for a child who lost the carry, whatever level the ladder is on.
       const regroupNow = spoken.chosen.some((o) => o.line === "step.regroup" || o.line === "step.why" || o.line === "step.order");
-      if (s.turn && asksWhy(s.turn.text) && offersFor(s, "guide", view).some(o => o.line === "step.why") &&
+      if (asksWhyIn(s) && offersFor(s, "guide", view).some(o => o.line === "step.why") &&
           !spoken.chosen.some(o => o.line === "step.why")) {
         return no("line_not_offered", "The child asked why the carry or trade works: use the offered step.why explanation before another prompt.", allowedNow);
       }
@@ -1805,7 +1826,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && at.kind === "add-column" && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "read-digit") && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
@@ -2044,6 +2065,11 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
  */
 function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolean {
   const pkg = s.package;
+  // A place-value digit step: its own templates (place-value-turns.ts), on the same rules: the first step not done, not after H3.
+  if (pkg && s.turn && step.kind === "read-digit") {
+    return workSteps(pkg).find((st) => !s.done.includes(st.id))?.id === step.id &&
+      placeStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, step, value, copy: s.ladder.step === step.id && s.ladder.hint >= 3, asked: s.stepAsked ?? null });
+  }
   if (!pkg || !s.turn || step.kind !== "add-column") return false;
   // A turn code could not hear for sure is no step credit: it gets its confirm first.
   const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
@@ -2102,11 +2128,12 @@ const rightFinalIn = (s: Session) => {
   return !!final && rightForQuestion(s.package!, final);
 };
 
-/** The first step not done, when it is a column of an addition. */
-function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" }> | null {
+/** The first step not done, when it is a column of an addition or a place-value digit (its total is the digit). */
+function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" | "read-digit" }> | null {
   const st = s.package ? workSteps(s.package).find((x) => !s.done.includes(x.id)) : undefined;
-  return st?.kind === "add-column" ? st : null;
+  return st?.kind === "add-column" || st?.kind === "read-digit" ? st : null;
 }
+const totalOf = (st: Extract<WorkedStep, { kind: "add-column" | "read-digit" }>) => (st.kind === "add-column" ? st.total : st.digit);
 
 /**
  * The only turn Maya may ask a step's confirm about, and the number she asks: exactly one number, which is the column's full
@@ -2119,7 +2146,7 @@ function stepConfirmable(s: Session): AnswerValue | null {
   if (!st || !s.turn || !s.package) return null;
   const opts = readOptionsFor(s.package);
   const values = valuesIn(s.turn.text, opts);
-  const total = number(st.total);
+  const total = number(totalOf(st));
   return values.length === 1 && readAnswer(s.turn.text, opts).kept.length === 1 && saidAs(values[0], total) && confirmWordsOnly(s.turn.text) ? total : null;
 }
 
@@ -2277,7 +2304,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         const target = reading?.help === "show" ? 3 : session.turn ? hint + 1 : 0;
         const lv = (o: LineOffer) => o.level ?? 0;
         const levelled = [...byLevel(free).filter((o) => lv(o) >= target), ...byLevel(free).filter((o) => lv(o) < target).reverse()];
-        const why = s.turn !== null && asksWhy(s.turn.text);
+        const why = asksWhyIn(s);
         const help = levelled.sort((a, b) => (due ? Number(b.line === "step.regroup") - Number(a.line === "step.regroup")
           : why ? Number(b.line === "step.why") - Number(a.line === "step.why") : 0));
         // A right final answer said with doubt or as a guess: check it together, with the step's question (#605).
@@ -2443,7 +2470,7 @@ function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
 }
 
 /** The proposal creates this object for the child's question in the same batch. */
-const createsTarget = (p: Proposal, id: string) => p.act !== "example_step" && (p.board ?? []).some((c) => isObject(c) && c.op === "columns" && c.id === id);
+const createsTarget = (p: Proposal, id: string) => p.act !== "example_step" && (p.board ?? []).some((c) => isObject(c) && (c.op === "columns" || c.op === "place_chart") && c.id === id);
 
 /**
  * The board objects a batch creates, with their role, or why the batch mixes the problems: a new `columns` object shows
@@ -2456,7 +2483,9 @@ function boardRoles(s: Session, role: Problem, board: unknown[]): Record<string,
   const created: Record<string, Problem> = {};
   for (const raw of board) {
     const c = raw as Record<string, unknown>;
-    if ((c.op === "columns" || c.op === "write" || c.op === "model") && typeof c.id === "string") {
+    if ((c.op === "columns" || c.op === "write" || c.op === "model" || c.op === "place_chart") && typeof c.id === "string") {
+      // A place-value chart shows this turn's problem's own number.
+      if (c.op === "place_chart" && !(operation.kind === "place-value" && c.number === String(operation.operands[0]))) return `The board shows ${name} now.`;
       if (c.op === "columns") {
         const operands = Array.isArray(c.operands) ? c.operands.map((o) => (isObject(o) ? Number(o.value) : NaN)) : [];
         const want = operandsOf(operation);
@@ -2725,7 +2754,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : [];
+      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : l.closeUnsolved();
     case "confirm": {
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));
@@ -2754,7 +2783,7 @@ function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View)
   const said = (view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= 1;
   // The second way (step.why, #605) comes only after the regroup line, for "why?" or when the first did not land.
   if (pending.length === 0) {
-    return own.filter((o) => (o.line === "step.why" ? said
+    return own.filter((o) => (o.line === "step.why" ? said || WHY_KEYS.includes(o.key)
       : o.line !== "step.regroup" || !((view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= MAX_REGROUP_SAYS)));
   }
   // Explain an incoming carry before any outgoing explanation that uses it.
@@ -2768,7 +2797,8 @@ const meets = (requires: NonNullable<LineOffer["requires"]>, view: View) =>
     ? view.done.includes(requires.step)
     : requires.answer === "equal"
       ? !!view.equal && (requires.heard === undefined || valueText(view.equal) === requires.heard)
-      : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong");
+      : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong" &&
+        (requires.heard === undefined || valueText(c.answer.value) === requires.heard));
 
 /** The first two words of each sentence of a text, in lower case, to keep two sentences of one turn from starting alike. */
 const openings = (text: string) =>
@@ -2972,7 +3002,9 @@ function boardOffersFor(s: Session, act: Act, view: View, spoken: Pick<Spoken, "
     const ex = columnsOf(s, "example");
     if (ex && !Object.hasOwn(s.boardRoles, "example")) out.push({ id: "example.columns", shows: `the easier example in columns: ${operationText(pkg.easierExample.operation)}`, commands: (place) => at(ex, place) });
     strips("example-strips", fractionsOf(pkg.easierExample.operation), `the easier example's fractions as strips: ${operationText(pkg.easierExample.operation)}`);
-  } else {
+  }
+  if (isPlaceValue(pkg)) out.push(...placeBoardOffers({ pkg, act, roles: s.boardRoles, batch: s.batches, chosen: spoken?.chosen ?? [], exampleShown: s.exampleShown }));
+  else if (act !== "example_step") {
     strips("question-strips", fractionsOf(pkg.operation), `the question's fractions as strips: ${operationText(pkg.operation)}`);
     const common = workSteps(pkg).find((st) => st.kind === "common-denominator");
     const shownNow = (spoken?.chosen ?? []).some((o) => o.line === "step.show" && o.slots.step === common?.id);
@@ -3013,7 +3045,7 @@ function drawBoard(s: Session, p: Proposal, view: View, spoken: Spoken): Command
     const o = offers.find((x) => x.id === d.offer);
     if (!o) return `"${d.offer}" is not a board offer for ${p.act} now. Offered: ${offers.map((x) => x.id).join(", ") || "none"}.`;
     if (ids.includes(o.id)) return `"${o.id}" is drawn twice.`;
-    const places = boardPlaces(s, out.flatMap((command) => "id" in command && ["columns", "write", "model"].includes(command.op) ? [command.id] : []), p.act === "example_step");
+    const places = boardPlaces(s, out.flatMap((command) => "id" in command && ["columns", "write", "model", "place_chart"].includes(command.op) ? [command.id] : []), p.act === "example_step");
     const place = places[d.place ?? "main"];
     if (!place) return `"${d.place}" is not a board place now. Places: ${Object.keys(places).join(", ")}.`;
     ids.push(o.id);
@@ -3046,7 +3078,7 @@ export function drawOffers(session: Session): Partial<Record<Act, { id: string; 
 /** The fields of a board command a child sees as words. */
 const BOARD_WORDS: ReadonlySet<string> = new Set(["text", "label"]);
 /** The fields of a board command a child sees as numbers. */
-const BOARD_NUMBERS: ReadonlySet<string> = new Set(["value", "dividend", "divisor", "numerator", "denominator", "whole", "min", "max", "tick", "fromValue", "toValue"]);
+const BOARD_NUMBERS: ReadonlySet<string> = new Set(["value", "dividend", "divisor", "numerator", "denominator", "whole", "min", "max", "tick", "fromValue", "toValue", "number"]);
 
 /** Every word or number field a child sees on the board, in any command, at any depth, with its field name. */
 function boardVisible(v: unknown, key = ""): [string, string][] {

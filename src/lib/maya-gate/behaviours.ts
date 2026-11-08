@@ -8,6 +8,7 @@ import { packageLines, type LineOffer, type TemplateKey } from "@/lib/maya/lines
 import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
+import { PLACE_VALUE_BEHAVIOURS } from "./place-value-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
 const child = (text: string, read?: Read, maya?: Plan[]): Step => ({ child: text, ...(read ? { read } : {}), ...(maya ? { maya } : {}) });
@@ -2038,6 +2039,7 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
     },
   },
+  ...PLACE_VALUE_BEHAVIOURS,
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */

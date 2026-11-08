@@ -101,6 +101,8 @@ export interface PlaceChartCommand {
   id: string;
   number?: string;
   parts?: { place: ChartPlace; digit: number }[];
+  /** With `number`: draw the columns and names but not the digits; a checked `put` writes a digit (a "which digit" question). */
+  blank?: true;
   place: Place;
 }
 

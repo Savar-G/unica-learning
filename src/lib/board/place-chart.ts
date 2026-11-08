@@ -4,7 +4,8 @@
 // answer is refused. Rows: "digits" (the number), "value" (a digit's value, put per column), "equation" (one sentence of
 // the chart's own list: "4 × 10,000 = 40,000", "8 > 2") and "answer" (the child's checked answer, in green).
 // In `build` mode ("6 wholes and 4 tenths") the number is not shown: a "parts" row names the parts, and the digit row is
-// filled by `put`.
+// filled by `put`. In `blank` mode (a "which digit" question, B1a) the columns and their names are drawn for the number
+// but its digits are not: the child reads the digit from their own page, and a digit is written only by a checked `put`.
 import { glyphStrokes, missingGlyphs, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation, DIGIT_WIDTH, SMALL_WIDTH } from "@/lib/board/representation";
 import { DECIMAL_PLACE_NAMES, PLACE_NAMES, type ChartPlace, type Ink, type PlaceChartCommand, type Rect, type Target } from "@/lib/board/types";
 
@@ -31,7 +32,14 @@ const PART_WORD: Record<ChartPlace, [string, string]> = {
 const COL_W = 3.2;
 const POINT_W = 0.9;
 const PAD = 0.35;
-const BASE_ROWS = { names: { y: 0.3, h: 1.2 }, parts: { y: 1.7, h: 0.8 }, digits: { y: 1.75, h: 1.5 }, value: { y: 3.4, h: 1.1 }, equation: { y: 4.8, h: 0.95 }, answer: { y: 6.0, h: 1.1 } };
+/**
+ * The place names' letter height and the gap between a name's two lines. Two-word names ("ten" / "thousands") take two
+ * lines. At 0.8 a name stays readable on a phone: its letters at least 11 px tall on a 390 px screen for a chart of 6
+ * columns, the most a board page holds (place-chart.test.ts checks it).
+ */
+export const NAME_H = 0.8;
+const NAME_GAP = 0.06;
+const BASE_ROWS = { names: { y: 0.3, h: 1.7 }, parts: { y: 2.2, h: 0.8 }, digits: { y: 2.25, h: 1.5 }, value: { y: 3.9, h: 1.1 }, equation: { y: 5.3, h: 0.95 }, answer: { y: 6.5, h: 1.1 } };
 /** In build mode a "parts" row ("5 wholes", "8 tenths") sits under the names and everything below it moves down. */
 const PARTS_SHIFT = 0.95;
 type Row = { y: number; h: number };
@@ -40,14 +48,14 @@ function rowsOf(s: Pick<PlaceChartState, "mode">): Record<keyof typeof BASE_ROWS
   const move = (r: Row): Row => ({ y: r.y + dy, h: r.h });
   return { names: BASE_ROWS.names, parts: BASE_ROWS.parts, digits: move(BASE_ROWS.digits), value: move(BASE_ROWS.value), equation: move(BASE_ROWS.equation), answer: move(BASE_ROWS.answer) };
 }
-const HEIGHT = 8.4;
+const HEIGHT = 8.9;
 /** The frame's top edge, above the names. */
 const TOP = 0.05;
 /** The highlight band: a rounded stripe behind one column, from the frame's top to the digit row's bottom. */
 const BAND_W = 1.6;
 
 export interface PlaceChartState {
-  mode: "read" | "build";
+  mode: "read" | "build" | "blank";
   /** The number as text ("48461", "6.4"). */
   number: string;
   /** The columns, left to right, and each one's digit. */
@@ -125,7 +133,7 @@ const idx = (s: PlaceChartState, place: ChartPlace) => s.columns.findIndex((c) =
 function create(cmd: PlaceChartCommand, ctx: Ctx): { state: PlaceChartState; size: { w: number; h: number } } | RefusalBody {
   const missing = missingGlyphs(ctx.glyphs, (cmd.number ?? "0123456789") + "abcdefghijklmnopqrstuvwxyz,×=<>? ");
   if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
-  const mode = cmd.parts ? "build" : "read";
+  const mode = cmd.parts ? "build" : cmd.blank ? "blank" : "read";
   let number = cmd.number ?? "";
   if (cmd.parts) {
     const places = cmd.parts.map((p) => p.place);
@@ -160,7 +168,7 @@ function targets(state: PlaceChartState, objectId: string): LocalTarget[] {
     out.push({
       target: { objectId, part: "cell", rowId: "digits", column: c.place },
       label: `${objectId} digit of the ${c.place.replace("_", " ")}`,
-      writable: state.mode === "build" && !shown && !c.pad,
+      writable: state.mode !== "read" && !shown && !c.pad,
       value: shown ? String(c.digit) : null,
       rect: colRect(state, i, R.digits),
     });
@@ -199,14 +207,14 @@ function put(state: PlaceChartState, target: Target, value: string | undefined, 
   const c = state.columns[i];
   if (c.pad) return refuse("not_writable", `The number has no ${c.place.replace("_", " ")} digit: that column stays empty.`);
   if (target.rowId === "digits") {
-    if (state.mode !== "build") return refuse("not_writable", "The digits of this number are already written.");
+    if (state.mode === "read") return refuse("not_writable", "The digits of this number are already written.");
     if (state.digits[c.place]) return refuse("already_written", `The ${c.place} digit is already written.`);
     if (value !== String(c.digit)) return refuse("wrong_value", `The ${c.place.replace("_", " ")} digit is ${c.digit}, not ${value}.`);
     return { ...state, digits: { ...state.digits, [c.place]: { seq: ctx.seq, ink: ink ?? "green" } } };
   }
   if (target.rowId === "value") {
     if (state.values[c.place]) return refuse("already_written", `The value of the ${c.place.replace("_", " ")} digit is already written.`);
-    if (state.mode === "build" && !state.digits[c.place]) return refuse("not_allowed", "Write the digit before its value.");
+    if (state.mode !== "read" && !state.digits[c.place]) return refuse("not_allowed", "Write the digit before its value.");
     if (value !== valueText(c.digit, c.place)) return refuse("wrong_value", `The value of the ${c.place.replace("_", " ")} digit is ${valueText(c.digit, c.place)}, not ${value}.`);
     return { ...state, values: { ...state.values, [c.place]: { seq: ctx.seq, ink: ink ?? "green" } } };
   }
@@ -244,15 +252,16 @@ function draw(state: PlaceChartState, objectId: string, ctx: Ctx): LocalStroke[]
   }
   state.columns.forEach((c, i) => {
     const base = { objectId, layer: "math" as const, seq: state.seq, ink: "black" as Ink, width: SMALL_WIDTH };
+    const nameStroke = { ...base, width: SMALL_WIDTH + 0.01 };
     const [first, second] = NAME_LINES[c.place];
     const nameBox = (text: string, y: number): Rect => {
-      const adv = Math.min(0.36, (COL_W - 0.3) / Math.max(text.length, 1));
+      const adv = Math.min(0.4, (COL_W - 0.3) / Math.max(text.length, 1));
       const w = adv * text.length;
-      return { x: colX(state, i) + (COL_W - w) / 2, y, w, h: 0.5 };
+      return { x: colX(state, i) + (COL_W - w) / 2, y, w, h: NAME_H };
     };
     const target = { objectId, part: "column" as const, column: c.place };
-    if (first) out.push(...glyphStrokes(ctx.glyphs, first, nameBox(first, R.names.y), { ...base, target }, `name/${c.place}/0`));
-    out.push(...glyphStrokes(ctx.glyphs, second, nameBox(second, R.names.y + 0.55), { ...base, target }, `name/${c.place}/1`));
+    if (first) out.push(...glyphStrokes(ctx.glyphs, first, nameBox(first, R.names.y), { ...nameStroke, target }, `name/${c.place}/0`));
+    out.push(...glyphStrokes(ctx.glyphs, second, nameBox(second, R.names.y + NAME_H + NAME_GAP), { ...nameStroke, target }, `name/${c.place}/1`));
     const d = state.digits[c.place];
     if (d) {
       const w = 1.2;

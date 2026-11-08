@@ -84,4 +84,27 @@ describe("place chart", () => {
     expect(new Set(stripe.pts.map((p) => p[0])).size).toBe(1);
     expect(stripe.pts[1][1]).toBeGreaterThan(stripe.pts[0][1]);
   });
+
+  it("draws a blank chart for a 'which digit' question: names and columns, no digits until a checked put writes one", () => {
+    const blank = ok(createScene(), { ...chart("53172"), blank: true });
+    const digits = targetsOf(blank).filter((x) => x.target.part === "cell" && x.target.rowId === "digits");
+    expect(digits.map((x) => x.value)).toEqual([null, null, null, null, null]);
+    expect(refused(blank, { op: "put", target: cell("digits", "thousands"), value: "5" })).toMatchObject({ code: "wrong_value" });
+    const written = ok(blank, { op: "put", target: cell("digits", "thousands"), value: "3" });
+    expect(targetsOf(written).find((x) => x.target.part === "cell" && x.target.rowId === "digits" && x.target.column === "thousands")?.value).toBe("3");
+    expect(refused(createScene(), { ...chart("53172"), blank: "yes" })).toMatchObject({ code: "invalid_command" });
+  });
+
+  it("keeps the place names readable on a 390 px phone: at least 11 px tall for a 6-column chart", () => {
+    const r = applyBatch(createScene(), { transactionId: "t", commands: [chart("785243")] });
+    if (!r.ok) throw new Error(JSON.stringify(r.refusal));
+    const rules = r.drawn.filter((p) => p.kind === "rule").flatMap((p) => p.pts.map((q) => q[0]));
+    const width = Math.max(...rules) - Math.min(...rules);
+    // The second line of each name ("thousands", "hundreds", ...): its letters' full height.
+    const names = r.drawn.filter((p) => p.kind === "glyph" && /:name\/[a-z_]+\/1\//.test(p.id)).flatMap((p) => p.pts.map((q) => q[1]));
+    const letters = Math.max(...names) - Math.min(...names);
+    // The chat board fits the chart to the screen (390 px less two 16 px gutters), with a little padding each side.
+    const px = (390 - 32) / (width * 1.12) * letters;
+    expect(px).toBeGreaterThanOrEqual(11);
+  });
 });

@@ -199,6 +199,8 @@ export function stepWords(step: WorkedStep): string {
       return "doing the same thing to both sides";
     case "check":
       return "checking the answer";
+    case "read-digit":
+      return `finding the digit in the ${PLACE_WORDS[step.place]} place`;
     case "result":
       return "writing the final answer";
   }

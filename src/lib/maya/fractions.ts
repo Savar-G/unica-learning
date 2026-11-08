@@ -18,6 +18,8 @@ const EQUAL_FORM_KINDS: readonly OperationKind[] = ["fraction-add", "fraction-su
 export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   "add-column", "subtract-column", "multiply-digit", "partial-product", "place-point", "divide-digit",
   "common-denominator", "combine-numerators", "simplify", "to-mixed", "result",
+  // B1a: the digit in a place (place-value questions, src/lib/maya/place-value*.ts).
+  "read-digit",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */
