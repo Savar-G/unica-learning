@@ -63,7 +63,7 @@ async function practiceRequests() {
   const fake = fakeAiClient({ answer: () => null });
   await aiMayaModel(fake).propose(input(), signal());
   await aiChildSimulator(fake).next({ promptVersion: "test", persona: PRACTICE_CASES[0].persona, maxWords: 25, transcript: [] }, signal());
-  await aiValidityJudge(fake).check({ promptVersion: "test", persona: PRACTICE_CASES[0].persona, childTurns: [{ id: 1, text: "Hello." }] }, signal());
+  await aiValidityJudge(fake).check({ promptVersion: "test", persona: PRACTICE_CASES[0].persona, childTurns: [{ id: 1, text: "Hello." }], call: [{ speaker: "child", text: "Hello.", childTurn: 1 }] }, signal());
   await aiJudge(fake).judge({ promptVersion: "test", channel: "chat", question: { text: "27 + 39 = ?", answer: "66", steps: [], easierExample: null }, child: { age: 7 }, expected: "test", rubric: DIMENSION_IDS.map((id) => ({ id, ...DIMENSIONS[id] })), turns: [], outcome: null }, signal());
   await aiTalkReviewer(fake).review({ promptVersion: "test", line: "Hello.", childTurn: null, transcript: [] }, signal());
   return fake.requests;

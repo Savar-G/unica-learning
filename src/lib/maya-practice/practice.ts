@@ -346,6 +346,7 @@ export const INVALID = {
   too_long: "The child's turn is longer than a child of that age says.",
   early_stop: "The child asked to stop although the persona does not.",
   off_script: "The child skipped what the persona must say or do.",
+  false_teaching_claim: "The child said Maya showed or taught it something before Maya had shown any step.",
   validity_flagged: "The validity judge found a turn out of persona, or knowledge the persona does not have.",
   validity_unjudged: "The validity judge gave no usable verdict: missing, failed, skipped or not its schema.",
 } as const;
@@ -428,6 +429,9 @@ function sentTexts(log: SimulatorLog): { texts: string[]; lastMayDrop: boolean }
   return { texts, lastMayDrop };
 }
 
+/** A child's claim that Maya showed or taught it something ("Like you showed me", "you taught me"). */
+const TEACHING_CLAIM = /\b(?:you (?:showed|taught)|(?:like|as|the way) you (?:showed|said|did|taught|told))\b/i;
+
 /**
  * The validity problems of a run. The rules run on the simulator log's raw child turns, which must be exactly the
  * child turns in the trace (the trace writes the child's name as {name}); the trace gives Maya's acts between them.
@@ -493,6 +497,9 @@ function validity(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): RunVerd
     const words = text.trim().split(/\s+/).length;
     if (words > maxWords(c.persona.age)) add("too_long", `${where} has ${words} words`);
     if (!c.validity.mayStop && !closed && STOP_WORDS.test(text)) add("early_stop", where);
+    // A claim that Maya taught something before she showed any step (no worked or easier example, no hint above an
+    // invitation, no given answer) hides knowledge the card does not give (review of 8ce1adff).
+    if (TEACHING_CLAIM.test(text) && !acts.some((a) => a.act === "example_step" || a.act === "give_answer" || (a.act === "guide" && (a.level ?? 0) >= 1))) add("false_teaching_claim", where);
 
     // The script stages open at this turn.
     const open = c.validity.stages.filter((s) => stageOpen(s.opens, acts, childN));
@@ -550,10 +557,21 @@ function integrity(id: string, store: PracticeStore): string[] {
   return out;
 }
 
-/** What the validity judge reads: the persona card and the child's turns (their raw words), nothing of Maya's. */
+/**
+ * What the validity judge reads: the persona card, the child's turns (their raw words), and the call in order with
+ * Maya's turns as she said them (review of 8ce1adff: without them it could not tell taught from untaught, nor check a
+ * claim of teaching). Never the case's expected behaviour.
+ */
 export function validityInput(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): ValidityInput {
   const count = trace.turns.filter((t) => t.kind === "child").length;
-  return { promptVersion: VALIDITY_PROMPT_VERSION, persona: c.persona, childTurns: sentTexts(log).texts.slice(0, count).map((text, i) => ({ id: i + 1, text })) };
+  const texts = sentTexts(log).texts.slice(0, count);
+  const call: ValidityInput["call"] = [];
+  let n = 0;
+  for (const t of trace.turns) {
+    if (t.kind === "maya" && t.output && t.output.say.length > 0) call.push({ speaker: "maya", text: t.output.say.join(" ") });
+    else if (t.kind === "child" && n < texts.length) { call.push({ speaker: "child", text: texts[n], childTurn: n + 1 }); n++; }
+  }
+  return { promptVersion: VALIDITY_PROMPT_VERSION, persona: c.persona, childTurns: texts.map((text, i) => ({ id: i + 1, text })), call };
 }
 
 /** The validity judge's verdict on a run code found valid, as invalid findings (none when it cleared the run). */

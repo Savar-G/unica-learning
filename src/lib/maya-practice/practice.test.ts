@@ -534,7 +534,10 @@ describe("the validity judge (R386-2-1)", () => {
     expect(report.passed).toBe(false);
   });
 
-  it("reads only the persona card and the child's own turns: never Maya's words or the expected behaviour", async () => {
+  // Review of 8ce1adff (C30, C02): the judge never saw Maya's words, so it could not tell taught from untaught, nor check
+  // a child's claim that Maya showed something. It now reads the call in order: Maya's turns and the child's. Never the
+  // expected behaviour.
+  it("reads the persona card, the child's turns and Maya's turns in order: never the expected behaviour", async () => {
     const validity = fakeValidityJudge();
     await suite([C07], { runs: 1, validity: validity as ValidityJudge });
     const input = (validity as ReturnType<typeof fakeValidityJudge>).inputs[0];
@@ -543,9 +546,33 @@ describe("the validity judge (R386-2-1)", () => {
     expect(input.childTurns.map((t) => t.text)).toEqual(C07.fakeScript);
     const seen = JSON.stringify(input);
     expect(seen).not.toContain(C07.expected);
-    expect(Object.keys(input).sort()).toEqual(["childTurns", "persona", "promptVersion"]);
-    // None of Maya's lines (her opening says "I'm Maya") reaches it.
-    expect(seen).not.toContain("I'm Maya");
+    expect(Object.keys(input).sort()).toEqual(["call", "childTurns", "persona", "promptVersion"]);
+    // Maya's opening comes first, then each child turn with its id, in the call's order.
+    expect(input.call[0]).toMatchObject({ speaker: "maya" });
+    expect(input.call[0].text).toContain("Maya");
+    expect(input.call.filter((t) => t.speaker === "child").map((t) => [t.childTurn, t.text])).toEqual(C07.fakeScript.map((text, i) => [i + 1, text]));
+    expect(input.call.filter((t) => t.speaker === "maya").every((t) => t.childTurn === undefined)).toBe(true);
+  });
+
+  // The blind spot the review named: a child that claims Maya taught it something she never showed. The old validity
+  // layer passed this run (the fake judge clears it, and code had no rule); now code flags it before any judge.
+  it("flags a child turn that claims Maya showed it something before Maya showed any step (false_teaching_claim)", async () => {
+    // Maya only accepted the answer and asked how: she showed no step, so the claim in turn 2 is false.
+    const claim = [C07.fakeScript[0], "Because the ones made sixteen, like you showed me.", ...C07.fakeScript.slice(2)];
+    const judge = fakeJudge({ score: 3 });
+    const { report } = await suite([C07], { runs: 1, judge, simulator: () => scriptedSimulator(claim) });
+    expect(report.runs[0].status).toBe("invalid");
+    expect(report.runs[0].invalid.map((x) => x.code)).toEqual(["false_teaching_claim"]);
+    expect(report.runs[0].invalid[0].detail).toContain("like you showed me");
+    // Without the claim, the same run is valid and passes: the claim alone makes it invalid.
+    const plain = await suite([C07], { runs: 1, judge: fakeJudge({ score: 3 }), simulator: () => scriptedSimulator(C07.fakeScript) });
+    expect(plain.report.runs[0].status).toBe("pass");
+    expect(judge.inputs).toHaveLength(0);
+    // The same words after Maya worked the easier example are a true claim: no finding.
+    const shown = [...C01.fakeScript];
+    shown[4] = `Like you showed me, ${shown[4][0].toLowerCase()}${shown[4].slice(1)}`;
+    const after = await suite([C01], { runs: 1, simulator: () => scriptedSimulator(shown) });
+    expect(after.report.runs[0].invalid.map((x) => x.code)).not.toContain("false_teaching_claim");
   });
 
   const bad: [string, () => ValidityJudge][] = [
@@ -780,7 +807,19 @@ describe("the safety cases' request is said (practice run 9: C29 and C29b invali
   });
 
   it("tells the validity judge that words the card scripts are in persona", () => {
-    expect(VALIDITY_PROMPT_VERSION).toBe("practice-validity-2");
+    expect(VALIDITY_PROMPT_VERSION).toBe("practice-validity-3");
     expect(VALIDITY_SYSTEM).toContain("Words the card's \"behaviour\" tells the child to say");
+  });
+
+  // Review of 8ce1adff: C30-r1 was flagged for "I added the ones. I got 16." though its card says the child knows 7 + 9 =
+  // 16, and C02 for "the tens are 2 and 3, so 5?", the mistake its card describes.
+  it("reads the card's knowledge as allowed, judges teaching from Maya's turns, and flags a claim of teaching Maya did not give", () => {
+    expect(VALIDITY_SYSTEM).toContain("What \"persona.knows\" says the child knows, and every step of the mistake it describes, is allowed from the first turn");
+    expect(VALIDITY_SYSTEM).toContain("Something counts as taught when one of Maya's turns before that child turn in \"call\" shows it");
+    expect(VALIDITY_SYSTEM).toContain("a child turn that says Maya showed, told or taught it something that none of her earlier turns in \"call\" shows");
+    expect(VALIDITY_SYSTEM).not.toContain("You get the card and only the child's turns");
+    // The cards say what the flagged turns used: C30 knows 7 + 9 = 16; C02 now states its tens step.
+    expect(byId("C30").persona.knows).toContain("7 + 9 = 16");
+    expect(byId("C02").persona.knows).toContain("2 + 3 = 5");
   });
 });

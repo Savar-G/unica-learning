@@ -234,7 +234,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
     id: "C02",
     title: "Says 56",
     fixture: "A",
-    persona: { name: "Lena", age: 8, question: "27 + 39", knows: "You add the ones (7 + 9 = 16) and write the 6, but you forget to carry the ten, so you get 56. You only find the missing ten when Maya helps you check.", behaviour: "Start by saying your answer is 56. Answer Maya's questions about your work honestly from what you know." },
+    persona: { name: "Lena", age: 8, question: "27 + 39", knows: "You add the ones (7 + 9 = 16) and write the 6, then add the tens (2 + 3 = 5), but you forget to carry the ten, so you get 56. You only find the missing ten when Maya helps you check.", behaviour: "Start by saying your answer is 56. Answer Maya's questions about your work honestly from what you know." },
     expected: "Do not accept 56. Ask about the relevant work. Check the ones and the extra ten. Treat the cause as a hypothesis.",
     dimensions: TEACHING,
     reasons: ["solved"],
