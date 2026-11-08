@@ -802,7 +802,10 @@ function asksWhy(text: string): boolean {
 function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
   // A claim question never gives its word (claim.ts).
   const allowed = teachingActsOf(s, reading, rightResult, progress, misses, offering);
-  return { ...allowed, acts: claimActs(s.package, allowed.acts) };
+  // A child who only asks for help at the top of a claim's final step closes honestly (claim.ts, lesson 10).
+  const stuck = s.ladder.step === "result" && s.ladder.hint >= 2 && s.solved === null && !rightResult && s.turn !== null &&
+    (reading.help !== undefined || asksForHelp(s.turn.text)) && !(reading.answers ?? []).some((a) => a.verdict === "right");
+  return { ...allowed, acts: claimActs(s.package, allowed.acts, stuck) };
 }
 
 function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, progress: boolean, misses: number, offering: boolean): Allowed {
@@ -1408,6 +1411,12 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     }
     case "close":
+      // A claim question closed as the way out for a stuck child (claim.ts, lesson 10) says the honest close in code's
+      // words, not only warm talk. A stop, the clock and silence keep their own close.
+      if (sessionClaim(pkg) && s.solved === null && !s.stopRequested && !reading.stop && s.state !== "TIME_CLOSE" && s.silence !== "close_due" &&
+          !spoken.chosen.some((o) => o.line === "close.honest")) {
+        return no("line_not_offered", "Close a claim question the child is stuck on with close.honest.", allowedNow);
+      }
       break;
     case "safety":
       // The guidance is code's policy message, never the model's words.
@@ -2797,8 +2806,8 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      // A claim question whose word Maya may not give (claim.ts) closes as worked together.
-      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : sessionClaim(pkg) ? l.closeSolved("maya") : [];
+      // A claim question whose word Maya may not give (claim.ts) closes honestly: no answer, one next step.
+      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed") : sessionClaim(pkg) ? l.honestClose() : [];
     case "confirm": {
       // A claim's word said unsure or with both words: which word the child circles; a bare word: said back (claim.ts).
       const word = claimConfirm(claimTurn(s));

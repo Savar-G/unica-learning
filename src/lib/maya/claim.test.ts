@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allLineTexts, createSession, heldReason, lineOffers, step, type Session } from "@/lib/maya";
+import { allLineTexts, createSession, heldReason, learningEvent, lineOffers, nextActs, step, type Session } from "@/lib/maya";
 import { claimActs, claimQuestionAsked, claimReveals, claimStepConfirmable, claimStepHeard, claimView, readClaimWord } from "@/lib/maya/claim";
 import { packageLines } from "@/lib/maya/lines";
 import * as CLAIMS from "@/lib/maya-gate/claim-fixtures";
@@ -70,10 +70,12 @@ describe("a claim question's session (A4)", () => {
     expect(heldReason({ ...tf, operation: swapped, steps: workedSteps(swapped) })).toBe("Maya cannot teach this circle question yet");
   });
 
-  it("never gives the word: give_answer leaves the acts, and guide or close takes its place where it was the only way on", () => {
+  it("never gives the word: give_answer leaves the acts, and the honest close takes its place where it was the only way on", () => {
     const pkg = claimView(tf);
     expect(claimActs(pkg, ["accept_answer", "guide", "give_answer"])).toEqual(["accept_answer", "guide"]);
-    expect(claimActs(pkg, ["give_answer", "confirm"])).toEqual(["guide", "confirm", "close"]);
+    // The way out is the honest close, never another top hint (lesson 7).
+    expect(claimActs(pkg, ["give_answer", "confirm"])).toEqual(["confirm", "close"]);
+    expect(claimActs(pkg, ["accept_answer", "guide"], true)).toEqual(["close"]);
     expect(claimActs(FIXTURES.A as OperationPackage, ["give_answer"])).toEqual(["give_answer"]);
   });
 
@@ -160,6 +162,34 @@ describe("a claim question's session (A4)", () => {
     expect(r.refusal).toBeNull();
     expect(r.session.solved).toBe("child");
     expect(r.session.wordAsked).toBeUndefined();
+  });
+
+  it("a child who only asks for help at the top of the final step gets the honest close, and the stuck step is a learning event", () => {
+    let s = afterClaimQuestion();
+    let at = 10;
+    for (const level of [1, 2] as const) {
+      s = step(s, { type: "child_turn", at: at++, text: "I'm stuck." }).session;
+      const line = level === 1 ? "step.point" : "step.operation";
+      const r = step(s, { type: "proposal", at: at++, proposal: { version: 2, act: "guide", step: "result", level, reading: { help: "more" }, parts: [{ line, slots: { step: "result" } }] } });
+      expect(r.refusal).toBeNull();
+      s = r.session;
+    }
+    s = step(s, { type: "child_turn", at: at++, text: "I'm stuck." }).session;
+    // No endless top hint and no answer: the only way on is the close.
+    expect(nextActs(s).acts.filter((a) => a !== "confirm")).toEqual(["close"]);
+    const offers = lineOffers(s).close ?? [];
+    expect(offers.map((o) => o.line)).toEqual(["close.honest"]);
+    for (const t of offers[0].texts) {
+      expect(t).not.toMatch(/\d|\b(?:true|false|yes|no)\b/i);
+      expect(t).toMatch(/\b(?:stop|stopping)\b/i);
+      expect(t).toMatch(/\b(?:easier one|smaller one|grown-up)\b/i);
+    }
+    // A warm-only close is refused; the honest close ends the call.
+    expect(step(s, { type: "proposal", at: at, proposal: { version: 2, act: "close", parts: [{ warm: "closing" }] } }).refusal?.code).toBe("line_not_offered");
+    const r = step(s, { type: "proposal", at: at++, proposal: { version: 2, act: "close", parts: [{ line: "close.honest" }] } });
+    expect(r.refusal).toBeNull();
+    expect(r.session.outcome).toMatchObject({ reason: "child_stopped", assistance: "hint" });
+    expect(learningEvent(r.session, { parentId: "p", childId: "c" })).toMatchObject({ source: "call", result: "blank", stuckStep: "result", hints: 2 });
   });
 
   it("does not take a plain yes to 'Did you say ...?', or a yes after another act, as the claim's word", () => {

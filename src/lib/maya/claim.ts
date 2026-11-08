@@ -125,10 +125,11 @@ export const CLAIM_TEMPLATES = {
     "What is {expr}? Then we compare it with {shown}.", "Now find {expr}. Then we compare it with {shown}.",
     "What does {expr} make? Then we check {shown}.", "So what is {expr}? Then we look at {shown}.", "Put it together: what is {expr}? Then we check {shown}.",
   ],
+  // Never "read the digits you wrote": the result is this step's answer (brief lesson 9).
   "point.claim.product": [
-    "Read the digits you wrote. Then compare that number with {shown}.", "Read your answer row from the left. Then compare it with {shown}.",
-    "What number do your digits make? Then compare it with {shown}.", "Read the whole number you wrote. Then look at {shown}.",
-    "Read the digits you wrote, from the left. Then check {shown}.",
+    "Put the parts together to get {expr}. Then compare it with {shown}.", "Your columns make {expr}. Then we compare it with {shown}.",
+    "Join the parts of {expr}. Then we look at {shown}.", "Put your columns together for {expr}. Then check {shown}.",
+    "The columns together make {expr}. Then compare it with {shown}.",
   ],
   "operation.claim.product": [
     "First find {expr}. Then we compare it with {shown}.", "We need {expr} first. Then we look at {shown}.",
@@ -156,6 +157,15 @@ export const CLAIM_TEMPLATES = {
   "write.claim.yours": [
     "Please circle your answer on your page.", "Can you circle your answer on your page?", "Go ahead and circle your answer on your paper.",
     "Now circle your answer on your page.", "Circle your answer on your page, please.",
+  ],
+  // The honest close (controller decision (a), #735; pending Savar's approval, D-202): this one is hard, stopping is fine,
+  // and one next step. No number, no word to circle, no hint at the answer.
+  "close.honest": [
+    "This one is hard, and it's okay to stop. You can try the easier one on paper.",
+    "This is a tricky one. It's fine to stop here. You could ask a grown-up to try it with you.",
+    "This one is hard. We can stop for now. Try the easier one on your paper later.",
+    "This one is tough, and stopping is fine. A grown-up can help you try it.",
+    "This question is hard, and that's okay. Let's stop here. Try the smaller one on paper.",
   ],
   // A bare word said back (controller rule 4): the child's own word, never the other one.
   "confirm.claim.said": [
@@ -240,6 +250,8 @@ export function claimLines(pkg: OperationPackage, offer: MakeOffer) {
     writeAnswer: (): LineOffer[] => [offer("write.answer", "write.claim", vars)],
     writeYours: (): LineOffer[] => [offer("write.yours", "write.claim.yours", {})],
     which: (): LineOffer[] => [offer("confirm.claim", "confirm.claim", { first: c.choices[0], second: c.choices[1] })],
+    /** The honest close: no answer, one next step. */
+    honestClose: (): LineOffer[] => [offer("close.honest", "close.honest", {})],
     /** "You said true. Is true the word you circle?": only for a word the child said bare. */
     said: (word: string): LineOffer[] => (c.choices.includes(word) ? [offer("confirm.word", "confirm.claim.said", { heard: word }, { slots: { heard: word } })] : []),
   };
@@ -418,14 +430,18 @@ export function claimAnswers(t: ClaimTurn, answers: readonly ChildAnswer[] | und
 }
 
 /**
- * The acts allowed in a claim call: Maya never gives the word (no give_answer). Where giving it was the only way on, she
- * guides again or closes kindly.
+ * The acts allowed in a claim call: Maya never gives the word (no give_answer). Where giving it was the only way on (H3
+ * shown and more help asked, or two wrong words), and where a child who only asks for help is at the top of the final
+ * step's ladder (`stuck`: H2, the final step has no H3), the way out is the honest close (controller decision (a), #735,
+ * brief lesson 10): no endless top hint, no answer.
  */
-export function claimActs(pkg: OperationPackage | null, acts: Act[]): Act[] {
-  if (!sessionClaim(pkg) || !acts.includes("give_answer")) return acts;
+export function claimActs(pkg: OperationPackage | null, acts: Act[], stuck = false): Act[] {
+  if (!sessionClaim(pkg)) return acts;
+  if (stuck && acts.includes("guide")) return ["close", ...acts.filter((a) => a === "confirm")];
+  if (!acts.includes("give_answer")) return acts;
   const rest = acts.filter((a) => a !== "give_answer");
   const teaching = rest.some((a) => ["accept_answer", "guide", "try_target", "example_step", "clarify", "ask_write"].includes(a));
-  return teaching ? rest : [...new Set<Act>(["guide", ...rest, "close"])];
+  return teaching ? rest : [...new Set<Act>([...rest.filter((a) => a !== "close"), "close"])];
 }
 
 /**

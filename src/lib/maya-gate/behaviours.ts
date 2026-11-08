@@ -2375,6 +2375,46 @@ export const BEHAVIOURS: Behaviour[] = [
       never: ["give_answer"],
     },
   },
+  // The honest close (controller decision (a), #735, brief lessons 7 and 10): a child who only asks for help reaches the
+  // easier example where it can start, the top hint, then a close with no answer and one next step.
+  {
+    id: "CL19",
+    title: "Only 'I'm stuck.' at the claim's final step: H0 to H2, then the honest close, with no answer",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0, step: "result", lines: ["check.right_step", "step.invite"] }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1, step: "result" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2, step: "result" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close", lines: ["close.honest"] }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "hint", highestHint: 2 },
+      acts: [OPEN, "guide", "guide", "guide", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer", "accept_answer"],
+    },
+  },
+  {
+    id: "CL20",
+    title: "Only 'I'm stuck.' from the start: the easier example, the try, H1 to H3, then the honest close, never the answer",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "no_start" }, [{ act: "example_step" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "try_target" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "show" }, [{ act: "guide", level: 3 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      // The model's close had only warm talk: refused, and code's fallback says the honest close.
+      refused: ["line_not_offered"],
+      never: ["give_answer", "accept_answer"],
+    },
+  },
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */
