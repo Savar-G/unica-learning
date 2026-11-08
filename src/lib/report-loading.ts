@@ -3,6 +3,7 @@ import {
   MISCONCEPTIONS,
   fromRemovedRound,
   everyQuestion,
+  isGrade,
   reportFindings,
   storedProfile,
   storedReportModel,
@@ -19,6 +20,7 @@ import {
   type StoredTest,
 } from "@/lib/assessment";
 import type { ReportView } from "@/lib/report-view";
+import { bookOne } from "@/lib/report-book-one";
 import { familyZone } from "@/lib/family-time";
 import type { ReviewPiece } from "@/lib/work-review";
 
@@ -241,13 +243,20 @@ export interface LoadedReport {
  * numbers and the workbook 1 preview, with the AI parts once stored. Null without a stored profile of this schema
  * version. A failed read is logged and gives null: the report shows without these sections.
  */
-async function findingsOf(reader: ReportReader, assessmentId: string) {
+async function findingsOf(reader: ReportReader, row: ReportRecord, model: ReportModel) {
+  const assessmentId = row.assessmentId;
   try {
     const profile = storedProfile(await reader.profile(assessmentId));
-    return profile ? reportFindings(profile) : null;
+    if (!profile) return { findings: null, book: null };
+    // D-305: workbook 1 from the real planner, only for a family that can start the books (BC, card).
+    const grade = model.level.grade;
+    const book = model.callToAction === "card" && row.assessment && isGrade(grade)
+      ? bookOne({ profile, grade, assessmentId, completedAt: row.assessment.completedAt, minutes: row.minutes, howWeHelp: model.howWeHelp })
+      : null;
+    return { findings: reportFindings(profile), book };
   } catch (e) {
     console.error("[report] learner profile load failed", assessmentId, e instanceof Error ? e.message : String(e));
-    return null;
+    return { findings: null, book: null };
   }
 }
 
@@ -263,7 +272,7 @@ export async function loadReportView(reader: ReportReader, id: string): Promise<
   // Only the work the stored model shows today is signed (D-145: not the removed extra round's).
   const model = storedReportModel(row.model);
   const paths = (model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
-  const [workImages, findings] = await Promise.all([reader.sign(paths), findingsOf(reader, row.assessmentId)]);
+  const [workImages, { findings, book }] = await Promise.all([reader.sign(paths), findingsOf(reader, row, model)]);
   return {
     childId: row.childId,
     assessmentId: row.assessmentId,
@@ -278,6 +287,7 @@ export async function loadReportView(reader: ReportReader, id: string): Promise<
       model,
       workImages,
       findings,
+      bookOne: book,
     },
   };
 }
