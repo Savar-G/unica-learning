@@ -197,7 +197,7 @@ describe("evaluate parts (Wave A, A2)", () => {
       // No giveaway (lesson 11): not the answer times a power of 10, not its first digits, none of the question's numbers.
       const exValue = (shown.easierExample.answer as { value: number }).value;
       const value = (pkg.answer.value as { value: number }).value;
-      expect(givesAway(easier, exValue, expr, value), expr).toBe(false);
+      expect(givesAway(easier, exValue, expr, value, shown.easierExample.steps), expr).toBe(false);
       expect(keepsOrder(easier, exValue, expr, value), expr).toBe(true);
       // The stored package is not changed.
       expect(pkg.easierExample.operation).toEqual({ kind: "evaluate", operands: ["1 + 1"] });
@@ -392,6 +392,25 @@ describe("evaluate parts (Wave A, A2)", () => {
 
   it("makes \"5 × 5 − 5\" for \"7 × 8 − 50\", not \"6 × 6 − 5\" with the answer as both factors (round 3)", () => {
     expect(withEvaluateExample(op(evaluatePackage("7 × 8 − 50"))).easierExample.operation).toEqual({ kind: "evaluate", operands: ["5 × 5 − 5"] });
+  });
+
+  it("refuses a made example that shows the answer as a step (round 4): \"4 + 2 × 7\" and \"3 × 4 − 8\"", () => {
+    // At a90d2534 they got "1 + 3 × 6" (3 × 6 = 18) and "2 × 2 − 2" (2 × 2 = 4).
+    for (const [expr, answer, made] of [["4 + 2 × 7", 18, "1 + 3 × 5"], ["3 × 4 − 8", 4, "2 × 5 − 2"]] as const) {
+      const ex = withEvaluateExample(op(evaluatePackage(expr))).easierExample;
+      expect(ex.operation, expr).toEqual({ kind: "evaluate", operands: [made] });
+      expect(ex.steps.filter((s) => s.kind === "operate").map((s) => (s as { value: number }).value), expr).not.toContain(answer);
+    }
+  });
+
+  it("refuses a stored example that shows the answer as a step (round 4)", () => {
+    // "1 + 3 × 6" for "4 + 2 × 7" (3 × 6 = 18), and "2 × 2 − 2" for "3 × 4 − 8" (2 × 2 = 4): replaced by a made example.
+    for (const [expr, stored] of [["4 + 2 × 7", "1 + 3 × 6"], ["3 × 4 − 8", "2 × 2 − 2"]]) {
+      const pkg = op(evaluatePackage(expr, `What is ${expr}?`, stored));
+      expect(withEvaluateExample(pkg).easierExample.operation, expr).not.toEqual({ kind: "evaluate", operands: [stored] });
+    }
+    expect(givesAway("1 + 3 × 6", 19, "4 + 2 × 7", 18, workedSteps({ kind: "evaluate", operands: ["1 + 3 × 6"] }))).toBe(true);
+    expect(givesAway("2 × 2 − 2", 2, "3 × 4 − 8", 4, workedSteps({ kind: "evaluate", operands: ["2 × 2 − 2"] }))).toBe(true);
   });
 
   it("never puts the question's answer, or a trivial operand, in an easier example (round 3)", () => {

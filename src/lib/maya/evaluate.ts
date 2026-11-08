@@ -206,9 +206,10 @@ const TRIVIAL = [/[×÷]\s*1(?!\d)/, /(?<![\d.])1\s*×/, /[+−]\s*0(?!\d)/, /(?
  * The easier example gives the question's answer away (brief, lessons 11 and 12): its answer is the question's, or the
  * question's times a power of 10 apart (1700 + 300 = 2000 for 17000 + 3000), or the first digits of the question's
  * answer (88 for 880); or the example uses one of the question's own numbers, or the question's answer as any of its
- * numbers ("(5 + 3) ÷ 1" for an answer of 5). An example with a trivial operand (÷ 1, × 1, + 0, − 0) is refused too.
+ * numbers ("(5 + 3) ÷ 1" for an answer of 5), or as the result of any step Maya works on the board ("1 + 3 × 6" for
+ * an answer of 18: 3 × 6 = 18). An example with a trivial operand (÷ 1, × 1, + 0, − 0) is refused too.
  */
-export function givesAway(exampleExpr: string, exampleValue: number, expr: string, answer: number): boolean {
+export function givesAway(exampleExpr: string, exampleValue: number, expr: string, answer: number, steps: readonly WorkedStep[] = []): boolean {
   const own = new Set(expr.match(/\d+/g) ?? []);
   const numbers = exampleExpr.match(/\d+/g) ?? [];
   if (numbers.some((t) => own.has(t))) return true;
@@ -216,6 +217,7 @@ export function givesAway(exampleExpr: string, exampleValue: number, expr: strin
   if (numbers.some((t) => Number(t) === answer)) return true;
   if (TRIVIAL.some((re) => re.test(exampleExpr))) return true;
   if (exampleValue === answer) return true;
+  if (steps.some((s) => s.kind === "operate" && s.value === answer)) return true;
   for (let k = 10; exampleValue * k <= answer; k *= 10) if (exampleValue * k === answer) return true;
   return String(answer).startsWith(String(exampleValue));
 }
@@ -262,7 +264,7 @@ function sameShapeExample(expr: string, answer: number, valid: (example: EasierE
     const e = expr.replace(/\d+/g, () => String(lists[i][pick[i++]]));
     const worked = e !== expr ? workedWhole(e) : null;
     // The package check refuses an easier example with the question's answer; it must not give it away either.
-    if (worked && !givesAway(e, worked.value, expr, answer) && keepsOrder(e, worked.value, expr, answer)) {
+    if (worked && !givesAway(e, worked.value, expr, answer, worked.steps) && keepsOrder(e, worked.value, expr, answer)) {
       const operation: Operation = { kind: "evaluate", operands: [e] };
       const example: EasierExample = { text: `${e} = ?`, operation, answer: { type: "number", value: worked.value }, steps: worked.steps };
       if (valid(example)) return example;
@@ -282,7 +284,7 @@ function exampleFor(pkg: OperationPackage, expr: string): EasierExample | null {
   const storedExpr = stored.operation.kind === "evaluate" ? stored.operation.operands[0] : null;
   const storedValue = storedExpr !== null ? workedWhole(storedExpr) : null;
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : NaN;
-  if (storedExpr !== null && storedValue && shapeOf(storedExpr) === shapeOf(expr) && !givesAway(storedExpr, storedValue.value, expr, answer) &&
+  if (storedExpr !== null && storedValue && shapeOf(storedExpr) === shapeOf(expr) && !givesAway(storedExpr, storedValue.value, expr, answer, storedValue.steps) &&
     keepsOrder(storedExpr, storedValue.value, expr, answer) && !("values" in stored.operation && stored.operation.values)) return stored;
   // The package with the made example must pass the same check as any package (its steps and answer are the
   // operation's, and the example is smaller): the first candidate that does is the example.
