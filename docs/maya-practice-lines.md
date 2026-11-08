@@ -138,3 +138,24 @@ Maya says one of these when the child still only asks for help after the step's 
 | close.stuck.2 | That was a hard one, and it's okay to stop. Next, try the easier one on paper, or ask a grown-up. |
 | close.stuck.3 | This one is tough, and stopping is okay. You could try the easier one on paper, or ask a grown-up. |
 | close.stuck.4 | It's okay to stop here. This one is hard. Try the easier one on paper, or ask a grown-up for help. |
+
+### The child's own method, named back (C09)
+
+Maya says one of these once in a call, on the accept or after the answer stands, when the child's words show a compensation method code recognises (an operand's nearest ten, how far apart they are, and taking away or adding back). It takes the place of a warm reply such as "I hear you." Code fills `{b}` (the operand), `{round}` (its nearest ten) and `{diff}` (how far apart) from the checked package, never from the child's words. Example for 27 + 39: "You made 39 into 40. Then you took 1 away. That works."
+
+| Id | Wording |
+|---|---|
+| check.method.down.0 | You made {b} into {round}. Then you took {diff} away. That works. |
+| check.method.down.1 | You turned {b} into {round} and took {diff} away. That works. |
+| check.method.down.2 | You used {round} for {b}. Then you took {diff} away. Smart! |
+| check.method.down.3 | You added {round} instead of {b}. Then you took {diff} away. That works. |
+| check.method.down.4 | {b} is {diff} less than {round}. So you took {diff} away. That works. |
+| check.method.up.0 | You made {b} into {round}. Then you added {diff} back. That works. |
+| check.method.up.1 | You turned {b} into {round} and added {diff} back. That works. |
+| check.method.up.2 | You used {round} for {b}. Then you added {diff} back. Smart! |
+| check.method.up.3 | You added {round} instead of {b}. Then you added {diff} more. That works. |
+| check.method.up.4 | {b} is {diff} more than {round}. So you added {diff} back. That works. |
+
+### The close by how much help the child had (C09 item iii)
+
+No new wording. After Maya gave the answer, the close offers only the approved `close.together.4` "We worked on {expr} together today." (before: any `close.together` wording, such as "We finished {expr} together today."). After a shown step (H3), the close offers the approved `close.checked` wordings, such as "Your answer for {expr} is right. Bye for now!" (before: `close.solved`, such as "You worked out {expr} today!").

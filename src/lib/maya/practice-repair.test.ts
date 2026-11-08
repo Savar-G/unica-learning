@@ -86,9 +86,27 @@ describe("repairs from the full subscription practice", () => {
     expect(c.s.done).toEqual([]);
   });
 
+  // A sentence that only tells how the child worked is no second answer (C09 at 361a05c9): the right answer at its end
+  // stands, with no "What is your final answer on its own?".
+  it.each(["I did 27 plus 40, then took away one. I got 66.", "I did 27 plus 40. Then I took away one. I got 66.", "I made 39 into 40. Then I took one away. So it's 66."])("accepts %j with no confirm", (text) => {
+    const c = call();
+    c.child(text);
+    expect(lineOffers(c.s).confirm ?? []).toEqual([]);
+    c.ok({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [answer(66, "result")] } });
+    expect(c.s.solved).toBe("child");
+  });
+
+  it.each(["My mom did 27 plus 40. I got 66.", "I did 27 plus 40. I got 66?", "I didn't do 27 plus 40. I got 66."])("still confirms %j", (text) => {
+    const c = call();
+    c.child(text);
+    expect(c.propose({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [answer(66, "result")] } }).refusal).not.toBeNull();
+    expect(c.s.solved).toBeNull();
+  });
+
   it("asks for the answer alone when an unsupported method prevents confirmation", () => {
     const c = call();
-    c.child("I did 27 plus 40, then took away one. I got 66.");
+    // A second result in the working ("27 plus 40 is 67") is a second answer: Maya asks for the final answer alone.
+    c.child("I did 27 plus 40 is 67, then took away one. I got 66.");
     expect(c.propose({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [answer(66, "result")] } }).refusal).not.toBeNull();
     expect(lineOffers(c.s).confirm?.some(o => o.line === "confirm.answer")).toBe(true);
     expect(c.propose({ act: "confirm", parts: [line("question.read", { sentence: 0 })] }).refusal).not.toBeNull();

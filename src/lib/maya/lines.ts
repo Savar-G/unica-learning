@@ -61,6 +61,7 @@ export const LINE_IDS = [
   "check.thinking",
   "check.together",
   "check.guess",
+  "check.method",
   "step.why",
   "step.order",
   "answer.right",
@@ -457,6 +458,24 @@ export const TEMPLATES = {
   // The honest close (#735, decision (a)): the child still only asks for help after the top hint and the easier example.
   // It says this one is hard and stopping is fine, and names a next step. It holds no number, so no answer and no part of
   // one. Pending Savar's approval (docs/maya-practice-lines.md, "Pending Savar, #698 fix round 2026-11-08").
+  // The child's own compensation method, named back (practice at 361a05c9, C09): only for a method code recognises in the
+  // child's words, with its numbers from the checked package: {b} an operand, {round} its nearest ten, {diff} how far apart.
+  // "down": {round} is more than {b}, so the child took {diff} away. "up": {round} is less, so they added {diff} back.
+  // Pending Savar's approval (docs/maya-practice-lines.md, "Pending Savar, #698 fix round 2026-11-08").
+  "check.method.down": [
+    "You made {b} into {round}. Then you took {diff} away. That works.",
+    "You turned {b} into {round} and took {diff} away. That works.",
+    "You used {round} for {b}. Then you took {diff} away. Smart!",
+    "You added {round} instead of {b}. Then you took {diff} away. That works.",
+    "{b} is {diff} less than {round}. So you took {diff} away. That works.",
+  ],
+  "check.method.up": [
+    "You made {b} into {round}. Then you added {diff} back. That works.",
+    "You turned {b} into {round} and added {diff} back. That works.",
+    "You used {round} for {b}. Then you added {diff} back. Smart!",
+    "You added {round} instead of {b}. Then you added {diff} more. That works.",
+    "{b} is {diff} more than {round}. So you added {diff} back. That works.",
+  ],
   "close.stuck": [
     "This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up for help.",
     "This is a tricky one. It's fine to stop for now. Try the easier one on paper, or ask a grown-up.",
@@ -898,6 +917,17 @@ export function packageLines(pkg: OperationPackage) {
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr }) : offer("close.together", "close.together", { expr })],
     closeStuck: (): LineOffer[] => [offer("close.stuck", "close.stuck", {})],
+    /**
+     * The close after Maya gave the answer: only the approved close.together wording that claims no finished work ("We
+     * worked on {expr} together today."), never "We finished {expr} together" (practice at 361a05c9, C09 item iii).
+     */
+    closeGiven: (): LineOffer[] => {
+      const o = offer("close.together", "close.together", { expr });
+      const keep = TEMPLATES["close.together"].map((t, i) => (t === "We worked on {expr} together today." ? i : -1)).filter((i) => i >= 0);
+      return [{ ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => `${o.key}#${i}`) }];
+    },
+    /** The child's compensation method, named back with the package's numbers: one offer per operand it fits. */
+    method: (): LineOffer[] => compensations(pkg).map((m) => offer("check.method", m.up ? "check.method.up" : "check.method.down", { b: m.b, round: m.round, diff: m.diff }, { slots: { heard: String(m.round) } })),
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
     stepIds: steps.map((s) => s.id),
@@ -905,6 +935,19 @@ export function packageLines(pkg: OperationPackage) {
 }
 
 const unique = (xs: string[]) => [...new Set(xs)];
+
+/**
+ * The compensation forms of a two-number addition (C09): for each operand that is not a whole ten, its nearest ten and
+ * how far apart they are. "27 + 39": 39 to 40 (down: take 1 away), 27 to 30 (down: take 3 away). From the package only.
+ */
+export function compensations(pkg: OperationPackage): { b: number; round: number; diff: number; up: boolean }[] {
+  const op = pkg.operation;
+  if (op.kind !== "add" || op.operands.length !== 2 || !op.operands.every((n) => typeof n === "number" && Number.isInteger(n) && n > 10)) return [];
+  return (op.operands as number[]).flatMap((b) => {
+    const round = Math.round(b / 10) * 10;
+    return round === b ? [] : [{ b, round, diff: Math.abs(round - b), up: round < b }];
+  });
+}
 
 /** The offer a choice names: the same line with the same slots, or null. */
 export function findOffer(offers: readonly LineOffer[], choice: LineChoice): LineOffer | null {
@@ -939,7 +982,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeStuck(), ...l.repair(),
+    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeStuck(), ...l.closeGiven(), ...l.method(), ...l.repair(),
     ...l.together(), ...l.guess(),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];

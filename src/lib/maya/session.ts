@@ -41,7 +41,7 @@ import {
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
-import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
+import { compensations, findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
@@ -322,6 +322,8 @@ export interface Session {
   retried: boolean;
   /** Target steps the child has done. */
   done: string[];
+  /** Maya named the child's own method back (namedMethod, C09): once per call. A saved session from before has no field. */
+  methodNamed?: boolean;
   /**
    * Target steps Maya showed at H3 that the child then only copied or acknowledged (copiedStep; PR #698, C04): the ladder
    * goes past them, but they are not done, so no line calls them right and the learning event keeps the stuck step. A
@@ -1540,6 +1542,23 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     return no("invalid_proposal", "Respond to the checked wrong work with check.not_yet or a concrete step question before a generic invitation.", allowedNow);
   }
 
+  // The child's own method, named back once, in place of a warm reply (C09 at 361a05c9: "I hear you." after the child
+  // explained 27 + 40 - 1): only a method code recognises (namedMethod), on the accept or after the answer stands.
+  if (pkg && !s.methodNamed && (p.act === "accept_answer" ? rightResult : p.act === "ask_write" && s.solved !== null)) {
+    const m = namedMethod(s);
+    if (m) {
+      const rest = spoken.segments.filter((x) => x.kind !== "warm" && x.kind !== "talk");
+      const room = turnWordLimit(s) - speechWords(rest.map((o) => o.text).join(" "));
+      const pool = m.texts.map((_, i) => i).filter((i) => speechWords(m.texts[i]) <= room);
+      if (pool.length > 0) {
+        const pick = pool[chooseWording(s.variety, pool.map((i) => m.wordingIds?.[i] ?? `${m.key}#${i}`), s.now!)];
+        const at = p.act === "accept_answer" ? rest.findIndex((x) => x.kind === "math") + 1 : 0;
+        spoken.segments = [...rest.slice(0, at), { kind: "math", text: m.texts[pick] }, ...rest.slice(at)];
+        s.methodNamed = true;
+      }
+    }
+  }
+
   // 6. The assembled turn, with every line code added, checked in one place before anything is said (D-196,
   // R374-3-1): a turn with math takes warm talk only from the bank, and only before its first math line.
   if (p.act !== "safety") {
@@ -1668,6 +1687,26 @@ function methodUnseen(s: Session, done: readonly string[], spoken: Spoken): bool
   const read = turnRead(s);
   return read.final !== null && read.kept.every((v) => sameValue(v, read.final!));
 }
+
+/**
+ * The compensation method in the child's own words (C09: "I did 27 plus 40, then took away one"), as the line that names
+ * it back, or null. Only a form code recognises: the turn says an operand's nearest ten and how far apart they are, with a
+ * word for taking away (the ten is more) or adding back (the ten is less), and no negation, hedge or other speaker. The
+ * line's numbers come from the checked package (compensations), never from the turn.
+ */
+function namedMethod(s: Session): LineOffer | null {
+  const pkg = s.package;
+  if (!pkg || !s.turn) return null;
+  const text = s.turn.text.toLowerCase().replace(/’/g, "'");
+  if (NEGATIVE_OR_OTHER.test(text)) return null;
+  const said = valuesIn(text, readOptionsFor(pkg)).flatMap((v) => (v.type === "number" ? [v.value] : []));
+  const forms = compensations(pkg);
+  const offers = packageLines(pkg).method();
+  const at = forms.findIndex((m) => said.includes(m.round) && said.includes(m.diff) &&
+    (m.up ? /\b(?:add(?:ed|ing)?|plus|put)\b/ : /\b(?:took|take|taking|subtract(?:ed|ing)?|minus)\b/).test(text));
+  return at >= 0 ? offers[at] : null;
+}
+const NEGATIVE_OR_OTHER = /\b(?:not|never|no|didn'?t|don'?t|doesn'?t|mom|mum|dad|teacher|tutor|sister|brother|she|he|they|maybe|think|guess)\b/;
 
 /** The number a plain yes gives in this turn ("Did you say 66?", "Yes."), or null (#605). */
 function yesValue(s: Session): AnswerValue | null {
@@ -2916,7 +2955,10 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     }
     case "close":
       // An unsolved close after the easier example may say the honest close (#735): it holds no answer.
-      return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed")
+      // An honest close by how much help the child had (C09 item iii): after the given answer, no claim that the child
+      // finished it; after a shown step (guided), that their answer is right, not that they worked it out.
+      return solved ? (solved === "maya" || s.assistance.includes("answer_given") ? l.closeGiven()
+        : s.assistance.includes("guided") ? l.closeSolved("child", false) : l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed"))
         : s.turn !== null && s.exampleShown >= pkg.easierExample.steps.length ? l.closeStuck() : [];
     case "confirm": {
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.

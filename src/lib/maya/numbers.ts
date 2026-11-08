@@ -1008,7 +1008,9 @@ function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRea
   // words the child kept. Any other turn with numbers is confirmed in code's words, or Maya asks which one they mean.
   // A sentence before the last that only points back at work done is no second answer (first-ship practice, C28-r1, C29-r1).
   const numeric = stated.split(SENTENCE_END).filter((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; });
-  const sure = sureApart && numeric.filter((x, i) => i === numeric.length - 1 || !pointsBack(x, options)).length === 1;
+  // A sentence before the last that only tells how the child worked ("I did 27 plus 40, then took away one.") is no
+  // second answer either (practice at 361a05c9, C09).
+  const sure = sureApart && numeric.filter((x, i) => i === numeric.length - 1 || !(pointsBack(x, options) || methodSentence(x))).length === 1;
   return { read: { kept, final, choice: false, sure, outside: unclear ? [] : answer.values }, sureApart };
 }
 
@@ -1030,6 +1032,25 @@ function pointsBack(sentence: string, options?: ReadOptions): boolean {
   if (!said) return false;
   const n = plainNumber(said[1]);
   return n !== null && (options?.saidBefore ?? []).includes(n);
+}
+
+/** Words a sentence that only tells how the child worked may hold besides numbers: no result word, speaker, hedge or negation. */
+const METHOD_ONLY = new Set(["i", "did", "added", "add", "made", "make", "changed", "change", "rounded", "round", "up", "used", "use", "took", "take",
+  "away", "subtracted", "subtract", "minus", "plus", "and", "then", "so", "first", "it", "into", "to", "from", "the", "a", "more", "less", "back", "off"]);
+
+/**
+ * The sentence only tells, in the first person, the operations the child did, as an exact allow-list: "I did 27 plus 40,
+ * then took away one", "Then I took away one", "I made 39 into 40". It starts with "I" (after "so", "and", "first" or
+ * "then") and an action word, holds a number, and every other word is on METHOD_ONLY: no "is", "got", "answer", other
+ * speaker, hedge or negation, so it states no result.
+ */
+function methodSentence(sentence: string): boolean {
+  const words = sentence.toLowerCase().replace(/’/g, "'").replace(/[.!,;]+/g, " ").split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < words.length && ["so", "and", "first", "then"].includes(words[i])) i++;
+  if (words[i] !== "i" || !["did", "added", "add", "made", "changed", "rounded", "used", "took", "subtracted"].includes(words[i + 1] ?? "")) return false;
+  const numbers = words.filter((w) => plainNumber(w) !== null);
+  return numbers.length > 0 && words.every((w) => METHOD_ONLY.has(w) || plainNumber(w) !== null);
 }
 
 /** The whole text is one plain whole number, in digits or words ("16", "sixteen", "twenty-six"), or null. */
