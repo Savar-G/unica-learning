@@ -11,7 +11,9 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 
 | File | What it holds |
 |---|---|
-| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). |
+| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. |
+| `src/lib/maya-gate/place-value-cases.ts` | Fixtures PVD, PVD0, PVV and PVV0: teaching packages the place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored place-value questions, and their behaviours (PV01 to PVJ2b), added to `FIXTURES` and `BEHAVIOURS`. |
+| `src/lib/maya-gate/place-value-parts-cases.ts` | B1b's fixtures PVC, PVC0, PVCZ, PVSUM and PVB (compare, sum, tenths build) and their behaviours (PVC01 to PVBJ1, and PVCT1 to PVBT1: a wrong answer at the top help with a failing model). |
 | `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6c, with the J06 cases W5d, W6b and W6c), added to `FIXTURES` and `BEHAVIOURS`. |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
@@ -307,6 +309,95 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P5b | A | passing | A sure answer needs no confirmation | checked answer | |
 | P5c | A | passing | Numeric work after an answer requires confirmation | checked answer retained | |
 | P5d | A | passing | The child already wrote the answer | checked answer | |
+| CL01 | CLAIM_TF | passing | True/false product claim worked step by step; a bare 'True.' is said back, and the plain yes to that commits it | solved, independent | |
+| CL02 | CLAIM_GT | passing | Yes/no 'greater than' claim answered at once with a reason: accepted, circled, closed | solved, independent | |
+| CL03 | CLAIM_DEC | passing | Decimal-add claim: the wrong word is not accepted; the right word with its reason is | solved, hint | |
+| CL04 | CLAIM_TF | passing | After Maya's claim question, 'Maybe true?' is unclear: Maya asks which word, then accepts the committed word | solved | |
+| CL05 | CLAIM_GT | passing | A plain yes to 'Did you say 1440?' confirms the result, never the claim's word | solved | |
+| CL06 | CLAIM_TF | passing | The result in the child's own words is acknowledged once; a question about the step gets code's help line | solved, hint | |
+| CL07 | CLAIM_GT | passing | After Maya's claim question a bare 'Yes.' is said back; the child's 'No.' answers that question, not the claim | solved | |
+| CL08 | CLAIM_GT | passing | The result given before its columns is acknowledged, and Maya goes on to the claim's question, not the columns | solved, independent | |
+| CL09 | CLAIM_GT | passing | Grade 3, 'I'm stuck.' first: the easier example says its claim's question, within 25 words a turn | child_stopped | |
+| CL10 | CLAIM_TF | passing | Grade 3: '6 times 8 is 48, so it's true.' is this question's work, accepted as the circled word | solved, independent | |
+| CL11 | CLAIM_GT | passing | '1440 minus 1436 is 4, so it's yes.': the compare in a full sentence is this question's math | solved, independent | |
+| CL12 | CLAIM_DIV | passing | A claim checked by division: '6 times 8 is 48.' and '56 divided by 8 is 7, so it's no.' are this question's math | solved | |
+| CL13 | CLAIM_GT | passing | 'Is it 1440?', 'Was that 1440?', 'Yes.': the yes confirms the result; a model that tries the word's say-back is refused | solved | |
+| CL14 | CLAIM_GT | passing | 'Yeah!' to Maya's opening question is no claim turn: no say-back, no confirm, no answer | child_stopped | |
+| CL15 | CLAIM_GT | passing | 'Maybe 1440.' gives the result no credit: Maya confirms it first, then the yes credits it | solved | |
+| CL16 | CLAIM_GT | passing | 'My mom said 1440.' and 'I copied 1440 from my friend.' give the result no credit, and no confirm (a speaker or a verb) | child_stopped | |
+| CL17 | CLAIM_TF | passing | After H3 shows the result, '48.' only copies it: no credit; the committed word is still the child's | solved, guided | |
+| CL18 | CLAIM_DEC | passing | With the model down, code's own reading credits a bare '5.83.' on the compare step | solved | |
+| CL19 | CLAIM_TF | passing | Only 'I'm stuck.' at the claim's final step: H0 to H2, then the honest close, with no answer | child_stopped, hint | |
+| CL20 | CLAIM_TF | passing | Only 'I'm stuck.' from the start: the easier example, the try, H1 to H3, then the honest close, never the answer | child_stopped, guided | |
+
+### Claim questions (A4)
+
+A claim question ("True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436? Circle yes or no.") is judged as its session teaches it (`claimView` in `src/lib/maya/claim.ts`): the operation's steps, the compare step `claim`, and the circled word as the answer. Code reads the word with the claim reader's allow-list; the scripted model reads only the numbers. An accepted word must be the word the claim gives, in a committed form ("It's yes, because ..."). A bare word is never the answer (controller rule 4). After Maya's own claim question (`claimAsked`: her last accepted turn chose the final step's invite, point or operation line, or confirm.claim), Maya says it back ("You said true. Is true the word you circle?"), and only a plain yes to that commits it (CL01). After any other Maya question a bare yes, no, true or false is no claim turn at all: no say-back and no confirm (CL13, CL14). The compare step is credited only from a whole-turn template, as a column is: the value, "it's N", "a times b is N" with the operation's own numbers, a plain yes to "Did you say N?", or a claim about the child's own paper; never a hedge or a question (confirmed first, CL15), another speaker or a copy (CL16), or a copy of H3 (CL17). A child who only asks for help reaches the easier example where it may start, the top hint, then the honest close (`close.honest`, controller decision (a), #735): no answer, one next step, and a warm-only close is refused (CL19, CL20). A plain yes to "Did you say 1440?" is never the word (CL05), and a "No." to the said-back question is not the word "no" (CL07). Against J06 (#698 practice): the result in the child's own words is acknowledged once and Maya goes on (CL06), a question about the step gets code's help line (CL06), and a checked right result given before its columns shows those columns done, as an equal fraction does (#407), so Maya does not ask for them again (CL08). Before the word is released, no Maya turn but the easier example may say "circle", "it's" or "the answer is" with the word (`answer_too_early`). No claim call gives the word (`give_answer`).
+
+### Place-value questions through the session adapter (B1a)
+
+Fixtures PVD, PVD0, PVV and PVV0 (`src/lib/maya-gate/place-value-cases.ts`) are the teaching packages Maya's place-value adapter (`src/lib/maya-teaching/place-value.ts`) makes from synthetic stored "which digit" and "value of the digit" questions. A digit question's chart has no digits on it; its H2 stripes the asked column, and it has no H3. A zero is said only after the child says it. Two misses on the last step get the easier example, then an honest close: there is no given answer for place value. The J06 cases show an early correct digit acknowledged, and a question about a place or a "why" answered, by the model and by code's fallback. Every first line on a step carries its framing (where the place is, or what each of it is worth), and a line that says Maya drew the chart, a stripe or a circle comes with that drawing, at any hint level (PV15 to PV17). Full-sentence work ("8 times 10,000 is 80,000.") is this question's work for the scope check (PVS1 to PVS4).
+
+Fixtures PVC, PVC0, PVCZ, PVSUM and PVB (`src/lib/maya-gate/place-value-parts-cases.ts`, B1b) are the teaching packages B1b's adapter (`src/lib/maya-teaching/place-value-parts.ts`) makes from synthetic stored compare ("True or false: the digit in the thousands place is bigger than the digit in the hundreds place."), sum ("the value of the thousands digit plus the value of the tens digit") and tenths build ("5 wholes and 8 tenths is ? as a decimal.") questions. A compare's circled word is read only by A4's word reader (`claim.ts`, through `place-value-claim.ts`): a bare word after the statement's own question is said back first, and a bare word after any other question is no answer. A compare never stripes or circles a column before the word stands; with the word, code writes both digits, stripes both columns and writes "8 > 4". No step credit comes from a hedged, questioning, other-speaker or copied turn, and a copy after H3 counts as still stuck. A child who only asks for help reaches the easier example, then the honest close. The J06 cases show an early step in the child's own words acknowledged, and a question about the step answered first.
+
+| Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
+|---|---|---|---|---|---|
+| PV01 | PVD | passing | Which digit: says the right digit alone; accepted with no hint, the chart's digit and answer written in that turn | solved, independent | |
+| PV02 | PVD | passing | Which digit: says the left neighbour's digit, gets the places named from the right (no stripe), then says it | solved, hint | |
+| PV03 | PVD | passing | Which digit: says the value (3000); Maya says that is the value and asks for the digit, no credit | solved, independent | |
+| PV04 | PVV | passing | Value: the digit, then the value; the digit step is credited and the chart shows the value with its sentence | solved, independent | |
+| PV05 | PVV | passing | Value: one zero too few (8000); H1 says what each ten thousand is worth, then the child says 80000 | solved, hint | |
+| PV06 | PVV | passing | Value: says only the digit again after the digit step; Maya says that is the digit and asks for its value | solved, independent | |
+| PV07a | PVD0 | passing | Which digit, zero: Maya says 0 only after the child says it | solved, independent | |
+| PV07b | PVV0 | passing | Value, zero: the child says the digit is 0, which is also the value; accepted with the zero line | solved | |
+| PV10 | PVD | passing | Which digit: the child asks to be shown; the last step has no H3, so Maya helps one level up instead | solved | |
+| PV11 | PVD | passing | Which digit: two wrong answers; the easier example, then an honest close with no answer given | child_stopped, worked_example | |
+| PV14 | PVD | passing | Which digit: cannot start; the easier example of the same shape, then the child's own digit | solved, worked_example | |
+| PVJ1 | PVV | passing | J06, value: the child gives the digit before Maya asks; it is acknowledged and the help goes on to the value | solved, independent | |
+| PVJ1b | PVV | passing | J06, value: the model fails on an early digit; code hears the whole turn, acknowledges it and asks for the value | solved, independent | |
+| PVJ2 | PVD | passing | J06, which digit: the child asks which place is the thousands; Maya answers with code's line, then the child says the digit | solved, independent | |
+| PVJ2b | PVD | passing | J06, which digit: the model fails on a question about a place; code's fallback answers it first | solved | |
+| PV15 | PVD | passing | Which digit: 'I'm stuck.' first; code's first line says where the place is, counted from the right | solved | |
+| PV16 | PVD | passing | Which digit: 'I'm stuck.' first and the model starts at H2; code draws the chart and the stripe its line names | solved | |
+| PV17 | PVV | passing | Value: 'I'm stuck.' on the value step; code's first line says what each ten thousand is worth | solved | |
+| PVS1 | PVV | passing | Value: '8 times 10,000 is 80,000.' in a full sentence is the answer, not another problem | solved, independent | |
+| PVS2 | PVV | passing | Value: 'The 8 is in the ten thousands place.' is work on this question; Maya goes on to the value | solved | |
+| PVS3 | PVV | passing | Value: '8 times 1000 is 8000.' (one place too small) is checked as wrong work, never sent off topic | solved | |
+| PVS4 | PVD | passing | Which digit: '3 times 1000 is 3000.' is this question's work; Maya says that is the value and asks for the digit | solved | |
+| PVJ3 | PVV | passing | J06, value: 'Why do I multiply by 10,000?' gets code's answer, then the child says the value | solved, independent | |
+| PVJ3b | PVV | passing | J06, value: the model fails on 'Why do I multiply?'; code's fallback answers it first | solved | |
+| PV18 | PVV0 | passing | Value, zero digit: stuck twice; H1 names the places with no stripe, H2 stripes the empty column of a chart with no digits | solved | |
+| PV19 | PVD | passing | Which digit: 'I'm stuck.' four times; help rises to H2, the top of a last step, then the easier example, then the honest close | child_stopped, worked_example | |
+| PVC01 | PVC | passing | Compare: 'It's true.' at once; accepted, and the board stripes both columns and writes 8 > 4 (screen c) | solved | |
+| PVC02 | PVC | passing | Compare: each digit, then the bigger one, then the committed word; every step credited from its whole turn | solved, independent | |
+| PVC03 | PVC0 | passing | Compare, the same digits: no bigger step; after both digits Maya asks the statement, and 'It's false.' stands | solved, independent | |
+| PVC04 | PVC | passing | Compare: a bare 'True.' after the statement's own question is said back first; the child's plain yes commits it | solved | |
+| PVC05 | PVC | passing | Compare: a bare 'True.' after Maya's digit question is no claim answer and is not said back; the step goes on | script ends mid-call | |
+| PVC06 | PVC | passing | Compare: 'Maybe 8.', 'Is it 8?' and 'My mom said 8.' give the digit step no credit; '8' does | script ends mid-call | |
+| PVC07 | PVC | passing | Compare: after H3 shows the thousands digit, the child's '8' copies it and gets no step credit | script ends mid-call | |
+| PVC08 | PVC | passing | Compare: 'I'm stuck.' four times on the last step; the easier example, then an honest close, never the word | script ends mid-call | |
+| PVCJ1 | PVC | passing | J06, compare: 'The thousands digit is 8.' first; acknowledged, and Maya goes on to the hundreds digit | script ends mid-call | |
+| PVCJ2 | PVC | passing | J06, compare: 'Which one is the hundreds place?' on the hundreds step gets code's answer first | script ends mid-call | |
+| PVCJ3 | PVC | passing | J06, compare: 'Why is 8 bigger?' on the bigger step gets code's answer first, never the digit | script ends mid-call | |
+| PVC09 | PVCZ | passing | Compare, grade 3: 'I'm stuck.' first; code's first line says where the place is, within 25 words | script ends mid-call | |
+| PVC10 | PVCZ | passing | Compare, a 0 digit: the child says 0 for the hundreds; credited with the zero line, and 'It's true.' stands | solved | |
+| PVS01 | PVSUM | passing | Sum: each value, then the two added; the values written on the chart as the child says them | solved, independent | |
+| PVS02 | PVSUM | passing | Sum: '7 times 1000 is 7000.' in a full sentence is this step's work; credited, never another problem | solved | |
+| PVS03 | PVSUM | passing | Sum: the two digits added (11); Maya says that adds the digits and asks for the values | solved | |
+| PVS04 | PVSUM | passing | Sum: 'I'm stuck.' four times on the last step; the easier example, then an honest close, never the sum | script ends mid-call | |
+| PVSJ1 | PVSUM | passing | J06, sum: 'Why do I add them?' on the last step gets code's answer first | solved | |
+| PVSJ2 | PVSUM | passing | J06, sum: 'It's worth 7000.' first, in the child's own words; acknowledged, and Maya goes on to the tens | script ends mid-call | |
+| PVB01 | PVB | passing | Build: 'five point eight' is accepted; the board writes the digits and 5.8 in that turn | solved | |
+| PVB02 | PVB | passing | Build: '58' leaves out the point; Maya says so, then the child says 5.8 | solved | |
+| PVB03 | PVB | passing | Build: 'I'm stuck.' four times; H0 to H2, the easier example, then an honest close, never the decimal | script ends mid-call | |
+| PVBJ1 | PVB | passing | J06, build, grade 3: 'Why does the point go there?' gets code's answer first, within 25 words | solved | |
+| PVCT1 | PVC | passing | Compare, model failing: 'It's false.' at the result's top help (H2); the easier example, then on 'It's false.' again the honest close | child_stopped, worked_example | |
+| PVCT2 | PVC0 | passing | Compare, the same digits, model failing: 'It's true.' at the result's top help; the easier example, then the honest close | child_stopped, worked_example | |
+| PVCT3 | PVC | passing | Compare, model failing: after the easier example and 'Okay.', a wrong 'It's false.' gets the honest close | child_stopped, worked_example | |
+| PVDT1 | PVD | passing | Which digit, top help: a wrong '5' whose guide is refused, the model failing on repair; the easier example, then the honest close | child_stopped, worked_example | |
+| PVVT1 | PVV | passing | Value, top help of the last step: a wrong '8000' whose guide is refused, the model failing on repair; the easier example, then the close | child_stopped, worked_example | |
+| PVST1 | PVSUM | passing | Sum, top help: a wrong '11' whose guide is refused, the model failing on repair; the easier example, then the honest close | child_stopped, worked_example | |
+| PVBT1 | PVB | passing | Build, top help: a wrong '58' whose guide is refused, the model failing on repair; the easier example, then the honest close | child_stopped, worked_example | |
 
 ### One-step workbook questions through the session adapter (Wave A)
 

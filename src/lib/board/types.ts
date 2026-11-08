@@ -11,13 +11,18 @@ export type Ink = (typeof INKS)[number];
 /** Place names, smallest first. Decimal places come with decimal columns, later. */
 export const PLACE_NAMES = ["ones", "tens", "hundreds", "thousands", "ten_thousands", "hundred_thousands", "millions"] as const;
 export type PlaceName = (typeof PLACE_NAMES)[number];
+/** Decimal places, tenths first. Only the place chart has decimal columns (design: maya-place-value-design.md). */
+export const DECIMAL_PLACE_NAMES = ["tenths", "hundredths", "thousandths"] as const;
+export type DecimalPlaceName = (typeof DECIMAL_PLACE_NAMES)[number];
+/** A column of the place chart: a whole-number place or a decimal place. */
+export type ChartPlace = PlaceName | DecimalPlaceName;
 
 /** A named part of an object on the board. Each part has its own exact selector; words use indices, not text. */
 export type Target =
   | { objectId: string; part: "whole" }
-  | { objectId: string; part: "column"; column: PlaceName }
+  | { objectId: string; part: "column"; column: ChartPlace }
   | { objectId: string; part: "row"; rowId: string }
-  | { objectId: string; part: "cell"; rowId: string; column: PlaceName }
+  | { objectId: string; part: "cell"; rowId: string; column: ChartPlace }
   | { objectId: string; part: "word"; index: number }
   | { objectId: string; part: FractionPart }
   /** A value on a number line, by its exact value: "1/3", "-2", "0.5". The core keeps it in lowest terms ("2/6" is "1/3"). */
@@ -86,8 +91,23 @@ export interface ModelCommand {
   ink?: Ink;
 }
 
+/**
+ * A place-value chart. Two forms: `number` ("48461"): the number written digit by digit in its columns. `parts`
+ * ("6 wholes and 4 tenths": the given digits and their places): the chart shows the parts and leaves the digit row empty
+ * for `put`; the command never holds the number the child is asked to make.
+ */
+export interface PlaceChartCommand {
+  op: "place_chart";
+  id: string;
+  number?: string;
+  parts?: { place: ChartPlace; digit: number }[];
+  /** With `number`: draw the columns and names but not the digits; a checked `put` writes a digit (a "which digit" question). */
+  blank?: true;
+  place: Place;
+}
+
 /** Commands that create a new math object with its own layout. Later representations join this union. */
-export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand | ModelCommand | FractionCommand | NumberLineCommand;
+export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand | ModelCommand | FractionCommand | NumberLineCommand | PlaceChartCommand;
 
 export type Command =
   | CreateCommand

@@ -238,12 +238,18 @@ describe("an invalid simulation never counts as a pass", () => {
         expect(c.validity.stages.filter(s => s.opens === "start").flatMap(s => s.values ?? [])).toContainEqual(right);
         continue;
       }
+      // A compare's answer is its circled word, which code reads (B1b, PV4).
+      if (pkg.operation?.kind === "place-value" && pkg.operation.ask === "compare") continue;
       expect(right.type, c.id).toBe("number");
       const value = (right as { value: number }).value;
-      expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
+      // A "which digit" question's answer is a single digit, which a child may always say: only that check is left out,
+      // and the judge's expected behaviour carries "never the digit first" there (B1a, PV1).
+      const digitAsk = pkg.operation?.kind === "place-value" && pkg.operation.ask === "digit";
+      expect([...(digitAsk ? [] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]), ...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
       const atStart = c.validity.stages.filter((s) => s.opens === "start").flatMap((s) => s.numbers);
       // The personas that solve it on their own: C07, C09, C26, C28, the harmful requests and the free-talk cases (D-197).
-      expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28", "C29", "C29b"].includes(c.id) || c.id.startsWith("F"));
+      // CL01 knows its claim's product (6 × 8 = 48) from the start; its answer is the circled word, which code reads.
+      expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28", "C29", "C29b", "CL01"].includes(c.id) || c.id.startsWith("F"));
     }
   });
 
