@@ -4,12 +4,14 @@
 // `A_BAD_KEY` is fixture A with a wrong answer key (56 while the checked steps total 66), for the content hold (C36).
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
 // not teach yet (equivalent fractions, C36b).
-import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { mayaPackageCheck } from "@/lib/maya";
+import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { deriveDieCount } from "@/lib/maya-teaching/die-count";
 import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
 import { diePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
+import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG" | OneStepFixtureId;
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -131,12 +133,14 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
   // an isosceles triangle, 2 + 1), for grade 3 turns.
   DIE12: deriveDieCount(diePrinted(12, "odd"))!,
   SHAPES_LONG: deriveSymmetry(symmetryPrinted(1, 2))!,
+  ...ONE_STEP_FIXTURES,
 };
 
 /** Fixtures that must pass the package check; the bad key must fail it. */
 export function fixtureProblems(): string[] {
   return (Object.entries(FIXTURES) as [FixtureId, QuestionPackage][]).flatMap(([id, pkg]) => {
-    const check = checkQuestionPackage(pkg);
+    // Maya's own check: her wider limits hold for the adapter-made fixtures (W5, W3, W6) only.
+    const check = mayaPackageCheck(pkg);
     if (id === "A_BAD_KEY") return check.ok ? [`${id}: the bad key passed the package check`] : [];
     return check.ok ? [] : [`${id}: ${check.reason}`];
   });
