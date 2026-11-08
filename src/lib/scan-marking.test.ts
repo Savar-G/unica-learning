@@ -271,13 +271,14 @@ describe("two-ways AI marking", () => {
     expect(validMarkingOutput(f, long)).toBe(false);
   });
 
-  // The independent review's cases. None may be Right, whatever the AI says.
+  // Since the narrow allow-list (D-302), only the book's two shapes have templates. 36 + 47 has none, so every pair on it,
+  // however good, goes to our team. The earlier reviews' cases on it stay not Right.
   it.each([
+    ["split one addend and compensation", "36 + 40 = 76\n76 + 7 = 83", "36 + 50 = 86\n86 - 3 = 83"],
+    ["partial sums and split one addend", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83", "36 + 40 = 76\n76 + 7 = 83"],
     ["the question with the answer filled in, and its check", "36 + 47 = 83", "83 - 47 = 36"],
     ["the answer added and taken away again", "36 + 83 - 36 = 83", "47 + 36 = 83"],
-    ["identity lines with an unrelated sum", "83 = 83\n36 = 36\n1 + 1 = 2", "47 + 36 = 83"],
-    ["the check with a padded step", "83 - 36 = 47", "36 + 47 + 0 = 83"],
-  ])("is not Right when the AI says solves: %s", (_name, one, two) => {
+  ])("sends %s on 36 + 47 to our team, never Right", (_name, one, two) => {
     const { o, label } = markSum(one, two);
     expect(o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
     expect(label).toBe("Our team is checking this answer.");
@@ -292,55 +293,8 @@ describe("two-ways AI marking", () => {
   });
   it("is Wrong for 100 + 700 = 800 on 8 x ? = 800 when the AI says does-not-solve", () => {
     const f = sumFrame("8 × ? = 800", { kind: "divide", operands: [800, 8] }, 100);
-    const { o } = markSum("100 + 700 = 800", "8 × 50 = 400\n400 + 400 = 800", ["does-not-solve", "solves"], "100", f);
+    const { o } = markSum("100 + 700 = 800", "8 × 50 = 400\n8 × 50 = 400\n400 + 400 = 800\n50 + 50 = 100", ["does-not-solve", "solves"], "100", f);
     expect(o).toMatchObject({ state: "scored", result: "wrong", issue: "method-wrong" });
-  });
-  const notRight = (o: Observation) => expect([o.state, o.result]).not.toEqual(["scored", "right"]);
-  it.each([
-    ["split one addend and compensation", "36 + 40 = 76\n76 + 7 = 83", "36 + 50 = 86\n86 - 3 = 83"],
-    ["partial sums and split one addend", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83", "36 + 40 = 76\n76 + 7 = 83"],
-    ["jumps and partial sums", "36 +4 → 40 +40 → 80 +3 → 83", "30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83"],
-    ["split one addend in jumps and compensation", "47 +30 -> 77 +6 -> 83", "36 + 50 = 86\n86 - 3 = 83"],
-    ["a column and split one addend", "6 + 7 = 13\n3 + 4 + 1 = 8\n83", "36 + 40 = 76\n76 + 7 = 83"],
-    ["counting on in equations and compensation", "36 + 4 = 40\n40 + 40 = 80\n80 + 3 = 83", "40 + 47 = 87\n87 - 4 = 83"],
-    ["a bare last line that repeats the last result", "36 + 40 = 76\n76 + 7 = 83\n83", "36 + 50 = 86\n86 - 3 = 83"],
-  ])("marks %s Right when the AI says solves", (_name, one, two) => {
-    const { o, label } = markSum(one, two);
-    expect(o).toMatchObject({ state: "scored", result: "right", issue: null });
-    expect(label).toBe("Right");
-  });
-  // Every case in the review of 9f4fecc5 stays not Right, with the answer box right and the AI saying solves on both.
-  it.each([
-    // P1-1: the same method twice, in two forms.
-    ["36 + 40 + 7 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 40 = 76\n76 + 7 = 83", "36 +40 → 76 +7 → 83"],
-    ["36 + 40 + 7 = 83", "36 + 40 + 7"], ["36 + 40 + 7 = 83", "(36 + 40) + 7 = 83"],
-    // P1-3: copies with padding or an extra line, each paired with a valid other way.
-    ["36 + 47 - 0 = 83", "47 + 36 × 1 = 83"], ["(36 + 47) × 1 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 47 ÷ 1 = 83", "36 + 40 = 76\n76 + 7 = 83"],
-    ["36 - (0 - 47) = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 47 = 83\n50 + 33 = 83", "36 + 40 = 76\n76 + 7 = 83"],
-    ["36 + 47 + 2 - 2 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 47 + 36 - 36 = 83", "36 + 40 = 76\n76 + 7 = 83"],
-    ["36 + 47 + 0 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + 40 = 76\n76 + 7 = 83\n36 + 47 = 83", "36 + 50 = 86\n86 - 3 = 83"],
-    // P2-4: a final result the work did not produce.
-    ["40 + 40 = 80\n83", "36 + 40 = 76\n76 + 7 = 83"], ["2 + 2 = 4\n83 is it", "36 + 40 = 76\n76 + 7 = 83"],
-    // P2-5: a list that does not go up by a step.
-    ["83, 83, 83", "83, 83, 83, 83"], ["85, 84, 83", "81, 82, 83"],
-    // P3-9: a question mark never hides a line.
-    ["36 + 47 = 999 = ?\n40 + 43 = 83", "36 + 40 = 76\n76 + 7 = 83"], ["36 + ? = 83\n36 + 40 = 76\n76 + 7 = 83", "36 + 50 = 86\n86 - 3 = 83"], ["36 + _ = 83\n36 + 40 = 76\n76 + 7 = 83", "36 + 50 = 86\n86 - 3 = 83"],
-  ])("is not Right: %j / %j", (one, two) => notRight(markSum(one, two).o));
-  it.each([
-    ["800 ÷ 8 = 100", "800 ÷ 8"], ["800 ÷ 8 = 100", "800 ÷ 8 = 100.0"],
-    ["800 ÷ 8 × 1 = 100", "80 ÷ 8 = 10\n10 × 10 = 100"], ["800 ÷ 8 = 100\n8 × 100 = 800", "80 ÷ 8 = 10\n10 × 10 = 100"],
-    ["800 ÷ 8 = 100", "800 ÷ 8 = 100\n100"], ["80 ÷ 8 = 10\n10 × 10 = 100\n8 × 100 = 800", "800 ÷ 8 = 100"],
-  ])("is not Right on 8 × ? = 800: %j / %j", (one, two) => {
-    notRight(markSum(one, two, ["solves", "solves"], "100", sumFrame("8 × ? = 800", { kind: "divide", operands: [800, 8] }, 100)).o);
-  });
-  it.each([
-    // P1-2: the old exception for a number the question prints.
-    ["5 + 0 = 5", "5 ÷ 1 = 5"], ["5 × 5 ÷ 5 = 5", "5 × 5 = 25\n5 - 0 = 5"], ["5 × 5 = 25", "5 × 1 = 5"],
-    // P2-4 again, and skip counts that break the rule.
-    ["1 + 1 = 2\n5 times", "25 ÷ 5 = 5"], ["5, 10, 15, 20, 25", "25 ÷ 5 = 5"], ["5, 10, 15, 20, 25\n4 times", "25 ÷ 5 = 5"], ["10, 15, 20, 25\n4 times", "25 ÷ 5 = 5"],
-    ["25 - 5 = 20\n20 - 5 = 15\n5 times", "25 ÷ 5 = 5"], ["25 - 5 = 20\n20 - 5 = 15\n15 - 5 = 10\n10 - 5 = 5\n5 - 5 = 0\n4 times", "25 ÷ 5 = 5"],
-  ])("is not Right on 5 × ? = 25: %j / %j", (one, two) => {
-    notRight(markSum(one, two, ["solves", "solves"], "5", sumFrame("5 × ? = 25", { kind: "divide", operands: [25, 5] }, 5)).o);
   });
   it.each(["36 + 40 = 76 + 7 = 83", "6 + 7 = 13 + 70 = 83"])("keeps the run-on chain %j unsure, not Wrong", one => {
     expect(markSum(one, "36 + 50 = 86\n86 - 3 = 83")).toMatchObject({ o: { state: "pending", result: null, issue: "method-form" }, label: "Our team is checking this answer." });
@@ -348,67 +302,74 @@ describe("two-ways AI marking", () => {
   it("still marks a chain Wrong when a step is false however it is read", () => {
     expect(markSum("36 + 40 = 77 + 6 = 83", "36 + 50 = 86\n86 - 3 = 83").o).toMatchObject({ state: "scored", result: "wrong" });
   });
-  it("treats two methods of one kind as unsure, however the numbers differ", () => {
-    expect(markSum("36 + 40 = 76\n76 + 7 = 83", "47 + 30 = 77\n77 + 6 = 83")).toMatchObject({ o: { state: "pending", result: null, issue: "method-form" }, label: "Our team is checking this answer." });
-    expect(markSum("36 + 50 = 86\n86 - 3 = 83", "40 + 47 = 87\n87 - 4 = 83").o).toMatchObject({ state: "pending", result: null });
-  });
-  it("keeps a valid pair unsure when the AI is unsure, and when it gives no verdict", () => {
-    for (const verdicts of [["unsure", "solves"], [null, "solves"]] as const) {
-      const { o, label } = markSum("30 + 40 = 70\n6 + 7 = 13\n70 + 13 = 83", "36 + 40 = 76\n76 + 7 = 83", verdicts);
-      expect(o).toMatchObject({ state: "pending", result: null });
-      expect(label).toBe("Our team is checking this answer.");
-    }
-  });
-  it("makes a false step Wrong even when the AI says solves", () => {
-    const { o, label } = markSum("30 + 40 = 70\n6 + 7 = 14\n70 + 14 = 84", "36 + 40 = 76\n76 + 7 = 83");
-    expect(o).toMatchObject({ state: "scored", result: "wrong", issue: "method-wrong" });
-    expect(label).toBe("Wrong. One way does not solve the question.");
-  });
   it("makes a false jump Wrong even when the AI says solves", () => {
     expect(markSum("36 +40 → 77 +6 → 83", "47 +30 → 77 +6 → 83").o).toMatchObject({ state: "scored", result: "wrong" });
   });
   it("cannot check jumps with no operation, and keeps them unsure", () => {
     expect(markSum("36 → 76 → 83", "47 +30 → 77 +6 → 83").o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
   });
-  it.each([
-    ["a wrong final answer", GOOD_ONE, GOOD_TWO, "56", "wrong", "Wrong"],
-    ["a false step", "20 + 30 = 60\n60 + 16 = 66", GOOD_TWO, "66", "wrong", "Wrong. One way does not solve the question."],
-    ["a missing first method", "", GOOD_TWO, "66", "wrong", "Wrong. One way is missing."],
-    ["a missing second method", GOOD_ONE, "", "66", "wrong", "Wrong. One way is missing."],
-    ["a missing answer", GOOD_ONE, GOOD_TWO, "", "wrong", "Wrong"],
-    ["a false method beside an unreadable answer", "20 + 30 = 60", GOOD_TWO, null, "wrong", "Wrong"],
-    ["nothing written", "", "", "", "blank", "Blank"],
-    ["both valid methods and the right answer", GOOD_ONE, GOOD_TWO, "66", "right", "Right"],
-  ] as const)("marks %s", (_name, one, two, answer, result, label) => {
-    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(one, two, answer))[0];
+
+  // The book's page 22 question, 7 × 360 = ?: split by place value and strip zeros are two templates.
+  const SPLIT = "7 × 300 = 2100\n7 × 60 = 420\n2100 + 420 = 2520", STRIP = "36 × 7 = 252\n252 × 10 = 2520";
+  const book22 = () => sumFrame("7 × 360 = ?", { kind: "multiply", operands: [7, 360] }, 2520);
+  const read22 = (one: string | null, two: string | null, answer: string | null, issue: string | null = null, verdicts: readonly [Verdict, Verdict] = ["solves", "solves"], methodMarks?: boolean) => {
+    const f = book22(), o = readMarkingOutput(f, twoWaysOutput(one, two, answer, issue, verdicts), { methodMarks })[0];
     expect(observationProblem(o)).toBeNull();
+    return { f, o, view: markingPageView([twoWaysMark(f, o)]) };
+  };
+  it("keeps a valid pair unsure when the AI is unsure, and when it gives no verdict", () => {
+    for (const verdicts of [["unsure", "solves"], [null, "solves"]] as const) {
+      const { o, view } = read22(SPLIT, STRIP, "2520", null, verdicts);
+      expect(o).toMatchObject({ state: "pending", result: null });
+      expect(view.items[0].label).toBe("Our team is checking this answer.");
+    }
+  });
+  it("makes a false step Wrong even when the AI says solves", () => {
+    const { o, view } = read22("7 × 300 = 2100\n7 × 60 = 410\n2100 + 410 = 2510", STRIP, "2520");
+    expect(o).toMatchObject({ state: "scored", result: "wrong", issue: "method-wrong" });
+    expect(view.items[0].label).toBe("Wrong. One way does not solve the question.");
+  });
+  it.each([
+    ["a wrong final answer", SPLIT, STRIP, "2420", "wrong", "Wrong"],
+    ["a false step", "7 × 300 = 2000\n2000 + 420 = 2420", STRIP, "2520", "wrong", "Wrong. One way does not solve the question."],
+    ["a missing first method", "", STRIP, "2520", "wrong", "Wrong. One way is missing."],
+    ["a missing second method", SPLIT, "", "2520", "wrong", "Wrong. One way is missing."],
+    ["a missing answer", SPLIT, STRIP, "", "wrong", "Wrong"],
+    ["a false method beside an unreadable answer", "7 × 300 = 2000", STRIP, null, "wrong", "Wrong"],
+    ["nothing written", "", "", "", "blank", "Blank"],
+    ["both valid methods and the right answer", SPLIT, STRIP, "2520", "right", "Right"],
+  ] as const)("marks %s", (_name, one, two, answer, result, label) => {
+    const { o, view } = read22(one, two, answer);
     expect(o).toMatchObject({ state: "scored", method: "code", result, actor: "system" });
-    const view = markingPageView([twoWaysMark(f, o)]);
     expect(view.items[0].label).toBe(label);
     expect(view.completion).toMatchObject({ status: "complete", finished: 1 });
     expect(view.counts.teamChecks).toBe(0);
   });
   it.each([
-    ["a blurry method", null, GOOD_TWO, "66", "blurry", "Our team is checking this answer. The photo is blurry here. You can also send a new photo of this page."],
-    ["a cut-off second method", GOOD_ONE, null, "66", "cut-off", "Our team is checking this answer. Part of this answer is cut off. You can also send a new photo of this page."],
-    ["an unreadable answer", GOOD_ONE, GOOD_TWO, null, "unreadable", "Our team is checking this answer."],
-    ["a method the AI cannot write out", null, GOOD_TWO, "66", "method-form", "Our team is checking this answer."],
-    ["a method the model calls an answer form", null, GOOD_TWO, "66", "answer-form", "Our team is checking this answer."],
-    ["an answer the model calls an answer form", GOOD_ONE, GOOD_TWO, null, "answer-form", "Our team is checking this answer."],
-    ["a method in words", "I counted up in tens", GOOD_TWO, "66", undefined, "Our team is checking this answer."],
-    ["the same method twice", GOOD_ONE, GOOD_ONE, "66", undefined, "Our team is checking this answer."],
-    ["the same steps in another order", "27 + 30 = 57\n57 + 9 = 66", "57 + 9 = 66\n27 + 30 = 57", "66", undefined, "Our team is checking this answer."],
-    ["only a number", "66", GOOD_TWO, "66", undefined, "Our team is checking this answer."],
-    ["true steps that stop at another number", "27 + 30 = 57", GOOD_TWO, "66", undefined, "Our team is checking this answer."],
+    ["a blurry method", null, STRIP, "2520", "blurry", "Our team is checking this answer. The photo is blurry here. You can also send a new photo of this page."],
+    ["a cut-off second method", SPLIT, null, "2520", "cut-off", "Our team is checking this answer. Part of this answer is cut off. You can also send a new photo of this page."],
+    ["an unreadable answer", SPLIT, STRIP, null, "unreadable", "Our team is checking this answer."],
+    ["a method the AI cannot write out", null, STRIP, "2520", "method-form", "Our team is checking this answer."],
+    ["a method the model calls an answer form", null, STRIP, "2520", "answer-form", "Our team is checking this answer."],
+    ["an answer the model calls an answer form", SPLIT, STRIP, null, "answer-form", "Our team is checking this answer."],
+    ["a method in words", "I took the zero off and put it back", STRIP, "2520", undefined, "Our team is checking this answer."],
+    ["the same method twice", STRIP, STRIP, "2520", undefined, "Our team is checking this answer."],
+    ["the same steps in another order", "252 × 10 = 2520\n36 × 7 = 252", STRIP, "2520", undefined, "Our team is checking this answer."],
+    ["only a number", "2520", STRIP, "2520", undefined, "Our team is checking this answer."],
+    ["true steps that stop at another number", "7 × 300 = 2100", STRIP, "2520", undefined, "Our team is checking this answer."],
   ] as const)("keeps %s unsure with a plain reason and no parent prompt", (_name, one, two, answer, issue, label) => {
-    const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(one, two, answer, issue ?? null))[0];
-    expect(observationProblem(o)).toBeNull();
+    const { f, o, view } = read22(one, two, answer, issue ?? null);
     expect(o).toMatchObject({ state: "pending", method: "code", result: null });
-    const view = markingPageView([twoWaysMark(f, o)]);
     expect(view.items[0].label).toBe(label);
     expect(view.items[0].label).not.toMatch(/please check|both methods/i);
     expect(view.completion.status).toBe("incomplete");
     expect(markingEvent(expectedItems(f)[0], o).publish).toBe(false);
+  });
+  it("with the switch off, sends even a valid pair to our team, never Right", () => {
+    const off = read22(SPLIT, STRIP, "2520", null, ["solves", "solves"], false);
+    expect(off.o).toMatchObject({ state: "pending", result: null, issue: "method-form" });
+    expect(off.view.items[0].label).toBe("Our team is checking this answer.");
+    expect(read22(SPLIT, STRIP, "2520").o).toMatchObject({ state: "scored", result: "right" });
   });
   it("keeps the AI's verdict and reason as evidence, and never in a label", () => {
     const f = twoWaysFrame(), o = readMarkingOutput(f, twoWaysOutput(GOOD_ONE, GOOD_TWO, "66", null, ["does-not-solve", "solves"]))[0];
@@ -427,8 +388,8 @@ describe("two-ways AI marking", () => {
     expect(o.readAnswerText!.length).toBeLessThanOrEqual(200);
   });
   it("runs one paid reading, then publishes the right item as a marking event", async () => {
-    const f = twoWaysFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
-    expect(await run(s, f.photo, client(twoWaysOutput(GOOD_ONE, GOOD_TWO, "66"), requests, 1000))).toBe("finished");
+    const f = book22(), s = new Store(f), requests: AiJsonRequest[] = [];
+    expect(await run(s, f.photo, client(twoWaysOutput(SPLIT, STRIP, "2520"), requests, 1000))).toBe("finished");
     expect(requests).toHaveLength(1); expect(s.spend.size).toBe(1);
     const marks = await s.effective(P, C);
     expect(marks[0].observation).toMatchObject({ state: "scored", result: "right" });
@@ -472,23 +433,23 @@ describe("two-ways AI marking", () => {
   it("turns the switch on, so code can mark a valid pair", () => {
     expect(TWO_WAYS_METHOD_MARKS).toBe(true);
   });
-  // The fourth review (17d27f88): one strategy under two kind names is not two ways, and a copy hidden in round-and-adjust
-  // or in x 1 padding is no method. None of these is Right.
+  // The fourth and fifth reviews on the book's own questions. None of these is Right.
   const book78 = () => sumFrame("50 × 80 = ?", { kind: "multiply", operands: [50, 80] }, 4000);
   const book38 = () => sumFrame("60 × ? = 4800", { kind: "divide", operands: [4800, 60] }, 80);
   it.each([
     ["the review's round-and-adjust that holds the question", "5 × 8 = 40\n40 × 100 = 4000", "80 × 100 = 8000\n80 × 50 = 4000\n8000 - 4000 = 4000", book78, "4000"],
     ["strip zeros from both next to strip zeros from one", "5 × 8 = 40\n40 × 100 = 4000", "50 × 8 = 400\n400 × 10 = 4000", book78, "4000"],
     ["the inverse division next to the division with tens", "4800 ÷ 60 = 80", "480 ÷ 6 = 80", book38, "80"],
+    ["the reverse check with the answer's zeros off", "4800 ÷ 60 = 80", "60 × 8 = 480\n480 × 10 = 4800\n8 × 10 = 80", book38, "80"],
   ] as const)("sends %s to our team, never Right", (_name, one, two, frame, answer) => {
     const { o, label } = markSum(one, two, ["solves", "solves"], answer, frame());
     expect(o).toMatchObject({ state: "pending", result: null });
     expect(label).toBe("Our team is checking this answer.");
   });
   it.each([
-    ["strip zeros and round and adjust", "5 × 8 = 40\n40 × 100 = 4000", "50 × 100 = 5000\n50 × 20 = 1000\n5000 - 1000 = 4000", book78, "4000"],
-    ["the inverse division and a build-up", "4800 ÷ 60 = 80", "60 × 10 = 600\n600 × 8 = 4800\n10 × 8 = 80", book38, "80"],
-  ] as const)("marks two different strategies Right: %s", (_name, one, two, frame, answer) => {
+    ["strip zeros and round up", "5 × 8 = 40\n40 × 100 = 4000", "100 × 50 = 5000\n20 × 50 = 1000\n5000 - 1000 = 4000", book78, "4000"],
+    ["the inverse division and a build-up", "4800 ÷ 60 = 80", "60 × 40 = 2400\n60 × 40 = 2400\n2400 + 2400 = 4800\n40 + 40 = 80", book38, "80"],
+  ] as const)("marks two different templates Right: %s", (_name, one, two, frame, answer) => {
     expect(markSum(one, two, ["solves", "solves"], answer, frame())).toMatchObject({ o: { state: "scored", result: "right" }, label: "Right" });
   });
 });

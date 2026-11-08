@@ -175,41 +175,32 @@ Savar decided on 7 November that AI does all marking and a parent marks no quest
 
 The printed item has two work areas and one final-answer box. The model reads all three regions on the whole page. It transcribes each method as written, one step per line, and it never leaves out or tidies a step. It receives the question with each method region and no answer. For each method it also gives a verdict: `solves`, `does-not-solve` or `unsure`, with a short reason. The reason is evidence for the team and is never shown to a parent.
 
-Code marks the item with the method rules in `src/lib/scan-marking-methods.ts` (`TWO_WAYS_METHOD_MARKS` on, D-302). It uses an allow-list and fails closed. A method is valid only when the AI says `solves`, every written step is true arithmetic, and code recognizes the whole method as one kind from the fixed list for the question's shape:
+Code marks the item with the method rules in `src/lib/scan-marking-methods.ts` (`TWO_WAYS_METHOD_MARKS` on, D-302). The rules are a narrow allow-list of exact templates, and they fail closed. Only the first book's two question shapes have templates. Every other shape waits for our team, for example `1 × ? = n`, `? ÷ 1 = n`, `c ÷ ? = a`, `? - a = c` (#723), every sum and difference, and a story with no printed equation.
 
-| Question shape | Kinds |
+| Question shape | Templates |
 | --- | --- |
-| `a + b = ?` | split one addend, partial sums, compensation, column, counting on |
-| `a - b = ?` | split the subtrahend, partial differences, compensation, column, counting back, counting up |
-| `a × b = ?` | split a factor, round and adjust, strip zeros, strip zeros from one factor, repeated addition, skip counting |
-| `a ÷ b = ?` | repeated subtraction, skip counting, repeated addition, division with tens, build-up |
-| `a × ? = c`, `c ÷ ? = a` | the inverse division, plus the division kinds |
-| `a + ? = c`, `a - ? = c` | the inverse subtraction, plus the subtraction kinds |
-| `? - a = c` | the inverse addition, plus the addition kinds |
-| `? ÷ a = c` | the inverse multiplication, plus the multiplication kinds |
+| `a × b = ?`, one factor a tens number, no factor 1 or a power of ten (`7 × 360`, `50 × 80`) | split a factor by place value; strip the zeros of a tens factor; round a factor up |
+| `k × ? = t` or `? × k = t`, with k and the answer 2 or more and the answer not k (`8 × ? = 800`) | divide; build up from multiples of k; skip count; repeated subtraction |
 
-Each kind accounts for every number, so padding, an extra line, a copied question and a check that uses the answer have no kind. For multiplication and division, no line may be the question's own operation on its own numbers, and no line may use the answer as an operand, unless it carries an earlier result or the question prints the same number.
+Each template states every line exactly:
 
-Two ways means two different strategies. Kinds group into families, and two kinds of one family are one strategy written twice, so the item waits for our team:
+- **Split a factor by place value:** `7 × 300 = 2100`, `7 × 60 = 420`, `2100 + 420 = 2520`. The parts are the factor's place-value parts, largest first.
+- **Strip the zeros of a tens factor:** its core times the other factor, then times 10 to the number of zeros: `36 × 7 = 252`, `252 × 10 = 2520`. When both factors are tens numbers, both may lose their zeros (`5 × 8 = 40`, `40 × 100 = 4000`). These forms are one template. The core is 2 or more.
+- **Round a factor up:** a factor that is not a tens number goes up to the next tens number, and a tens number goes up to the next hundreds number. Then the stated difference is taken off: `10 × 360 = 3600`, `3 × 360 = 1080`, `3600 - 1080 = 2520`. The difference is 2 or more, and it is never a factor of the question or the answer, so rounding 50 up to 100 on `50 × 80` has no template. Rounding down is a split, so it has no template.
+- **Divide:** `t ÷ k`, or the same division with the same zeros taken off both numbers (`480 ÷ 6 = 80` for `4800 ÷ 60`), with a divisor of 2 or more. These forms are one template.
+- **Build up:** exact multiples of k, then their sum, then the sum of the multipliers: `8 × 400 = 3200`, `8 × 30 = 240`, `3200 + 240 = 3440`, `400 + 30 = 430`. Each multiplier is 2 or more and less than the answer.
+- **Skip count:** `k, 2k, ..., t`, then the count (`20 times`).
+- **Repeated subtraction:** `t - k`, then each result less k, down to 0, then the count.
 
-| Family | Kinds |
-| --- | --- |
-| jump | split one addend, counting on |
-| split by place | partial sums, partial differences |
-| compensation | compensation, round and adjust |
-| column | column |
-| jump back | split the subtrahend, counting back |
-| count up | counting up |
-| split a factor | split a factor |
-| tens | strip zeros, strip zeros from one factor |
-| groups up | repeated addition, skip counting |
-| groups down | repeated subtraction |
-| divide | division with tens, the inverse division |
-| build-up | build-up |
+A method that does not match one template exactly is unsure. These bans apply first, each by its exact form:
 
-A one-line inverse is the same strategy as working out that operation: the inverse subtraction conflicts with jump back, split by place, compensation and column. The inverse addition conflicts with jump, split by place, compensation and column. The inverse multiplication conflicts with split a factor, compensation and tens.
+- the answer as an operand, anywhere, the final line included;
+- padding: `× 1`, `÷ 1`, `+ 0`, `- 0`, a number put on and taken off again (`+ n - n`, in one line or in two), and a core of 1;
+- the question with the answer filled in, in either order;
+- every reverse check: on `a × b` any division, and on a missing factor any product of k and the answer, also with zeros taken off (`8 × 43 = 344` for `8 × ? = 3440`);
+- an extra line, a run-on chain, `?` or `_` in a line, and an arrow chain whose tail is not one bare number.
 
-An item is Right only when the answer is right and both methods are valid and of different strategies. A false step or `does-not-solve` makes it Wrong, and so does a missing method. Anything else waits for our team ("Our team is checking this answer."). The 7 two-ways questions of the first book each have two possible strategies: `7 × 360` (split a factor and tens), `50 × 80` (tens and round and adjust) and the five missing factors (the inverse division and a build-up).
+Two ways means two different templates. An item is Right only when the answer is right, both methods are valid and their templates differ. A false step or `does-not-solve` makes it Wrong, and so does a missing method. Anything else waits for our team ("Our team is checking this answer."). On the 7 two-ways questions of the first book, `7 × 360` has all three product templates, `50 × 80` has strip zeros and round up, and each of the five missing factors has divide and build-up (and skip count and repeated subtraction, which a child is unlikely to write out).
 
 The item keeps one crop of both work areas and the answer box, one canonical result and one event key. It follows its frozen mastery decision. The stored package and print contract stay unchanged. Missing or invalid measured regions make no crop and no reading.
 

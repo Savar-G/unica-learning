@@ -192,7 +192,9 @@ function twoWaysText(group: readonly Alias[], regions: readonly RegionReading[])
   return [...answer, ...methods].join("; ").slice(0, MAX_READ_TEXT);
 }
 /** Read every region once. Code aggregates regions into exactly one item result. */
-export function readMarkingOutput(frame: MarkingFrame, output: unknown): Observation[] {
+/** `methodMarks` overrides the switch only so a test can prove the off path. */
+export function readMarkingOutput(frame: MarkingFrame, output: unknown, options: { methodMarks?: boolean } = {}): Observation[] {
+  const methodMarks = options.methodMarks ?? TWO_WAYS_METHOD_MARKS;
   const expected = expectedItems(frame), local = aliases(frame, expected);
   const readings = object(output) && Array.isArray(output.readings) && output.readings.length <= 400 ? output.readings : [];
   return expected.map(e => {
@@ -202,12 +204,12 @@ export function readMarkingOutput(frame: MarkingFrame, output: unknown): Observa
     const twoWays = e.twoWays === true;
     const read = group.map(a => readRegion(a, readings));
     const regions = twoWays ? twoWaysRegions(group, read) : read;
-    const result = twoWays ? (TWO_WAYS_METHOD_MARKS ? twoWaysResult(regions) : null) : regions.some(r => r.result === "wrong") ? "wrong" : regions.every(r => r.result === "right") ? "right"
+    const result = twoWays ? (methodMarks ? twoWaysResult(regions) : null) : regions.some(r => r.result === "wrong") ? "wrong" : regions.every(r => r.result === "right") ? "right"
       : regions.every(r => r.result === "blank") ? "blank" : null;
     const readAnswerText = group.length === 1 ? regions[0].text : regions.every(r => r.result === "blank") ? "" : twoWays ? twoWaysText(group, regions)
       : regions.map((r, n) => `${group[n].kind === "choice" ? "Choice" : group[n].kind === "text" ? "Words" : "Number"}: ${r.text ?? "Not read"}`).join("; ").slice(0, MAX_READ_TEXT);
     return { ...first, readAnswerText, regions, certainty: regions.every(r => r.certainty === "certain") ? "certain" : "uncertain",
-      state: result === null ? "pending" : "scored", result, help: "none", issue: twoWays ? (TWO_WAYS_METHOD_MARKS ? twoWaysIssue(group, regions, result) : regions.find(r => r.issue && PHOTO_ISSUES.includes(r.issue))?.issue ?? "method-form") : regions.find(r => r.issue)?.issue ?? (result === null ? "incomplete" : null) };
+      state: result === null ? "pending" : "scored", result, help: "none", issue: twoWays ? (methodMarks ? twoWaysIssue(group, regions, result) : regions.find(r => r.issue && PHOTO_ISSUES.includes(r.issue))?.issue ?? "method-form") : regions.find(r => r.issue)?.issue ?? (result === null ? "incomplete" : null) };
   });
 }
 function originalEvents(frame: MarkingFrame, observations: Observation[], at: string): NewLearningEvent[] {
