@@ -99,15 +99,16 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
  *   (measured Sonnet calls in the marking ledger: median 2.7 s, 90th percentile 3.3 s), one run marks about 5 photos,
  *   about 20 an hour from the job.
  * - The model call's timeout: the time left before the database deadline less `RECOVERY_AFTER_AI_MS` (25 s for
- *   extract, apply, publish, finish and the profile rebuilds at the end of the run), and at most 120 s
+ *   extract, apply, publish and finish of that photo), and at most 120 s
  *   (`markingAiTimeout`). With less than 20 s left the call does not start and the photo waits as `pending`. So a
  *   paid answer always has time to be saved before the database client stops; the image read and the claim before
  *   the call count against the same deadline.
  * - The claim's lease (180 s) is longer than any run, so a lease a run takes can outlive the call when the function is
  *   stopped; the next run then gets `busy` for that photo and a later run takes it.
  * - Profile rebuilds: each child's profile is rebuilt once, after the run's photos (a busy or closed-plan photo still
- *   publishes its committed marks at once). A failed rebuild is retried by a later run: the list keeps every child whose
- *   profile is behind its marks.
+ *   publishes its committed marks at once). A rebuild starts only while at least `RECOVERY_REBUILD_MARGIN_MS` (5 s)
+ *   is left before the database deadline; the rest, and any failed rebuild, count as `profile_pending`. A later run
+ *   does them: the list keeps every child whose profile is behind its marks (`profile_revision < revision`).
  * - At most 100 photos are asked for in one run (`RECOVERY_MAX_PHOTOS`), so a list of closed plans cannot keep a run
  *   going without end.
  *
@@ -132,6 +133,7 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
 export const RECOVERY_START_MS = 40_000;
 export const RECOVERY_DB_LIMIT_MS = 170_000;
 export const RECOVERY_AFTER_AI_MS = 25_000;
+export const RECOVERY_REBUILD_MARGIN_MS = 5_000;
 export const RECOVERY_MAX_PHOTOS = 100;
 export type RecoveryResult = Awaited<ReturnType<typeof processScanMarking>> | "error";
 export interface RecoveryDeps {
@@ -173,6 +175,8 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
   // One profile rebuild per child, after its photos. A failure stays in the list for a later run.
   let profilesPending = 0;
   for (const child of children) {
+    // Too close to the database deadline: leave this rebuild and the rest to a later run.
+    if (startedAt + RECOVERY_DB_LIMIT_MS - now() < RECOVERY_REBUILD_MARGIN_MS) { profilesPending++; continue; }
     try { await (deps.rebuild ?? ((c: string) => rebuildChildNow(db, c)))(child); }
     catch { profilesPending++; }
   }

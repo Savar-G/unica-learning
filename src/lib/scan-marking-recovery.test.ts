@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
-import { RECOVERY_AFTER_AI_MS, RECOVERY_DB_LIMIT_MS, RECOVERY_MAX_PHOTOS, RECOVERY_START_MS, recoverScanMarking, type ChildPlanAccess, type ProcessMarkingOptions } from "./scan-marking-server";
+import { RECOVERY_AFTER_AI_MS, RECOVERY_DB_LIMIT_MS, RECOVERY_MAX_PHOTOS, RECOVERY_REBUILD_MARGIN_MS, RECOVERY_START_MS, recoverScanMarking, type ChildPlanAccess, type ProcessMarkingOptions } from "./scan-marking-server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
@@ -203,4 +203,24 @@ it("rebuilds each child's profile once, after the run's photos (P3-2)", async ()
   expect(rebuild.mock.calls.map((c) => c[0]).sort()).toEqual(["child-of-family-0", "child-of-family-1"]);
   // After every photo; a failed rebuild does not change the photos' results.
   expect(order.slice(-2).every((o) => o.startsWith("rebuild:"))).toBe(true);
+});
+
+it("starts no end-of-run rebuild in the last 5 s before the database deadline, and counts the rest as pending", async () => {
+  photos(3);
+  clock.perPhoto = 13_000;
+  const deferring = async (...args: [unknown, string, string, unknown, unknown, ProcessMarkingOptions?]) => {
+    const r = await mark(args[0], args[1], args[2]);
+    args[5]!.deferRebuild!(`child-of-${args[1]}`);
+    return r;
+  };
+  // Photos start at 0, 13 and 26 s; the list then ends at 39 s; each rebuild then takes 64 s: at 39, 103, then 167 s.
+  const rebuilt: number[] = [];
+  const rebuild = vi.fn(async () => { rebuilt.push(clock.t); clock.t += 64_000; });
+  const info = vi.spyOn(console, "info").mockImplementation(() => {});
+  const run = await recoverScanMarking(db, env, open, { ...deps(), mark: deferring as never, rebuild });
+  expect(run.results).toEqual(["finished", "finished", "finished"]);
+  expect(rebuilt).toEqual([39_000, 103_000]);
+  expect(RECOVERY_DB_LIMIT_MS - clock.t).toBeLessThan(RECOVERY_REBUILD_MARGIN_MS);
+  expect(JSON.parse(String(info.mock.calls.at(-1)![1]))).toEqual({ finished: 3, profile_pending: 1 });
+  info.mockRestore();
 });
