@@ -338,8 +338,12 @@ describe("the line set", () => {
   });
 
   it("judges a step only after code checked the child's answer", () => {
-    const c = call();
-    c.send({ type: "child_turn", at: 0, text: "I think it's 15." });
+    let s = createSession({ callId: "checked-line", package: ADD });
+    const send = (event: SessionEvent) => { const r = step(s, event); s = r.session; return r; };
+    send({ type: "start", at: 0 });
+    expect(send({ type: "proposal", at: 0, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).refusal).toBeNull();
+    send({ type: "child_turn", at: 0, text: "I got 15." });
+    const c = { refusal: (p: Record<string, unknown>) => step(s, { type: "proposal", at: 0, proposal: { version: 2, ...p } }).refusal };
     const wrong15 = { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] };
     // "Yes! 7 + 9 = 16." needs a right answer for the ones; "Not quite." needs a checked wrong one.
     expect(c.refusal({ act: "guide", step: "ones", level: 0, parts: [{ line: "check.right_step", slots: { step: "ones" } }], reading: wrong15 })).toMatchObject({ code: "line_not_offered" });

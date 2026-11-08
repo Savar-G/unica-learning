@@ -312,7 +312,7 @@ describe("where a carried 1 comes from, before any line names it", () => {
     const c = call();
     c.child("7 plus 9 is 16.");
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
-    c.child("Is it 4?");
+    c.child("4.");
     c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: { answers: [ans(4, "tens", "wrong")] } });
     c.child("What 1? I didn't carry anything.");
     expect(regroupTexts(c).length).toBeGreaterThan(0);

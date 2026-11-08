@@ -232,7 +232,7 @@ describe("bare final fallback boundary", () => {
 });
 
 describe("numbers in help questions", () => {
-  it.each(["Can you show me 7 plus 9?", "Is 9 right?"])("refuses a wrong reading of %s and keeps a safe fallback", (text) => {
+  it.each(["Can you show me 7 plus 9?", "Is 9 right?", "Please help me with 9."])("refuses a wrong reading of %s and keeps a safe fallback", (text) => {
     let s = createSession({ callId: "help-question", package: FIXTURES.A });
     let at = 1000;
     const send = (event: SessionEvent) => { const r = step(s, event); s = r.session; return r; };

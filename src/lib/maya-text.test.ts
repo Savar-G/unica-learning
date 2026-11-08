@@ -354,9 +354,9 @@ describe("the final answer and the final step (D-199)", () => {
     await session.start();
     await session.child("Seven plus nine is sixteen.");
     await session.child("Two plus three plus one is six.");
-    const once = await session.child("56?");
+    const once = await session.child("56.");
     expect(said(once)).not.toMatch(/\b66\b/);
-    const out = await session.child("65?");
+    const out = await session.child("65.");
     expect(lastMaya(session).attempts.map((a) => [a.source, a.refusal?.code ?? null])).toEqual([["model", "act_not_allowed"], ["repair", "act_not_allowed"], ["fallback", null]]);
     expect(lastMaya(session).output?.act).toBe("give_answer");
     expect(said(out)).toMatch(/6 tens and 6 ones make 66\./);
