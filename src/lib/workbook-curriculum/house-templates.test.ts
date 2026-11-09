@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BC_CURRICULUM, bcStepProgressions } from "@/lib/workbook-curriculum";
-import { HOUSE_TEMPLATES, isTwoStep, withHouseTemplates } from "./house-templates";
+import { HOUSE_TEMPLATES, isChallengeOnly, isTwoStep, withHouseTemplates } from "./house-templates";
 import { stepFieldProblems } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
 import { sequenceOf, stepRangeProblem } from "@/lib/workbook-step-items";
@@ -14,14 +14,16 @@ describe("Unica Challenge templates", () => {
       expect(step.name).toBe(h.name);
       const own = BC_CURRICULUM.steps.find((s) => s.skill === h.skill && s.number === h.step)!.templates ?? [];
       expect(step.templates!.slice(0, own.length)).toEqual(own);
-      expect(step.templates!.slice(own.length)).toEqual(h.templates);
+      expect(step.templates!.slice(own.length)).toEqual([...(h.practice ?? []), ...h.templates]);
+      for (const t of h.practice ?? []) expect(isChallengeOnly(t)).toBe(false);
+      if (!h.stories) for (const t of h.templates) expect(isChallengeOnly(t)).toBe(true);
     }
   });
   it("refuse a renamed or missing step", () => {
     expect(() => withHouseTemplates(BC_CURRICULUM, [{ ...HOUSE_TEMPLATES[0], name: "Another step" }])).toThrow(/written for/);
     expect(() => withHouseTemplates(BC_CURRICULUM, [{ ...HOUSE_TEMPLATES[0], skill: "no-such-skill" }])).toThrow(/does not have/);
   });
-  it("give every U16 day step three hard templates with a number answer, with Cedric's v2 ones, and repeat none of his", () => {
+  it("give every Challenge step three hard numeric templates, with Cedric's v2 ones, and repeat none of his", () => {
     const numeric = (t: { format: string; answer: string }) => ["bare", "missing", "story"].includes(t.format) && !/['"]/.test(t.answer);
     for (const h of HOUSE_TEMPLATES) {
       const step = c.skillSteps(h.skill)![h.step - 1];
@@ -50,6 +52,23 @@ describe("Unica Challenge templates", () => {
           if (item.text.includes("=") || /^What is \d/.test(item.text)) expect((item.text.match(/[+×-]/g) ?? []).length, item.text).toBeGreaterThanOrEqual(2);
         }
         expect(filled, `${h.skill}#${h.step}: ${t.text}`).toBeGreaterThan(100);
+      }
+    }
+  });
+  it("fills the normal decreasing-pattern choice in 200 seeds with the checked next term and two distinct choices", () => {
+    const h = HOUSE_TEMPLATES.find(h => h.skill === "3.6-decreasing-pattern" && h.step === 1)!;
+    const step = c.skillSteps(h.skill)![h.step - 1];
+    for (const t of h.practice!) {
+      const prepared = prepareTemplate(step, t, c.contexts);
+      for (let seed = 1; seed <= 200; seed++) {
+        const filled = prepared.fill(seededRandom(seed));
+        const values = filled.text.match(/\d+/g)!.map(Number);
+        expect(values).toHaveLength(4);
+        expect(Number(filled.answer)).toBe(values[0] - values[1]);
+        expect(new Set(values.slice(2)).size).toBe(2);
+        expect(values.slice(2)).toContain(Number(filled.answer));
+        expect(stepRangeProblem(step, filled.text)).toBeNull();
+        expect(stepRangeProblem(step, filled.answer)).toBeNull();
       }
     }
   });

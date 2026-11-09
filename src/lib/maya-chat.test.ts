@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { chatFamilyGate, chatLimitLabel, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
+import { chatFamilyGate, chatLimitLabel, chatPlanClosedLine, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
 import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, mayaCalls, type CallChange, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import { memoryWordingHistoryStore, SAFETY_GUIDANCE } from "@/lib/maya";
@@ -155,6 +155,32 @@ describe("family days and release switch", () => {
     expect(chatLimitLabel(chatUsage(12, now, zone), null)).toBe("48 left today");
     expect(chatLimitLabel(null, "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.")).toBe("Grade 3 and up");
     expect(chatLimitLabel(null, null)).toBe("60 messages a day");
+    expect(chatLimitLabel(null, "any closed line", true)).toBe("Closed");
+  });
+  describe("the desk line for a closed plan names the reason (D-304; words approved by Savar 2026-11-08)", () => {
+    const zone = "America/Vancouver", now = Date.parse("2026-11-08T20:00:00Z");
+    const line = (reason: string, resumesOn?: string | null) => chatPlanClosedLine({ reason, resumesOn }, zone, now);
+    it("ended", () => expect(line("ended")).toBe("Chat with Maya is closed because your family's plan has ended. Ask a grown-up."));
+    it("payment failed", () => expect(line("payment_failed")).toBe("Chat with Maya is paused because the last payment did not go through. Ask a grown-up."));
+    it("paused with a stored resume date, as a day in the family's time zone (UTC is already the next day)", () => {
+      expect(line("paused", "2026-12-10T03:00:00Z")).toBe("Chat with Maya is paused because your family paused the plan. It starts again on December 9, 2026.");
+      expect(chatPlanClosedLine({ reason: "paused", resumesOn: "2026-12-10T03:00:00Z" }, "UTC", now)).toBe("Chat with Maya is paused because your family paused the plan. It starts again on December 10, 2026.");
+    });
+    it.each([null, undefined, "", "not a date", "2026-11-08T19:59:59Z"])("paused with no reliable resume date (%j): no date", (resumesOn) => {
+      expect(line("paused", resumesOn)).toBe("Chat with Maya is paused because your family paused the plan. Ask a grown-up.");
+    });
+    it.each(["unknown", "read_failed", "something new"])("any other reason (%s) does not guess", (reason) => {
+      expect(line(reason)).toBe("Chat with Maya is closed because your family's plan is not running. Ask a grown-up.");
+    });
+    it.each(["no_plan", "open", "ending_until_end"])("%s gives no line: the desk keeps \"start soon\" and never says closed", (reason) => {
+      expect(line(reason, "2026-12-10T03:00:00Z")).toBeNull();
+    });
+    it("names no card, amount or price, and keeps short sentences for a Grade 3 or 4 reader", () => {
+      for (const l of [line("ended"), line("payment_failed"), line("paused", "2026-12-10T03:00:00Z"), line("paused"), line("unknown")].map(String)) {
+        expect(l).not.toMatch(/start soon|card|charge|CAD|\$|money|price/i);
+        for (const sentence of l.split(/(?<=\.)\s+/)) expect(sentence.split(" ").length).toBeLessThanOrEqual(13);
+      }
+    });
   });
   it("serves Grade 3 and up only; kindergarten is grade 0", () => {
     expect([0, 1, 2, 3, 7, 8, 9].map(chatServesGrade)).toEqual([false, false, false, true, true, true, true]);

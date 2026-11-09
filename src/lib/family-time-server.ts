@@ -23,6 +23,22 @@ export async function loadFamilyZone(db: SupabaseClient<Database>, parentId: str
   return familyZone({ timeZone: data?.time_zone, postal: data?.postal, province });
 }
 
+/** Read zones for a set of checked parents with batched queries. */
+export async function loadFamilyZones(db: SupabaseClient<Database>, parentIds: readonly string[]): Promise<Map<string, FamilyZone>> {
+  const ids = [...new Set(parentIds)];
+  const parents: { id: string; postal: string | null; time_zone: string | null }[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await db.from("parents").select("id, postal, time_zone").in("id", ids.slice(i, i + 100));
+    if (error) throw new Error(`family zone load: ${error.message}`);
+    parents.push(...(data ?? []));
+  }
+  const children = await loadFamilyChildren(db, ids);
+  return new Map(ids.map((id) => {
+    const parent = parents.find((p) => p.id === id);
+    return [id, familyZone({ timeZone: parent?.time_zone, postal: parent?.postal, province: familyProvince(children.filter((c) => c.parent_id === id)) })];
+  }));
+}
+
 /** Session reads use RLS. Admin report reads use the existing admin RPC. Both use the same ordering. */
 export async function loadFamilyProvince(db: SupabaseClient<Database>, parentId?: string, admin = false): Promise<string | null> {
   let query = (admin ? db.rpc("admin_children") : db.from("children")).select("id, created_at, province");

@@ -370,9 +370,10 @@ export type CancelPlanOutcome =
  * The parent's cancel button. A plan in its free month or a paid month stops at the end of that month and charges
  * nothing more (terms: "takes effect at the end of the month you are in"). A plan with a failed payment stops now, so
  * Stripe does not try the card again. Throws when it cannot read the customer's whole list, so `no_plan` always means
- * that no plan can charge the card.
+ * that no plan can charge the card. `beforeWrite` runs before each command to Stripe, so a caller can tell a failed read
+ * (nothing changed) from a command whose result is unknown.
  */
-export async function cancelPlan(s: Stripe, customer: string): Promise<CancelPlanOutcome> {
+export async function cancelPlan(s: Stripe, customer: string, beforeWrite: () => void = () => {}): Promise<CancelPlanOutcome> {
   const current = await customerSubscriptions(s, customer);
   const live = current.filter((x) => RUNNING_PLAN.has(x.status));
   if (live.length === 0) return { ok: false, error: "no_plan" };
@@ -382,11 +383,13 @@ export async function cancelPlan(s: Stripe, customer: string): Promise<CancelPla
     // A schedule owns later pause/resume changes. Detach it before cancellation so it cannot resume this plan.
     if (plan.schedule) {
       const schedule = typeof plan.schedule === "string" ? plan.schedule : plan.schedule.id;
+      beforeWrite();
       const released = await s.subscriptionSchedules.release(schedule, { preserve_cancel_date: false }, CARD_WRITE);
       const subscription = released.released_subscription;
       if (released.status !== "released" || subscription !== plan.id) throw new Error("Plan schedule release unconfirmed");
     }
     if (plan.status !== "trialing" && plan.status !== "active") {
+      beforeWrite();
       await s.subscriptions.cancel(plan.id);
       changed = true;
       continue;
@@ -394,6 +397,7 @@ export async function cancelPlan(s: Stripe, customer: string): Promise<CancelPla
     const end = plan.trial_end && plan.status === "trialing" ? plan.trial_end : plan.items.data[0]?.current_period_end;
     if (end) endsAt = new Date(end * 1000).toISOString();
     if (plan.cancel_at_period_end) continue;
+    beforeWrite();
     await s.subscriptions.update(plan.id, { cancel_at_period_end: true });
     changed = true;
   }

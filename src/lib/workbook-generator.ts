@@ -85,7 +85,7 @@ import { isNumberStory } from "@/lib/workbook-code-story";
 import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNumber, operationStory, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
-import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
+import { isTwoStep, routingTemplates } from "@/lib/workbook-curriculum/house-templates";
 import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, mixedTemplateSign, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
@@ -115,7 +115,7 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
       if (steps.length) return steps[(review - 1 + Math.floor(attempt / 6)) % steps.length];
     }
     if (slot.place === "solve-it-two-ways") {
-      const sums = (x: { skill: string; step: number }) => stepOf(input.curriculum, x.skill, x.step)?.templates?.some(t => sumTemplate(t) && !templateProblem(t, level));
+      const sums = (x: { skill: string; step: number }) => routingTemplates(stepOf(input.curriculum, x.skill, x.step)).some(t => sumTemplate(t) && !templateProblem(t, level));
       const own = { skill: part.step.skill, step: part.step.step };
       if (!sums(own)) {
         const rank = stepRank(input.curriculum, own.skill, own.step) ?? 0;
@@ -274,7 +274,7 @@ function storySteps(input: GenerateInput, slot: Slot, day: number, level: number
   const at = slot.part.step;
   if (!at || slot.place !== "word-problems") return [];
   // (Not "gets 1 more": one more is a count, not a story to work out; the U4 review.)
-  const sums = (skill: string, n: number | null) => !!stepOf(input.curriculum, skill, n)?.templates?.some((t) => t.format === "story" && !isTwoStep(t) && sumTemplate(t, true) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
+  const sums = (skill: string, n: number | null) => routingTemplates(stepOf(input.curriculum, skill, n)).some((t) => t.format === "story" && !isTwoStep(t) && sumTemplate(t, true) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
   // The page's own step first when it has such stories; then this book's steps taught by today and the day's reviewed
   // steps, the most advanced first (the U16 review: Grade 5 stories, not "Hana has 9 leaves. She gets 7 more").
   // If this step has no usable story, look backwards within the skill, then through
@@ -363,7 +363,7 @@ function losesStoryKind(input: GenerateInput, w: PageWork, slot: Slot, p: Questi
 /** Whether a template item's step has a story template that prints at this level. */
 function stepHasStory(input: GenerateInput, c: ItemPlan): boolean {
   if (!c.template) return false;
-  return (stepOf(input.curriculum, c.template.skill, c.template.step)?.templates ?? []).some((t) => t.format === "story" && !isTwoStep(t) && !templateProblem(t, input.plan.level));
+  return routingTemplates(stepOf(input.curriculum, c.template.skill, c.template.step)).some((t) => t.format === "story" && !isTwoStep(t) && !templateProblem(t, input.plan.level));
 }
 
 /** Whether a page already asks a template twice (outside its Challenge and warm-up): a template is one question stem. */
@@ -2402,7 +2402,11 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
     for (const s of layout.slots) {
       if(page.type === "remember-these" && s.slot === "picture-stories") s.slot="unit-b-practice";
       if (s.slot === "remember-these") s.items = ["word-problems","challenge","unit-b","new-idea"].includes(page.type) ? 0 : target(friday >= 0 ? 4 : has("mixed-set") ? 4 : 8);
-      if (s.slot === "now-you") s.items = target(3);
+      if (s.slot === "now-you") {
+        const step = page.parts[s.part].step;
+        // This step's short choices need two complete pairs. Reserve its page minimum before the day's time pass.
+        s.items = target(page.type === "new-idea" && step?.skill === "3.1-estimate-quantity" && step.step === 3 ? 4 : 3);
+      }
       if (s.slot === "finish-these") s.items = target(2);
       if (s.slot === "on-your-own") s.items = target(6);
       // 8 practice questions beside the page's Spot the error and two ways (the adopted count; they do not count).
@@ -2820,11 +2824,19 @@ const DAY_MINUTES_FILL_ESTIMATED = 31.5;
 const DAY_MINUTES_REVIEW = 32.8;
 /** Above this estimate a day plans template practice items fewer before any writing. */
 const DAY_MINUTES_MOST = 33.3;
+/**
+ * Rounds a page may measure an odd own-step block beside an odd review block before it gives up a row of review. Every
+ * own-step question that closed the rows was a tall one on U10 book 3's Day 7 page 4, and its 8 rows overflowed by 1 px
+ * until capacity ran out of rounds: with one review row fewer, the own-step rows close and fit.
+ */
+const HOLE_ROUNDS = 12;
 
 /** Required calculation space changes the count a page can hold, while its measured fullness stays binding. */
 function minimumFor(w: PageWork, level: number): number {
   const working = w.slots.some(s => s.place !== "warm-up" && !NUMBER_PLACES.has(s.place ?? "") && plannedWorkHeight(s.contract, level) > 0);
-  return pageMinimum(w.slots.every(s => s.place === "mini-test") ? "mini-test" : w.page.type, level, !!w.page.extraPractice, working, w.slots.filter(s => NUMBER_PLACES.has(s.place ?? "")).length);
+  const minimum = pageMinimum(w.slots.every(s => s.place === "mini-test") ? "mini-test" : w.page.type, level, !!w.page.extraPractice, working, w.slots.filter(s => NUMBER_PLACES.has(s.place ?? "")).length);
+  const paired = w.page.type === "new-idea" && w.slots.some(s => s.place === "now-you" && s.part.step?.skill === "3.1-estimate-quantity" && s.part.step.step === 3);
+  return paired ? Math.max(4, minimum) : minimum;
 }
 
 /** Places whose items capacity may plan fewer of: practice and review, never a teaching panel, Friday 5 or a test. */
@@ -2972,7 +2984,7 @@ function ownStepFirst(w: PageWork): void {
 function budgetPage(input: GenerateInput, w: PageWork): DraftPage {
   const questions = w.slots.map((s, i) => {
     const c = s.contract;
-    const built = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [c.item.skill] }) : standIn(input, w, s, i);
+    const built = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [c.item.skill] }) : s.existing ? standIn(input, w, s, i) : unapprovedBuild();
     if (built.package && s.place !== "spot-the-error") built.package = withoutSam(built.package, s.planned?.name ?? null);
     return generated(w, i, built, 1);
   });
@@ -3154,6 +3166,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
       let rowTrial: { key: string; rollback(): void } | null = null;
       let preferReview = false;
       let unpairedAdds = 0;
+      // Rounds that measured an odd own-step block beside an odd review block (see HOLE_ROUNDS).
+      let holeRounds = 0;
       let lastComplete: { slots: Slot[]; layout: DayLayout } | null = null;
       let lastBudgetFit: FitResult | null = null;
       let lastHoles: number[] = [];
@@ -3217,6 +3231,16 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         }
         lastBudgetFit = fit; lastHoles = holes;
         if (!holes.length && !belowFloor && w.layout && (fit.ok || fit.problems.every(p => p.kind === "fullness"))) lastComplete = { slots: w.slots.map(s => ({ ...s })), layout: structuredClone(w.layout) };
+        if (reviewPartner && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness")) && ++holeRounds > HOLE_ROUNDS && w.layout) {
+          // (Two review questions of the block, a row: the page keeps its own-step questions and its floor.)
+          const row = w.slots.filter(s => s.layoutSlot === holeSlot!.layoutSlot && !s.existing && s.contract?.template && s.part.step
+            && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step)).slice(-2);
+          if (row.length === 2 && counted - 2 >= minimumFor(w, input.plan.level)) {
+            w.slots = w.slots.filter(s => !row.includes(s)); w.layout.slots[holeSlot!.layoutSlot].items -= 2;
+            ceiling = w.slots.length; minimum = Math.min(minimum, w.slots.length); added = null; pendingRefill = null; rowTrial = null; holeRounds = 0;
+            continue;
+          }
+        }
         if (holes.length >= 2 && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness")) && await swapCompleteRows(input, w, work, fitCheck)) continue;
         const wanted = Math.max(minimum, w.slots.length + (belowFloor ? 1 : 0));
         const restoringFloor = belowFloor;
@@ -3543,12 +3567,14 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         w.slots = lastComplete.slots; w.layout = lastComplete.layout;
         w.page.fillingComplete = true; w.page.atMaximum = true; w.page.extraGap = 0;
         ownStepFirst(w);
-        const questions = w.slots.map((s, i) => {
-          const b = s.contract ? buildPlannedItem(s.contract, s.contract.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [s.contract.item.skill] }) : standIn(input, w, s, i);
-          return generated(w, i, b, 1);
-        });
-        const examples = w.panels.map(p => { const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0); return c ? contractPackage(input, w, c) : null; });
-        const checked = roomFit(await fitCheck.fits(fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples)), { id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild }));
+        const check = async () => roomFit(await fitCheck.fits(budgetPage(input, w), { id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild }));
+        let checked = await check();
+        // The restored grid can have room left even with stretched rows. Spread its existing gaps within the
+        // template's limit, and stop as soon as it fits or a failure other than fullness appears.
+        for (let extra = (w.page.extraGap ?? 0) + 4; !checked.ok && checked.problems.every(p => p.kind === "fullness") && extra <= 48; extra += 4) {
+          w.page.extraGap = extra;
+          checked = await check();
+        }
         if (!checked.ok) return `Page ${w.number}: its last complete grid does not fit: ${checked.problems.map(p => p.reason).join(" ")}`;
       }
       if (!w.page.extraPractice && ["practice", "practice-2", "remember-these", "show-what-you-know"].includes(w.page.type)) {

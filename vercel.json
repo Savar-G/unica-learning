@@ -3,6 +3,13 @@
   "regions": [
     "sfo1"
   ],
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "site/**": false,
+      "claude/**": false
+    }
+  },
   "crons": [
     {
       "path": "/api/keepalive",
