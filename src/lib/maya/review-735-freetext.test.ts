@@ -20,8 +20,8 @@ it.skip.each(["I'm stuck?",'I need help?','Please help me!!'])('P3: recognize pu
 });
 it.skip.each(['I feel low.','I felt bad today.',"I'm devastated.",'I feel downhearted.','My dog is gone forever.','I am not feeling even a little happy.','I feel good for nothing.'])('P2: recognize distress in %s',(text)=>{expect(hardFeeling(text)).toBe(true);});
 it.skip('P3: recognize a repeated intensifier',()=>{expect(hardFeeling('I feel really really really bad.')).toBe(true);});
-it.skip.each(['I am happy because I have no homework.','I am happy. It is not raining.',"I am happy because I didn't lose.",'I am not sad, I am happy!','I have never been this happy!','Nothing makes me happier than my dog.'])('P3: allow actual happy news %s',(text)=>{
+it.skip.each(['I am happy because I have no homework.','I am happy. It is not raining.',"I am happy because I didn't lose.",'I am not sad, I am happy!','I have never been this happy!','Nothing makes me happier than my dog.'])('P3: withhold cheer on actual happy news %s',(text)=>{
  let s=createSession({callId:'735-happy',package:FIXTURES.A,grade:2});s=step(s,{type:'start',at:1000}).session;
  for(const p of fallbacks(s)){const out=step(s,{type:'proposal',at:1000,proposal:p,fallback:true});s=out.session;if(!out.refusal)break;}
- s=step(s,{type:'child_turn',at:5000,text}).session;expect(phraseOffers(s,'happy').length).toBeGreaterThan(0);
+ s=step(s,{type:'child_turn',at:5000,text}).session;expect(phraseOffers(s,'happy')).toEqual([]);
 });

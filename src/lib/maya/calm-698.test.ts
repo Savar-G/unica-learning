@@ -35,8 +35,8 @@ it("classifies every position and keeps all allow-list positions valid and uniqu
   }
 });
 
-it.each(["I'm so happy!", "I won!", "I feel great!", "Yay!", "I'm excited!"])("offers happy replies after %s", (text) => {
-  expect(phraseOffers(after(text), "happy").length).toBeGreaterThan(0);
+it.each(["I'm so happy!", "I won!", "I feel great!", "Yay!", "I'm excited!"])("withholds happy replies after %s", (text) => {
+  expect(phraseOffers(after(text), "happy")).toEqual([]);
 });
 
 it.each(["I am happy but I am alone.", "I am happy, but alone.", "I am happy. I am alone.", "I am happy because I have a puppy today.", "I am not happy.", "I don't feel happy.", "I am happy although alone."])("withholds cheer after %s", (text) => {
@@ -53,7 +53,7 @@ it("offers only calm choices on sad, mixed, and neutral turns across the bank", 
 });
 
 it("never emits a non-calm bank phrase across warm acts, choices, and echoes", () => {
-  for (const text of ["I feel sad.", "I feel miserable.", "I love my puppy but we had to give him away.", "I am happy for my friend but I feel left out.", "I won a prize but my friends call me names.", "Hello there."]) {
+  for (const text of ["I feel sad.", "I feel miserable.", "I love my puppy but we had to give him away.", "I am happy for my friend but I feel left out.", "I won a prize but my friends call me names.", "Hello there.", "I'm happy and heartbroken.", "I'm proud despite my grief.", "I love my dad in heaven.", "I love my dog 😭", "I'm so happy!", "I won!", "Yay!"]) {
     const s = after(text);
     for (const act of ACTS) for (const group of PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))) {
       for (let pick = 0; pick <= PHRASES[group].length; pick++) for (const echo of [undefined, "my puppy"]) {

@@ -20,7 +20,7 @@ describe("R443-1: spoken word counts keep every word", () => {
   ])("counts %s as %s spoken words", (text, count) => expect(speechWords(text)).toBe(count));
 
   it.each([
-    [1, [10], 25, true], [1, [1], 26, false],
+    [1, [9], 25, true], [1, [1], 26, false],
     [4, [1, 2, 1, 6], 45, true], [4, [1, 2, 1, 8], 46, false],
   ] as const)("grade %s accepts only its boundary (%s, %s words)", (grade, picks, count, accepted) => {
     let s = createSession({ callId: "boundary", package: FIXTURES.A, grade, random: 9 });

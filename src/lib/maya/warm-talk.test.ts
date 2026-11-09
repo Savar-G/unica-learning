@@ -458,10 +458,10 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
 
   it.each([
     "Biscuit is a great name!", "Wow, a trip to the lake!", "What's your favourite colour?", "Hi there!", "Hello!",
-    "Thanks for telling me.", "Nice!", "Cool!", "Yay!", "Ha, how fun!", "Aw, poor kitty.", "Oh no, I hope you feel better soon.",
+    "Thanks for telling me.", "Nice!", "Cool!", "Ha, how fun!", "Aw, poor kitty.", "Oh no, I hope you feel better soon.",
     "How exciting!", "Who is your best friend?", "Where do you like to play?", "I'm so glad you're here.",
     "You're so funny!", "It sounds like a great day.", "We're having a good chat.", "Sounds fun!", "What a lovely name!",
-    "A dog! What's your dog's name?", "Have a great day!", "Happy birthday!", "Good morning!",
+    "A dog! What's your dog's name?", "Happy birthday!", "Good morning!",
     // D-197: three short sentences, "that" when it does not point back, and "don't" about Maya herself.
     "Oh, I'm so sorry your grandma is sick. That sounds really hard.", "Oh, I'm sorry to hear that.",
     "Oh, I'm an AI helper, so I'm not a real person. I don't have a dog. It's nice to hear about yours, though!",
@@ -619,10 +619,10 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
       const plain = call();
       plain.child("We went on a trip to the lake!");
       expect(plain.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })?.code).toBe("line_not_offered");
-      // The same pick on an explicitly happy turn is still offered.
+      // First ship also withholds the pick on an explicitly happy turn.
       const happy = call();
       happy.child("I'm so happy!");
-      expect(happy.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })).toBeNull();
+      expect(happy.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })?.code).toBe("line_not_offered");
     });
 
     it("never echoes an insult back (practice run 5, F06: \"Feeling dumb is okay.\")", () => {
@@ -792,10 +792,10 @@ describe("R374-5: the board, echo breaks, phrase picks and the bank's own rules"
   });
 
   it("keeps a picked frame only when its slot can be filled, and refuses a pick outside the group", () => {
-    const frame = PHRASES.pets.findIndex((p) => p.startsWith("{echo}! Thanks")) + 1;
+    const frame = PHRASES.pets.findIndex((p) => p.startsWith("Thanks for telling me about {echo}")) + 1;
     const c = call();
     c.child("I love Biscuit!");
-    expect(c.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "Biscuit" }] }).text).toBe("Biscuit! Thanks for telling me.");
+    expect(c.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "Biscuit" }] }).text).toBe("Thanks for telling me about Biscuit!");
     const d = call();
     d.child("I love Biscuit!");
     const plain = d.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "7" }] }).text;
@@ -938,11 +938,11 @@ it.each(["I am not feeling at all happy.", "I don't feel at all good.", "I'm not
   expect(phraseOffers(c.s, "happy")).toEqual([]);
 });
 
-it.each(["I'm so happy!", "I won!"])("offers happy replies for %s", (text) => {
+it.each(["I'm so happy!", "I won!"])("withholds happy replies for %s", (text) => {
   const c = call();
   c.child(text);
-  expect(phraseOffers(c.s, "happy").length).toBeGreaterThan(0);
-  expect(c.say({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] }).text).toContain("What a happy mood!");
+  expect(phraseOffers(c.s, "happy")).toEqual([]);
+  expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] })?.code).toBe("line_not_offered");
 });
 
 it("uses a neutral reply for a resolved bad feeling", () => {

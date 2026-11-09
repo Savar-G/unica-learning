@@ -20,13 +20,14 @@ describe("R443-3: every script contributes to the spoken word limit", () => {
     const grade = boundary <= 26 ? 1 : 4;
     const initial = (seed: number) => {
       const started = step(createSession({ callId: "named-boundary", package: FIXTURES.A, grade, random: seed, childName: name, freeTalk: true }), { type: "start", at: 1000 }).session;
-      return step(started, { type: "child_turn", at: 1000, text: "I am happy!" }).session;
+      const opened = step(started, { type: "proposal", at: 1000, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).session;
+      return step(opened, { type: "child_turn", at: 1000, text: "I am happy!" }).session;
     };
-    const parts = [{ line: "open.hello" as const }, { warm: "opening" as const, pick: 5 }];
+    const parts = [{ warm: "encourage" as const, pick: 8 }];
     let seed = 1;
     let prefix = "";
     for (; seed <= 32; seed++) {
-      const r = step(initial(seed), { type: "proposal", at: 1000, proposal: { version: 2, act: "open", parts } });
+      const r = step(initial(seed), { type: "proposal", at: 1000, proposal: { version: 2, act: "clarify", parts } });
       expect(r.refusal).toBeNull();
       prefix = r.effects.flatMap((e) => e.kind === "say" ? [e.text] : []).join(" ");
       if (prefix.includes(name)) break;
@@ -42,7 +43,7 @@ describe("R443-3: every script contributes to the spoken word limit", () => {
       remaining -= size;
     }
     const talk = sentences.join(" ");
-    const result = step(initial(seed), { type: "proposal", at: 1000, proposal: { version: 2, act: "open", parts: [...parts, { talk }] }, talkReviews: [{ text: talk, result: { verdict: "pass" } }] });
+    const result = step(initial(seed), { type: "proposal", at: 1000, proposal: { version: 2, act: "clarify", parts: [...parts, { talk }] }, talkReviews: [{ text: talk, result: { verdict: "pass" } }] });
     if (boundary === 25 || boundary === 45) {
       expect(result.refusal).toBeNull();
       const said = result.effects.flatMap((e) => e.kind === "say" ? [e.text] : []).join(" ");

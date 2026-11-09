@@ -41,8 +41,8 @@ it.each(["My friends make fun of me.", "I feel miserable."])("refuses cheerful p
   }
 });
 
-it("allows the required positive turns and rejects ambiguous uses", () => {
-  for (const text of ["I'm so happy!", "I won!", "I feel great!", "I'm excited!"]) expect(phraseOffers(after(text), "happy").length, text).toBeGreaterThan(0);
+it("withholds cheer on positive and ambiguous turns", () => {
+  for (const text of ["I'm so happy!", "I won!", "I feel great!", "I'm excited!"]) expect(phraseOffers(after(text), "happy"), text).toEqual([]);
   for (const text of ["My friends make fun of me.", "I feel good for nothing."]) expect(phraseOffers(after(text), "happy"), text).toEqual([]);
 });
 

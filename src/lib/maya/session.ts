@@ -2833,13 +2833,28 @@ const askedNow = (session: Session) => !!session.turn && /\?/.test(session.turn.
 /** The child's words this turn, else their last words in the call. */
 const childTurnText = (session: Session): string | undefined => session.turn?.text ?? [...session.turns].reverse().find((t) => t.speaker === "child")?.text;
 
+// D-310: the first-ship cheer backstop keeps only calm bank phrases.
+const CHEER_AT_FIRST_SHIP = false;
+
+// Match exclamations in non-calm bank positions, including filled echo and name slots.
+const CHEER_EXCLAMATIONS = PHRASE_GROUPS.flatMap((group) => PHRASES[group].flatMap((text, index) => {
+  if (CALM_PHRASES[group].includes(index + 1)) return [];
+  return (text.match(/[^.!?]+!/g) ?? []).filter((sentence) => !/^\s*\{(?:echo|name)\}!$/.test(sentence)).map((sentence) => {
+    const escaped = sentence.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\\\{(?:echo|name)\\\}/g, "[^.!?]+?");
+    return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}`, "iu");
+  });
+}));
+const cheerfulFreeTalk = (text: string) => /\b(?:yay|hooray|what a happy|how nice|how wonderful)\b/iu.test(text)
+  || CHEER_EXCLAMATIONS.some((pattern) => pattern.test(text));
+
 export function phraseOffers(session: Session, group: PhraseGroup): { pick: number; text: string }[] {
   const ready = new Set([1, 2, 3, 4, 8, 12]);
   const closingEffort = new Set([2, 7, 10, 13, 14]);
   const asked = askedNow(session);
   const hard = hardFeeling(childTurnText(session));
   const turn = ([...session.turns].reverse().find((t) => t.speaker === "child")?.text ?? "").replace(/’/g, "'");
-  const positive = !hard && !/[,]/.test(turn)
+  const positive = CHEER_AT_FIRST_SHIP && !hard && !/[,]/.test(turn)
     && /^[^.!?]*[.!?]?$/.test(turn.trim())
     && (turn.trim().match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)*/gu) ?? []).length <= 6
     && /\b(?:happy|glad|excited|yay|awesome|hooray|won|proud)\b|\bi love\b|\bi feel great\b|\bgreat day\b/i.test(turn)
@@ -3174,7 +3189,7 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
       // (assembledProblem).
       const proposed = part.talk.trim();
       const code = s.mathClaim ? "math claims use checked lines or neutral bank words"
-        : s.freeTalk ? freeTalkProblem(part.talk, s.variety.name, childWords(s)) : "free talk is off";
+        : s.freeTalk ? freeTalkProblem(part.talk, s.variety.name, childWords(s)) ?? (!CHEER_AT_FIRST_SHIP && cheerfulFreeTalk(part.talk) ? "cheerful exclamation" : null) : "free talk is off";
       const review = code === null ? reviews.find((r) => r.text === proposed)?.result ?? null : null;
       if (code === null && review?.verdict === "pass") {
         add("talk", proposed);
