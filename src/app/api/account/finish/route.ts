@@ -27,10 +27,10 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 // every session, the parent's too: the parent is signed out with a password nobody knows (2026-10-12, every first
 // signup failed). Checked on the hosted project; see docs/assessment-signup.md.
 
-/** Sign-in methods (the access token's amr claim) that prove the email: "otp" is the email code and every emailed link. */
 /** At most 300 s (Vercel's limit): the finish claim lives 5 minutes, so it always outlives the route. */
 export const maxDuration = 300;
 
+/** Sign-in methods (the access token's amr claim) that prove the email: "otp" is the email code and every emailed link. */
 const PROVED = new Set(["otp", "magiclink", "recovery", "email/signup", "invite", "oauth"]);
 
 /** The sign-in methods recorded in a session's access token. getUser has already checked the token with Auth. */

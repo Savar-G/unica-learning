@@ -10,6 +10,7 @@ import { LOG_KINDS, LOG_STATUSES } from "@/lib/email-log-kinds";
 import { FLAG_LEVELS } from "@/lib/maya-call";
 import { ASSISTANCE } from "@/lib/maya/session";
 import { DELIVERY_TYPES } from "@/lib/resend-webhook";
+import { SCAN_BLOCKED_REASONS, SCAN_CALIBRATION_STATES, SCAN_JOB_STATES, SCAN_PHOTO_STATES } from "@/lib/scan-states";
 
 const LISTS: { name: string; list: readonly string[]; table: string; column: string }[] = [
   { name: "AD_STEPS", list: AD_STEPS, table: "ad_visit_steps", column: "step" },
@@ -21,6 +22,10 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "LOG_KINDS", list: LOG_KINDS, table: "email_log", column: "kind" },
   { name: "LOG_STATUSES", list: LOG_STATUSES, table: "email_log", column: "status" },
   { name: "ATTEMPT_STATUSES", list: ATTEMPT_STATUSES, table: "assessments", column: "status" },
+  { name: "SCAN_PHOTO_STATES", list: SCAN_PHOTO_STATES, table: "scan_photos", column: "state" },
+  { name: "SCAN_JOB_STATES", list: SCAN_JOB_STATES, table: "scan_marking_jobs", column: "state" },
+  { name: "SCAN_BLOCKED_REASONS", list: SCAN_BLOCKED_REASONS, table: "scan_marking_jobs", column: "blocked_reason" },
+  { name: "SCAN_CALIBRATION_STATES", list: SCAN_CALIBRATION_STATES, table: "scan_calibrations", column: "state" },
 ];
 
 describe("state lists equal the database checks", () => {
