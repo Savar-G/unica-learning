@@ -7360,6 +7360,7 @@ export type Database = {
           p_max_attempts: number
           p_snapshot: string
           p_stale_seconds: number
+          p_test_only?: boolean
         }
         Returns: Json
       }

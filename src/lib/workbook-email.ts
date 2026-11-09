@@ -99,7 +99,7 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
 export function planStartEmail(p: { parentName: string; childName: string; grade: number; price: number; firstCharge: string; marking: boolean; explain: boolean; sharedWindow?: boolean; free?: boolean; reminder?: boolean }) {
   const subject = p.sharedWindow ? w.emailSubject(p.childName) : `Welcome to Unica Learning: how ${p.childName}'s free month works`;
   const steps = [
-    `1. Follow the schedule. See which pages ${p.childName} does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.`,
+    `1. Follow the schedule, 5 days a week. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday with the weekend off. You can choose any 5 days, but do the days in order, Day 1 to Day 10. See which pages ${p.childName} does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.`,
     `2. Scan the finished pages. After ${p.childName} finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.`,
     p.marking === true
       ? `3. Read the marks. You will see which questions are right and wrong.${p.explain === true ? ` On a wrong answer, press "Explain this problem" for a simple explanation that you can use with ${p.childName}.` : ""}`
@@ -113,6 +113,7 @@ export function planStartEmail(p: { parentName: string; childName: string; grade
     ...(p.sharedWindow ? [`Thanks for joining Unica Learning. ${w.planStarted(p.childName)}`, ...(p.free ? ["Nothing has been charged."] : [])] : [`Thanks for joining Unica Learning. ${p.childName}'s first workbook has arrived, so your free first month has started. Nothing has been charged.`]),
     "As a parent, here are your responsibilities:",
     steps.join("\n"),
+    `Why 5 days? Two days off each week give ${p.childName} time to rest, or to look back at the week's pages, and come back ready to learn. A steady 5 days builds a habit. Working every day can wear kids out and make math feel like a chore, for ${p.childName} and for you.`,
     `If anything is broken, if anything does not work, or if you have feedback, email ${SUPPORT_EMAIL} or use https://unicalearning.com/account/feedback.`,
     `Your plan: On ${p.firstCharge}, we charge CAD ${cad(p.price)} to your saved card. We then charge CAD ${cad(p.price)} each month until you cancel. Delivery is included.${p.reminder !== false ? ` ${PLAN_REMINDER_PARENT}` : ""}`,
     `To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan".${p.free !== false ? ` If you cancel before ${p.firstCharge}, you pay nothing.` : ""}`,

@@ -7,6 +7,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+// The family's free window (service read): "child-unknown" is a sibling in a family with an open window; the rest are first children.
+vi.mock("@/lib/family-plan-offer-server", () => ({
+  loadFamilyPlanOffer: async (_parent: string, child: string) => ({ monthly: child === "child-unknown" ? 59.99 : 79.99, window: child === "child-unknown" ? "open" : "new" }),
+}));
 import { listNextSteps, getParent } from "@/lib/admin-store";
 import { CardsTable } from "@/components/admin-records";
 
@@ -15,7 +19,8 @@ const time = "2026-11-08T20:00:00Z";
 let clientId = 0;
 beforeEach(() => vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-08T21:00:00Z")));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-type Evidence = { failPrices?: boolean; failRead?: string; emailStatus?: string; emailKind?: string; planKind?: string; missingPlan?: boolean; wrongParent?: boolean };
+type Evidence = { failPrices?: boolean; failRead?: string; emailStatus?: string; emailKind?: string; planKind?: string; missingPlan?: boolean; wrongParent?: boolean; noReceipt?: string[]; noBook?: string[] };
+const bookOf = (cardIndex: number) => `00000000-0000-4000-8000-${String(cardIndex + 1).padStart(12, "0")}`;
 function admin(starts: { card_setup_id: string; state: string; generation: number; started_at: string }[], evidence: Evidence = {}) {
   const cards = ["new", "started", "other", "refused", "open", "stuck", "old-start", "restart", "legacy-email", "legacy-state", "unknown"].map((id) => ({
     id, parent_id: parent, child_id: `child-${id}`, created_at: time, updated_at: time, report_id: null,
@@ -38,6 +43,17 @@ function admin(starts: { card_setup_id: string; state: string; generation: numbe
         kind: c.id === "legacy-state" ? evidence.planKind ?? "paying" : "not_started",
       })));
       if (name === "admin_card_setups") return Response.json(cards);
+      // Every child has a shipped workbook 1 with its delivery receipt, unless the evidence says otherwise.
+      if (name === "workbooks") return Response.json(cards.flatMap((c, i) => evidence.noBook?.includes(c.id) ? []
+        : [{ id: bookOf(i), parent_id: parent, child_id: c.child_id, number: 1, status: "shipped" }]));
+      if (name === "workbook_delivery_receipts") {
+        const i = cards.findIndex((_, i) => url.searchParams.get("workbook_id") === `eq.${bookOf(i)}`);
+        return Response.json(i < 0 || evidence.noReceipt?.includes(cards[i].id) ? [] : [{
+          workbook_id: bookOf(i), parent_id: parent, child_id: cards[i].child_id, number: 1, delivered_at: time, local_time: "12:00",
+          time_zone: "America/Vancouver", zone_override: false, recorded_at: time, actor_id: "admin", audit_id: 1,
+        }]);
+      }
+      if (name === "workbook_delivery_corrections") return Response.json([]);
       if (name === "admin_parents") {
         const row = { id: parent, name: "Parent", email: "parent@example.invalid" };
         return Response.json(new Headers(init?.headers).get("accept") === "application/vnd.pgrst.object+json" ? row : [row]);
@@ -124,6 +140,23 @@ for (const page of ["next steps", "parent detail"]) {
     const missing = cardHtml(await readCards(page, { missingPlan: true }), "legacy-state");
     expect(missing).toContain("Workbook delivered: start plan");
   });
+  it(`${page} shows the receipt sentence and a link to workbook 1, and no start button, when workbook 1 has no delivery receipt`, async () => {
+    const html = cardHtml(await readCards(page, { noReceipt: ["new"] }), "new");
+    expect(html).not.toContain("Workbook delivered: start plan");
+    expect(html).toContain("Open this child&#x27;s workbook 1 and confirm its delivery.");
+    expect(html).toContain(`href="/admin/workbooks/${bookOf(0)}"`);
+  });
+  it(`${page} links to the child when there is no workbook 1 yet`, async () => {
+    const html = cardHtml(await readCards(page, { noBook: ["new"] }), "new");
+    expect(html).not.toContain("Workbook delivered: start plan");
+    expect(html).toContain("Open this child&#x27;s workbook 1 and confirm its delivery.");
+    expect(html).toContain('href="/admin/children/child-new"');
+  });
+  it(`${page} shows no start button when the delivery read fails`, async () => {
+    const html = cardHtml(await readCards(page, { failRead: "workbook_delivery_receipts" }), "new");
+    expect(html).not.toContain("Workbook delivered: start plan");
+    expect(html).toContain("We could not read the delivery of workbook 1. Reload this page.");
+  });
   it.each([{ planKind: "unknown" }, { wrongParent: true }])(`${page} shows a Stripe check when the plan evidence is unknown: %j`, async (evidence) => {
     const html = cardHtml(await readCards(page, evidence), "legacy-state");
     expect(html).toContain("Check the plan in Stripe before starting a free month.");
@@ -162,6 +195,23 @@ it.each(["restart", "stuck"])("closing %s offers an initial free month only when
     expect(container.textContent).toContain("Start closed.");
     if (cardId === "restart") expect(container.textContent).not.toContain("Workbook delivered: start plan");
     else expect(container.textContent).toContain("Workbook delivered: start plan");
+  } finally { await act(async () => root.unmount()); }
+});
+
+it.each([["new", false], ["unknown", true]] as const)("the %s card's start confirm names an existing free window only for a family that has one", async (cardId, sibling) => {
+  const cards = (await readCards("next steps")).filter((c) => c.id === cardId);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const ask = vi.fn(() => false);
+  vi.stubGlobal("confirm", ask);
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(CardsTable, { cards })));
+    const start = [...container.querySelectorAll("button")].find((b) => b.textContent === "Workbook delivered: start plan");
+    await act(async () => start!.click());
+    const text = String((ask.mock.calls[0] as unknown[])[0]);
+    if (sibling) expect(text).toContain("The family's existing free window applies.");
+    else expect(text).not.toContain("existing free window");
   } finally { await act(async () => root.unmount()); }
 });
 

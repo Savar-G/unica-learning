@@ -6,7 +6,7 @@ import { planFromColumns, type PlanColumns } from "@/lib/plan-state";
 import { adminClient } from "@/lib/supabase-auth";
 
 // The one gate between a child's stored plan (child_plan_states) and the product. The action that starts the free month
-// (the admin's "Workbook delivered: start free month") opens it, and it closes when the plan stops. No switch is involved.
+// (the admin's "Workbook delivered: start plan") opens it, and it closes when the plan stops. No switch is involved.
 //
 // Open: free_month, paying, and ending until its end date. Closed: everything else, a kind the code does not know, a row
 // that does not fit its kind, and any failed read. Nothing here asks Stripe: the webhook, the start and restart routes and the card

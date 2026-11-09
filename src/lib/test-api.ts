@@ -1,13 +1,13 @@
 // The child's test (#64). Shared by the test screens (client) and /api/account/assessments/* (server).
 // The browser gets only TestStep: never an answer or the misconception coding of the choices.
-import type { TestStep } from "@/lib/assessment";
+import type { AttemptStatus, TestStep } from "@/lib/assessment";
 import type { Refusal } from "@/lib/test-attempt";
 import type { FactsRefusal } from "@/lib/test-attempt";
 import type { BreakResume } from "@/lib/test-context";
 import type { StrokeRecording } from "@/lib/strokes";
 
-/** An assessment row's status. "expired" comes with stop and resume (#72). */
-export type AssessmentStatus = "in_progress" | "completed" | "expired";
+/** An assessment row's status. "expired" comes with stop and resume (#72). The one list is ATTEMPT_STATUSES in the assessment core. */
+export type AssessmentStatus = AttemptStatus;
 
 export type TestError =
   | "signed_out"

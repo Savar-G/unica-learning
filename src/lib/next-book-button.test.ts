@@ -13,9 +13,12 @@ import { nextBookWiring } from "./next-book-planner";
 const BOOK = "00000000-0000-4000-8000-000000000013";
 
 describe("nextBookButtonState", () => {
+  it("the planner is wired, so the child page asks for the delivery", () => {
+    // The child page passes ready: nextBookWiring() !== null.
+    expect(nextBookWiring()).not.toBeNull();
+  });
+
   it("with no planner reads no delivery and shows the button disabled", async () => {
-    // The child page asks nextBookWiring() first; it is null until the planner owner wires it.
-    expect(nextBookWiring()).toBeNull();
     const delivered = vi.fn(async () => true);
     expect(await nextBookButtonState({ ready: false, book1Id: BOOK, delivered })).toBe("not-ready");
     expect(delivered).not.toHaveBeenCalled();

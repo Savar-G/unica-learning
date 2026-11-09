@@ -34,7 +34,8 @@ vi.mock("@/lib/supabase-auth", () => ({
 }));
 vi.mock("@/lib/next-book-planner", () => ({
   nextBookPlanner: () => h.real ? { plan: async () => ({ ok: false, reason: "unused" }) } : null,
-  nextBookWiring: (planner: unknown) => planner ? { planner, selection: async () => null } : null,
+  nextBookWiring: (planner: unknown) => planner ? { planner, testOnly: true } : null,
+  NEXT_BOOK_REAL_FAMILIES: false,
 }));
 vi.mock("@/lib/next-book-step-server", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/next-book-step-server")>();

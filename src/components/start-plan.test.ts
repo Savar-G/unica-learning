@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { StartPlan, StartedPlan } from "@/components/start-plan";
+import { START_LOST, START_REFUSED, StartPlan, StartedPlan } from "@/components/start-plan";
 import { StartPlan as MainStartPlan } from "@/components/__fixtures__/start-plan-main-724f38b4";
 import type { StartPlanError } from "@/lib/plan-start-errors";
 
@@ -102,4 +102,50 @@ it("shows the admitted sibling price with both pending warnings after a successf
   expect(container.textContent).toContain("we could not confirm that this child can use Unica");
   expect(container.textContent).toContain("We could not confirm the plan start email.");
   expect(container.querySelectorAll('[role="alert"]')).toHaveLength(2);
+});
+
+it("a refused request (403) says nothing reached Stripe and the admin can press again", async () => {
+  fetcher.mockResolvedValue(new Response("Forbidden", { status: 403 }));
+  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await clickStart();
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(START_REFUSED);
+  expect(START_REFUSED).toContain("Nothing started.");
+  expect(container.textContent).not.toContain("The response was lost.");
+  expect(container.querySelector("button")?.disabled).toBe(false);
+});
+it("a 409 for a missing delivery receipt gives the receipt message", async () => {
+  fetcher.mockResolvedValue(Response.json({ ok: false, error: "delivery_receipt_required" }, { status: 409 }));
+  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await clickStart();
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(messages.delivery_receipt_required);
+});
+it.each([
+  ["no answer", () => Promise.reject(new TypeError("Failed to fetch"))],
+  ["an unreadable 504", () => Promise.resolve(new Response("<html>timeout</html>", { status: 504 }))],
+])("a real lost answer (%s) gives the lost message", async (_, answer) => {
+  fetcher.mockImplementation(answer);
+  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await clickStart();
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(START_LOST);
+  expect(START_LOST).toBe("The response was lost. Open the family in Stripe to check before trying again.");
+});
+
+const confirmText = async (familyWindow?: "new" | "open" | "ended" | "unknown" | null) => {
+  const ask = vi.fn(() => false);
+  vi.stubGlobal("confirm", ask);
+  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah", familyWindow })));
+  await clickStart();
+  expect(fetcher).not.toHaveBeenCalled();
+  return String((ask.mock.calls[0] as unknown[])[0]);
+};
+it("a family's first child (no free window yet) does not see the existing free window sentence", async () => {
+  const text = await confirmText("new");
+  expect(text).toBe("Has Leah's first workbook arrived at their home? Confirm only after delivery.");
+  expect(text).not.toContain("existing free window");
+});
+it.each(["open", "ended"] as const)("a sibling whose family has a free window (%s) sees the approved window sentences", async (familyWindow) => {
+  expect(await confirmText(familyWindow)).toBe("Has Leah's first workbook arrived at their home? Confirm only after delivery. The family's existing free window applies. If it has ended, Stripe charges the monthly price now.");
+});
+it.each(["unknown", null] as const)("an unknown window (%s) keeps the approved window sentences", async (familyWindow) => {
+  expect(await confirmText(familyWindow)).toContain("The family's existing free window applies.");
 });

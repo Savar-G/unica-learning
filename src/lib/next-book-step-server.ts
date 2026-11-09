@@ -7,9 +7,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
-import { nextBookPlanner, nextBookWiring } from "./next-book-planner";
+import { NEXT_BOOK_REAL_FAMILIES, nextBookPlanner, nextBookWiring } from "./next-book-planner";
 import { nextBookSnapshotServer } from "./next-book-snapshot-server";
-import { nextBookRelease, runNextBookStep, untilAborted, type NextBookStepEnvironment, type NextBookStepResult } from "./next-book-step";
+import { nextBookRelease, runNextBookStep, type NextBookStepEnvironment, type NextBookStepResult } from "./next-book-step";
 import { isTestAccount, nextBookDueStore } from "./next-book-step-store";
 import { childPlanAccess } from "./plan-access";
 import { adminClient } from "./supabase-auth";
@@ -29,15 +29,14 @@ export function createNextBookStepServer(env: NextBookStepEnvironment,
       };
       const service = (signal: AbortSignal) => clientFor(signal) ?? (() => { throw new Error("next_book_service_unavailable"); })();
       return runNextBookStep({
-        release, planner: nextBookPlanner(), time,
+        release, planner: nextBookPlanner(), time, realFamilies: NEXT_BOOK_REAL_FAMILIES,
         prepare: (planner, signal) => {
           const wiring = nextBookWiring(planner);
           if (!wiring) return null;
           // The readiness check (no signal) only asks whether a client can be made; it sends nothing.
           const db = clientFor(signal ?? new AbortController().signal);
           if (!db || !signal) return db ? async () => { throw new Error("next_book_no_signal"); } : null;
-          const selection = (scope: Parameters<typeof wiring.selection>[0]) => untilAborted(() => wiring.selection(scope), signal);
-          return nextBookSnapshotServer({ planner: wiring.planner, selection }, db)?.prepare ?? null;
+          return nextBookSnapshotServer(wiring, db)?.prepare ?? null;
         },
         reader: { page: input => nextBookDueStore(service(input.signal!)).page(input) },
         testAccount: (parentId, signal) => isTestAccount(service(signal), parentId, signal),
