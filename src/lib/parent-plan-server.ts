@@ -5,7 +5,7 @@ import { parentPlan, type KnownPlan, type ParentPlan, type PlanSubscription } fr
 import { cancelPlan, stripe, type CancelPlanOutcome } from "@/lib/stripe";
 import { customerSubscriptions } from "@/lib/stripe-subscriptions";
 import { adminClient } from "@/lib/supabase-auth";
-import { finishControl } from "@/lib/plan-controls-server";
+import { alertOpenCancel } from "@/lib/plan-cancel-recovery-server";
 
 // A parent's plans. Every read starts from the signed-in parent's id, so a parent reaches only their own Stripe
 // customers. The customer id stays on the server: the browser sends only the card setup's id.
@@ -94,11 +94,11 @@ export async function cancelFamilyPlan(parent: string, cardId: string): Promise<
   } catch (e) {
     // No command went to Stripe: nothing can still change the plan, so the operation closes and the parent can retry.
     // After a command, the open operation and its family hold stay until the team proves every command ended.
-    if (!attemptedWrite) await finishOrAlert(db, operation, "refused", cardId, child, "a cancellation could not read the plan and could not be released");
-    else await planCancelCheckAlert(cardId, child, operation, "a cancellation command has an unknown result");
+    if (!attemptedWrite) await finishOrAlert(db, parent, operation, "refused");
+    else await planCancelCheckAlert(db, parent, operation);
     throw e;
   }
-  await finishOrAlert(db, operation, result.ok ? "applied" : "refused", cardId, child, "a cancellation result could not be saved");
+  await finishOrAlert(db, parent, operation, result.ok ? "applied" : "refused");
   return result.ok ? { ...result, child } : result;
 }
 
@@ -113,29 +113,23 @@ export async function planCancelledAlert(cardId: string, child: string, endsAt: 
   if (outcome.status !== "sent") console.error("[plan] cancel alert failed", outcome.status);
 }
 
-/** Closes the operation. When the close fails, the operation stays open and blocks Cancel, so the team hears and the error goes on. */
-async function finishOrAlert(db: NonNullable<ReturnType<typeof adminClient>>, operation: string, state: "applied" | "refused", cardId: string, child: string, why: string) {
+/** The new close can settle this family's open Cancel behind its deletion fence. */
+async function finishOrAlert(db: NonNullable<ReturnType<typeof adminClient>>, parent: string, operation: string, state: "applied" | "refused") {
   try {
-    await finishControl(db, operation, state);
+    const { data, error } = await db.rpc("close_plan_cancel", { p_parent: parent, p_id: operation, p_state: state });
+    if (error || data !== true) throw new Error("Plan cancellation could not be closed");
   } catch (e) {
-    await planCancelCheckAlert(cardId, child, operation, `${why} (${state})`);
+    await planCancelCheckAlert(db, parent, operation);
     throw e;
   }
 }
 
-/** Tells the team that a cancellation operation stays open and needs their check. Never throws: a failed alert is logged. */
-async function planCancelCheckAlert(cardId: string, child: string, operation: string, why: string) {
+/** The immediate alert and the sweep share one claim. A failed alert never hides the cancellation error. */
+async function planCancelCheckAlert(db: NonNullable<ReturnType<typeof adminClient>>, parent: string, operation: string) {
   try {
-    const to = process.env.SIGNUP_NOTIFY_EMAIL;
-    if (!to) { console.error("[plan] cancel check alert has no address", operation); return; }
-    const outcome = await sendEmail({
-      sender: { to: "savar" }, to, subject: `Plan cancellation needs a check: ${child}`,
-      text: [`For ${child}, ${why}.`, `Card setup: ${cardId}`, `Operation: ${operation}`,
-        "The operation and the family hold stay open, and the parent's Cancel answers pending.",
-        "Check every Stripe command for this customer before you close the operation. See docs/plan-controls.md."].join("\n"),
+    const outcome = await alertOpenCancel(db, operation, parent, {
+      origin: "https://unicalearning.com", to: process.env.SIGNUP_NOTIFY_EMAIL || null,
     });
-    if (outcome.status !== "sent") console.error("[plan] cancel check alert failed", outcome.status, operation);
-  } catch (e) {
-    console.error("[plan] cancel check alert failed", e instanceof Error ? e.message : "failed", operation);
-  }
+    if (outcome.status !== "sent" && outcome.status !== "busy") console.error("[plan] cancel check alert failed", outcome.status, operation);
+  } catch { console.error("[plan] cancel check alert failed", operation); }
 }

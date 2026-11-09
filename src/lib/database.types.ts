@@ -2816,12 +2816,39 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_cancel_alerts: {
+        Row: {
+          claimed_at: string
+          operation_id: string
+          state: string
+        }
+        Insert: {
+          claimed_at?: string
+          operation_id: string
+          state: string
+        }
+        Update: {
+          claimed_at?: string
+          operation_id?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_cancel_alerts_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: true
+            referencedRelation: "plan_control_operations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plan_control_operations: {
         Row: {
           allowance_year: number | null
           card_setup_id: string
           child_id: string
           created_at: string
+          deletion_closed_at: string | null
           finished_at: string | null
           id: string
           kind: string
@@ -2838,6 +2865,7 @@ export type Database = {
           card_setup_id: string
           child_id: string
           created_at?: string
+          deletion_closed_at?: string | null
           finished_at?: string | null
           id?: string
           kind: string
@@ -2854,6 +2882,7 @@ export type Database = {
           card_setup_id?: string
           child_id?: string
           created_at?: string
+          deletion_closed_at?: string | null
           finished_at?: string | null
           id?: string
           kind?: string
@@ -7106,6 +7135,14 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_open_plan_cancels: {
+        Args: { p_parent: string }
+        Returns: {
+          child_name: string
+          created_at: string
+          id: string
+        }[]
+      }
       admin_parents: {
         Args: never
         Returns: {
@@ -7323,6 +7360,7 @@ export type Database = {
           p_max_attempts: number
           p_snapshot: string
           p_stale_seconds: number
+          p_test_only?: boolean
         }
         Returns: Json
       }
@@ -7730,6 +7768,7 @@ export type Database = {
           out_status: string
         }[]
       }
+      claim_plan_cancel_alert: { Args: { p_id: string }; Returns: boolean }
       claim_plan_start_alert: {
         Args: { p_card: string; p_generation: number }
         Returns: boolean
@@ -7791,6 +7830,10 @@ export type Database = {
       clear_family_delete_attempts: {
         Args: { p_parent: string }
         Returns: undefined
+      }
+      close_plan_cancel: {
+        Args: { p_id: string; p_parent: string; p_state: string }
+        Returns: boolean
       }
       complete_child_deletion: {
         Args: { c: string; p: string; token: string }
@@ -7898,6 +7941,14 @@ export type Database = {
           p_run: string
         }
         Returns: boolean
+      }
+      due_plan_cancel_alerts: {
+        Args: { p_before: string; p_limit?: number }
+        Returns: {
+          created_at: string
+          id: string
+          parent_id: string
+        }[]
       }
       due_plan_reads: {
         Args: { p_limit?: number }
@@ -8234,6 +8285,10 @@ export type Database = {
       }
       my_family_deletion_state: { Args: never; Returns: string }
       note_card_checked: { Args: { p_card: string }; Returns: undefined }
+      note_plan_cancel_alert: {
+        Args: { p_id: string; p_state: string }
+        Returns: undefined
+      }
       note_plan_read_tried: { Args: { p_child: string }; Returns: undefined }
       note_plan_start_alert: {
         Args: {

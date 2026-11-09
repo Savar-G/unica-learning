@@ -26,6 +26,8 @@ function setup(env: { mode?: string; tests?: Family[] | string } = {}) {
     prepare: p => { const call = w.prepare(p); return (t, now) => { calls.push(t); return call(t, now); }; },
     reader,
     testAccount: async id => testAccounts.has(id),
+    // The behaviour once the worker reads plan_input; "real families stay out" below covers production's false.
+    realFamilies: true,
     openPlan: async ({ childId }) => openPlans.has(childId),
     time: { now: () => w.clock.now, endAt: w.clock.now + 55_000 },
     ...over,
@@ -94,6 +96,24 @@ describe("the release switch", () => {
     s.openPlans.add(closed.childId);
     expect(ran(await s.step())).toMatchObject({ prepared: 1, outcomes: { queued: 1 } });
     expect(s.w.chainOf(closed)?.runId).toBeTruthy();
+  });
+
+  // Review P2-1. Falsifier: with real families off (production until the worker reads plan_input), "families" makes a
+  // chain, a plan or a run for a real family with an open plan.
+  it("real families stay out: with realFamilies false, families admits only listed test families", async () => {
+    const s = setup({ mode: "families" });
+    const test = s.w.family(1), real = s.w.family(2);
+    s.w.claim(test, T0 - 2 * MIN);
+    s.w.claim(real, T0 - 3 * MIN);
+    s.testAccounts.add(test.parentId);
+    s.openPlans.add(test.childId).add(real.childId);
+    const r = ran(await s.step({ realFamilies: false, tests: test.parentId }));
+    expect(r).toMatchObject({ due: 2, prepared: 1, skipped: 1, outcomes: { queued: 1 } });
+    expect(s.w.chainOf(test)?.runId).toBeTruthy();
+    expect(s.w.chainOf(real)).toBeUndefined();
+    expect(s.w.m.state.runs.map(run => run.childId)).toEqual([test.childId]);
+    // Off stays off: no read at all.
+    expect(await s.step({ mode: "off", realFamilies: false })).toEqual({ status: "off" });
   });
 });
 
