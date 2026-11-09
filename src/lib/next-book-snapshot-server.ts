@@ -41,7 +41,7 @@ export function book1Capture(sources: WorkbookProgressSourceStoreV2): NextBookCa
 /** The planner is the only piece the callers choose: it binds every issued skill, so no step selection is wired. */
 export interface NextBookServerOptions {
   planner: NextBookPlanner;
-  /** Admit runs for test families only, checked again at admission under the family lock (!NEXT_BOOK_REAL_FAMILIES). */
+  /** Admit runs for test families only, checked again at admission with the test row locked (!NEXT_BOOK_REAL_FAMILIES). */
   testOnly: boolean;
 }
 

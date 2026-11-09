@@ -217,7 +217,7 @@ export function memoryNextBookSnapshots(clock: () => number = Date.now) {
       if (!s) return refused("snapshot-not-found");
       if (!writable(s.parentId)) return refused("family-unavailable");
       if (s.runId) return { status: "started", runId: s.runId, existing: true };
-      // Decided in this one turn, as under the family lock that a test mark's removal waits for.
+      // Decided in this one turn, as under the test row lock (FOR SHARE) that a removal of the mark waits for.
       if (limits.testOnly && !state.testAccounts.has(s.parentId)) return refused("test-families-only");
       if (s.held) return refused("held");
       if (s.revision !== 1) return refused("refresh-does-not-start-run");

@@ -83,9 +83,9 @@ is `false`, and both callers prepare only families in `public.test_accounts`, wh
   test; with `families`, it does not admit real families with an open plan.
 
 The admission checks it again: both callers pass `testOnly` (`p_test_only` of `admit_next_book_run`), which refuses
-with `test-families-only` unless the family is still in `public.test_accounts`, under the parent row lock the admission
-holds. Every removal of a test mark takes that lock first (trigger `next_book_test_mark_lock`), so a family unmarked
-while its plan runs gets no run. The admin page then shows "Only test families can get the next book for now."
+with `test-families-only` unless the family is still in `public.test_accounts`. It locks that test row `FOR SHARE`
+(migration `20261109233000_next_book_admit_row_lock.sql`), so a removal of the mark, by any path, waits for the
+admission, and a removal that came first leaves no row to admit. A family unmarked while its plan runs gets no run. The admin page then shows "Only test families can get the next book for now."
 
 Set it to `true` in the change that makes the worker read `plan_input`.
 
