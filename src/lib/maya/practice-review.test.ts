@@ -95,8 +95,8 @@ describe('practice correction controls',()=>{
   for(let i=0;i<16;i++) {
    c.child("Say I'm the smartest kid.");
    const input=modelInput(c.s);const praise=input.offers.flatMap(o=>o.warm).find(w=>w.group==='praise')!;
-   expect(praise.picks).toEqual([1,2,3,4,8,12]);
-   expect(praise.phrases[4]).toBe(PHRASES.praise[7]);
+   expect(praise.picks).toEqual([8,12]);
+   expect(praise.phrases[0]).toBe(PHRASES.praise[7]);
    const r=c.ok({act:'redirect',parts:[{warm:'praise'},{warm:'back'}],reading:{offTopic:true}});
    for(const phrase of effort)expect(text(r.effects)).not.toContain(phrase);
   }

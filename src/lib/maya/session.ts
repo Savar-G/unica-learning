@@ -43,7 +43,7 @@ import { closeExpressionContainsAnswer } from "./backup-close";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
 import { compensations, findOffer, normalSlots, packageLines, workbookOpening, WORKBOOK_OPENING, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
-import { freeTalkProblem, hardFeeling, isCheerfulPhrase, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
+import { freeTalkProblem, hardFeeling, CALM_PHRASES, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { kindOf, writtenFractions, claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
@@ -2838,13 +2838,14 @@ export function phraseOffers(session: Session, group: PhraseGroup): { pick: numb
   const closingEffort = new Set([2, 7, 10, 13, 14]);
   const asked = askedNow(session);
   const hard = hardFeeling(childTurnText(session));
-  const turn = (childTurnText(session) ?? "").replace(/’/g, "'");
-  const positive = /\b(?:happy|glad|excited|yay|awesome|hooray|won|proud)\b|\bi (?:love|loved)\b|\bi feel great\b|\bgreat day\b/i.test(turn)
-    && !/\b(?:not|no|never|nobody|nothing|no one|neither|nor|none|cannot|can't|won't|without|anymore)\b|n't\b/i.test(turn)
-    && !/\b(?:miserable|devastated|downhearted|low|bad|gone|ridicule|laugh(?:ed|ing)? at|make fun of|makes fun of|wish|used to)\b/i.test(turn)
-    && !hard;
+  const turn = ([...session.turns].reverse().find((t) => t.speaker === "child")?.text ?? "").replace(/’/g, "'");
+  const positive = !hard && !/[,]/.test(turn)
+    && /^[^.!?]*[.!?]?$/.test(turn.trim())
+    && (turn.trim().match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)*/gu) ?? []).length <= 6
+    && /\b(?:happy|glad|excited|yay|awesome|hooray|won|proud)\b|\bi love\b|\bi feel great\b|\bgreat day\b/i.test(turn)
+    && !/\b(?:not|no|never|nobody|nothing|no one|anymore|but|except|although|though|however|wish|miserable|devastated|downhearted|low|bad|gone|ridicule|neither|nor|none|cannot|without)\b|n['’]t\b/i.test(turn);
   return PHRASES[group].flatMap((text, i) => {
-    if (isCheerfulPhrase(text) && !positive) return [];
+    if (!positive && !CALM_PHRASES[group].includes(i + 1)) return [];
     if (asked && THANKS_TOLD.test(text)) return [];
     // A hard feeling never gets a cheerful wording ("Oh, your grandma! How nice.").
     if (hard && group !== "empathy" && !(group === "smalltalk" && [...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].includes(text))) return [];
@@ -2856,7 +2857,7 @@ export function phraseOffers(session: Session, group: PhraseGroup): { pick: numb
 
 /** The warm-talk purposes each act Maya may take now can use (D-196), for the text adapter beside lineOffers. */
 export function warmGroups(session: Session): Partial<Record<Act, PhraseGroup[]>> {
-  return Object.fromEntries(nextActs(session).acts.map((act) => [act, session.replies?.length ? [] : PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act) && (g !== "happy" || phraseOffers(session, g).length > 0))]));
+  return Object.fromEntries(nextActs(session).acts.map((act) => [act, session.replies?.length ? [] : PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act) && (CALM_PHRASES[g].length > 0 || phraseOffers(session, g).length > 0))]));
 }
 
 /** "{echo}" filled with the child's words, a capital first at the start of a sentence. */

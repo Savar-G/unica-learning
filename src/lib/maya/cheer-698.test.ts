@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { createSession, fallbacks, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, phraseOffers, step } from "@/lib/maya";
-import { CHEERFUL_PHRASES, isCheerfulPhrase } from "./phrases";
+import { CALM_PHRASES } from "./phrases";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 
 function after(text: string) {
@@ -46,15 +46,15 @@ it("allows the required positive turns and rejects ambiguous uses", () => {
   for (const text of ["My friends make fun of me.", "I feel good for nothing."]) expect(phraseOffers(after(text), "happy"), text).toEqual([]);
 });
 
-it("lists the tagged bank phrases", () => {
-  expect([...CHEERFUL_PHRASES].sort()).toMatchSnapshot();
+it("lists the calm bank phrases by group", () => {
+  expect(Object.fromEntries(PHRASE_GROUPS.map((group) => [group, CALM_PHRASES[group].map((pick) => PHRASES[group][pick - 1])]))).toMatchSnapshot();
 });
 
 it("withholds each tagged pick for every group on each distress turn", () => {
   for (const text of ["My friends make fun of me.", "I feel miserable.", "I feel sad.", "My dog is sick.", "I wish I could be happy."]) {
     const s = after(text);
     for (const group of PHRASE_GROUPS) {
-      expect(phraseOffers(s, group).filter((offer) => isCheerfulPhrase(offer.text)), `${text}: ${group}`).toEqual([]);
+      expect(phraseOffers(s, group).filter((offer) => !CALM_PHRASES[group].includes(offer.pick)), `${text}: ${group}`).toEqual([]);
     }
   }
 });
@@ -69,7 +69,7 @@ it("does not emit a tagged pick or unpicked phrase on distress turns", () => {
         for (let pick = 0; pick <= PHRASES[group].length; pick++) {
           const result = step(s, { type: "proposal", at: 6000, proposal: { version: 2, act, ...(reading ? { reading } : {}), parts: [{ warm: group, ...(pick ? { pick } : {}) }, ...(act === "redirect" ? [{ line: "redirect.back" }] : [])] } });
           const said = result.effects.filter((e) => e.kind === "say").map((e) => e.text).join(" ");
-          for (const phrase of CHEERFUL_PHRASES) {
+          for (const phrase of PHRASES[group].filter((_, index) => !CALM_PHRASES[group].includes(index + 1))) {
             if (phrase.includes("{")) continue;
             expect(said, `${text}: ${act} ${group}.${pick}`).not.toContain(phrase);
           }

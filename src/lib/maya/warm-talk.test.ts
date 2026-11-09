@@ -261,8 +261,9 @@ describe("variety", () => {
 
   it("never repeats a wording in a call until every other wording of it was said", () => {
     const c = call();
-    const said = waits(c, PHRASES.pacing.length);
-    expect(new Set(said).size).toBe(PHRASES.pacing.length);
+    const count = phraseOffers(c.s, "pacing").length;
+    const said = waits(c, count);
+    expect(new Set(said).size).toBe(count);
   });
 
   it("is the same for the same random seed, and different for another", () => {
@@ -620,7 +621,7 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
       expect(plain.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })?.code).toBe("line_not_offered");
       // The same pick on an explicitly happy turn is still offered.
       const happy = call();
-      happy.child("We went on a trip to the lake! I'm so happy!");
+      happy.child("I'm so happy!");
       expect(happy.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })).toBeNull();
     });
 
@@ -793,10 +794,10 @@ describe("R374-5: the board, echo breaks, phrase picks and the bank's own rules"
   it("keeps a picked frame only when its slot can be filled, and refuses a pick outside the group", () => {
     const frame = PHRASES.pets.findIndex((p) => p.startsWith("{echo}! Thanks")) + 1;
     const c = call();
-    c.child("I have a dog named Biscuit!");
+    c.child("I love Biscuit!");
     expect(c.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "Biscuit" }] }).text).toBe("Biscuit! Thanks for telling me.");
     const d = call();
-    d.child("I have a dog named Biscuit!");
+    d.child("I love Biscuit!");
     const plain = d.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "7" }] }).text;
     expect(PHRASES.pets.filter((p) => !p.includes("{echo}")).map(bare)).toContain(plain);
     expect(call().refusal({ act: "clarify", parts: [{ warm: "pets", pick: PHRASES.pets.length + 1 }] })).toMatchObject({ code: "invalid_proposal" });

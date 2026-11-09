@@ -178,20 +178,33 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   ],
 };
 
-/** Bank wordings that celebrate the child's news. The same wording is tagged in every group. */
-export const CHEERFUL_PHRASES: ReadonlySet<string> = new Set([
-  ...PHRASES.happy,
-  "Great effort!", "Nice focus!", "Your effort is awesome.",
-  "Oh, how nice!", "Nice to hear, {name}!", "What a nice thing to tell me.", "Ha, I like it!", "Oh, cool!",
-  "Oh, {echo}! How nice.", "Animals are fun to hear about.", "How nice of you to tell me.",
-  "It's nice to hear about the people in your life.", "It's nice to hear about your world.",
-  "It's nice to hear what you like to play.", "It's nice to hear what you eat.", "It's nice to hear what you play.",
-  "New trips are fun to hear about.",
-  "I'm an AI, so I don't have a life like yours. It's nice to hear about yours!",
-  "I'm an AI, and it's nice to hear about you!",
-  "Ooh, {echo}!", "Ooh, an animal friend!", "Ooh, school news!", "Ooh, a game!", "Ooh, food talk!", "Ooh, sports!", "Ooh, a trip!",
-]);
-export const isCheerfulPhrase = (text: string): boolean => CHEERFUL_PHRASES.has(text);
+/** Positions approved for use when the child's turn is not explicitly positive. New phrases default to not calm. */
+export const CALM_PHRASES: Readonly<Record<PhraseGroup, readonly number[]>> = {
+  encourage: [1, 2, 5, 6, 8, 9, 11, 12, 15, 16, 17, 18],
+  empathy: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+  checkin: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  pacing: [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14],
+  hearing: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  smalltalk: [2, 3, 4, 9, 14, 15, 16, 17, 18, 19, 20],
+  opening: [1, 2, 3, 4, 7, 8, 9, 11, 12],
+  closing: [1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13],
+  pets: [1, 6, 8, 12, 13],
+  family: [1, 5, 9, 10, 11, 12],
+  school: [1, 5, 6, 8, 11, 13],
+  games: [1, 5, 7, 11, 13],
+  food: [1, 5, 10, 11, 13],
+  sports: [1, 5, 10, 11, 13],
+  trips: [1, 5, 10, 11, 13],
+  tired: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  happy: [],
+  bored: [1, 2, 3, 5, 6, 7, 9, 10, 11, 12],
+  frustrated: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  aboutmaya: [3, 5, 6, 7, 10, 11],
+  back: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  mayafacts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  promises: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  praise: [5, 6, 7, 8, 9, 11, 12],
+};
 
 /** The acts each purpose fits. */
 /** The acts a reply to the child's own talk fits: around the math, never inside it. */

@@ -18,7 +18,10 @@ describe("R443-3: every script contributes to the spoken word limit", () => {
 
   it.each(names.slice(0, 5).flatMap(([name]) => [25, 26, 45, 46].map((boundary) => ({ name, boundary }))))("the controller checks $name at $boundary words", ({ name, boundary }) => {
     const grade = boundary <= 26 ? 1 : 4;
-    const initial = (seed: number) => step(createSession({ callId: "named-boundary", package: FIXTURES.A, grade, random: seed, childName: name, freeTalk: true }), { type: "start", at: 1000 }).session;
+    const initial = (seed: number) => {
+      const started = step(createSession({ callId: "named-boundary", package: FIXTURES.A, grade, random: seed, childName: name, freeTalk: true }), { type: "start", at: 1000 }).session;
+      return step(started, { type: "child_turn", at: 1000, text: "I am happy!" }).session;
+    };
     const parts = [{ line: "open.hello" as const }, { warm: "opening" as const, pick: 5 }];
     let seed = 1;
     let prefix = "";
