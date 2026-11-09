@@ -103,8 +103,11 @@ export async function dueCardCount(now: number): Promise<number> {
   return db ? (await supabaseCardRows(db).dueCardRows(now - CARD_WATCH_MS, 1000)).length : 0;
 }
 
-/** The dry run's count of plan rows to read again. */
+/** The dry run's count of plan rows to read again: the rows that can still change and the starts not shown yet, of which a run reads START_READ_LIMIT. */
 export async function duePlanReadCount(): Promise<number> {
   const db = adminClient();
-  return db ? (await supabasePlanReads(db).duePlanReads(1000)).length : 0;
+  if (!db) return 0;
+  const rows = supabasePlanReads(db);
+  const [due, starts] = await Promise.all([rows.duePlanReads(1000), rows.dueStartReads(1000)]);
+  return due.length + starts.length;
 }

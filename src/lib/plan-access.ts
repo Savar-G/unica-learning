@@ -52,14 +52,25 @@ const ruleOfRow = (row: PlanColumns, now: number) => planAccessRule(planFromColu
 
 /** One child of one family. Another family's child reads as no_plan. Never throws: a failed read is closed, with read_failed. */
 export async function childPlanAccess(input: { parentId: string; childId: string }, deps: PlanAccessDeps = {}): Promise<PlanAccess> {
+  return (await childPlanRead(input, deps)).access;
+}
+
+/**
+ * childPlanAccess, with the stored resume date of a paused plan (child_plan_states.next_charge_at as planFromColumns reads it),
+ * for the words the child's desk shows. `resumesOn` is null for any other answer; the reader decides whether it is still ahead.
+ */
+export async function childPlanRead(input: { parentId: string; childId: string }, deps: PlanAccessDeps = {}): Promise<{ access: PlanAccess; resumesOn: string | null }> {
   try {
     const db = clientOf(deps);
-    if (!db) return READ_FAILED;
+    if (!db) return { access: READ_FAILED, resumesOn: null };
     const { data, error } = await db.from("child_plan_states").select(COLUMNS).eq("child_id", input.childId).eq("parent_id", input.parentId).maybeSingle();
-    if (error) return READ_FAILED;
-    return data ? ruleOfRow(data, deps.now?.() ?? Date.now()) : { open: false, reason: "no_plan" };
+    if (error) return { access: READ_FAILED, resumesOn: null };
+    if (!data) return { access: { open: false, reason: "no_plan" }, resumesOn: null };
+    const plan = planFromColumns(data);
+    const access = ruleOfRow(data, deps.now?.() ?? Date.now());
+    return { access, resumesOn: access.reason === "paused" && plan?.kind === "paused" ? plan.resumesOn : null };
   } catch {
-    return READ_FAILED;
+    return { access: READ_FAILED, resumesOn: null };
   }
 }
 
