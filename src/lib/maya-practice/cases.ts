@@ -11,6 +11,7 @@ import { valuesIn } from "@/lib/maya";
 import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
 import { PLACE_VALUE_PRACTICE } from "./place-value-cases";
+import { PLACE_PARTS_PRACTICE } from "./place-value-parts-cases";
 import { ONE_STEP_PRACTICE } from "./one-step-cases";
 import { MISSING_NUMBER_CASES } from "./missing-number-cases";
 import { SPOT_PRACTICE } from "./spot-error-cases";
@@ -157,6 +158,10 @@ const A_SOLVES: Stage = { name: "first try", opens: "start", numbers: [...A_WORK
  */
 const CARRY_SLIPS = [56, 5, 516, 616] as const;
 const A_CARRY_SLIPS: Stage = { name: "carry slips", opens: "example", numbers: [...CARRY_SLIPS] };
+/** 7 × 640 + 7 × 30 = 4690 part by part (Wave A, A2): each part, its columns (4 × 7 = 28, 6 × 7 + 2 = 44, 3 × 7 = 21) and the sum. */
+const EV_TWO_WORK = [4480, 210, 28, 44, 21] as const;
+/** 4 × 260 − 590 = 450 part by part: 4 × 260 = 1040 by its columns (6 × 4 = 24, 2 × 4 + 2 = 10), then 1040 − 590. */
+const EV_STORY_WORK = [1040, 24, 10, 14, 5] as const;
 
 export interface PracticeCase {
   /** The research id. */
@@ -458,9 +463,92 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [36] }, B_EXAMPLE, { name: "after help", opens: "help", numbers: [...B_WORK, 24] }], firstNumbers: [36] },
     fakeScript: ["I got 36.", "I did 8 take away 2.", "12 take away 8 is 4.", "4 take away 2 is 2, so 24.", "Because I traded a ten.", "I wrote it."],
   },
-  ...PLACE_VALUE_PRACTICE,
+  // Wave C "other-topic" (src/lib/maya-teaching): lines of symmetry, 6 + 5 from code's table, with code's topic sentence.
+  // A die count has a one-digit answer, which a practice case cannot keep behind a stage; the gate runs it (OT1 to OT3).
+  {
+    id: "OT4",
+    title: "Lines of symmetry: adds 6 and 5 wrong",
+    fixture: "SHAPES",
+    persona: { name: "Ivy", age: 9, question: "How many lines of symmetry do a regular hexagon and a regular pentagon have in all?", knows: "You do not remember how many lines of symmetry each shape has until Maya tells you. Once you know the two numbers, you add them, but at first you make a slip and get 10.", behaviour: "Start by saying your answer is 10. Answer Maya's questions honestly, then follow her help." },
+    expected: "Say the shapes' lines of symmetry from code (6 and 5). Do not accept 10. Guide the addition 6 + 5 without giving 11 away, and accept 11 when the child says it.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [10] }, { name: "after help", opens: "help", numbers: [11] }], firstNumbers: [10] },
+    fakeScript: ["I got 10.", "6 plus 5 is 11, so I got 11.", "Because 6 and 5 make 11.", "I wrote it."],
+  },
+  {
+    id: "OT5",
+    title: "Lines of symmetry in the child's own words",
+    fixture: "SHAPES",
+    persona: { name: "Noor", age: 10, question: "How many lines of symmetry do a regular hexagon and a regular pentagon have in all?", knows: "You know a regular hexagon has 6 lines of symmetry and a regular pentagon has 5, and 6 + 5 = 11.", behaviour: "Start with your answer and the reason in your own words: the hexagon has 6, the pentagon has 5, so 11. Answer Maya's questions briefly." },
+    expected: "Acknowledge the child's right answer and reasons. Confirm once if needed, then accept 11. Do not teach the facts or the addition again as if they were new (J06).",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [6, 5, 11] }] },
+    fakeScript: ["The hexagon has 6 and the pentagon has 5, so I got 11.", "Because 6 and 5 make 11.", "I wrote it."],
+  },
   ...ONE_STEP_PRACTICE,
-  ...MISSING_NUMBER_CASES,
+  // Evaluate questions (Wave A, A2): a two-part expression, and a story's two operations.
+  {
+    id: "EV1",
+    title: "Works a two-part expression from left to right",
+    fixture: "EV_TWO",
+    persona: { name: "Maddie", age: 10, question: "What is 7 × 640 + 7 × 30?", knows: "You know your multiplication facts and how to multiply by a one-digit number. You think you always work from left to right, so you want to do 640 + 7 first and get 647. Once someone tells you to multiply first, you can do 7 × 640 = 4480 and 7 × 30 = 210, then 4480 + 210 = 4690.", behaviour: "Start by saying you did 640 + 7 first and got 647. Then follow Maya's help one part at a time." },
+    expected: "Do not accept 647. Say in code's words that multiplying comes before adding, then guide each part in order: 7 × 640, then 7 × 30, then the sum. Check each part the child gives. Do not give a part's result or the answer.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [647, 640, 7, 30] }, { name: "after help", opens: "help", numbers: [...EV_TWO_WORK, 4690] }], firstNumbers: [647, 640, 7] },
+    fakeScript: ["I did 640 plus 7 first. It's 647.", "Oh. 7 times 640 is 4480.", "7 times 30 is 210.", "I got 4690.", "Because I multiplied first.", "I wrote it."],
+  },
+  {
+    id: "EV2",
+    title: "Cannot start a two-step story",
+    fixture: "EV_STORY",
+    persona: { name: "Omar", age: 10, question: "A shop has 4 boxes with 260 beads in each. It sells 590 beads. How many beads does it have now?", knows: "You can multiply by a one-digit number and subtract with regrouping. You do not know which step to do first in a story with two steps. After you see an example, you do 4 × 260 = 1040 first, then 1040 − 590 = 450.", behaviour: "Start by saying you don't know how to start. Follow Maya's help one step at a time. After you have seen an example, try your own question." },
+    expected: "Show the easier example of the same shape (a product, then a subtraction), then return to the story for a child attempt. Guide 4 × 260 first, then 1040 − 590, and check each part. Do not reveal 450.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [4, 260, 590] }, { name: "easier example", opens: "example", numbers: exampleNumbers("EV_STORY") }, { name: "after help", opens: "help", numbers: [...EV_STORY_WORK, 450] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    fakeScript: ["I don't know how to start.", "okay", "okay", "4 times 260 is 1040.", "I got 450.", "Because I did the boxes first.", "I wrote it."],
+  },
+  // C3b other-topic claims (src/lib/maya-teaching/topic-derivers.ts): the scale's evaluate, then A4's compare and word.
+  {
+    id: "OTC1",
+    title: "Scale claim: cannot start",
+    fixture: "SCALE",
+    persona: { name: "Lena", age: 9, question: "A scale's marks are 50, 60, 70. True or false: 2 intervals above 60 is 80.", knows: "You can multiply and add small numbers, but you do not know what an interval on a scale is until Maya tells you.", behaviour: "Start by saying you do not know how to start. Follow Maya's help one step at a time, then say your word: true or false." },
+    expected: "Say code's topic sentence (the marks go up by 10). Guide 2 × 10, then 60 + 20, then the compare with 80. Accept the circled word only in the child's own words. Never give the word.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [3, 9, 12, 13] }, { name: "after help", opens: "help", numbers: [10, 20, 80] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    fakeScript: ["I don't know how to start.", "okay", "2 times 10 is 20.", "60 plus 20 is 80.", "It's true.", "Because 2 times 10 is 20.", "I circled it."],
+  },
+  // C3c clock times (src/lib/maya/clock-lines.ts): time-add counted on to the next hour, then the minutes left.
+  {
+    id: "OTT1",
+    title: "Clock time: counts the minutes wrong at first",
+    fixture: "CLOCK2",
+    persona: { name: "Kofi", age: 9, question: "What time is 50 minutes after 4:25?", knows: "You can tell time and add minutes, but you forget that the hour changes at 60 minutes. At first you say 4:75.", behaviour: "Start by saying your answer is 4:75. Answer Maya's questions honestly, then follow her help and say the time." },
+    expected: "Do not accept 4:75. Say code's topic sentence (count on to 5:00 first). Guide the count to the next hour (35 minutes), then the 15 minutes left, and accept 5:15 only in the child's own words.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [75] }, { name: "after help", opens: "help", numbers: [35, 60, 15, 50, 25], values: [{ type: "time", hours: 5, minutes: 15, period: null }, { type: "time", hours: 5, minutes: 0, period: null }] }], firstNumbers: [75] },
+    fakeScript: ["I got 4:75.", "25 plus 35 is 60, so 35 minutes to 5:00.", "I got 5:15.", "Because 35 and 15 make 50.", "I wrote it."],
+  },
+  // C3c compare claims: an area claim, "greater" (src/lib/maya-teaching/topic-claim.ts).
+  {
+    id: "OTK1",
+    title: "Area claim: cannot start",
+    fixture: "AREA_TF",
+    persona: { name: "Rosa", age: 9, question: "True or false: 6 by 3 squares is bigger than 4 by 4 squares.", knows: "You know your multiplication facts, but you do not know that a rectangle of squares is its sides multiplied until Maya shows you.", behaviour: "Start by saying you do not know how to start. Follow Maya's help one step at a time, then say your word: true or false." },
+    expected: "Say code's topic sentence (4 by 4 squares is 16 squares). Guide 6 × 3, then the compare with 16. Accept the circled word only in the child's own words. Never give the word.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [2, 3, 4] }, { name: "after help", opens: "help", numbers: [16, 18] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    fakeScript: ["I don't know how to start.", "okay", "6 times 3 is 18.", "It's true.", "Because 18 is more than 16.", "I circled it."],
+  },
+  ...PLACE_VALUE_PRACTICE,
+  ...PLACE_PARTS_PRACTICE,
   ...SPOT_PRACTICE,
   // Claim questions (A4, src/lib/maya/claim.ts): the answer is the circled word, which code reads.
   {
@@ -496,6 +584,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "after help", opens: "help", numbers: [13, 8, 5.83, 5.93, 3.45, 2.38] }] },
     fakeScript: ["It's true.", "5 plus 8 is 13.", "4 plus 3 plus 1 is 8.", "3 plus 2 is 5.", "5.83.", "It's false, because 5.83 is not 5.93.", "I added the columns: 5.83.", "I circled it."],
   },
+  ...MISSING_NUMBER_CASES,
 ];
 
 /** How many times each case runs (research, section 8: three recorded repetitions). */

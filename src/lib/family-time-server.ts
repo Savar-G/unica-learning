@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { familyTime, familyWhen, familyZone, familyProvince, type RetryTime } from "@/lib/family-time";
+import { familyTime, familyWhen, familyZone, familyProvince, type FamilyZone, type RetryTime } from "@/lib/family-time";
 
 /** Read with the parent's session. Return text, so the device cannot change the family zone or its rules. */
 export async function familyRetryTime(db: SupabaseClient<Database>, at: number): Promise<RetryTime> {
@@ -11,6 +11,16 @@ export async function familyRetryTime(db: SupabaseClient<Database>, at: number):
   ]);
   const timeZone = familyZone({ timeZone: data?.time_zone, postal: data?.postal, province });
   return { retryWhen: familyWhen(at, timeZone), retryTime: familyTime(at, timeZone) };
+}
+
+/** One family's zone by the shared rule, read with the server key for a checked parent (scan results, #715). */
+export async function loadFamilyZone(db: SupabaseClient<Database>, parentId: string): Promise<FamilyZone> {
+  const [{ data, error }, province] = await Promise.all([
+    db.from("parents").select("postal, time_zone").eq("id", parentId).maybeSingle(),
+    loadFamilyProvince(db, parentId),
+  ]);
+  if (error) throw new Error(`family zone load: ${error.message}`);
+  return familyZone({ timeZone: data?.time_zone, postal: data?.postal, province });
 }
 
 /** Session reads use RLS. Admin report reads use the existing admin RPC. Both use the same ordering. */

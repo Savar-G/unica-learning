@@ -20,6 +20,7 @@ import {
 } from "@/lib/maya";
 import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
+import { evaluateModelSteps } from "@/lib/maya/evaluate";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
 export const PROMPT_VERSION = "maya-text-chat-29";
@@ -88,8 +89,9 @@ export function modelInput(session: Session, repair: ModelInput["repair"] = null
       ? {
           text: pkg.text,
           answer: valueText(pkg.answer.value),
-          // A missing number's framing and zeros steps are Maya's to say, not steps to guide (missing-number.ts).
-          steps: pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "missing-frame" && s.kind !== "drop-zeros")
+          // An evaluate question's steps are its parts and each part's columns (src/lib/maya/evaluate.ts). A missing
+          // number's framing and zeros steps are Maya's to say, not steps to guide (missing-number.ts).
+          steps: evaluateModelSteps(pkg) ?? pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "missing-frame" && s.kind !== "drop-zeros")
             .map((s) => ({ id: s.id, text: stepText(s, pkg.operation) })),
           easierExample: pkg.easierExample.text,
         }

@@ -159,13 +159,23 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 | MN2 | M_TRY (236 × ? = 1416) | Tries 7, then 5, then 6; each try multiplied out | solved |
 | MN3 | M_SUBTRACT (9000 − ? = 3000) | Adds to get 12000, then subtracts 9000 − 3000 | solved |
 | C37 | B (52 - 28) | Smaller from larger: 36 | solved |
-| PV1 | PVD (which digit of 53172, thousands) | Hesitant: asks which place is the thousands, guesses 5, then counts the places and finds 3 | solved |
-| PV2 | PVV (value of the ten thousands digit of 785243) | Says the digit 8 early, then 8000 (one zero too few), then 80000 | solved |
+| OT4 | SHAPES (lines of symmetry, 6 + 5) | Wave C "other-topic": a hexagon and a pentagon, first says 10 | solved |
+| OT5 | SHAPES (lines of symmetry, 6 + 5) | Wave C "other-topic": gives 6, 5 and 11 in their own words; no re-teaching (J06) | solved |
+| OTC1 | SCALE (60 + 2 × 10 against 80) | C3b: a scale claim; cannot start, follows the help, then says true | solved |
+| OTT1 | CLOCK2 (50 minutes after 4:25) | C3c: a clock time; says 4:75 first, then counts on to 5:00 and the 15 minutes left | solved |
+| OTK1 | AREA_TF (6 × 3 against 4 × 4) | C3c: an area claim; cannot start, follows the help, then says true | solved |
 | W5 | W5 (10000 − 3615, a workbook story through the session adapter) | Stuck on the zeros; regroups across them column by column | solved |
 | W3 | W3 (284 × 7, an "Each … has" workbook story through the session adapter) | Drops the carries: 1468 | solved |
+| EV1 | EV_TWO (7 × 640 + 7 × 30) | Works from left to right: 640 + 7 = 647, then each part after help (Wave A, A2) | solved |
+| EV2 | EV_STORY (4 × 260 − 590) | Cannot start a two-step story; follows the same-shape easier example, then each part | solved |
 | CL01 | CLAIM_TF (True or false: 6 × 8 = 48.) | Knows the fact and says it's true | solved |
 | CL02 | CLAIM_GT (Is 4 × 360 greater than 1436?) | Not sure; works 360 × 4 with help, then says yes | solved |
 | CL03 | CLAIM_DEC (True or false: 3.45 + 2.38 = 5.93.) | Says true at first; adds the columns with help, then says false | solved |
+| PV1 | PVD (which digit of 53172, thousands) | Hesitant: asks which place is the thousands, guesses 5, then counts the places and finds 3 | solved |
+| PV2 | PVV (value of the ten thousands digit of 785243) | Says the digit 8 early, then 8000 (one zero too few), then 80000 | solved |
+| PV4 | PVC (compare the thousands and hundreds digits of 38472) | Finds both digits, says false (reads it the wrong way round), then compares 8 and 4 and says true | solved |
+| PV5 | PVB (5 wholes and 8 tenths as a decimal) | Says 5.08 (tenths as hundredths), then 5.8 | solved |
+| PV6 | PVSUM (the thousands value plus the tens value of 87346) | Adds the digits (11), then finds 7000 and 40 and says 7040 | solved |
 | SE1 | SPOT_MUL (Spot the error: 7 × 640, answer given 448) | Says the answer given is right; works 7 × 640 with help, then says it is wrong and should be 4480 | solved |
 | SE2 | SPOT_MISS (Spot the error: 4 × ? = 680, answer given 17) | Asks why to divide; divides 680 by 4 with help, then says 170, so the answer given is wrong | solved |
 | SE3 | SPOT_PVV (Spot the error: the value of the ten thousands digit of 46213, answer given 4000) | Says the digit 4 early, then that 4000 is right; corrects it to 40000 | solved |

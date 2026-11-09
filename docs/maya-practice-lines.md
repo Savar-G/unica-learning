@@ -121,6 +121,26 @@ These are the scoped additions and replacements on the chat repair branch. Revie
 | held.hello.0 | Hi, I'm Maya, an AI. |
 | held.next.0 | Want to pick another question on this page? |
 
+## Other-topic questions (Wave C, #731), pending approval
+
+The topic sentence (code's facts, `src/lib/maya/topic-frame.ts`) and the honest close (lessons from review 10, controller decision (a)). Values in braces come from the checked question package; `{frame}` is the topic sentence.
+
+| Id | Wordings, pending approval | Example |
+|---|---|---|
+| topic sentence, die | From 1 to {last}, odd and even take turns. So half are {kind}. | From 1 to 8, odd and even take turns. So half are odd. |
+| topic sentence, symmetry | {Shape} has {n} lines of symmetry. {Shape} has {m}. | A rectangle that is not a square has 2 lines of symmetry. An isosceles triangle has 1. |
+| topic sentence, perimeter | Add one length and one width, then double it. | (the same) |
+| `question.framed#0` to `#4` | {frame} Our question is {expr}. / {frame} So our question is {expr}. / {frame} So we work on {expr}. / {frame} So this one is {expr}. / {frame} Here's our question: {expr}. | From 1 to 8, odd and even take turns. So half are odd. Our question is 8 ÷ 2. |
+| `assess.framed#0` to `#4` | {frame} What did you try for {expr}? / {frame} How did you start {expr}? / {frame} What have you done on {expr}? / {frame} What did you do for {expr}? / {frame} How did you begin {expr}? | A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. How did you start 6 + 5? |
+| `example.framed#0` to `#4` | Easier one. {frame} It is {expr}. / A smaller one. {frame} It is {expr}. / An easier one. {frame} It is {expr}. / Smaller one first. {frame} It is {expr}. / Warm-up. {frame} It is {expr}. | Easier one. From 1 to 6, odd and even take turns. So half are odd. It is 6 ÷ 2. |
+| `close.topic#0` | This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up to help. | (no numbers) |
+| `close.topic#1` | This is a hard one. It's fine to stop here. You can ask a grown-up to try it with you. | |
+| `close.topic#2` | This one is hard. It's okay to stop for now. Try the easier one on your paper. | |
+| `close.topic#3` | That was a hard one, and stopping is okay. Ask a grown-up to look at it with you. | |
+| `close.topic#4` | This question is hard. It's fine to stop. Try the smaller one on paper first. | |
+
+The honest close is said only for an other-topic question, after the easier example, when the child still only asks for help. It holds no number, so it gives nothing of the answer away. The call records the stuck step as a learning event (`result: blank`, `stuckStep`). Maya must say this line: a close with only a goodbye ("Take care!") is refused, and code's fallback says the line. The call ends as the child stopping, also when it comes after a confirm.
+
 ## Claim questions (A4, #737), 2026-11-08
 
 Status: pending Savar (D-202). New wordings for true/false and yes/no claim questions (`src/lib/maya/claim.ts`, `CLAIM_TEMPLATES`). Values in braces come from the checked package: `{expr}` the operation Maya works ("870 × 6"), `{printed}` the product as printed ("6 × 870"), `{shown}` the page's number, `{value}` the result, `{word}` the word to circle, `{first}` and `{second}` the two printed words, `{heard}` the word the child said, `{ask}` the claim's question ("Is 870 × 6 greater than 5226? Circle yes or no.", or for an equal claim "Is the sentence on your page true or false?"), `{compare}` how the two numbers compare ("5220 is less than 5226."), `{show}` a worked example step.
@@ -184,6 +204,11 @@ The honest close (`close.honest`, controller decision (a) on #735) is new: after
 | `answer.claim#2` | No line at this id. | You got it! {expr} = {value}. It's {word}. |
 | `answer.claim#3` | No line at this id. | Well done! {expr} = {value}. You circle {word}. |
 | `answer.claim#4` | No line at this id. | Exactly! {expr} = {value}. The answer is {word}. |
+| `answer.give.claim#0` | No line at this id. | {compare} So the answer is {word}. Please circle {word}. |
+| `answer.give.claim#1` | No line at this id. | {compare} So it's {word}. Can you circle {word}? |
+| `answer.give.claim#2` | No line at this id. | {compare} That means {word}. Please circle {word} on your page. |
+| `answer.give.claim#3` | No line at this id. | {compare} So we circle {word}. Can you circle it? |
+| `answer.give.claim#4` | No line at this id. | {compare} The answer is {word}. Now circle {word}. |
 | `write.claim#0` | No line at this id. | Please circle {word} on your page. |
 | `write.claim#1` | No line at this id. | Can you circle {word} on your page? |
 | `write.claim#2` | No line at this id. | Now circle {word} on your page. |
@@ -209,5 +234,24 @@ The honest close (`close.honest`, controller decision (a) on #735) is new: after
 | `confirm.claim#2` | No line at this id. | Which one is it: {first} or {second}? |
 | `confirm.claim#3` | No line at this id. | Tell me one word: {first} or {second}? |
 | `confirm.claim#4` | No line at this id. | Which word is your answer: {first} or {second}? |
+
+## Other-topic questions, C3c (clock times and compare claims), pending approval
+
+| Id | Wordings, pending approval | Example |
+|---|---|---|
+| topic sentence, clock (two counts) | First count on to the next hour, {next}. Then count the minutes left. | First count on to the next hour, 7:00. Then count the minutes left. |
+| topic sentence, clock (one count) | The hour stays {h}. Count on the minutes. | The hour stays 9. Count on the minutes. |
+| `point.count.hour#0` to `#4` | Start at {from}. First count on to {to}, the next hour. / Begin at {from}. Count on to the next hour, {to}. / ... | Start at 6:13. First count on to 7:00, the next hour. |
+| `operation.count.hour#0` to `#4` | How many minutes from {from} to {to}? / ... | How many minutes from 6:13 to 7:00? |
+| `show.count.hour#0` to `#4` | From {from} to {to} is {minutes} minutes. / ... | From 6:13 to 7:00 is 47 minutes. |
+| `point.count.rest#0` to `#4` | We used {used} of the {total} minutes. So {left} minutes are left. / ... | We used 47 of the 50 minutes. So 3 minutes are left. |
+| `operation.count.rest#0` to `#4` | What time is {left} minutes after {from}? / ... | What time is 3 minutes after 7:00? |
+| `point.count.one#0` to `#4` | Start at {from}. The minutes go up by {minutes}. / ... | Start at 9:00. The minutes go up by 40. |
+| `operation.count.one#0` to `#4` | The minutes start at {start}. Add {minutes}. What time is it? / Work out {start} + {minutes}. What time does the clock show? / {start} + {minutes} minutes past {hour}. What time is that? / Add {minutes} to the {start} minutes. What time do you get? / Count on {minutes} minutes from {from}. What time is it? (review of #742, P3-b: it asks for the time, the only answer a one count credits) | The minutes start at 0. Add 40. What time is it? |
+| topic sentence, marbles | Red is more likely only if there are more red marbles than blue and green together. | (the same) |
+| topic sentence, area | {c} by {d} squares is {area} squares. Bigger means more squares. | 4 by 2 squares is 8 squares. Bigger means more squares. |
+| claim ask, more or less (true/false) | Is {expr} {greater or less} than {shown}? True or false? | Is 5 + 5 less than 1? True or false? |
+
+Every wording is in `src/lib/maya/clock-lines.ts` (`CLOCK_TEMPLATES`), `src/lib/maya/topic-frame.ts` and `src/lib/maya/claim.ts`.
 
 Review round 3 (#737 at d3aaff46) adds no wording. In a 25-word turn, the claim's result may now be acknowledged with the existing `check.right_step.plain` wordings, with "the result" as `{where}` ("Good, the result is done.", "That's right. The result is done."), when its equation does not fit beside the claim's question.

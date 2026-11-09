@@ -11,7 +11,10 @@ import { tentative, context, bypasses, confirmationBypasses } from "./scope-case
 import { FIXTURES } from "./fixtures";
 import { PLACE_VALUE_BEHAVIOURS } from "./place-value-cases";
 import { SPOT_BEHAVIOURS } from "./spot-error-cases";
+import { PLACE_PARTS_BEHAVIOURS } from "./place-value-parts-cases";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
+import { C3C_REVIEW_BEHAVIOURS } from "./c3c-review-cases";
+import { C3B_REVIEW_BEHAVIOURS } from "./c3b-review-cases";
 import { MISSING_NUMBER_BEHAVIOURS } from "./missing-number-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
@@ -26,16 +29,31 @@ const solvedEnd = (understanding: "evidence_observed" | "uncertain" = "uncertain
 const OPEN = "open" as const;
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
 const num = (value: number) => ({ type: "number" as const, value });
+const clock = (hours: number, minutes: number) => ({ type: "time" as const, hours, minutes, period: null });
 /** Exact approved variants for the required template, filled from the checked fixture or the child's fraction. */
 const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.filter((line) => line.key === key).flatMap((line) => line.texts);
 const fractionLines = packageLines(FIXTURES.D as OperationPackage);
 const simplestLines = packageLines(FIXTURES.D_SIMPLEST as OperationPackage);
+const dieLines = packageLines(FIXTURES.DIE as OperationPackage);
+const die12Lines = packageLines(FIXTURES.DIE12 as OperationPackage);
+const shapeLines = packageLines(FIXTURES.SHAPES as OperationPackage);
+/** Evaluate (Wave A, A2): the acknowledgement of part 1, part 2's question, and why part 1 comes first, as code fills them. */
+const evaluateLines = packageLines(FIXTURES.EV_TWO as OperationPackage);
+const partLine = (id: string, line: string) => evaluateLines.help(id).filter((o) => o.line === line).flatMap((o) => o.texts);
+const PART1_RIGHT = evaluateLines.rightStep("e1").flatMap((o) => o.texts);
+const PART2_ASK = partLine("e2.r1-ones", "step.invite");
+const PART1_WHY = partLine("e1.r1-ones", "step.order");
+/** The first column's H1 line, led by which part it is for ("First, multiply. Look at ..."). */
+const PART1_POINT = partLine("e1.r1-ones", "step.point");
 /** A claim question's lines as its session teaches them (claim.ts). */
 const claimLinesOf = (id: "CLAIM_GT" | "CLAIM_WIDE") => packageLines(claimView(FIXTURES[id] as OperationPackage));
 const gtLines = claimLinesOf("CLAIM_GT");
 const wideLines = claimLinesOf("CLAIM_WIDE");
 /** The honest close's approved wordings (claim.ts, pending Savar's approval under D-202). */
 const TEMPLATES_CLOSE_HONEST = [...CLAIM_TEMPLATES["close.honest"]];
+/** The given word of a claim (D-199), each wording with the fixture's values. */
+const giveOf = (id: "CLAIM_TF" | "CLAIM_GT") => packageLines(claimView(FIXTURES[id] as OperationPackage)).answerGive()[0]?.texts ?? [];
+const tfGive = giveOf("CLAIM_TF");
 /** "My mom said 1440.": the model proposes the confirm; code refuses it, and the yes after it credits nothing (#737 P1). */
 const otherSpeaker = (id: string, fixture: "CLAIM_GT" | "CLAIM_DEC", said: string, heard: string, title: string): Behaviour => ({
   id, title, fixture, status: "passing",
@@ -223,6 +241,470 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved" }, counts: { confirmations: 1 } },
   },
 
+  // Wave C "other-topic" (src/lib/maya-teaching, topic-frame.ts): a die count taught as 8 ÷ 2 and lines of symmetry as
+  // 6 + 5, each with code's topic sentence. OT1 to OT5.
+  {
+    id: "OT1", title: "Die count, cannot start: the framed easier example (6 ÷ 2), then the question", fixture: "DIE", status: "passing",
+    steps: [
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }, {}, {}]),
+      okay,
+      child("8 divided by 2 is 4.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "worked_example" },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(dieLines.exampleIntro(), "example.framed")] }],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "OT2", title: "Die count in the child's own words at the opening: one confirm, then accepted, not taught again (J06)", fixture: "DIE", status: "passing",
+    steps: [
+      child("They take turns, so half of 8. That's 4.", { start: "has_work", answers: [[4, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "4" } }]),
+      child("Yes.", { answers: [[4, "result", "right"]] }),
+      child("Because 2, 4, 6 and 8 are even.", undefined, [{ act: "ask_write", understanding: "evidence_observed" }]),
+      wroteIt,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", highestHint: null },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { confirmations: 1, fallbacks: 0 },
+      never: ["example_step", "guide"],
+    },
+  },
+  {
+    id: "OT3", title: "Die count, 'why divide by 2?': answered with code's topic sentence, then solved", fixture: "DIE", status: "passing",
+    steps: [
+      child("Why do we divide by 2?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("Oh. Then it's 4.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(dieLines.question(), "question.framed")] }],
+    },
+  },
+  {
+    id: "OT4", title: "Lines of symmetry, says 10: not accepted; guided, then 11", fixture: "SHAPES", status: "passing",
+    steps: [
+      child("10.", { start: "has_work", answers: [[10, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("6 plus 5 is 11.", { answers: [[11, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
+  {
+    id: "OT5", title: "Lines of symmetry from the facts in the child's own words: one confirm, then accepted, no step repeated (J06)", fixture: "SHAPES", status: "passing",
+    steps: [
+      child("The hexagon has 6 and the pentagon has 5, so 11.", { start: "has_work", answers: [[11, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "11" } }]),
+      child("Yes.", { answers: [[11, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { confirmations: 1, fallbacks: 0 },
+      never: ["example_step", "guide"],
+    },
+  },
+  // Lessons from review 1 and 2: the topic sentence comes with the first step line when the opening did not say it (a
+  // hello-only opening, as a workbook call's fixed opening), and a child's counted numbers stay on topic.
+  {
+    id: "OT6", title: "Die count, 'I'm stuck.' after a hello-only opening: the first guide says the topic sentence, then solved", fixture: "DIE", status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("8 divided by 2 is 4.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(dieLines.question(), "question.framed")] }],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "OT7", title: "Die count by counting in a full sentence ('2, 4, 6 and 8 are even. That's 4.'): on topic, confirmed once, accepted", fixture: "DIE", status: "passing",
+    steps: [
+      child("2, 4, 6 and 8 are even. That's 4.", { start: "has_work", answers: [[4, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "4" } }]),
+      child("Yes.", { answers: [[4, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { confirmations: 1, fallbacks: 0 },
+      never: ["redirect", "guide", "example_step"],
+    },
+  },
+  {
+    id: "OT8", title: "Lines of symmetry, 'I'm stuck.' after a hello-only opening: the first guide says the facts, then '6 plus 5 is 11.'", fixture: "SHAPES", status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("6 plus 5 is 11.", { answers: [[11, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(shapeLines.question(), "question.framed")] }],
+      counts: { refusals: 0, fallbacks: 0 },
+      never: ["redirect"],
+    },
+  },
+  // Review of #731 (P1): after a hello-only opening the topic sentence is still owed, but a first turn with work in it
+  // gets the normal guide ("not yet", or the right step acknowledged); the sentence comes on the next help-only turn.
+  {
+    id: "OT9", title: "Die 12 at grade 3, says 5 after a hello-only opening: not yet, then the topic sentence on 'I'm stuck.', then solved", fixture: "DIE12", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("5.", { start: "has_work", answers: [[5, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", undefined, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("12 divided by 2 is 6.", { answers: [[6, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 2, lines: [variants(packageLines(FIXTURES.DIE12 as OperationPackage).question(), "question.framed")] }],
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "OT10", title: "Die 12 at grade 3, a right first step after a hello-only opening ('1 divided by 2 is 0.'): acknowledged in code's line, with no fallback (J06)", fixture: "DIE12", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("1 divided by 2 is 0.", { start: "has_work", answers: [[0, "tens", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("12 divided by 2 is 6.", { answers: [[6, "ones", "right"], [6, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      // Re-review of #731 (P3): the acknowledgement itself reaches the child, not a fallback that asks about the tens again.
+      outputs: [{ mayaTurn: 1, lines: [variants(die12Lines.rightStep("tens"), "check.right_step"), variants(die12Lines.help("ones"), "step.invite")] }],
+      counts: { fallbacks: 0 },
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "OT11", title: "Longest shape names at grade 3, says 4 after a hello-only opening: not yet, then '2 plus 1 is 3.'", fixture: "SHAPES_LONG", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("4.", { start: "has_work", answers: [[4, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("2 plus 1 is 3.", { answers: [[3, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      never: ["redirect"],
+    },
+  },
+  {
+    id: "OT12", title: "Longest shape names at grade 3, the right sum first after a hello-only opening ('2 plus 1 is 3.'): accepted, not taught again (J06)", fixture: "SHAPES_LONG", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("2 plus 1 is 3.", { start: "has_work", answers: [[3, "result", "right"]] }, [{ act: "accept_answer" }]),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      never: ["guide", "example_step", "redirect"],
+    },
+  },
+  // C3b: other-topic claims (scale, money, minute hand) through A4's claim session, with code's topic sentence.
+  {
+    id: "OTC1", title: "Scale claim in full sentences: '2 times 10 is 20.', '60 plus 20 is 80.', then 'It's true.'", fixture: "SCALE", status: "passing",
+    steps: [
+      child("2 times 10 is 20.", { start: "has_work", answers: [[20, "e1", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("60 plus 20 is 80.", { answers: [[80, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer", "example_step"] },
+  },
+  {
+    id: "OTC2", title: "Scale claim in the child's own words at the opening ('It's true, because 60 plus 20 is 80.'): accepted, not taught again (J06)", fixture: "SCALE", status: "passing",
+    steps: [
+      child("It's true, because 60 plus 20 is 80.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Because each interval is 10.", undefined, [{ act: "ask_write", understanding: "evidence_observed" }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["guide", "example_step", "redirect"] },
+  },
+  {
+    id: "OTC3", title: "Scale claim, 'Why is each interval 10?': answered with code's topic sentence (J06), then solved", fixture: "SCALE", status: "passing",
+    steps: [
+      child("Why is each interval 10?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("It's true, because 60 plus 20 is 80.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved" }, acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(packageLines(claimView(FIXTURES.SCALE as OperationPackage)).question(), "question.claim.framed")] }],
+    },
+  },
+  {
+    id: "OTC4", title: "Scale claim at grade 3, 'I'm stuck.' after a hello-only opening: the first guide says the topic sentence", fixture: "SCALE", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("It's true, because 60 plus 20 is 80.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"], never: ["redirect"] },
+  },
+  {
+    id: "OTC5", title: "Money claim in the child's own words ('It's true, because 40 plus 0.75 is 40.75.'): accepted (J06)", fixture: "MONEY", status: "passing",
+    steps: [
+      child("It's true, because 40 plus 0.75 is 40.75.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["redirect", "guide"] },
+  },
+  {
+    id: "OTC6", title: "Minute-hand claim in a full sentence ('It's true, because 7 times 5 is 35 and 35 plus 3 is 38.'): accepted (J06)", fixture: "MINUTE", status: "passing",
+    steps: [
+      child("It's true, because 7 times 5 is 35 and 35 plus 3 is 38.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["redirect", "guide"] },
+  },
+  // C3c: clock times (time-add), counted on to the next hour and then the minutes left (clock-lines.ts); times read in
+  // their exact forms (clock-times.ts).
+  {
+    id: "OTT1", title: "Clock time in full sentences: '25 plus 35 is 60, so 35 minutes to 5:00.', then '15 more minutes is 5:15.'", fixture: "CLOCK2", status: "passing",
+    steps: [
+      child("25 plus 35 is 60, so 35 minutes to 5:00.", { start: "has_work", answers: [[35, "to-hour", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("15 more minutes is 5:15.", { answers: [[clock(5, 15), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer"] },
+  },
+  {
+    id: "OTT2", title: "Clock time in the child's own words at the opening ('It's 5:15, because ...'): accepted, not taught again (J06)", fixture: "CLOCK2", status: "passing",
+    steps: [
+      child("It's 5:15, because 35 minutes gets to 5:00 and 15 more is 5:15.", { start: "has_work", answers: [[clock(5, 15), "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "5:15" } }]),
+      child("Yes.", { answers: [[clock(5, 15), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, never: ["guide", "example_step", "redirect"] },
+  },
+  {
+    id: "OTT3", title: "Clock time, 'Why do I go to 5:00 first?': answered with code's topic sentence (J06), then solved", fixture: "CLOCK2", status: "passing",
+    steps: [
+      child("Why do I go to 5:00 first?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("Oh. It's 5:15.", { answers: [[clock(5, 15), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" }, acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(packageLines(FIXTURES.CLOCK2 as OperationPackage).question(), "question.framed")] }],
+    },
+  },
+  {
+    id: "OTT4", title: "Clock time at grade 3, 'I'm stuck.' after a hello-only opening: the first guide says the topic sentence", fixture: "CLOCK2", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("It's 5:15.", { answers: [[clock(5, 15), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(packageLines(FIXTURES.CLOCK2 as OperationPackage).question(), "question.framed")] }],
+    },
+  },
+  {
+    id: "OTT5", title: "Clock time said in words ('It's eight thirty-five.'): read as 8:35 and accepted", fixture: "CLOCK1", status: "passing",
+    steps: [
+      child("It's eight thirty-five.", { start: "has_work", answers: [[clock(8, 35), "result", "right"]] }, [{ act: "accept_answer" }]),
+      ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], counts: { confirmations: 0 } },
+  },
+  {
+    id: "OTT6", title: "Clock time, says 8:45: not accepted; guided, then 8:35", fixture: "CLOCK1", status: "passing",
+    steps: [
+      child("8:45.", { start: "has_work", answers: [[clock(8, 45), "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("0 plus 35 is 35, so 8:35.", { answers: [[clock(8, 35), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"], never: ["redirect"] },
+  },
+  // C3c: compare claims (marbles: "less"; area: "greater") through A4's claim session, with code's topic sentence.
+  {
+    id: "OTK1", title: "Marbles claim in full sentences: '3 plus 4 is 7.', then 'It's false.'", fixture: "MARBLES", status: "passing",
+    steps: [
+      child("3 plus 5 is 8.", { start: "has_work", answers: [[8, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's false.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer", "example_step"] },
+  },
+  {
+    id: "OTK2", title: "Marbles claim in the child's own words at the opening: accepted, not taught again (J06)", fixture: "MARBLES", status: "passing",
+    steps: [
+      child("It's false, because 3 plus 5 is 8 and 1 is less.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["guide", "example_step", "redirect"] },
+  },
+  {
+    id: "OTK3", title: "Marbles claim, 'Why do I add blue and green?': answered with code's topic sentence (J06), then solved", fixture: "MARBLES", status: "passing",
+    steps: [
+      child("Why do I add blue and green?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("It's false, because 3 plus 5 is 8.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved" }, acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(packageLines(claimView(FIXTURES.MARBLES as OperationPackage)).question(), "question.claim.framed")] }],
+    },
+  },
+  {
+    id: "OTK4", title: "Area claim at grade 3, 'I'm stuck.' after a hello-only opening: the topic sentence first, then '6 times 3 is 18.' and 'It's true.'", fixture: "AREA_TF", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("6 times 3 is 18.", { answers: [[18, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer"] },
+  },
+  {
+    id: "OTK5", title: "Area claim in the child's own words ('It's true, because 6 times 3 is 18 and 18 is more than 16.'): accepted (J06)", fixture: "AREA_TF", status: "passing",
+    steps: [
+      child("It's true, because 6 times 3 is 18 and 18 is more than 16.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["guide", "redirect"] },
+  },
+  // Review of #741 (P1a): the compare step is heard by code, whatever step the model's reading names for it.
+  {
+    id: "OTC7", title: "Scale claim, J06: '60 plus 20 is 80.' read by the model as part 2, not the compare: code hears the compare, Maya asks for the word, not 60 + 20 again", fixture: "SCALE", status: "passing",
+    steps: [
+      child("2 times 10 is 20.", { start: "has_work", answers: [[20, "e1", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("60 plus 20 is 80.", { answers: [[80, "e2", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"], counts: { hints: 0 }, never: ["redirect", "example_step", "give_answer"] },
+  },
+  {
+    id: "OTC8", title: "Minute-hand claim, J06: '35 plus 3 is 38.' read by the model as the ones of part 2: code hears the compare, Maya asks for the word", fixture: "MINUTE", status: "passing",
+    steps: [
+      child("7 times 5 is 35.", { start: "has_work", answers: [[35, "e1", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("35 plus 3 is 38.", { answers: [[38, "e2.ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"], counts: { hints: 0 }, never: ["redirect", "example_step", "give_answer"] },
+  },
+  {
+    id: "OTC9", title: "Scale claim: a hedged 'Maybe 80.' that the model reads as the compare gets no credit (lesson 6)", fixture: "SCALE", status: "passing",
+    steps: [
+      child("2 times 10 is 20.", { start: "has_work", answers: [[20, "e1", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Maybe 80.", { answers: [[80, "claim", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("60 plus 20 is 80.", { answers: [[80, "claim", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, refused: ["answer_not_committed"], never: ["redirect", "example_step", "give_answer"] },
+  },
+  {
+    id: "OT13", title: "Die 8 at grade 3: help only through the easier example, then 'Maybe 1?' gets a confirm, then 'I'm stuck.': the honest close is the child stopping, not a technical issue (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "example_step" }, {}, {}]),
+      child("Maybe 1?", { unclear: true }, [{ act: "confirm", heard: "1" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "confirm", "close"],
+      outputs: [{ mayaTurn: 8, lines: [variants(dieLines.closeHonest(), "close.topic")] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  // Re-review of #731 at b97f3741: one help-only test for the honest close (P1), its line always said (P2, lessons from
+  // review 10), and a question about the step is not work (P3).
+  {
+    id: "OT13b", title: "Die 8 at grade 3: as OT13, but the last turn is 'Help me.' (read as help): the honest close is still the child stopping (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "example_step" }, {}, {}]),
+      child("Maybe 1?", { unclear: true }, [{ act: "confirm", heard: "1" }]),
+      child("Help me.", { help: "more" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "confirm", "close"],
+      outputs: [{ mayaTurn: 8, lines: [variants(dieLines.closeHonest(), "close.topic")] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    id: "OT14", title: "Die 8 at grade 3: the honest close proposed as a goodbye alone (no line) is refused; Maya says the honest close line (re-review of #731, P2)", fixture: "DIE", grade: 3, status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 2 }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "example_step" }, {}, {}]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close", lines: [] }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
+      outputs: [{ mayaTurn: 7, lines: [variants(dieLines.closeHonest(), "close.topic")] }],
+      never: ["give_answer", "redirect"],
+    },
+  },
+  {
+    id: "OT15", title: "Die 12 at grade 3, 'Why do I divide by 2?' after a hello-only opening: a question is not work, so the guide says the topic sentence (re-review of #731, P3)", fixture: "DIE12", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      // The model picks the step's own help; the refusal offers only the topic sentence, and the model says it.
+      child("Why do I divide by 2?", { start: "has_work" }, [{ act: "guide", level: 0, repair: { act: "guide", level: 0, lines: ["question.problem"] } }]),
+      child("12 divided by 2 is 6.", { answers: [[6, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(die12Lines.question(), "question.framed")] }],
+      counts: { refusals: 1, fallbacks: 0 },
+      never: ["redirect"],
+    },
+  },
   {
     id: "C01",
     title: "Cannot start: the easier example, then back to the question",
@@ -2066,10 +2548,12 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
     },
   },
-  ...PLACE_VALUE_BEHAVIOURS,
-  ...SPOT_BEHAVIOURS,
   ...ONE_STEP_BEHAVIOURS,
-  ...MISSING_NUMBER_BEHAVIOURS,
+  ...C3C_REVIEW_BEHAVIOURS,
+  ...C3B_REVIEW_BEHAVIOURS,
+  ...PLACE_VALUE_BEHAVIOURS,
+  ...PLACE_PARTS_BEHAVIOURS,
+  ...SPOT_BEHAVIOURS,
 
   // Claim questions (A4, src/lib/maya/claim.ts): the circled word is the final answer, read by code.
   {
@@ -2558,6 +3042,381 @@ export const BEHAVIOURS: Behaviour[] = [
       never: ["give_answer", "accept_answer"],
     },
   },
+  // Review of #743 (the same reader): what comes before ", so" is the child's own work or nothing. Another person's
+  // number or word, or a copy, is no answer, whatever the model proposes: accept on every turn, and confirm in repair.
+  ...([["CLAIM_TF", "48", "true"], ["CLAIM_GT", "1440", "yes"]] as const).flatMap(([fixture, n, word], f) => [
+    `My mom said ${n}, so it's ${word}.`,
+    `I copied ${n}, so it's ${word}.`,
+    `My teacher said it's ${n}, so it's ${word}.`,
+    `Mom told me, so it's ${word}.`,
+    `I copied it, so it's ${word}.`,
+  ].map((said, i): Behaviour => ({
+    id: `CL${30 + f * 5 + i}`,
+    title: `'${said}' is no answer: an accept or a confirm the model proposes never credits it`,
+    fixture,
+    status: "passing",
+    steps: [
+      child(said, { start: "has_work" }, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Yes.", undefined, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["accepts_wrong_answer"],
+      never: ["accept_answer", "give_answer"],
+    },
+  }))),
+  // Review of #737 at fe7a5ff8, P1: the model down, "I'm stuck." 3 to 6 times, then the wrong committed word twice. The
+  // wrong word on a column's ladder must never leave code with no line (technical_issue): "Not quite." for the answer, the
+  // step's help, then the honest close, after the easier example.
+  ...([["CLAIM_GT", "It's no.", 3], ["CLAIM_TF", "It's false.", 3], ["CLAIM_DEC", "It's true.", 4], ["CLAIM_DIV", "It's yes.", 3]] as const).flatMap(([fixture, wrong, example], f) =>
+    [3, 4, 5, 6].map((stuck, i): Behaviour => {
+      const acts = [OPEN, ...Array.from({ length: example }, () => "example_step" as const), "try_target", "guide", "guide", "guide", "guide", "close"] as const;
+      return {
+        id: `CL${40 + f * 4 + i}`,
+        title: `The model down, 'I'm stuck.' ${stuck} times, then '${wrong}' twice: the easier example, then the honest close, never technical_issue`,
+        fixture,
+        status: "passing",
+        steps: [
+          ...Array.from({ length: stuck }, () => child("I'm stuck.", undefined, [{ throws: true }])),
+          child(wrong, undefined, [{ throws: true }]),
+          child(wrong, undefined, [{ throws: true }]),
+          ...Array.from({ length: 4 }, () => child("I'm stuck.", undefined, [{ throws: true }])),
+        ],
+        expect: {
+          outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+          acts: [...acts],
+          outputs: [{ mayaTurn: acts.length - 1, lines: [TEMPLATES_CLOSE_HONEST] }],
+          never: ["give_answer", "accept_answer"],
+        },
+      };
+    })),
+  // P2: the child's own work beside the word is checked against the true numbers: the order, equal or not, the result.
+  ...([
+    ["CLAIM_GT", "1440 is less than 1436, so it's yes."],
+    ["CLAIM_GT", "1436 is more than 1440, so it's yes."],
+    ["CLAIM_GT", "1440 is 1436, so it's yes."],
+    ["CLAIM_GT", "7, so it's yes."],
+    ["CLAIM_GT", "It's yes, 7."],
+    ["CLAIM_TF", "48 is not 48, so it's true."],
+    ["CLAIM_DEC", "5.83 is 5.93, so it's false."],
+  ] as const).map(([fixture, said], i): Behaviour => ({
+    id: `CL${56 + i}`,
+    title: `'${said}' is no answer: its work is not true, so an accept or a confirm the model proposes never credits it`,
+    fixture,
+    status: "passing",
+    steps: [
+      child(said, { start: "has_work" }, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Yes.", undefined, [{ act: "accept_answer", repair: { act: "confirm" } }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["accepts_wrong_answer"],
+      never: ["accept_answer", "give_answer"],
+    },
+  })),
+  // Evaluate questions (Wave A, A2): each part in the order of operations; the part's columns when the child is stuck.
+  {
+    id: "EV01",
+    title: "Evaluate, two parts: 7 × 640 + 7 × 30, part 1 given before Maya asks: acknowledged, never asked again, then part 2 (J06)",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("7 times 640 is 4480.", { start: "has_work", answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("210.", { answers: [[210, "e2", "right"]] }, [{ act: "guide", step: "e3.ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("4690.", { answers: [[4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+      // Exactly the acknowledgement and part 2's question: no line about part 1 again.
+      outputs: [{ mayaTurn: 1, lines: [PART1_RIGHT, PART2_ASK] }],
+    },
+  },
+  {
+    id: "EV02",
+    title: "Evaluate, stuck on a part: 7 × 30 in its own columns with the existing multiply lines and board columns",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("4480.", { start: "has_work", answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("I don't know how to do 7 times 30.", { help: "more" }, [{ act: "guide", step: "e2.r1-ones", level: 1, lines: ["step.point"], draw: ["part.columns.e2"] }]),
+      child("0.", { answers: [[0, "e2.r1-ones", "right"]] }, [{ act: "guide", step: "e2.r1-tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("3 times 7 is 21.", { answers: [[21, "e2.r1-tens", "right"]] }, [{ act: "guide", step: "e2.r1-hundreds", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("2.", { answers: [[2, "e2.r1-hundreds", "right"]] }, [{ act: "guide", step: "e3.ones", level: 0, lines: ["step.invite"] }]),
+      child("4690.", { answers: [[4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0, boardBatches: 1 },
+    },
+  },
+  {
+    id: "EV03",
+    title: "Evaluate, a missing number: 8 × ? = 7360 − 400, the other side first, then divide to find it",
+    fixture: "EV_MISSING",
+    status: "passing",
+    steps: [
+      child("7360 take away 400 is 6960.", { start: "has_work", answers: [[6960, "e1", "right"]] }, [{ act: "guide", step: "e2.thousands", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("870.", { answers: [[870, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "EV04",
+    title: "Evaluate, the wrong part first (640 + 7): why 7 × 640 comes first, from code's order (step.order)",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("I did 640 plus 7 first. It's 647.", { start: "has_work", answers: [[647, "e1", "wrong"]] }, [{ act: "guide", step: "e1.r1-ones", level: 1, lines: ["step.order"] }]),
+      child("7 times 640 is 4480.", { answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("7 times 30 is 210, so 4690.", { answers: [[210, "e2", "right"], [4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "EV05",
+    title: "Evaluate, a story's two operations (4 × 260 − 590): cannot start, the same-shape easier example, then the parts",
+    fixture: "EV_STORY",
+    status: "passing",
+    steps: [
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }, {}, {}]),
+      okay,
+      child("4 times 260 is 1040.", { answers: [[1040, "e1", "right"]] }, [{ act: "guide", step: "e2.ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("1040 take away 590 is 450.", { answers: [[450, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "worked_example" },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "EV06",
+    title: "Evaluate, a part's result said with doubt ('Is it 4480?'): one confirm, then acknowledged and on to the next part (J06)",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("Is it 4480?", { start: "has_work", unclear: true }, [{ act: "confirm", heard: "4480" }]),
+      child("yes", { answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("210.", { answers: [[210, "e2", "right"]] }, [{ act: "guide", step: "e3.ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("4690.", { answers: [[4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0, confirmations: 1 },
+      outputs: [{ mayaTurn: 2, lines: [PART1_RIGHT, PART2_ASK] }],
+    },
+  },
+  {
+    id: "EV07",
+    title: "Evaluate, 'Why do I multiply first?' on the current part: code's reason (step.order) before the part goes on (J06)",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("Why do I multiply first?", { start: "has_work", help: "more" }, [{ act: "guide", step: "e1.r1-ones", level: 1, lines: ["step.order"] }]),
+      child("7 times 640 is 4480.", { answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("7 times 30 is 210, so 4690.", { answers: [[210, "e2", "right"], [4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+      // The child's question gets code's answer, alone, before the part goes on.
+      outputs: [{ mayaTurn: 1, lines: [PART1_WHY] }],
+    },
+  },
+  {
+    id: "EV08",
+    title: "Evaluate, full sentences stay on the question: '7360 minus 400 is 6960.', then '6960 divided by 8 is 870.'",
+    fixture: "EV_MISSING",
+    status: "passing",
+    steps: [
+      child("7360 minus 400 is 6960.", { start: "has_work", answers: [[6960, "e1", "right"]] }, [{ act: "guide", step: "e2.thousands", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("6960 divided by 8 is 870.", { answers: [[870, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+      refused: [],
+    },
+  },
+  {
+    id: "EV09",
+    grade: 3,
+    title: "Evaluate at grade 3, 'I'm stuck.' first: the first help line names the part ('First, multiply.') before its column",
+    fixture: "EV_TWO",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", step: "e1.r1-ones", level: 1, lines: ["step.point"], draw: ["part.columns.e1"] }]),
+      child("7 times 640 is 4480.", { answers: [[4480, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("7 times 30 is 210, so 4690.", { answers: [[210, "e2", "right"], [4690, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0, boardBatches: 1 },
+      outputs: [{ mayaTurn: 1, lines: [PART1_POINT] }],
+    },
+  },
+  {
+    id: "EV10",
+    title: "Evaluate, a missing number checked in the printed equation: '8 times 870 is 6960, so 870.' stays on the question",
+    fixture: "EV_MISSING",
+    status: "passing",
+    steps: [
+      child("6960.", { start: "has_work", answers: [[6960, "e1", "right"]] }, [{ act: "guide", step: "e2.thousands", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("8 times 870 is 6960, so 870.", { answers: [[870, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "EV11",
+    title: "Evaluate, an addition part first: (47 + 38) × 3, '47 plus 38 is 85.' credits the part, not its ones column (J06)",
+    fixture: "EV_ADD_FIRST",
+    status: "passing",
+    steps: [
+      child("47 plus 38 is 85.", { start: "has_work", answers: [[85, "e1", "right"]] }, [{ act: "guide", step: "e2.r1-ones", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("85 times 3 is 255.", { answers: [[255, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  // Review of #737 at 6dce58ee, D-199 (Savar Brain P6, "give the answer after two misses"): two real committed wrong words
+  // once the work is done release the word, as two wrong final answers release a number. Help, doubt and questions are
+  // never misses (claimNotAMiss), and a child who only asks for help still gets the easier example, then the honest close.
+  {
+    id: "CL63",
+    title: "The work done, then 'It's false.' twice: Maya gives the word with code's comparison (D-199), then closes",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("6 times 8 is 48.", { start: "has_work", answers: [[48, "r1-ones", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("I write the 4.", { answers: [[4, "r1-tens", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("48.", { answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's false.", undefined, [{ act: "guide", level: 0 }]),
+      child("It's false.", undefined, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
+      outputs: [{ mayaTurn: 5, lines: [tfGive] }],
+      never: ["accept_answer"],
+    },
+  },
+  {
+    id: "CL64",
+    title: "The model down: the product, then 'It's no.' twice: code's fallback gives the word (D-199), never the honest close",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work" }, [{ throws: true }]),
+      child("It's no.", undefined, [{ throws: true }]),
+      child("It's no.", undefined, [{ throws: true }]),
+      child("Okay.", undefined, [{ throws: true }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "give_answer", "close"],
+      never: ["accept_answer"],
+    },
+  },
+  ...([
+    ["CL65", "I'm stuck, but it's no."],
+    ["CL66", "I think it's no."],
+    // Help beside a word, before or after it (round 9 of #732: the one fail-closed rule, committedTurn).
+    ["CL69", "Help, no."],
+    ["CL70", "No, help me."],
+  ] as const).map(([id, said]): Behaviour => ({
+    id,
+    title: `The product, then '${said}' twice: no miss (help or doubt), so a give_answer the model proposes is refused`,
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child(said, undefined, [{ act: "give_answer" }]),
+      child(said, undefined, [{ act: "give_answer" }]),
+      child("Can we stop now?", { stop: true }),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped" },
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "accept_answer"],
+    },
+  })),
+  {
+    id: "CL67",
+    title: "'It's no.', then 'I'm stuck, but it's no.', then 'It's no.': the help turn is no miss, so the word comes only after the second real one",
+    fixture: "CLAIM_GT",
+    status: "passing",
+    steps: [
+      child("360 times 4 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's no.", undefined, [{ act: "guide", level: 1 }]),
+      child("I'm stuck, but it's no.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 2 } }]),
+      child("It's no.", undefined, [{ act: "give_answer" }]),
+      child("Okay.", undefined, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given" },
+      acts: [OPEN, "guide", "guide", "guide", "give_answer", "close"],
+      refused: ["act_not_allowed"],
+      never: ["accept_answer"],
+    },
+  },
+  {
+    id: "CL68",
+    title: "Only 'I'm stuck.', the model asking to give the answer each turn: refused every time; the easier example, H1 to H3, then the honest close",
+    fixture: "CLAIM_TF",
+    status: "passing",
+    steps: [
+      child("I'm stuck.", { start: "no_start" }, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "try_target" } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 1 } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 2 } }]),
+      child("I'm stuck.", { help: "show" }, [{ act: "give_answer", repair: { act: "guide", level: 3 } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer" }]),
+    ],
+    expect: {
+      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "close"],
+      outputs: [{ mayaTurn: 8, lines: [TEMPLATES_CLOSE_HONEST] }],
+      refused: ["act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed"],
+      never: ["give_answer", "accept_answer"],
+    },
+  },
+  ...MISSING_NUMBER_BEHAVIOURS,
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */

@@ -16,15 +16,19 @@
 // child to circle it, never to write a number. Pure TypeScript: no clock, network or randomness.
 import { equivalent, operationText, type AnswerValue, type Operation, type OperationPackage, type WorkedStep } from "@/lib/question-package";
 import { claimExample, claimStep, readClaim, type Claim } from "@/lib/maya-teaching/claim";
+import { topicClaim } from "@/lib/maya-teaching/topic-claim";
+import { topicOwnWork } from "./topic-work";
 import type { Act, ChildAnswer } from "./proposal";
 import { confirmWordsOnly, plainNumber, wholeTurn, wholeYes, type AnswerRead } from "./numbers";
 import type { LineId, LineOffer, Slots } from "./lines";
 import { spotWordsAsClaim } from "./spot-words";
+import { spotStepHeard } from "./spot-error";
+import { placeClaim } from "./place-value-claim";
 
 /** The claim as a session holds it: read again from the teaching package's steps and item. */
 export interface SessionClaim {
   choices: readonly [string, string];
-  relation: "equal" | "greater";
+  relation: "equal" | "greater" | "less";
   value: number;
   shown: number;
   holds: boolean;
@@ -38,6 +42,8 @@ const choice = (value: string): AnswerValue => ({ type: "choice", value });
 /** The session's claim: its compare step, its answer word and the item's two printed words; null for any other package. */
 export function sessionClaim(pkg: OperationPackage | null): SessionClaim | null {
   if (!pkg) return null;
+  // B1b: a place-value compare is a claim about two digits (place-value-claim.ts); its word is read here as any claim's.
+  if (pkg.operation.kind === "place-value" && pkg.item?.format !== "spot-the-error") return placeClaim(pkg);
   const step = pkg.steps.find((s): s is ClaimStep => s.kind === "claim-compare");
   const region = pkg.item?.regions.find((r) => r.kind === "choice");
   if (!step || region?.kind !== "choice" || region.choices.length !== 2 || pkg.answer.value.type !== "choice") return null;
@@ -61,9 +67,11 @@ const isClaimItem = (pkg: OperationPackage) => pkg.item?.format === "circle" && 
  * taught as it is); a held reason for one code cannot read and check as a claim (fail closed: never taught as a number).
  */
 export function claimSessionPackage(pkg: OperationPackage): { pkg: OperationPackage } | { held: string } | null {
-  if (!isClaimItem(pkg)) return null;
+  // A package that is already a session claim (a place-value compare, B1b) is taught as it is.
+  if (!isClaimItem(pkg) || sessionClaim(pkg)) return null;
   const held = { held: "Maya cannot teach this circle question yet" };
-  const claim = readClaim(pkg, pkg.operation);
+  // A4's own closed forms first, then an "other-topic" claim (scale, minute hand, money: topic-claim.ts, C3b).
+  const claim = readClaim(pkg, pkg.operation) ?? topicClaim(pkg);
   if (!claim || !equivalent(pkg.answer.value, { type: "number", value: claim.value })) return held;
   const example = claimExample(claim, pkg);
   if (!example) return held;
@@ -97,8 +105,9 @@ export function claimView(pkg: OperationPackage): OperationPackage {
 
 /** The claim as Maya asks it: "Is 2 × 3 = 7 true or false?", "Is 2 × 3 greater than 5?", "Is 2 × 3 = 7 right?". */
 function claimSentence(c: Pick<SessionClaim, "choices" | "relation" | "shown">, expr: string): string {
-  if (c.choices[0] === "true") return `Is ${expr} = ${c.shown} true or false?`;
-  return c.relation === "greater" ? `Is ${expr} greater than ${c.shown}?` : `Is ${expr} = ${c.shown} right?`;
+  // A true/false claim of more or less (other-topic claims, C3c) asks the relation itself: "Is 5 × 3 greater than 8?".
+  if (c.choices[0] === "true") return c.relation === "equal" ? `Is ${expr} = ${c.shown} true or false?` : `Is ${expr} ${c.relation} than ${c.shown}? True or false?`;
+  return c.relation === "equal" ? `Is ${expr} = ${c.shown} right?` : `Is ${expr} ${c.relation} than ${c.shown}?`;
 }
 
 // ---------- Maya's lines ----------
@@ -152,6 +161,13 @@ export const CLAIM_TEMPLATES = {
     "Yes! {expr} = {value}. So you circle {word}.", "That's right: {expr} = {value}. You circle {word}.",
     "You got it! {expr} = {value}. It's {word}.", "Well done! {expr} = {value}. You circle {word}.", "Exactly! {expr} = {value}. The answer is {word}.",
   ],
+  // The word given after two real wrong words once the work is done (D-199, Savar Brain P6; pending Savar, D-202): code's
+  // comparison, the word, and the request to circle it.
+  "answer.give.claim": [
+    "{compare} So the answer is {word}. Please circle {word}.", "{compare} So it's {word}. Can you circle {word}?",
+    "{compare} That means {word}. Please circle {word} on your page.", "{compare} So we circle {word}. Can you circle it?",
+    "{compare} The answer is {word}. Now circle {word}.",
+  ],
   "write.claim": [
     "Please circle {word} on your page.", "Can you circle {word} on your page?", "Now circle {word} on your page.",
     "Go ahead and circle {word} on your paper.", "Circle {word} on your page, please.",
@@ -186,11 +202,13 @@ export type MakeOffer = (line: LineId, key: ClaimTemplateKey, vars: Record<strin
 
 /** "6800", "9.22". */
 const num = (n: number) => String(n);
+const capital = (w: string) => w[0].toUpperCase() + w.slice(1);
 
 /** The claim's question, ending with its two words: a bare word after it answers the claim. */
 function askOf(c: SessionClaim, expr: string): string {
   const [a, b] = c.choices;
-  return c.choices[0] === "true" ? `Is ${expr} = ${num(c.shown)} ${a} or ${b}?` : `${claimSentence(c, expr)} Circle ${a} or ${b}.`;
+  if (c.choices[0] === "true") return c.relation === "equal" ? `Is ${expr} = ${num(c.shown)} ${a} or ${b}?` : `Is ${expr} ${c.relation} than ${num(c.shown)}? ${capital(a)} or ${b}?`;
+  return `${claimSentence(c, expr)} Circle ${a} or ${b}.`;
 }
 
 /**
@@ -208,7 +226,8 @@ function targetAsk(c: SessionClaim, expr: string): string {
 function compareOf(c: Pick<SessionClaim, "relation" | "value" | "shown">): string {
   const [v, s] = [num(c.value), num(c.shown)];
   if (c.relation === "equal") return c.value === c.shown ? `${v} and ${s} are the same number.` : `${v} is not ${s}.`;
-  return c.value > c.shown ? `${v} is greater than ${s}.` : c.value === c.shown ? `${v} is the same as ${s}, not greater.` : `${v} is less than ${s}.`;
+  const same = c.value === c.shown ? `${v} is the same as ${s}, not ${c.relation}.` : null;
+  return same ?? (c.value > c.shown ? `${v} is greater than ${s}.` : `${v} is less than ${s}.`);
 }
 
 /**
@@ -249,6 +268,8 @@ export function claimLines(pkg: OperationPackage, offer: MakeOffer) {
       offer("step.operation", "compare.claim", vars, step("result", 2)),
     ],
     answerRight: (): LineOffer[] => [offer("answer.right", "answer.claim", vars, { slots: {}, board: `${expr} = ${num(c.value)}` })],
+    /** The word given (D-199): "5220 is less than 5226. So the answer is no. Please circle no." */
+    answerGive: (): LineOffer[] => [offer("answer.give", "answer.give.claim", vars)],
     writeAnswer: (): LineOffer[] => [offer("write.answer", "write.claim", vars)],
     writeYours: (): LineOffer[] => [offer("write.yours", "write.claim.yours", {})],
     which: (): LineOffer[] => [offer("confirm.claim", "confirm.claim", { first: c.choices[0], second: c.choices[1] })],
@@ -293,7 +314,6 @@ const COMMIT = /^(?:it'?s|it is|that'?s|that is|(?:the |my )?answer is|i say|i'?
 const FILLER = /^(?:(?:um+|uh+|oh|okay|ok|so|well),?\s+)+/;
 /** An explanation after the word: a reason ("because ...") or a sentence with a number ("No, 5220 is less."). */
 const REASON = /^(?:because|since|cause|cuz|as)\b/;
-const NEGATION = /\b(?:not|n't|isn'?t|less|smaller|fewer)\b/;
 
 /**
  * What a turn says about the claim's word: a committed word, a bare word (its confirm comes first), unclear (ask which
@@ -305,9 +325,11 @@ export type WordRead = { word: string; committed: boolean } | { unclear: true } 
  * Reads the circled word in a child's turn, by an allow-list over the whole turn. `choices`: the claim's two words. Only a
  * committed form ("It's true.", "I circle no.", "..., so it's false.") is an answer. A bare word ("True.", "No, 5220 is
  * less.") after any question of Maya's answers that question, never the claim (wave brief, controller rule 4): it is read
- * as not committed, and Maya says it back before it counts.
+ * as not committed, and Maya says it back before it counts. What comes before ", so" and the reason after the word must be
+ * the child's own work (`ownWork`, an allow-list): "My mom said 48, so it's true." and "It's true, because I copied it."
+ * are no answer (#737 and #743 reviews). With no `work`, only a word with nothing beside it counts (fail closed).
  */
-export function readClaimWord(text: string, choices: readonly [string, string]): WordRead {
+export function readClaimWord(text: string, choices: readonly [string, string], work: ClaimWork | null = null): WordRead {
   const t = text.toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, " ").trim();
   if (NO_ANSWER.test(t)) return null;
   const found = t.match(ANY_WORD) ?? [];
@@ -322,25 +344,95 @@ export function readClaimWord(text: string, choices: readonly [string, string]):
   if (HEDGE.test(body)) return { unclear: true };
   const word = words[0];
   const said = found[0] as string;
-  const affirmative = word === choices[0] && (word === "true" || word === "yes");
-  // The explanation after the word: none, a reason, or a sentence with a number; never another word or a negation of a "yes".
+  // The explanation after the word: none, or the child's own work (checked against the true numbers), after a reason word
+  // or not; never another word.
   const tailOk = (tail: string) => {
     const rest = tail.replace(/^[,.!;:]\s*/, "").trim();
     if (rest === "") return true;
     if (HAS_WORD.test(rest)) return false;
-    if (affirmative && NEGATION.test(rest)) return false;
-    return REASON.test(rest) || /\d/.test(rest);
+    return ownWork(rest.replace(REASON, "").trim(), work);
   };
   const committed = COMMIT.exec(body);
   if (committed) {
     const after = body.slice(committed[0].length);
     return after.startsWith(said) && tailOk(after.slice(said.length)) ? { word, committed: true } : null;
   }
-  // "..., so it's false.": a conclusion at the end, after an explanation with no claim word in it.
+  // "..., so it's false.": a conclusion at the end, after the child's own work (ownWork) with no claim word in it.
   const so = new RegExp(`^(.*?),?\\s+so\\s+(?:it'?s\\s+|it is\\s+|the answer is\\s+|i circle\\s+)?${said}$`).exec(body);
-  if (so && !HAS_WORD.test(so[1])) return { word, committed: true };
+  // The same check as a reason after the word, so the two forms agree.
+  if (so) return !HAS_WORD.test(so[1]) && ownWork(so[1], work) ? { word, committed: true } : null;
   if (body.startsWith(said) && tailOk(body.slice(said.length))) return { word, committed: false };
   return null;
+}
+
+/** What the child's own work on a claim is checked against: its result, the page's number and the operation worked. */
+export interface ClaimWork {
+  value: number;
+  shown: number;
+  operation: Operation;
+  spotPackage?: OperationPackage;
+}
+
+const workOf = (c: SessionClaim | null, pkg: OperationPackage | null): ClaimWork | null =>
+  c && pkg ? { value: c.value, shown: c.shown, operation: pkg.operation, ...(pkg.item?.format === "spot-the-error" ? { spotPackage: pkg } : {}) } : null;
+
+const MORE_WORDS = "more|greater|bigger|larger";
+const LESS_WORDS = "less|smaller|fewer";
+
+/**
+ * The child's own work beside a claim's word, by an allow-list over the whole text, each form checked against the true
+ * numbers (#737 and #743 reviews): nothing; the result alone ("1440"); the result sentence as the compare step hears it
+ * ("6 times 8 is 48", "I got 1440", claimStepHeard); the difference of the result and the page's number, larger first
+ * ("1440 minus 1436 is 4"); or the two compared, in their true order ("1440 is more than 1436", "1436 is less than 1440",
+ * "48 is 48" and "48 is the same as 48" only when they are equal, "5.83 is not 5.93" only when they differ, and "1440 is
+ * more" with the result first). Any other text (a speaker, a copy, "my mom said 48", "I copied it", a wrong comparison)
+ * is not.
+ */
+function ownWork(raw: string, work: ClaimWork | null): boolean {
+  const text = raw.replace(/[.!,;:]+$/, "").trim();
+  if (text === "") return true;
+  if (work === null) return false;
+  if (work.spotPackage && spotStepHeard({ pkg: work.spotPackage, text, uncertain: false, value: work.value, resultAsked: null, shown: false })) return true;
+  // A topic claim (C3b, C3c; topic-work.ts): an evaluate's own part, or pieces of own work joined by "and".
+  if (topicOwnWork(text, work.operation, (piece) => ownWork(piece, work))) return true;
+  const same = (x: number | null, y: number) => x !== null && equivalent({ type: "number", value: x }, { type: "number", value: y });
+  const bare = numberIn(text);
+  if (bare !== null) return same(bare, work.value);
+  if (claimStepHeard({ text, uncertain: false, operation: work.operation, value: work.value, resultAsked: null, shown: false })) return true;
+  // The two numbers named, in either order: [first, second] as the child said them, or null.
+  const pair = (a: string, b: string): [number, number] | null => {
+    const [x, y] = [numberIn(a), numberIn(b)];
+    if (x === null || y === null) return null;
+    return (same(x, work.value) && same(y, work.shown)) || (same(x, work.shown) && same(y, work.value)) ? [x, y] : null;
+  };
+  const t = text.toLowerCase();
+  const minus = /^(.+?)\s+(?:minus|take away|−|-)\s+(.+?)\s+(?:is|equals|makes|=)\s+(.+)$/.exec(t);
+  if (minus) {
+    const p = pair(minus[1], minus[2]);
+    return p !== null && p[0] >= p[1] && same(numberIn(minus[3]), p[0] - p[1]);
+  }
+  // "a is more than b", "a is less than b": the word must fit the true order.
+  const fits = (word: string, a: number, b: number) => (new RegExp(`^(?:${MORE_WORDS})$`).test(word) ? a > b : a < b);
+  const than = new RegExp(`^(.+?)\\s+is\\s+(${MORE_WORDS}|${LESS_WORDS})\\s+than\\s+(.+)$`).exec(t);
+  if (than) {
+    const p = pair(than[1], than[3]);
+    return p !== null && fits(than[2], p[0], p[1]);
+  }
+  // "1440 is more." or "1 is less.": either number, against the other.
+  const alone = new RegExp(`^(.+?)\\s+is\\s+(${MORE_WORDS}|${LESS_WORDS})$`).exec(t);
+  if (alone) return (same(numberIn(alone[1]), work.value) && fits(alone[2], work.value, work.shown)) ||
+    (same(numberIn(alone[1]), work.shown) && fits(alone[2], work.shown, work.value));
+  const not = /^(.+?)\s+is\s+not\s+(.+)$/.exec(t);
+  if (not) {
+    const p = pair(not[1], not[2]);
+    return p !== null && !same(p[0], p[1]);
+  }
+  const equal = /^(.+?)\s+is\s+(?:the same as\s+)?(.+)$/.exec(t);
+  if (equal) {
+    const p = pair(equal[1], equal[2]);
+    return p !== null && same(p[0], p[1]);
+  }
+  return false;
 }
 
 /** A plain yes, the whole turn: the answer to Maya's "You said no. Is no the word you circle?". */
@@ -373,7 +465,7 @@ function wordIn(t: ClaimTurn): WordRead {
   if (t.wordAsked !== null && !t.heardAsked && c.choices.includes(t.wordAsked) && PLAIN_YES.test(t.text.toLowerCase().replace(/[’]/g, "'").trim())) {
     return { word: t.wordAsked, committed: true };
   }
-  const read = readClaimWord(wordText(t.pkg, t.text), c.choices);
+  const read = readClaimWord(wordText(t.pkg, t.text), c.choices, workOf(c, t.pkg));
   // A bare or unsure word answers the claim only when Maya just asked it; after any other question it is no claim turn.
   return read && "word" in read && read.committed ? read : t.claimAsked === true ? read : null;
 }
@@ -383,6 +475,9 @@ function committedWord(t: ClaimTurn): string | null {
   const read = wordIn(t);
   return read && "word" in read && read.committed ? read.word : null;
 }
+
+/** The turn commits a claim word (a committed form, or a plain yes to Maya's say-back): the claim side of session.ts committedTurn. */
+export const claimCommitted = (t: ClaimTurn): boolean => committedWord(t) !== null;
 
 /** The child's turn as read with their committed word: the word is the final answer. A bare word changes nothing. */
 export function claimRead(t: ClaimTurn, base: AnswerRead): AnswerRead {
@@ -405,7 +500,8 @@ export function claimConfirm(t: ClaimTurn): { kind: "which" } | { kind: "said"; 
 
 /** The word the child said in this turn, bare or committed, or null. */
 export function claimSaid(t: ClaimTurn): string | null {
-  const read = t.text === null || !sessionClaim(t.pkg) ? null : readClaimWord(wordText(t.pkg, t.text), sessionClaim(t.pkg)!.choices);
+  const c = sessionClaim(t.pkg);
+  const read = t.text === null || !c ? null : readClaimWord(wordText(t.pkg, t.text), c.choices, workOf(c, t.pkg));
   return read && "word" in read ? read.word : null;
 }
 

@@ -201,6 +201,10 @@ export function stepWords(step: WorkedStep): string {
       return "checking the answer";
     case "read-digit":
       return `finding the digit in the ${PLACE_WORDS[step.place]} place`;
+    case "bigger":
+      return "finding the bigger digit";
+    case "place-worth":
+      return `finding the value of the ${PLACE_WORDS[step.place]} digit`;
     case "missing-frame":
       return "finding the missing number";
     case "drop-zeros":

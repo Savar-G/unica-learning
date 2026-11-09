@@ -5,7 +5,10 @@ import { equivalent, type AnswerValue, type Operation, type OperationPackage } f
 import { missingScope } from "./missing-number";
 import { spotScope } from "./spot-error";
 import { completeExpression, readNumbers } from "./numbers";
+import { topicNumbers, topicRelations } from "./topic-frame";
 import { placeRelations } from "@/lib/question-package-place-value";
+import { isPartsOperation, partsRelations } from "@/lib/question-package-place-parts";
+import { frameProblems, partProblems } from "./evaluate";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
@@ -59,13 +62,21 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
       Object.values(v).forEach(collect);
     }
   };
-  for (const p of [pkg, ...(exampleChosen ? [pkg.easierExample] : [])]) {
+  const problems = [pkg, ...(exampleChosen ? [pkg.easierExample] : [])];
+  // An evaluate question's parts are one-step problems of their own, and a missing-number frame checks its number (evaluate.ts).
+  for (const p of [...problems, ...problems.flatMap((x) => partProblems(x.operation)), ...frameProblems(pkg)]) {
     const op = family(p.operation);
-    collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : pkg.easierExample.answer);
+    collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : p.answer);
+    // An "other-topic" question's checked counted numbers (topic-frame.ts): the die's odd or even numbers.
+    collect(topicNumbers(p.text, p.operation));
+    // A clock-time question's checked minute relations, and an area claim's other area (topic-frame.ts, C3c).
+    for (const r of topicRelations(p.operation, p.text)) add(r.op, r.operands.map(num));
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
     // Place value (B1a): the digit times its place, and code's wrong-answer work, as the child says it.
     if (p.operation.kind === "place-value") for (const [d, worth] of placeRelations(p.operation)) add("multiply", [num(d), num(worth)]);
+    // B1b: a sum's two values and their multiplications.
+    if (p.operation.kind === "place-value" && isPartsOperation(p.operation)) for (const r of partsRelations(p.operation)) add(r.op, r.operands.map(num));
     const placeTerms = operands.flatMap(v => {
       if (v.type !== "number" || v.value < 0) return [];
       const [whole, fraction = ""] = String(v.value).split(".");

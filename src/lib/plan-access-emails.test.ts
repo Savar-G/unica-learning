@@ -6,7 +6,8 @@ import { dueWeeklyEmails, type WeeklyState } from "@/lib/maya-weekly-email";
 import type { CallNote } from "@/lib/maya-call-note";
 
 // What this proves: no email sender, and no module a sender imports, reaches a module that holds a gate, except the edges named
-// below. A sender is a file that imports a delivery module or calls Resend's address itself. It does not walk up to the routes
+// below. It follows TypeScript imports only, so it cannot see a path through the database: a write to child_plan_states can make a scan
+// reminder due through _workbook_scan_reminder_program (see "The daily re-read" in docs/stripe-webhook.md). A sender is a file that imports a delivery module or calls Resend's address itself. It does not walk up to the routes
 // that call a sender: a route can sit behind a gate and call one, as the scan link's route does, which is asserted on its own.
 //
 // The one allowed exception, for an email no one asked for: the monthly summary imports only `dashboardSwitchOpen` from

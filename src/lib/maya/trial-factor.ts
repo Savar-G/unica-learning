@@ -125,6 +125,15 @@ export const showTrial = (step: TrialStep): string => bracketText(step);
 /** The try H3 shows (bracketText): the one just below the missing factor, or just above for a factor of 1. */
 export const shownTry = (step: TrialStep): number => (step.value > 1 ? step.value - 1 : step.value + 1);
 
+/**
+ * The numbers H3 shows ("236 × 5 = 1180. That is less than 1416."): all of them, and the two that only H3 gives (the
+ * try and its product), for session.ts copiesShownTry.
+ */
+export function shownNumbers(step: TrialStep): { all: number[]; own: number[] } {
+  const t = shownTry(step);
+  return { all: [step.factor, t, step.factor * t, step.total], own: [t, step.factor * t] };
+}
+
 /** The wording of the final step on the try path: the number itself, never the division the try replaced. */
 export const TRIAL_RESULT_KEY = "invite.result.try" as const;
 

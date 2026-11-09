@@ -4,8 +4,9 @@
 // sequence does. supabase/tests/child_plan_states.sql checks the same cases on the database. The provider keeps Stripe's
 // list of the customer's subscriptions and reads it through parentPlan. Every operation yields first, so two calls started
 // together interleave as two requests would; the check and the write after it happen together, as in one statement.
+import type { PlanReadRows } from "@/lib/card-reconcile";
 import { parentPlan, type KnownPlan, type PlanSubscription } from "@/lib/parent-plan";
-import type { PlanOwner, PlanStates, StoredPlanState } from "@/lib/plan-state";
+import { PLAN_READ_KINDS, type PlanOwner, type PlanRead, type PlanStates, type StoredPlanState } from "@/lib/plan-state";
 
 export interface MemoryPlanRow extends StoredPlanState {
   parentId: string;
@@ -21,8 +22,11 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
  * The store over `cards` (card_setups) and the provider over `subscriptions` (Stripe). The returned `rows` are the
  * store's rows and `subscriptions` is Stripe's list per customer, so a test can change and check them.
  */
-export function memoryPlanStates({ cards, subscriptions: initial = {} }: { cards: PlanOwner[]; subscriptions?: Record<string, PlanSubscription[]> }) {
+export function memoryPlanStates({ cards, subscriptions: initial = {}, now = Date.now }: { cards: PlanOwner[]; subscriptions?: Record<string, PlanSubscription[]>; now?: () => number }) {
   const rows: MemoryPlanRow[] = [];
+  /** read_at and read_tried_at, on the database's clock (`now`). */
+  const readAt = new Map<string, number>();
+  const triedAt = new Map<string, number>();
   const subscriptions = { ...initial };
   const calls: Record<Operation, number> = { owner: 0, load: 0, take: 0, save: 0, plan: 0 };
   /** Set an operation's error to make every call of it throw, as a database or Stripe error would. */
@@ -72,6 +76,7 @@ export function memoryPlanStates({ cards, subscriptions: initial = {} }: { cards
         const row = rows.find((r) => r.childId === card.childId);
         if (!row) {
           rows.push({ parentId: card.parentId, childId: card.childId, ...write });
+          readAt.set(card.childId, now());
           writes++;
           return answer("save", "stored" as const);
         }
@@ -79,6 +84,7 @@ export function memoryPlanStates({ cards, subscriptions: initial = {} }: { cards
         if (row.eventId === write.eventId) return answer("save", "duplicate" as const);
         if (write.readOrder > row.readOrder) {
           Object.assign(row, write);
+          readAt.set(card.childId, now());
           writes++;
           return answer("save", "stored" as const);
         }
@@ -93,8 +99,28 @@ export function memoryPlanStates({ cards, subscriptions: initial = {} }: { cards
     },
   };
 
+  const lookedAt = (childId: string) => Math.max(readAt.get(childId) ?? 0, triedAt.get(childId) ?? 0);
+  /** The rules of the database functions due_plan_reads and note_plan_read_tried; supabase/tests/child_plan_states.sql checks the same cases. */
+  const reads: PlanReadRows = {
+    async duePlanReads(limit) {
+      await tick();
+      const due = rows.flatMap((row): PlanRead[] => {
+        const kind = PLAN_READ_KINDS.find((k) => k === row.plan.kind);
+        const customer = cards.find((c) => c.childId === row.childId)?.customer;
+        if (!kind || !customer || (readAt.get(row.childId) ?? 0) >= now() - 24 * 60 * 60 * 1000) return [];
+        return [{ parentId: row.parentId, childId: row.childId, customer, kind, eventAt: row.eventAt }];
+      });
+      return due.sort((a, b) => lookedAt(a.childId) - lookedAt(b.childId) || a.childId.localeCompare(b.childId)).slice(0, limit);
+    },
+    async notePlanReadTried(childId) {
+      await tick();
+      triedAt.set(childId, now());
+    },
+  };
+
   return {
     ...seams,
+    reads,
     rows,
     subscriptions,
     calls,

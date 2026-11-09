@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pacedTransport } from "@/lib/email-delivery";
 import { resendTransport } from "@/lib/email-resend";
 import { SWEEP_END_MS, sweepCardsNow } from "@/lib/card-sweep-server";
@@ -27,6 +27,14 @@ interface Net {
   slow?: Record<string, number>;
   /** The send ledger's claims by key, kept across runs. A sent claim is never given again. */
   claims?: Map<string, string>;
+  /** The rows the daily plan re-read finds. A note moves a row to the back, as the database's order does. */
+  planRows?: { child_id: string; parent_id: string; customer: string; kind: string; event_at: string | null }[];
+  /** Each customer's subscriptions and how long Stripe takes to list them. Unset: `plans`, at `delays.stripeRead`. */
+  lists?: Record<string, { ms: number; data: Record<string, unknown>[]; status?: number }>;
+  /** The first read of the re-read's rows fails. */
+  planRowsFail?: boolean;
+  /** The first read of the card rows fails. */
+  cardRowsFail?: boolean;
 }
 
 const started = Date.UTC(2026, 10, 5, 19);
@@ -36,6 +44,7 @@ const wait = (ms: number, signal: AbortSignal | null | undefined, entry: Net["lo
 });
 
 function network(net: Net) {
+  let takes = 0;
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
@@ -51,7 +60,13 @@ function network(net: Net) {
       return Response.json({ id: "email-1" });
     }
     if (url.host === "api.stripe.com") {
-      await wait(method === "GET" ? net.delays.stripeRead : net.delays.stripeWrite, signal, entry);
+      const list = url.pathname === "/v1/subscriptions" ? net.lists?.[url.searchParams.get("customer") ?? ""] : undefined;
+      if (url.pathname === "/v1/subscriptions") entry.what += ` ${url.searchParams.get("customer")}`;
+      await wait(list ? list.ms : method === "GET" ? net.delays.stripeRead : net.delays.stripeWrite, signal, entry);
+      if (url.pathname === "/v1/subscriptions" && list) {
+        if (list.status) return Response.json({ error: { type: "api_error", message: "Stripe is down" } }, { status: list.status });
+        return Response.json({ object: "list", has_more: false, data: list.data });
+      }
       const body = new URLSearchParams(text);
       if (method === "POST" && url.pathname.startsWith("/v1/customers/")) net.customerDefault = body.get("invoice_settings[default_payment_method]")!;
       if (method === "POST" && url.pathname.startsWith("/v1/subscriptions/")) net.plans[0].default_payment_method = body.get("default_payment_method");
@@ -63,7 +78,20 @@ function network(net: Net) {
     const rpc = url.pathname.match(/\/rpc\/(.+)$/)?.[1];
     if (rpc) {
       net.rpcs.push({ name: rpc, body: JSON.parse(text || "{}") });
-      if (rpc === "card_recovery_rows") return Response.json([net.row]);
+      if (rpc === "card_recovery_rows") return net.cardRowsFail ? Response.json({ message: "down" }, { status: 500 }) : Response.json(net.row ? [net.row] : []);
+      if (rpc === "due_plan_reads") return net.planRowsFail ? Response.json({ message: "down" }, { status: 500 }) : Response.json(net.planRows ?? []);
+      if (rpc === "note_plan_read_tried") {
+        const body = JSON.parse(text || "{}");
+        const at = (net.planRows ?? []).findIndex((r) => r.child_id === body.p_child);
+        if (at >= 0) net.planRows!.push(net.planRows!.splice(at, 1)[0]);
+        return Response.json(null);
+      }
+      if (rpc === "take_plan_read_order") return Response.json(++takes);
+      if (rpc === "save_child_plan_state") {
+        const body = JSON.parse(text || "{}");
+        net.planRows = net.planRows?.filter((r) => r.customer !== body.p_customer);
+        return Response.json("stored");
+      }
       if (rpc === "settle_card_update") return Response.json({ state: "flagged" });
       const body = JSON.parse(text || "{}");
       // The ledger's rule in both functions: one claim per key, and a claim given back may be taken again.
@@ -149,7 +177,7 @@ it("a read that hangs is cut at 45 seconds, and the run answers instead of faili
   const net = family({ delays: { ...SLOW, db: 600_000 } });
   const { result, endedAt } = await run(net);
   expect(endedAt).toBe(SWEEP_END_MS);
-  expect(result).toEqual({ error: "run_failed" });
+  expect(result).toEqual({ error: "run_failed", planReads: { error: "run_failed" } });
 });
 
 it("a cut-off row leaves its state safe, and the next run finishes it with one email and one plan", async () => {
@@ -287,4 +315,111 @@ it("the paced transport runs overlapping sends one after another, and a quick se
   await vi.advanceTimersByTimeAsync(2_000);
   await quick;
   expect(starts[1] - starts[0]).toBe(600);
+});
+
+describe("the daily plan re-read, through the real Supabase client and Stripe SDK", () => {
+  const CHILD = (n: number) => `00000000-0000-4000-8000-00000000010${n}`;
+  const planRow = (n: number) => ({ child_id: CHILD(n), parent_id: "00000000-0000-4000-8000-000000000009", customer: `cus_${n}`, kind: "paying", event_at: new Date(started - 2 * 86_400_000).toISOString() });
+  const over = [{ id: "sub_x", status: "canceled", cancel_at_period_end: false, trial_end: null, created: 1, ended_at: 1_800_000_000, items: { data: [{ current_period_end: 1_800_000_000, price: { unit_amount: 7999 } }] } }];
+  const saves = (net: Net) => net.rpcs.filter((r) => r.name === "save_child_plan_state").map((r) => r.body);
+  const noCardRow = (over: Partial<Net>) => family({ row: null as unknown as Net["row"], ...over });
+
+  it("reads each due row with its take first, saves through the one function, and sends no email", async () => {
+    const net = noCardRow({ planRows: [planRow(1)], lists: { cus_1: { ms: 100, data: over } } });
+    const { result } = await run(net);
+    expect(result).toMatchObject({ planReads: { due: 1, read: 1, changed: 1, failed: 0, outOfTime: false } });
+    const names = net.rpcs.map((r) => r.name);
+    expect(names.indexOf("take_plan_read_order")).toBeGreaterThan(names.indexOf("note_plan_read_tried"));
+    expect(saves(net)).toHaveLength(1);
+    expect(saves(net)[0]).toMatchObject({ p_customer: "cus_1", p_kind: "ended", p_event_at: planRow(1).event_at, p_read_order: 1 });
+    expect(String(saves(net)[0].p_event_id)).toMatch(/^plan-read:/);
+    expect(net.emails).toBe(0);
+    expect(net.log.filter((r) => r.what.includes("api.resend.com"))).toEqual([]);
+  });
+
+  const stripeOrder = (net: Net, from: number) => net.log.slice(from).map((r) => r.what).filter((w) => w.includes("/v1/subscriptions")).map((w) => w.split(" ").at(-1));
+
+  it("Stripe hanging on one row costs its own read limit: the row stays, the others are read, and a later run reads it", async () => {
+    const net = noCardRow({
+      planRows: [planRow(1), planRow(2), planRow(3)],
+      lists: { cus_1: { ms: 100_000, data: over }, cus_2: { ms: 100, data: over }, cus_3: { ms: 100, data: over } },
+    });
+    const first = await run(net);
+    expect(first.result).toMatchObject({ planReads: { due: 3, read: 2, failed: 1, outOfTime: false } });
+    expect(saves(net).map((b) => b.p_customer)).toEqual(["cus_2", "cus_3"]);
+    expect(first.endedAt).toBeLessThan(15_000);
+    net.lists!.cus_1.ms = 100;
+    const reads = net.log.length;
+    const second = await run(net, { at: started + 900_000 });
+    expect(second.result).toMatchObject({ planReads: { due: 1, read: 1, failed: 0 } });
+    expect(stripeOrder(net, reads)).toEqual(["cus_1"]);
+  });
+
+  it("a save that hangs ends at the sweep's end, and the next run reads the others first", async () => {
+    const net = noCardRow({
+      planRows: [planRow(1), planRow(2), planRow(3)], slow: { save_child_plan_state: 600_000 },
+      lists: { cus_1: { ms: 100, data: over }, cus_2: { ms: 100, data: over }, cus_3: { ms: 100, data: over } },
+    });
+    const first = await run(net);
+    expect(first.endedAt).toBe(SWEEP_END_MS);
+    expect(first.result).toMatchObject({ planReads: { due: 3, read: 0, failed: 1, outOfTime: true } });
+    expect(saves(net)).toEqual([]);
+    for (const request of net.log) expect(request.endedAt!, request.what).toBeLessThanOrEqual(SWEEP_END_MS);
+    net.slow = {};
+    const reads = net.log.length;
+    const second = await run(net, { at: started + 900_000 });
+    expect(second.result).toMatchObject({ planReads: { read: 3, failed: 0 } });
+    expect(stripeOrder(net, reads)).toEqual(["cus_2", "cus_3", "cus_1"]);
+  });
+
+  it("every row at its slowest: no new row after 25 seconds, and the next run goes on from there", async () => {
+    const rows = [1, 2, 3, 4, 5, 6, 7, 8].map(planRow);
+    const lists = Object.fromEntries(rows.map((r) => [r.customer, { ms: 3_900, data: over }]));
+    const net = noCardRow({ planRows: rows, lists });
+    const first = await run(net);
+    expect(first.result).toMatchObject({ planReads: { due: 8, read: 5, failed: 0, outOfTime: true } });
+    expect(first.endedAt).toBeLessThan(SWEEP_END_MS);
+    expect(saves(net).map((b) => b.p_customer)).toEqual(["cus_1", "cus_2", "cus_3", "cus_4", "cus_5"]);
+    const reads = net.log.length;
+    const second = await run(net, { at: started + 900_000 });
+    expect(second.result).toMatchObject({ planReads: { due: 3, read: 3, outOfTime: false } });
+    expect(stripeOrder(net, reads)).toEqual(["cus_6", "cus_7", "cus_8"]);
+  });
+
+  it("a closed row, through the real clients: a paid answer saves, and a trial answer saves nothing and sends no customer to the log", async () => {
+    const closed = (n: number, kind: string) => ({ ...planRow(n), kind });
+    const paid = [{ ...over[0], status: "active", ended_at: null }];
+    const trial = [{ ...over[0], status: "trialing", ended_at: null, trial_end: 1_900_000_000 }];
+    const net = noCardRow({ planRows: [closed(1, "payment_failed"), closed(2, "paused")], lists: { cus_1: { ms: 10, data: paid }, cus_2: { ms: 10, data: trial } } });
+    const { result } = await run(net);
+    expect(result).toMatchObject({ planReads: { due: 2, read: 1, changed: 1, unclear: 1, failed: 0 } });
+    expect(saves(net).map((b) => [b.p_customer, b.p_kind])).toEqual([["cus_1", "paying"]]);
+    expect(net.emails).toBe(0);
+    const logged = JSON.stringify([...vi.mocked(console.info).mock.calls, ...vi.mocked(console.error).mock.calls]);
+    expect(logged).toContain("re-read run");
+    expect(logged).not.toContain("cus_");
+  });
+
+  it("Stripe down: every read fails, nothing is saved, and the rows stay for a later run", async () => {
+    const net = noCardRow({ planRows: [planRow(1), planRow(2)], lists: { cus_1: { ms: 10, data: [], status: 500 }, cus_2: { ms: 10, data: [], status: 500 } } });
+    const { result } = await run(net);
+    expect(result).toMatchObject({ planReads: { due: 2, read: 0, failed: 2 } });
+    expect(saves(net)).toEqual([]);
+    expect(net.planRows).toHaveLength(2);
+  });
+
+  it("slow card rows do not starve the re-read, and a failed card sweep hides nothing", async () => {
+    const slowCards = family({ planRows: [planRow(2)], lists: { cus_2: { ms: 100, data: over } } });
+    const { result } = await run(slowCards);
+    expect(result).toMatchObject({ due: 1, outOfTime: true, planReads: { read: 1 } });
+    const failed = noCardRow({ planRows: [planRow(1)], lists: { cus_1: { ms: 100, data: over } }, cardRowsFail: true });
+    const second = await run(failed);
+    expect(second.result).toMatchObject({ error: "run_failed", planReads: { read: 1 } });
+  });
+
+  it("a failed read of the re-read's rows hides nothing of the card sweep", async () => {
+    const net = family({ planRowsFail: true });
+    const { result } = await run(net);
+    expect(result).toMatchObject({ due: 1, planReads: { error: "run_failed" } });
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { KnownPlan, PlanSubscription } from "@/lib/parent-plan";
-import { applyPlanEvent, applyPlanStart, fillChildPlan, planColumns, planFromColumns, readChildPlan, type PlanEvent } from "@/lib/plan-state";
+import { applyPlanEvent, applyPlanStart, fillChildPlan, planColumns, planFromColumns, readChildPlan, rereadPlan, type PlanEvent, type PlanRead } from "@/lib/plan-state";
 import { memoryPlanStates } from "@/lib/plan-state-memory";
 
 const key = { parentId: "parent-1", childId: "child-1" };
@@ -364,5 +364,79 @@ describe("a plan start stores the plan with no webhook", () => {
     const states = family();
     states.fail.plan = new Error("Stripe down");
     await expect(applyPlanStart(start, states)).rejects.toThrow("Stripe down");
+  });
+});
+
+describe("the daily re-read of one row", () => {
+  const row = (over: Partial<PlanRead> = {}): PlanRead => ({ ...key, customer: "cus_1", kind: "paying", eventAt: when(1_799_000_000), ...over });
+  const paying = sub({ status: "active", trialEnd: null });
+  const ended = sub({ status: "canceled", endedAt: 1_799_100_000 });
+
+  it("closes a row whose ended event was lost, with its take before the Stripe read", async () => {
+    const states = family([paying]);
+    await applyPlanEvent(event(), states);
+    states.subscriptions.cus_1 = [ended];
+    const hold = states.hold("plan");
+    const read = rereadPlan(row(), states);
+    await hold.reached;
+    expect(states.calls.take).toBe(2);
+    expect(states.calls.save).toBe(1);
+    hold.release();
+    expect(await read).toMatchObject({ save: "stored", plan: { kind: "ended" } });
+    expect(states.rows[0].plan.kind).toBe("ended");
+  });
+
+  it("keeps the row's event time, so a late event of a change after this read is not skipped", async () => {
+    const states = family([paying]);
+    await applyPlanEvent(event({ created: 1_799_000_000 }), states);
+    await rereadPlan(row(), states);
+    expect(states.rows[0].eventAt).toBe(when(1_799_000_000));
+    states.subscriptions.cus_1 = [ended];
+    // The change's event is later than the row's last real event. A re-read that stored its own clock could read as newer, and lose it.
+    expect(await applyPlanEvent(event({ id: "evt_ended", created: 1_799_000_001 }), states)).toBe("stored");
+    expect(states.rows[0].plan.kind).toBe("ended");
+  });
+
+  it("a filled row, with no event, gets a time no Stripe event is older than", async () => {
+    const states = family([paying]);
+    await fillChildPlan(key, states);
+    await rereadPlan(row({ eventAt: null }), states);
+    expect(states.rows[0].eventAt).toBe(new Date(0).toISOString());
+    states.subscriptions.cus_1 = [ended];
+    expect(await applyPlanEvent(event({ id: "evt_ended", created: 1 }), states)).toBe("stored");
+    expect(states.rows[0].plan.kind).toBe("ended");
+  });
+
+  it("each read is its own write, so a row with an unchanged plan still counts as read", async () => {
+    const states = family([paying]);
+    await applyPlanEvent(event(), states);
+    expect((await rereadPlan(row(), states)).save).toBe("stored");
+    const first = states.rows[0].eventId;
+    expect((await rereadPlan(row(), states)).save).toBe("stored");
+    expect(states.rows[0].eventId).not.toBe(first);
+    expect(states.writes).toBe(3);
+  });
+
+  it("a Stripe failure changes nothing", async () => {
+    const states = family([paying]);
+    await applyPlanEvent(event(), states);
+    const before = { ...states.rows[0] };
+    states.fail.plan = new Error("Stripe down");
+    await expect(rereadPlan(row(), states)).rejects.toThrow("Stripe down");
+    expect(states.rows[0]).toEqual(before);
+    expect(states.writes).toBe(1);
+  });
+
+  it("an event that takes after this read's take wins, whichever save lands first", async () => {
+    const states = family([paying]);
+    await applyPlanEvent(event(), states);
+    const hold = states.hold("plan");
+    const read = rereadPlan(row(), states);
+    await hold.reached;
+    states.subscriptions.cus_1 = [ended];
+    expect(await applyPlanEvent(event({ id: "evt_ended", created: 1_799_000_002 }), states)).toBe("stored");
+    hold.release();
+    expect((await read).save).toBe("older");
+    expect(states.rows[0]).toMatchObject({ eventId: "evt_ended", plan: { kind: "ended" } });
   });
 });

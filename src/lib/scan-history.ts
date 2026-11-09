@@ -1,7 +1,8 @@
 import { markingPageView, type EffectiveMark } from "@/lib/scan-marking";
 
 export type HistoryStatus = "never-scanned" | "pending" | "review" | "failed" | "blank" | "unscored" | "ready";
-export const HISTORY_LABELS: Record<HistoryStatus, string> = { "never-scanned": "No photo yet", pending: "Waiting for a check", review: "Please check", failed: "Could not check", blank: "All answers blank", unscored: "Not scored", ready: "Results ready" };
+/** "review": our team is checking an answer the AI was unsure of. No label asks a parent to judge an answer (#715). */
+export const HISTORY_LABELS: Record<HistoryStatus, string> = { "never-scanned": "No photo yet", pending: "Not marked yet", review: "Our team is checking", failed: "Could not mark", blank: "All answers blank", unscored: "Not scored", ready: "Results ready" };
 export interface HistoryPhoto { id: string; state: string; expiresAt: string; sentAt: string | null; at: string }
 export interface HistoryJob { photo: string; state: string; blocked: string | null; dispatches: number }
 export interface HistorySpend { id: string; model: string; at: string; reserved: number; charged: number | null; outcome: string }
@@ -23,11 +24,13 @@ export function historyPage(r: HistoryRecord, now: number): HistoryPage {
   const complete = view.completion.status === "complete";
   const blank = r.marks.filter((m) => m.observation.result === "blank").length;
   const status: HistoryStatus = complete ? view.counts.scored === 0 ? "unscored" : blank === view.counts.scored ? "blank" : "ready"
-    : view.counts.parentChecks > 0 || (r.jobs.some((j) => j.state === "finished") && view.counts.pending > 0) ? "review"
-    : failedJob ? "failed" : view.counts.pending > 0 && !r.photos.some((p) => p.state === "saved" && Date.parse(p.expiresAt) > now) ? "review" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
+    // One rule with the results page and the team list: an answer our team is checking wins.
+    : view.counts.teamChecks > 0 ? "review"
+    : failedJob ? "failed" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
   const photo = r.photos.find((p) => p.sentAt !== null) ?? r.photos.at(-1);
   return { id: r.id, childId: r.childId, childName: r.childName, workbookId: r.workbookId, book: r.book, revision: r.revision, day: r.day, pageNumber: r.pageNumber,
-    status, label: HISTORY_LABELS[status], photo: photo?.id ?? null, photoAvailable: Boolean(photo && photo.state === "saved" && Date.parse(photo.expiresAt) > now), failedJob,
+    // Same rule as the results page line: a page with some marks and some answers not read yet says so.
+    status, label: status === "pending" && view.counts.scored > 0 ? "Some answers not marked yet" : HISTORY_LABELS[status], photo: photo?.id ?? null, photoAvailable: Boolean(photo && photo.state === "saved" && Date.parse(photo.expiresAt) > now), failedJob,
     counts: view.counts, right: r.marks.filter((m) => m.observation.result === "right").length, blank, wrong: r.marks.filter((m) => m.observation.result === "wrong").length };
 }
 /** Aggregates only the displayed, filtered canonical records. Unknown costs remain reservations. */

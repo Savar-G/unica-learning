@@ -7,6 +7,7 @@
 import { checkQuestionPackage, workedSteps, type AnswerValue, type EasierExample, type Operation, type Place, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 import { digitAt, placeIndex, WHOLE_PLACES } from "@/lib/question-package-place-value";
 import { placeValueOf, type PlaceValueObject } from "@/lib/maya/place-value";
+import { placePartsTeachingPackage } from "./place-value-parts";
 import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "./limits";
 
 type PlaceValueOperation = Extract<Operation, { kind: "place-value" }>;
@@ -105,6 +106,9 @@ export function placeValueTeachingPackage(printed: QuestionPackage): { package: 
 
 /** The deriver for the registry in src/lib/maya-teaching/index.ts: the teaching package, or null to leave it held. */
 export function derivePlaceValue(printed: QuestionPackage): QuestionPackage | null {
+  // B1b's compare, sum and tenths-build templates first (place-value-parts.ts); null for any other template.
+  const parts = placePartsTeachingPackage(printed);
+  if (parts !== null) return "package" in parts ? parts.package : null;
   const made = placeValueTeachingPackage(printed);
   return "package" in made ? made.package : null;
 }

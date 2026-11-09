@@ -10,7 +10,8 @@
 import { mayaPackageCheck } from "@/lib/maya/session";
 import { missingWork, readPrinted, type MissingMethod, type Printed } from "@/lib/maya/missing-number";
 import { printedEquation } from "@/lib/maya/missing-number-text";
-import { operationResult, type QuestionPackage } from "@/lib/question-package";
+import { operationResult, stepText, type Operation, type QuestionPackage, type WorkedStep } from "@/lib/question-package";
+import { readNumbers } from "@/lib/number-words";
 import { templateAnswer, templateAnswerValue, templateNumbers, type TemplateSource } from "@/lib/question-package-template";
 import { TEACHING_SOURCE } from "./limits";
 
@@ -39,14 +40,21 @@ export function templateAgrees(source: TemplateSource, printed: Printed, answer:
 }
 
 /**
- * The example gives the question away (lesson 11, #724's review): its answer times a power of 10 is the question's
- * answer (2 for 20, 200), its answer is the first digits of the question's (5 for 54, 54 for 540), or it uses a number
- * the question prints (20 × ? = 40 for 40 × ? = 13200).
+ * The example gives the question away (lessons 11 and 12): its answer times a power of 10 is the question's answer (2
+ * for 20, 200), its answer is the first digits of the question's (5 for 54, 54 for 540), or any number it writes (its
+ * printed numbers, every value its worked steps say, intermediate ones too, and its result; `written`) is the
+ * question's answer or a number the question prints (20 × ? = 40 for 40 × ? = 13200; 6 ÷ 2 for an answer of 2).
  */
-export function givesAway(question: Printed, answer: number, example: Printed, exampleAnswer: number): boolean {
+export function givesAway(question: Printed, answer: number, example: Printed, exampleAnswer: number, written: readonly number[] = []): boolean {
   for (let n = exampleAnswer; n > 0 && n <= answer; n *= 10) if (n === answer) return true;
   if (exampleAnswer === answer || String(answer).startsWith(String(exampleAnswer))) return true;
-  return [example.known, example.total].some((v) => v === question.known || v === question.total);
+  const theirs = [answer, question.known, question.total];
+  return [example.known, example.total, exampleAnswer, ...written].some((v) => theirs.includes(v));
+}
+
+/** Every number an example writes or says: its printed equation and each worked step in words (the result included). */
+export function exampleNumbers(text: string, operation: Operation, steps: readonly WorkedStep[]): number[] {
+  return readNumbers([text, ...steps.map((st) => stepText(st, operation))].join(" ")).map((n) => n.value);
 }
 
 /** Easier examples of the same method, simplest first; the package check keeps the first that is smaller. */
@@ -91,7 +99,9 @@ export function deriveMissingNumber(printed: QuestionPackage): QuestionPackage |
   const answer = { type: "number" as const, value: work.answer };
   for (const candidate of exampleCandidates(work.method, frame)) {
     const example = missingWork(candidate);
-    if (!example || example.method !== work.method || givesAway(frame, work.answer, candidate, example.answer)) continue;
+    if (!example || example.method !== work.method) continue;
+    const written = exampleNumbers(printedEquation(candidate), example.operation, example.steps);
+    if (givesAway(frame, work.answer, candidate, example.answer, written)) continue;
     const pkg: QuestionPackage = {
       ...printed,
       operationSource: TEACHING_SOURCE,

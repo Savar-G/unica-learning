@@ -3,6 +3,7 @@
 // rules. Pure TypeScript: no clock, network or randomness.
 import { equivalent, isRightAnswer, sameValue, type AnswerValue, type OperationKind, type OperationPackage, type WorkedStep } from "@/lib/question-package";
 import type { ReadOptions } from "./numbers";
+import { evaluateSteps } from "./evaluate";
 
 /** The fraction operation kinds the question package computes. */
 const FRACTION_KINDS: readonly OperationKind[] = ["fraction-add", "fraction-subtract", "fraction-multiply", "fraction-divide", "fraction-simplify", "fraction-equivalent"];
@@ -20,10 +21,16 @@ export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   "common-denominator", "combine-numerators", "simplify", "to-mixed", "result",
   // B1a: the digit in a place (place-value questions, src/lib/maya/place-value*.ts).
   "read-digit",
+  // B1b: which digit is bigger, and one digit's value (place-value compare and sum, src/lib/maya/place-value-parts*.ts).
+  "bigger", "place-worth",
   // Missing numbers (missing-number.ts): the framing and zeros steps Maya says, and the try step the child does.
   "missing-frame", "drop-zeros", "try-factor",
+  // An evaluate question's parts (evaluate.ts): each part is taught with its own column steps.
+  "operate",
   // A claim's compare step (claim.ts), only in the session package of a checked claim question.
   "claim-compare",
+  // A clock-time question's counts on a clock (clock-lines.ts, C3c).
+  "count-on",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */
@@ -37,7 +44,7 @@ export const untaughtSteps = (pkg: OperationPackage): string[] =>
  * A missing number leaves out its framing and zeros steps, which Maya says herself (missing-number.ts).
  */
 export const teachSteps = (pkg: OperationPackage): WorkedStep[] =>
-  pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "to-mixed" && s.kind !== "missing-frame" && s.kind !== "drop-zeros"
+  evaluateSteps(pkg) ?? pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "to-mixed" && s.kind !== "missing-frame" && s.kind !== "drop-zeros"
     && (s.kind !== "simplify" || asksSimplest(pkg)));
 
 /** The question is a fraction question. */
@@ -46,8 +53,10 @@ export const isFractionQuestion = (pkg: OperationPackage) => FRACTION_KINDS.incl
 /** How the child's turns are read in this call: spoken fractions only in a fraction call (numbers.ts). */
 export const readOptionsFor = (pkg: OperationPackage | null): ReadOptions => ({
   fractions: pkg !== null && isFractionQuestion(pkg),
+  // A clock-time question reads times in their exact forms (clock-times.ts, C3c).
+  ...(pkg !== null && pkg.operation.kind === "time-add" ? { times: true } : {}),
   known: pkg === null ? [] : knownNumbers(pkg),
-  carries: pkg === null ? [] : pkg.steps.flatMap((st) => ("carryOut" in st && st.carryOut > 0 ? [st.carryOut] : [])),
+  carries: pkg === null ? [] : [...pkg.steps, ...(evaluateSteps(pkg) ?? [])].flatMap((st) => ("carryOut" in st && st.carryOut > 0 ? [st.carryOut] : [])),
 });
 
 /** The question's own numbers: its printed operands and every number in its worked steps (PR #624 review). */
@@ -60,6 +69,7 @@ function knownNumbers(pkg: OperationPackage): number[] {
   };
   walk(pkg.operation.operands);
   walk(pkg.steps);
+  walk(evaluateSteps(pkg) ?? []);
   return [...out];
 }
 

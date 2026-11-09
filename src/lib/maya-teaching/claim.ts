@@ -28,7 +28,7 @@ export interface Claim {
   /** The claim's words: true and false, or yes and no. The first is circled when the claim holds. */
   choices: ClaimChoices;
   /** "equal": the computed side is the printed number; "greater": it is more than the printed number. */
-  relation: "equal" | "greater";
+  relation: "equal" | "greater" | "less";
   /** The computed side, as an operation Maya teaches. */
   operation: Operation;
   /** What the operation makes. */
@@ -188,6 +188,36 @@ export function exampleGivesAway(example: Operation, question: Operation): boole
   return digitsOf(q.value).startsWith(digitsOf(ex.value));
 }
 
+/** Every number a worked step says: totals, digits written, carries, products, quotients, values (digit lists aside). */
+function workedNumbers(op: Operation): number[] {
+  return (workedSteps(op) as unknown as Record<string, unknown>[]).flatMap((st) => Object.entries(st).flatMap(([key, v]) =>
+    key === "digits" ? [] : typeof v === "number" ? [v]
+      : v && typeof v === "object" && (v as { type?: string }).type === "number" ? [(v as { value: number }).value] : []));
+}
+
+/**
+ * What of the question an easier example never prints or works out (lesson 12, #737 review, Savar's scope): the
+ * question's answer, and every value of two or more digits its worked steps say (870 × 6: 5220, 42 and 52). A single
+ * digit (a carry, a digit written) is allowed: a small example cannot avoid them, and lesson 12 is about the answer.
+ */
+function questionWork(question: Operation): number[] {
+  const result = operationResult(question);
+  const answer = result.type === "number" ? [result.value] : [];
+  return [...answer, ...workedNumbers(question).filter((v) => digitsOf(Math.abs(v)).length >= 2)];
+}
+
+/**
+ * The easier example prints or works out the question's answer or one of its multi-digit step values (questionWork): in
+ * its numbers, its worked steps, its result, or the number its claim prints (`shown`).
+ */
+export function exampleShowsWork(example: Operation, question: Operation, shown: number | null = null): boolean {
+  const work = questionWork(question);
+  const result = operationResult(example);
+  const own = [...(example.operands as unknown[]).filter((n): n is number => typeof n === "number"), ...workedNumbers(example),
+    ...(result.type === "number" ? [result.value] : []), ...(shown === null ? [] : [shown])];
+  return own.some((n) => work.some((w) => equivalent({ type: "number", value: n }, { type: "number", value: w })));
+}
+
 /**
  * The teaching package of a claim question: the stored package with the claim's computed side as its operation, code's
  * worked steps, one wrong answer and a smaller easier example, marked `operationSource: "maya"`, or null when the
@@ -203,7 +233,7 @@ export function claimTeaching(pkg: QuestionPackage): QuestionPackage | null {
   // A wrong product: one more than the result, never the printed number (that is the claim, not a slip).
   const wrong = [claim.value + 1, claim.value + 2].find((v) => !equivalent({ type: "number", value: v }, { type: "number", value: claim.shown }))!;
   for (const example of examplesFor(claim.operation)) {
-    if (operationProblem(example) || sameValue(operationResult(example), answer) || exampleGivesAway(example, claim.operation)) continue;
+    if (operationProblem(example) || sameValue(operationResult(example), answer) || exampleGivesAway(example, claim.operation) || exampleShowsWork(example, claim.operation)) continue;
     const candidate: QuestionPackage = {
       ...pkg,
       operationSource: "maya",
@@ -225,15 +255,36 @@ export function claimStep(claim: Pick<Claim, "relation" | "value" | "shown" | "h
 
 /**
  * The claim Maya works for the easier example: the same words and relation on the example's own result. Its printed
- * number is code's: for "equal" one more than the result (the claim does not hold), for "greater" one less (it holds),
- * so the example never needs a word the child must find for their own question.
+ * number is code's: for "equal" more than the result (the claim does not hold), for "greater" less and "less" more
+ * (both hold), by the
+ * smallest step of 1 to 4 that is none of the question's step values; with none, no example (the question is held). So
+ * the example never needs a word the child must find for their own question.
  */
+/** The values the question's worked steps say: column totals and written digits, products, quotients, the result. */
+function stepValues(pkg: OperationPackage): Set<number> {
+  const out = new Set<number>();
+  for (const st of pkg.steps as unknown as Record<string, unknown>[]) {
+    for (const key of ["total", "write", "value", "quotient", "product"]) {
+      const v = st[key];
+      if (typeof v === "number") out.add(v);
+      else if (v && typeof v === "object" && (v as { type?: string }).type === "number") out.add((v as { value: number }).value);
+    }
+  }
+  return out;
+}
+
 export function claimExample(claim: Claim, pkg: OperationPackage): Claim | null {
   const result = operationResult(pkg.easierExample.operation);
   if (result.type !== "number") return null;
   const value = result.value;
-  const shown = claim.relation === "equal" ? value + 1 : value - 1;
-  if (shown < 0 || !Number.isSafeInteger(Math.round(shown * 1000))) return null;
-  const holds = claim.relation === "greater";
-  return { ...claim, operation: pkg.easierExample.operation, value, shown: Number(shown.toFixed(3)), holds, word: holds ? claim.choices[0] : claim.choices[1], other: holds ? claim.choices[1] : claim.choices[0] };
+  // The number it prints is never one of the question's step values (lesson 12, #737 review: 8 in "Is 3 × 3 greater than
+  // 8?" is the tens product of 40 × 2): one, two, three or four away from its result, the first that is none of them.
+  // Nor is the example one that prints or works the question's answer or a multi-digit step value (exampleShowsWork).
+  if (exampleShowsWork(pkg.easierExample.operation, pkg.operation)) return null;
+  const own = stepValues(pkg);
+  const shown = [1, 2, 3, 4].map((k) => Number((claim.relation === "greater" ? value - k : value + k).toFixed(3)))
+    .find((n) => n >= 0 && !own.has(n) && !exampleShowsWork(pkg.easierExample.operation, pkg.operation, n));
+  if (shown === undefined || !Number.isSafeInteger(Math.round(shown * 1000))) return null;
+  const holds = claim.relation !== "equal";
+  return { ...claim, operation: pkg.easierExample.operation, value, shown, holds, word: holds ? claim.choices[0] : claim.choices[1], other: holds ? claim.choices[1] : claim.choices[0] };
 }

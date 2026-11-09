@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { createSession, mayaPackageCheck } from "@/lib/maya/session";
 import { packageLines } from "@/lib/maya/lines";
 import { speechWords } from "@/lib/maya/speech";
-import { frameState, missingScope, saysInverse, type FrameStep } from "@/lib/maya/missing-number";
+import { frameState, missingScope, missingWork, saysInverse, type FrameStep } from "@/lib/maya/missing-number";
 import { checkQuestionPackage, operationProblem, type OperationPackage, type QuestionPackage, type WorkedStep } from "@/lib/question-package";
 import { withWorkbookMayaOperation } from "@/lib/workbook-maya-operation";
-import { deriveMissingNumber, givesAway } from "./missing-number";
+import { deriveMissingNumber, exampleNumbers, givesAway } from "./missing-number";
 import { printedMissing } from "./missing-number-fixtures";
 
 const kinds = (steps: WorkedStep[]) => steps.map((s) => s.kind);
@@ -115,6 +115,7 @@ describe("missingScope: the child's own math on a missing number stays in scope"
     expect(t).toContainEqual(["multiply", [236, 5]]);
     expect(t).toContainEqual(["multiply", [200, 7]]);
     expect(t).toContainEqual(["divide", [1416, 200]]);
+    expect(t).toContainEqual(["divide", [1400, 200]]);
     expect(missingScope(trial.steps[0])).toEqual([["divide", [1416, 236]], ["multiply", [236, 6]]]);
     const sub = derive({ known: 9000, missing: 6000, sign: "−" })!;
     expect(missingScope(sub.steps[0])).toEqual([["subtract", [9000, 3000]], ["subtract", [9000, 6000]], ["add", [6000, 3000]]]);
@@ -134,6 +135,30 @@ describe("the easier example never gives the answer away (lesson 11)", () => {
     expect(givesAway(x(30, 1620), 54, x(20, 40), 2)).toBe(false);
   });
 
+  it("refuses an example that writes the answer or a printed number anywhere, an intermediate step value included (lesson 12)", () => {
+    // 200 × ? = 600 drops zeros to 6 ÷ 2: it writes a 2, the answer of 500 × ? = 1000.
+    const ex = missingWork(x(200, 600))!;
+    const written = exampleNumbers("200 × ? = 600", ex.operation, ex.steps);
+    expect(written).toContain(2);
+    expect(givesAway(x(500, 1000), 2, x(200, 600), 3, written)).toBe(true);
+    // A long-division example whose middle step says the question's answer: 52 ÷ 4 says "12 ÷ 4 = 3".
+    const mid = missingWork(x(4, 52))!;
+    const midWritten = exampleNumbers("4 × ? = 52", mid.operation, mid.steps);
+    expect(midWritten).toEqual(expect.arrayContaining([12, 3, 13]));
+    expect(givesAway(x(7, 84), 12, x(4, 52), 13, midWritten)).toBe(true);
+    // The zeros step names the factor, never a count ("2 zeros" would write a 2).
+    expect(exampleNumbers("", ex.operation, ex.steps.filter((s) => s.kind === "drop-zeros"))).toEqual([200, 600, 200, 6, 2]);
+  });
+
+  it("gives 500 × ? = 1000 and 700 × ? = 1400 (answer 2) an example that writes no 2", () => {
+    for (const known of [500, 700]) {
+      const pkg = derive({ known, missing: 2, sign: "×" })!;
+      const ex = pkg.easierExample!;
+      expect(exampleNumbers(ex.text, ex.operation, ex.steps), ex.text).not.toContain(2);
+      expect(exampleNumbers(ex.text, ex.operation, ex.steps)).not.toContain(known);
+    }
+  });
+
   it("holds for every example the deriver makes, here on a spread of printed questions", () => {
     const cases: Parameters<typeof printedMissing>[0][] = [
       ...[30, 40, 50, 70, 80, 90].flatMap((known) => [12, 54, 140, 330, 540, 700, 810].map((missing) => ({ known, missing, sign: "×" as const }))),
@@ -149,7 +174,7 @@ describe("the easier example never gives the answer away (lesson 11)", () => {
       const ex = pkg.easierExample!;
       const m = /^(\d+) [×−] \? = (\d+)$/.exec(ex.text)!;
       const e = { sign: c.sign, known: Number(m[1]), unknownFirst: false, total: Number(m[2]) };
-      expect(givesAway(q, c.missing, e, (ex.answer as { value: number }).value), `${pkg.text} with ${ex.text}`).toBe(false);
+      expect(givesAway(q, c.missing, e, (ex.answer as { value: number }).value, exampleNumbers(ex.text, ex.operation, ex.steps)), `${pkg.text} with ${ex.text}`).toBe(false);
     }
   });
 });
