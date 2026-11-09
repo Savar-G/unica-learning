@@ -253,7 +253,7 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const ask = (n: number, text: string, regions: AnswerRegion[], format: ItemFormat) => ({ ...fact, number: n,
       package: { ...fact.package, id: `${fact.package.id}-c${n}`, ref: { ...fact.package.ref, question: n } as typeof fact.package.ref, text, operation: null,
         item: { format, scorable: true, parentChecked: false, error: null, checks: [], regions } } });
-    const yesNo = { id: "right", kind: "choice", mark: "circle", label: null, choices: ["Yes", "No"], answer: "Yes" } as const;
+    const yesNo: Extract<AnswerRegion, { kind: "choice" }> = { id: "right", kind: "choice", mark: "circle", label: null, choices: ["Yes", "No"], answer: "Yes" };
     const fixIt = warm.content.blocks.find(b => b.slot === "fix-it");
     const next = Math.max(...warm.questions.map(q => q.number)) + 1;
     const added = [ask(next, "7 + 6 = 13", [{ ...yesNo, choices: ["true", "false"], answer: "true" }], "circle"), ask(next + 1, "9 + 4 = 12", [{ ...yesNo, mark: "tick", label: "Is it right?" }], "tick-one")];
