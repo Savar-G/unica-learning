@@ -35,7 +35,7 @@ const template: WorkbookTemplate = { ...workbookTemplate(), fit: undefined };
 const fits: FitCheck = { fits: async () => ({ ok: true }) };
 
 /** A first book made by the real job, with the planning capture its frame stores. */
-export async function jobBook() {
+export async function jobBook(grade: 1 | 5 = 1) {
   let clock = new Date(NOW), ids = 0, tokens = 0;
   const newId = () => id(++ids);
   const drafts = memoryDraftStore({ [CHILD]: PARENT });
@@ -44,7 +44,7 @@ export async function jobBook() {
     itemPolicy: "approved-v1", runs, drafts, files: (await import("./workbook-store-memory")).memoryWorkbookFiles(),
     ai: fakeAiClient({ answer: r => { clock = new Date(clock.getTime() + 1000); return fakeWorkbookItems(r); } }),
     template, fit: () => fits, engine: fakePrintEngine(), solver: keySolver(),
-    source: { inputs: async c => (c === CHILD ? { parentId: PARENT, name: "Leah", grade: 1, province: "BC", profile: null, workbooks: [] } : null),
+    source: { inputs: async c => (c === CHILD ? { parentId: PARENT, name: "Leah", grade, province: "BC", profile: null, workbooks: [] } : null),
       prepareProfile: async () => ({ ok: true, profile: null }) },
     newId, qrToken: () => `token-${String(++tokens).padStart(12, "0")}`, fileKey: () => `k${ids}`, now: () => clock.getTime(), concurrency: 4, budgetMs: 1e9,
   };
