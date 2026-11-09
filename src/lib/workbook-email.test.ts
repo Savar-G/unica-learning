@@ -179,3 +179,14 @@ To cancel, sign in and open https://unicalearning.com/account/plan, then press "
     if (!(marking && explain)) for (const format of [message.text, message.html]) expect(format).not.toContain("Explain");
   });
 });
+
+describe("the plan start email's reminder words (PR #803 review)", () => {
+  // Every reminder case renders byte for byte as before the shared reminder rule: the digest was taken at b4d9feb3.
+  const cases = [undefined, true].flatMap((sharedWindow) => [undefined, true, false].flatMap((free) => [undefined, true, false].map((reminder) => ({ sharedWindow, free, reminder }))));
+  it("keeps the parent email unchanged for every window, free and reminder case", async () => {
+    const { createHash } = await import("node:crypto");
+    const rendered = cases.map((c) => planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 59.99, firstCharge: "December 15, 2026", marking: true, explain: true, ...c }));
+    expect(createHash("sha256").update(JSON.stringify(rendered)).digest("hex")).toBe("831a47d06a9f8817d238d730395ea4397c864931b03eb31856c1e95d19410b25");
+    rendered.forEach((m, i) => expect(m.text.includes(" We will email you a reminder 7 days before the first charge.")).toBe(cases[i].reminder !== false));
+  });
+});

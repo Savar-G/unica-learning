@@ -1,6 +1,7 @@
 import { familyPlanWords as w } from "@/lib/family-plan-words";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
+import { PLAN_REMINDER_PARENT } from "@/lib/plan-reminder";
 import { cad } from "@/lib/site";
 
 /** The emails an admin previews and sends from the card's panel. */
@@ -113,7 +114,7 @@ export function planStartEmail(p: { parentName: string; childName: string; grade
     "As a parent, here are your responsibilities:",
     steps.join("\n"),
     `If anything is broken, if anything does not work, or if you have feedback, email ${SUPPORT_EMAIL} or use https://unicalearning.com/account/feedback.`,
-    `Your plan: On ${p.firstCharge}, we charge CAD ${cad(p.price)} to your saved card. We then charge CAD ${cad(p.price)} each month until you cancel. Delivery is included.${p.reminder !== false ? " We will email you a reminder 7 days before the first charge." : ""}`,
+    `Your plan: On ${p.firstCharge}, we charge CAD ${cad(p.price)} to your saved card. We then charge CAD ${cad(p.price)} each month until you cancel. Delivery is included.${p.reminder !== false ? ` ${PLAN_REMINDER_PARENT}` : ""}`,
     `To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan".${p.free !== false ? ` If you cancel before ${p.firstCharge}, you pay nothing.` : ""}`,
   ];
   const footer = { why: "You received this email about your Unica Learning program." };

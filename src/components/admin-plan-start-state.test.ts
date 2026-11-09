@@ -165,9 +165,19 @@ it.each(["restart", "stuck"])("closing %s offers an initial free month only when
   } finally { await act(async () => root.unmount()); }
 });
 
+const priceCards = ["new", "started", "other", "refused", "old-start", "legacy-state"];
+it.each(["next steps", "parent detail"])("%s keeps the saved price, with no ceiling label, when both price reads succeed with no price row", async (page) => {
+  const cards = await readCards(page);
+  for (const id of priceCards) {
+    const html = cardHtml(cards, id);
+    expect(html).toContain("CAD 79.99");
+    expect(html).not.toContain("up to CAD");
+    expect(html).not.toContain("price not read");
+  }
+});
 
 it.each(["next steps", "parent detail"])("%s labels the ceiling when both price reads fail and start evidence succeeds", async (page) => {
-  const html = cardHtml(await readCards(page, { failPrices: true }), "started");
-  expect(html).toContain("Plan started.");
-  expect(html).toContain("up to CAD 79.99 (price not read)");
+  const cards = await readCards(page, { failPrices: true });
+  expect(cardHtml(cards, "started")).toContain("Plan started.");
+  for (const id of priceCards) expect(cardHtml(cards, id)).toContain("up to CAD 79.99 (price not read)");
 });
