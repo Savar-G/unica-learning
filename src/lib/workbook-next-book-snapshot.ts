@@ -29,6 +29,8 @@ export type NextBookSnapshotResult = { ok: false; reason: string } | {
 };
 const identityKey = (i: ItemIdentity) => JSON.stringify([i.workbookId, i.printedRevision, i.pageId, i.itemId]);
 const stepKey = (s: Pick<StepRef, "skill" | "step">) => JSON.stringify([s.skill, s.step]);
+const compareText = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+const compareValue = (a: unknown, b: unknown) => compareText(JSON.stringify(a), JSON.stringify(b));
 
 /**
  * The complete list of skills a snapshot must name in `issuedSkills`: every skill the printed Book 1 issued, from its
@@ -55,6 +57,12 @@ export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSources
       return refuse("The Book 1 starting record is invalid.");
     const book = sources.books.find(b => b.book.id === snapshot.workbookId);
     if (!book || sources.books.length !== 1 || book1BindingProblem(baseline, book)) return refuse("The printed Book 1 does not match its starting record.");
+    // Frozen database rows have no inherent order. Normalize the private copy before deriving evidence or planning.
+    book.pages.sort((a, b) => a.page_number - b.page_number || compareText(a.id, b.id));
+    book.questions.sort((a, b) => compareText(a.page_id, b.page_id) || a.question_number - b.question_number || compareText(a.id, b.id));
+    book.items.sort((a, b) => compareText(a.id, b.id));
+    book.changes.sort((a, b) => a.id - b.id);
+    book.events.sort((a, b) => compareText(a.id, b.id));
     const skills = nextBookIssuedSkills(sources) ?? [];
     if (!Array.isArray(snapshot.issuedSkills) || new Set(snapshot.issuedSkills).size !== snapshot.issuedSkills.length
       || !isDeepStrictEqual([...snapshot.issuedSkills].sort(), skills)) return refuse("A printed skill is missing from the snapshot.");
@@ -132,7 +140,7 @@ export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSources
       if (!retained.ok) throw Error(`The printed evidence is unavailable: ${retained.reason}.`);
       return { input: historyInput, retained };
     }
-    const allIssues = baseline.initialIssues.map(i => i.selection);
+    const allIssues = baseline.initialIssues.map(i => i.selection).sort(compareValue);
     const initial = allIssues[0];
     if (!initial) return refuse("The printed book has no issued skills.");
     const catalog = validateCatalog(request(initial), sources);
@@ -217,10 +225,10 @@ export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSources
     for (const item of reviews.consumed) recordUsed({ key: identityKey(item.identity), firstVersion: item.firstVersion, effectiveVersion: item.effectiveVersion });
     for (const h of heldReviews) held.push({ key: h.identity ? identityKey(h.identity) : null, reason: h.reason, skill: h.skill, step: h.step });
     const planning: Omit<PlanInput, "progress" | "previewDecisions"> = { ...next.input,
-      reviews: [...next.input.reviews, ...reviews.reviews], missedReviews: [...next.input.missedReviews, ...reviews.missedReviews],
-      misses: [...next.input.misses, ...reviews.misses] };
+      reviews: [...next.input.reviews, ...reviews.reviews].sort(compareValue), missedReviews: [...next.input.missedReviews, ...reviews.missedReviews].sort(compareValue),
+      misses: [...next.input.misses, ...reviews.misses].sort(compareValue) };
     const inputs: WorkbookPlanPreviewInput[] = [];
-    for (const [skill, steps] of taught) {
+    for (const [skill, steps] of [...taught].sort(([a], [b]) => compareText(a, b))) {
       const selection = [...steps].sort((a, b) => a.step - b.step)[0];
       if (!skills.includes(skill) || !allIssues.some(s => s.unit === selection.unit && s.skill === skill && s.step === selection.step))
         return refuse("A printed skill has no progress record.");
@@ -242,7 +250,11 @@ export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSources
     }
     const usedCorrections = new Set<string>();
     for (const d of decisions) {
-      for (const item of d.consumed) recordUsed(item);
+      const pending = new Map(d.items.filter(i => i.status === "pending" && i.first).map(i => [i.key, i]));
+      for (const item of d.consumed) {
+        if (pending.has(item.key)) held.push({ key: item.key, version: item.effectiveVersion, reason: "not marked" });
+        else recordUsed(item);
+      }
       for (const item of d.items) if (item.secondTries.length && used.has(item.key)) {
         const ids = item.secondTries.map(t => t.id).sort();
         ids.forEach(id => usedCorrections.add(id));
@@ -263,14 +275,15 @@ export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSources
     for (const c of book.changes) if (ledgerTime(c.changed_at) > snapshot.cutoff) {
       const item = book.items.find(m => m.id === c.item_id);
       if (!item) throw Error("A held mark change has no printed item.");
-      held.push({ key: identityKey((item.observation as unknown as { identity: ItemIdentity }).identity), reason: "mark changed after cutoff", version: c.to_version });
+      const k = identityKey((item.observation as unknown as { identity: ItemIdentity }).identity);
+      held.push({ key: `${k}:version:${c.to_version}`, reason: "changed after the snapshot", version: c.to_version });
     }
     for (const row of f.corrections.rows) if (!usedCorrections.has(row.id) && !heldCorrections.has(row.id)) {
       heldCorrections.set(row.id, { key: `second-try:${row.id}`, reason: "not used in this plan" });
     }
     held.push(...heldCorrections.values());
     const consumed = [...used.values()].sort((a, b) => a.key.localeCompare(b.key));
-    held.sort((a, b) => (a.key ?? "").localeCompare(b.key ?? "") || a.reason.localeCompare(b.reason));
+    held.sort(compareValue);
     const planHash = sourceHash(JSON.parse(JSON.stringify({ planningInput, plan })));
     return { ok: true, planHash, planningInput, plan, consumed, held };
   } catch (error) {
