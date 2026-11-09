@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { historyFixture } from "./workbook-progress-history.fixture";
 import { readWorkbookProgressHistory } from "./workbook-progress-history";
-import { newEvidenceSince, preparationState, validatePlannerEvidence } from "./next-book-snapshot";
+import { evidenceDelta, preparationState, validatePlannerEvidence } from "./next-book-snapshot";
 
 vi.mock("server-only", () => ({}));
 
@@ -37,9 +37,9 @@ describe("next-book snapshot primitives", () => {
     const used = [{ key: "a", version: 2 }, { key: "b", version: 1 }];
     const current = [{ key: "a", version: 2, day: 7, pageId: "p7" }, { key: "b", version: 2, day: 8, pageId: "p8" },
       { key: "c", version: 1, day: 8, pageId: "p8" }, { key: "d", version: 1, day: 9, pageId: "p9" }];
-    expect(newEvidenceSince(used, current)).toEqual({ days: [8, 9], pages: 2, items: 3 });
-    expect(newEvidenceSince(current.map(({ key, version }) => ({ key, version })), current)).toEqual({ days: [], pages: 0, items: 0 });
-    expect(() => newEvidenceSince(used, [{ ...current[0], version: 1 }])).toThrow("evidence-regressed");
-    expect(() => newEvidenceSince(used, [current[0], current[0]])).toThrow("invalid-evidence");
+    expect(evidenceDelta(used, current)).toEqual({ days: [8, 9], pages: 2, items: 3 });
+    expect(evidenceDelta(current.map(({ key, version }) => ({ key, version })), current)).toEqual({ days: [], pages: 0, items: 0 });
+    expect(() => evidenceDelta(used, [{ ...current[0], version: 1 }])).toThrow("evidence-regressed");
+    expect(() => evidenceDelta(used, [current[0], current[0]])).toThrow("invalid-evidence");
   });
 });
