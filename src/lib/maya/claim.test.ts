@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allLineTexts, createSession, heldReason, learningEvent, lineOffers, nextActs, step, type Session } from "@/lib/maya";
+import { allLineTexts, createSession, fallbacks, heldReason, learningEvent, lineOffers, nextActs, step, type Session } from "@/lib/maya";
 import { claimActs, claimQuestionAsked, claimReveals, claimStepConfirmable, claimStepHeard, claimView, readClaimWord } from "@/lib/maya/claim";
 import { packageLines } from "@/lib/maya/lines";
 import * as CLAIMS from "@/lib/maya-gate/claim-fixtures";
@@ -12,6 +12,11 @@ import { workedSteps, type Operation, type OperationPackage } from "@/lib/questi
 
 const TF = ["true", "false"] as const;
 const YN = ["yes", "no"] as const;
+/** The child's own work each claim checks a reason against (claim.ts, ownWork). */
+const GT = { value: 1440, shown: 1450, operation: { kind: "multiply", operands: [360, 4] } as Operation };
+const TFW = { value: 48, shown: 48, operation: { kind: "multiply", operands: [6, 8] } as Operation };
+const GT2 = { value: 1440, shown: 1436, operation: { kind: "multiply", operands: [360, 4] } as Operation };
+const DEC = { value: 5.83, shown: 5.93, operation: { kind: "decimal-add", operands: [3.45, 2.38] } as Operation };
 
 describe("reading the circled word (A4): an allow-list over the whole turn", () => {
   it.each([
@@ -20,14 +25,17 @@ describe("reading the circled word (A4): an allow-list over the whole turn", () 
     ["false!", TF, { word: "false", committed: false }],
     ["Yeah.", YN, { word: "yes", committed: false }],
     ["Nope.", YN, { word: "no", committed: false }],
-    ["No, 1440 is less than 1450.", YN, { word: "no", committed: false }],
-    ["Yes, because 1440 is more.", YN, { word: "yes", committed: false }],
+    ["No, 1440 is less than 1450.", YN, { word: "no", committed: false }, GT],
+    ["Yes, because 1440 is more.", YN, { word: "yes", committed: false }, GT2],
     // Committed forms.
     ["It's true.", TF, { word: "true", committed: true }],
     ["I circle no.", YN, { word: "no", committed: true }],
     ["The answer is yes.", YN, { word: "yes", committed: true }],
-    ["It's false, because 3.45 plus 2.38 is 5.83.", TF, { word: "false", committed: true }],
-    ["6 times 8 is 48, so it's true.", TF, { word: "true", committed: true }],
+    ["It's false, because 3.45 plus 2.38 is 5.83.", TF, { word: "false", committed: true }, DEC],
+    ["It's false, because 5.83 is not 5.93.", TF, { word: "false", committed: true }, DEC],
+    ["6 times 8 is 48, so it's true.", TF, { word: "true", committed: true }, TFW],
+    ["48, so it's true.", TF, { word: "true", committed: true }, TFW],
+    ["1450 minus 1440 is 10, so it's no.", YN, { word: "no", committed: true }, GT],
     ["Um, it is no.", YN, { word: "no", committed: true }],
     // Unsure, or both words: Maya asks which word.
     ["Maybe true?", TF, { unclear: true }],
@@ -46,8 +54,41 @@ describe("reading the circled word (A4): an allow-list over the whole turn", () 
     ["Yes, it is not greater.", YN, null],
     ["No, I want to stop.", YN, null],
     ["48.", TF, null],
-  ] as const)("%j (%j)", (text, choices, want) => {
-    expect(readClaimWord(text, choices)).toEqual(want);
+    // Another person's work or a copy is never the child's answer (#737 and #743 reviews): an allow-list for what comes
+    // before ", so" and after "because".
+    ["My mom said 48, so it's true.", TF, null, TFW],
+    ["I copied 48, so it's true.", TF, null, TFW],
+    ["My teacher said it's 48, so it's true.", TF, null, TFW],
+    ["Mom told me, so it's true.", TF, null, TFW],
+    ["I copied it, so it's true.", TF, null, TFW],
+    ["My mom said 1440, so it's yes.", YN, null, GT],
+    ["It's true, because my mom said so.", TF, null, TFW],
+    ["It's yes, because I copied 1440.", YN, null, GT],
+    ["Yes, because my friend said 1440.", YN, null, GT],
+    ["6 times 9 is 54, so it's true.", TF, null, TFW],
+    // The child's own work is checked against the true numbers (#737 review, round 2): the order, equal or not, the result.
+    ["1440 is more than 1436, so it's yes.", YN, { word: "yes", committed: true }, GT2],
+    ["1436 is less than 1440, so it's yes.", YN, { word: "yes", committed: true }, GT2],
+    ["1440 is more, so it's yes.", YN, { word: "yes", committed: true }, GT2],
+    ["1440, so it's yes.", YN, { word: "yes", committed: true }, GT2],
+    ["48 is 48, so it's true.", TF, { word: "true", committed: true }, TFW],
+    ["48 is the same as 48, so it's true.", TF, { word: "true", committed: true }, TFW],
+    ["5.83 is not 5.93, so it's false.", TF, { word: "false", committed: true }, DEC],
+    ["1440 is less than 1436, so it's yes.", YN, null, GT2],
+    ["1436 is more than 1440, so it's yes.", YN, null, GT2],
+    ["1440 is 1436, so it's yes.", YN, null, GT2],
+    ["1436 is more, so it's yes.", YN, null, GT2],
+    ["7, so it's yes.", YN, null, GT2],
+    ["It's yes, 7.", YN, null, GT2],
+    ["It's yes, because 1440 is less than 1436.", YN, null, GT2],
+    ["48 is not 48, so it's true.", TF, null, TFW],
+    ["5.83 is 5.93, so it's false.", TF, null, DEC],
+    ["1436 minus 1440 is 4, so it's yes.", YN, null, GT2],
+    ["1440 minus 1436 is 5, so it's yes.", YN, null, GT2],
+    // No work to check against: only a word with nothing beside it counts.
+    ["6 times 8 is 48, so it's true.", TF, null],
+  ] as const)("%j (%j)", (text, choices, want, work?: { value: number; shown: number; operation: Operation }) => {
+    expect(readClaimWord(text, choices, work ?? null)).toEqual(want);
   });
 });
 
@@ -79,6 +120,15 @@ describe("a claim question's session (A4)", () => {
     expect(claimActs(FIXTURES.A as OperationPackage, ["give_answer"])).toEqual(["give_answer"]);
   });
 
+  it("puts the easier example before the honest close while it is not worked and the child did nothing (lesson 10, #737 P2)", () => {
+    const pkg = claimView(tf);
+    expect(claimActs(pkg, ["give_answer", "confirm"], false, true)).toEqual(["example_step", "confirm"]);
+    expect(claimActs(pkg, ["accept_answer", "guide"], true, true)).toEqual(["example_step"]);
+    expect(claimActs(pkg, ["accept_answer", "guide"], false, true)).toEqual(["accept_answer", "guide", "example_step"]);
+    expect(claimActs(pkg, ["accept_answer", "guide"], false, false)).toEqual(["accept_answer", "guide"]);
+    expect(claimActs(FIXTURES.A as OperationPackage, ["guide"], false, true)).toEqual(["guide"]);
+  });
+
   it("knows when Maya's words give the word away before it is released", () => {
     const pkg = claimView(tf);
     expect(claimReveals(pkg, "guide", ["Good thinking. It's true!"])).toBe(true);
@@ -91,7 +141,9 @@ describe("a claim question's session (A4)", () => {
 
   it("asks the child to circle the word, never to write a number", () => {
     const l = packageLines(claimView(tf));
-    expect(l.answerGive()).toEqual([]);
+    // The word is given only after two real wrong words (D-199): code's comparison and a request to circle, never to write.
+    expect(l.answerGive().map((o) => o.key)).toEqual(["answer.give.claim"]);
+    for (const t of l.answerGive()[0].texts) expect(t).toMatch(/^48 and 48 are the same number\. .*\bcircle (?:true|it)\b/i);
     expect(l.answerParts()).toEqual([]);
     for (const o of [...l.writeAnswer(), ...l.writeYours()]) for (const t of o.texts) expect(t).toMatch(/\bcircle\b/i);
     expect(l.writeAnswer()[0].texts.every((t) => /\btrue\b/.test(t) && !/\d/.test(t))).toBe(true);
@@ -192,6 +244,33 @@ describe("a claim question's session (A4)", () => {
     expect(learningEvent(r.session, { parentId: "p", childId: "c" })).toMatchObject({ source: "call", result: "blank", stuckStep: "result", hints: 2 });
   });
 
+  it.each([["CLAIM_GT", "It's no."], ["CLAIM_TF", "It's false."], ["CLAIM_DEC", "It's true."], ["CLAIM_DIV", "It's yes."]] as const)(
+    "%s with the model down: 'I'm stuck.' to the top help, then a wrong word twice, always has a line and writes the stuck step (#737 review)",
+    (fixture, wrong) => {
+      let s = createSession({ callId: `claim-down-${fixture}`, package: FIXTURES[fixture] });
+      let at = 0;
+      s = step(s, { type: "start", at: at++ }).session;
+      const maya = () => {
+        while (s.expect === "maya" && !s.outcome) {
+          const next = fallbacks(s).map((p) => step(s, { type: "proposal", at, proposal: p })).find((r) => r.refusal === null);
+          expect(next, `no fallback line after ${JSON.stringify(s.turns.at(-1)?.text)}`).toBeDefined();
+          s = next!.session;
+          at++;
+        }
+      };
+      maya();
+      for (const text of ["I'm stuck.", "I'm stuck.", "I'm stuck.", "I'm stuck.", "I'm stuck.", wrong, wrong, "I'm stuck.", "I'm stuck.", "I'm stuck.", "I'm stuck."]) {
+        if (s.outcome) break;
+        s = step(s, { type: "child_turn", at: at++, text }).session;
+        maya();
+      }
+      expect(s.outcome).toMatchObject({ reason: "child_stopped" });
+      expect(s.exampleShown).toBe(s.package!.easierExample.steps.length);
+      expect(s.turns.at(-1)?.text).toMatch(/\b(?:stop|stopping)\b/i);
+      expect(learningEvent(s, { parentId: "p", childId: "c" })?.stuckStep).toBeTruthy();
+    },
+  );
+
   it("does not take a plain yes to 'Did you say ...?', or a yes after another act, as the claim's word", () => {
     const gt = FIXTURES.CLAIM_GT as OperationPackage;
     const accept = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }] };
@@ -242,8 +321,8 @@ describe("claim lines fit the word limits and the scope check (A4, lessons from 
 describe("the compare step's credit (A4, review of #737): a whole-turn allow-list", () => {
   const mul = { kind: "multiply", operands: [360, 4] } as Operation;
   const yes1440 = { type: "number", value: 1440 } as const;
-  const heard = (text: string, o: Partial<{ heardAsked: typeof yes1440 | null; shown: boolean; operation: Operation; value: number }> = {}) =>
-    claimStepHeard({ text, uncertain: false, operation: o.operation ?? mul, value: o.value ?? 1440, heardAsked: o.heardAsked ?? null, shown: o.shown ?? false });
+  const heard = (text: string, o: Partial<{ resultAsked: typeof yes1440 | null; shown: boolean; operation: Operation; value: number }> = {}) =>
+    claimStepHeard({ text, uncertain: false, operation: o.operation ?? mul, value: o.value ?? 1440, resultAsked: o.resultAsked ?? null, shown: o.shown ?? false });
 
   it.each([
     "1440", "1440.", "It's 1440.", "I got 1440.", "360 times 4 is 1440.", "4 times 360 is 1440.", "So 4 × 360 = 1440.", "I wrote 1440.", "1440 is on my paper.",
@@ -255,12 +334,12 @@ describe("the compare step's credit (A4, review of #737): a whole-turn allow-lis
   ])("gives no credit for %j", (text) => expect(heard(text)).toBe(false));
 
   it("a plain yes credits only Maya's own 'Did you say 1440?', and after H3 only the claim about the child's own paper counts", () => {
-    expect(heard("Yes.", { heardAsked: yes1440 })).toBe(true);
-    expect(heard("Yes, 1440.", { heardAsked: yes1440 })).toBe(true);
-    expect(heard("Yes.", { heardAsked: { type: "number", value: 1436 } as never })).toBe(false);
+    expect(heard("Yes.", { resultAsked: yes1440 })).toBe(true);
+    expect(heard("Yes, 1440.", { resultAsked: yes1440 })).toBe(true);
+    expect(heard("Yes.", { resultAsked: { type: "number", value: 1436 } as never })).toBe(false);
     expect(heard("1440.", { shown: true })).toBe(false);
     expect(heard("360 times 4 is 1440.", { shown: true })).toBe(false);
-    expect(heard("Yes.", { heardAsked: yes1440, shown: true })).toBe(false);
+    expect(heard("Yes.", { resultAsked: yes1440, shown: true })).toBe(false);
     expect(heard("I wrote 1440.", { shown: true })).toBe(true);
     expect(heard("5.83.", { operation: { kind: "decimal-add", operands: [3.45, 2.38] }, value: 5.83 })).toBe(true);
     expect(heard("56 divided by 8 is 7.", { operation: { kind: "divide", operands: [56, 8] }, value: 7 })).toBe(true);

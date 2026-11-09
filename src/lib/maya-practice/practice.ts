@@ -463,6 +463,8 @@ function validity(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): RunVerd
   const right = rightValue(c);
   const operands = (pkg.operation?.operands ?? []).filter((n): n is number => typeof n === "number");
   const always = new Set([...numbers(operands), ...(pkg.operation?.operands ?? []).flatMap(v => typeof v === "object" ? [num(v)] : []), ...numbers([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])]);
+  // A one-digit right answer (a missing factor found by trying numbers) is behind its stage like any other.
+  if (right !== null) always.delete(num(right));
   const mayaSaid = new Set<string>();
   const mayaSentences: string[] = [];
   const acts: { act: string; level: number | null }[] = [];

@@ -3,21 +3,28 @@
 // worked-steps code, with its wrong answers and an easier example, checked by `checkQuestionPackage` like any package.
 // `A_BAD_KEY` is fixture A with a wrong answer key (56 while the checked steps total 66), for the content hold (C36).
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
-// not teach yet (equivalent fractions, C36b).
-import { claimTeaching } from "@/lib/maya-teaching/claim";
+// not teach yet (equivalent fractions, C36b). `M_DIVIDE`, `M_TRY` and `M_SUBTRACT` are missing numbers (Wave A),
+// made by Maya's session adapter from synthetic printed packages and checked by Maya's check (mayaPackageCheck).
+// `EV_TWO`, `EV_STORY` and `EV_MISSING` are evaluate questions (Wave A, A2):
+// a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
+// numbers, in the shapes of the workbook's multi-step templates. `EV_ADD_FIRST` has an addition part that is not last:
+// (47 + 38) × 3 (review of #734).
 import { mayaPackageCheck } from "@/lib/maya";
+import { deriveMissingNumber } from "@/lib/maya-teaching/missing-number";
+import { printedMissing, type PrintedMissing } from "@/lib/maya-teaching/missing-number-fixtures";
+import { teachingPackage } from "@/lib/maya-teaching";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE, CLAIM_WIDE } from "./claim-fixtures";
 import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
 import { PLACE_VALUE_FIXTURES, type PlaceValueFixtureId } from "./place-value-cases";
 import { PLACE_PARTS_FIXTURES, type PlacePartsFixtureId } from "./place-value-parts-cases";
-import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE } from "./claim-fixtures";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | OneStepFixtureId | PlaceValueFixtureId | PlacePartsFixtureId;
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "EV_ADD_FIRST" | OneStepFixtureId | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "CLAIM_WIDE" | PlaceValueFixtureId | PlacePartsFixtureId;
 
-/** A claim question's teaching package (A4): the stored synthetic package with its derived operation. */
+/** A claim question's teaching package (A4): the stored synthetic package through the session adapter (claimTeaching). */
 function claimFixture(raw: QuestionPackage): QuestionPackage {
-  const pkg = claimTeaching(raw);
-  if (!pkg) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
+  const pkg = teachingPackage(raw) as QuestionPackage;
+  if (pkg === raw || pkg.operation === null) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
   return pkg;
 }
 
@@ -49,6 +56,14 @@ function fixture(input: {
     wrongAnswers: input.wrong,
     easierExample: { ...input.easier, steps: workedSteps(input.easier.operation) },
   };
+}
+
+/** A missing number as Maya teaches it: the adapter's package for a synthetic printed one. */
+function missing(p: PrintedMissing): QuestionPackage {
+  const printed = printedMissing(p);
+  const pkg = deriveMissingNumber(printed);
+  if (!pkg) throw new Error(`fixtures: no missing-number package for ${printed.text}`);
+  return pkg;
 }
 
 const D = fixture({
@@ -130,23 +145,72 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     wrong: [{ value: frac(11, 12), cause: "F9", description: "Adds the same number to the top and the bottom", step: null }],
     easier: { text: "1/2 = ?/4", operation: { kind: "fraction-equivalent", operands: [frac(1, 2)], denominator: 4 }, answer: frac(2, 4) },
   }),
+  // Evaluate (Wave A, A2): each part in the order of operations, with an easier example of the same shape.
+  EV_TWO: fixture({
+    id: "gate-EV-7x640+7x30",
+    text: "What is 7 × 640 + 7 × 30?",
+    operation: { kind: "evaluate", operands: ["7 × 640 + 7 × 30"] },
+    answer: num(4690),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(4480), cause: "stops-early", description: "Works out only the first part", step: null }],
+    easier: { text: "2 × 40 + 2 × 5 = ?", operation: { kind: "evaluate", operands: ["2 × 40 + 2 × 5"] }, answer: num(90) },
+  }),
+  EV_STORY: fixture({
+    id: "gate-EV-4x260-590",
+    text: "A shop has 4 boxes with 260 beads in each. It sells 590 beads. How many beads does it have now?",
+    operation: { kind: "evaluate", operands: ["4 × 260 − 590"] },
+    answer: num(450),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(1630), cause: "wrong-operation", description: "Adds the beads sold", step: null }],
+    easier: { text: "3 × 20 − 16 = ?", operation: { kind: "evaluate", operands: ["3 × 20 − 16"] }, answer: num(44) },
+  }),
+  EV_MISSING: fixture({
+    id: "gate-EV-8x?=7360-400",
+    text: "8 × ? = 7360 − 400",
+    operation: { kind: "evaluate", operands: ["(7360 − 400) ÷ 8"] },
+    answer: num(870),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(6960), cause: "stops-early", description: "Works out the other side and stops", step: null }],
+    easier: { text: "(20 − 5) ÷ 3 = ?", operation: { kind: "evaluate", operands: ["(20 − 5) ÷ 3"] }, answer: num(5) },
+  }),
+  EV_ADD_FIRST: fixture({
+    id: "gate-EV-(47+38)x3",
+    text: "What is (47 + 38) × 3?",
+    operation: { kind: "evaluate", operands: ["(47 + 38) × 3"] },
+    answer: num(255),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(161), cause: "O-order", description: "Multiplies before working inside the brackets", step: null }],
+    easier: { text: "(2 + 4) × 2 = ?", operation: { kind: "evaluate", operands: ["(2 + 4) × 2"] }, answer: num(12) },
+  }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
-  ...PLACE_VALUE_FIXTURES,
-  ...PLACE_PARTS_FIXTURES,
+  ...ONE_STEP_FIXTURES,
+  // Missing numbers (Wave A): 30 × ? = 1620 by division after dropping a zero (162 ÷ 3), 236 × ? = 1416 by trying
+  // numbers, and 9000 − ? = 3000 by subtracting.
+  M_DIVIDE: missing({ id: "gate-M-30x?=1620", known: 30, missing: 54, sign: "×" }),
+  M_TRY: missing({ id: "gate-M-236x?=1416", known: 236, missing: 6, sign: "×" }),
+  M_SUBTRACT: missing({ id: "gate-M-9000-?=3000", known: 9000, missing: 6000, sign: "−" }),
   // Claim questions (A4): "True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436?", "True or false: 3.45 + 2.38 = 5.93."
   CLAIM_TF: claimFixture(CLAIM_TRUE_FALSE),
   CLAIM_GT: claimFixture(CLAIM_GREATER),
   CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
   // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
   CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
-  ...ONE_STEP_FIXTURES,
+  // "Is 777 × 7 greater than 4662?": the longest spoken claim shape, for the 25-word turns (#737 review P2).
+  CLAIM_WIDE: claimFixture(CLAIM_WIDE),
+  // Place value (B1a and B1b).
+  ...PLACE_VALUE_FIXTURES,
+  ...PLACE_PARTS_FIXTURES,
 };
 
-/** Fixtures that must pass the package check; the bad key must fail it. */
+/** Fixtures that must pass Maya's package check (the default check, or hers for a missing number); the bad key must fail it. */
 export function fixtureProblems(): string[] {
   return (Object.entries(FIXTURES) as [FixtureId, QuestionPackage][]).flatMap(([id, pkg]) => {
-    // Maya's own check: her wider limits hold for the adapter-made fixtures (W5, W3, W6) only.
+    // Maya's own check: her wider limits hold for the adapter-made fixtures (W5, W3, W6, and the missing numbers) only.
     const check = mayaPackageCheck(pkg);
     if (id === "A_BAD_KEY") return check.ok ? [`${id}: the bad key passed the package check`] : [];
     return check.ok ? [] : [`${id}: ${check.reason}`];

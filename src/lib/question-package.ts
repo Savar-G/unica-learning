@@ -349,6 +349,7 @@ export type WorkedStep =
   /** B1b: which of two digits is bigger (they differ), and one digit's value in its place (question-package-place-parts.ts). */
   | { id: "bigger"; kind: "bigger"; a: number; b: number; bigger: number }
   | { id: string; kind: "place-worth"; place: Place; digit: number; worth: number; value: number }
+  | MissingNumberStep
   | {
       /**
        * A printed claim checked against its computed side (Maya only, src/lib/maya/claim.ts; never a stored step of an
@@ -363,6 +364,18 @@ export type WorkedStep =
       holds: boolean;
     }
   | { id: "result"; kind: "result"; value: AnswerValue };
+
+/**
+ * Maya-only steps of a missing number (src/lib/maya/missing-number.ts): never stored in a workbook or made by the
+ * generator, so the default check refuses them; Maya's check computes each one again from the printed equation.
+ * - missing-frame: the printed equation turned into the operation that finds the ? (244 × ? = 1464 is 1464 ÷ 244).
+ * - drop-zeros: the same zeros taken off both numbers of a division (16200 ÷ 30 is 1620 ÷ 3).
+ * - try-factor: a missing factor found by trying numbers, each multiplied out (244 × 7 = 1708 is too big).
+ */
+export type MissingNumberStep =
+  | { id: "frame"; kind: "missing-frame"; sign: "×" | "−"; known: number; unknownFirst: boolean; total: number; inverse: "÷" | "−"; from: number; by: number }
+  | { id: "zeros"; kind: "drop-zeros"; from: number; by: number; zeros: number; toFrom: number; toBy: number }
+  | { id: string; kind: "try-factor"; factor: number; total: number; round: number; tries: { value: number; product: number }[]; value: number };
 
 /** An expected wrong answer and its cause: a misconception id ("O3") and its plain description. */
 export interface WrongAnswer {
