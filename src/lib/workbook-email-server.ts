@@ -8,6 +8,8 @@ import { SUPPORT_EMAIL } from "@/lib/contact";
 import { findSavedCard, recordSavedCard, type SavedCards, type StripeAnswer } from "@/lib/saved-card";
 import { savedCards } from "@/lib/saved-card-server";
 import { familyProvince, familyZone, formatInZone } from "@/lib/family-time";
+import { markingAccess } from "@/lib/scan-marking-access";
+import { explanationAvailable } from "@/lib/parent-problem-explanation-ai";
 import { planStartEmail, workbookEmail, type WorkbookDelivery, type WorkbookEmailKind, type WorkbookNoticeKind } from "@/lib/workbook-email";
 
 /** The send key of every email in the ledger. */
@@ -104,11 +106,31 @@ function planStartEmailLedger(db: SupabaseClient<Database>, message: EmailMessag
   };
 }
 
+/** Whether automatic marking is open for this child of this family now. */
+export type MarkingRead = (db: SupabaseClient<Database>, parentId: string, childId: string) => Promise<boolean>;
+/** The product's own rule (Send, marks and "Explain this problem" open on it), for the card's child. */
+const productMarking: MarkingRead = (db, parentId, childId) => markingAccess(db, parentId, process.env, { child: childId });
+/** A marking read gets this long. A late, failed or odd answer is closed: the email then promises no marks. */
+const MARKING_READ_MS = 3000;
+
+/** Fail closed: only an explicit true, in time, opens step 3's marks. It decides only the words; the email goes either way. */
+async function markingOpen(read: MarkingRead, db: SupabaseClient<Database>, parentId: string, childId: string): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const answer = await Promise.race([read(db, parentId, childId), new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), MARKING_READ_MS); })]);
+    return answer === true;
+  } catch {
+    return false;
+  } finally { clearTimeout(timer); }
+}
+
 /**
  * The confirmation when a free month starts: one per plan start, so a retry cannot send a second copy, and a later start of the same
  * saved card has its own. `inTime`: when it answers false, also after the transport's wait, nothing goes and the claim is given back.
+ * Step 3's words follow `marking` for the card's child and `explain` (the explanation feature's own availability rule), read
+ * before the claim, so the claim stores the words that are sent. A throw from `explain` counts as no explanation.
  */
-export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; generation: number; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport, inTime: () => boolean = () => true): Promise<TimedDeliveryOutcome> {
+export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; generation: number; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport, inTime: () => boolean = () => true, marking: MarkingRead = productMarking, explain: () => boolean = () => explanationAvailable()): Promise<TimedDeliveryOutcome> {
   const { data: card, error } = await db.from("card_setups").select("parent_id, child_id").eq("id", p.cardId).maybeSingle();
   if (error || !card) throw Error("store_failed");
   const [parent, child] = await Promise.all([
@@ -118,9 +140,12 @@ export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { card
   if (parent.error || child.error || !parent.data || !child.data) throw Error("store_failed");
   const zone = familyZone({ timeZone: parent.data.time_zone, postal: parent.data.postal, province: familyProvince([{ id: card.child_id, province: child.data.province }]) });
   const firstCharge = formatInZone(p.firstChargeAt, zone, { year: "numeric", month: "long", day: "numeric" });
+  const marks = await markingOpen(marking, db, card.parent_id, card.child_id);
+  let explains = false;
+  try { explains = marks && explain() === true; } catch { explains = false; }
   const message: EmailMessage = {
     sender: { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
-    ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, grade: child.data.grade, price: p.price, firstCharge }),
+    ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, grade: child.data.grade, price: p.price, firstCharge, marking: marks, explain: explains }),
   };
   return sendEmailOnceInTime(planStartEmailLedger(db, message), { cardId: p.cardId, generation: p.generation }, message, { transport, inTime });
 }

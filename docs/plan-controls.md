@@ -1,6 +1,6 @@
 # Pause and paid Restart
 
-Pause and Restart requests pass `planManagementAccess` (`src/lib/parent-dashboard-access.ts`, called from `src/lib/plan-control-request.ts`). It admits every family the dashboard opens to (the `PARENT_DASHBOARD_ENABLED` switch, test families and admins, or a child with an open plan) and every family that has or had a plan. Cancel (`/api/account/plan/cancel`) has no access gate beyond a signed-in parent who owns the card setup. The plan controls migration (`20261105234500_plan_controls.sql`) is applied in production as version `20261106010709`.
+Pause and paid Restart are live for every family with a plan. No release switch holds them back. The Plan page (`/account/plan`) shows Pause on a `paying` or `free_month` plan and Restart on an `ended` plan to each family that reaches its plan's controls (`src/components/parent-plan-view.tsx`). The routes check the same rule (`planManagementAccess` in `src/lib/plan-control-request.ts`): the dashboard's switch, a child with an open plan, or any plan history. Migration `plan_controls` (`20261105234500_plan_controls.sql`) is applied in production as version 20261106010709. The provider checks below are still open while the controls are live. Cancel (`/api/account/plan/cancel`) has no access gate beyond a signed-in parent who owns the card setup.
 
 ## Supported states
 
@@ -53,7 +53,7 @@ Stripe test-mode acceptance on 6 November 2026 found that the original paid Paus
 
 The actual application functions then passed test-clock checks for first-trial extension, paid Pause at renewal, full payment and a new anchor on resume, failed resume remaining paused, release before Cancel, schedule cancellation during deletion, and immediate paid Restart with retry and decline. The trial check found no paid invoice at the old end and one full CAD 79.99 invoice at the new end. Paid Pause created no renewal charge during the pause and one full CAD 79.99 invoice at resume, with no proration. Test invoices do not move funds. This does not prove a real reminder email, production restricted-key permissions or the production webhook configuration. See the provider evidence added with the repair.
 
-The test-clock checks in the paragraph above are done. Still outstanding, and needed before Savar starts the first customer's free month: the production restricted key's permissions, the production webhook configuration and a real Stripe trial reminder email.
+The parent must use Stripe test mode and a test clock to verify the first-trial extension, the next-renewal invoice, the full resume invoice, failed payment on resume, release before Cancel, schedule cancellation during deletion, and the restricted key's permissions. Check that no credit, refund, new trial email or earlier charge occurs. The controls are already live, so these checks are not a release gate now. A failure is a defect to fix in the live controls. The Pause, Cancel in the free month and Restart screens were checked in a browser against a Stripe test clock on 2026-11-08 and 2026-11-09 (PR #750).
 
 Primary contracts read on 2026-11-05:
 

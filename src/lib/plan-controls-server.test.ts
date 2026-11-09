@@ -10,6 +10,8 @@ import {checkCardRow} from "@/lib/card-reconcile";
 import {supabaseCardRows} from "@/lib/card-reconcile-server";
 import {endStuckPlanStart} from "@/lib/stripe";
 import {adjustedPlan,restartFamilyPlan} from "@/lib/plan-controls-server";
+import {sweepPlanReads} from "@/lib/card-reconcile";
+import {stripePlanProvider,supabasePlanReads,supabasePlanStore} from "@/lib/plan-state-server";
 const card="11111111-1111-4111-8111-111111111111";
 function fixture(){
  let price=99,generation=0,state="none",revision="",blocked=false,cancelled=false;
@@ -42,6 +44,10 @@ function fixture(){
    if(name==='begin_family_card_operation'){holds.add(String(body.token));return Response.json(null);}
    if(name==='end_family_card_operation'){holds.delete(String(body.token));return Response.json(null);}
    if(name==='plan_start_terms')return Response.json({purpose:'restart',monthly_cents:7999});
+   // The rule of due_plan_start_reads for this one family: a started start the ended row does not show yet.
+   if(name==='due_plan_start_reads')return Response.json(state==='started'&&planRow&&['ended','not_started'].includes(String(planRow.kind))?[{child_id:'child',parent_id:'parent',customer:'cus',kind:planRow.kind,event_at:planRow.event_at}]:[]);
+   if(name==='due_plan_reads')return Response.json([]);
+   if(name==='note_plan_read_tried'||name==='note_plan_start_read_tried')return Response.json(null);
    throw Error('Unexpected RPC '+name);
   }
   if(name==='child_plan_states')return Response.json(planRow);
@@ -50,7 +56,7 @@ function fixture(){
   throw Error('Unexpected database read '+u.pathname);
  }}});
  f.db=db;f.client=client;
- return {db,client,pauses,holds,providerWrites,rpcs,plans,startState:()=>state, startKey:()=>startKey,planState:()=>planRow,subscriptionReads:()=>subscriptionReads,failSave:()=>{saveFails=true;},loseCreate:()=>{loseCreate=true;},failRead:()=>{failRead=true;},cancel:()=>{cancelled=true;},price:(p:number)=>{price=p;},revision:(r:string)=>{revision=r;},block:()=>{blocked=true;},end:()=>{plans[1].status='canceled';}};
+ return {db,client,pauses,holds,providerWrites,rpcs,plans,startState:()=>state, startKey:()=>startKey,planState:()=>planRow,subscriptionReads:()=>subscriptionReads,failSave:()=>{saveFails=true;},saveWorks:()=>{saveFails=false;},loseCreate:()=>{loseCreate=true;},failRead:()=>{failRead=true;},cancel:()=>{cancelled=true;},price:(p:number)=>{price=p;},revision:(r:string)=>{revision=r;},block:()=>{blocked=true;},end:()=>{plans[1].status='canceled';}};
 }
 beforeEach(()=>vi.restoreAllMocks());
 it("reads the saved price and owner, starts without a trial and releases only the route hold",async()=>{
@@ -79,6 +85,26 @@ it("a failed plan state write does not read as a failed restart",async()=>{
  expect(await restartFamilyPlan('parent',card,q.token)).toEqual({ok:true,state:'started',price:79.99,access:'pending'});
  expect(b.providerWrites).toHaveLength(1);expect(b.rpcs.some(r=>r.name==='end_family_card_operation')).toBe(true);
  expect(b.planState()).toMatchObject({kind:'ended'});
+});
+it("a failed plan state write and a lost webhook: the next daily re-read reopens access (#713)",async()=>{
+ const b=fixture();const q=await restartFamilyPlan('parent',card);if(!q.ok||!('token'in q))throw Error('missing quote');
+ vi.spyOn(console,'error').mockImplementation(()=>{});
+ b.failSave();
+ expect(await restartFamilyPlan('parent',card,q.token)).toMatchObject({ok:true,state:'started',access:'pending'});
+ expect(b.planState()).toMatchObject({kind:'ended'});
+ b.saveWorks();
+ const sweep=await sweepPlanReads(supabasePlanReads(b.db),{store:supabasePlanStore(b.db),provider:stripePlanProvider(f.client as Stripe)},{now:Date.now,startBy:Date.now()+60_000});
+ expect(sweep).toMatchObject({due:1,read:1,changed:1,failed:0});
+ // The start read's try time is noted before its Stripe read (#748 review).
+ const order=b.rpcs.map(r=>r.name);expect(order).toContain('note_plan_start_read_tried');
+ expect(order.indexOf('note_plan_start_read_tried')).toBeLessThan(order.lastIndexOf('take_plan_read_order'));
+ expect(b.rpcs.find(r=>r.name==='note_plan_start_read_tried')!.body).toEqual({p_child:'child'});
+ const saved=b.rpcs.filter(r=>r.name==='save_child_plan_state').at(-1)!;
+ // The row's own event time, a new event id, and the take before the Stripe read.
+ expect(saved.body).toMatchObject({p_customer:'cus',p_kind:'paying',p_event_at:'2026-11-01T00:00:00Z'});
+ expect(String(saved.body.p_event_id)).toMatch(/^plan-read:/);
+ expect(b.planState()).toMatchObject({kind:'paying'});
+ expect(b.providerWrites).toHaveLength(1);
 });
 it("a restart with no confirmed plan writes no plan state",async()=>{
  const b=fixture();const q=await restartFamilyPlan('parent',card);if(!q.ok||!('token'in q))throw Error('missing quote');
