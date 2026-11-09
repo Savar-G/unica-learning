@@ -82,6 +82,11 @@ is `false`, and both callers prepare only families in `public.test_accounts`, wh
 - the automatic step admits a family only when it is listed in `WORKBOOK_SCAN_TEST_PARENT_IDS` and still marked as a
   test; with `families`, it does not admit real families with an open plan.
 
+The admission checks it again: both callers pass `testOnly` (`p_test_only` of `admit_next_book_run`), which refuses
+with `test-families-only` unless the family is still in `public.test_accounts`, under the parent row lock the admission
+holds. Every removal of a test mark takes that lock first (trigger `next_book_test_mark_lock`), so a family unmarked
+while its plan runs gets no run. The admin page then shows "Only test families can get the next book for now."
+
 Set it to `true` in the change that makes the worker read `plan_input`.
 
 ## The planner
@@ -197,7 +202,7 @@ The database functions are service-only:
 | `save_next_book_snapshot` | Freezes once. A later call gets the first freeze back. |
 | `save_next_book_plan` | Saves the plan once. Refuses `consumed` outside the ledger. Takes the real planner's entry shapes (migration `20261109213000_next_book_plan_shape.sql`). |
 | `retake_next_book_snapshot` | Writes revision n+1 for the draft. Refused after approval or a source change. |
-| `admit_next_book_run` | Starts one run per chain through `start_workbook_run`. |
+| `admit_next_book_run` | Starts one run per chain through `start_workbook_run`. With `p_test_only` (migration `20261109230000_next_book_admit_test_only.sql`), only for a test family. |
 
 ## Not built yet
 

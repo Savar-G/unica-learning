@@ -20,6 +20,7 @@ import { runNextBookStep } from "./next-book-step";
 import { prepareFromSnapshot } from "./next-book-admin";
 import { book1Capture } from "./next-book-snapshot-server";
 import { captureNextBookEvidence } from "./next-book-capture";
+import { TEST_FAMILIES_ONLY } from "./next-book-admin";
 import { BOOK1_RECORD_UNAVAILABLE, nextBookPlanner, nextBookWiring, plannerScope, snapshotPlanner } from "./next-book-planner";
 import type { FrozenWorkbookSourcesV2 } from "./workbook-progress-source";
 
@@ -62,6 +63,7 @@ function world(over: { capture?: NextBookCapture } = {}) {
   m.state.books.push({ id: bookId, parentId: PARENT, childId: CHILD, number: 1, status: "shipped", printedRevision: revision });
   m.state.deliveries.add(bookId);
   m.state.admins.add(ADMIN.id);
+  m.state.testAccounts.add(PARENT);
   m.state.receipts.push({ id: "receipt-1", workbookId: bookId, printedRevision: revision, photoRevision: "photo-1", acceptedAt: CUTOFF - 2 * MIN });
   m.state.jobs.set("photo-1", "finished");
   // The server's own capture (read, capture, read again), on a source store that returns the fixture's frozen rows.
@@ -71,9 +73,20 @@ function world(over: { capture?: NextBookCapture } = {}) {
       claimedAt: CUTOFF - MIN, receiptIds: ["receipt-1"], deliveryAuditId: 7 });
     return { kind: "claim" as const, triggerId: "claim-1" };
   };
-  const deps = (planner: NextBookPlanner = nextBookPlanner()!): NextBookDeps => ({ store: m.store, capture, planner, run: { maxAttempts: 2, staleSeconds: 360 } });
+  // Admission as production wires it: testOnly from nextBookWiring (test families only until the worker reads plan_input).
+  const deps = (planner: NextBookPlanner = nextBookPlanner()!): NextBookDeps => ({ store: m.store, capture, planner,
+    run: { maxAttempts: 2, staleSeconds: 360, testOnly: nextBookWiring(planner)!.testOnly } });
   const row = () => m.state.snapshots.find(s => s.workbookId === bookId && s.revision === 1)!;
   return { m, clock, claim, deps, row };
+}
+
+/** The real planner, held at its call until `release()`: `started` settles when the plan call begins. */
+function paused() {
+  let release!: () => void, began!: () => void;
+  const gate = new Promise<void>(r => { release = r; }), started = new Promise<void>(r => { began = r; });
+  const real = nextBookPlanner()!;
+  const planner: NextBookPlanner = { async plan(input) { began(); await gate; return real.plan(input); } };
+  return { planner, started, release };
 }
 
 /** The real planner, recording each snapshot our adapter hands it. */
@@ -250,11 +263,48 @@ describe("the next-book planner wiring", () => {
     expect(plan.held).toEqual(expect.arrayContaining([expect.objectContaining({ key, reason: "after cutoff" })]));
   }, 120_000);
 
+  // Review P2 (race). Falsifier: a family removed from test_accounts while its plan runs still gets a book 2 run, through
+  // the admin button or the cron step; or a test family no longer queues.
+  it("a test mark removed while the plan runs: the admin button and the cron step refuse at admission; a test family still queues", async () => {
+    expect(nextBookWiring()).toMatchObject({ testOnly: true });
+
+    // The admin button: the family is a test family when pressed, and is unmarked while the planner runs.
+    const admin = world(), a = paused();
+    const press = (planner: NextBookPlanner) => prepareFromSnapshot(ADMIN, CHILD, { planner, realFamilies: false,
+      prepare: p => (trigger, now) => prepareNextBook(trigger, admin.deps(p), now),
+      family: async () => ({ parentId: PARENT, deleting: false, testFamily: admin.m.state.testAccounts.has(PARENT), deliveredBook1: bookId,
+        zone: "America/Vancouver" }), now: () => CUTOFF });
+    const pressed = press(a.planner);
+    await a.started;
+    admin.m.state.testAccounts.delete(PARENT);
+    a.release();
+    expect(await pressed).toEqual({ ok: false, error: "refused", line: TEST_FAMILIES_ONLY });
+    expect(admin.m.state.runs).toEqual([]);
+    expect(admin.row().plan).not.toBeNull();
+    // Marked as a test again: the same chain is admitted.
+    admin.m.state.testAccounts.add(PARENT);
+    expect(await press(nextBookPlanner()!)).toEqual({ ok: true, line: "Next book queued." });
+    expect(admin.m.state.runs).toEqual([expect.objectContaining({ number: 2, snapshotId: admin.row().id })]);
+
+    // The cron step: the listed test family passes the release check, and is unmarked while the planner runs.
+    const step = world(), c = paused();
+    step.claim();
+    const ran = runNextBookStep({ release: { mode: "test-only", testParents: [PARENT] }, planner: c.planner,
+      prepare: p => (trigger, now) => prepareNextBook(trigger, step.deps(p), now), reader: memoryNextBookDue(step.m.state),
+      testAccount: async id => step.m.state.testAccounts.has(id), realFamilies: false, openPlan: async () => false,
+      time: { now: () => CUTOFF, endAt: CUTOFF + 55_000 } });
+    await c.started;
+    step.m.state.testAccounts.delete(PARENT);
+    c.release();
+    expect(await ran).toMatchObject({ status: "ran", prepared: 1, outcomes: { "refused:test-families-only": 1 } });
+    expect(step.m.state.runs).toEqual([]);
+  }, 240_000);
+
   // Falsifier: the callers still see no planner, or their paths stop before the planner.
   it("nextBookWiring is ready, and the cron step and the admin button both reach the planner", async () => {
     const planner = nextBookPlanner();
     expect(planner).not.toBeNull();
-    expect(nextBookWiring()).toEqual({ planner: expect.objectContaining({ plan: expect.any(Function) }) });
+    expect(nextBookWiring()).toEqual({ planner: expect.objectContaining({ plan: expect.any(Function) }), testOnly: true });
     expect(nextBookWiring(null)).toBeNull();
 
     const step = world(), s = recording();

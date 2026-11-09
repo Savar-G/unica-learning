@@ -31,6 +31,8 @@ export interface MemoryNextBookState {
   /** Current marked results, by source workbook. */
   marks: (SnapshotEvidence & { workbookId: string })[];
   admins: Set<string>;
+  /** public.test_accounts: the parents marked as a test family. */
+  testAccounts: Set<string>;
   deletingParents: Set<string>;
   deletedChildren: Set<string>;
   drafts: Map<string, { parentId: string; childId: string }>;
@@ -48,7 +50,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 export function memoryNextBookSnapshots(clock: () => number = Date.now) {
   const state: MemoryNextBookState = { books: [], deliveries: new Set(), claims: [], holds: [], receipts: [], jobs: new Map(), marks: [],
-    admins: new Set(), deletingParents: new Set(), deletedChildren: new Set(), drafts: new Map(), runs: [], snapshots: [], audit: [] };
+    admins: new Set(), testAccounts: new Set(), deletingParents: new Set(), deletedChildren: new Set(), drafts: new Map(), runs: [], snapshots: [], audit: [] };
   let ids = 0;
   // UUIDs, as the database's ids are (the capture's source request requires one): 5 marks a snapshot, 7 a run.
   const id = (prefix: "snapshot" | "run") => `00000000-0000-4000-8${prefix === "snapshot" ? 5 : 7}00-${String(++ids).padStart(12, "0")}`;
@@ -215,6 +217,8 @@ export function memoryNextBookSnapshots(clock: () => number = Date.now) {
       if (!s) return refused("snapshot-not-found");
       if (!writable(s.parentId)) return refused("family-unavailable");
       if (s.runId) return { status: "started", runId: s.runId, existing: true };
+      // Decided in this one turn, as under the family lock that a test mark's removal waits for.
+      if (limits.testOnly && !state.testAccounts.has(s.parentId)) return refused("test-families-only");
       if (s.held) return refused("held");
       if (s.revision !== 1) return refused("refresh-does-not-start-run");
       if (!s.plan) return refused("not-planned");

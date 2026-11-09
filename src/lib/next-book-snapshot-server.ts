@@ -39,14 +39,18 @@ export function book1Capture(sources: WorkbookProgressSourceStoreV2): NextBookCa
 }
 
 /** The planner is the only piece the callers choose: it binds every issued skill, so no step selection is wired. */
-export interface NextBookServerOptions { planner: NextBookPlanner }
+export interface NextBookServerOptions {
+  planner: NextBookPlanner;
+  /** Admit runs for test families only, checked again at admission under the family lock (!NEXT_BOOK_REAL_FAMILIES). */
+  testOnly: boolean;
+}
 
 /** Wire the store and loaders on one service client. Null when the server has no service key. */
 export function nextBookSnapshotServer(options: NextBookServerOptions, db: SupabaseClient<Database> | null = adminClient()) {
   if (!db) return null;
   const store = nextBookSnapshotStore(db);
   const capture = book1Capture(workbookProgressSourceStore(db, book1SourceReader(book1BaselineSql(db))));
-  const deps: NextBookDeps = { store, capture, planner: options.planner, run: { maxAttempts: RUN_ATTEMPTS, staleSeconds: STALE_SECONDS } };
+  const deps: NextBookDeps = { store, capture, planner: options.planner, run: { maxAttempts: RUN_ATTEMPTS, staleSeconds: STALE_SECONDS, testOnly: options.testOnly } };
   return {
     prepare: (trigger: NextBookTrigger, now = Date.now()) => prepareNextBook(trigger, deps, now),
     read: (snapshotId: string) => readNextBookSnapshot(store, snapshotId),

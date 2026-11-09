@@ -128,7 +128,15 @@ export type AdmitAnswer =
   | { status: "started"; runId: string; existing: boolean }
   | { status: "busy" | "stalled"; runId: string }
   | { status: "refused"; reason: string };
-export interface RunLimits { maxAttempts: number; staleSeconds: number }
+export interface RunLimits {
+  maxAttempts: number;
+  staleSeconds: number;
+  /**
+   * Admit the run only for a family in public.test_accounts, checked under the family lock at admission
+   * (admit_next_book_run's p_test_only). Absent: false, the database default.
+   */
+  testOnly?: boolean;
+}
 
 /**
  * Every write is one atomic, idempotent decision, refused the same way in SQL and in memory:

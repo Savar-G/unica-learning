@@ -47,6 +47,8 @@ export function nextBookLine(outcome: PrepareOutcome, zone: FamilyZone): string 
     case "refused":
       switch (outcome.reason) {
         case "next-book-exists": return "This book already has a next book.";
+        // The family stopped being a test family while its next book was prepared.
+        case "test-families-only": return TEST_FAMILIES_ONLY;
         case "no-accepted-scans": return "On hold: no pages scanned.";
         case "missing-delivery": return "Book 1 has not been delivered yet.";
         case "family-unavailable": return "This family is being deleted.";

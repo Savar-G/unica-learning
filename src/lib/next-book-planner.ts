@@ -75,5 +75,5 @@ export function nextBookPlanner(): NextBookPlanner | null {
 
 /** The callers' wiring, or null with no planner. */
 export function nextBookWiring(planner = nextBookPlanner()): NextBookServerOptions | null {
-  return planner ? { planner } : null;
+  return planner ? { planner, testOnly: !NEXT_BOOK_REAL_FAMILIES } : null;
 }
