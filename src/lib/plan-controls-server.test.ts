@@ -41,7 +41,7 @@ function fixture(){
    // The rule of due_plan_start_reads for this one family: a started start the ended row does not show yet.
    if(name==='due_plan_start_reads')return Response.json(state==='started'&&planRow&&['ended','not_started'].includes(String(planRow.kind))?[{child_id:'child',parent_id:'parent',customer:'cus',kind:planRow.kind,event_at:planRow.event_at}]:[]);
    if(name==='due_plan_reads')return Response.json([]);
-   if(name==='note_plan_read_tried')return Response.json(null);
+   if(name==='note_plan_read_tried'||name==='note_plan_start_read_tried')return Response.json(null);
    throw Error('Unexpected RPC '+name);
   }
   if(name==='child_plan_states')return Response.json(planRow);
@@ -89,6 +89,10 @@ it("a failed plan state write and a lost webhook: the next daily re-read reopens
  b.saveWorks();
  const sweep=await sweepPlanReads(supabasePlanReads(b.db),{store:supabasePlanStore(b.db),provider:stripePlanProvider(f.client as Stripe)},{now:Date.now,startBy:Date.now()+60_000});
  expect(sweep).toMatchObject({due:1,read:1,changed:1,failed:0});
+ // The start read's try time is noted before its Stripe read (#748 review).
+ const order=b.rpcs.map(r=>r.name);expect(order).toContain('note_plan_start_read_tried');
+ expect(order.indexOf('note_plan_start_read_tried')).toBeLessThan(order.lastIndexOf('take_plan_read_order'));
+ expect(b.rpcs.find(r=>r.name==='note_plan_start_read_tried')!.body).toEqual({p_child:'child'});
  const saved=b.rpcs.filter(r=>r.name==='save_child_plan_state').at(-1)!;
  // The row's own event time, a new event id, and the take before the Stripe read.
  expect(saved.body).toMatchObject({p_customer:'cus',p_kind:'paying',p_event_at:'2026-11-01T00:00:00Z'});
