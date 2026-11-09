@@ -1,5 +1,5 @@
 "use client";
-import { author, authorCounts, changedPages, commentPlan, commentResult, historyGroups, pageCounts, pendingComments, sendLabel, vancouverTime, versionStatus } from "@/lib/workbook-review-display";
+import { author, authorCounts, changedPages, commentPlan, commentResult, historyGroups, pageCounts, pendingComments, sendableComments, sendLabel, vancouverTime, versionStatus } from "@/lib/workbook-review-display";
 import { watchWorkbookEditProgress, type EditProgress } from "@/lib/workbook-edit-progress";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -66,6 +66,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const status = version ? versionStatus(version, detail.edits, detail.comments, detail.adminNames) : null;
   const [selected, setSelected] = useState(pages.find((p) => p.questions.length)?.number ?? 1);
   const [anchor, setAnchor] = useState<Anchor | null>(null), [note, setNote] = useState("");
+  const composing = useRef(false), refreshDue = useRef(false);
   const [item, setItem] = useState<unknown>(null), [exact, setExact] = useState(false);
   const [saving, setSaving] = useState(false), [error, setError] = useState("");
   const [notice, setNotice] = useState(""), [requestedRoute, setRequestedRoute] = useState<CommentRoute | "auto">("auto");
@@ -105,7 +106,8 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
       update(next) {
         setProgressErrors(0);
         if (!next || next.id !== detail.editBatch?.id || next.status === "done" || next.status === "failed") {
-          setProgress(next); router.refresh(); return false;
+          // Never reload under an unsaved comment: wait until it is saved or cancelled.
+          setProgress(next); if (composing.current) refreshDue.current = true; else router.refresh(); return false;
         }
         setProgress(next); return true;
       },
@@ -113,6 +115,8 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     });
   }, [active, detail.editBatch?.id, detail.run.id, router]);
   useEffect(() => { if (anchor) input.current?.focus(); }, [anchor]);
+  useEffect(() => { composing.current = !!anchor && note.trim().length > 0; }, [anchor, note]);
+  useEffect(() => { if (!anchor && refreshDue.current) { refreshDue.current = false; router.refresh(); } }, [anchor, router]);
   function select(a: Anchor, comment?: ReviewComment) {
     if (locked || working || readOnly) return;
     setSelected(a.page); setAnchor({ ...a, requestKey: a.requestKey ?? crypto.randomUUID() }); setNote(comment?.note ?? ""); setExact(!!comment?.item); setItem(comment?.item ?? null); setError("");
@@ -154,7 +158,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
       <span>{status?.line ?? `Version ${draft.revision}`}</span>
       <label>Version <select aria-label="Choose version" value={version?.revision ?? draft.revision} onChange={e => { setVersionNumber(Number(e.target.value)); setAnchor(null); setBefore(false); setChangedOnly(false); }}>
         {detail.versions.map(v => <option key={v.revision} value={v.revision}>Version {v.revision}</option>)}</select></label></div>
-      <div className="wbr-progress"><button className="btn adm-btn" disabled={readOnly || locked || working || saving || (!pending.length && !stalled)} onClick={() => post({ send: true })}>
+      <div className="wbr-progress"><button className="btn adm-btn" disabled={readOnly || locked || working || saving || (!sendableComments(pending).length && !stalled)} onClick={() => post({ send: true })}>
         {loadingResult ? "Loading results..." : stalled ? "Try again" : working ? "Applying comments..." : sendLabel(pending, detail.adminNames)}</button>
         {active && <span role="status">{currentProgress
           ? `Making version ${draft.revision + 1}: page ${Math.min(currentProgress.checked + 1, currentProgress.total)} of ${currentProgress.total}...`
@@ -166,7 +170,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     {working && <p className="wbr-message wbr-note" role="status">{state} Your current workbook stays in place until the checked changes are ready.</p>}
     {active && progressErrors > 0 && <p className="wbr-message" role="alert">Progress is unavailable. Retrying shortly.{currentProgress ? " The last saved counts stay above." : " No saved count is available yet."}</p>}
     {!active && layoutComments.length > 0 && <p className="wbr-message wbr-note">{layoutComments.length} page-layout {layoutComments.length === 1 ? "comment is" : "comments are"} saved and open for the team. {layoutComments.length === 1 ? "It stays" : "They stay"} open until the pages are re-rendered.</p>}
-    {!active && !readOnly && status?.later && <p role="status" className="wbr-message wbr-note">{status.later}</p>}
+    {!active && !readOnly && status?.later && <p role="status" className={status.laterTone === "warn" ? "wbr-message" : "wbr-message wbr-note"}>{status.later}</p>}
     {notice && <p role="status" className="wbr-message wbr-note">{notice}</p>}
     <div className="wbr-body">
       <nav className="wbr-thumbs" aria-label="Workbook pages"><label><input type="checkbox" checked={changedOnly} onChange={e => { setChangedOnly(e.target.checked); if (e.target.checked && changedPageNumbers.length) setSelected(changedPageNumbers[0]); }} /> Changed in this version</label>{visiblePages.map((p) => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReviewComment } from "@/lib/workbook-edit";
 import type { ReviewSend, ReviewVersion } from "@/lib/admin-store";
-import { author, authorCounts, changedPages, commentPlan, commentResult, historyGroups, pageCounts, sendLabel, versionStatus } from "@/lib/workbook-review-display";
+import { author, authorCounts, changedPages, commentPlan, commentResult, historyGroups, pageCounts, pendingComments, sendableComments, sendLabel, versionStatus } from "@/lib/workbook-review-display";
 
 const comment = (overrides: Partial<ReviewComment> = {}): ReviewComment => ({ id: "c", draftId: "d", revision: 2, page: 22, question: null, x: 0, y: 0, note: "Change text", item: null, actor: { id: "a", email: "savar@example.test" }, createdAt: "2026-11-08T23:00:00Z", status: "done", error: null, batchId: "made", before: null, after: null, ...overrides });
 const made: ReviewSend = { id: "made", createdAt: "2026-11-08T23:56:00Z", finishedAt: "2026-11-08T23:57:00Z", revision: 3, baseRevision: 2, status: "done" };
@@ -12,7 +12,7 @@ const names = { a: "Savar", b: "Cedric" };
 describe("review display", () => {
   it("reports the version and a later send without erasing the applied comments", () => {
     const cs = [comment(), ...[22, 52, 81].map((page, i) => comment({ id: String(i), page, batchId: "kept", resultNote: "Kept" }))];
-    expect(versionStatus(version, [kept, made], cs, names)).toEqual({ line: "Version 3, made Nov 8, 3:57 pm by Savar. 1 comment applied in this version.", later: "Last send, Nov 8, 4:01 pm: nothing changed. 3 comments were kept as they were (pages 22, 52 and 81)." });
+    expect(versionStatus(version, [kept, made], cs, names)).toEqual({ line: "Version 3, made Nov 8, 3:57 pm by Savar. 1 comment applied in this version.", later: "Last send, Nov 8, 4:01 pm: nothing changed. 3 comments were kept as they were (pages 22, 52 and 81).", laterTone: "note" });
     expect(commentResult(cs[1], kept)).toBe("Kept as is");
     expect(commentResult(cs[0], made)).toBe("Applied");
   });
@@ -21,9 +21,29 @@ describe("review display", () => {
     const cs = [comment(), comment({ id: "e1", batchId: "earlier" }), comment({ id: "e2", batchId: "earlier" })];
     expect(versionStatus(version, [made, earlier], cs, names).line).toBe("Version 3, made Nov 8, 3:57 pm by Savar. 3 comments applied in total (1 in this version).");
   });
+  it("keeps every comment either open or in the history, never both", () => {
+    const failed = comment({ id: "f", status: "failed", batchId: "kept", error: "Something went wrong" });
+    const stale = comment({ id: "s", status: "stale", batchId: "made" });
+    const cs = [comment(), failed, stale];
+    expect(pendingComments(cs).map(c => c.id)).toEqual(["f", "s"]);
+    expect(sendableComments(cs).map(c => c.id)).toEqual(["f"]);
+    expect(historyGroups(cs, [kept, made]).count).toBe(1);
+  });
+  it("warns, with the reason, when a later send left comments unapplied", () => {
+    const cs = [comment(), comment({ id: "f", page: 9, status: "failed", batchId: "kept", error: "Something went wrong" })];
+    const status = versionStatus(version, [kept, made], cs, names);
+    expect(status.laterTone).toBe("warn");
+    expect(status.later).toMatch(/^Last send, Nov 8, 4:01 pm: 1 comment was not applied\. .+ It stays open below\.$/);
+    expect(status.later).not.toContain("nothing changed");
+  });
+  it("does not count a kept comment as applied", () => {
+    const keptInVersion = comment({ id: "k", resultNote: "Kept as it is", before: { a: 1 }, after: { a: 1 } } as Partial<ReviewComment>);
+    expect(versionStatus(version, [made], [comment(), keptInVersion], names).line).toBe("Version 3, made Nov 8, 3:57 pm by Savar. 1 comment applied in this version.");
+  });
   it("groups prior comments by send and counts only open comments on badges", () => {
     const cs = [comment(), comment({ id: "p", status: "pending", batchId: null }), comment({ id: "f", status: "failed", batchId: "kept", error: "unknown" })];
-    expect(historyGroups(cs, [kept, made]).groups.map(g => g.send.id)).toEqual(["kept", "made"]);
+    // A failed comment stays open (with its reason), so only the applied one is history.
+    expect(historyGroups(cs, [kept, made]).groups.map(g => g.send.id)).toEqual(["made"]);
     expect(pageCounts(cs, 22)).toEqual({ pending: 2, earlier: true });
     expect(commentResult(cs[2], kept)).toContain("Not applied");
   });

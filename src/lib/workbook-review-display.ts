@@ -18,13 +18,19 @@ export function commentResult(c: ReviewComment, send?: ReviewSend): string {
   const reason = plainReason(c.error ?? "");
   return `Not applied: ${reason === NEEDS_A_LOOK ? "Please review this comment and try again" : reason}`;
 }
+/** Open: still the admin's to edit, move or send. Every comment is either open or in the history, never both. */
+const isOpen = (c: ReviewComment) => c.status === "pending" || c.status === "failed" || c.status === "stale";
 export function historyGroups(comments: ReviewComment[], sends: ReviewSend[]) {
-  const earlier = comments.filter(c => c.status !== "pending" && !(c.status === "failed" && !c.batchId));
+  const earlier = comments.filter(c => !isOpen(c));
   const groups = sends.map(send => ({ send, comments: earlier.filter(c => c.batchId === send.id) })).filter(g => g.comments.length);
   const other = earlier.filter(c => !sends.some(s => s.id === c.batchId));
   return { groups, other, count: earlier.length };
 }
 export function pendingComments(comments: ReviewComment[]) {
+  return comments.filter(isOpen);
+}
+/** What "Send all comments" sends: a comment whose place changed must be placed again first. */
+export function sendableComments(comments: ReviewComment[]) {
   return comments.filter(c => c.status === "pending" || c.status === "failed");
 }
 export function pageCounts(comments: ReviewComment[], page: number) {
@@ -37,9 +43,9 @@ export function authorCounts(comments: ReviewComment[], names: Record<string, st
   return [...counts].map(([name, count]) => ({ name, count }));
 }
 export function sendLabel(comments: ReviewComment[], names: Record<string, string>) {
-  const counts = authorCounts(comments, names), people = counts.map(c => c.name);
+  const counts = authorCounts(sendableComments(comments), names), people = counts.map(c => c.name);
   const list = people.length < 2 ? people.join("") : `${people.slice(0, -1).join(", ")} and ${people.at(-1)}`;
-  return `Send all comments (${pendingComments(comments).length})${list ? ` from ${list}` : ""}`;
+  return `Send all comments (${sendableComments(comments).length})${list ? ` from ${list}` : ""}`;
 }
 export function commentPlan(page: CommentPage | undefined, c: ReviewComment) {
   return workbookCommentRoute(page, c.note, c.route) === "layout" ? "Layout: goes to the team, usually the same day" : "Wording: applies by itself in a minute";
@@ -50,19 +56,25 @@ export function versionStatus(version: ReviewVersion, sends: ReviewSend[], comme
   let line = `Version ${version.revision}, made ${version.displayAt ?? vancouverTime(version.createdAt)}`;
   if (version.byUser || version.byEmail) line += ` by ${author(version.byUser, version.byEmail, names)}`;
   line += ".";
-  const included = comments.filter(c => c.status === "done" && sends.some(s => s.id === c.batchId && s.revision !== null && s.revision <= version.revision)).length;
+  const included = comments.filter(c => { const send = sends.find(s => s.id === c.batchId); return c.status === "done" && !!send && send.revision !== null && send.revision <= version.revision && commentResult(c, send) === "Applied"; }).length;
   const total = Math.max(included, made ? applied : 0);
   const plural = (n: number) => `${n} ${n === 1 ? "comment" : "comments"}`;
   if (total > applied && applied > 0) line += ` ${plural(total)} applied in total (${applied} in this version).`;
   else if (total > 0 && applied === 0) line += ` ${plural(total)} applied in total.`;
   else if (applied > 0) line += ` ${plural(applied)} applied in this version.`;
   const later = sends.find(s => (s.status === "done" || s.status === "failed") && Date.parse(s.finishedAt ?? s.createdAt) > Date.parse(version.createdAt) && s.revision === null && comments.some(c => c.batchId === s.id));
-  if (!later) return { line, later: null };
+  if (!later) return { line, later: null, laterTone: "note" as const };
+  const when = later.displayFinishedAt ?? vancouverTime(later.finishedAt ?? later.createdAt);
   const group = comments.filter(c => c.batchId === later.id), kept = group.filter(c => commentResult(c, later) === "Kept as is");
+  const missed = group.filter(c => isOpen(c));
+  if (missed.length) {
+    const reasons = [...new Set(missed.map(c => commentResult(c, later).replace(/^Not applied: /, "")))];
+    return { line, later: `Last send, ${when}: ${missed.length} ${missed.length === 1 ? "comment was" : "comments were"} not applied. ${reasons.join("; ")}${/[.!?]$/.test(reasons.at(-1) ?? "") ? "" : "."} ${missed.length === 1 ? "It stays" : "They stay"} open below.`, laterTone: "warn" as const };
+  }
   const pages = [...new Set(kept.map(c => c.page))].sort((a, b) => a - b);
   const pageList = pages.length > 1 ? `${pages.slice(0, -1).join(", ")} and ${pages.at(-1)}` : pages.join("");
   const detail = kept.length ? ` ${kept.length} ${kept.length === 1 ? "comment was" : "comments were"} kept as ${kept.length === 1 ? "it was" : "they were"} (page${pages.length === 1 ? "" : "s"} ${pageList}).` : "";
-  return { line, later: `Last send, ${later.displayFinishedAt ?? vancouverTime(later.finishedAt ?? later.createdAt)}: nothing changed.${detail}` };
+  return { line, later: `Last send, ${when}: nothing changed.${detail}`, laterTone: "note" as const };
 }
 export function changedPages(current: ReviewVersion, previous: ReviewVersion | undefined): number[] {
   if (!previous?.rendering || !current.rendering) return [];
