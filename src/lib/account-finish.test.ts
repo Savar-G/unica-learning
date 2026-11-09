@@ -75,6 +75,8 @@ interface World {
   claimHeldFor?: number;
   /** claim_family_finish fails. */
   claimDown?: boolean;
+  /** claim_family_finish takes the claim, but its answer is lost. */
+  claimAnswerLost?: boolean;
   /** Each request waits a random few milliseconds, so parallel finishes interleave. */
   slow?: boolean;
 }
@@ -164,6 +166,7 @@ function supabase(world: World) {
       const held = claims.get(p_user);
       if (held && held !== p_claim) return json("busy");
       claims.set(p_user, p_claim);
+      if (world.claimAnswerLost) return json({ code: "", message: "fetch failed" }, 502);
       return json("claimed");
     }
     if (url.pathname === "/rest/v1/rpc/release_family_finish") {
@@ -606,5 +609,12 @@ describe("one finish at a time for a user (migration sign_in_races)", () => {
     expect((await finish({ ...details, password: "a-long-password" })).status).toBe(502);
     expect(paths()).toEqual([]);
     expect(auth.password).toBe("parents-password");
+  });
+
+  it("lets go of a claim whose answer was lost, so the parent's retry is not held for 5 minutes", async () => {
+    supabase({ claimAnswerLost: true });
+    expect((await finish({ ...details, password: "a-long-password" })).status).toBe(502);
+    expect(paths()).toEqual([]);
+    expect(claims.size).toBe(0);
   });
 });

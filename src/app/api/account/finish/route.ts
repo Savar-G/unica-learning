@@ -9,7 +9,7 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 // session, never from the request body.
 //
 // Supabase keeps the first password of an unconfirmed address, so someone else may have set a password for this email
-// before its owner proved it. Three rules keep that password away from a family:
+// before its owner proved it. Three rules keep that password away from a family, and a fourth keeps two tabs apart:
 // 1. Only a session that proved the email may make a family (the email code, a sign-in or reset link, or Google). A
 //    password sign-in alone writes nothing.
 // 2. Before any step that can fail, the password becomes one that nobody knows, and every other session ends. The
@@ -18,7 +18,9 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 // 4. One finish at a time for a user (claim_family_finish, docs/state-machines.md item 12). Two tabs that finish at once
 //    would otherwise both change the password, and the one that lost create_family's race would answer "existing"
 //    after its change. The claim comes before the first password change and goes when the route ends. A second tab
-//    waits for it, and then finds the family and changes nothing.
+//    waits for it: when the first made the family, it changes nothing; when the first failed, it goes on (and usually
+//    answers signed_out, since the first tab's random password ended its session). A claim lives 5 minutes, longer
+//    than this route can run (maxDuration below), so a claim is never taken from a route that is still running.
 //
 // Both password changes go through the parent's own session (PUT /auth/v1/user). Supabase Auth then ends every other
 // session of the user in the same transaction and keeps the parent's. An admin password change (updateUserById) ends
@@ -26,6 +28,9 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 // signup failed). Checked on the hosted project; see docs/assessment-signup.md.
 
 /** Sign-in methods (the access token's amr claim) that prove the email: "otp" is the email code and every emailed link. */
+/** At most 300 s (Vercel's limit): the finish claim lives 5 minutes, so it always outlives the route. */
+export const maxDuration = 300;
+
 const PROVED = new Set(["otp", "magiclink", "recovery", "email/signup", "invite", "oauth"]);
 
 /** The sign-in methods recorded in a session's access token. getUser has already checked the token with Auth. */
@@ -76,7 +81,11 @@ export async function POST(request: Request) {
   const claim = randomUUID();
   const held = await claimFamilyFinish(admin, user.id, claim);
   if (held === "exists") return Response.json({ ok: true, existing: true } satisfies AccountResult);
-  if (held !== "claimed") return fail("store_failed", 502);
+  if (held !== "claimed") {
+    // A lost answer may hide a claim that was taken: let it go, or the parent's retries wait 5 minutes.
+    if (held === "failed") await releaseFamilyFinish(admin, user.id, claim);
+    return fail("store_failed", 502);
+  }
   try {
     return await finishClaimed(request, session, admin, { id: user.id, email: user.email });
   } finally {

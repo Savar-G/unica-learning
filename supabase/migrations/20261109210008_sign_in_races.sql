@@ -23,6 +23,9 @@ language plpgsql
 set search_path = ''
 as $$
 begin
+  if p_max is null or p_ttl_seconds is null then
+    raise exception 'issue_sign_in_link needs a limit and a link life';
+  end if;
   perform pg_advisory_xact_lock(hashtextextended('public.issue_sign_in_link:' || p_parent::text, 0));
   if not exists (select 1 from public.children where id = p_child and parent_id = p_parent) then
     return 'not_found';
@@ -47,6 +50,8 @@ create table public.family_finish_claims (
 );
 alter table public.family_finish_claims enable row level security;
 revoke all on table public.family_finish_claims from anon, authenticated;
+-- The functions run as their caller (service_role), so it needs the table itself.
+grant select, insert, update, delete on table public.family_finish_claims to service_role;
 
 create function public.claim_family_finish(p_user uuid, p_claim uuid)
 returns text
