@@ -127,6 +127,8 @@ These are the scoped additions and replacements on the chat repair branch. The s
 
 Status: approved by Savar on 2026-11-08 ("approve maya lines"), exactly as worded here at d68c63c1. A wording that a later fix changes, or a new wording, needs his approval again. Values in braces come from the checked question package.
 
+Approved again by Savar on 2026-11-09 ("Approve all Maya lines"), as written in the #698 pre-push package at 7357e89d: (a) `close.stuck.0` to `close.stuck.4`; (b) `check.method.down.0` to `.4` and `check.method.up.0` to `.4`; (c) `held.cannot.0` "Sorry, I can't teach this question yet." as the final wording, with the three-line held sequence and the two-line form in the middle of a call; (d) every feeling-claim rewording, the new `closing.14` and the two `OK_TALK` examples (next section); (e) the close choices below.
+
 ### The honest close after help alone (#735, decision (a))
 
 Maya says one of these when the child still only asks for help after the step's top hint and the whole easier example. The call ends with no answer. The line holds no number, so it gives no answer and no part of one. Before this change, help alone after H3 led to the given answer ("The answer is 66. Please write 66 on your paper."), or to the same H2 lines again on a one-column question.
@@ -207,7 +209,7 @@ The table above in this file still shows the old `praise.3`, `praise.6` and `pra
 
 ### New held line (D-314)
 
-Approved by Savar on 2026-11-08 ("approve maya lines"), with the short wording below, not his longer phrasing. On a held question Maya says `held.hello`, `held.cannot`, `held.next` in that order (after a hello, the last two only).
+Approved by Savar on 2026-11-08 ("approve maya lines"), with the short wording below, not his longer phrasing. Approved again on 2026-11-09 ("Approve all Maya lines") as the final wording, with the sequence below. On a held question Maya says `held.hello`, `held.cannot`, `held.next` in that order (after a hello, the last two only).
 
 | Id | Old wording | New wording (approved 2026-11-08) | Savar's original phrasing |
 |---|---|---|---|
