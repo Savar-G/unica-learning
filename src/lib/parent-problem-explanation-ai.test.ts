@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { explanationAiClient } from "@/lib/parent-problem-explanation-ai";
+import { explanationAiClient, explanationAvailable } from "@/lib/parent-problem-explanation-ai";
 import { EXPLANATION_MAX_BYTES, EXPLANATION_MAX_TOKENS, EXPLANATION_MODEL } from "@/lib/parent-problem-explanation";
 const request = { name: "parent_problem_explanation", system: "Use the stored answer.", content: [{ type: "text" as const, text: "Stored answer: 42" }], schema: { type: "object" }, maxTokens: EXPLANATION_MAX_TOKENS, effort: "low" as const };
 const valid = { steps: ["Add the ones."], say: "Start with the ones." };
@@ -46,4 +46,12 @@ it("oversize input and changed output limits never reach the transport", async (
 it("AI off constructs no client", () => { expect(explanationAiClient({})(async () => {})).toBeNull(); });
 it("another feature's global key cannot enable explanations", () => {
   expect(explanationAiClient({ OPENROUTER_API_KEY: env.OPENROUTER_API_KEY })(async () => {})).toBeNull();
+});
+
+it("is available exactly when the feature can make its client: only its own key opens it, and no request is made", () => {
+  const fetch = vi.fn();
+  expect(explanationAvailable({ PARENT_EXPLANATION_API_KEY: "sk-or-synthetic" }, fetch)).toBe(true);
+  for (const env of [{}, { PARENT_EXPLANATION_API_KEY: "" }, { PARENT_EXPLANATION_API_KEY: "  " }, { OPENROUTER_API_KEY: "sk-or-other" }])
+    expect(explanationAvailable(env, fetch)).toBe(false);
+  expect(fetch).not.toHaveBeenCalled();
 });

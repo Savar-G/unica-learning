@@ -544,6 +544,9 @@ describe("fixed 40 set in the same paid step", () => {
       twoWays: { items: 2, clearItems: 2, clearUnsure: team, clearUnsureRate: TWO_WAYS_METHOD_MARKS ? 0 : 1 } });
     const text = physicalFixedSideBySide(report);
     for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219", "2W unsure", "Unsure+team", `0/${18 - team} 0.0%`, `${team}/18 ${(team / 18 * 100).toFixed(1)}%`, "1/219 0.5%"]) expect(text).toContain(piece);
+    const v7Lines = text.split("\n").filter(line => line.includes("v7") && line.includes("1/219"));
+    expect(v7Lines).toHaveLength(2);
+    for (const line of v7Lines) expect(line.match(/n\/a/g)).toHaveLength(2);
     if (!TWO_WAYS_METHOD_MARKS) expect(text).toContain("reads 100% while the method switch is off");
     expect(text.split("\n")[0]).toBe(team ? `${team} items went to the team: two-ways method marking is off.` : "0 items went to the team.");
   });
