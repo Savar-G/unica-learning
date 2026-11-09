@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { baselineOf, frozenOf, id, jobBook, mark, printedItems, secondTry, shippedBook } from "./workbook-book1.fixture";
 import { approvedWorkbook } from "./workbook-ship";
-import { planNextBookFromSnapshot } from "./workbook-next-book-snapshot";
+import { nextBookIssuedSkills, planNextBookFromSnapshot } from "./workbook-next-book-snapshot";
 import type { Observation } from "./scan-observation";
 import type { Json } from "./database";
 
@@ -58,6 +58,8 @@ describe("next book from a frozen U16 capture", () => {
       expect([...refreshed.consumed, ...refreshed.held].some(item => item.key === key)).toBe(true);
     }
     expect(planNextBookFromSnapshot({ sources, snapshot: { ...snapshot, issuedSkills: snapshot.issuedSkills.slice(1) } })).toMatchObject({ ok: false, reason: "A printed skill is missing from the snapshot." });
+    expect(nextBookIssuedSkills(sources)).toEqual([...snapshot.issuedSkills].sort());
+    expect(nextBookIssuedSkills({ ...structuredClone(sources), book1: undefined } as unknown as typeof sources)).toBeNull();
     const noMarks = structuredClone(sources);
     noMarks.books[0].items = []; noMarks.books[0].changes = []; noMarks.books[0].events = [];
     noMarks.book1!.corrections.rows = []; noMarks.book1!.corrections.count = 0;

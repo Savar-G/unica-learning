@@ -30,6 +30,19 @@ export type NextBookSnapshotResult = { ok: false; reason: string } | {
 const identityKey = (i: ItemIdentity) => JSON.stringify([i.workbookId, i.printedRevision, i.pageId, i.itemId]);
 const stepKey = (s: Pick<StepRef, "skill" | "step">) => JSON.stringify([s.skill, s.step]);
 
+/**
+ * The complete list of skills a snapshot must name in `issuedSkills`: every skill the printed Book 1 issued, from its
+ * Book 1 starting record (the same list planNextBookFromSnapshot checks). Null when the starting record is missing or
+ * invalid. Call it at snapshot admission and store the result.
+ */
+export function nextBookIssuedSkills(sources: FrozenWorkbookSourcesV2): string[] | null {
+  const f = sources.book1;
+  if (!f || f.version !== 1) return null;
+  const baseline = readBook1Baseline(f.baseline);
+  if (!baseline || baseline.id !== f.baseline.id || baseline.parentId !== sources.parentId || baseline.childId !== sources.childId) return null;
+  return [...new Set(baseline.initialIssues.map(i => i.selection.skill))].sort();
+}
+
 /** Plan Book 2 from one complete frozen capture. No current profile, store, clock or provider is read. */
 export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSourcesV2; snapshot: NextBookSnapshot }): NextBookSnapshotResult {
   const refuse = (reason: string): NextBookSnapshotResult => ({ ok: false, reason });
@@ -42,7 +55,7 @@ export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSources
       return refuse("The Book 1 starting record is invalid.");
     const book = sources.books.find(b => b.book.id === snapshot.workbookId);
     if (!book || sources.books.length !== 1 || book1BindingProblem(baseline, book)) return refuse("The printed Book 1 does not match its starting record.");
-    const skills = [...new Set(baseline.initialIssues.map(i => i.selection.skill))].sort();
+    const skills = nextBookIssuedSkills(sources) ?? [];
     if (!Array.isArray(snapshot.issuedSkills) || new Set(snapshot.issuedSkills).size !== snapshot.issuedSkills.length
       || !isDeepStrictEqual([...snapshot.issuedSkills].sort(), skills)) return refuse("A printed skill is missing from the snapshot.");
     const next = book2Planning(baseline, { prepareOnly: true });
