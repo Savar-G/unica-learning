@@ -638,9 +638,6 @@ const BOARD_OPERATION: Partial<Record<OperationKind, string>> = {
 
 /** The two numbers of a whole-number or decimal operation. */
 const operandsOf = (op: Operation): number[] => (op.operands as unknown[]).filter((n): n is number => typeof n === "number");
-/** Every number of an operation as a value: whole numbers, decimals, fractions and mixed numbers (#407). */
-const operandValues = (op: Operation): AnswerValue[] =>
-  (op.operands as unknown[]).flatMap((o): AnswerValue[] => (typeof o === "number" ? [number(o)] : isAnswerValue(o) ? [o] : []));
 
 // ---------- Validation of untrusted input ----------
 
@@ -821,11 +818,10 @@ function asksWhy(text: string): boolean {
 function topHint(s: Session): number {
   const pkg = s.package!;
   const answer = pkg.answer.value;
-  const ownNumber = operandValues(pkg.operation).some((v) => equivalent(v, answer));
   const done = [...s.done];
   const after = regroupAfter(s, [], done);
   const view: View = { steps: [s.ladder.step], done, checked: [], rightResult: false, equal: null, regroup: pendingRegroup(after), regroupSaid: after.said, regroupTimes: after.times };
-  const sayable = (o: LineOffer) => ownNumber || o.texts.some((t) => !valuesIn(t).some((v) => equivalent(v, answer)));
+  const sayable = (o: LineOffer) => Object.values(o.filled ?? {}).every((v) => !valuesIn(String(v).split(operationText(pkg.operation)).join(""), readOptionsFor(pkg)).some((n) => equivalent(n, answer)));
   return offersFor(s, "guide", view).filter((o) => o.level !== undefined && (o.slots.step === undefined || o.slots.step === s.ladder.step) && sayable(o))
     .reduce((top, o) => Math.max(top, o.level ?? 0), 0);
 }
@@ -1321,11 +1317,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (typeof board === "string") return no("board_wrong_problem", board, allowedNow);
     roles = board;
   }
-  if (backupClose && pkg && [say, ...boardTexts(pb.board ?? [])].some((text) => valuesIn(text, readOptionsFor(pkg)).some((value) => equivalent(value, pkg.answer.value)))) {
-    return no("reveals_answer", "The close cannot include the answer.", allowedNow);
-  }
   const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult;
-  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, [forcedOpening ? operationText(pkg.operation) : say, ...boardTexts(pb.board ?? [])])) {
+  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, spoken, forcedOpening !== null)) {
     return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
   }
   const bad = pb.board ? boardProblem(s, pb.board, role, spoken, done) : null;
@@ -2657,20 +2650,10 @@ function end(s: Session, cause: Reason, effects: Effect[], cancel: boolean) {
   effects.push({ kind: "end", at: s.now!, outcome: s.outcome, safetyMessage: s.safety.flagged ? SAFETY_GUIDANCE[s.safety.severity!] : null });
 }
 
-/** The text a board batch writes: `write` texts and `put` values. */
-const boardTexts = (board: unknown[], only?: "text" | "value") =>
-  (board as Partial<Command>[]).flatMap((c) =>
-    only !== "value" && "text" in c && typeof c.text === "string" ? [c.text] : only !== "text" && "value" in c && typeof c.value === "string" ? [c.value] : []);
-
-/**
- * Maya's words or board would give the final answer: she says it (unless it is one of the question's own numbers, as
- * in 66 + 0), or fills the answer row of the question's board in its highest place. The lines that state the answer
- * are offered only once it may be said; this is the net under them.
- */
-function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
+/** Check filled line values, free words, and visible board values before releasing the answer. */
+function revealsAnswer(s: Session, p: Proposal, spoken: Spoken, forcedOpening: boolean): boolean {
   const pkg = s.package!;
   const answer = pkg.answer.value;
-  const ownNumber = operandValues(pkg.operation).some((v) => equivalent(v, answer));
   // An equal form the child said (14/16 for 7/8, #407) gives nothing away when Maya says it back; the answer's own
   // written form still does.
   const said = childValues(s);
@@ -2678,7 +2661,13 @@ function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
   // away. A number they did not say (a sounds-like, another transcript) still reveals it.
   const justSaid = p.act === "confirm" && s.turn ? valuesIn(s.turn.text, readOptionsFor(pkg)) : [];
   const reveals = (v: AnswerValue) => equivalent(v, answer) && !justSaid.some((c) => sameValue(c, v)) && (sameValue(v, answer) || !said.some((c) => sameValue(c, v)));
-  if (!ownNumber && texts.some((t) => valuesIn(t).some(reveals))) return true;
+  const expression = operationText(pkg.operation);
+  const withoutExpression = (text: string) => text.split(expression).join("");
+  const filled = spoken.chosen.flatMap((offer) => Object.values(offer.filled ?? {}).map(String));
+  const codeLines = new Set(spoken.chosen.flatMap((offer) => offer.texts));
+  const other = forcedOpening ? [] : spoken.segments.filter((segment) => segment.kind === "warm" || segment.kind === "talk" || !codeLines.has(segment.text)).map((segment) => segment.text);
+  const board = boardVisible(p.board ?? []).map(([, value]) => value);
+  if ([...filled, ...other, ...board].some((text) => valuesIn(withoutExpression(text), readOptionsFor(pkg)).some(reveals))) return true;
   const highest = answer.type === "number" ? PLACE_NAMES[String(Math.trunc(Math.abs(answer.value))).length - 1] : undefined;
   return (p.board ?? []).some((raw) => {
     const c = raw as Partial<Command>;
@@ -3325,7 +3314,7 @@ const BOARD_NUMBERS: ReadonlySet<string> = new Set(["value", "dividend", "diviso
 
 /** Every word or number field a child sees on the board, in any command, at any depth, with its field name. */
 function boardVisible(v: unknown, key = ""): [string, string][] {
-  if (typeof v === "string") return BOARD_WORDS.has(key) || BOARD_NUMBERS.has(key) ? [[key, v]] : [];
+  if (typeof v === "string" || typeof v === "number") return BOARD_WORDS.has(key) || BOARD_NUMBERS.has(key) ? [[key, String(v)]] : [];
   if (Array.isArray(v)) return v.flatMap((x) => boardVisible(x, key));
   return isObject(v) ? Object.entries(v).flatMap(([k, x]) => boardVisible(x, k)) : [];
 }

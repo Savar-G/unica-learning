@@ -73,3 +73,20 @@ it.each(["Help.", "Help!", "help me"])("escapes repeated bare %s requests with t
   }
   expect(output.ended?.reason).toBe("child_stopped");
 });
+
+it.each([[2, 1], [12, 11]])("closes safely with answer 1 for %i - %i when the model is down", async (a, b) => {
+  const operation = { kind: "subtract" as const, operands: [a, b] as [number, number] };
+  const easier = { kind: "subtract" as const, operands: (a === 2 ? [1, 1] : [4, 2]) as [number, number] };
+  const pkg = { ...FIXTURES.B, text: `${a} - ${b} = ?`, operation, steps: workedSteps(operation),
+    answer: { value: { type: "number" as const, value: 1 }, accepted: [], unit: null },
+    wrongAnswers: [{ value: { type: "number" as const, value: 3 }, cause: "O3" as const, description: "Wrong difference", step: null }],
+    easierExample: { text: `${easier.operands[0]} - ${easier.operands[1]} = ?`, operation: easier, answer: { type: "number" as const, value: easier.operands[0] - easier.operands[1] }, steps: workedSteps(easier) } };
+  expect(checkQuestionPackage(pkg), JSON.stringify(checkQuestionPackage(pkg))).toMatchObject({ ok: true });
+  let at = 1000;
+  const session = createTextSession({ callId: "answer-one", package: pkg, grade: 2, clock: () => at,
+    model: fakeMayaModel({ answer: () => { throw new Error("model unavailable"); } }) });
+  let output = await session.start();
+  for (let i = 0; i < 20 && !output.ended; i++) { at += 4000; output = await session.child("I'm stuck."); }
+  expect(output.ended?.reason).toBe("child_stopped");
+  expect(output.say.join(" ")).toMatch(/stop/i);
+});

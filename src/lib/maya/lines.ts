@@ -122,6 +122,8 @@ export interface LineOffer {
   wordingIds?: string[];
   /** The template the variants come from. */
   key: TemplateKey;
+  /** Values filled by code into the approved template. */
+  filled?: Record<string, string | number>;
   /** The text Maya may write on the board with this line: its expression or its equation. */
   board?: string;
 }
@@ -507,6 +509,7 @@ const offer = (line: LineId, key: TemplateKey, vars: Vars, extra: Omit<LineOffer
   line,
   ...extra,
   key,
+  filled: vars,
   texts: TEMPLATES[key].map((t) => sentence(fill(t, vars))),
 });
 

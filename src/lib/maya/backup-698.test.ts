@@ -3,8 +3,8 @@ import { createSession, step, fallbacks, valuesIn, PROPOSAL_SCHEMA, type Session
 import { FIXTURES } from '@/lib/maya-gate/fixtures';
 const n=(value:number)=>({type:'number',value});
 
-function rig(pkg=FIXTURES.A){
- let s=createSession({callId:'independent-r3',package:pkg});let at=1000;const trace:unknown[]=[];
+function rig(pkg=FIXTURES.A, grade?:number){
+ let s=createSession({grade,callId:'independent-r3',package:pkg});let at=1000;const trace:unknown[]=[];
  const send=(e:Record<string, unknown>)=>{at=(e.at as number|undefined)??at;const before={state:s.state,ladder:s.ladder,finalMisses:s.finalMisses,done:s.done,passed:s.passed,exampleShown:s.exampleShown};const r=step(s,{at,...e} as SessionEvent);s=r.session;trace.push({event:e,before,refusal:r.refusal,effects:r.effects});return r;};
  const child=(text:string,extra={})=>send({type:'child_turn',at:at+4000,text,...extra});
  const prop=(p:Record<string, unknown>,extra={})=>send({type:'proposal',proposal:{version:2,...p},...extra});
@@ -100,4 +100,14 @@ it('requires both honest close lines in the closing minute after work', () => {
  const alone={act:'close',parts:[{line:'close.stuck'}]};
  expect(r.prop(alone).refusal).not.toBeNull();
  expect(r.prop({act:'close',parts:[{line:'close.stuck'},{line:'close.together'}]}).refusal).toBeNull();
+});
+
+it('accepts the honest close for answer one in the closing minute', async () => {
+ const { workedSteps } = await import('@/lib/question-package');
+ const operation={kind:'subtract' as const,operands:[2,1] as [number,number]};
+ const easier={kind:'subtract' as const,operands:[1,1] as [number,number]};
+ const pkg={...FIXTURES.B,text:'2 - 1 = ?',operation,steps:workedSteps(operation),answer:{value:n(1) as {type:'number';value:number},accepted:[],unit:null},wrongAnswers:[{value:n(3) as {type:'number';value:number},cause:'O3',description:'Wrong difference',step:null}],easierExample:{text:'1 - 1 = ?',operation:easier,answer:n(0) as {type:'number';value:number},steps:workedSteps(easier)}};
+ const r=rig(pkg,2); r.send({type:'tick',at:542000}); r.child('I am stuck.');
+ const out=r.fb(); expect(out.act).toBe('close'); expect(out.proposal?.parts.map(p=>'line' in p && p.line)).toEqual(['close.stuck']);
+ expect(r.s.outcome?.reason).not.toBe('technical_issue');
 });
