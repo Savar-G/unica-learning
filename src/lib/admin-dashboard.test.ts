@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LOG_KINDS } from "@/lib/email-log-kinds";
-import { EMAIL_KINDS, activities, buildDashboard, buildFamilies, clickable, clicksText, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
+import { familyPlanWords } from "@/lib/family-plan-words";
+import { EMAIL_KINDS, STAGE_ACTION, activities, buildDashboard, buildFamilies, clickable, clicksText, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
 
 // 2026-10-12 19:00 Pacific (PDT, UTC-7)
 const NOW = new Date("2026-10-13T02:00:00Z");
@@ -426,4 +427,10 @@ describe("every email log kind (B1)", () => {
     expect(f.emails[0].subject).toBe("Ready to scan your next page?");
     expect(clickable(f.emails[0])).toBe(false);
   });
+});
+
+it("names the admin's start button by its real text in the card saved step", () => {
+  expect(STAGE_ACTION.card_saved).toContain(`press "${familyPlanWords.adminAction}" under Cards and waitlist`);
+  expect(familyPlanWords.adminAction).toBe("Workbook delivered: start plan");
+  expect(STAGE_ACTION.card_saved).not.toContain("start free month");
 });

@@ -1,4 +1,5 @@
 import { formatCalendarDate, formatInZone, localDay, PACIFIC_ZONE } from "@/lib/family-time";
+import { familyPlanWords } from "@/lib/family-plan-words";
 // The admin dashboard and activity log (D-099) in plain data: every family with its stage, the KPIs of a date range,
 // the daily series, the email log and the activity events. Pure: no network, database or clock (the caller passes
 // `now`), so the pages only fetch (dashboardRows in admin-store) and show. Days are Pacific days.
@@ -88,7 +89,7 @@ export const STAGE_ACTION: Record<Stage, string> = {
   started: "The continue reminder goes out automatically.",
   finished: "Report sent. Waiting for the parent to choose a plan.",
   card_started: "The parent left the payment page. Consider a personal email.",
-  card_saved: "After you confirm the first workbook has arrived at the family's home, press \"Workbook delivered: start free month\" under Cards and waitlist.",
+  card_saved: `After you confirm the first workbook has arrived at the family's home, press "${familyPlanWords.adminAction}" under Cards and waitlist.`,
   trial: "In the free first month. Stripe emails the parent a reminder 7 days before the first charge on day 30.",
   paying: "Nothing to do.",
   cancelled: "The Stripe subscription ended. Consider asking the parent why.",

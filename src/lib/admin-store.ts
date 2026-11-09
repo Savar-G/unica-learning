@@ -27,6 +27,8 @@ import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
 import type { RunActivity } from "@/lib/workbook-run-progress";
 import { workbookStore } from "@/lib/workbook-store";
+import { loadFamilyPlanOffer } from "@/lib/family-plan-offer-server";
+import type { FamilyPlanOffer } from "@/lib/family-plan-words";
 import type { WorkbookEmailRecord, WorkbookEmailStatus } from "@/lib/workbook-email";
 import { READABLE_DRAFT_VERSIONS, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { readPaged, type DraftRendering, type RunSolve, type WorkbookRun } from "@/lib/workbook-job";
@@ -35,7 +37,7 @@ import { summarizeAiCalls, type AiCallSummary } from "@/lib/workbook-ai";
 import { workerOnline } from "@/lib/workbook-worker";
 import type { RenderProblem } from "@/lib/workbook-render";
 import { familyProvince, familyZone, type FamilyZone } from "@/lib/family-time";
-import type { DeliveryReceipt } from "@/lib/workbook-delivery";
+import { firstDelivery, type DeliveryReceipt } from "@/lib/workbook-delivery";
 import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
@@ -456,6 +458,13 @@ export interface CardSetupRow {
   planStarted?: boolean | null;
   /** A plan start that needs the team: open, with Stripe's key past its life (#554). */
   stuckPlanStart?: number | null;
+  /**
+   * Read only for a card that can start: the child's workbook 1 (its id, or null when there is none) and whether it has the
+   * delivery receipt the start route requires. Null or absent means the read failed or did not run, so no start button shows.
+   */
+  firstWorkbook?: { id: string | null; delivered: boolean } | null;
+  /** The family's free window before this start, read only for a card with a delivery receipt. Null means unknown. */
+  familyWindow?: FamilyPlanOffer["window"] | null;
 }
 
 async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promise<CardSetupRow[]> {
@@ -490,7 +499,7 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
   const startedKinds = new Set(["free_month", "paying", "payment_failed", "paused", "ending", "ended"]);
   const readsKnown = emails !== null && starts !== null && plans !== null && planEmails !== null;
   const stuck = new Map((starts ?? []).filter((s) => s.state === "open" && workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
-  return cards.map((c) => {
+  return withStartChecks(a, cards.map((c) => {
     const plan = plans?.find((p) => p.child_id === c.child_id && p.parent_id === c.parent_id);
     // Started: a completed start, a sent legacy confirmation, or a stored running or ended plan. Never started: no such
     // evidence and either no stored plan row (a first card whose parent never opened the Account tab, #790 re-review) or a
@@ -502,7 +511,32 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
       workbookEmailsReadAt: emails && planEmails ? workbookEmailsReadAt : undefined,
       planStarted, stuckPlanStart: stuck.get(c.id) ?? null,
     };
-  });
+  }));
+}
+
+/**
+ * The checks behind the start button, for each card that can start: the child's workbook 1 with its delivery receipt, read as
+ * the start route reads it (firstDelivery), and, once delivered, the family's free window, so the confirm names a window only
+ * when the family may have one. The route still checks the receipt.
+ */
+async function withStartChecks(a: AdminSession, cards: CardSetupRow[]): Promise<CardSetupRow[]> {
+  const open = cards.filter((c) => c.planStarted === false && c.card_saved_at && c.stripe_customer_id);
+  if (!open.length) return cards;
+  const books = await byIds<{ id: string; parent_id: string; child_id: string; number: number; status: string }>(open.map((c) => c.child_id), "first workbooks",
+    (chunk) => a.db.from("workbooks").select("id, parent_id, child_id, number, status").in("child_id", chunk).eq("number", 1)).catch(() => null);
+  const receipts = workbookDeliveryStore(a.db);
+  type Checks = Pick<CardSetupRow, "firstWorkbook" | "familyWindow">;
+  const checks = new Map(await Promise.all(open.map(async (c): Promise<[string, Checks]> => {
+    if (!books) return [c.id, { firstWorkbook: null }];
+    const mine = books.filter((b) => b.child_id === c.child_id && b.parent_id === c.parent_id)
+      .map((b) => ({ id: b.id, parentId: b.parent_id, childId: b.child_id, number: b.number, status: b.status }));
+    const id = (mine.find((b) => b.status === "shipped") ?? mine[0])?.id ?? null;
+    const delivered = await firstDelivery(receipts, mine, c.parent_id, c.child_id).then((r) => !!r, () => null);
+    if (delivered === null) return [c.id, { firstWorkbook: null }];
+    const familyWindow = delivered ? (await loadFamilyPlanOffer(c.parent_id, c.child_id))?.window ?? null : null;
+    return [c.id, { firstWorkbook: { id, delivered }, familyWindow }];
+  })));
+  return cards.map((c) => ({ ...c, ...checks.get(c.id) }));
 }
 
 export interface WaitlistRow {
