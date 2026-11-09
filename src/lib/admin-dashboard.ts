@@ -132,7 +132,7 @@ const EMAIL_KIND_INFO: { readonly [K in EmailKind]: Omit<EmailKindInfo, "kind"> 
   maya_unsubscribe: { label: "Maya unsubscribe", subject: "No email: the parent turned Maya emails off", to: "-", trigger: "Parent clicked unsubscribe in a Maya email" },
   monthly_summary: { label: "Monthly summary email", subject: "{month} summary: {child}", to: "Parent", trigger: "The 1st of the month at 7 a.m. family time, when a summary is offered" },
   monthly_summary_unsubscribe: { label: "Monthly summary unsubscribe", subject: "No email: the parent turned monthly summary emails off", to: "-", trigger: "Parent clicked unsubscribe in a monthly summary email" },
-  scan_inactivity: { label: "Scan reminder", subject: "Ready to scan your next page?", to: "Parent", trigger: "A delivered workbook with no pages scanned for a while" },
+  scan_inactivity: { label: "Scan reminder", subject: "Ready to scan your next page?", to: "Parent", trigger: "Workbook delivered, then 4 days with no pages scanned" },
 };
 /** Every email the site logs, in the admin's order. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = (Object.keys(EMAIL_KIND_INFO) as EmailKind[]).map((kind) => ({ kind, ...EMAIL_KIND_INFO[kind] }));
