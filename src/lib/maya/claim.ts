@@ -454,6 +454,9 @@ function committedWord(t: ClaimTurn): string | null {
   return read && "word" in read && read.committed ? read.word : null;
 }
 
+/** The turn commits a claim word (a committed form, or a plain yes to Maya's say-back): the claim side of session.ts committedTurn. */
+export const claimCommitted = (t: ClaimTurn): boolean => committedWord(t) !== null;
+
 /** The child's turn as read with their committed word: the word is the final answer. A bare word changes nothing. */
 export function claimRead(t: ClaimTurn, base: AnswerRead): AnswerRead {
   const word = committedWord(t);

@@ -10,6 +10,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
+import { MISSING_NUMBER_BEHAVIOURS } from "./missing-number-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
 const child = (text: string, read?: Read, maya?: Plan[]): Step => ({ child: text, ...(read ? { read } : {}), ...(maya ? { maya } : {}) });
@@ -2876,6 +2877,9 @@ export const BEHAVIOURS: Behaviour[] = [
   ...([
     ["CL65", "I'm stuck, but it's no."],
     ["CL66", "I think it's no."],
+    // Help beside a word, before or after it (round 9 of #732: the one fail-closed rule, committedTurn).
+    ["CL69", "Help, no."],
+    ["CL70", "No, help me."],
   ] as const).map(([id, said]): Behaviour => ({
     id,
     title: `The product, then '${said}' twice: no miss (help or doubt), so a give_answer the model proposes is refused`,
@@ -2934,6 +2938,7 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   ...ONE_STEP_BEHAVIOURS,
+  ...MISSING_NUMBER_BEHAVIOURS,
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */

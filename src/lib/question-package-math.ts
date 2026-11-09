@@ -40,6 +40,7 @@ import {
 } from "@/lib/question-package-columns";
 import { ALGEBRA_KINDS, algebraStepText, evaluateWithin } from "@/lib/question-package-algebra";
 import { MEASURE_KINDS, amountText, measureStepText } from "@/lib/question-package-measures";
+import { missingStepText } from "@/lib/maya/missing-number-text";
 
 /** A place's unit name, for "carry 1 ten". */
 const UNIT: Record<Place, string> = {
@@ -630,6 +631,10 @@ export function stepText(step: WorkedStep, operation: Operation): string {
     case "inverse":
     case "check":
       return algebraStepText(step);
+    case "missing-frame":
+    case "drop-zeros":
+    case "try-factor":
+      return missingStepText(step);
     case "claim-compare": {
       const { relation, value, shown, holds } = step;
       const said = `${operationText(operation)} = ${valueText({ type: "number", value })}.`;

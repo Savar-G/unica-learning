@@ -199,6 +199,12 @@ export function stepWords(step: WorkedStep): string {
       return "doing the same thing to both sides";
     case "check":
       return "checking the answer";
+    case "missing-frame":
+      return "finding the missing number";
+    case "drop-zeros":
+      return "taking the same zeros off both numbers";
+    case "try-factor":
+      return "trying numbers for the missing number";
     case "claim-compare":
       return "comparing the result with the question's number";
     case "result":

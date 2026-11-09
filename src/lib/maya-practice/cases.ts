@@ -11,6 +11,7 @@ import { valuesIn } from "@/lib/maya";
 import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
 import { ONE_STEP_PRACTICE } from "./one-step-cases";
+import { MISSING_NUMBER_CASES } from "./missing-number-cases";
 
 /** The AI-judge dimensions of the research (section 8, "AI-judge checks"), each scored 0 to 3. */
 export const DIMENSIONS = {
@@ -517,6 +518,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
     fakeScript: ["I don't know how to start.", "okay", "okay", "4 times 260 is 1040.", "I got 450.", "Because I did the boxes first.", "I wrote it."],
   },
   ...ONE_STEP_PRACTICE,
+  ...MISSING_NUMBER_CASES,
 ];
 
 /** How many times each case runs (research, section 8: three recorded repetitions). */
