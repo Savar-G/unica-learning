@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PLAN_REMINDER_DAYS } from "@/lib/plan-reminder";
 import { ScanHold } from "@/components/admin-scan-progress";
 import { loadAdminScanHolds } from "@/lib/admin-scan-progress-server";
 import { LIST_MAX, listNextSteps, requireAdmin } from "@/lib/admin-store";
@@ -12,7 +13,7 @@ export default async function NextStepsPage({ searchParams }: PageProps<"/admin/
   const [{ cards, waitlist }, holds] = await Promise.all([listNextSteps(admin, offset), loadAdminScanHolds(admin)]);
   return <AdminFrame email={admin.email} section="next-steps" title="Cards and waitlist">
     <p className="adm-note">For the shipping address, use &quot;Open in Stripe&quot; on the child&apos;s card setup and check Shipping details on the customer. If no shipping address is saved, ask the parent for it before mailing the workbook. A billing address is not a confirmed shipping address.</p>
-    <p className="adm-note">A saved card is not a payment. Open the child&apos;s workbook 1 and save its delivery confirmation. Then press &quot;Workbook delivered: start plan&quot;. The family&apos;s one 30-day free window begins with its first child&apos;s plan start. A sibling who starts inside it has the same trial end. A sibling who starts after it pays immediately. Adding a card, printing a workbook, and sending tracking details do not start it. Stripe charges the monthly price on day 30, then every month. Stripe emails the parent a reminder 7 days before day 30, with a link to manage or cancel the plan. The dashboard shows who is paying.</p>
+    <p className="adm-note">A saved card is not a payment. Open the child&apos;s workbook 1 and save its delivery confirmation. Then press &quot;Workbook delivered: start plan&quot;. The family&apos;s one 30-day free window begins with its first child&apos;s plan start. A sibling who starts inside it has the same trial end. A sibling who starts after it pays immediately. Adding a card, printing a workbook, and sending tracking details do not start it. Stripe charges the monthly price on day 30, then every month. If at least {PLAN_REMINDER_DAYS} days remain when the plan starts, Stripe emails the parent a reminder {PLAN_REMINDER_DAYS} days before the first charge, with a link to manage or cancel the plan. The dashboard shows who is paying.</p>
     <h2>Books on hold</h2>
     {holds.unavailable && <p role="status">Some scan holds are unavailable. Check again.</p>}
     {!holds.rows.length && !holds.unavailable && <p>No books on hold.</p>}

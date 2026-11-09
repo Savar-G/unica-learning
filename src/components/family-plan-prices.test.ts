@@ -27,3 +27,8 @@ it("shows the actual first charge for an immediate paid sibling on both parent s
     expect(html).toContain("CAD 59.99"); expect(html).toContain("First charge: December 13, 2026");
   }
 });
+
+it("labels the saved amount as a ceiling when the plan price is unavailable", () => {
+  const html = renderToStaticMarkup(createElement(CardsTable, { cards: [{ id: "card", created_at: "2026-11-10", updated_at: "2026-11-10", parent_id: "family", child_id: "child", report_id: null, plan: "one", price: 79.99, stripe_customer_id: null, card_saved_at: null, planMonthly: null }] }));
+  expect(html).toContain("up to CAD 79.99 (price not read)");
+});

@@ -15,7 +15,7 @@ const time = "2026-11-08T20:00:00Z";
 let clientId = 0;
 beforeEach(() => vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-08T21:00:00Z")));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-type Evidence = { failRead?: string; emailStatus?: string; emailKind?: string; planKind?: string; missingPlan?: boolean; wrongParent?: boolean };
+type Evidence = { failPrices?: boolean; failRead?: string; emailStatus?: string; emailKind?: string; planKind?: string; missingPlan?: boolean; wrongParent?: boolean };
 function admin(starts: { card_setup_id: string; state: string; generation: number; started_at: string }[], evidence: Evidence = {}) {
   const cards = ["new", "started", "other", "refused", "open", "stuck", "old-start", "restart", "legacy-email", "legacy-state", "unknown"].map((id) => ({
     id, parent_id: parent, child_id: `child-${id}`, created_at: time, updated_at: time, report_id: null,
@@ -27,6 +27,7 @@ function admin(starts: { card_setup_id: string; state: string; generation: numbe
       const url = new URL(String(input));
       const name = url.pathname.split("/").at(-1);
       const read = name === "plan_starts" && url.searchParams.has("email_send_status") ? "plan_emails" : name;
+      if (evidence.failPrices && (name === "plan_starts" && url.searchParams.get("select")?.includes("monthly_cents") || name === "child_plan_states" && url.searchParams.get("select")?.includes("monthly_cents"))) return Response.json({ code: "XX000", message: "Price read failed" }, { status: 500 });
       if (read === evidence.failRead) return Response.json({ code: "XX000", message: "Evidence read failed" }, { status: 500 });
       if (name === "workbook_emails") return Response.json([{
         id: "email", card_setup_id: "legacy-email", kind: evidence.emailKind ?? "plan_start", workbook_number: ["dispatch", "ready"].includes(evidence.emailKind ?? "plan_start") ? 1 : 0,
@@ -162,4 +163,11 @@ it.each(["restart", "stuck"])("closing %s offers an initial free month only when
     if (cardId === "restart") expect(container.textContent).not.toContain("Workbook delivered: start plan");
     else expect(container.textContent).toContain("Workbook delivered: start plan");
   } finally { await act(async () => root.unmount()); }
+});
+
+
+it.each(["next steps", "parent detail"])("%s labels the ceiling when both price reads fail and start evidence succeeds", async (page) => {
+  const html = cardHtml(await readCards(page, { failPrices: true }), "started");
+  expect(html).toContain("Plan started.");
+  expect(html).toContain("up to CAD 79.99 (price not read)");
 });
