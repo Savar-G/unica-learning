@@ -110,6 +110,10 @@ type NullArgs = KnownArgs<{
   propose_workbook_scan_inactivity: "p_activity";
   finish_workbook_scan_reminder: "p_email_id";
   submit_feedback: "p_child";
+  // A Day 7 or backstop claim has no admin, and the admin action has no claim; automatic admission has no actor.
+  claim_next_book_snapshot: "p_trigger" | "p_book" | "p_actor" | "p_email";
+  admit_next_book_run: "p_by" | "p_email";
+  retake_next_book_snapshot: "p_email";
   scan_marking_command: "p_parent" | "p_photo" | "p_token";
   parent_explanation_command: "p_parent" | "p_photo" | "p_token";
   save_marked_child_profile: "p_assessment" | "p_expected";
