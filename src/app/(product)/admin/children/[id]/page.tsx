@@ -10,6 +10,8 @@ import { WorkbookStatusChip } from "@/components/admin-workbook";
 import { ChildRunsTable, WorkerLine } from "@/components/admin-workbook-runs";
 import { adminClient } from "@/lib/supabase-auth";
 import { PrepareWorkbook } from "@/components/prepare-workbook";
+import { AdminScanProgress } from "@/components/admin-scan-progress";
+import { loadAdminScanProgress } from "@/lib/admin-scan-progress-server";
 import { BookInstructions, loadBookInstructions } from "./book-instructions";
 
 export default async function ChildPage({ params }: PageProps<"/admin/children/[id]">) {
@@ -27,6 +29,8 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
   const learning = fromRow(c);
   const mix = bookMix(learning);
   const instructions = await loadBookInstructions(admin, c, workbooks);
+  const shipped = workbooks.filter(w => w.status === "shipped");
+  const scanViews = await Promise.all(shipped.map(w => loadAdminScanProgress(admin, { parentId: c.parent_id, childId: c.id, workbookId: w.id })));
   return <AdminFrame email={admin.email} section="children" title={c.first_name}>
     <RecordFacts facts={[["Grade and curriculum", gradeAndPlace(c.grade, c.province)], ["Parent", <Link key="parent" href={adminParentPath(c.parent_id)}>{family.parent.name}</Link>], ["Added (Pacific)", when(c.created_at)], ["Child id", c.id],
       // #303: the current profile from the latest test profile and every learning event.
@@ -48,6 +52,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
         <td><WorkbookStatusChip status={w.status} /></td><td>{when(w.createdAt)}</td>
       </tr>)}
     </Table>
+    {shipped.map((w, i) => <AdminScanProgress key={w.id} workbookId={w.id} view={scanViews[i].view} missingDelivery={scanViews[i].missingDelivery} />)}
     {/* #312: drafts made in the background, with their progress and check results. */}
     <h2>Workbook drafts</h2>
     <p><Link className="btn adm-btn" href={`/admin/children/${c.id}/preview-plan`} prefetch={false}>Preview plan</Link></p>
