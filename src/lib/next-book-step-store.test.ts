@@ -2,7 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import type { Database } from "./database";
-import { nextBookDueStore } from "./next-book-step-store";
+import type { NextBookDueCursor } from "./next-book-step";
+import { isoMicroseconds, microseconds, nextBookDueStore } from "./next-book-step-store";
 
 // #476: the Supabase due reader against a fixture PostgREST. It only reads, it asks for book 1 and the selection's
 // filters, and any error or answer shorter than its own count throws, so the step writes nothing that run.
@@ -44,8 +45,9 @@ const healthy = () => ({
   workbook_scan_trigger_claims: (url: URL) => url.searchParams.has("workbook_id") ? { rows: [] } : { rows: [claimA, claimB] },
   workbook_scan_backstop_holds: { rows: [holdA, holdB] },
 });
-const page = (reader: ReturnType<typeof fixture>["reader"], from: number | null = null, parents: string[] | null = null, size = 20) =>
-  reader.page({ size, from, parents });
+const page = (reader: ReturnType<typeof fixture>["reader"], after: NextBookDueCursor | null = null, parents: string[] | null = null, size = 20) =>
+  reader.page({ size, after, parents });
+const us = (iso: string) => Date.parse(iso) * 1000;
 
 describe("nextBookDueStore", () => {
   it("builds the due list from chains, claims and holds, oldest first, with the selection's filters", async () => {
@@ -72,16 +74,37 @@ describe("nextBookDueStore", () => {
     expect(await page(fixture(healthy()).reader, null, [])).toEqual({ items: [], next: null });
   });
 
-  it("pages from the cursor and returns only the items up to the earliest source that has more", async () => {
+  it("pages strictly after a keyset cursor and returns only the items up to the earliest source that has more", async () => {
     // Claims have more rows than the page holds, up to 18:00; the chain at 18:05 and the hold at 18:10 wait for the next page.
     const f = fixture({ ...healthy(), workbook_scan_trigger_claims: (url: URL) => url.searchParams.has("workbook_id") ? { rows: [] } : { rows: [claimB, claimA], total: 40 } });
-    const first = await page(f.reader, Date.parse("2026-11-08T16:00:00.000Z"), null, 2);
-    expect(first.next).toBe(Date.parse(claimA.claimed_at));
+    const cursor: NextBookDueCursor = { anchorUs: us("2026-11-08T16:00:00.000Z") + 250, kind: "claim", id: id(5) };
+    const first = await page(f.reader, cursor, null, 2);
+    expect(first.next).toEqual({ anchorUs: us(claimA.claimed_at), kind: "claim", id: id(10) });
     expect(first.items.map(i => i.id)).toEqual([id(10)]);
-    for (const r of f.requests.slice(0, 3)) {
-      const anchor = ["prepare_from", "claimed_at", "held_at"].find(k => r.searchParams.has(k))!;
-      expect(r.searchParams.get(anchor)).toBe("gte.2026-11-08T16:00:00.000Z");
-    }
+    const [chains, claims, holds] = f.requests;
+    const at = "2026-11-08T16:00:00.000250Z";
+    // An earlier kind at the cursor's time came before it; a later kind starts at it; the same kind starts after its id.
+    expect(chains.searchParams.get("prepare_from")).toBe(`gt.${at}`);
+    expect(claims.searchParams.get("or")).toBe(`(claimed_at.gt."${at}",and(claimed_at.eq."${at}",id.gt.${id(5)}))`);
+    expect(holds.searchParams.get("held_at")).toBe(`gte.${at}`);
+  });
+
+  it("moves through equal times on holds by book and delivery audit", async () => {
+    const f = fixture(healthy());
+    const at = "2026-11-08T18:10:00.000000Z";
+    await page(f.reader, { anchorUs: us("2026-11-08T18:10:00.000Z"), kind: "hold", id: `${id(31)}:${"5".padStart(19, "0")}` });
+    const [chains, claims, holds] = f.requests;
+    expect(chains.searchParams.get("prepare_from")).toBe(`gt.${at}`);
+    expect(claims.searchParams.get("claimed_at")).toBe(`gt.${at}`);
+    expect(holds.searchParams.get("or")).toBe(`(held_at.gt."${at}",and(held_at.eq."${at}",workbook_id.gt.${id(31)}),`
+      + `and(held_at.eq."${at}",workbook_id.eq.${id(31)},delivery_audit_id.gt.5))`);
+  });
+
+  it("keeps the database's microseconds in the cursor", () => {
+    expect(microseconds("2026-11-08T18:00:00.123456+00:00")).toBe(us("2026-11-08T18:00:00.123Z") + 456);
+    expect(microseconds("2026-11-08T10:00:00-08:00")).toBe(us("2026-11-08T18:00:00.000Z"));
+    expect(isoMicroseconds(us("2026-11-08T18:00:00.123Z") + 456)).toBe("2026-11-08T18:00:00.123456Z");
+    expect(() => microseconds("2026-11-08 18:00")).toThrow();
   });
 
   it("throws on an answer shorter than its count, on a failed read and on a malformed row", async () => {

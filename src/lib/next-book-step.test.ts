@@ -240,6 +240,50 @@ describe("the step", () => {
     expect(s.reader.reads).toBe(2);
   });
 
+  it("moves past 60 skipped items at one identical time: the newer released item is prepared on the first run, none read twice or lost", async () => {
+    const s = setup({ mode: "families" });
+    const same = T0 - 30 * MIN;
+    for (let n = 1; n <= 60; n++) s.w.claim(s.w.family(n), same);
+    const customer = s.w.family(61);
+    s.w.claim(customer, T0 - MIN);
+    s.openPlans.add(customer.childId);
+    const checked: string[] = [];
+    const r = ran(await s.step({ openPlan: async ({ childId }) => { checked.push(childId); return s.openPlans.has(childId); } }));
+    expect(r).toMatchObject({ due: 61, skipped: 60, prepared: 1, readFailed: false, outcomes: { queued: 1 } });
+    expect(s.calls).toEqual([{ kind: "claim", triggerId: uuid(61 * 10 + 4) }]);
+    expect(s.reader.returned).toHaveLength(61);
+    expect(new Set(s.reader.returned).size).toBe(61);
+    expect(new Set(checked).size).toBe(61);
+    expect(checked).toHaveLength(61);
+    expect(s.reader.reads).toBe(2);
+  });
+
+  it("a stalled candidate read or access read ends at the deadline before endAt, with no write", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now: T0 });
+    const s = setup({ mode: "families" });
+    const f = s.w.family(1);
+    s.w.claim(f, T0 - MIN);
+    s.openPlans.add(f.childId);
+    const signals: AbortSignal[] = [];
+    const hang = <T>(signal?: AbortSignal) => { if (signal) signals.push(signal); return new Promise<T>(() => {}); };
+    for (const over of [
+      { reader: { page: (input: { signal?: AbortSignal }) => hang<never>(input.signal) } },
+      { openPlan: (_: unknown, signal: AbortSignal) => hang<boolean>(signal) },
+    ] as Partial<NextBookStepDeps>[]) {
+      const start = Date.now(), end = start + 55_000;
+      let returnedAt = 0;
+      const running = s.step({ ...over, time: { now: () => Date.now(), endAt: end } }).then(r => { returnedAt = Date.now(); return r; });
+      await vi.advanceTimersByTimeAsync(55_000);
+      expect(ran(await running)).toMatchObject({ timedOut: true, outOfTime: true, prepared: 0 });
+      expect(returnedAt).toBe(end - NEXT_BOOK_STEP_ANSWER_MS);
+    }
+    // Each stalled read was given the step's signal, and the signal aborted at the deadline.
+    expect(signals).toHaveLength(2);
+    expect(signals.every(x => x.aborted)).toBe(true);
+    expect(s.w.writes).toEqual([]);
+    expect(s.w.m.state.snapshots).toEqual([]);
+  });
+
   it("stops a slow planner at its deadline before endAt, saves no plan after it, and the next run finishes the item", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now: T0 });
     const s = setup({ mode: "families" });

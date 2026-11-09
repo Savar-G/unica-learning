@@ -34,10 +34,28 @@ const h = vi.hoisted(() => ({
   nextBookFails: false,
   nextBookEndAt: 0,
   order: [] as string[],
+  /** The real next-book step server, on a service client whose every request stalls until its signal aborts. */
+  nextBookReal: false,
+  stalledRequests: 0,
 }));
 
 vi.mock("@/lib/account-server", () => ({ linkOrigin: () => "https://unicalearning.com" }));
-vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => ({}) }));
+vi.mock("@/lib/supabase-auth", () => ({
+  adminClient: (signal?: AbortSignal, options?: { retry?: boolean }) => h.nextBookReal && signal && options?.retry === false
+    ? createClient<Database>("https://fixture.invalid", "synthetic-key", {
+      auth: { persistSession: false }, db: { retry: false },
+      global: { fetch: (_input, init) => {
+        h.stalledRequests++;
+        const stop = AbortSignal.any([signal, ...(init?.signal ? [init.signal] : [])]);
+        return new Promise<Response>((_, reject) => stop.addEventListener("abort", () => reject(stop.reason), { once: true }));
+      } },
+    })
+    : ({}),
+}));
+vi.mock("@/lib/next-book-planner", () => ({
+  nextBookPlanner: () => h.nextBookReal ? { plan: async () => ({ ok: false, reason: "unused" }) } : null,
+  nextBookWiring: (planner: unknown) => planner ? { planner, selection: async () => null } : null,
+}));
 vi.mock("@/lib/workbook-scan-maintenance-server", () => ({
   scanMaintenanceRelease: () => h.scanEnabled ? { parents: ["synthetic"], delivery: false } : null,
   createWorkbookScanMaintenanceServer: (_db: unknown, { provider }: { provider: unknown }) => ({
@@ -51,8 +69,11 @@ vi.mock("@/lib/workbook-scan-maintenance-server", () => ({
     },
   }),
 }));
-vi.mock("@/lib/next-book-step-server", () => ({
-  createNextBookStepServer: (env: { NEXT_BOOK_PREPARE_ENABLED?: string }) => h.nextBookEnabled && env.NEXT_BOOK_PREPARE_ENABLED === "test-only" ? {
+vi.mock("@/lib/next-book-step-server", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/next-book-step-server")>();
+  return { createNextBookStepServer: (env: { NEXT_BOOK_PREPARE_ENABLED?: string }) => h.nextBookReal ? real.createNextBookStepServer(env) : fakeNextBookStep(env) };
+});
+const fakeNextBookStep = (env: { NEXT_BOOK_PREPARE_ENABLED?: string }) => h.nextBookEnabled && env.NEXT_BOOK_PREPARE_ENABLED === "test-only" ? {
     run: async (time: { endAt: number }) => {
       h.nextBookRuns++;
       h.nextBookEndAt = time.endAt;
@@ -60,8 +81,7 @@ vi.mock("@/lib/next-book-step-server", () => ({
       if (h.nextBookFails) throw new Error("private family diagnostic");
       return { status: "ran", due: 1, prepared: 1, skipped: 0, errors: 0, outOfTime: false, outcomes: { waiting: 1 } };
     },
-  } : null,
-}));
+  } : null;
 vi.mock("@/lib/email-resend", () => ({
   TIME_LIMIT_MS: 15_000,
   resendConfigProblem: () => null,
@@ -161,6 +181,8 @@ beforeEach(() => {
   h.nextBookFails = false;
   h.nextBookEndAt = 0;
   h.order = [];
+  h.nextBookReal = false;
+  h.stalledRequests = 0;
 });
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
@@ -239,6 +261,22 @@ it("reports a stopped next-book step without hiding the other results or exposin
   const result = await (await call()).json();
   expect(result).toMatchObject({ ok: true, monthly: { sent: 1 }, nextBook: { error: "run_failed" } });
   expect(JSON.stringify(result)).not.toContain("private family diagnostic");
+});
+
+it("answers before its 60-second limit when the real next-book step's candidate read stalls, with no request sent again", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"], now: Date.UTC(2026, 10, 1, 15) });
+  h.nextBookReal = true;
+  vi.stubEnv("NEXT_BOOK_PREPARE_ENABLED", "families");
+  const started = Date.now();
+  let answeredAt = 0;
+  const answer = call().then(async (res) => { answeredAt = Date.now(); return res.json(); });
+  await vi.advanceTimersByTimeAsync(60_000);
+  const result = await answer;
+  expect(result).toMatchObject({ ok: true, monthly: { sent: 1 }, nextBook: { status: "ran", timedOut: true, prepared: 0 } });
+  expect(answeredAt - started).toBeLessThan(55_000);
+  expect(h.stalledRequests).toBe(1);
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(h.stalledRequests).toBe(1);
 });
 
 it("the dry path counts the email, sends nothing and claims nothing", async () => {

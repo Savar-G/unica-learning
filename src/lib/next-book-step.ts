@@ -5,8 +5,9 @@
 //   (b) a live revision-1 chain that is not frozen, not planned
 //       or not admitted yet                                      anchor: its prepare_from
 //   (c) a #628 backstop hold with no held snapshot row yet       anchor: the hold time
-// The step reads them in pages and checks each one's access (the release mode, the test list and its test_accounts mark,
-// the child's open plan) right before its writes. Only an item that passes uses one of the NEXT_BOOK_STEP_LIMIT slots: a
+// The step reads them in pages through a keyset cursor (anchor, kind, id), each page strictly after the last, so equal
+// times never hold it on one page. It checks each one's access (the release mode, the test list and its test_accounts
+// mark, the child's open plan) right before its writes. Only an item that passes uses one of the NEXT_BOOK_STEP_LIMIT slots: a
 // skipped item never does, so older families the release leaves out cannot keep a newer released family waiting. It
 // keeps reading until 20 items were prepared, the candidates run out, or less than NEXT_BOOK_STEP_RESERVE_MS is left.
 //
@@ -15,9 +16,10 @@
 // stops waiting by the freeze deadline, 30 minutes after its claim (PREPARATION_LIMIT_MS). So the head of the list turns
 // over within about two runs, and the items behind it are reached.
 //
-// Each item gets the rest of the step's time, less NEXT_BOOK_STEP_ANSWER_MS, as its deadline. At the deadline its signal
-// aborts, the step stops and answers with what it did: it never holds the reminders answer past endAt. The aborted item's later database requests
-// and its planner answer are refused, and each write it already made is one atomic, re-entrant step, so the next run
+// One deadline covers the whole step: the step's time less NEXT_BOOK_STEP_ANSWER_MS. Every candidate read, access read
+// and item races it under one AbortSignal. At the deadline the signal aborts, the step stops and answers with what it
+// did: it never holds the reminders answer past endAt. Its later database requests (a client that never retries) and a
+// late planner answer are refused, and each write it already made is one atomic, re-entrant step, so the next run
 // continues it from what the store kept.
 //
 // A failed or cut first read ends the step for this run with no writes: it is tried again next run, never treated as
@@ -30,7 +32,7 @@ import { isUuid } from "./workbook-content";
 export const NEXT_BOOK_STEP_LIMIT = 20;
 /** No new item starts with less than this left of the step's time. */
 export const NEXT_BOOK_STEP_RESERVE_MS = 8_000;
-/** An item's deadline ends this long before the step's, so the reminders run can still answer by endAt. */
+/** The step's deadline ends this long before endAt, so the reminders run can still answer by then. */
 export const NEXT_BOOK_STEP_ANSWER_MS = 1_000;
 /** Candidates per read. */
 export const NEXT_BOOK_STEP_PAGE = 50;
@@ -59,12 +61,15 @@ export function nextBookRelease(env: NextBookStepEnvironment): NextBookRelease |
 }
 
 export type NextBookDueKind = "claim" | "chain" | "hold";
-export interface NextBookDueItem {
+
+/** Where a candidate sits in the due order: its anchor time in microseconds (as the database keeps it), kind and id. */
+export interface NextBookDueCursor {
+  anchorUs: number;
   kind: NextBookDueKind;
-  /** Claim time (claim), prepare_from (chain) or hold time (hold), in milliseconds. */
-  anchor: number;
-  /** A stable tie-break: the claim id, the snapshot id, or the held book and its delivery audit. */
+  /** The claim id, the snapshot id, or the held book and its zero-padded delivery audit (holdId). */
   id: string;
+}
+export interface NextBookDueItem extends NextBookDueCursor {
   /** The source book 1. One step prepares each book at most once. */
   workbookId: string;
   parentId: string;
@@ -72,22 +77,27 @@ export interface NextBookDueItem {
   trigger: NextBookTrigger;
 }
 
-/** One page of candidates, oldest first. `next` is where the following page starts (anchor at or after it); null: no more. */
-export interface NextBookDuePage { items: NextBookDueItem[]; next: number | null }
+/** A hold's id: its book, then the delivery audit padded so the text order is the number order. */
+export const holdId = (workbookId: string, deliveryAuditId: number) => `${workbookId}:${String(deliveryAuditId).padStart(19, "0")}`;
+
+/** One page of candidates, in due order. `next`: the following page starts strictly after it; null: no more. */
+export interface NextBookDuePage { items: NextBookDueItem[]; next: NextBookDueCursor | null }
 
 /**
- * The due candidates, a page at a time: those with an anchor at or after `from` (all when null), oldest first, at most
- * `size`. `parents`, when set, limits them to those families before the size. Throws on a failed or cut read.
+ * The due candidates, a page at a time: those strictly after `after` (all when null), in due order, at most `size` from
+ * each source. `parents`, when set, limits them to those families before the size. Requests stop when `signal` aborts.
+ * Throws on a failed or cut read.
  */
 export interface NextBookDueReader {
-  page(input: { size: number; from: number | null; parents: readonly string[] | null }): Promise<NextBookDuePage>;
+  page(input: { size: number; after: NextBookDueCursor | null; parents: readonly string[] | null; signal?: AbortSignal }): Promise<NextBookDuePage>;
 }
 
-const KIND_ORDER: Record<NextBookDueKind, number> = { chain: 0, claim: 1, hold: 2 };
+export const KIND_ORDER: Record<NextBookDueKind, number> = { chain: 0, claim: 1, hold: 2 };
 /** Oldest first; at the same time a chain before a claim before a hold, then by id. */
-export function dueOrder(a: NextBookDueItem, b: NextBookDueItem): number {
-  return a.anchor - b.anchor || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+export function dueOrder(a: NextBookDueCursor, b: NextBookDueCursor): number {
+  return a.anchorUs - b.anchorUs || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
+const cursorOf = ({ anchorUs, kind, id }: NextBookDueCursor): NextBookDueCursor => ({ anchorUs, kind, id });
 
 export type PrepareCall = (trigger: NextBookTrigger, now: number) => Promise<PrepareOutcome>;
 
@@ -97,14 +107,14 @@ export interface NextBookStepDeps {
   planner: NextBookPlanner | null;
   /**
    * The prepare call around this planner. Null when the rest of the wiring is missing (no service key, no selection).
-   * Per item it gets that item's signal: every request and wait it makes must stop when the signal aborts.
+   * With the step's signal: every request and wait it makes must stop when the signal aborts.
    */
   prepare(planner: NextBookPlanner, signal?: AbortSignal): PrepareCall | null;
   reader: NextBookDueReader;
   /** test_accounts still marks this listed parent. Read again before each item. */
-  testAccount(parentId: string): Promise<boolean>;
+  testAccount(parentId: string, signal: AbortSignal): Promise<boolean>;
   /** The child's plan is open (childPlanAccess). Read again before each item. */
-  openPlan(input: { parentId: string; childId: string }): Promise<boolean>;
+  openPlan(input: { parentId: string; childId: string }, signal: AbortSignal): Promise<boolean>;
   time: { now(): number; endAt: number };
 }
 
@@ -118,9 +128,9 @@ export type NextBookStepResult =
 const outcomeKey = (o: PrepareOutcome) => o.status === "refused" ? `refused:${o.reason}` : o.status;
 
 /** May this family's item be prepared now? Checked right before the item's writes. */
-async function released(item: NextBookDueItem, release: NextBookRelease, deps: NextBookStepDeps): Promise<boolean> {
-  if (release.testParents.includes(item.parentId) && await deps.testAccount(item.parentId)) return true;
-  return release.mode === "families" && await deps.openPlan({ parentId: item.parentId, childId: item.childId });
+async function released(item: NextBookDueItem, release: NextBookRelease, deps: NextBookStepDeps, signal: AbortSignal): Promise<boolean> {
+  if (release.testParents.includes(item.parentId) && await deps.testAccount(item.parentId, signal)) return true;
+  return release.mode === "families" && await deps.openPlan({ parentId: item.parentId, childId: item.childId }, signal);
 }
 
 class Deadline extends Error {}
@@ -139,20 +149,9 @@ export async function untilAborted<T>(work: () => Promise<T>, signal: AbortSigna
   finally { signal.removeEventListener("abort", stop); signal.throwIfAborted(); }
 }
 
-/** A planner whose answer is refused once the item's signal aborts, so no plan is saved after the deadline. */
+/** A planner whose answer is refused once the step's signal aborts, so no plan is saved after the deadline. */
 const plannerUntilAborted = (planner: NextBookPlanner, signal: AbortSignal): NextBookPlanner =>
   ({ plan: input => untilAborted(() => planner.plan(input), signal) });
-
-/** Run one item until it ends or the deadline passes. "deadline": its signal aborted and the step must stop. */
-async function withDeadline(prepare: PrepareCall, trigger: NextBookTrigger, now: number, ms: number, controller: AbortController): Promise<PrepareOutcome | "deadline"> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<"deadline">(resolve => { timer = setTimeout(() => { controller.abort(new Deadline()); resolve("deadline"); }, Math.max(0, ms)); });
-  const work = prepare(trigger, now);
-  // After the deadline the item's own promise may still reject (its requests are aborted); that is expected.
-  work.catch(() => {});
-  try { return await Promise.race([work, late]); }
-  finally { clearTimeout(timer); }
-}
 
 export async function runNextBookStep(deps: NextBookStepDeps): Promise<NextBookStepResult> {
   const release = deps.release;
@@ -163,49 +162,57 @@ export async function runNextBookStep(deps: NextBookStepDeps): Promise<NextBookS
   const left = () => deps.time.endAt - deps.time.now();
   const result = { status: "ran" as const, due: 0, prepared: 0, skipped: 0, errors: 0, outOfTime: false, timedOut: false, readFailed: false,
     outcomes: {} as Record<string, number> };
+  if (left() < NEXT_BOOK_STEP_RESERVE_MS) return { ...result, outOfTime: true };
+  // The one deadline: every read and every item below races it, and its signal stops their requests.
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(new Deadline()), Math.max(0, left() - NEXT_BOOK_STEP_ANSWER_MS));
+  const signal = deadline.signal;
+  const guard = <T>(work: () => Promise<T>) => untilAborted(work, signal);
+  const call = deps.prepare(plannerUntilAborted(planner, signal), signal);
   const parents = release.mode === "test-only" ? release.testParents : null;
   const seenBooks = new Set<string>();
-  let from: number | null = null, first = true;
-  read: while (result.prepared < NEXT_BOOK_STEP_LIMIT) {
-    if (left() < NEXT_BOOK_STEP_RESERVE_MS) { result.outOfTime = true; break; }
-    let page: NextBookDuePage;
-    try {
-      page = await deps.reader.page({ size: NEXT_BOOK_STEP_PAGE, from, parents });
-    } catch {
-      if (first) return { status: "read-failed" };
-      result.readFailed = true;
-      break;
-    }
-    first = false;
-    for (const item of [...page.items].sort(dueOrder)) {
-      // A page starts at the last one's anchor, and a claim prepared earlier this run is a chain now: one call per book.
-      if (seenBooks.has(item.workbookId) || (from !== null && item.anchor < from)) continue;
-      if (left() < NEXT_BOOK_STEP_RESERVE_MS) { result.outOfTime = true; break read; }
-      seenBooks.add(item.workbookId);
-      result.due++;
+  let after: NextBookDueCursor | null = null, first = true;
+  try {
+    if (!call) { result.errors++; return result; }
+    read: while (result.prepared < NEXT_BOOK_STEP_LIMIT) {
+      if (left() < NEXT_BOOK_STEP_RESERVE_MS) { result.outOfTime = true; break; }
+      let page: NextBookDuePage;
       try {
-        if (!await released(item, release, deps)) { result.skipped++; continue; }
+        page = await guard(() => deps.reader.page({ size: NEXT_BOOK_STEP_PAGE, after, parents, signal }));
       } catch {
-        result.errors++;
-        continue;
+        if (signal.aborted) { result.timedOut = true; result.outOfTime = true; break; }
+        if (first) return { status: "read-failed" };
+        result.readFailed = true;
+        break;
       }
-      const controller = new AbortController();
-      const call = deps.prepare(plannerUntilAborted(planner, controller.signal), controller.signal);
-      if (!call) { result.errors++; continue; }
-      try {
-        const outcome = await withDeadline(call, item.trigger, deps.time.now(), left() - NEXT_BOOK_STEP_ANSWER_MS, controller);
-        if (outcome === "deadline") { result.timedOut = true; result.outOfTime = true; break read; }
-        result.prepared++;
-        const key = outcomeKey(outcome);
-        result.outcomes[key] = (result.outcomes[key] ?? 0) + 1;
-      } catch {
-        result.errors++;
+      first = false;
+      for (const item of [...page.items].sort(dueOrder)) {
+        // Strictly after the cursor; and a claim prepared earlier this run is a chain now: one call per book.
+        if ((after && dueOrder(item, after) <= 0) || seenBooks.has(item.workbookId)) continue;
+        if (left() < NEXT_BOOK_STEP_RESERVE_MS) { result.outOfTime = true; break read; }
+        seenBooks.add(item.workbookId);
+        result.due++;
+        try {
+          if (!await guard(() => released(item, release, deps, signal))) { result.skipped++; continue; }
+          const outcome = await guard(() => call(item.trigger, deps.time.now()));
+          result.prepared++;
+          const key = outcomeKey(outcome);
+          result.outcomes[key] = (result.outcomes[key] ?? 0) + 1;
+        } catch {
+          if (signal.aborted) { result.timedOut = true; result.outOfTime = true; break read; }
+          result.errors++;
+        }
+        if (result.prepared >= NEXT_BOOK_STEP_LIMIT) break read;
       }
-      if (result.prepared >= NEXT_BOOK_STEP_LIMIT) break read;
+      if (page.next === null) break;
+      // A reader must move on: a cursor that does not is a fault, never a reason to read the same page again.
+      if (after && dueOrder(page.next, after) <= 0) { result.readFailed = true; break; }
+      after = cursorOf(page.next);
     }
-    // No more candidates, or a page that could not move on (more than a page at one instant): stop for this run.
-    if (page.next === null || page.next === from) break;
-    from = page.next;
+    return result;
+  } finally {
+    clearTimeout(timer);
+    // Nothing the step started may go on after it answers.
+    if (!signal.aborted) deadline.abort(new Deadline());
   }
-  return result;
 }

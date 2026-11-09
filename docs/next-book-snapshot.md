@@ -70,7 +70,8 @@ caller reads or writes anything: no claim becomes a chain, no hold row is writte
 
 **The automatic step.** One more step of the `/api/reminders` run (every 15 minutes), after the #475 scan maintenance,
 inside the same 55 seconds (`src/lib/next-book-step.ts`). It reads the due candidates in pages, oldest first by their
-anchor time:
+anchor time, through a keyset cursor (anchor time to the microsecond, kind, id): each page starts strictly after the
+last, so many candidates at one identical time never hold the step on one page (#773):
 
 - a trigger claim of a book 1 with no snapshot chain yet (anchor: the claim time);
 - a live chain that is not frozen, planned or admitted yet (anchor: `prepare_from`);
@@ -82,9 +83,11 @@ waiting. The step keeps reading until 20 items were prepared, the candidates run
 A waiting chain costs one cheap read and stops waiting by its freeze deadline (30 minutes), and a claim or a hold leaves
 the list on its first call, so the oldest items do not block later ones for long.
 
-Each item's deadline is the rest of the step's time less one second. At the deadline its signal aborts: its database
-requests stop, a planner or selection answer that comes later is refused, and the step answers with what it did, never
-after its end. Every write the item already made is one atomic, re-entrant step, so the next run continues it.
+One deadline covers the whole step: its time less one second. Every candidate read, access read and item races it
+under one signal (#773). At the deadline the signal aborts: the database requests stop, a planner or selection answer
+that comes later is refused, and the step answers with what it did, never after its end. The step's client never
+retries (`adminClient(signal, { retry: false })`): the SDK would otherwise retry a timed-out read after 1, 2 and 4
+seconds, past the deadline. Every write the item already made is one atomic, re-entrant step, so the next run continues it.
 
 A failed or cut first read ends the step for that run with no writes; the next run tries again. A failed later read
 ends it with the items already prepared kept. An error on one item is counted, and the step goes on. The run's answer
