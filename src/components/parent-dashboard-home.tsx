@@ -95,7 +95,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
               </span>
               {phone && state.kind !== "wait"
                 ? <SendLink key={kid.id} childId={kid.id} name={kid.first_name} sent={sentHere} />
-                : <StartTest childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} />}
+                : <StartTest childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} lateShown={overview?.child.id === kid.id && overview.resultLate} />}
               {current.has(kid.id) && <div className="acct-desk"><DeskText name={kid.first_name} workbook={current.get(kid.id)!} pinSet={dashboard.pinSet} /></div>}
               {mayaHere && chats.has(kid.id) && <MayaChatRow name={kid.first_name} chat={chats.get(kid.id)!} />}
               {mayaHere && notes.has(kid.id) && <NoteCard note={notes.get(kid.id)!} name={kid.first_name} zone={timeZone} latest />}

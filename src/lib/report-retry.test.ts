@@ -84,23 +84,34 @@ function world(families: Family[], { testFamilies = [] as string[], team = [] as
   const retries = memoryReportRetryStore(tables, { now: () => now, parentEmail: book.entry, testFamilies, team, policy });
 
   /** The report job, as the finish route's after() or the retry route runs it. */
-  const job_ = (test: string, o: { email?: boolean; failureAlert?: boolean } = {}) => runReportJob(test, ORIGIN, {
+  const job_ = (test: string, o: { email?: boolean; failureAlert?: boolean; mayEmail?: () => Promise<boolean> } = {}) => runReportJob(test, ORIGIN, {
     reader: readers.key(), comparison, store: job.store, profiles: profiles.store, reviewer: null, profileAi: null,
     transport: mail.transport, ledger: book.ledger, ...o,
   });
-  /** One /api/reminders run's part, at `at` minutes after T0. */
-  const sweep = (at: number, signal = new AbortController().signal) => {
+  /**
+   * The job as the retry route runs it: `email` is the caller's flag, which only narrows; the job asks the store again
+   * right before the email, by the store's clock.
+   */
+  const routeJob = (test: string, email: boolean) => job_(test, { email, failureAlert: false, mayEmail: () => retries.store.mayEmail(test) });
+  /**
+   * One /api/reminders run's part, at `at` minutes after T0. `startsAfter`: minutes between a retry's claim and its job
+   * (the route call, the function start): the clock moves on before the job runs.
+   */
+  const sweep = (at: number, signal = new AbortController().signal, { startsAfter = 0 } = {}) => {
     now = T0 + at * MINUTE;
     return runReportRetries({
       store: retries.store, signal, origin: ORIGIN, transport: mail.transport, alertTo: "savar@unicalearning.com", policy,
-      retry: (test, o) => job_(test, { email: o.email, failureAlert: false }),
+      retry: async (test, o) => {
+        now += startsAfter * MINUTE;
+        await routeJob(test, o.email);
+      },
     });
   };
   const sent = (to: string) => mail.delivered.filter((m) => m.to === to);
   const subjects = (start: string) => mail.delivered.filter((m) => m.subject.startsWith(start)).length;
   const reportOf = (test: string) => tables.reports!.filter((r) => r.assessmentId === test);
   return {
-    tables, mail, book, retries, failing, sent, subjects, reportOf, sweep,
+    tables, mail, book, retries, failing, sent, subjects, reportOf, sweep, routeJob,
     finish: (test: string) => job_(test),
     setNow: (at: number) => { now = T0 + at * MINUTE; },
   };
@@ -263,6 +274,32 @@ describe("the 48-hour email limit, by the store's clock", () => {
     expect(w.mail.delivered).toHaveLength(0);
   });
 
+  it("sends no email when a retry claimed at 47 h 59 min reaches the send after 48 hours: the rule is asked again at the send", async () => {
+    const w = world([family(1)]);
+    // Claimed while the email may still go; the job reaches the send 5.7 minutes later.
+    expect(await w.sweep(48 * 60 - 1, undefined, { startsAfter: 5.7 })).toMatchObject({ retried: 1, emailing: 1 });
+    expect(w.reportOf("test-1")).toHaveLength(1);
+    expect(w.mail.delivered).toHaveLength(0);
+    expect(w.book.entry({ report: "report-1", email: "parent" })).toBeUndefined();
+    // And no later run sends it.
+    for (const at of [48 * 60 + 20, 48 * 60 + 200]) expect((await w.sweep(at)).due).toBe(0);
+    expect(w.mail.delivered).toHaveLength(0);
+  });
+
+  it("sends the email when the send is still inside 48 hours", async () => {
+    const w = world([family(1)]);
+    expect(await w.sweep(48 * 60 - 10, undefined, { startsAfter: 5.7 })).toMatchObject({ emailing: 1 });
+    expect(w.sent("parent1@family.ca")).toHaveLength(1);
+  });
+
+  it("sends nothing for a caller's email flag on a test finished more than 48 hours ago", async () => {
+    const w = world([family(1)]);
+    w.setNow(48 * 60 + 1);
+    await w.routeJob("test-1", true);
+    expect(w.reportOf("test-1")).toHaveLength(1);
+    expect(w.mail.delivered).toHaveLength(0);
+  });
+
   it("does not retry a refused email of a test finished more than 48 hours ago", async () => {
     const w = world([family(1)]);
     w.mail.answerNext("refuse");
@@ -280,6 +317,15 @@ describe("test families and team accounts", () => {
     expect(w.reportOf("test-1")).toHaveLength(1);
     expect(w.reportOf("test-2")).toHaveLength(1);
     expect(w.mail.delivered).toHaveLength(0);
+  });
+
+  it("get no email from a caller's email flag at the retry route", async () => {
+    const w = world([family(1), family(2), family(3)], { testFamilies: ["parent-1"], team: ["parent-2"] });
+    w.setNow(30);
+    for (const test of ["test-1", "test-2", "test-3"]) await w.routeJob(test, true);
+    expect(["test-1", "test-2", "test-3"].map((t) => w.reportOf(t).length)).toEqual([1, 1, 1]);
+    // Only the real family, inside the rule, gets its email.
+    expect(w.mail.delivered.filter((m) => m.to !== ALERT_TO).map((m) => m.to)).toEqual(["parent3@family.ca"]);
   });
 
   it("get no retried email after a refusal", async () => {

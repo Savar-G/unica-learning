@@ -1250,6 +1250,24 @@ export type Database = {
         }
         Relationships: []
       }
+      family_finish_claims: {
+        Row: {
+          claim: string
+          claimed_at: string
+          user_id: string
+        }
+        Insert: {
+          claim: string
+          claimed_at?: string
+          user_id: string
+        }
+        Update: {
+          claim?: string
+          claimed_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       family_payment_operations: {
         Row: {
           customer_id: string
@@ -7746,6 +7764,10 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: Json
       }
+      claim_family_finish: {
+        Args: { p_claim: string; p_user: string }
+        Returns: string
+      }
       claim_family_retention: {
         Args: { p: string; subscription_ended_at: string; token: string }
         Returns: Json
@@ -8279,6 +8301,16 @@ export type Database = {
         Returns: string
       }
       is_admin: { Args: never; Returns: boolean }
+      issue_sign_in_link: {
+        Args: {
+          p_child: string
+          p_max: number
+          p_parent: string
+          p_token_hash: string
+          p_ttl_seconds: number
+        }
+        Returns: string
+      }
       link_booking_family: {
         Args: { pid: string; sid: number }
         Returns: undefined
@@ -8616,6 +8648,10 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
+      release_family_finish: {
+        Args: { p_claim: string; p_user: string }
+        Returns: undefined
+      }
       release_plan_start_email: {
         Args: { p_card: string; p_generation: number; p_token: string }
         Returns: boolean
@@ -8669,6 +8705,14 @@ export type Database = {
           out_assessment: string
           out_attempts: number
         }[]
+      }
+      report_retry_may_email: {
+        Args: {
+          p_assessment: string
+          p_email_age_s: number
+          p_min_age_s: number
+        }
+        Returns: boolean
       }
       report_retry_need: {
         Args: {

@@ -76,6 +76,10 @@ export function memoryReportRetryStore(
       list.sort((x, y) => x.place - y.place || (x.assessmentId < y.assessmentId ? -1 : 1));
       return list.slice(0, limit).map(({ assessmentId, attempts }) => ({ assessmentId, attempts }));
     },
+    async mayEmail(assessmentId) {
+      await tick();
+      return need(assessmentId, now()) === "send";
+    },
     async claimAttempt(assessmentId) {
       await tick();
       const at = now();

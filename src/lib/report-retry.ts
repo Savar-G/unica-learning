@@ -15,7 +15,9 @@ import { sendEmailOnceInTime, type MailTransport, type ReleasableLedger } from "
 //   REPORT_RETRY.perRun tests.
 // - The email: only a test that finished under REPORT_RETRY.emailAgeMs ago, in a family that is not a test family or a
 //   team account, gets its report email from a retry. Any other test with no report row gets its report built, with no
-//   email, so the parent's page stops saying the report is on its way.
+//   email, so the parent's page stops saying the report is on its way. The rule is asked twice: when the retry is
+//   claimed, and again right before the email is claimed (mayEmail), by the database's clock, because the job runs
+//   minutes after its claim and the retry route's caller only narrows it (`email: false`).
 // - The email goes once: the job claims it on the report row (src/lib/report-row-ledger.ts) before it sends. A retry
 //   sends it again only when that claim was released (the provider refused it). A sent email, or one whose outcome is
 //   unknown, keeps its claim, so no retry sends it again. The report alert has its own claim, so it never doubles.
@@ -63,6 +65,11 @@ export interface ReportRetryStore<H = unknown> {
    * run took it, the test needs nothing now, or its retries are used up. Throws on a database error.
    */
   claimAttempt(assessmentId: string): Promise<{ attempt: number; email: boolean } | null>;
+  /**
+   * Whether the report email of the test may go now, by the store's clock: the same rule as the claim's ("send"), asked
+   * again right before the send, as a retry's job runs minutes after its claim. Throws on a database error.
+   */
+  mayEmail(assessmentId: string): Promise<boolean>;
   /** The give-up alert's send ledger, keyed by the test's id: its claim is made only when the give-up is due. */
   giveUp: ReleasableLedger<string, H>;
 }

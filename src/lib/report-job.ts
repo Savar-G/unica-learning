@@ -89,6 +89,11 @@ export interface ReportJobOptions {
   email?: boolean;
   /** #771: false sends no "Report FAILED" alert (a retry: the retries send one alert after the last). Default true. */
   failureAlert?: boolean;
+  /**
+   * #771: asked right before the parent email is claimed (a retry: report_retry_may_email, by the database's clock).
+   * False, or a throw: no parent email and no report alert; the report stays stored. None (the finish route): no check.
+   */
+  mayEmail?: () => Promise<boolean>;
 }
 
 /** The given database seams; the missing ones are Supabase with the secret key. Null without the key. */
@@ -147,10 +152,11 @@ export async function runReportJob(assessmentId: string, origin: string, options
       const { view } = loaded;
       const url = `${origin}${reportPath(report.id)}`;
 
-      const parentEmail = await emailParent(store, book, transport, report.id, view, { ...parent, id: assessment.parentId }, `${url}?src=email`);
+      const parentEmail = await emailParent(store, book, transport, report.id, view, { ...parent, id: assessment.parentId }, `${url}?src=email`, options.mayEmail);
       // Another run holds the claim of the parent email: it is sending now, or its send's outcome is unknown. That run
-      // sends (or sent) the alert.
-      if (parentEmail !== "busy") {
+      // sends (or sent) the alert. A retry whose email may no longer go sends neither.
+      if (parentEmail === "not_allowed") console.info("[report] email no longer allowed: built with no email", assessmentId);
+      else if (parentEmail !== "busy") {
         await alertSavar(book, transport, report.id, reportAlert({ view, parent, url: `${origin}${adminTestPath(assessment.id)}`, flags: assessment.placement.flags ?? [], help: assessment.help, parentEmail, ai }), parent.email);
       }
     }
@@ -201,7 +207,8 @@ async function profileStep<T>(assessmentId: string, step: () => Promise<T>): Pro
 
 /**
  * Emails the report to the parent once, through the delivery module. "busy": another run holds the claim (it is
- * sending now, or the outcome of its send is unknown); nothing was sent.
+ * sending now, or the outcome of its send is unknown); nothing was sent. "not_allowed": `mayEmail` said no, or failed,
+ * right before the claim; nothing was claimed or sent.
  */
 async function emailParent(
   store: ReportJobStore,
@@ -211,7 +218,8 @@ async function emailParent(
   view: ReportView,
   parent: ParentContact & { id: string },
   url: string,
-): Promise<ParentEmail | "busy"> {
+  mayEmail?: () => Promise<boolean>,
+): Promise<ParentEmail | "busy" | "not_allowed"> {
   // The parent email went in an earlier run, so this run sends only the alert that did not go.
   if (await ledger.parentEmailSent(reportId)) return { sent: true };
   // CASL (#80): the email offers a plan, so it carries an unsubscribe link. The token is new for each send; only its
@@ -221,6 +229,11 @@ async function emailParent(
   const { token, hash } = newToken();
   const origin = new URL(url).origin;
   const email = reportEmail({ view, parentName: parent.name, url, unsubscribeUrl: `${origin}/unsubscribe?t=${token}`, offer });
+  // #771: a retry asks again, last, by the database's clock, whether this email may go.
+  if (mayEmail && !(await mayEmail().catch((e) => {
+    console.error("[report] email check failed", reportId, message(e));
+    return false;
+  }))) return "not_allowed";
   const outcome = await sendEmailOnce(
     ledger,
     { report: reportId, email: "parent" },

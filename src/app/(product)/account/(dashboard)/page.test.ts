@@ -424,6 +424,21 @@ describe("a family the switch opens to", () => {
       expect(parentMinutes).not.toHaveBeenCalled();
     });
 
+    // #771 review: the Overview says the result is late, so the test's line under it does not say it again.
+    it("says once that a late result is late: in the Overview, and the test's line only says the test is done", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-10-19T06:00:00Z") });
+      let out: string;
+      try {
+        out = await render({ ...full(), level: null, areas: [], resultPreparing: true, resultLate: true });
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(out.match(/taking longer than it should/g)).toHaveLength(1);
+      expect(out).toContain('class="po-preparing">Asha&#x27;s new result is taking longer than it should.');
+      expect(out).toContain('<span class="small acct-done">Test done. The next test opens at <time');
+      expect(out).not.toContain("The report comes by email");
+    });
+
     it("a tile or a section with no data does not appear, and no card shows when none applies", async () => {
       const withoutMaya = tabs.filter((t) => t !== "maya");
       const out = await render({ ...full(withoutMaya), level: null, areas: [], workbook: null, action: null }, withoutMaya);

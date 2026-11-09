@@ -40,6 +40,11 @@ export function reportRetryStore(admin: SupabaseClient<Database>, policy: Report
       if (error) throw new Error(`report retries due: ${error.message}`);
       return (data ?? []).map((r) => ({ assessmentId: r.out_assessment, attempts: r.out_attempts }));
     },
+    async mayEmail(assessmentId) {
+      const { data, error } = await admin.rpc("report_retry_may_email", { p_assessment: assessmentId, ...ages });
+      if (error) throw new Error(`report retry email check: ${error.message}`);
+      return data === true;
+    },
     async claimAttempt(assessmentId) {
       const { data, error } = await admin.rpc("claim_report_retry", {
         p_assessment: assessmentId, ...ages, p_max_attempts: policy.maxAttempts, p_delays_s: policy.delaysMs.map(seconds),
@@ -68,6 +73,15 @@ export function reportRetryStore(admin: SupabaseClient<Database>, policy: Report
       },
     },
   };
+}
+
+/**
+ * The retry route's check right before the parent email (#771 review): whether report_retry_need is still "send" by the
+ * database's clock. False without the secret key. Throws on a database error (the job then sends nothing).
+ */
+export async function reportEmailAllowed(assessmentId: string): Promise<boolean> {
+  const admin = adminClient();
+  return admin ? reportRetryStore(admin).mayEmail(assessmentId) : false;
 }
 
 /** The retry route's path for a test. */
