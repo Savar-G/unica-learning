@@ -1,4 +1,4 @@
-import { dayOf, familyWhen, localDateTime, type FamilyZone } from "@/lib/family-time";
+import { dayOf, familyWhen, formatInZone, localDateTime, type FamilyZone } from "@/lib/family-time";
 import type { Batch } from "@/lib/board";
 import { SAFETY_GUIDANCE } from "@/lib/maya";
 import type { CallView, TranscriptLine } from "@/lib/maya-call";
@@ -45,9 +45,32 @@ export function childChatView(view: CallView): ChatView {
 export const CHAT_MIN_GRADE = 3;
 export const chatServesGrade = (grade: number | null | undefined): boolean => typeof grade === "number" && grade >= CHAT_MIN_GRADE;
 /** The chat limit in the desk header: messages left today, the grade for a younger child (`note`), else the limit. */
-export function chatLimitLabel(usage: ChatUsage | null, note: string | null): string {
+export function chatLimitLabel(usage: ChatUsage | null, note: string | null, planClosed = false): string {
   if (usage) return `${usage.left} left today`;
+  if (planClosed) return "Closed";
   return note ? "Grade 3 and up" : `${CHAT_MESSAGES} messages a day`;
+}
+/**
+ * Why chat is closed, on the child's desk, from the desk child's own plan (childPlanRead): it names the reason (D-304, Savar:
+ * "explicitly say why Maya is paused / not working"; for chat it replaces D-280's "no payment words" on the desk). Words
+ * approved by Savar on 2026-11-08. Null, so the desk keeps "Chat and calls with Maya start soon.", for a child with no plan and
+ * for an open plan. A paused plan gives its resume day only when the stored date parses and is still ahead, as a day in the
+ * family's time zone in the plan page's style (planDay). A failed read, or a state with no usable kind, gives the not-running line.
+ */
+export function chatPlanClosedLine(closed: { reason: string; resumesOn?: string | null }, zone: FamilyZone, now: number): string | null {
+  switch (closed.reason) {
+    case "no_plan":
+    case "open":
+    case "ending_until_end": return null;
+    case "ended": return "Chat with Maya is closed because your family's plan has ended. Ask a grown-up.";
+    case "payment_failed": return "Chat with Maya is paused because the last payment did not go through. Ask a grown-up.";
+    case "paused": {
+      const at = closed.resumesOn ? Date.parse(closed.resumesOn) : Number.NaN;
+      if (Number.isFinite(at) && at > now) return `Chat with Maya is paused because your family paused the plan. It starts again on ${formatInZone(closed.resumesOn!, zone, { year: "numeric", month: "long", day: "numeric" })}.`;
+      return "Chat with Maya is paused because your family paused the plan. Ask a grown-up.";
+    }
+    default: return "Chat with Maya is closed because your family's plan is not running. Ask a grown-up.";
+  }
 }
 /** What the desk says when a younger child's family has chat. */
 export const chatGradeLine = () => "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.";
