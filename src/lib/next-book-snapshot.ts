@@ -2,6 +2,7 @@
 import type { ProgressHistory, ProgressSnapshot } from "./workbook-progress";
 import type { FrozenWorkbookSourcesV2 } from "./workbook-progress-source";
 import type { HistoryFence } from "./workbook-progress-history";
+import type { PlanInput, WorkbookPlan } from "./workbook-plan";
 
 export interface SnapshotEvidence {
   key: string;
@@ -28,7 +29,7 @@ export interface FrozenNextBookSnapshot {
 
 export interface NextBookPlanner {
   plan(input: { snapshot: ProgressSnapshot; history: ProgressHistory; frozen: FrozenNextBookSnapshot }): Promise<
-    | { ok: true; planningInput: unknown; plan: unknown; used: Array<{ key: string; version: number }>; planHash: string }
+    | { ok: true; planningInput: PlanInput; plan: WorkbookPlan; consumed: Array<{ key: string; version: number }>; held: Array<{ key: string; reason: string }>; planHash: string }
     | { ok: false; reason: string }
   >;
 }
@@ -51,9 +52,14 @@ export function validatePlannerEvidence(frozen: FrozenNextBookSnapshot, used: re
     if (available.has(key)) return false;
     available.set(key, effective.observation.resultVersion);
   }
+  const ledger = new Map<string, number>();
+  for (const entry of frozen.evidence) {
+    if (ledger.has(entry.key) || available.get(entry.key) !== entry.version) return false;
+    ledger.set(entry.key, entry.version);
+  }
   const seen = new Set<string>();
   return used.every(({ key, version }) => {
-    if (seen.has(key) || !Number.isSafeInteger(version) || version < 1 || available.get(key) !== version) return false;
+    if (seen.has(key) || !Number.isSafeInteger(version) || version < 1 || ledger.get(key) !== version) return false;
     seen.add(key);
     return true;
   });

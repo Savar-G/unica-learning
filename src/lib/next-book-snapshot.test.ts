@@ -19,12 +19,13 @@ describe("next-book snapshot primitives", () => {
     const result = await readWorkbookProgressHistory(f.store, f.input);
     expect(result.ok).toBe(true);
     if (!result.ok) throw Error(result.reason);
-    const frozen = { history: result.history } as FrozenNextBookSnapshot;
     const item = result.history.originals[0].first.observation;
     const i = item.identity;
     const key = JSON.stringify([i.workbookId, i.printedRevision, i.pageId, i.itemId]);
     const used = { key, version: item.resultVersion };
+    const frozen = { history: result.history, evidence: [{ ...used, day: 1, pageId: i.pageId }] } as FrozenNextBookSnapshot;
     expect(validatePlannerEvidence(frozen, [used])).toBe(true);
+    expect(validatePlannerEvidence({ ...frozen, evidence: [] }, [used])).toBe(false);
     expect(validatePlannerEvidence(frozen, [used, used])).toBe(false);
     expect(validatePlannerEvidence(frozen, [{ ...used, version: used.version + 1 }])).toBe(false);
     const held = result.held[0].original.first.observation;
