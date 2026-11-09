@@ -69,6 +69,7 @@ function readStart(data: unknown): PlanStart {
   return {
     ...(a.purpose === "initial" || a.purpose === "restart" ? { purpose: a.purpose } : {}),
     ...(typeof a.monthly_cents === "number" || a.monthly_cents === null ? { monthlyCents: a.monthly_cents } : {}),
+    familyTerms: a.family_terms === true, trialEnd: isoOrNull(a.trial_end),
     generation: generationOf(a.generation), key: required(a.key), card: required(a.card), at: millis(a.at), state: startState(a.state),
     subscription: text(a.subscription), firstCharge: isoOrNull(a.first_charge), finished: a.finished_at ? millis(a.finished_at) : null,
     email: emailState(a.email), alert: alertState(a.alert),
@@ -89,11 +90,11 @@ const readRow = (r: RowColumns): CardRow => ({
 export function supabaseCardRows(db: SupabaseClient<Database>): CardRows {
   return {
     async startTerms(cardId, generation) {
-      const { data, error } = await db.rpc("plan_start_terms", { p_card: cardId, p_generation: generation });
+      const { data, error } = await db.rpc("family_plan_start_terms", { p_card: cardId, p_generation: generation });
       if (error) throw new Error(`plan start terms: ${error.message}`);
       const terms = object(data);
       if (terms.purpose !== "initial" && terms.purpose !== "restart") throw new Error("Plan start terms unreadable");
-      return { purpose: terms.purpose, monthlyCents: typeof terms.monthly_cents === "number" ? terms.monthly_cents : null };
+      return { purpose: terms.purpose, monthlyCents: typeof terms.monthly_cents === "number" ? terms.monthly_cents : null, familyTerms: terms.family_terms === true, trialEnd: isoOrNull(terms.trial_end) };
     },
     async recordCard(cardId, card) {
       const { data, error } = await db.rpc("record_card_update", {
@@ -127,7 +128,7 @@ export function supabaseCardRows(db: SupabaseClient<Database>): CardRows {
       if (error) throw new Error(`card row note: ${error.message}`);
     },
     async admitPlanStart(cardId, generation, key, card, terms) {
-      const { data, error } = await db.rpc("admit_plan_start_terms", { p_card: cardId, p_generation: generation, p_key: key, p_payment_method: card, p_purpose: terms?.purpose ?? "initial", p_monthly_cents: terms?.monthlyCents ?? 0, p_revision: terms?.revision ?? "" });
+      const { data, error } = await db.rpc("admit_family_plan_start", { p_card: cardId, p_generation: generation, p_key: key, p_payment_method: card, p_purpose: terms?.purpose ?? "initial", p_monthly_cents: terms?.monthlyCents ?? 0, p_revision: terms?.revision ?? "" });
       if (error) throw new Error(`plan start admission: ${error.message}`);
       return readStart(data);
     },

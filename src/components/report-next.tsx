@@ -156,7 +156,7 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
     card={card} wait={wait} busy={busy} announce={announce} savedPlan={savedPlan} choose={choose} join={join} checkAgain={checkAgain} />;
 }
 
-export function ReportNextView({ step, childName, province, asked, start, words, pinned = false, card, wait, busy, announce, savedPlan, choose, join, checkAgain }: ReportNextActionsProps & {
+export function ReportNextView({ step, childName, province, asked, start, words, pinned = false, card, wait, busy, announce, choose, join, checkAgain }: ReportNextActionsProps & {
   card: CardState; wait: WaitState; busy: PlanId | "waitlist" | null; announce: string; savedPlan: PlanId | null;
   choose: (option: PlanOption) => void; join: () => void; checkAgain: () => void;
 }) {
@@ -187,12 +187,11 @@ export function ReportNextView({ step, childName, province, asked, start, words,
     );
   }
 
-  const savedOption = step.plans.find((p) => p.plan === savedPlan);
   return (
     <div className={`rpt-next is-card${asked ? " is-asked" : ""}`}>
       {card === "saved" ? <>
         <h3>Card saved</h3>
-        <p>{savedOption ? `Plan: ${savedOption.label}. ` : ""}Your first month is free, starting when the first workbook arrives at your home. We email you before the first charge. To change the plan, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>
+        <p>{step.familyTerms ?? step.text} To change the plan, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>
       </> : card === "later" ? <>
         <h3>We received your plan choice.</h3>
         <p>We will email you a link to add your card. You have not been charged.</p>

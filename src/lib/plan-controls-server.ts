@@ -99,7 +99,10 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
   if (!data?.stripe_customer_id || !data.card_saved_at) return { ok: false as const, error: "not_found" };
   const context = await planControlContext(db, parent, card);
   if (!context) return { ok: false as const, error: "not_found" };
-  const price = planPrice(Number(data.price), data.plan), revision = nullable(context.revision) ?? "";
+  const agreed = planPrice(Number(data.price), data.plan), revision = nullable(context.revision) ?? "";
+  const priced = await db.rpc("family_plan_price", { p_parent: parent, p_card: card, p_agreed_cents: Math.round(agreed * 100) });
+  if (priced.error || typeof priced.data !== "number") throw new Error("Restart family price unavailable");
+  const price = priced.data / 100;
   if (!Number.isFinite(price) || price <= 0) return { ok: false as const, error: "unavailable" };
   const rows = supabaseCardRows(db), row = await rows.cardRow(card);
   if (row?.planStart?.state === "open" && rows.startTerms) Object.assign(row.planStart, await rows.startTerms(card, row.planStart.generation));
@@ -124,7 +127,7 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
     const result = await startPlan(client, { cardSetup: card, customer: data.stripe_customer_id, price, deliveryConfirmed: false, purpose: "restart", restartRevision: revision }, undefined, rows);
     // Before anything else that can throw: the plan is running, so access reopens now, with no webhook wait.
     const access = result.ok ? await openRestartedPlan(db, client, { customer: data.stripe_customer_id, cardSetup: card, generation: result.generation, startedAt }) : null;
-    return result.ok ? { ok: true as const, state: "started" as const, price, access: access ?? "pending" } : result;
+    return result.ok ? { ok: true as const, state: "started" as const, price: result.monthlyPrice ?? price, access: access ?? "pending" } : result;
   } finally {
     await endCardOperation(db, card);
   }
@@ -175,7 +178,14 @@ export async function adjustedPlan(db: SupabaseClient<Database>, parent: string,
     if (!paused) return { kind: "ending", endsOn: nextCharge, free: false };
     // A pause that has not begun was released by the Cancel, so the plan ends where it would have renewed. A pause that has begun
     // may have resumed with a later period end the stored plan does not know yet: no date is shown rather than a wrong one.
-    return Date.parse(paused.quote.previousCharge) > Date.now() ? { kind: "ending", endsOn: paused.quote.previousCharge, free: false } : { kind: "unknown" };
+    // Allow ten minutes for a slow server clock before treating the pause as not yet begun.
+    return Date.parse(paused.quote.previousCharge) > Date.now() + 10 * 60_000 ? { kind: "ending", endsOn: paused.quote.previousCharge, free: false } : { kind: "unknown" };
+  }
+  if (plan.kind === "paying" && !plan.firstCharge) {
+    const start = await db.from("plan_starts").select("first_charge_at").eq("parent_id", parent).eq("card_setup_id", card)
+      .eq("state", "started").order("generation", { ascending: false }).limit(1).maybeSingle();
+    if (start.error) throw new Error("Plan first charge unavailable");
+    if (start.data?.first_charge_at) plan = { ...plan, firstCharge: start.data.first_charge_at };
   }
   for (const { retired, quote } of pauses) {
     if (retired) continue;

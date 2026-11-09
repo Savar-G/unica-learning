@@ -23,7 +23,7 @@ export function PrepareWorkbook({ childId, child, runner = "server" }: { childId
       if (res.status === 404) { setError("This child is unavailable or your admin access has ended."); return; }
       const result = await res.json() as { ok: boolean; runId?: string; error?: string };
       if (result.runId) { router.push(adminWorkbookRunPath(result.runId)); return; }
-      setError(result.error === "unavailable" ? "The database is unavailable. Try again later." : `It did not start: ${result.error ?? "unknown error"}.`);
+      setError(result.error === "unavailable" ? "The database is unavailable. Try again later." : result.error?.endsWith(".") ? result.error : `It did not start: ${result.error ?? "unknown error"}.`);
     } catch { setError("The response was lost. Reload the page to see whether a run started."); }
     finally { setBusy(false); }
   }

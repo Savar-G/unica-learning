@@ -92,13 +92,17 @@ export interface PlanStart {
   /** Immutable creation terms. Older records are initial starts. */
   purpose?: "initial" | "restart";
   monthlyCents?: number | null;
+  /** True only for a start admitted with the shared family window. */
+  familyTerms?: boolean;
+  /** Frozen absolute trial end. Null means immediate payment. */
+  trialEnd?: string | null;
   generation: number;
   key: string;
   card: string;
   at: number;
   state: PlanStartState;
   subscription: string | null;
-  /** ISO time the free month ends, or null. */
+  /** ISO time of the first charge, or null when unavailable. */
   firstCharge: string | null;
   finished: number | null;
   email: PlanEmail;
@@ -125,7 +129,7 @@ export interface CardRow extends NewestCard {
 
 export interface CardRows {
   /** Immutable terms are needed only by a start press, not by the recovery sweep. */
-  startTerms?(cardId: string, generation: number): Promise<{ purpose: "initial" | "restart"; monthlyCents: number | null }>;
+  startTerms?(cardId: string, generation: number): Promise<{ purpose: "initial" | "restart"; monthlyCents: number | null; familyTerms?: boolean; trialEnd?: string | null }>;
   /** Records `card` when it is the child's newest. Throws when it fails. */
   recordCard(cardId: string, card: RecordedCard): Promise<CardRecord>;
   /** After a comparison of Stripe with `session`'s card. Throws when it fails. */
@@ -163,8 +167,10 @@ export interface PlanCard {
   defaultCard: string | null;
   /** The key of the plan start that made it, or null for one made before the record existed. */
   startKey: string | null;
-  /** ISO time the free month ends, or null. */
+  /** ISO time of the first charge, or null when unavailable. */
   firstCharge: string | null;
+  /** A paid Restart records its charge date without a trial welcome email. */
+  paidRestart?: boolean;
 }
 
 export interface CardState {
@@ -303,7 +309,7 @@ export type PlanCheck =
 
 /** Closes a record whose subscription was found. The parent hears about a plan that is still on, with a date to give. */
 export const startedOutcome = (plan: PlanCard, emailAllowed = true): PlanStartOutcome => ({
-  state: "started", subscription: plan.id, firstCharge: plan.firstCharge, email: emailAllowed && planNotOver(plan.status) && plan.firstCharge !== null,
+  state: "started", subscription: plan.id, firstCharge: plan.firstCharge, email: emailAllowed && !plan.paidRestart && planNotOver(plan.status) && plan.firstCharge !== null,
 });
 
 /** What a press does next, from the record and the customer's whole list of subscriptions. */

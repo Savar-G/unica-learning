@@ -9,6 +9,8 @@ export interface PlanSubscription {
   /** The monthly price, in cents. */
   cents: number | null;
   created: number;
+  /** The first charge of a plan that started without a trial. */
+  firstCharge?: number;
   /** When Stripe ended the subscription. */
   endedAt?: number | null;
   pauseResume?: number | null;
@@ -20,7 +22,7 @@ export type ParentPlan =
   /** A saved card, and the free month has not started. */
   | { kind: "not_started" }
   | { kind: "free_month"; firstCharge: string; monthly: number | null }
-  | { kind: "paying"; nextCharge: string | null; monthly: number | null; cancelAt?: string | null }
+  | { kind: "paying"; nextCharge: string | null; monthly: number | null; cancelAt?: string | null; firstCharge?: string }
   /** A payment failed, and Stripe is trying the card again. */
   | { kind: "payment_failed" }
   | { kind: "paused"; resumesOn: string | null; monthly: number | null }
@@ -53,7 +55,7 @@ export function parentPlan(subscriptions: readonly PlanSubscription[]): KnownPla
   if ((free || running.status === "active") && running.cancelAtPeriodEnd) return { kind: "ending", endsOn: iso(end), free };
   if (free && end) return { kind: "free_month", firstCharge: iso(end)!, monthly: dollars(running.cents) };
   if (running.status === "active") return { kind: "paying", nextCharge: iso(running.nextCharge ?? end), monthly: dollars(running.cents),
-    ...(running.nextCharge ? { cancelAt: iso(end) } : {}) };
+    ...(running.nextCharge ? { cancelAt: iso(end) } : {}), ...(running.firstCharge ? { firstCharge: iso(running.firstCharge)! } : {}) };
   return { kind: "payment_failed" };
 }
 

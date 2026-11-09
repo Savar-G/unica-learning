@@ -1,3 +1,4 @@
+import { scanMaintenanceRelease, scanProgressAccess } from "@/lib/workbook-scan-access";
 import { isUuid } from "@/lib/workbook-content";
 import { scanJson, scanSession } from "@/lib/scan-photo-server";
 import { markingAccess } from "@/lib/scan-marking-server";
@@ -14,6 +15,14 @@ export async function GET(request: Request) {
   if (!isUuid(childId) || !isUuid(workbookId)) return scanJson({ error: "invalid" }, 400);
   if (!await session.childOpen(childId)) return scanJson({ error: "refused" }, 404);
   try {
+    const release = scanMaintenanceRelease({
+      WORKBOOK_SCAN_PROGRESS_ENABLED: process.env.WORKBOOK_SCAN_PROGRESS_ENABLED,
+      WORKBOOK_SCAN_REMINDERS_ENABLED: process.env.WORKBOOK_SCAN_REMINDERS_ENABLED,
+      WORKBOOK_SCAN_TEST_PARENT_IDS: process.env.WORKBOOK_SCAN_TEST_PARENT_IDS,
+    });
+    if (!release) return scanJson({ error: "refused" }, 404);
+    const access = scanProgressAccess(session.admin, release);
+    if (!await access.allowed(session.parent, childId)) return scanJson({ error: "refused" }, 404);
     const now = Date.now();
     // Accepted scans remain readable independently of automatic marking. Its separate release gate stays intact.
     let history: ScanProgressHistoryReader | undefined;
@@ -26,7 +35,7 @@ export async function GET(request: Request) {
     }
     const result = await readWorkbookScanProgress(workbookScanProgressStore(session.admin),
       { parentId: session.parent, childId, workbookId }, now, history);
-    if (result.status !== "available" || !await session.active()) return scanJson({ error: "refused" }, 404);
+    if (result.status !== "available" || !await session.active() || !await access.allowed(session.parent, childId)) return scanJson({ error: "refused" }, 404);
     const { progress, persisted } = result;
     const numbers = new Map(result.pageNumbers.map(p => [p.id, p.number]));
     const pageNumber = (id: string) => {

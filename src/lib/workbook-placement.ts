@@ -109,12 +109,12 @@ export function placeChild(o: PlacementInput): PlacedChild {
   return decide(home, "P5", "Start at the measured working level; early gaps below it do not lower the start.");
 }
 
-/** Plans from clear secure results only at the first start level. Legacy input keeps the previous plan unchanged. */
-export function planNextWorkbook(o: PlacementInput & { number: number }, capture?: (input: PlanInput) => void): NextWorkbookResult {
+/** Prepare the planner input and placement context without making a plan. */
+function preparePlacement(o: PlacementInput & { number: number }) {
   const ins = instructionsEmpty(o.instructions) ? null : o.instructions!;
   const place = placeChild(ins ? o : { ...o, instructions: null });
   const level = planLevel(o.curriculum, place.level.id);
-  if (!level) return { ok: false, reason: `the curriculum has no level ${place.level.id}` };
+  if (!level) return { ok: false as const, reason: `the curriculum has no level ${place.level.id}` };
   const signals = bookSignals({ ...o, allowedStandards: o.curriculum.levels.filter(l => l.number <= place.level.number).flatMap(l => [...l.units]) });
   const outcomes: InstructionOutcome[] = [];
   if (ins?.startLevel) {
@@ -153,6 +153,20 @@ export function planNextWorkbook(o: PlacementInput & { number: number }, capture
     ...(ins ? { instructions: { teachMore: [...ins.teachMore], teachLess: [...ins.teachLess], addReview: [...ins.addReview],
       ...secureLess(ins.teachLess), ...(place.trace.rule === "I1" ? { weakBelowChecks: true } : {}) } } : {}),
   };
+  return { ok: true as const, planning, place, signals, outcomes, standards, unassessedUnits, ins };
+}
+
+/** Prepare exactly the input used by planNextWorkbook without running the planner. */
+export function prepareNextWorkbookInput(o: PlacementInput & { number: number }): { ok: true; input: PlanInput } | { ok: false; reason: string } {
+  const prepared = preparePlacement(o);
+  return prepared.ok ? { ok: true, input: structuredClone(prepared.planning) } : prepared;
+}
+
+/** Plans from clear secure results only at the first start level. Legacy input keeps the previous plan unchanged. */
+export function planNextWorkbook(o: PlacementInput & { number: number }, capture?: (input: PlanInput) => void): NextWorkbookResult {
+  const prepared = preparePlacement(o);
+  if (!prepared.ok) return prepared;
+  const { planning, place, signals, outcomes, standards, unassessedUnits, ins } = prepared;
   // Capture the exact public planner input. A consumer cannot change the plan through this copy.
   capture?.(structuredClone(planning));
   const result = planWorkbook(planning);

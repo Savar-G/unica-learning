@@ -75,6 +75,8 @@ describe("the Maya notice page", () => {
     const html = await render({ saved: "1" });
     expect(html).toContain("We saved your answer.");
     expect(html).toContain("This does not open chat with Maya by itself.");
+    expect(html.replace(/&#x27;/g, "'")).toContain("Chat with Maya opens when your family's plan starts.");
+    expect(html).not.toMatch(/in\s+stages/);
     expect(html).not.toMatch(/Maya is on|can chat with Maya/);
   });
 

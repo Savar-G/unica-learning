@@ -19,9 +19,10 @@ import { isDeepStrictEqual as same } from "node:util";
 import { storedChildProfile } from "./child-profile";
 import { isUuid } from "./workbook-content";
 import { curriculumFor, curriculumVersion } from "./workbook-curriculum";
+import { nextBookCurriculumCompat, type CurriculumCompatRefusal, type CurriculumCompatSource } from "./workbook-curriculum/compat";
 import type { CurriculumSkill, CurriculumStep } from "./workbook-curriculum/types";
 import type { RunFrame, RunPlanningCapture } from "./workbook-job";
-import { planNextWorkbook } from "./workbook-placement";
+import { planNextWorkbook, prepareNextWorkbookInput } from "./workbook-placement";
 import type { PlanInput, StepRef } from "./workbook-plan";
 import { isPrintedRevision, isSha256 } from "./workbook-print-contract";
 import { canonical, sourceHash } from "./workbook-progress-hash";
@@ -87,7 +88,7 @@ export type Book1BaselineResult = { ok: true; baseline: Book1Baseline; record: B
 /** Where a PlanInput breaks the first-book starting-mastery policy, or null. */
 export function masteryPolicyProblem(input: PlanInput): string | null {
   if (!input || typeof input !== "object") return "no input";
-  if (Object.hasOwn(input, "progress")) return "a progress decision";
+  if (Object.hasOwn(input, "progress") || Object.hasOwn(input, "previewDecisions")) return "a progress decision";
   if (!input.workbook || input.workbook.number !== 1 || input.workbook.inLevel !== 0) return "not workbook 1";
   if (!input.passed || typeof input.passed !== "object" || Object.keys(input.passed).length) return "passed steps";
   if (input.reviews?.length || input.missedReviews?.length || input.misses?.length) return "carried reviews or misses";
@@ -251,16 +252,26 @@ export function book1BindingProblem(b: Book1Baseline, x: Book1BoundBook): Book1B
   return null;
 }
 
-export type Book2PlanningResult = { ok: true; input: PlanInput } | { ok: false; reason: "curriculum-version-changed" | "profile-unreadable" | "next-planner-refused" | "invalid-planning" };
+export type Book2PlanningRefusal = CurriculumCompatRefusal | "profile-unreadable" | "next-planner-refused" | "invalid-planning";
+export type Book2PlanningResult = { ok: true; input: PlanInput } | { ok: false; reason: Book2PlanningRefusal; difference?: string };
 /**
  * The next book's planning input, from the frozen Book 1 placement facts and the bound book, through the one public
  * planner (planNextWorkbook). The baseline's own PlanInput is never changed. No spaced review is added here (#473).
+ * Today's curriculum may differ from Book 1's only where its structure stays the same (nextBookCurriculumCompat):
+ * a frozen version not in the archive is curriculum-history-missing, a changed structure is curriculum-incompatible with
+ * the first difference. `exactCurriculum` keeps the exact version rule (curriculum-version-changed) for the saved
+ * preview records, whose replay re-runs this (workbook-book1-preview.ts, workbook-preview-record.ts). `curricula` is
+ * the test seam for the curriculum now and the archive.
  */
-export function book2Planning(b: Book1Baseline): Book2PlanningResult {
+export function book2Planning(b: Book1Baseline, options: { prepareOnly?: boolean; exactCurriculum?: boolean; curricula?: CurriculumCompatSource } = {}): Book2PlanningResult {
   try {
     const placement = structuredClone(b.planning.placement);
     const curriculum = curriculumFor(placement.curriculum.key);
-    if (!curriculum || curriculumVersion(placement.curriculum.key) !== placement.curriculum.version) return { ok: false, reason: "curriculum-version-changed" };
+    if (!curriculum || (options.exactCurriculum && curriculumVersion(placement.curriculum.key) !== placement.curriculum.version)) {
+      return { ok: false, reason: "curriculum-version-changed" };
+    }
+    const compat = nextBookCurriculumCompat(placement.curriculum.key, placement.curriculum.version, options.curricula);
+    if (!compat.ok) return { ok: false, reason: compat.reason, ...(compat.difference ? { difference: compat.difference } : {}) };
     const captured: PlanInput[] = [];
     // Book 1's admin instructions are not Book 2's: a next run reads the child's current set, so this plan leaves them out.
     const { curriculum: _version, workbooks, number, profile: frozenProfile, instructions: _book1Instructions, ...facts } = placement;
@@ -268,11 +279,18 @@ export function book2Planning(b: Book1Baseline): Book2PlanningResult {
     // The frozen Book 1 profile, read by today's reader. Never the child's current profile.
     const profile = frozenProfile === null ? null : storedChildProfile(frozenProfile);
     if (frozenProfile !== null && !profile) return { ok: false, reason: "profile-unreadable" };
-    const planned = planNextWorkbook({ ...facts, profile, curriculum, workbooks: [...workbooks, { number, levels: [...b.binding.levels] }], number: number + 1 },
-      input => { captured.push(input); });
-    if (!planned.ok || captured.length !== 1) return { ok: false, reason: "next-planner-refused" };
+    const placementInput = { ...facts, profile, curriculum, workbooks: [...workbooks, { number, levels: [...b.binding.levels] }], number: number + 1 };
+    if (options.prepareOnly) {
+      const prepared = prepareNextWorkbookInput(placementInput);
+      if (!prepared.ok) return { ok: false, reason: "next-planner-refused" };
+      captured.push(prepared.input);
+    } else {
+      const planned = planNextWorkbook(placementInput, input => { captured.push(input); });
+      if (!planned.ok) return { ok: false, reason: "next-planner-refused" };
+    }
+    if (captured.length !== 1) return { ok: false, reason: "next-planner-refused" };
     const input = stored(captured[0]);
-    if (input.workbook.number !== b.number + 1 || Object.hasOwn(input, "progress")) return { ok: false, reason: "invalid-planning" };
+    if (input.workbook.number !== b.number + 1 || Object.hasOwn(input, "progress") || Object.hasOwn(input, "previewDecisions")) return { ok: false, reason: "invalid-planning" };
     return { ok: true, input };
   } catch { return { ok: false, reason: "invalid-planning" }; }
 }

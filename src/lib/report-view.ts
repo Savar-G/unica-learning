@@ -22,6 +22,7 @@ import {
   type ReportedStrand,
   type StrandStatus,
 } from "@/lib/assessment";
+import { familyPlanWords as w, familyWindowWords, type FamilyPlanOffer } from "@/lib/family-plan-words";
 import type { ReportSrc } from "@/lib/next-step";
 import type { BookOne } from "@/lib/report-book-one";
 import { formatInZone, zoneForProvince, type FamilyZone } from "@/lib/family-time";
@@ -33,6 +34,8 @@ import { UNIT_TITLES } from "@/lib/workbook-unit-titles";
 export interface ReportView {
   id: string;
   childName: string;
+  /** Current family admission terms. Null means the read failed. */
+  planOffer?: FamilyPlanOffer | null;
   province: Province;
   /** The family's postal zone. Older saved/demo inputs may have only a province. */
   timeZone?: FamilyZone;
@@ -408,17 +411,22 @@ export interface NextStep {
   plans: readonly PlanOption[];
   /** The report email's button. Emails carry links only, so it opens the report at this step. */
   email: { label: string; step: NextStepKey };
+  /** Approved family terms repeated after the card is saved. */
+  familyTerms?: string;
 }
 
 /** Card for BC families (charged on day 30, after the free first month, which starts when the first workbook arrives at your home, D-139); the waitlist for every other province (D-082). */
 export function nextStep(v: ReportView): NextStep {
   const name = v.childName;
   if (v.model.callToAction === "card") {
+    const offer = v.planOffer ?? null;
+    const familyTerms = [offer ? w.monthly(offer.monthly) : "", familyWindowWords(offer), w.siblingPrice].filter(Boolean).join(" ");
     return {
       kind: "card",
-      title: `Start ${name}'s books`,
-      text: `Math is CAD ${cad(PLANS.one.price)} a month, delivery included. The first month is free, starting when the first workbook arrives at your home. Cancel anytime.`,
-      plans: REPORT_PLANS,
+      title: w.reportHeading(name),
+      text: familyTerms,
+      familyTerms,
+      plans: offer ? [{ plan: "one", subject: "Math", price: offer.monthly, label: w.monthly(offer.monthly) }] : [],
       email: { label: `Choose a plan for ${name}`, step: "plan" },
     };
   }

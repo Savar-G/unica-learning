@@ -159,6 +159,33 @@ describe("a run", () => {
     expect(s.runs.audit.map((a) => a.action)).toEqual(["run-started", "run-failed"]);
   });
 
+  it.each([
+    "This family's plan is cancelled, so this workbook draft cannot be saved.",
+    "A pause, cancellation or restart for this family is still in progress, so this workbook draft cannot be saved.",
+    "This family's pause requires the previous workbook to be shipped first, so this workbook draft cannot be saved.",
+    "This family's plan is paused, so this workbook draft cannot be saved.",
+  ])("shows a draft-save plan refusal once without a wrapper: %s", async (reason) => {
+    const s = setup();
+    const id = await started(s);
+    const save = vi.spyOn(s.runs, "saveDraft").mockResolvedValue({ refused: reason });
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect(save).toHaveBeenCalledOnce();
+    const run = (await s.runs.run(id))!;
+    expect(run).toMatchObject({ status: "failed", attempts: 1, error: reason, draftId: null });
+    expect(run.error).not.toContain("..");
+    expect(run.error).not.toContain("The draft was not stored:");
+    expect(s.drafts.drafts.size).toBe(0);
+  });
+
+  it("keeps the draft-save wrapper for an old lowercase reason", async () => {
+    const s = setup();
+    const id = await started(s);
+    const save = vi.spyOn(s.runs, "saveDraft").mockResolvedValue({ refused: "the family is being deleted" });
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect(save).toHaveBeenCalledOnce();
+    expect((await s.runs.run(id))!.error).toBe("The draft was not stored: the family is being deleted.");
+  });
+
   it("fails when the AI is off, before any AI call", async () => {
     const s = setup({ ai: null });
     const id = await started(s);
@@ -303,14 +330,16 @@ describe("the time limit", () => {
 });
 
 describe("stale runs", () => {
-  it("keeps one active run per child: busy while it works, taken up again once it has no progress for the stale time", async () => {
+  it("resumes a never claimed Mac run after a second start", async () => {
     const s = setup();
     const first = await started(s);
+    s.runs.runs.get(first)!.runner = "mac";
     expect(await startWorkbookRun(s.runs, CHILD, ADMIN)).toEqual({ status: "busy", runId: first });
-    s.tick(STALE_SECONDS + 1);
+    s.tick(121);
     expect(await startWorkbookRun(s.runs, CHILD, ADMIN)).toEqual({ status: "stalled", runId: first });
-    expect(await runWorkbookJob(first, s.deps, { resume: true })).toBe("failed");
-    expect((await s.runs.run(first))!.error).toBe("This run has no stored plan, so it cannot resume safely. Start a new run.");
+    expect(await runWorkbookJob(first, { ...s.deps, runner: "mac" }, { resume: true })).toBe("done");
+    expect(await s.runs.run(first)).toMatchObject({ status: "done", resumes: 1 });
+    expect(await s.runs.frame(first)).not.toBeNull();
   });
 
   it("never lets a call whose run was taken up by another write over the newer call's work", async () => {
@@ -715,6 +744,39 @@ describe("a run's plan, made once and stored (R379-8-2), and its solve checks ke
     s.runs.frameStore.delete(id);
     expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
     expect((await s.runs.run(id))!.error).toBe("This run has no stored plan, so it cannot resume safely. Start a new run.");
+  });
+
+  it.each(["page", "attempt", "call", "solve"] as const)("refuses a run with only a stored %s and no plan", async (kept) => {
+    const s = setup();
+    const id = await stoppedAt(s, 2);
+    s.runs.frameStore.delete(id);
+    if (kept !== "page") s.runs.pageStore.delete(id);
+    if (kept !== "attempt") s.runs.attemptStore.delete(id);
+    if (kept !== "call") s.runs.callStore.delete(id);
+    if (kept !== "solve") s.runs.solveStore.delete(id);
+    if (kept === "solve") {
+      const solves = s.runs.solveStore.get(id)!;
+      expect(solves.length).toBeGreaterThan(0);
+      for (const solve of solves) delete solve.callKey;
+    }
+    expect(await s.runs.hasStoredWork(id)).toBe(true);
+    expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
+    expect((await s.runs.run(id))!.error).toContain("no stored plan");
+  });
+
+  it("counts progress, an error history or a saved draft on the run as stored work (fail closed)", async () => {
+    const s = setup();
+    const id = await stoppedAt(s);
+    for (const store of [s.runs.frameStore, s.runs.pageStore, s.runs.attemptStore, s.runs.callStore, s.runs.solveStore]) store.delete(id);
+    const run = s.runs.runs.get(id)!;
+    Object.assign(run, { donePages: 0, errors: [], draftId: null });
+    expect(await s.runs.hasStoredWork(id)).toBe(false);
+    Object.assign(run, { donePages: 1 });
+    expect(await s.runs.hasStoredWork(id)).toBe(true);
+    Object.assign(run, { donePages: 0, errors: [{ at: "2026-11-09T00:00:00Z", error: "x" }] });
+    expect(await s.runs.hasStoredWork(id)).toBe(true);
+    Object.assign(run, { errors: [], draftId: "d" });
+    expect(await s.runs.hasStoredWork(id)).toBe(true);
   });
 
   it("fails closed when a stored page or call does not fit the stored plan's pages and slots", async () => {

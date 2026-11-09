@@ -17,7 +17,7 @@ function fixture(){
  let price=99,generation=0,state="none",revision="",blocked=false,cancelled=false;
  const pauses: unknown[] = [];
  const holds = new Set<string>();
- let loseCreate=false, failRead=false, startKey="";
+ let loseCreate=false, failRead=false, startKey="", firstCharge: string | null = null;
  const providerWrites:URLSearchParams[]=[],rpcs:{name:string;body:Record<string,unknown>}[]=[];
  const items={data:[{current_period_end:1_900_000_000,price:{unit_amount:7999}}]};
  const plans:Record<string,unknown>[]=[{id:"old",status:"canceled",customer:"cus",metadata:{},cancel_at_period_end:false,created:1,ended_at:1_700_000_000,items}];
@@ -25,6 +25,7 @@ function fixture(){
  const client=new Stripe("sk_test_restart_server",{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
   const u=new URL(String(input)),method=init?.method??"GET",body=new URLSearchParams(String(init?.body??""));
   if(method==="GET"&&u.pathname==="/v1/subscriptions"){subscriptionReads++;if(failRead)throw Error("Synthetic read failure");return Response.json({data:plans,has_more:false});}
+    if (u.pathname === "/v1/prices") return Response.json({data:[{id:"price_7999",active:true,currency:"cad",product:"unica_math",unit_amount:7999,recurring:{interval:"month",interval_count:1,usage_type:"licensed"}}],has_more:false});
   if(method==="GET"&&u.pathname.startsWith("/v1/products/"))return Response.json({id:"unica_math"});
   if(method==="GET"&&u.pathname==="/v1/customers/cus")return Response.json({id:"cus",invoice_settings:{default_payment_method:{id:"pm",type:"card"}}});
   if(method==="POST"&&u.pathname==="/v1/subscriptions"){providerWrites.push(body);if(loseCreate)throw Error('Synthetic lost response');const made={id:"new",status:"active",default_payment_method:"pm",trial_end:null,cancel_at_period_end:false,created:2,ended_at:null,items,metadata:{start_key:body.get("metadata[start_key]")}};plans.push(made);return Response.json(made);}
@@ -34,37 +35,39 @@ function fixture(){
   const u=new URL(String(input)),name=u.pathname.split('/').at(-1)!,body=JSON.parse(String(init?.body??'{}'));
   if(u.pathname.includes('/rpc/')){
    rpcs.push({name,body});
+   if(name==='family_plan_price')return Response.json(Math.min(Number(body.p_agreed_cents),7999));
    if(name==='take_plan_read_order')return Response.json(++takes);
    if(name==='save_child_plan_state'){if(saveFails)return Response.json({message:'database down'},{status:500});planRow={kind:body.p_kind,event_at:body.p_event_at,event_id:body.p_event_id};return Response.json('stored');}
    if(name==='plan_control_context')return Response.json({revision,blocked,cancelled,pauses,child:'child'});
    if(name==='card_recovery_rows')return Response.json(generation?[{card_id:card,customer:'cus',session_id:null,payment_method_id:null,needs_repair:false,start_generation:generation,start_key:startKey,start_card:'pm',start_at:new Date().toISOString(),start_state:state,start_subscription:state==='started'?'new':null,start_first_charge:null,start_finished_at:state==='started'?new Date().toISOString():null,start_email:'none',start_alert:null}]:[]);
-   if(name==='admit_plan_start_terms'){generation=Number(body.p_generation);startKey=String(body.p_key);state='open';return Response.json({generation,key:body.p_key,card:'pm',at:new Date().toISOString(),state,purpose:'restart',monthly_cents:body.p_monthly_cents,subscription:null,first_charge:null,finished_at:null,email:'none',alert:null});}
+   if(name==='admit_family_plan_start'){generation=Number(body.p_generation);startKey=String(body.p_key);state='open';return Response.json({generation,key:body.p_key,card:'pm',at:new Date().toISOString(),state,family_terms:true,trial_end:null,purpose:'restart',monthly_cents:body.p_monthly_cents,subscription:null,first_charge:null,finished_at:null,email:'none',alert:null});}
    if(name==='finish_plan_start'){state='started';return Response.json(true);}
    if(name==='team_end_plan_start'){state='team_ended';return Response.json(true);}
    if(name==='begin_family_card_operation'){holds.add(String(body.token));return Response.json(null);}
    if(name==='end_family_card_operation'){holds.delete(String(body.token));return Response.json(null);}
-   if(name==='plan_start_terms')return Response.json({purpose:'restart',monthly_cents:7999});
+   if(name==='family_plan_start_terms')return Response.json({family_terms:true,trial_end:null,purpose:'restart',monthly_cents:7999});
    // The rule of due_plan_start_reads for this one family: a started start the ended row does not show yet.
    if(name==='due_plan_start_reads')return Response.json(state==='started'&&planRow&&['ended','not_started'].includes(String(planRow.kind))?[{child_id:'child',parent_id:'parent',customer:'cus',kind:planRow.kind,event_at:planRow.event_at}]:[]);
    if(name==='due_plan_reads')return Response.json([]);
    if(name==='note_plan_read_tried'||name==='note_plan_start_read_tried')return Response.json(null);
    throw Error('Unexpected RPC '+name);
   }
+  if(name==='plan_starts')return Response.json(firstCharge ? {first_charge_at:firstCharge} : null);
   if(name==='child_plan_states')return Response.json(planRow);
   if(name==='card_setups'&&u.searchParams.get('stripe_customer_id')==='eq.cus')return Response.json({parent_id:'parent',child_id:'child',stripe_customer_id:'cus',card_saved_at:'2026-10-01'});
   if(name==='card_setups')return Response.json(u.searchParams.get('parent_id')==='eq.parent'?{id:card,child_id:'child',stripe_customer_id:'cus',card_saved_at:'2026-10-01',price,plan:'one'}:null);
   throw Error('Unexpected database read '+u.pathname);
  }}});
  f.db=db;f.client=client;
- return {db,client,pauses,holds,providerWrites,rpcs,plans,startState:()=>state, startKey:()=>startKey,planState:()=>planRow,subscriptionReads:()=>subscriptionReads,failSave:()=>{saveFails=true;},saveWorks:()=>{saveFails=false;},loseCreate:()=>{loseCreate=true;},failRead:()=>{failRead=true;},cancel:()=>{cancelled=true;},price:(p:number)=>{price=p;},revision:(r:string)=>{revision=r;},block:()=>{blocked=true;},end:()=>{plans[1].status='canceled';}};
+ return {db,client,pauses,holds,providerWrites,rpcs,plans,firstCharge:(at:string)=>{firstCharge=at;},startState:()=>state, startKey:()=>startKey,planState:()=>planRow,subscriptionReads:()=>subscriptionReads,failSave:()=>{saveFails=true;},saveWorks:()=>{saveFails=false;},loseCreate:()=>{loseCreate=true;},failRead:()=>{failRead=true;},cancel:()=>{cancelled=true;},price:(p:number)=>{price=p;},revision:(r:string)=>{revision=r;},block:()=>{blocked=true;},end:()=>{plans[1].status='canceled';}};
 }
 beforeEach(()=>vi.restoreAllMocks());
 it("reads the saved price and owner, starts without a trial and releases only the route hold",async()=>{
  const b=fixture();const q=await restartFamilyPlan('parent',card);expect(q).toMatchObject({ok:true,state:'preview',price:79.99});
  if(!q.ok||!('token'in q))throw Error('missing quote');
  expect(await restartFamilyPlan('parent',card,q.token)).toMatchObject({ok:true,state:'started'});
- expect(b.providerWrites[0].get('items[0][price_data][unit_amount]')).toBe('7999');expect(b.providerWrites[0].has('trial_period_days')).toBe(false);
- expect(b.rpcs.some(r=>r.name==='admit_plan_start_terms'&&r.body.p_purpose==='restart')).toBe(true);expect(b.rpcs.some(r=>r.name==='end_family_card_operation')).toBe(true);
+ expect(b.providerWrites[0].get('items[0][price]')).toBe('price_7999');expect(b.providerWrites[0].has('trial_period_days')).toBe(false);
+ expect(b.rpcs.some(r=>r.name==='admit_family_plan_start'&&r.body.p_purpose==='restart')).toBe(true);expect(b.rpcs.some(r=>r.name==='end_family_card_operation')).toBe(true);
  b.end();expect(await restartFamilyPlan('parent',card,q.token)).toMatchObject({ok:false,error:'stale'});expect(b.providerWrites).toHaveLength(1);
 });
 it("a started restart writes the plan state at once, so access reopens with no webhook",async()=>{
@@ -166,13 +169,13 @@ it("releases the route hold when the provider read fails before admission",async
  const b=fixture();const q=await restartFamilyPlan('parent',card);if(!q.ok||!('token'in q))throw Error('missing quote');
  b.failRead();await expect(restartFamilyPlan('parent',card,q.token)).rejects.toThrow();
  expect(b.rpcs.some(r=>r.name==='begin_family_card_operation')).toBe(true);
- expect(b.providerWrites).toHaveLength(0);expect(b.rpcs.some(r=>r.name==='admit_plan_start_terms')).toBe(false);
+ expect(b.providerWrites).toHaveLength(0);expect(b.rpcs.some(r=>r.name==='admit_family_plan_start')).toBe(false);
  expect(b.holds.size).toBe(0);expect(b.startState()).toBe('none');
 });
 it("releases the route hold when creation is uncertain",async()=>{
  const b=fixture();const q=await restartFamilyPlan('parent',card);if(!q.ok||!('token'in q))throw Error('missing quote');
  b.loseCreate();expect(await restartFamilyPlan('parent',card,q.token)).toMatchObject({ok:false,error:'unconfirmed'});
- expect(b.rpcs.some(r=>r.name==='admit_plan_start_terms')).toBe(true);
+ expect(b.rpcs.some(r=>r.name==='admit_family_plan_start')).toBe(true);
  // The open start record, not the route hold, keeps the family's deletion refused.
  expect(b.holds.size).toBe(0);expect(b.startState()).toBe('open');
 });
@@ -200,4 +203,30 @@ it("clears a hold that an earlier request left behind",async()=>{
  const b=fixture();const q=await restartFamilyPlan('parent',card);if(!q.ok||!('token'in q))throw Error('missing quote');
  b.holds.add(card);b.failRead();await expect(restartFamilyPlan('parent',card,q.token)).rejects.toThrow();
  expect(b.holds.size).toBe(0);
+});
+
+it("adds the durable first charge date to the Account tab's stored paid plan", async () => {
+ const b=fixture();b.firstCharge("2026-12-13T18:00:00Z");
+ expect(await adjustedPlan(b.db,"parent",card,{kind:"paying",nextCharge:"2027-01-13T18:00:00Z",monthly:59.99})).toMatchObject({monthly:59.99,firstCharge:"2026-12-13T18:00:00Z"});
+});
+
+it.each([
+  [-86_400_000, false], [-600_000, false], [0, false], [120_000, false], [600_000, false], [600_001, true], [86_400_000, true],
+])("uses a ten minute safety margin for a cancelled paid pause at offset %i", async (offset, future) => {
+ const now=Date.parse("2026-11-09T00:00:00Z");
+ const clock=vi.spyOn(Date,"now").mockReturnValue(now);
+ try {
+  const start=new Date(now+offset).toISOString(), end=new Date(now+offset+14*86_400_000).toISOString(), b=fixture();
+  b.pauses.push({state:"applied",quote:{weeks:2,year:2026,used:0,subscription:"sub",kind:"paid",previousCharge:start,chargeAt:end,bookId:"book",targetNumber:2,late:false,earliest:null,latest:null,shippedAt:"2026-11-01",deliveredAt:"2026-11-03",today:"2026-11-05"}});
+  b.cancel();
+  expect(await adjustedPlan(b.db,"parent",card,{kind:"paying",nextCharge:end,monthly:79.99})).toEqual(future ? {kind:"ending",endsOn:start,free:false} : {kind:"unknown"});
+ } finally { clock.mockRestore(); }
+});
+
+it("keeps a confirmed end from the provider plan", async () => {
+ const b=fixture(); b.cancel();
+ const ending={kind:"ending" as const,endsOn:"2026-11-09T00:01:00Z",free:false};
+ const ended={kind:"ended" as const,endedOn:"2026-11-09T00:01:00Z"};
+ expect(await adjustedPlan(b.db,"parent",card,ending)).toEqual(ending);
+ expect(await adjustedPlan(b.db,"parent",card,ended)).toEqual(ended);
 });

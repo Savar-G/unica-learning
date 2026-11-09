@@ -227,6 +227,18 @@ describe("admin workbook run progress", () => {
     }
   });
 
+  it("shows active run status without calling a quiet run stopped", () => {
+    const quiet = running({ heartbeatAt: ago(400) });
+    const queued = running({ status: "queued", heartbeatAt: null });
+    for (const text of [onChildPage(quiet), onRunPage(quiet)]) {
+      expect(text).toContain("No progress for 6 minutes");
+      expect(text).not.toContain("This run stopped");
+      expect(text).toContain("Stop this run");
+    }
+    for (const text of [onChildPage(queued), onRunPage(queued)]) expect(text).toContain("Waiting for the Mac");
+    for (const text of [onChildPage(running({ status: "stale" })), onRunPage(running({ status: "stale" }))]) expect(text).toContain("Stopped");
+  });
+
   it("shows who stopped a run and when, and it does not read as a failure", () => {
     const stopped = running({ status: "stale", stoppedBy: "savar@example.com", finishedAt: ago(60) });
     for (const text of [onChildPage(stopped), onRunPage(stopped)]) {

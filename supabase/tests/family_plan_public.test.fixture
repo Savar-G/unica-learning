@@ -1,0 +1,70 @@
+// Public startPlan with real disposable admission SQL. Stripe requests use a synthetic transport.
+import { randomUUID } from 'node:crypto';
+import { afterAll, expect, it, vi } from 'vitest';
+import Stripe from 'stripe';
+import pg from 'pg';
+import { startPlan } from '@/lib/stripe';
+import { memoryBilling } from '@/lib/billing-memory';
+vi.mock('server-only', () => ({}));
+const db = new pg.Client({ host: '/tmp/pd559-postgres', port: 55559, database: 'pd559_family_pricing', user: process.env.USER });
+await db.connect();
+afterAll(() => db.end());
+const rpc = async (name, args) => (await db.query(`select public.${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) value`, args)).rows[0].value;
+const parsed = a => a && ({ generation:a.generation,key:a.key,card:a.card,at:Date.parse(a.at),state:a.state,subscription:a.subscription,firstCharge:a.first_charge,finished:a.finished_at?Date.parse(a.finished_at):null,email:a.email,alert:a.alert,purpose:a.purpose,monthlyCents:a.monthly_cents,familyTerms:a.family_terms,trialEnd:a.trial_end });
+async function family() {
+  const p=randomUUID(),c1=randomUUID(),c2=randomUUID(),k1=randomUUID(),k2=randomUUID();
+  await db.query('insert into parents(id) values($1)',[p]);
+  await db.query('insert into children(id,parent_id) values($1,$3),($2,$3)',[c1,c2,p]);
+  await db.query('insert into card_setups(id,parent_id,child_id,price) values($1,$3,$4,79.99),($2,$3,$5,79.99)',[k1,k2,p,c1,c2]);
+  const old = await rpc('admit_plan_start_terms',[k1,1,k1,'pm','initial',7999,'']);
+  return {p,c1,c2,k1,k2,old};
+}
+function client() {
+  const writes=[];
+  const stripe=new Stripe('sk_test_sql_family',{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
+    const u=new URL(String(input)),method=init?.method??'GET',b=new URLSearchParams(String(init?.body??''));
+    if(u.pathname.startsWith('/v1/products/'))return Response.json({id:'unica_math'});
+    if(u.pathname==='/v1/prices'&&method==='GET')return Response.json({data:[],has_more:false});
+    if(u.pathname==='/v1/prices')return Response.json({id:'price_'+b.get('unit_amount'),active:true,unit_amount:Number(b.get('unit_amount')),currency:'cad',product:'unica_math',recurring:{interval:'month',interval_count:1,usage_type:'licensed'}});
+    if(u.pathname.startsWith('/v1/customers/'))return Response.json({id:'cus',invoice_settings:{default_payment_method:{id:'pm',type:'card'}}});
+    if(u.pathname==='/v1/subscriptions'&&method==='GET')return Response.json({data:[],has_more:false});
+    if(u.pathname==='/v1/subscriptions'){
+      writes.push(b);return Response.json({id:'sub_'+writes.length,status:b.has('trial_end')?'trialing':'active',created:Math.floor(Date.now()/1000),trial_end:b.has('trial_end')?Number(b.get('trial_end')):null,metadata:{start_key:b.get('metadata[start_key]')}});
+    }
+    throw Error('Unexpected synthetic Stripe request '+method+' '+u.pathname);
+  })});
+  return {stripe,writes};
+}
+async function start(f) {
+  const b=memoryBilling({children:[{parentId:f.p,childId:f.c2,firstName:'Sibling',card:{id:f.k2,customer:'cus',saved:true}}]});
+  const row=await b.store.cardRow(f.k2);
+  const store={...b.store,
+    cardRow:async()=>({...row,planStart:parsed((await db.query('select family_plan_start_answer(s,false) a from plan_starts s where card_setup_id=$1 order by generation desc limit 1',[f.k2])).rows[0]?.a)}),
+    admitPlanStart:async(card,generation,key,pm,terms)=>parsed(await rpc('admit_family_plan_start',[card,generation,key,pm,terms.purpose,terms.monthlyCents,terms.revision??''])),
+    finishPlanStart:async(card,generation,o)=>{await rpc('finish_plan_start',[card,generation,o.state,o.subscription??null,o.firstCharge??null,o.email??false]);},
+  };
+  const {stripe,writes}=client();
+  const result=await startPlan(stripe,{cardSetup:f.k2,customer:'cus',price:79.99,deliveryConfirmed:true},new Date(),store);
+  return {result,writes};
+}
+it('deleting a legacy first child before PR B import still charges the next child 59.99 at once',async()=>{
+  const f=await family();
+  await db.query("update plan_starts set started_at=now()-interval '31 days' where card_setup_id=$1",[f.k1]);
+  await rpc('finish_plan_start',[f.k1,1,'started','sub_legacy',new Date(Date.now()-86400000).toISOString(),false]);
+  await db.query('delete from children where id=$1',[f.c1]);
+  const {result,writes}=await start(f);
+  expect(result).toMatchObject({ok:true,monthlyPrice:59.99});
+  expect(writes).toHaveLength(1);expect(writes[0].get('items[0][price]')).toBe('price_5999');
+  expect(writes[0].has('trial_end')).toBe(false);expect(writes[0].has('trial_period_days')).toBe(false);
+  expect(writes[0].get('payment_behavior')).toBe('error_if_incomplete');
+});
+it.each(['started','refused'])('legacy %s settles the reservation before public startPlan',async outcome=>{
+  const f=await family(),end=new Date(Date.now()+20*86400000).toISOString();
+  await db.query("insert into family_plan_windows(parent_id,first_child_id,start_key,started_at,ends_at) values($1,$2,$3,$4::timestamptz-interval '720 hours',$4)",[f.p,f.c1,f.k1,end]);
+  await db.query('insert into child_plan_prices(parent_id,child_id,monthly_cents,start_key) values($1,$2,7999,$3)',[f.p,f.c1,f.k1]);
+  await rpc('finish_plan_start',[f.k1,1,outcome,outcome==='started'?'sub_legacy':null,outcome==='started'?end:null,false]);
+  const {result,writes}=await start(f);
+  expect(result).toMatchObject({ok:true,monthlyPrice:outcome==='started'?59.99:79.99});
+  expect(writes).toHaveLength(1);
+  expect(writes[0].get('items[0][price]')).toBe(outcome==='started'?'price_5999':'price_7999');
+});

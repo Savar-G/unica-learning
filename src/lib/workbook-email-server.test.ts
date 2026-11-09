@@ -127,7 +127,7 @@ describe("workbook email delivery through its public server interface", () => {
 });
 
 describe("the plan start email, one per generation (review round 5 of PR #593)", () => {
-  type Claim = { email_send_status: string; email_claim_token: string; email_claimed_at: string; email_text?: string; email_html?: string };
+  type Claim = { email_send_status: string; email_claim_token: string; email_claimed_at: string; email_text?: string; email_html?: string; monthly_cents?: number; first_charge_at?: string; family_terms?: boolean; trial_end?: string | null };
   function planFixture(grade = 3, testFamily = false) {
     const records = new Map<number, Claim>([[1, { email_send_status: "", email_claim_token: "", email_claimed_at: "" }], [2, { email_send_status: "", email_claim_token: "", email_claimed_at: "" }]]);
     const legacy: number[] = [];
@@ -171,6 +171,29 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
     return { db, records, messages, transport, requests };
   }
   const key = (generation: number) => ({ cardId: "card-1", generation, price: 79.99, firstChargeAt: "2026-12-05T18:00:00.000Z", origin: "https://unica.test" });
+
+  it.each([true, false])("reads the admitted sibling amount and first charge from its durable record (free=%s)", async free => {
+    const f = planFixture();
+    Object.assign(f.records.get(1)!, { family_terms: true, monthly_cents: 5999, first_charge_at: "2026-12-10T18:00:00Z", trial_end: free ? "2026-12-10T18:00:00Z" : null });
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
+    const text = f.messages[0].text;
+    expect(text).toContain("CAD 59.99"); expect(text).toContain("December 10, 2026"); expect(text).not.toContain("79.99");
+    expect(text.includes("Nothing has been charged.")).toBe(free);
+    expect(text.includes("you pay nothing")).toBe(free);
+    if (!free) expect(text).not.toContain("reminder 7 days");
+  });
+
+  it.each([[7 * 86400000 - 1, false], [7 * 86400000, true]])("includes the reminder promise at a remaining time of %i ms: %s", async (remaining, expected) => {
+    const now = Date.parse("2026-11-10T18:00:00Z");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const f = planFixture();
+      const end = new Date(now + Number(remaining)).toISOString();
+      Object.assign(f.records.get(1)!, { family_terms: true, monthly_cents: 5999, first_charge_at: end, trial_end: end });
+      expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
+      expect(f.messages[0].text.includes("reminder 7 days")).toBe(expected);
+    } finally { clock.mockRestore(); }
+  });
 
   it.each([2, 3])("uses the saved card child's stored grade and keeps the exact instructions in its claim (%i)", async (grade) => {
     const f = planFixture(grade);

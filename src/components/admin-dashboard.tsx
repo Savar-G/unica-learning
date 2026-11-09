@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { DailyBars, Funnel, Spark } from "@/components/admin-charts";
 import { Card, Delta, Notes, RangeTabs, StageChip, TestMark, familyHref, href, type Ctx } from "@/components/admin-dashboard-parts";
+import { DELIVERY_WORDS } from "@/lib/delivery-state";
 import { ALL_STAGES, EMAIL_LABEL, RANGES, countsClicks, isUnsubscribe, deliveryLine, emailDot, STAGE_SHORT, ago, at, kidsText, since, type Dashboard } from "@/lib/admin-dashboard";
 import { ADMIN_PATH } from "@/lib/admin-view";
 import type { ProgressSnapshot } from "@/lib/admin-progress";
@@ -131,7 +132,7 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
               <span className={`dash-dot is-${emailDot(e)}`} />
               <div>
                 <b>{EMAIL_LABEL[e.kind]}</b> {e.kind === "alert" ? "about" : isUnsubscribe(e.kind) ? "by" : "to"} <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link>
-                <span className="dash-sub">{e.status === "failed" ? `Failed: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders turned off" : e.kind === "maya_unsubscribe" ? "Maya emails turned off" : e.kind === "monthly_summary_unsubscribe" ? "Monthly summary emails turned off" : deliveryLine(e)?.bad ? deliveryLine(e)!.text : e.subject} · {at(e.at)}</span>
+                <span className="dash-sub">{e.status === "failed" ? `Failed: ${e.error ?? "unknown error"}` : e.status === "pending" ? DELIVERY_WORDS[e.state] : e.kind === "unsubscribe" ? "Reminders turned off" : e.kind === "maya_unsubscribe" ? "Maya emails turned off" : e.kind === "monthly_summary_unsubscribe" ? "Monthly summary emails turned off" : deliveryLine(e)?.bad ? deliveryLine(e)!.text : e.subject} · {at(e.at)}</span>
               </div>
             </li>
           ))}

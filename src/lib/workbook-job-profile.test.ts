@@ -331,10 +331,11 @@ describe("P2 profile at plan time", () => {
     expect(await s.runs.frame(id)).toEqual(frame);
   });
 
-  it("refuses a resume without a frame before any profile build", async () => {
+  it("refuses a resume with stored work but no frame before any profile build", async () => {
     const s = setup();
     const id = await s.start();
     expect(await s.runs.claim(id, "interrupted")).not.toBeNull();
+    expect(await s.runs.useAttempts(id, "interrupted", 1, ["1.1"])).toEqual({ refused: [] });
     expect(await s.runs.yield(id, "interrupted")).toBe(true);
     expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
     expect(s.rebuilds).toEqual({ prepare: 0, learner: 0, child: 0 });
