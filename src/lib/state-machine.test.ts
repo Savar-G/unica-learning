@@ -16,6 +16,10 @@ describe("state machine table", () => {
     expect(next(RUN, "done", "claim")).toBeNull();
   });
 
+  it("refuses every event in a state the table does not know, without throwing", () => {
+    for (const from of ["unexpected", "toString", "__proto__"]) expect(next(RUN, from as S, "claim")).toBeNull();
+  });
+
   it("lists every move in the table's order", () => {
     expect(moves(RUN)).toEqual([["queued", "claim", "running"], ["running", "finish", "done"], ["running", "fail", "queued"]]);
   });

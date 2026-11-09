@@ -309,10 +309,14 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       const row = tests.find(t => t.id === id && t.status === "in_progress");
       if (!row?.test.adaptive) return "closed";
       // As lock_assessment_block (20261105_assessment_blocks.sql): the lock count first, then a complete test is closed,
-      // then the answers; the deadline and the last answer time only move forward.
+      // then the answers, then the new block must lock exactly one more block of the same pool; the deadline and the last
+      // answer time only move forward.
       if (row.test.adaptive.locked !== expected) return "changed";
       if (row.test.adaptive.complete) return "closed";
       if (!sameAnswers(row.answers, answers)) return "changed";
+      if (adaptive.version !== 1 || adaptive.locked !== expected + 1 || JSON.stringify(adaptive.pool) !== JSON.stringify(row.test.adaptive.pool)) {
+        throw new Error("Invalid assessment block transition");
+      }
       row.test.adaptive = structuredClone(adaptive);
       row.lastAnswerAt = Math.max(row.lastAnswerAt ?? -Infinity, resumeUntil - RESUME_HOURS * 60 * 60_000);
       row.resumeUntil = Math.max(row.resumeUntil, resumeUntil);

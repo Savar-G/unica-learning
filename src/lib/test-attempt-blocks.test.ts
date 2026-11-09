@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { createAdaptiveSession, givenQuestions, nextQuestion, restoreSession, startAttempt, storedTest, UNKNOWN_RESPONSE, REPORTED_STRAND } from "@/lib/assessment";
+import { createAdaptiveSession, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, startAttempt, storedTest, UNKNOWN_RESPONSE, REPORTED_STRAND } from "@/lib/assessment";
 import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 const now = Date.UTC(2026,10,5,18);
@@ -78,24 +78,35 @@ describe("durable assessment block locks",()=>{
 });
 
 describe("the in-memory lockBlock answers as lock_assessment_block does", ()=>{
-  const lock = (m: ReturnType<typeof family>, resumeUntil: number) => {
+  const unchanged = (m: ReturnType<typeof family>, resumeUntil: number) => {
     const row = m.tests[0];
     return m.store.lockBlock("a1", { expected: row.test.adaptive!.locked, adaptive: structuredClone(row.test.adaptive!), answers: row.answers, resumeUntil });
   };
-  it("is closed for a complete test, before it compares the answers", async ()=>{
+  /** The real next lock, as the module asks for it after the child answers a block. */
+  const nextLock = (m: ReturnType<typeof family>, resumeUntil: number) => {
+    const row = m.tests[0];
+    return m.store.lockBlock("a1", { expected: row.test.adaptive!.locked, adaptive: lockAdaptiveBlock(restoreSession(row.test, row.answers)).adaptive!, answers: row.answers, resumeUntil });
+  };
+  it("is closed for a complete test, before it compares the answers or the new block", async ()=>{
     const m=family(); m.tests[0].test.adaptive!.complete = true;
-    expect(await lock(m, now + 1000)).toBe("closed");
+    expect(await unchanged(m, now + 1000)).toBe("closed");
   });
   it("is changed for a stale lock count, even on a complete test", async ()=>{
     const m=family(); m.tests[0].test.adaptive!.complete = true;
     const row = m.tests[0];
     expect(await m.store.lockBlock("a1", { expected: row.test.adaptive!.locked + 1, adaptive: row.test.adaptive!, answers: row.answers, resumeUntil: now })).toBe("changed");
   });
+  it("refuses a new block that does not lock exactly one more block", async ()=>{
+    const m=family(); await answerBlock(m);
+    await expect(unchanged(m, now + 1000)).rejects.toThrow("Invalid assessment block transition");
+  });
   it("moves the deadline and the last answer time only forward", async ()=>{
-    const m=family(); const later = m.tests[0].resumeUntil + 60_000;
+    const m=family(); await answerBlock(m);
+    const later = m.tests[0].resumeUntil + 60_000;
     m.tests[0].resumeUntil = later;
-    expect(await lock(m, later - 120_000)).toBe("stored");
+    expect(await nextLock(m, later - 120_000)).toBe("stored");
+    expect(m.tests[0].test.adaptive!.locked).toBe(1);
     expect(m.tests[0].resumeUntil).toBe(later);
-    expect(m.tests[0].lastAnswerAt).toBe(later - 120_000 - 24 * 60 * 60_000);
+    expect(m.tests[0].lastAnswerAt).toBe(Math.max(now + 1005, later - 120_000 - 24 * 60 * 60_000));
   });
 });
