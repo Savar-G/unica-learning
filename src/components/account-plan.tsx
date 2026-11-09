@@ -85,7 +85,8 @@ export function PlanControl({ cardId, name, mode, pending = false }: { cardId: s
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false);
   const [weeks, setWeeks] = useState(1), [preview, setPreview] = useState<PausePreview | null>(null);
   const [restart, setRestart] = useState<{ price: number; token: string } | null>(null);
-  const [error, setError] = useState<string | null>(null), [done, setDone] = useState(false);
+  // The action that finished: after a restart the refreshed plan renders this control in pause mode, and it must still say what happened.
+  const [error, setError] = useState<string | null>(null), [done, setDone] = useState<"pause" | "restart" | null>(null);
   async function send(confirm: boolean) {
     setBusy(true); setError(null);
     try {
@@ -97,7 +98,7 @@ export function PlanControl({ cardId, name, mode, pending = false }: { cardId: s
         if (key === "stale" || key === "payment_refused") { setPreview(null); setRestart(null); }
         return;
       }
-      if (body.state === "applied" || body.state === "started") { setDone(true); setPreview(null); setRestart(null); router.refresh(); return; }
+      if (body.state === "applied" || body.state === "started") { setDone(mode); setPreview(null); setRestart(null); router.refresh(); return; }
       if (mode === "pause") setPreview(body);
       else setRestart({ price: body.price, token: body.token });
     } catch { setError(controlErrors.pending); }
@@ -110,7 +111,7 @@ export function PlanControl({ cardId, name, mode, pending = false }: { cardId: s
 
 export interface PlanControlViewProps {
   name: string; mode: "pause" | "restart"; pending: boolean; open: boolean; busy: boolean; weeks: number;
-  preview: PausePreview | null; restart: { price: number; token: string } | null; error: string | null; done: boolean;
+  preview: PausePreview | null; restart: { price: number; token: string } | null; error: string | null; done: "pause" | "restart" | null;
   onOpen: () => void; setWeeks: (weeks: number) => void; setPreview: (preview: PausePreview | null) => void;
   send: (confirm: boolean) => void; close: () => void; cardId: string;
 }
@@ -119,7 +120,7 @@ export interface PlanControlViewProps {
 export function PlanControlView({ name, mode, pending, open, busy, weeks, preview, restart, error, done, onOpen, setWeeks, setPreview, send, close, cardId }: PlanControlViewProps) {
   const label = pending ? `Check ${mode}` : mode === "pause" ? "Pause plan" : "Restart plan";
   return <div className="acct-plan-actions">
-    {done ? <p role="status">{mode === "pause" ? "The pause is saved. Your mailing and charge dates have changed." : "The paid plan has restarted. We will prepare the next workbook from the current learning profile."}</p>
+    {done ? <p role="status">{done === "pause" ? "The pause is saved. Your mailing and charge dates have changed." : "The paid plan has restarted. We will prepare the next workbook from the current learning profile."}</p>
       : !open ? <button type="button" className="btn ghost" onClick={onOpen} aria-label={`${label} for ${name}`}>{label}</button>
         : <>
           <p><b>{mode === "pause" ? `Pause ${name}'s plan` : `Restart ${name}'s plan`}</b></p>

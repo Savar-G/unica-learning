@@ -492,7 +492,7 @@ function Approval({ detail, name }: { detail: RunDetail; name: string }) {
     return <div className="adm-note adm-wb-full" role="note"><b>Not ready to approve.</b> Every check must pass first:
       <ul className="adm-wb-list">{problems.map((p) => <li key={p}>{p}</li>)}</ul></div>;
   }
-  return <ApproveDraft runId={run.id} revision={draft.revision} workbookPath={adminWorkbookPath(draft.workbook.id)} child={name} />;
+  return <ApproveDraft runId={run.id} revision={draft.revision} workbookPath={adminWorkbookPath(draft.workbook.id)} child={name} pending={detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length} />;
 }
 
 /** One run: its state, then its draft page by page, then the audit log. `only`: only the pages that need attention. */

@@ -500,10 +500,17 @@ export async function sweepCards(seams: CardCheckSeams, time: SweepTime, limit =
 
 /** The rows of the daily re-read. The database decides what is due, by its own clock. */
 export interface PlanReadRows {
-  /** Rows of a kind in PLAN_READ_KINDS not read for 24 hours, the row looked at longest ago first. Throws when it fails. */
+  /** The rows of a kind in PLAN_READ_KINDS not read for 24 hours, the row looked at longest ago first. Throws when it fails. */
   duePlanReads(limit: number): Promise<PlanRead[]>;
   /** The re-read is about to try this row. It goes behind the rows not tried since. Throws when it fails. */
   notePlanReadTried(childId: string): Promise<void>;
+  /**
+   * The children of a started plan start that the plan state does not show yet (PLAN_START_READ_KINDS, or no row), the start tried
+   * longest ago first, a start never tried before any other. Throws when it fails.
+   */
+  dueStartReads(limit: number): Promise<PlanRead[]>;
+  /** The re-read is about to try this child's start. It goes behind the starts not tried since. Throws when it fails. */
+  noteStartReadTried(childId: string): Promise<void>;
 }
 
 export interface PlanReadSweep {
@@ -519,12 +526,18 @@ export interface PlanReadSweep {
 }
 
 /**
- * Reads each due row again, in turn, inside the sweep's time. A row is noted before its work, so a row that uses all the time, that
- * keeps failing or that keeps answering `unclear` goes behind the others and cannot hold them up. A failed read changes nothing, as Stripe being down must not
- * close a paying family, and the row stays due. Throws when the first read fails.
+ * The start reads of one run. A Stripe read has a 4-second limit and one retry (parent-plan-server.ts), so a read that fails slowly takes
+ * about 9 s for one failed page: three can start at about 0, 9 and 18 s, inside the 25 s to start, and end at about 27 s, before the
+ * 45 s abort. Database delays, pagination and schedule reads can take longer. The ordinary list runs in parallel with its full time.
+ * Persisted attempt times rotate failing starts; when all three can start each run, n candidates take ceil(n / 3) runs.
  */
-export async function sweepPlanReads(rows: PlanReadRows, states: PlanStates, time: SweepTime, limit = SWEEP_LIMIT): Promise<PlanReadSweep> {
-  const due = await untilEnd(rows.duePlanReads(limit), time.signal);
+export const START_READ_LIMIT = 3;
+
+type Lane = { list: (limit: number) => Promise<PlanRead[]>; note: (childId: string) => Promise<void>; limit: number; requireNote?: boolean };
+
+/** One list's reads, in turn, inside the sweep's time. Throws when its list read fails. */
+async function readLane({ list, note, limit, requireNote = false }: Lane, states: PlanStates, time: SweepTime): Promise<PlanReadSweep> {
+  const due = await untilEnd(list(limit), time.signal);
   const result: PlanReadSweep = { due: due.length, read: 0, changed: 0, unclear: 0, failed: 0, outOfTime: false };
   for (const row of due) {
     if (time.now() >= time.startBy || time.signal?.aborted) {
@@ -532,9 +545,14 @@ export async function sweepPlanReads(rows: PlanReadRows, states: PlanStates, tim
       break;
     }
     try {
-      await untilEnd(rows.notePlanReadTried(row.childId), time.signal);
+      await untilEnd(note(row.childId), time.signal);
     } catch (e) {
       console.error("[plan state] re-read note failed", e instanceof Error ? e.message : "failed");
+      if (requireNote) {
+        result.failed++;
+        if (time.signal?.aborted) result.outOfTime = true;
+        continue;
+      }
     }
     try {
       const { save, plan } = await untilEnd(rereadPlan(row, states), time.signal);
@@ -552,4 +570,26 @@ export async function sweepPlanReads(rows: PlanReadRows, states: PlanStates, tim
     }
   }
   return result;
+}
+
+/**
+ * Reads each due row again, in two lanes side by side, each inside the sweep's time: the daily re-read of the rows that can still change
+ * (up to `limit`), and at most START_READ_LIMIT starts the plan state does not show yet. The ordinary list waits for no start read and
+ * loses no places to start candidates. A start read requires its attempt note to succeed, including when the child has no plan row.
+ * Noted rows go behind the others in their list for the next run. A failed read changes nothing,
+ * as Stripe being down must not close a paying family, and the row stays due. A failed start list is one failure and the re-read goes on;
+ * throws when the re-read's own list fails.
+ */
+export async function sweepPlanReads(rows: PlanReadRows, states: PlanStates, time: SweepTime, limit = SWEEP_LIMIT): Promise<PlanReadSweep> {
+  const [ordinary, starts] = await Promise.allSettled([
+    readLane({ list: (n) => rows.duePlanReads(n), note: (c) => rows.notePlanReadTried(c), limit }, states, time),
+    readLane({ list: (n) => rows.dueStartReads(n), note: (c) => rows.noteStartReadTried(c), limit: START_READ_LIMIT, requireNote: true }, states, time),
+  ]);
+  if (ordinary.status === "rejected") throw ordinary.reason;
+  if (starts.status === "rejected") {
+    console.error("[plan state] start re-read rows failed", starts.reason instanceof Error ? starts.reason.message : "failed");
+    return { ...ordinary.value, failed: ordinary.value.failed + 1, outOfTime: ordinary.value.outOfTime || Boolean(time.signal?.aborted) };
+  }
+  const a = ordinary.value, b = starts.value;
+  return { due: a.due + b.due, read: a.read + b.read, changed: a.changed + b.changed, unclear: a.unclear + b.unclear, failed: a.failed + b.failed, outOfTime: a.outOfTime || b.outOfTime };
 }
