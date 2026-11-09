@@ -115,6 +115,8 @@ Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2
 unicalearning.com
 You received this email about your Unica Learning program.
 
+The five-day guidance below (step 1 and the "Why 5 days?" paragraph) was approved by Savar on 2026-11-09 (variation B). It is in every variant of the plan-start email: the sibling plan email ("Welcome to Unica Learning: Alex's plan"), and the email with step 3 "Marks come later" while marking is closed.
+
 ## Free month start, Grade 3 and above
 
 Subject: Welcome to Unica Learning: how Alex's free month works
@@ -125,10 +127,12 @@ Thanks for joining Unica Learning. Alex's first workbook has arrived, so your fr
 
 As a parent, here are your responsibilities:
 
-1. Follow the schedule. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
+1. Follow the schedule, 5 days a week. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday with the weekend off. You can choose any 5 days, but do the days in order, Day 1 to Day 10. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
 2. Scan the finished pages. After Alex finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.
 3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with Alex.
 4. Set up Maya. If Alex gets stuck, Alex can chat with Maya, our AI Teaching Assistant. Sign in at https://unicalearning.com/account, set a PIN, agree to the Maya notice, then open Alex's desk.
+
+Why 5 days? Two days off each week give Alex time to rest, or to look back at the week's pages, and come back ready to learn. A steady 5 days builds a habit. Working every day can wear kids out and make math feel like a chore, for Alex and for you.
 
 If anything is broken, if anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.
 
@@ -154,9 +158,11 @@ Thanks for joining Unica Learning. Alex's first workbook has arrived, so your fr
 
 As a parent, here are your responsibilities:
 
-1. Follow the schedule. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
+1. Follow the schedule, 5 days a week. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday with the weekend off. You can choose any 5 days, but do the days in order, Day 1 to Day 10. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
 2. Scan the finished pages. After Alex finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.
 3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with Alex.
+
+Why 5 days? Two days off each week give Alex time to rest, or to look back at the week's pages, and come back ready to learn. A steady 5 days builds a habit. Working every day can wear kids out and make math feel like a chore, for Alex and for you.
 
 If anything is broken, if anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.
 

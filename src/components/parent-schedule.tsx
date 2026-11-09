@@ -16,6 +16,8 @@ export function ParentSchedule({ schedule }: { schedule: Exclude<ScheduleView, {
     </section> : <>
       <p className="lead">Workbook {schedule.book.number}. Follow the day numbers in your printed book.</p>
       <p className="pw-sub">Each day: {schedule.dailyTime}. Extra practice is optional.</p>
+      <p className="pw-sub">5 days on, 2 days off. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday, with the weekend off. The days off give your child time to rest, or to look back at the week&apos;s pages, and come back ready to learn. A steady 5 days a week builds a habit. Working every single day can wear kids out and make math feel like a chore, for your child and for you.</p>
+      <p className="pw-sub">You choose the 5 days. For example: Monday, Tuesday, Thursday, Friday and Saturday, with Wednesday and Sunday off. Just do the days in order, Day 1 to Day 10, and keep to the same 5 days each week.</p>
       <section className="ps-table-wrap" aria-label={`Workbook ${schedule.book.number} schedule`}>
         <table className="ps-table" role="table">
           <caption>Schedule from page 2 of this workbook</caption>
