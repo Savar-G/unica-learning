@@ -277,5 +277,6 @@
   .rpt-plans .btn { min-width: 0; flex: 1 1 100%; }
 }
 
-/* The free results call (BookCall): a quieter card under the plan choice. */
-.rpt-next.rpt-call { margin-top: 16px; background: #fff; border: 1px solid var(--line); }
+/* The free results call (BookCall): its own row after the working level. */
+.rpt-next.rpt-call { background: #fff; border: 1px solid var(--line); }
+.rpt-next.rpt-call a.btn { color: #fff; }

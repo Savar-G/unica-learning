@@ -209,6 +209,22 @@ export function earlySignNote(v: ReportView, topics: readonly { certainty: Certa
  * D-305 (Cedric's call with a parent, 2026-11-08): "working at a grade 5 level" read as "only grade 5 work". This says
  * what the working level is, under the ruler; for a family that can start the books, that the books cover more.
  */
+/**
+ * The free results call (report card and report email): heading and text. Only families who get workbooks hear about
+ * workbook 1; the waitlist's call is about the report.
+ */
+export function resultsCall(v: ReportView): { title: string; text: string; button: string } {
+  const name = v.childName;
+  const who = "A free 15-minute video call with Savar or Cedric, Unica's founders.";
+  return {
+    title: `Go over ${name}'s results with us`,
+    text: books(v)
+      ? `${who} We show you what ${name}'s first workbook will cover and why, and answer any questions you have.`
+      : `${who} We go through ${name}'s report with you and answer any questions you have.`,
+    button: "Book your results call",
+  };
+}
+
 export function workingLevelNote(v: ReportView): string {
   const name = v.childName;
   const what = `Working level is the grade where ${name}'s answers show secure skills today.`;

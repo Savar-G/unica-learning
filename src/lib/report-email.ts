@@ -13,6 +13,7 @@ import {
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
   bookOneView,
+  resultsCall,
   certaintyText,
   comparisonView,
   earlySignNote,
@@ -234,6 +235,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     : `You unsubscribed from reminders and emails about our plans, so this email has only the report.`;
   const footer = { why, note: unsubscribe, signer: "founders" as const, ...(offer ? { unsubscribe: { url: unsubscribeUrl, label: "Unsubscribe" } } : {}) };
   const origin = new URL(url).origin;
+  const call = resultsCall(v);
 
   const text = [
     `Hi ${first},`,
@@ -242,6 +244,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(reliability ? [`${reliability.title}\n${reliability.text}\n${reliability.offer}`] : []),
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
     ...(comparison ? [`${comparison.title}\n${comparison.text}\n${comparison.note}`] : []),
+    ...(BOOKING_URL ? [`${call.title}\n${call.text}\n${call.button}: ${BOOKING_URL}`] : []),
     ...(whereText ? [whereText] : []),
     ...(bookText ? [bookText] : offer ? [`How we help: ${help.title}\n${help.text}`] : []),
     ...(step && stepUrl ? [`${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`] : []),
@@ -258,7 +261,6 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     ...(work ? [work] : []),
     `See ${name}'s full report: ${url}`,
-    ...(BOOKING_URL ? [`Want to talk through the results? Book a free 15-minute call with one of us: ${BOOKING_URL}`] : []),
     emailSignatureText(undefined, "founders"),
     emailFooterText(footer),
   ].join("\n\n");
@@ -335,6 +337,11 @@ ${reliability ? `<tr><td style="padding:16px 20px 0">
 ${p(esc(reliability.text), "margin:0 0 6px;font-size:15px")}
 ${p(esc(reliability.offer), "margin:0;font-size:15px")}
 </td></tr></table>
+</td></tr>` : ""}
+${BOOKING_URL ? `<tr><td style="padding:30px 20px 0">
+${heading(esc(call.title))}
+${p(esc(call.text), "margin:0 0 20px;font-size:15px")}
+${button(BOOKING_URL, call.button)}
 </td></tr>` : ""}
 ${where ? `<tr><td style="padding:30px 20px 0">
 ${heading(`Where ${esc(name)} is`)}
@@ -447,9 +454,6 @@ ${step && stepUrl ? `<tr><td style="padding:30px 20px 4px">
 </td></tr>` : `<tr><td style="padding:30px 20px 4px">
 ${button(url, `See ${name}'s full report`)}
 </td></tr>`}
-${BOOKING_URL ? `<tr><td style="padding:22px 20px 4px">
-${p(`Want to talk through the results? <a href="${esc(BOOKING_URL)}" style="color:${INK};text-decoration:underline">Book a free 15-minute call</a> with one of us.`, "margin:0;font-size:15px")}
-</td></tr>` : ""}
 ${emailEndHtml(footer, 20)}
 </table>
 </div>

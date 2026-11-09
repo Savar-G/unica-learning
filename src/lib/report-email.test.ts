@@ -164,6 +164,19 @@ describe("the report email to the parent", () => {
       expect(quiet.text).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
     }
   });
+  it("offers the results call before the findings, about workbook 1 only for families who get workbooks", () => {
+    const bc = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
+    const call = "A free 15-minute video call with Savar or Cedric, Unica's founders.";
+    expect(bc.text).toContain(call);
+    expect(bc.text).toContain("first workbook will cover and why, and answer any questions you have.");
+    expect(bc.text.match(/Book your results call/g)).toHaveLength(1);
+    expect(bc.html.match(/Book your results call/g)).toHaveLength(1);
+    expect(bc.text.indexOf(call)).toBeLessThan(bc.text.indexOf("By area"));
+    const on = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
+    expect(on.text).toContain(call);
+    expect(on.text).not.toContain("first workbook");
+  });
+
   it("escapes names in the HTML (parent email)", () => {
     const html = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { name: "Jo & <i>" }), parentName: "<b>A</b>", url: "https://x.test/?a=1&b=2" }).html;
     expect(html).not.toMatch(/<b>A<\/b>|<i>/);
