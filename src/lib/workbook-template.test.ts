@@ -117,7 +117,10 @@ describe("the workbook templates", () => {
     const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, draft)!;
     const minutes = plan.content.rows.map(r => generatedDayTime(draft.pages.filter(p => p.content?.kind === "day" && p.content.day === r.day)).requiredMinutes);
     expect(html).toContain(`about ${Math.ceil(Math.max(...minutes))} minutes, plus Extra if there's time`);
-    expect(html).toContain("Extra blocks are optional.");
+    // Page 2 says Extra once: the line ends at "plus Extra if there's time." (Savar, 2026-11-09: 5 days a week).
+    expect(html).toContain("One day of the book on 5 days of the week, for example Monday to Friday. Do the days in order.");
+    expect(html).toContain("<span>5 days a week</span>");
+    expect(html).not.toContain("Extra blocks are optional.");
     expect(html).not.toContain("99 minutes");
     for (const [i, row] of plan.content.rows.entries()) expect(html).toContain(`data-measure="slot-required-time-${row.day}">${Math.ceil(minutes[i])} min`);
   });
@@ -127,7 +130,7 @@ describe("the workbook templates", () => {
     if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
     plan.content.minutes = { min: 17, max: 17 };
     const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, draft)!;
-    expect(html).toContain("about 17 minutes.");
+    expect(html).toContain("Do the days in order. 8 pages a day, about 17 minutes.");
     expect(html).not.toMatch(/REQUIRED TIME|Extra|plan-time|slot-required-time/);
   });
 

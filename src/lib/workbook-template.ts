@@ -449,7 +449,7 @@ const CSS = `
 .hp .top{display:flex;justify-content:space-between;font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:12px;letter-spacing:.04em}
 .hp table{margin-top:18px;width:100%;border-collapse:collapse;table-layout:fixed}
 .hp th{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:11px;letter-spacing:.04em;color:#44444C;text-align:left;padding:0 0 8px;border-bottom:1px solid #0C0C0E}
-.hp td{height:56px;border-bottom:1px solid #E0E0E5;padding:0;vertical-align:middle}
+.hp td{height:54px;border-bottom:1px solid #E0E0E5;padding:0;vertical-align:middle}
 .hp .d{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:16px;width:96px}
 .hp .tp{display:block;height:50px;overflow:hidden;padding-top:4px}
 .hp .tp b{display:block;font-weight:500;font-size:18px;line-height:1.3;white-space:nowrap}
@@ -1499,7 +1499,7 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
     + `<td class="pp">${r.pages[0]}–${r.pages[1]}${time ? `<span class="plan-time" ${mark.slot(`required-time-${r.day}`)}>${roundedMinutes(time.requiredMinutes)} min</span>` : ""}</td><td class="dn"><i class="tb"></i></td></tr>`;
   }).join("");
   const how = [
-    { chip: { label: "Every day", cls: "c-pr", icon: ICONS.target }, text: times.size ? `${c.pagesADay} pages a day, ${timeText(Math.max(...[...times.values()].map(t => t.requiredMinutes)), extra)}.${extra ? " Extra blocks are optional." : ""}` : `${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
+    { chip: { label: "5 days a week", cls: "c-pr", icon: ICONS.target }, text: times.size ? `One day of the book on 5 days of the week, for example Monday to Friday. Do the days in order. ${c.pagesADay} pages a day, ${timeText(Math.max(...[...times.values()].map(t => t.requiredMinutes)), extra)}.` : `One day of the book on 5 days of the week, for example Monday to Friday. Do the days in order. ${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
     { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Open unicalearning.com/account in your browser. Sign in, select your child, then Scan pages." },
     { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Ask for help using Maya, the AI Teaching Assistant." },
     { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: c.workbook === 1 ? "Scan finished pages. Questions your child needs to practise can return in the next workbook." : "Anything your child got wrong in the previous workbook comes back as new questions." },
