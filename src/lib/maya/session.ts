@@ -3039,10 +3039,12 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     }
     case "close":
       // An unsolved close after the easier example may say the honest close (#735): it holds no answer.
+      // While first-ship cheer is off (D-310), a solved close uses the calm close.checked wordings, never close.solved's
+      // "Well done!" / "Nice work…" (final #698 review).
       // An honest close by how much help the child had (C09 item iii): after the given answer, no claim that the child
       // finished it; after a shown step (guided), that their answer is right, not that they worked it out.
       return solved ? (solved === "maya" || s.assistance.includes("answer_given") ? l.closeGiven()
-        : s.assistance.includes("guided") ? l.closeSolved("child", false) : l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed"))
+        : s.assistance.includes("guided") ? l.closeSolved("child", false) : l.closeSolved(solved, CHEER_AT_FIRST_SHIP && (view.done.length > 0 || s.understanding === "evidence_observed")))
         : gate(s, {}) ? ((s.state === "TIME_CLOSE" || (s.turn !== null && s.exampleShown >= pkg.easierExample.steps.length)) ? l.closeStuck() : []) : [...l.closeStuck(), ...(closeExpressionContainsAnswer(pkg.operation, pkg.answer.value) ? [] : l.closeGiven())];
     case "confirm": {
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.

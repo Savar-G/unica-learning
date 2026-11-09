@@ -106,13 +106,15 @@ describe("(iii) an honest close by how much help the child had", () => {
     expect(close.say).not.toMatch(/worked out|You solved|You did it|Great job|Nice work|Well done on/i);
   });
 
-  it("keeps 'You worked out' for a child who worked it alone", async () => {
+  it("gives a child who worked it alone the calm checked close while first-ship cheer is off (D-310)", async () => {
     const { told } = await play([
       { child: "7 plus 9 is 16.", read: { answers: [[16, "ones", "right"]] } },
       { child: "2 plus 3 plus 1 is 6, so 66.", read: { answers: [[6, "tens", "right"], [66, "result", "right"]] } },
       { child: "I wrote 66.", read: { paper: "written" }, maya: [{ act: "close", lines: ["close.solved"] }] },
     ]);
     const solved = TEMPLATES["close.solved"].map((t) => t.replaceAll("{expr}", "27 + 39"));
-    expect(solved.some((x) => told.at(-1)!.say.includes(x))).toBe(true);
+    const checked = TEMPLATES["close.checked"].map((t) => t.replaceAll("{expr}", "27 + 39"));
+    expect(solved.some((x) => told.at(-1)!.say.includes(x))).toBe(false);
+    expect(checked.some((x) => told.at(-1)!.say.includes(x))).toBe(true);
   });
 });
