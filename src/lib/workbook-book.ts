@@ -355,6 +355,20 @@ export function templateMethod(src: TemplateSource, text: string): string | null
     const d = src.derived.find(([k]) => k === name);
     return d && depth < 3 ? resolve(d[1], depth + 1) : null;
   };
+  if (src.answer.trim() === "str(h * 100) + ' + ' + str(o)") {
+    const h = n("h"), o = n("o"), number = n("n");
+    if (!Number.isInteger(h) || h < 1 || h > 9 || !Number.isInteger(o) || o < 0 || o > 9 || number !== 100 * h + o) return null;
+    return `${fmt(number)} has ${h} ${h === 1 ? "hundred" : "hundreds"}, 0 tens and ${o} ${o === 1 ? "one" : "ones"}: ${fmt(100 * h)} + ${o} = ${fmt(number)}.`;
+  }
+  const zeroDigit = "0 if sv == 0 else (o if sv == 1 else h)";
+  const zeroValue = "0 if sv == 0 else (o if sv == 1 else h * 100)";
+  if (src.answer.trim() === zeroDigit || src.answer.trim() === zeroValue) {
+    const h = n("h"), o = n("o"), number = n("n"), sv = n("sv");
+    if (!Number.isInteger(h) || h < 1 || h > 9 || !Number.isInteger(o) || o < 0 || o > 9 || number !== 100 * h + o || ![0, 1, 2].includes(sv)) return null;
+    const place = ["tens", "ones", "hundreds"][sv], digit = [0, o, h][sv];
+    const value = src.answer.trim() === zeroValue ? `, worth ${sv === 2 ? h * 100 : digit}` : "";
+    return `${fmt(number)} has ${h} ${h === 1 ? "hundred" : "hundreds"}, 0 tens and ${o} ${o === 1 ? "one" : "ones"}. The ${place} digit is ${digit}${value}.`;
+  }
   // A digit of a number: "n // 1000 % 10", its value "n // 1000 % 10 * 1000".
   const digit = src.answer.match(/^\(?(\w+) \/\/ (\d+)\)? % 10(?: \* (\d+))?$/);
   if (digit && n(digit[1]) !== undefined && PLACE_NAMES[Number(digit[2])]) {

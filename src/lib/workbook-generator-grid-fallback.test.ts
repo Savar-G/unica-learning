@@ -45,8 +45,14 @@ it("keeps already fitting U10 grids at zero extra gap", async () => {
 });
 
 it("keeps unapproved Challenge slots missing when the fallback checks its grid", async () => {
+  const source = input(2);
+  const prepared = await prepareWorkbookCapacity(source, { fits: async () => ({ ok: true }) });
+  const challenge = prepared.days[0].pages.find(p => p.type === "challenge")!;
+  // Keep this failure control independent of the curriculum's available Challenge templates.
+  challenge.itemContracts = { ...challenge.itemContracts, "1.2": null, "1.3": null };
+  challenge.capacityChecked = false;
   const measured: DraftPage[] = [];
-  const plan = await prepareWorkbookCapacity(input(2), { fits: async page => {
+  const plan = await prepareWorkbookCapacity({ ...source, plan: prepared }, { fits: async page => {
     if (page.type !== "challenge") return { ok: true };
     measured.push(structuredClone(page));
     return page.content?.kind === "day" && (page.content.extraGap ?? 0) >= 4 ? { ok: true } : fullness;
