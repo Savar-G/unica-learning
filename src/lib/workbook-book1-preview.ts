@@ -14,7 +14,7 @@ import type { PlanInput, WorkbookPlan } from "./workbook-plan";
 import type { WorkbookProgressDecision } from "./workbook-progress";
 import { previewNextWorkbookPlan, type PlanPreviewRefusal } from "./workbook-progress-plan";
 import { readWorkbookProgressHistory, type HistoryFence, type HistoryPage, type HistoryRefusal,
-  type WorkbookProgressHistoryInput, type WorkbookProgressHistoryStore } from "./workbook-progress-history";
+  type WorkbookProgressHistoryInput, type WorkbookProgressHistoryResult, type WorkbookProgressHistoryStore } from "./workbook-progress-history";
 import { sourceHash } from "./workbook-progress-hash";
 import { validateCatalog, type FrozenWorkbookSourcesV2, type SourceUnavailable, type WorkbookPreviewRequest } from "./workbook-progress-source";
 
@@ -52,6 +52,23 @@ export interface Book1Complete extends Book1Common {
   held: { originals: { reason: string; key: string }[]; changes: number; secondTries: { reason: string; id: string }[]; undatedMarks: number };
 }
 export type Book1PreviewOutcome = SourceUnavailable | Book1Unavailable | Book1Held | Book1Complete;
+/**
+ * #476 The frozen Book 1 inputs for book 2, before any planning: the ProgressSnapshot and ProgressHistory the next-book
+ * snapshot freezes. evaluateBook1Preview plans from exactly this.
+ */
+export interface Book1Captured {
+  ok: true;
+  availability: "captured";
+  common: Book1Common;
+  sources: Book1Complete["sources"];
+  baseline: Book1Complete["baseline"];
+  retained: Extract<WorkbookProgressHistoryResult, { ok: true }>;
+  fence: HistoryFence;
+  curriculum: WorkbookProgressHistoryInput["curriculum"];
+  planning: Omit<Extract<ReturnType<typeof book2Planning>, { ok: true }>["input"], "progress">;
+  held: Book1Complete["held"];
+}
+export type Book1CaptureOutcome = SourceUnavailable | Book1Unavailable | Book1Held | Book1Captured;
 
 const keyOf = (i: { workbookId: string; printedRevision: string; pageId: string; itemId: string }) => JSON.stringify([i.workbookId, i.printedRevision, i.pageId, i.itemId]);
 function page<T extends { id: string | number }>(rows: readonly T[], after: string | number | null, limit: number): HistoryPage<T> {
@@ -59,13 +76,15 @@ function page<T extends { id: string | number }>(rows: readonly T[], after: stri
   return structuredClone({ rows: rest.slice(0, limit), remaining: rest.length });
 }
 
-/** Throws "invalid-source" on a catalog that does not validate, as the version 1 evaluator does. */
-export async function evaluateBook1Preview(request: WorkbookPreviewRequest, frozen: FrozenWorkbookSourcesV2): Promise<Book1PreviewOutcome> {
+const refusal = (common: Book1Common, reason: Book1PreviewRefusal): Book1Unavailable => structuredClone({ ok: false, availability: "unavailable",
+  reasons: [reason], sourceStatus: { catalog: "validated", book1: "refused" }, ...common, consumedVersions: [], decision: null, plan: null });
+
+/** The capture half (#476): everything evaluateBook1Preview reads, up to the planner. Throws "invalid-source" as it does. */
+export async function captureBook1Progress(request: WorkbookPreviewRequest, frozen: FrozenWorkbookSourcesV2): Promise<Book1CaptureOutcome> {
   const { outcome: base, pages, undated } = validateCatalog(request, frozen);
   if (!frozen.book1) return base;
   const common: Book1Common = { requiredSample: base.requiredSample, scope: base.scope, sources: base.sources };
-  const refuse = (reason: Book1PreviewRefusal): Book1Unavailable => structuredClone({ ok: false, availability: "unavailable", reasons: [reason],
-    sourceStatus: { catalog: "validated", book1: "refused" }, ...common, consumedVersions: [], decision: null, plan: null });
+  const refuse = (reason: Book1PreviewRefusal) => refusal(common, reason);
   const f = frozen.book1;
   if (f.version !== 1) return refuse("baseline-invalid");
   const baseline = readBook1Baseline(f.baseline);
@@ -132,16 +151,24 @@ export async function evaluateBook1Preview(request: WorkbookPreviewRequest, froz
   const retained = await readWorkbookProgressHistory(store, input);
   if (!retained.ok) return refuse(`history-${retained.reason}`);
   if (retained.proof.corrections === "unavailable") return refuse("history-corrections-unavailable");
-  const preview = previewNextWorkbookPlan({ version: 1, snapshot: retained.snapshot, curriculum: input.curriculum, history: retained.history, planning });
-  if (!preview.ok) return refuse(`preview-${preview.reason}`);
-  const result = { retained }, p = preview;
+  return { ok: true, availability: "captured", common, sources, retained, fence, curriculum: input.curriculum, planning,
+    baseline: { id: baseline.id, hash: f.baseline.hash, draftRevision: baseline.draftRevision, printedRevision, boundaryAt: corrections.boundaryAt, planningKind: baseline.planning.kind },
+    held: { originals: retained.held.map(h => ({ reason: h.reason, key: keyOf(h.original.first.observation.identity) })),
+      changes: retained.heldChanges.length, secondTries: corrections.held, undatedMarks: selected.items.length - items.length } };
+}
+
+/** Throws "invalid-source" on a catalog that does not validate, as the version 1 evaluator does. */
+export async function evaluateBook1Preview(request: WorkbookPreviewRequest, frozen: FrozenWorkbookSourcesV2): Promise<Book1PreviewOutcome> {
+  const captured = await captureBook1Progress(request, frozen);
+  if (captured.availability !== "captured") return captured;
+  const { common, sources, retained, baseline, held } = captured;
+  const preview = previewNextWorkbookPlan({ version: 1, snapshot: retained.snapshot, curriculum: captured.curriculum, history: retained.history, planning: captured.planning });
+  if (!preview.ok) return refusal(common, `preview-${preview.reason}`);
+  const p = preview;
   return JSON.parse(JSON.stringify({ ok: true, availability: "complete",
     sourceStatus: { catalog: "validated", retainedHistory: "derived", priorMastery: "book1-baseline", planning: "book1-baseline",
       issuedDecisions: "book1-initial-issues", corrections: "second-try-ledger", causes: "unavailable" },
-    ...common, sources,
-    baseline: { id: baseline.id, hash: f.baseline.hash, draftRevision: baseline.draftRevision, printedRevision, boundaryAt: corrections.boundaryAt, planningKind: baseline.planning.kind },
-    consumedVersions: p.decision.consumed, decision: p.decision, planningInput: p.planningInput, plan: p.plan,
-    held: { originals: result.retained.held.map(h => ({ reason: h.reason, key: keyOf(h.original.first.observation.identity) })),
-      changes: result.retained.heldChanges.length, secondTries: corrections.held, undatedMarks: selected.items.length - items.length },
+    ...common, sources, baseline,
+    consumedVersions: p.decision.consumed, decision: p.decision, planningInput: p.planningInput, plan: p.plan, held,
   } satisfies Book1Complete));
 }
