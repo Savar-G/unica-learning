@@ -101,7 +101,7 @@ describe("emails", () => {
     children: [child("k1", "a")],
     tests: [test("t1", "a", "k1", ago(9), ago(5))],
     reports: [
-      { id: "r1", created_at: ago(5), assessment_id: "t1", parent_id: "a", child_id: "k1", emailed_at: null, email_error: "Resend 500", alerted_at: ago(5), alert_error: null, email_clicks: 0, email_first_clicked_at: null },
+      { id: "r1", created_at: ago(5), assessment_id: "t1", parent_id: "a", child_id: "k1", emailed_at: null, email_id: null, email_error: "Resend 500", alerted_at: ago(5), alert_error: null, email_clicks: 0, email_first_clicked_at: null },
     ],
     emails: [email("e1", "a", "start", ago(9, 1)), email("e2", "a", "continue", ago(8), "failed"), email("e3", "a", "unsubscribe", ago(7), null)],
   });
@@ -124,6 +124,22 @@ describe("emails", () => {
     expect(row("continue")).toMatchObject({ sent: 0, failed: 1, last: null });
     expect(row("report")).toMatchObject({ sent: 0, failed: 1 });
     expect(d.needs.map((n) => n.title)).toContain("Email failed");
+  });
+
+  // B13: emailed_at is the claim time, so only the email id proves the report email went (report-row-ledger.ts).
+  it("shows a report email as sent only when it has an email id, and an unknown send as unknown", () => {
+    const report = (id: string, over: object) => ({ id, created_at: ago(5), assessment_id: "t1", parent_id: "a", child_id: "k1", emailed_at: ago(5), email_id: null, email_error: null, alerted_at: ago(5), alert_error: null, email_clicks: 0, email_first_clicked_at: null, ...over });
+    const d = rows({
+      parents: [parent("a", ago(10))], children: [child("k1", "a")], tests: [test("t1", "a", "k1", ago(9), ago(5))],
+      reports: [report("claimed", {}), report("unknown", { email_error: "timeout" }), report("sent", { email_id: "re_1" })],
+      emails: [{ ...email("e1", "a", "continue", ago(8), "claimed"), error: "timeout" }, email("e2", "a", "come_back", ago(7), "claimed")],
+    });
+    const byId = Object.fromEntries(buildFamilies(d, NOW)[0].emails.map((e) => [e.id, [e.state, e.status]]));
+    expect(byId).toMatchObject({
+      "claimed:report": ["claimed", "pending"], "unknown:report": ["unknown", "pending"], "sent:report": ["sent", "sent"],
+      e1: ["unknown", "pending"], e2: ["claimed", "pending"],
+    });
+    expect(buildDashboard(d, "all", NOW).emailSummary.find((e) => e.kind === "report")).toMatchObject({ sent: 1, failed: 0, pending: 2 });
   });
 });
 
@@ -347,7 +363,7 @@ describe("next start reminder", () => {
 
 // Resend's delivery events (D-104), joined to the email list through the kept copies.
 describe("email delivery", () => {
-  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 0, email_first_clicked_at: null };
+  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_id: "re_1", email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 0, email_first_clicked_at: null };
   const r = (deliveries: DashboardRows["deliveries"]) => rows({
     parents: [parent("p", ago(5))], children: [child("k1", "p")], tests: [test("t1", "p", "k1", ago(2), ago(1))], reports: [report],
     emails: [email("e1", "p", "start", ago(3))], deliveries,
@@ -385,7 +401,7 @@ describe("email delivery", () => {
 
 // Our own click tracking (D-105): the parent's visits from an email's button.
 describe("email clicks", () => {
-  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 3, email_first_clicked_at: ago(0, 20) };
+  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_id: "re_1", email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 3, email_first_clicked_at: ago(0, 20) };
   const d = rows({
     parents: [parent("p", ago(5))], children: [child("k1", "p")], tests: [test("t1", "p", "k1", ago(2), ago(1))], reports: [report],
     emails: [{ ...email("e1", "p", "start", ago(3)), clicks: 1, first_clicked_at: ago(2, 20) }, email("e2", "p", "start_followup", ago(1))],
