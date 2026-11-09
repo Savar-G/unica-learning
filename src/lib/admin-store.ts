@@ -267,7 +267,7 @@ export interface TestDetail {
   /** The answers in test order. D-145: not those to the removed extra round's questions (#190, fromRemovedRound). */
   answers: AnswerRecord[];
   reviews: ReviewRecord[];
-  report: { id: string; created_at: string; questions: number; minutes: number; emailed_at: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null } | null;
+  report: { id: string; created_at: string; questions: number; minutes: number; emailed_at: string | null; email_id: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null } | null;
   facts: { started_at: string; test: FactsTest; answers: FactAnswerRecord[] } | null;
   /** When the server first served each question (#184). D-145: not the removed extra round's questions. */
   shows: ShownRecord[];
@@ -297,7 +297,7 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
   const related = Promise.all([
     answersRead,
     a.db.from("work_reviews").select(REVIEW_COLUMNS).eq("assessment_id", id).then((r) => mainOnly(must<ReviewRecord[]>(r, "reviews"))),
-    a.db.rpc("admin_reports").select("id, created_at, questions, minutes, emailed_at, email_error, alerted_at, alert_error").eq("assessment_id", id)
+    a.db.rpc("admin_reports").select("id, created_at, questions, minutes, emailed_at, email_id, email_error, alerted_at, alert_error").eq("assessment_id", id)
       .maybeSingle().then((r) => must<TestDetail["report"]>(r, "report")),
     a.db.from("assessment_facts").select("started_at, test").eq("assessment_id", id).maybeSingle()
       .then((r) => must<{ started_at: string; test: FactsTest } | null>(r, "facts")),
@@ -1086,7 +1086,7 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
     allRows<RawParent>(a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("id"), "parents"),
     allRows<RawChild>(a.db.rpc("admin_children").select(CHILD_COLUMNS).order("id"), "children"),
     allRows<Omit<RawTest, "answered"> & { answers: { count: number }[] }>(a.db.rpc("admin_assessments").select("id, created_at, status, parent_id, child_id, grade, province, started_at, completed_at, last_answer_at, answers(count)").order("id"), "tests"),
-    allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_error, alerted_at, alert_error, email_clicks, email_first_clicked_at").order("id"), "reports"),
+    allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_id, email_error, alerted_at, alert_error, email_clicks, email_first_clicked_at").order("id"), "reports"),
     // the cards come back once Stripe has filled in the saved cards the site never recorded
     cardRows.then(async (rows) => (await confirmCardsInStripe(rows), rows)),
     allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),

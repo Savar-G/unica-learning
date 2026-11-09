@@ -8,13 +8,14 @@ import type { AssessmentStatus } from "@/lib/test-api";
 import { canGetEmail, nextStartReminder, type StartKind } from "@/lib/reminder-schedule";
 import type { LogKind, LogStatus } from "@/lib/email-log-kinds";
 import type { DeliveryType } from "@/lib/resend-webhook";
+import { DELIVERY_STATUS, logDeliveryState, reportAlertState, reportEmailState, type DeliveryState } from "@/lib/delivery-state";
 
 // Rows, as admin-store reads them
 
 export interface RawParent { id: string; created_at: string; name: string; email: string; postal: string | null; source: Record<string, string> | null }
 export interface RawChild { id: string; created_at: string; parent_id: string; first_name: string; grade: number; province: Province }
 export interface RawTest { id: string; created_at: string; status: AssessmentStatus; parent_id: string; child_id: string; grade: number; province: Province; started_at: string; completed_at: string | null; last_answer_at: string | null; answered: number }
-export interface RawReport { id: string; created_at: string; assessment_id: string; parent_id: string; child_id: string; emailed_at: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null; email_clicks: number; email_first_clicked_at: string | null }
+export interface RawReport { id: string; created_at: string; assessment_id: string; parent_id: string; child_id: string; emailed_at: string | null; email_id: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null; email_clicks: number; email_first_clicked_at: string | null }
 export interface RawCard {
   id: string; created_at: string; updated_at: string; parent_id: string; child_id: string; plan: "one" | "both"; price: number;
   stripe_customer_id: string | null; card_saved_at: string | null;
@@ -187,6 +188,9 @@ export interface EmailEvent {
   kind: EmailKind;
   /** When it was sent; for a failed or waiting email, when it was logged. */
   at: string;
+  /** Where its send ledger stands (src/lib/delivery-state.ts). */
+  state: DeliveryState;
+  /** The state as the admin counts it: DELIVERY_STATUS[state]. */
   status: "sent" | "failed" | "pending";
   familyId: string;
   familyName: string;
@@ -264,8 +268,6 @@ function subjectFor(kind: EmailKind, child: string | null, grade: number | null)
   return EMAIL_KIND_INFO[kind].subject.replace("{child}", child ?? "Your child").replace("{grade}", grade === null ? "?" : String(grade));
 }
 
-const emailStatus = (sentAt: string | null, error: string | null): EmailEvent["status"] => (sentAt ? "sent" : error ? "failed" : "pending");
-
 export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
   const testIds = new Set(rows.testIds);
   const childName = new Map(rows.children.map((c) => [c.id, c.first_name]));
@@ -296,9 +298,11 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
     const emails: EmailEvent[] = mine(rows.emails).map((e) => {
       const child = e.child_id ? (childName.get(e.child_id) ?? null) : null;
       const grade = e.assessment_id ? (testById.get(e.assessment_id)?.grade ?? null) : null;
+      // An unsubscribe row is no email: it counts as done.
+      const state: DeliveryState = isUnsubscribe(e.kind) ? "sent" : logDeliveryState(e.status, e.error);
       return {
         id: e.id, kind: e.kind, at: e.sent_at ?? e.created_at, familyId: p.id, familyName: p.name, childName: child, attempts: e.attempts, error: e.error,
-        status: isUnsubscribe(e.kind) || e.status === "sent" ? "sent" : e.status === "failed" ? "failed" : "pending",
+        state, status: DELIVERY_STATUS[state],
         subject: subjectFor(e.kind, child, grade),
         delivery: deliveryOf.get(e.id) ?? null,
         clicks: e.clicks > 0 && e.first_clicked_at ? { count: e.clicks, first: e.first_clicked_at } : null,
@@ -309,8 +313,9 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       const grade = testById.get(r.assessment_id)?.grade ?? null;
       const base = { familyId: p.id, familyName: p.name, childName: child, attempts: 1 };
       const delivered = (which: "report" | "alert") => deliveryOf.get(reportEmailId(r.id, which)) ?? null;
-      emails.push({ ...base, id: reportEmailId(r.id, "report"), kind: "report", at: r.emailed_at ?? r.created_at, error: r.email_error, status: emailStatus(r.emailed_at, r.email_error), subject: subjectFor("report", child, grade), delivery: delivered("report"), clicks: r.email_clicks > 0 && r.email_first_clicked_at ? { count: r.email_clicks, first: r.email_first_clicked_at } : null });
-      emails.push({ ...base, id: reportEmailId(r.id, "alert"), kind: "alert", at: r.alerted_at ?? r.created_at, error: r.alert_error, status: emailStatus(r.alerted_at, r.alert_error), subject: subjectFor("alert", child, grade), delivery: delivered("alert"), clicks: null });
+      const parentState = reportEmailState(r), alertState = reportAlertState(r);
+      emails.push({ ...base, id: reportEmailId(r.id, "report"), kind: "report", at: r.emailed_at ?? r.created_at, error: r.email_error, state: parentState, status: DELIVERY_STATUS[parentState], subject: subjectFor("report", child, grade), delivery: delivered("report"), clicks: r.email_clicks > 0 && r.email_first_clicked_at ? { count: r.email_clicks, first: r.email_first_clicked_at } : null });
+      emails.push({ ...base, id: reportEmailId(r.id, "alert"), kind: "alert", at: r.alerted_at ?? r.created_at, error: r.alert_error, state: alertState, status: DELIVERY_STATUS[alertState], subject: subjectFor("alert", child, grade), delivery: delivered("alert"), clicks: null });
     }
     emails.sort(newestFirst);
 
