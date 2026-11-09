@@ -257,7 +257,7 @@ export const hardFeeling = (childTurn: string | null | undefined): boolean => {
     .replace(/\bi won the snowball fight\b/giu, "i won the snowball game")
     .replace(/\bnot (?:sad|sick)(?: anymore)?\b/giu, "well")
     .replace(/\bnot (?:sadder|upset|unhappy|worried|scared|afraid|frightened|nervous|angry|mad|ill|hurt|lonely|tired|sleepy|frustrated|annoyed|bored) anymore\b/giu, "well");
-  return HARD_FEELING.test(text) || /\b(?:(?:not (?:feeling )?|(?:don'?t|do not) feel )(?:(?:very|so|really|that|too) ){0,2}(?:happy|good|well|okay|ok)|feel(?:ing)? (?:(?:very|so|really|that|too) ){0,2}down|(?:nobody|no one) likes me|no friends)\b/iu.test(text);
+  return HARD_FEELING.test(text) || /\b(?:(?:not (?:(?:at all|even) )?(?:feeling )?|(?:don'?t|do not) feel )(?:(?:very|so|really|that|too) ){0,2}(?:happy|good|well|okay|ok)|feel(?:ing)? (?:(?:very|so|really|that|too) ){0,2}(?:down|bad)|(?:nobody|no one) likes me|no friends)\b/iu.test(text);
 };
 /**
  * Cheerful wordings that must never answer a hard feeling ("My grandma is in the hospital." must not get "Oh, your grandma!

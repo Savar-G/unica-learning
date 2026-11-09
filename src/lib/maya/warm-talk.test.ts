@@ -918,3 +918,10 @@ it("refuses happy redirect words after a hard feeling", () => {
   expect(phraseOffers(c.s, "happy")).toEqual([]);
   expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] })).not.toBeNull();
 });
+
+it.each(["I feel really bad.", "I am not at all happy."])("refuses a happy redirect after %s", (text) => {
+  const c = call();
+  c.child(text);
+  expect(phraseOffers(c.s, "happy")).toEqual([]);
+  expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] })).not.toBeNull();
+});
