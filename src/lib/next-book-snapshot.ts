@@ -230,3 +230,150 @@ export function freezeEvidence(snapshot: ProgressSnapshot, history: ProgressHist
   const order = <T extends { key: string }>(rows: T[]) => rows.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
   return { ledger: order(ledger), pending: order(pending), held: order(kept) };
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The consumer (#476). Re-entrant: call it again with the same trigger after "waiting", after a lost answer or after a
+// restart; every step reads back what the store kept and continues from there.
+
+export type NextBookTrigger =
+  /** A #475 claim: day7_scanned or delivery_backstop. */
+  | { kind: "claim"; triggerId: string }
+  /** A #475 backstop hold (no accepted scan at the backstop, #628). */
+  | { kind: "backstop-hold"; workbookId: string; deliveryAuditId: number }
+  /** The admin's "Prepare from snapshot" on a delivered Book 1. */
+  | { kind: "admin"; workbookId: string; actor: SnapshotActor }
+  /** Continue one stored revision (a refresh after refreshNextBookSnapshot, or a restart). */
+  | { kind: "snapshot"; snapshotId: string };
+
+export type PrepareOutcome =
+  | { status: "waiting"; snapshotId: string; until: number }
+  | { status: "held"; snapshotId: string | null; reason: "no-accepted-scans-at-backstop" | "no-marked-scans" }
+  | { status: "unsupported-source-book" }
+  /** Planned: a refresh (it starts no run), or revision 1 whose run waits for the child's active run. */
+  | { status: "planned"; snapshotId: string; revision: number; admission: "refresh" | "busy" | "stalled" }
+  | { status: "queued"; snapshotId: string; runId: string }
+  | { status: "refused"; reason: string; snapshotId?: string };
+
+/** What the capture reads for one revision. requestId is the snapshot id; the cutoff is the freeze time. */
+export interface CaptureRequest {
+  snapshotId: string;
+  parentId: string;
+  childId: string;
+  workbookId: string;
+  printedRevision: string;
+  scope: "day7" | "backstop" | "later-book";
+  cutoff: number;
+}
+export type CaptureAnswer =
+  | { status: "captured"; sources: FrozenWorkbookSourcesV2; fence: HistoryFence; snapshot: ProgressSnapshot; history: ProgressHistory;
+    held: readonly { reason: HeldReason; original: ProgressOriginal }[] }
+  /** The book has no marked scan at all (#628): never advance or repeat by plan. Nothing is recorded; try again later. */
+  | { status: "held"; reason: "no-marked-scans" }
+  | { status: "unavailable"; reason: string };
+export interface NextBookCapture { (request: CaptureRequest): Promise<CaptureAnswer> }
+
+export interface NextBookDeps {
+  store: NextBookSnapshotStore;
+  capture: NextBookCapture;
+  planner: NextBookPlanner;
+  run: RunLimits;
+}
+
+const refusedOutcome = (reason: string, snapshotId?: string): PrepareOutcome => snapshotId ? { status: "refused", reason, snapshotId } : { status: "refused", reason };
+const scopeOf = (row: NextBookSnapshotRecord): { kind: SnapshotScopeKind; request: CaptureRequest["scope"] } =>
+  row.revision > 1 ? { kind: "refresh", request: "later-book" } : row.reason === "day7_scanned" ? { kind: "day7", request: "day7" } : { kind: "backstop", request: "backstop" };
+
+type Freeze = { ok: true; row: NextBookSnapshotRecord } | { ok: false; outcome: PrepareOutcome };
+
+/** Wait (revision 1 only) for the captured marking jobs or the 30-minute deadline, then capture and freeze once. */
+async function freeze(row: NextBookSnapshotRecord, deps: Pick<NextBookDeps, "store" | "capture">, now: number): Promise<Freeze> {
+  if (row.held) return { ok: false, outcome: { status: "held", snapshotId: row.id, reason: row.held.reason } };
+  if (row.frozen) return { ok: true, row };
+  // A clock a little behind the database's cannot freeze before the window opened.
+  const at = Math.max(now, row.prepareFrom);
+  // A refresh reads what is marked now: pending marks stay pending and are not waited on.
+  const jobs = row.revision === 1 ? await deps.store.jobs(row.id) : [];
+  if (preparationState(row.prepareFrom, at, jobs) === "waiting") {
+    return { ok: false, outcome: { status: "waiting", snapshotId: row.id, until: row.prepareFrom + PREPARATION_LIMIT_MS } };
+  }
+  const scope = scopeOf(row);
+  const captured = await deps.capture({ snapshotId: row.id, parentId: row.parentId, childId: row.childId, workbookId: row.workbookId,
+    printedRevision: row.printedRevision, scope: scope.request, cutoff: at });
+  if (captured.status === "held") return { ok: false, outcome: { status: "held", snapshotId: row.id, reason: captured.reason } };
+  if (captured.status !== "captured") return { ok: false, outcome: refusedOutcome(`capture-${captured.reason}`, row.id) };
+  if (captured.snapshot.parentId !== row.parentId || captured.snapshot.childId !== row.childId || captured.snapshot.cutoff !== at
+    || !captured.snapshot.scope.some(s => s.workbookId === row.workbookId && s.printedRevision === row.printedRevision)) {
+    return { ok: false, outcome: refusedOutcome("capture-mismatch", row.id) };
+  }
+  const days = [...captured.snapshot.scope.find(s => s.workbookId === row.workbookId)!.days].sort((a, b) => a - b);
+  const printed = captured.sources.books.find(b => b.book.id === row.workbookId)?.book.print_manifest?.days.map(d => d.day) ?? [];
+  const payload: FrozenPayload = plainJson({
+    frozenAt: at,
+    scope: { kind: scope.kind, request: scope.request, cutoff: at, days, heldDays: [...new Set(printed)].filter(d => !days.includes(d)).sort((a, b) => a - b),
+      jobs: { captured: jobs.length, waiting: jobs.filter(j => j === "waiting").length, deadlineReached: at - row.prepareFrom >= PREPARATION_LIMIT_MS } },
+    sources: captured.sources, historyFence: captured.fence, snapshot: captured.snapshot, history: captured.history,
+    ...freezeEvidence(captured.snapshot, captured.history, captured.held),
+  });
+  if (!validatePlannerEvidence({ history: payload.history, evidence: payload.ledger }, [])) return { ok: false, outcome: refusedOutcome("invalid-ledger", row.id) };
+  // The first freeze wins. A concurrent caller gets that freeze back, never its own.
+  const saved = await deps.store.save(row.id, payload, snapshotHash(payload));
+  if (saved.status !== "ok") return { ok: false, outcome: refusedOutcome(saved.reason, row.id) };
+  return { ok: true, row: saved.snapshot };
+}
+
+/** Plan a frozen revision once, check consumed against the ledger, and keep the plan. */
+async function planOnce(row: NextBookSnapshotRecord, deps: NextBookDeps): Promise<Freeze> {
+  if (!row.frozen || row.snapshotHash !== snapshotHash(row.frozen)) return { ok: false, outcome: refusedOutcome("snapshot-hash-mismatch", row.id) };
+  if (row.plan) return { ok: true, row };
+  const frozen = frozenView(row)!;
+  const answer = await deps.planner.plan(structuredClone({ snapshot: frozen.snapshot, history: frozen.history, frozen }));
+  if (!answer.ok) return { ok: false, outcome: refusedOutcome(`planner-${answer.reason}`, row.id) };
+  if (!validatePlannerEvidence(frozen, answer.consumed)) return { ok: false, outcome: refusedOutcome("consumed-outside-ledger", row.id) };
+  if (!/^[0-9a-f]{64}$/.test(answer.planHash) || !answer.held.every(h => typeof h?.key === "string" && typeof h.reason === "string")) {
+    return { ok: false, outcome: refusedOutcome("invalid-plan", row.id) };
+  }
+  const plan: SavedPlan = plainJson({ planHash: answer.planHash, planInput: answer.planningInput,
+    consumed: answer.consumed.map(({ key, version }) => ({ key, version })), held: answer.held.map(({ key, reason }) => ({ key, reason })) });
+  const saved = await deps.store.savePlan(row.id, plan);
+  if (saved.status === "ok") return { ok: true, row: saved.snapshot };
+  if (saved.reason === "plan-conflict") {
+    // Another caller saved its plan first (a planner that is not deterministic). The stored plan is the one used.
+    const kept = await deps.store.read(row.id);
+    if (kept?.plan) return { ok: true, row: kept };
+  }
+  return { ok: false, outcome: refusedOutcome(saved.reason, row.id) };
+}
+
+async function advance(row: NextBookSnapshotRecord, deps: NextBookDeps, now: number, by: SnapshotActor | null): Promise<PrepareOutcome> {
+  if (row.runId) return { status: "queued", snapshotId: row.id, runId: row.runId };
+  const frozen = await freeze(row, deps, now);
+  if (!frozen.ok) return frozen.outcome;
+  const planned = await planOnce(frozen.row, deps);
+  if (!planned.ok) return planned.outcome;
+  const r = planned.row;
+  if (r.revision > 1) return { status: "planned", snapshotId: r.id, revision: r.revision, admission: "refresh" };
+  const admitted = await deps.store.admit(r.id, by ?? r.actor, deps.run);
+  if (admitted.status === "started") return { status: "queued", snapshotId: r.id, runId: admitted.runId };
+  if (admitted.status === "refused") return refusedOutcome(admitted.reason, r.id);
+  // The child's active run (or a stalled one start_workbook_run takes up) comes first; prepare again after it.
+  return { status: "planned", snapshotId: r.id, revision: r.revision, admission: admitted.status };
+}
+
+/**
+ * Trigger -> one chain -> bounded wait -> freeze -> planner -> consumed check -> one run. Only Book 1 -> book 2:
+ * a later source book answers unsupported-source-book and queues nothing. Decides no learning policy.
+ */
+export async function prepareNextBook(trigger: NextBookTrigger, deps: NextBookDeps, now: number): Promise<PrepareOutcome> {
+  if (!Number.isSafeInteger(now)) return refusedOutcome("invalid-clock");
+  let answer: StoreAnswer | HoldAnswer;
+  if (trigger.kind === "claim") answer = await deps.store.claim({ triggerId: trigger.triggerId });
+  else if (trigger.kind === "admin") answer = await deps.store.claim({ workbookId: trigger.workbookId, actor: trigger.actor });
+  else if (trigger.kind === "backstop-hold") answer = await deps.store.hold(trigger.workbookId, trigger.deliveryAuditId);
+  else {
+    const row = await deps.store.read(trigger.snapshotId);
+    answer = row ? { status: "ok", snapshot: row } : { status: "refused", reason: "snapshot-not-found" };
+  }
+  if (answer.status === "refused") return answer.reason === "unsupported-source-book" ? { status: "unsupported-source-book" } : refusedOutcome(answer.reason);
+  if (answer.status === "held") return { status: "held", snapshotId: answer.snapshot.id, reason: "no-accepted-scans-at-backstop" };
+  return advance(answer.snapshot, deps, now, trigger.kind === "admin" ? trigger.actor : null);
+}
