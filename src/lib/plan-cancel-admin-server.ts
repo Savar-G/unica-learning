@@ -4,7 +4,7 @@ import type Stripe from "stripe";
 import type { Database } from "@/lib/database";
 import type { AdminSession } from "@/lib/admin-store";
 import { CANCEL_CHECK_AGE_MS } from "@/lib/plan-cancel-recovery-server";
-import { CARD_READ, customerSubscriptions } from "@/lib/stripe-subscriptions";
+import { CARD_READ, customerSubscriptions, planCancelApplied } from "@/lib/stripe-subscriptions";
 
 export async function openFamilyCancels(admin: AdminSession, parent: string) {
   const { data, error } = await admin.db.rpc("admin_open_plan_cancels", { p_parent: parent });
@@ -26,7 +26,7 @@ export async function checkOpenCancel(db: SupabaseClient<Database>, client: Stri
     const plans = (await customerSubscriptions(client, card.data.stripe_customer_id, CARD_READ)).filter(p => p.status !== "incomplete_expired");
     if (plans.some(p => !p.id || typeof p.status !== "string")) throw Error("Stripe plan unreadable");
     // An older canceled subscription must not hide a current running subscription. No subscription means nothing was canceled.
-    state = plans.length > 0 && plans.every(p => p.status === "canceled" || (typeof p.cancel_at === "number" && p.cancel_at > 0) || p.cancel_at_period_end === true)
+    state = plans.length > 0 && plans.every(planCancelApplied)
       ? "applied" : "refused";
   } catch { return { ok: false as const, error: "stripe_unavailable" }; }
   const closed = await db.rpc("close_plan_cancel", { p_parent: parent, p_id: operation, p_state: state });
