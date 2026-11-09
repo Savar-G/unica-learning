@@ -894,7 +894,7 @@ export interface EmailRow {
   parent_id: string;
   child_id: string | null;
   assessment_id: string | null;
-  kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe";
+  kind: import("@/lib/reminders").LogKind;
   status: "claimed" | "sent" | "failed" | null;
   attempts: number;
   sent_at: string | null;

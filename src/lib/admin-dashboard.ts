@@ -20,7 +20,7 @@ export interface RawCard {
   saved_in_stripe_only?: boolean;
 }
 export interface RawWaitlist { id: string; created_at: string; parent_id: string; child_id: string; province: Province }
-export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
+export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe" | "scan_inactivity"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
 /** A Stripe subscription of a saved card's customer. Times are ISO. `amount`: the price per unit, in cents. */
 export interface RawSubscription {
   id: string;
@@ -110,7 +110,7 @@ export function monthlyAmount(s: RawSubscription): number {
 
 // Emails
 
-export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe";
+export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe" | "scan_inactivity";
 export interface EmailKindInfo { kind: EmailKind; label: string; subject: string; to: string; trigger: string }
 /** Every email the site logs. The subjects follow reminder-email.ts and report-email.ts. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = [
@@ -125,6 +125,7 @@ export const EMAIL_KINDS: readonly EmailKindInfo[] = [
   { kind: "maya_weekly", label: "Weekly Maya email", subject: "Weekly Maya email", to: "Parent", trigger: "Monday at 7 a.m. family time, after a week with calls" },
   { kind: "maya_unsubscribe", label: "Maya unsubscribe", subject: "No email: the parent turned Maya emails off", to: "-", trigger: "Parent clicked unsubscribe in a Maya email" },
   { kind: "monthly_summary", label: "Monthly summary email", subject: "{month} summary: {child}", to: "Parent", trigger: "The 1st of the month at 7 a.m. family time, when a summary is offered" },
+  { kind: "scan_inactivity", label: "Scan reminder", subject: "Ready to scan your next page?", to: "Parent", trigger: "Four family-local days without qualifying work" },
   { kind: "monthly_summary_unsubscribe", label: "Monthly summary unsubscribe", subject: "No email: the parent turned monthly summary emails off", to: "-", trigger: "Parent clicked unsubscribe in a monthly summary email" },
 ];
 /** An unsubscribe row: no email went. */
