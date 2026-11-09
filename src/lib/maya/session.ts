@@ -788,7 +788,8 @@ const MAIN_ACTS: Record<Teaching, Act[]> = {
  */
 function asksForHelp(text: string): boolean {
   const turn = text.trim().replace(/’/g, "'").replace(/\s+/g, " ");
-  return /^(?:(?:please|um|okay) )*(?:help(?: me)?(?: please)?|i need help|(?:can|could|will) you help(?: me)?|i(?:'m| am) stuck|show me|i don't know how|i don't get it)[.!?]?$/i.test(turn)
+  // A final "?" only on forms that are questions; "I'm stuck?" stays an unclear turn (controller-fixes #605 test).
+  return /^(?:(?:please|um|okay) )*(?:(?:help(?: me)?(?: please)?|i need help|i(?:'m| am) stuck|show me|i don't know how|i don't get it)[.!]?|(?:can|could|will) you help(?: me)?[.!?]?)$/i.test(turn)
     || saysStuck(text) || /^(?:(?:can|could|would|will) you (?:please )?|please )?show me\b/i.test(turn);
 }
 
