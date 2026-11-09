@@ -16,8 +16,8 @@ export function AdminScanProgress({ workbookId, view, missingDelivery }: { workb
     <h3>Workbook {view.number}: scan progress</h3>
     {view.delivery === "missing" ? <p>Delivery not confirmed. <Link href={adminWorkbookPath(workbookId)}>Confirm workbook delivered</Link>.</p>
       : view.delivery === "invalid" ? <p>Delivery information is unavailable. <Link href={adminWorkbookPath(workbookId)}>Open the workbook</Link>.</p>
-      : <p>Day 21 backstop: {view.backstop ?? "Deadline unavailable"}</p>}
-    <p>Day 7 trigger: {view.claim?.reason === "day7_scanned" ? `Claimed ${view.claim.at}` : view.claim ? `Not claimed. Backstop trigger claimed ${view.claim.at}.` : "Not claimed"}</p>
+      : <p>Day 21 deadline: {view.backstop ?? "Deadline unavailable"}</p>}
+    <p>Day 7 snapshot: {view.claim?.reason === "day7_scanned" ? `taken ${view.claim.at}` : view.claim ? `not taken. The day 21 deadline started the next book ${view.claim.at}.` : "not taken yet"}</p>
     {view.held && <ScanHold number={view.number} />}
     <Table label={`Workbook ${view.number} scanned pages`} head={["Day", "Required pages", "Accepted scans", "Gaps", "Marking and review"]} empty="No printed days available.">
       {view.days.map(day => <tr key={day.day}><td>Day {day.day}</td><td>{list(day.required)}</td><td>{list(day.accepted)}</td><td>{list(day.gaps)}</td>
