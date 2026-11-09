@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import publicEvidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
-import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, selectComparisonModels, transportUsage, upgradeFixed40Manifest, validateComparisonManifest, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
+import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, selectComparisonModels, transportUsage, teamLine, teamReason, upgradeFixed40Manifest, validateComparisonManifest, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
 import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "@/lib/scan-marking-comparison-run";
 import { markingRequest, readMarkingOutput, TWO_WAYS_METHOD_MARKS, validMarkingOutput } from "@/lib/scan-marking";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
+import { expectedItems } from "@/lib/scan-observation";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { fileJournal, refreshEvidence, rpcEvaluationBudget } from "../../scripts/scan-marking-comparison-cli";
 import { syntheticChoiceCenters, syntheticReading, syntheticTextSvg } from "../../scripts/scan-marking-synthetic-photos";
@@ -943,4 +944,14 @@ it("retains every measured metric after a saved model block is reloaded", () => 
   const after=comparisonReports(data,reloaded,[failed],[proof],blocks)[0];
   expect(before).toMatchObject({schemaFailures:1,failures:1,testedPhotos:1,measuredMicros:1000,status:"blocked",passed:false,complete:false,costPerPageUsd:null});
   expect(after).toEqual(before);
+});
+
+
+describe("team method reasons", () => {
+  it.each(["parent", "unscored", "unavailable"] as const)("names the %s method", (method) => {
+    const item = expectedItems(photo().frame)[0];
+    const reason = teamReason({ ...item, method });
+    expect(reason).not.toBeNull();
+    expect(teamLine({ items: 1, reasons: { [reason!]: 1 } })).toContain(method);
+  });
 });

@@ -50,3 +50,16 @@ it('shows Update card after a confirmed payment refusal and asks for a new price
  expect([...container.querySelectorAll('button')].map(b=>b.textContent)).toContain('Review price');
  expect(f.refresh).not.toHaveBeenCalled();
 });
+it('keeps the restart confirmation after the refresh turns the control into Pause',async()=>{
+ f.fetch.mockResolvedValueOnce(Response.json({ok:true,state:'preview',price:49,token:'b'.repeat(64)})).mockResolvedValueOnce(Response.json({ok:true,state:'started',price:49}));
+ await act(async()=>root.render(createElement(PlanControl,{cardId:'card',name:'Leah',mode:'restart'})));await click('Restart plan');await click('Review price');await click('Confirm restart');
+ // The refreshed page reads the plan as paying and renders the same control in pause mode.
+ await act(async()=>root.render(createElement(PlanControl,{cardId:'card',name:'Leah',mode:'pause'})));
+ expect(container.querySelector('[role="status"]')?.textContent).toBe('The paid plan has restarted. We will prepare the next workbook from the current learning profile.');
+ expect(container.textContent).not.toContain('The pause is saved.');
+});
+it('says the pause is saved after a confirmed pause',async()=>{
+ f.fetch.mockResolvedValueOnce(Response.json(preview)).mockResolvedValueOnce(Response.json({...preview,state:'applied'}));
+ await act(async()=>root.render(createElement(PlanControl,{cardId:'card',name:'Leah',mode:'pause'})));await click('Pause plan');await click('Review new dates');await click('Confirm pause');
+ expect(container.querySelector('[role="status"]')?.textContent).toBe('The pause is saved. Your mailing and charge dates have changed.');
+});

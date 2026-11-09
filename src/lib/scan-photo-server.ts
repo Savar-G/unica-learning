@@ -1,4 +1,5 @@
 import "server-only";
+import { scanPhotoIsActive } from "@/lib/scan-photo-active";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { sessionClient, adminClient } from "@/lib/supabase-auth";
@@ -51,8 +52,7 @@ export async function scanView(db: SupabaseClient<Database>, parent: string, id:
     db.from("children").select("first_name").eq("id", photo.child_id).eq("parent_id", parent).maybeSingle(),
   ]);
   const live = photo.state === "saved" || photo.state === "pending";
-  const active = live && Date.parse(photo.expires_at) > Date.now()
-    && (photo.state === "saved" || Date.parse(photo.created_at) > Date.now() - 86_400_000);
+  const active = scanPhotoIsActive(photo, Date.now());
   return { ...photo, state: live && !active ? "expired" : photo.state, child: child?.first_name, book: book?.number, day: page?.day_label, page: page?.page_number };
 }
 

@@ -31,7 +31,7 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200
 const NOW = 5_000_000_000;
 
 /** One customer behind the real SDK. A create has no answer, and stays out there until `land()`. */
-function stripeFake(family: MemoryFamily, { noCreate = false } = {}) {
+function stripeFake(family: MemoryFamily, { noCreate = false, refused = false, permissionRefused = false } = {}) {
   const plans: Record<string, unknown>[] = [];
   const out: (() => void)[] = [];
   const client = new Stripe("sk_test_synthetic", { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (input, init) => {
@@ -41,6 +41,8 @@ function stripeFake(family: MemoryFamily, { noCreate = false } = {}) {
     if (method === "GET" && url.pathname === "/v1/subscriptions") return json({ object: "list", has_more: false, data: plans });
     if (method === "GET" && url.pathname.startsWith("/v1/customers/")) return json({ id: "cus_1", invoice_settings: { default_payment_method: { id: "pm_1", type: "card" } } });
     if (method === "POST" && url.pathname === "/v1/subscriptions") {
+      if (permissionRefused) return Response.json({ error: { type: "invalid_request_error", message: "Raw provider permission error" } }, { status: 403 });
+      if (refused) return Response.json({ error: { type: "card_error", code: "card_declined", message: "Raw provider refusal" } }, { status: 402 });
       const key = new Headers(init?.headers).get("Idempotency-Key");
       if (!noCreate) out.push(() => {
         plans.push({ id: "sub_late", status: "trialing", default_payment_method: "pm_1", metadata: { start_key: key }, trial_end: 1_900_000_000 });
@@ -53,10 +55,10 @@ function stripeFake(family: MemoryFamily, { noCreate = false } = {}) {
   return { client, land: () => { for (const landing of out.splice(0)) landing(); } };
 }
 
-function world({ noCreate = false } = {}) {
+function world({ noCreate = false, refused = false, permissionRefused = false } = {}) {
   const billing = memoryBilling({ children: [child] });
   const family = memoryFamily({ openPlanStart: () => billing.planStarts.get(CARD)?.at(-1)?.state === "open" });
-  const stripe = stripeFake(family, { noCreate });
+  const stripe = stripeFake(family, { noCreate, refused, permissionRefused });
   h.rows = billing.store;
   h.client = stripe.client;
   // The card hold's two database functions, with their rules.
@@ -92,6 +94,7 @@ it("a start that answered unconfirmed lets go of the card hold, and the record t
   expect(pressed.status).toBe(409);
   expect(await pressed.json()).toEqual({ ok: false, error: "unconfirmed" });
   expect(w.family.holds).toBe(0);
+  expect(w.billing.planStarts.get(CARD)?.at(-1)?.state).toBe("open");
 
   expect(await w.remove()).toEqual({ ok: false, error: "plan_start", plansStopped: 0 });
   expect(w.family.fenced).toBe(false);
@@ -123,4 +126,31 @@ it("changes nothing for a family that never reached a start", async () => {
   const w = world();
   expect(await w.remove()).toEqual({ ok: true, plansStopped: 0 });
   expect(w.family.fenced).toBe(true);
+});
+
+it("a refused initial start closes its record and releases the route hold, so deletion can proceed", async () => {
+  const w = world({ refused: true });
+  const response = await w.press();
+  expect(w.billing.planStarts.get(CARD)?.at(-1)?.state).toBe("refused");
+  expect(w.family.holds).toBe(0);
+  expect(await response.json()).toEqual({ ok: false, error: "payment_refused" });
+  expect(await w.remove()).toEqual({ ok: true, plansStopped: 0 });
+});
+
+it("keeps an open start when saving the refusal fails, but releases the route hold", async () => {
+  const w = world({ refused: true });
+  h.rows = { ...w.billing.store, finishPlanStart: async () => { throw new Error("Synthetic save failure"); } };
+  const response = await w.press();
+  expect(w.billing.planStarts.get(CARD)?.at(-1)?.state).toBe("open");
+  expect(w.family.holds).toBe(0);
+  expect(await response.json()).toEqual({ ok: false, error: "unconfirmed" });
+  expect(await w.remove()).toEqual({ ok: false, error: "plan_start", plansStopped: 0 });
+});
+
+it("does not describe a Stripe permission error as a refused card, and still releases the route hold", async () => {
+  const w = world({ permissionRefused: true });
+  const response = await w.press();
+  expect(w.billing.planStarts.get(CARD)?.at(-1)?.state).toBe("refused");
+  expect(w.family.holds).toBe(0);
+  expect(await response.json()).toEqual({ ok: false, error: "failed" });
 });

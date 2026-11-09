@@ -54,7 +54,7 @@ export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checke
     audit: [{ id: 1, at, actor_email: null, action: "draft-stored", detail: { pages: 1, rendered: false, renderProblems: 1, ignored_private_key: "private-value" } }],
     solves: state === "not-checked" ? [] : [solve],
     aiCalls: summarizeAiCalls([]),
-    approved: null, comments: [], editBatch: null,
+    approved: null, comments: [], editBatch: null, edits: [], versions: [], adminNames: {},
   };
 }
 // FIXTURE_END
@@ -225,6 +225,18 @@ describe("admin workbook run progress", () => {
       expect(onChildPage(run)).not.toContain("Stop this run");
       expect(onRunPage(run)).not.toContain("Stop this run");
     }
+  });
+
+  it("shows active run status without calling a quiet run stopped", () => {
+    const quiet = running({ heartbeatAt: ago(400) });
+    const queued = running({ status: "queued", heartbeatAt: null });
+    for (const text of [onChildPage(quiet), onRunPage(quiet)]) {
+      expect(text).toContain("No progress for 6 minutes");
+      expect(text).not.toContain("This run stopped");
+      expect(text).toContain("Stop this run");
+    }
+    for (const text of [onChildPage(queued), onRunPage(queued)]) expect(text).toContain("Waiting for the Mac");
+    for (const text of [onChildPage(running({ status: "stale" })), onRunPage(running({ status: "stale" }))]) expect(text).toContain("Stopped");
   });
 
   it("shows who stopped a run and when, and it does not read as a failure", () => {

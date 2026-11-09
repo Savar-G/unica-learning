@@ -63,7 +63,7 @@ export function Hero() {
         <p className="lead">{HERO.lead}</p>
         <div className="ctas">
           <GetStarted src="hero" />
-          <Link className="btn ghost" href="/sample-report">See a sample report</Link>
+          <Link className="btn ghost" href="/whats-included">What&apos;s included</Link>
         </div>
         <ul className="facts">{HERO_FACTS.map((f) => <li key={f}>{f}</li>)}</ul>
       </div>
@@ -177,7 +177,7 @@ export function Pricing() {
             "Free online math assessment and report, before you choose a plan",
             "A program built from your child's level and gaps",
             "2 paper workbooks a month, mailed home",
-            "The Unica Teaching Assistant: help out loud when they're stuck",
+            "The Unica Teaching Assistant: chat for Grade 3 and up",
             "The parent app: instant answer checks, solutions and progress reports",
             "Rewards for every page and every week",
             "Delivery included. Cancel anytime",

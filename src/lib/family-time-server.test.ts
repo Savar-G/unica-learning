@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import { familyProvince, familyZone } from "@/lib/family-time";
-import { familyRetryTime, loadFamilyProvince, loadFamilyZone } from "@/lib/family-time-server";
+import { familyRetryTime, loadFamilyProvince, loadFamilyZone, loadFamilyZones } from "@/lib/family-time-server";
 vi.mock("server-only", () => ({}));
 
 const children = [
@@ -52,5 +52,39 @@ describe("one family's zone for the scan results page (#715)", () => {
     expect(valid.requests.every((u) => u.searchParams.get(u.pathname.endsWith("parents") ? "id" : "parent_id") === "eq.parent")).toBe(true);
     expect(familyZone({ postal: "M5V 2T6" })).toEqual(await loadFamilyZone(client({ postal: "M5V 2T6", time_zone: null }).db, "parent"));
     expect(await loadFamilyZone(client({ postal: null, time_zone: "Not/AZone" }).db, "parent")).toBe("America/Toronto");
+  });
+});
+
+
+describe("batched family zones", () => {
+  it("matches individual reads and uses two queries for several families", async () => {
+    const parents = [
+      { id: "zone", postal: "V3S 1A1", time_zone: "America/Halifax" },
+      { id: "postal", postal: "M5V 2T6", time_zone: null },
+      { id: "province", postal: null, time_zone: null },
+    ];
+    const kids = [
+      { id: "a", parent_id: "province", first_name: "A", created_at: "2020-01-01", province: "AB" },
+      { id: "b", parent_id: "province", first_name: "B", created_at: "2021-01-01", province: "ON" },
+    ];
+    const requests: URL[] = [];
+    const db = createClient<Database>("https://fixture.invalid", "key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+      const url = new URL(String(input)); requests.push(url);
+      const isParent = url.pathname.endsWith("parents"), param = url.searchParams.get(isParent ? "id" : "parent_id")!;
+      const rows = isParent ? parents : kids;
+      if (param.startsWith("eq.")) {
+        const id = param.slice(3);
+        const matches = rows.filter((r) => ("parent_id" in r ? r.parent_id : r.id) === id);
+        return Response.json(matches[0] ?? null);
+      }
+      return Response.json(rows);
+    } } });
+    const ids = ["zone", "postal", "province", "missing"];
+    expect(await loadFamilyZones(db, [])).toEqual(new Map());
+    expect(requests).toHaveLength(0);
+    const batched = await loadFamilyZones(db, ids);
+    expect(requests).toHaveLength(2);
+    for (const id of ids) expect(batched.get(id)).toBe(await loadFamilyZone(db, id));
+    expect([...batched.values()]).toEqual(["America/Halifax", "America/Toronto", "America/Edmonton", "America/Vancouver"]);
   });
 });

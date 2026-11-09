@@ -1,4 +1,5 @@
 import { commentFromRow, editFromRow } from "@/lib/workbook-edit-store";
+import { vancouverTime } from "@/lib/workbook-review-display";
 import type { ReviewComment, WorkbookEdit, EditCheckpoint } from "@/lib/workbook-edit";
 import "server-only";
 import { connection } from "next/server";
@@ -13,6 +14,7 @@ import { filterTests, mainOnly, questionNumbers, type AdminFilters, type AnswerR
 import type { TestContextRecord } from "@/lib/admin-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
+import type { LogKind, LogStatus } from "@/lib/email-log-kinds";
 import { signWork } from "@/lib/work-store";
 import { PLAN_KEY_MS } from "@/lib/card-reconcile";
 import { findSavedCard } from "@/lib/saved-card";
@@ -448,6 +450,8 @@ export interface CardSetupRow {
   card_saved_at: string | null;
   workbookEmails?: WorkbookEmailRecord[];
   workbookEmailsReadAt?: number;
+  /** Any completed start prevents another initial free month. Null or absent means the evidence is unknown. */
+  planStarted?: boolean | null;
   /** A plan start that needs the team: open, with Stripe's key past its life (#554). */
   stuckPlanStart?: number | null;
 }
@@ -456,19 +460,37 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
   if (!cards.length) return cards;
   const emails = await allRows(a.db.from("workbook_emails")
     .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
-    .in("card_setup_id", cards.map((c) => c.id)).order("created_at").order("id"), "workbook emails");
+    .in("card_setup_id", cards.map((c) => c.id)).order("created_at").order("id"), "workbook emails").catch(() => null);
   const workbookEmailsReadAt = Date.now();
-  const openStarts = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at")
-    .in("card_setup_id", cards.map((c) => c.id)).eq("state", "open").order("card_setup_id").order("generation"), "plan starts");
+  const starts = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at, state")
+    .in("card_setup_id", cards.map((c) => c.id)).order("card_setup_id").order("generation"), "plan starts").catch(() => null);
+  const plans = await allRows(a.db.from("child_plan_states").select("child_id, parent_id, kind")
+    .in("child_id", cards.map((c) => c.child_id)).order("child_id"), "child plan states").catch(() => null);
   // The plan start emails: one per generation, on the start's record. They read as ledger rows, with the generation as the number.
   const planEmails = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, email_send_status, email_claimed_at, email_sent_at, email_subject, email_text")
-    .in("card_setup_id", cards.map((c) => c.id)).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails");
-  const planEmailRecords = planEmails.map((e) => ({
+    .in("card_setup_id", cards.map((c) => c.id)).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails").catch(() => null);
+  const planEmailRecords = (planEmails ?? []).map((e) => ({
     id: `plan-${e.card_setup_id}-${e.generation}`, card_setup_id: e.card_setup_id, kind: "plan_start" as const, workbook_number: e.generation,
     status: e.email_send_status as WorkbookEmailStatus, claimed_at: e.email_claimed_at, sent_at: e.email_sent_at, delivery: {}, subject: e.email_subject, text_body: e.email_text,
   }));
-  const stuck = new Map(openStarts.filter((s) => workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
-  return cards.map((c) => ({ ...c, workbookEmails: [...emails, ...planEmailRecords].filter((e) => e.card_setup_id === c.id), workbookEmailsReadAt, stuckPlanStart: stuck.get(c.id) ?? null }));
+  const completed = new Set((starts ?? []).filter((s) => s.state === "started" || s.state === "other").map((s) => s.card_setup_id));
+  for (const email of emails ?? []) if (email.kind === "plan_start" && email.status === "sent") completed.add(email.card_setup_id);
+  const startedKinds = new Set(["free_month", "paying", "payment_failed", "paused", "ending", "ended"]);
+  const readsKnown = emails !== null && starts !== null && plans !== null && planEmails !== null;
+  const stuck = new Map((starts ?? []).filter((s) => s.state === "open" && workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
+  return cards.map((c) => {
+    const plan = plans?.find((p) => p.child_id === c.child_id && p.parent_id === c.parent_id);
+    // Started: a completed start, a sent legacy confirmation, or a stored running or ended plan. Never started: no such
+    // evidence and either no stored plan row (a first card whose parent never opened the Account tab, #790 re-review) or a
+    // stored not_started. Any other stored kind, or a row of another parent, is unknown: check Stripe. A failed read is unknown.
+    const planStarted = !readsKnown ? null : completed.has(c.id) || startedKinds.has(plan?.kind ?? "") ? true
+      : !plan && !plans.some((p) => p.child_id === c.child_id) || plan?.kind === "not_started" ? false : null;
+    return {
+      ...c, workbookEmails: emails && planEmails ? [...emails, ...planEmailRecords].filter((e) => e.card_setup_id === c.id) : undefined,
+      workbookEmailsReadAt: emails && planEmails ? workbookEmailsReadAt : undefined,
+      planStarted, stuckPlanStart: stuck.get(c.id) ?? null,
+    };
+  });
 }
 
 export interface WaitlistRow {
@@ -754,6 +776,9 @@ export interface AuditEntry {
 export interface RunDetail {
   comments: ReviewComment[];
   editBatch: WorkbookEdit | null;
+  edits: ReviewSend[];
+  versions: ReviewVersion[];
+  adminNames: Record<string, string>;
   run: WorkbookRun;
   child: ChildRow | null;
   /** The draft the run stored, its revision 1's rendering and what did not render; null until the run is done. */
@@ -773,6 +798,9 @@ export interface RunDetail {
   activity?: RunActivity;
 }
 
+export interface ReviewSend { id: string; createdAt: string; finishedAt: string | null; displayAt?: string; displayFinishedAt?: string; revision: number | null; baseRevision: number; status: string }
+export interface ReviewVersion { revision: number; createdAt: string; displayAt?: string; byUser: string | null; byEmail: string | null; workbook: GeneratedWorkbook; rendering: DraftRendering | null }
+
 /** One run with its draft, page images and audit log, or null. */
 export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDetail | null> {
   if (!isUuid(id)) return null;
@@ -780,15 +808,15 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   if (!row) return null;
   const run = runFromRow(row);
   const activity = run.status === "running" ? await runActivity(a, run.id) : undefined;
-  const [children, draftRow, revision, audit, solveRows, callRows, approved, comments, edits, editSolves] = await Promise.all([
+  const [children, draftRow, revisions, audit, solveRows, callRows, approved, comments, edits, editSolves, adminNames] = await Promise.all([
     childrenById(a, [run.childId]),
     run.draftId
       ? a.db.from("workbook_drafts").select("schema_version, draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ schema_version: number; draft: GeneratedWorkbook } | null>(r, "workbook draft"))
       : null,
     run.draftId
-      ? a.db.from("workbook_draft_revisions").select("revision, content, rendering, render_problems").eq("draft_id", run.draftId).order("revision", { ascending: false }).limit(1).maybeSingle()
-        .then((r) => must<{ revision: number; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] } | null>(r, "draft revision"))
-      : null,
+      ? a.db.from("workbook_draft_revisions").select("revision, content, rendering, render_problems, created_at, by_user, by_email").eq("draft_id", run.draftId).order("revision", { ascending: false })
+        .then((r) => must<{ revision: number; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[]; created_at: string; by_user: string | null; by_email: string | null }[]>(r, "draft revisions"))
+      : [],
     a.db.from("workbook_audit").select("id, at, actor_email, action, detail")
       .or(run.draftId ? `run_id.eq.${run.id},draft_id.eq.${run.draftId}` : `run_id.eq.${run.id}`).order("at").order("id").range(0, 199)
       .then((r) => must<AuditEntry[]>(r, "workbook audit")),
@@ -800,14 +828,17 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
     run.draftId
       ? a.db.from("workbooks").select("id, status").eq("id", run.draftId).maybeSingle().then((r) => must<{ id: string; status: WorkbookSummary["status"] } | null>(r, "approved workbook"))
       : null,
-    run.draftId ? a.db.from("workbook_comments").select("*").eq("draft_id", run.draftId).order("created_at").limit(500).then((r) => must(r, "comments")) : [],
-    run.draftId ? a.db.from("workbook_edits").select("*").eq("draft_id", run.draftId).order("created_at", { ascending: false }).limit(1).maybeSingle().then((r) => must(r, "edit batch")) : null,
+    run.draftId ? readPaged(async (from, to) => must(await a.db.from("workbook_comments").select("*").eq("draft_id", run.draftId!).order("created_at").order("id").range(from, to), "comments")) : [],
+    run.draftId ? readPaged(async (from, to) => must(await a.db.from("workbook_edits").select("*").eq("draft_id", run.draftId!).order("created_at", { ascending: false }).order("id").range(from, to), "edits")) : [],
     run.draftId ? readPaged(async (from, to) => must(await a.db.from("workbook_edits").select("checkpoints").eq("draft_id", run.draftId!).eq("status", "done").order("created_at").range(from, to), "edit solve checks")) : [],
+    a.db.rpc("admin_team_names").then(r => must(r, "admin names")),
   ]);
   // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.
   const oldFormat = draftRow && oldDraft(draftRow.schema_version, draftRow.draft.pages[0]?.content) ? draftRow.schema_version : null;
   const current = oldFormat === null ? draftRow : null;
-  const paths = current ? revision?.rendering?.pages.map((p) => p.image.path) ?? [] : [];
+  const revision = revisions[0];
+  const versions: ReviewVersion[] = current ? revisions.map(r => ({ revision: r.revision, createdAt: r.created_at, displayAt: vancouverTime(r.created_at), byUser: r.by_user, byEmail: r.by_email, workbook: r.content ?? current.draft, rendering: r.rendering })) : [];
+  const paths = [...new Set(versions.flatMap(v => [...(v.rendering?.pages.map(p => p.image.path) ?? []), ...(v.rendering?.pdfPath ? [v.rendering.pdfPath] : [])]))];
   const signed = paths.length ? await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : { data: [], error: null };
   if (signed.error) console.error("[admin] draft images sign failed", signed.error.message);
   const images: Record<string, string> = {};
@@ -815,7 +846,9 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   return {
     run, child: children[0] ?? null, images, audit, oldFormat, approved, activity,
     comments: comments.map(commentFromRow),
-    editBatch: edits ? editFromRow(edits) : null,
+    editBatch: edits[0] ? editFromRow(edits[0]) : null,
+    edits: edits.map(e => ({ id: e.id, createdAt: e.created_at, finishedAt: e.finished_at, displayAt: vancouverTime(e.created_at), displayFinishedAt: vancouverTime(e.finished_at ?? e.created_at), revision: e.revision, baseRevision: e.base_revision, status: e.status })),
+    versions, adminNames: Object.fromEntries(adminNames.filter(n => n.name).map(n => [n.user_id, n.name!])),
     aiCalls: summarizeAiCalls(callRows.map((r) => ({ ...r, usd: r.usd === null ? null : Number(r.usd) }))),
     solves: [...solveRows.map((r) => ({ questionId: r.question_id, model: r.model, verdict: r.verdict, ms: r.ms, usd: r.usd === null ? null : Number(r.usd), log: r.log })),
       ...editSolves.flatMap((e) => Object.values(e.checkpoints as unknown as Record<string, EditCheckpoint>).flatMap((p) => p.solves ?? []))],
@@ -894,8 +927,8 @@ export interface EmailRow {
   parent_id: string;
   child_id: string | null;
   assessment_id: string | null;
-  kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe";
-  status: "claimed" | "sent" | "failed" | null;
+  kind: LogKind;
+  status: LogStatus | null;
   attempts: number;
   sent_at: string | null;
   error: string | null;

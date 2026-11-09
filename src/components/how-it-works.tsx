@@ -3,6 +3,7 @@
 // Leah's sample workbook pages and her next cover (public/whats-included, whats-included-parts.tsx).
 /* eslint-disable @next/next/no-img-element -- fixed-size crops of the sample workbook pages inside the card picture */
 import type { ReactNode } from "react";
+import { SHOW_OLD_SAMPLE_PLANS } from "@/lib/maya-public-images";
 import Link from "next/link";
 import { Section, SectionHeader, StepCard, StepGrid } from "@/ds";
 import { ASSETS, MarkedPage, NextCover } from "@/components/whats-included-parts";
@@ -24,7 +25,7 @@ const STEPS: { n: string; title: string; text: ReactNode; vis: ReactNode; label:
     n: "02",
     title: "Their workbook arrives",
     text: "Made from the report, for your child only, and mailed home. Two a month. The first month is free.",
-    vis: (
+    vis: SHOW_OLD_SAMPLE_PLANS && (
       <div className="how-v how-v-open">
         <img src={`${ASSETS}/wb/leah-02-plan.jpg`} alt="" />
         <img src={`${ASSETS}/wb/leah-03-d1p1.jpg`} alt="" />
@@ -47,9 +48,9 @@ const STEPS: { n: string; title: string; text: ReactNode; vis: ReactNode; label:
   {
     n: "04",
     title: "Stuck? The Teaching Assistant helps",
-    text: "Your child starts a call. The Teaching Assistant opens their exact question on a shared board and talks it through, one step at a time.",
+    text: "Children in Grade 3 and up can type to the Teaching Assistant about a workbook question. Maya gives hints and can show an easier example on a shared board.",
     vis: <TeachingDemo />,
-    label: "The shared board on a call: the Teaching Assistant works through 300 minus 128 one step at a time, then Leah writes the last digit.",
+    label: "Illustration of a shared board: the Teaching Assistant works through 300 minus 128, then Leah writes the last digit.",
   },
   {
     n: "05",
@@ -90,7 +91,7 @@ export function How() {
             key={s.n}
             number={s.n}
             title={s.title}
-            visual={<div className="how-pic" role="img" aria-label={s.label}>{s.vis}</div>}
+            visual={s.vis && <div className="how-pic" role="img" aria-label={s.label}>{s.vis}</div>}
             visualTone="paper"
             className="rise"
             style={d(i * 0.06)}
