@@ -46,6 +46,16 @@ describe("write-words: number names in code (#715)", () => {
     expect(checkWordsReading("three hundred fourty-two", "three hundred forty-two")).toBe(MISSPELLED_NUMBER_NAME);
     expect(checkWordsReading("ninty-nine", "ninety-nine")).toBe(MISSPELLED_NUMBER_NAME);
   });
+  it.each([
+    ["fourty", "forty"], ["ninty", "ninety"], ["ninteen", "nineteen"], ["eightteen", "eighteen"],
+    ["twelv", "twelve"], ["fivety", "fifty"], ["fivty", "fifty"], ["fiveteen", "fifteen"],
+    ["one hundered", "one hundred"], ["one hunderd", "one hundred"],
+  ])("marks the known spelling %s as %s", (reading, key) => {
+    expect(checkWordsReading(reading, key)).toBe("right");
+  });
+  it("sends eigth to the team", () => {
+    expect(checkWordsReading("eigth", "eight")).toBeNull();
+  });
   it.each([["forty-two", "fourty three"], ["forty-two", "42"], ["forty-two", "forty-two written another way"], ["forty-two", "for tea two?"]])(
     "key %j and an unclear reading %j are unsure (our team checks it)", (key, reading) => {
       expect(checkWordsReading(reading, key)).toBeNull();
