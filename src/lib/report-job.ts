@@ -40,6 +40,9 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //   7. Last, the child's profile (#303, src/lib/child-profile.ts) is built again from the test's stored profile and
 //      the child's learning events, then, with the AI on and events to link, its AI findings (#304), which stop after at
 //      most CHILD_PROFILE_AI_MS (20 s). A failure is logged; the facts stay stored.
+// #771: the /api/reminders run retries a test that still has no report, or whose parent email was refused
+// (src/lib/report-retry.ts), through the retry route, with `failureAlert` off and, past 48 hours or for a test family or
+// a team account, `email` off.
 // Safe to run twice: the report is stored once, and each email is sent at most once through the delivery module
 // (src/lib/email-delivery.ts, #151), which claims it on the report row (src/lib/report-row-ledger.ts) before it is
 // sent. If the parent email fails, the report is still stored and visible in the account, and the alert tells Savar.
@@ -79,6 +82,13 @@ export interface ReportJobOptions {
    * profiles are Supabase too; none when `profiles` is given (in memory) without it.
    */
   rebuildChild?: (childId: string) => Promise<unknown>;
+  /**
+   * #771: false builds and stores the report with no email and no report alert (a retry of a test finished more than 48
+   * hours ago, of a test family or of a team account; src/lib/report-retry.ts). Default true.
+   */
+  email?: boolean;
+  /** #771: false sends no "Report FAILED" alert (a retry: the retries send one alert after the last). Default true. */
+  failureAlert?: boolean;
 }
 
 /** The given database seams; the missing ones are Supabase with the secret key. Null without the key. */
@@ -105,7 +115,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
   const db = database(options);
   if (!db) return;
   const { ledger: book, store } = db;
-  const { reviewer, transport, profileAi } = options;
+  const { reviewer, transport, profileAi, email = true, failureAlert = true } = options;
   const rebuildChild = options.rebuildChild ?? (options.profiles ? null : rebuildChildProfileNow);
   let profile: ProfileBuild | null = null;
   let childId: string | null = null;
@@ -119,31 +129,34 @@ export async function runReportJob(assessmentId: string, origin: string, options
     childId = assessment.childId;
     const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer() : reviewer);
     profile = await profileStep(assessmentId, () => storeProfileFacts(db.profiles, inputs));
+    if (!email) {
+      console.info("[report] built with no email", assessmentId);
+    } else {
+      // The view of the email and the alert, from the report-loading module with the secret key (#163): the same view
+      // that the report page and the admin report view show. The secret key signs nothing: the email has no drawings.
+      // #198: use this run's facts snapshot. A concurrent learning-card rebuild can already have stored AI parts, and
+      // a failed facts save can leave an older profile behind. Neither may put profile AI into this email.
+      const emailReader: ReportReader = {
+        ...db.reader,
+        profile: async (id) => id === assessment.id ? (profile?.profile ?? null) : null,
+      };
+      const [parent, loaded] = await Promise.all([store.parent(assessment.parentId), loadReportView(emailReader, report.id)]);
+      if (!parent) throw new Error("parent not found: no row");
+      // A missing child or test: the view is not found.
+      if (!loaded) throw new Error("report view not found: no child or test row");
+      const { view } = loaded;
+      const url = `${origin}${reportPath(report.id)}`;
 
-    // The view of the email and the alert, from the report-loading module with the secret key (#163): the same view
-    // that the report page and the admin report view show. The secret key signs nothing: the email has no drawings.
-    // #198: use this run's facts snapshot. A concurrent learning-card rebuild can already have stored AI parts, and
-    // a failed facts save can leave an older profile behind. Neither may put profile AI into this email.
-    const emailReader: ReportReader = {
-      ...db.reader,
-      profile: async (id) => id === assessment.id ? (profile?.profile ?? null) : null,
-    };
-    const [parent, loaded] = await Promise.all([store.parent(assessment.parentId), loadReportView(emailReader, report.id)]);
-    if (!parent) throw new Error("parent not found: no row");
-    // A missing child or test: the view is not found.
-    if (!loaded) throw new Error("report view not found: no child or test row");
-    const { view } = loaded;
-    const url = `${origin}${reportPath(report.id)}`;
-
-    const parentEmail = await emailParent(store, book, transport, report.id, view, { ...parent, id: assessment.parentId }, `${url}?src=email`);
-    // Another run holds the claim of the parent email: it is sending now, or its send's outcome is unknown. That run
-    // sends (or sent) the alert.
-    if (parentEmail !== "busy") {
-      await alertSavar(book, transport, report.id, reportAlert({ view, parent, url: `${origin}${adminTestPath(assessment.id)}`, flags: assessment.placement.flags ?? [], help: assessment.help, parentEmail, ai }), parent.email);
+      const parentEmail = await emailParent(store, book, transport, report.id, view, { ...parent, id: assessment.parentId }, `${url}?src=email`);
+      // Another run holds the claim of the parent email: it is sending now, or its send's outcome is unknown. That run
+      // sends (or sent) the alert.
+      if (parentEmail !== "busy") {
+        await alertSavar(book, transport, report.id, reportAlert({ view, parent, url: `${origin}${adminTestPath(assessment.id)}`, flags: assessment.placement.flags ?? [], help: assessment.help, parentEmail, ai }), parent.email);
+      }
     }
   } catch (e) {
     console.error("[report] failed", assessmentId, message(e));
-    await alertFailure(transport, assessmentId, message(e));
+    if (failureAlert) await alertFailure(transport, assessmentId, message(e));
   }
   // Step 6, after the emails: the profile's AI parts, over the facts this run stored.
   if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient() : profileAi }));

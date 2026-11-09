@@ -169,12 +169,36 @@ it("gives a family the switch does not open to today's Parent home, byte for byt
   family.card = true;
   family.olderChild = true;
   scanning.enabled = true;
-  const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ password: "1", pin: "1", existing: "1" }) })));
+  // Half an hour after Asha's test: her report is not late yet (#771).
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-10-19T04:59:00Z") });
+  let out: string;
+  try {
+    out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ password: "1", pin: "1", existing: "1" }) })));
+  } finally {
+    vi.useRealTimers();
+  }
   await expect(out).toMatchFileSnapshot("./parent-home.golden.html");
   expect(out).not.toContain("pd-");
   // #560: the Overview is never read or shown for this family.
   expect(overview.reads).toBe(0);
   expect(out).not.toContain("po-");
+});
+
+// #771: with no report an hour after the test, the line under the child says it is late, and asks the parent to write.
+it("says the report is late on today's Parent home an hour after the test, with no report", async () => {
+  const render = async (at: string) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.parse(at) });
+    try {
+      return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+  const onTime = await render("2026-10-19T05:29:00Z");
+  expect(onTime).toContain("Test done. The report comes by email.");
+  const late = await render("2026-10-19T05:29:01Z");
+  expect(late).toContain("Test done. Asha&#x27;s new result is taking longer than it should.");
+  expect(late).not.toContain("The report comes by email");
 });
 
 describe("a family the switch opens to", () => {

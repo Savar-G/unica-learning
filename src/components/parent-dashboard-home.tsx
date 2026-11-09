@@ -33,6 +33,8 @@ export interface DashboardHomeProps {
   timeZone: FamilyZone;
   states: Parameters<typeof stateFor>[0];
   reportFor: (id: string, state: StartState) => string | undefined;
+  /** #771: the report of the test just done is late (reportLate in src/lib/report-late.ts). */
+  lateFor: (id: string, state: StartState) => boolean;
   current: ReadonlyMap<string, WorkbookSummary>;
   chats: ReadonlyMap<string, ChatUsage>;
   notes: ReadonlyMap<string, ParentNote>;
@@ -46,7 +48,7 @@ export interface DashboardHomeProps {
  * Overview, one child's part of Parent home until #560 fills it. A panel with no data does not appear. A stage that opens
  * on the report never reaches this page: /account sends it there. The family's links are on the Account tab.
  */
-export function ParentDashboardHome({ dashboard, overview, kids, addressChild, phone, sent, parentEmail, timeZone, states, reportFor, current, chats, notes, scansEnabled, noticeDue, alerts }: DashboardHomeProps) {
+export function ParentDashboardHome({ dashboard, overview, kids, addressChild, phone, sent, parentEmail, timeZone, states, reportFor, lateFor, current, chats, notes, scansEnabled, noticeDue, alerts }: DashboardHomeProps) {
   const view = pickChild(dashboard.children, addressChild, dashboard.remembered);
   const kid = kids.find((k) => k.id === view?.id);
   const links = tabLinks(view);
@@ -59,7 +61,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
   const scanLink = scansEnabled && !links.some((l) => l.tab === "scan_pages") && <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>;
   if (kid && state && view && (view.opensOn === "start_test" || view.opensOn === "continue_or_wait")) {
     return (
-      <ParentTestStart childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} phone={phone} sent={sentHere} parentEmail={parentEmail} alerts={alerts} learning={view.reportIds.length > 0 ? { path: learningPath(kid.id), answered: !!fromRow(kid) } : null}>
+      <ParentTestStart childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} phone={phone} sent={sentHere} parentEmail={parentEmail} alerts={alerts} learning={view.reportIds.length > 0 ? { path: learningPath(kid.id), answered: !!fromRow(kid) } : null}>
         {noticeDue && current.size > 0 && <MayaNoticeCard />}
         {mayaHere && chats.has(kid.id) && <MayaChatRow name={kid.first_name} chat={chats.get(kid.id)!} />}
         {mayaHere && notes.has(kid.id) && <NoteCard note={notes.get(kid.id)!} name={kid.first_name} zone={timeZone} latest />}
@@ -93,7 +95,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
               </span>
               {phone && state.kind !== "wait"
                 ? <SendLink key={kid.id} childId={kid.id} name={kid.first_name} sent={sentHere} />
-                : <StartTest childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} />}
+                : <StartTest childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} />}
               {current.has(kid.id) && <div className="acct-desk"><DeskText name={kid.first_name} workbook={current.get(kid.id)!} pinSet={dashboard.pinSet} /></div>}
               {mayaHere && chats.has(kid.id) && <MayaChatRow name={kid.first_name} chat={chats.get(kid.id)!} />}
               {mayaHere && notes.has(kid.id) && <NoteCard note={notes.get(kid.id)!} name={kid.first_name} zone={timeZone} latest />}
