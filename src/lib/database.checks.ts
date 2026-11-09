@@ -279,6 +279,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"parents","name":"parents_postal_check","definition":"CHECK ((postal ~ '^[ABCEGHJ-NPRSTVXY][0-9][A-Z] ?[0-9][A-Z][0-9]$'::text))"},
   {"table":"parents","name":"parents_source_check","definition":"CHECK ((pg_column_size(source) < 4000))"},
   {"table":"parents","name":"parents_time_zone_check","definition":"CHECK (((time_zone IS NULL) OR (((char_length(time_zone) >= 1) AND (char_length(time_zone) <= 64)) AND (time_zone ~ '^[A-Za-z][A-Za-z0-9_+/-]*$'::text))))"},
+  {"table":"plan_cancel_alerts","name":"plan_cancel_alerts_state_check","definition":"CHECK ((state = ANY (ARRAY['sending'::text, 'sent'::text, 'released'::text, 'unknown'::text])))"},
   {"table":"plan_control_operations","name":"plan_control_operations_check","definition":"CHECK ((((kind = 'pause'::text) AND (weeks > 0) AND (allowance_year IS NOT NULL) AND (target_number > 0)) OR ((kind = 'cancel'::text) AND (weeks = 0))))"},
   {"table":"plan_control_operations","name":"plan_control_operations_check1","definition":"CHECK (((state = 'open'::text) = (finished_at IS NULL)))"},
   {"table":"plan_control_operations","name":"plan_control_operations_kind_check","definition":"CHECK ((kind = ANY (ARRAY['pause'::text, 'cancel'::text])))"},

@@ -196,3 +196,16 @@ To cancel, sign in and open https://unicalearning.com/account/plan, then press "
     if (!(marking && explain)) for (const format of [message.text, message.html]) expect(format).not.toContain("Explain");
   });
 });
+
+describe("the plan start email's reminder words (PR #803 review)", () => {
+  // Every reminder case renders byte for byte as main renders it without the shared reminder rule. The digest was first taken at
+  // b4d9feb3, then again after the merge of main at b8e938ef, which added #806's approved five-day guidance; all 72 renders were
+  // compared with main's own workbook-email.ts and matched exactly.
+  const cases = [undefined, true].flatMap((sharedWindow) => [undefined, true, false].flatMap((free) => [undefined, true, false].map((reminder) => ({ sharedWindow, free, reminder }))));
+  it("keeps the parent email unchanged for every window, free and reminder case", async () => {
+    const { createHash } = await import("node:crypto");
+    const rendered = cases.map((c) => planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 59.99, firstCharge: "December 15, 2026", marking: true, explain: true, ...c }));
+    expect(createHash("sha256").update(JSON.stringify(rendered)).digest("hex")).toBe("e062e3b2ae7195b52a4daaf337e4d856700bf0017b6c6ba7d03760a726cc68ed");
+    rendered.forEach((m, i) => expect(m.text.includes(" We will email you a reminder 7 days before the first charge.")).toBe(cases[i].reminder !== false));
+  });
+});

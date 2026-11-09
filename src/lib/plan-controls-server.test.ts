@@ -209,3 +209,24 @@ it("adds the durable first charge date to the Account tab's stored paid plan", a
  const b=fixture();b.firstCharge("2026-12-13T18:00:00Z");
  expect(await adjustedPlan(b.db,"parent",card,{kind:"paying",nextCharge:"2027-01-13T18:00:00Z",monthly:59.99})).toMatchObject({monthly:59.99,firstCharge:"2026-12-13T18:00:00Z"});
 });
+
+it.each([
+  [-86_400_000, false], [-600_000, false], [0, false], [120_000, false], [600_000, false], [600_001, true], [86_400_000, true],
+])("uses a ten minute safety margin for a cancelled paid pause at offset %i", async (offset, future) => {
+ const now=Date.parse("2026-11-09T00:00:00Z");
+ const clock=vi.spyOn(Date,"now").mockReturnValue(now);
+ try {
+  const start=new Date(now+offset).toISOString(), end=new Date(now+offset+14*86_400_000).toISOString(), b=fixture();
+  b.pauses.push({state:"applied",quote:{weeks:2,year:2026,used:0,subscription:"sub",kind:"paid",previousCharge:start,chargeAt:end,bookId:"book",targetNumber:2,late:false,earliest:null,latest:null,shippedAt:"2026-11-01",deliveredAt:"2026-11-03",today:"2026-11-05"}});
+  b.cancel();
+  expect(await adjustedPlan(b.db,"parent",card,{kind:"paying",nextCharge:end,monthly:79.99})).toEqual(future ? {kind:"ending",endsOn:start,free:false} : {kind:"unknown"});
+ } finally { clock.mockRestore(); }
+});
+
+it("keeps a confirmed end from the provider plan", async () => {
+ const b=fixture(); b.cancel();
+ const ending={kind:"ending" as const,endsOn:"2026-11-09T00:01:00Z",free:false};
+ const ended={kind:"ended" as const,endedOn:"2026-11-09T00:01:00Z"};
+ expect(await adjustedPlan(b.db,"parent",card,ending)).toEqual(ending);
+ expect(await adjustedPlan(b.db,"parent",card,ended)).toEqual(ended);
+});

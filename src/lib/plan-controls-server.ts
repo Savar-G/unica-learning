@@ -178,7 +178,8 @@ export async function adjustedPlan(db: SupabaseClient<Database>, parent: string,
     if (!paused) return { kind: "ending", endsOn: nextCharge, free: false };
     // A pause that has not begun was released by the Cancel, so the plan ends where it would have renewed. A pause that has begun
     // may have resumed with a later period end the stored plan does not know yet: no date is shown rather than a wrong one.
-    return Date.parse(paused.quote.previousCharge) > Date.now() ? { kind: "ending", endsOn: paused.quote.previousCharge, free: false } : { kind: "unknown" };
+    // Allow ten minutes for a slow server clock before treating the pause as not yet begun.
+    return Date.parse(paused.quote.previousCharge) > Date.now() + 10 * 60_000 ? { kind: "ending", endsOn: paused.quote.previousCharge, free: false } : { kind: "unknown" };
   }
   if (plan.kind === "paying" && !plan.firstCharge) {
     const start = await db.from("plan_starts").select("first_charge_at").eq("parent_id", parent).eq("card_setup_id", card)
