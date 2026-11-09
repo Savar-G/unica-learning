@@ -84,7 +84,7 @@ is `false`, and both callers prepare only families in `public.test_accounts`, wh
 
 The admission checks it again: both callers pass `testOnly` (`p_test_only` of `admit_next_book_run`), which refuses
 with `test-families-only` unless the family is still in `public.test_accounts`. It locks that test row `FOR SHARE`
-(migration `20261109233000_next_book_admit_row_lock.sql`), so a removal of the mark, by any path, waits for the
+(migration `20261109195323_next_book_admit_row_lock.sql`), so a removal of the mark, by any path, waits for the
 admission, and a removal that came first leaves no row to admit. A family unmarked while its plan runs gets no run. The admin page then shows "Only test families can get the next book for now."
 
 Set it to `true` in the change that makes the worker read `plan_input`.
@@ -200,9 +200,9 @@ The database functions are service-only:
 | `claim_next_book_snapshot` | Revision 1 for a claim, or for the admin action. Returns the one chain. |
 | `hold_next_book_snapshot` | Records the #628 held chain. A live chain wins over it. |
 | `save_next_book_snapshot` | Freezes once. A later call gets the first freeze back. |
-| `save_next_book_plan` | Saves the plan once. Refuses `consumed` outside the ledger. Takes the real planner's entry shapes (migration `20261109213000_next_book_plan_shape.sql`). |
+| `save_next_book_plan` | Saves the plan once. Refuses `consumed` outside the ledger. Takes the real planner's entry shapes (migration `20261109190616_next_book_plan_shape.sql`). |
 | `retake_next_book_snapshot` | Writes revision n+1 for the draft. Refused after approval or a source change. |
-| `admit_next_book_run` | Starts one run per chain through `start_workbook_run`. With `p_test_only` (migration `20261109230000_next_book_admit_test_only.sql`), only for a test family. |
+| `admit_next_book_run` | Starts one run per chain through `start_workbook_run`. With `p_test_only` (migration `20261109192936_next_book_admit_test_only.sql`), only for a test family. |
 
 ## Not built yet
 

@@ -1,7 +1,7 @@
 // In-memory NextBookSnapshotStore for tests (#476). Each call yields once, then decides atomically, so concurrent callers
 // interleave between calls the way separate transactions do, never inside one. Refusals match the SQL functions in
 // supabase/migrations/20261109050245_next_book_snapshots.sql (save_next_book_plan as replaced by
-// 20261109213000_next_book_plan_shape.sql); start_workbook_run is modelled as one active run per
+// 20261109190616_next_book_plan_shape.sql); start_workbook_run is modelled as one active run per
 // child (busy), without its stalled-run takeover. Like Postgres, the clock may be finer than a millisecond: records show
 // times truncated to milliseconds, as the Supabase adapter reads them, and a freeze is compared at milliseconds.
 import type { AdmitAnswer, FrozenPayload, HoldAnswer, NextBookSnapshotRecord, NextBookSnapshotStore, SavedPlan, SnapshotActor,
@@ -42,7 +42,7 @@ export interface MemoryNextBookState {
 }
 
 const HASH = /^[0-9a-f]{64}$/;
-/** The fields a saved plan's entries may have (save_next_book_plan, migration 20261109213000_next_book_plan_shape). */
+/** The fields a saved plan's entries may have (save_next_book_plan, migration 20261109190616_next_book_plan_shape). */
 const CONSUMED_KEYS = ["key", "version", "firstVersion", "correctionIds"], HELD_KEYS = ["key", "reason", "skill", "step", "version"];
 const clone = <T>(v: T): T => structuredClone(v);
 const refused = (reason: string) => ({ status: "refused" as const, reason });

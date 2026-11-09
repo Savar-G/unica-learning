@@ -5,7 +5,7 @@ import type { Database } from "./database";
 import { nextBookSnapshotStore } from "./next-book-snapshot-store";
 
 // #476 review: the Supabase store sends the admission's test-family rule to admit_next_book_run (migration
-// 20261109230000_next_book_admit_test_only.sql), and reads its refusal back.
+// 20261109192936_next_book_admit_test_only.sql), and reads its refusal back.
 
 const ID = "00000000-0000-4000-8500-000000000001";
 
