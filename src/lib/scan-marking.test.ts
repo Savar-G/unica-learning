@@ -185,10 +185,29 @@ class Store implements MarkingStore {
       m.originalEvent ??= events.find((e) => e.key === markingOriginalKey(m.expected)) ?? null;
     } return true;
   }
-  async pause(ref: MarkingRef, token: string) { if (this.live(ref, token)) this.jobs.get(ref.photo)!.until = 0; }
+  async pause(ref: MarkingRef, token: string, status: import("./scan-marking").MarkingStatus) {
+    if (!this.live(ref, token)) return;
+    const job = this.jobs.get(ref.photo)!;
+    if (status === "attempts") {
+      for (const m of this.items.values()) {
+        const o = m.observation;
+        if (o.evidence?.photoRevision === ref.photo && o.result === null && o.state === "pending" && m.model === null && o.certainty === "not-read")
+          m.observation = { ...o, certainty: "uncertain", issue: "read-failed", resultVersion: o.resultVersion + 1 };
+      }
+      job.done = true;
+    }
+    job.until = 0;
+  }
   async finish(ref: MarkingRef, token: string) { if (!this.live(ref, token)) return false; this.jobs.get(ref.photo)!.done = true; return true; }
   async publish() { if (this.frozen || this.deleted) return; for (const m of this.items.values()) if (m.originalEvent && !m.eventId) { m.eventId = `event-${this.events.length}`; this.events.push({ ...m.originalEvent, id: m.eventId }); } }
   async effective(parent: string, child: string) { return this.deleted || parent !== P || child !== C ? [] : structuredClone([...this.items.values()]); }
+  teamQueue() { return [...this.items.values()].filter(waitsForTeam); }
+  teamMark(key: string, version: number, result: "right" | "wrong" | "blank") {
+    const m = this.items.get(key);
+    if (!m || !waitsForTeam(m) || m.observation.resultVersion !== version) return false;
+    m.observation = { ...m.observation, state: "parent-checked", method: "parent", actor: "admin", result, resultVersion: version + 1 };
+    return true;
+  }
 }
 function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequest[] = [], cost: number | null = null, model = MARKING_MODEL): MarkingClientFactory {
   return (before) => ({ client: { model, async json(r) { await before(); requests.push(r); return typeof answer === "function" ? answer() : answer; } }, costMicros: () => cost });
@@ -1088,7 +1107,23 @@ describe("S4 shared budget", () => {
     const s = new Store(frame()), requests: AiJsonRequest[] = [];
     const twice: MarkingClientFactory = (before) => ({ client: { model: MARKING_MODEL, async json(r) { await before(); requests.push(r); await before(); requests.push(r); throw new Error("lost response"); } }, costMicros: () => null });
     expect(await run(s, "photo-a", twice)).toBe("pending"); s.clock += 181_000;
+    const already = [...s.items.values()][0];
+    already.observation = { ...already.observation, state: "scored", certainty: "certain", result: "right", resultVersion: 2 };
+    already.model = MARKING_MODEL;
+    const before = structuredClone(already);
     expect(await run(s, "photo-a", client(output(["0"]), requests))).toBe("attempts"); expect(requests).toHaveLength(2); expect(s.spend.size).toBe(2);
+    expect(s.jobs.get("photo-a")!.done).toBe(true);
+    expect(already).toEqual(before);
+    const marks = await s.effective(P, C), waiting = s.teamQueue();
+    expect(waiting).toHaveLength(2);
+    expect(waiting[0].observation).toMatchObject({ certainty: "uncertain", issue: "read-failed", result: null, resultVersion: 2 });
+    expect(observationProblem(waiting[0].observation)).toBeNull();
+    expect(markingPageView(marks).items[1].label).toBe("Our team is checking this answer.");
+    expect(markingPageView(marks).counts.teamChecks).toBe(2);
+    expect(s.events).toEqual([]);
+    const item = waiting[0];
+    expect(s.teamMark(itemKey(item.expected.identity), item.observation.resultVersion, "wrong")).toBe(true);
+    expect(s.items.get(itemKey(item.expected.identity))!.observation).toMatchObject({ state: "parent-checked", actor: "admin", result: "wrong", resultVersion: 3 });
   });
 });
 

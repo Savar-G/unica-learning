@@ -1,4 +1,5 @@
 import "server-only";
+import { scanPhotoIsActive } from "@/lib/scan-photo-active";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { checkedReady, type ScanRefusal } from "@/lib/scan-crops";
@@ -14,10 +15,6 @@ const REFUSALS: Record<ScanRefusal, true> = {
   "qr-mismatch": true, "another-page": true, faint: true, "printed-page-changed": true, "check-timeout": true, failed: true,
 };
 const refusal = (r: unknown): ScanRefusal => (typeof r === "string" && Object.hasOwn(REFUSALS, r) ? r as ScanRefusal : "failed");
-
-/** The same rule as the photo view: a saved photo until it expires, a pending one for a day. */
-const active = (p: { state: string; created_at: string; expires_at: string }, now: number) =>
-  Date.parse(p.expires_at) > now && (p.state === "saved" || Date.parse(p.created_at) > now - 86_400_000);
 
 /**
  * A photo's check as the stack shows it. A ready result made before today's sheet check (#456) is not ready: it shows as
@@ -38,7 +35,7 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
   const rows = await db.from("scan_photos").select("id,page_id,workbook_id,state,created_at,expires_at,printed_revision,sent_at")
     .eq("parent_id", parent).eq("child_id", child).in("state", ["pending", "saved"]).order("created_at", { ascending: false }).limit(100);
   if (rows.error) throw new Error("scan_stack_read");
-  const live = rows.data.filter((p) => p.page_id && p.workbook_id && active(p, now));
+  const live = rows.data.filter((p) => p.page_id && p.workbook_id && scanPhotoIsActive(p, now));
   if (!live.length) return { photos: [], pages: [] };
   const books = [...new Set(live.map((p) => p.workbook_id!))];
   const [workbooks, printed, calibrations] = await Promise.all([
