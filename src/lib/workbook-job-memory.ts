@@ -37,6 +37,7 @@ export function memoryRunStore(o: {
   children: Record<string, string>; workbooks?: Record<string, number[]>; now: () => Date; newId: () => string; drafts: WorkbookDraftStore;
   /** The most rows one read answers, as the database's row limit: reads page through it like the Supabase adapter. */
   rowLimit?: number;
+  snapshotIds?: Record<string, string>;
 }) {
   const runs = new Map<string, WorkbookRun & { lease: string | null }>();
   const pages = new Map<string, Map<number, GeneratedPage>>();
@@ -81,7 +82,7 @@ export function memoryRunStore(o: {
       runs.set(id, {
         id, createdAt: iso(), parentId, childId, number, status: "queued", step: null, attempts: 0, maxAttempts: limits.maxAttempts,
         donePages: null, totalPages: null, heartbeatAt: null, startedAt: null, finishedAt: null, error: null, errors: [], draftId: null,
-        draftKey: o.newId(), resumes: 0, startedBy: { id: by.id, email: by.email }, runner: "server", lease: null,
+        draftKey: o.newId(), ...(o.snapshotIds?.[childId] ? { snapshotId: o.snapshotIds[childId] } : {}), resumes: 0, startedBy: { id: by.id, email: by.email }, runner: "server", lease: null,
       });
       log(id, "run-started", { number }, by.email);
       return { status: "started", runId: id };

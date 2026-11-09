@@ -63,7 +63,9 @@ import {
 import { planNextWorkbook } from "@/lib/workbook-placement";
 import { instructionsEmpty, type WorkbookInstructions } from "@/lib/workbook-instructions";
 import { skillUnits } from "@/lib/workbook-teaching-frame";
-import type { WorkbookPlan, PlanInput } from "@/lib/workbook-plan";
+import { planWorkbook, type WorkbookPlan, type PlanInput } from "@/lib/workbook-plan";
+import { createHash } from "node:crypto";
+import type { NextBookSnapshotRead } from "@/lib/next-book-snapshot";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
 import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderedPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
@@ -119,6 +121,7 @@ export interface WorkbookRun {
   /** Where the run is made (D-200): on the server (Vercel, the API) or by the workbook worker on Savar's Mac. */
   runner: RunRunner;
   /** The admin who stopped the run with the Stop button; its time is `finishedAt`. */
+  snapshotId?: string | null;
   stoppedBy?: string | null;
 }
 
@@ -251,6 +254,7 @@ export const RUN_FRAME_VERSION = 1;
  */
 export interface RunFrame {
   version: number;
+  snapshotSource?: { id: string; fingerprint: string };
   /** Old frames retain the original item pipeline. New frames pin the approved policy. */
   itemPolicy?: "approved-v1";
   /** The curriculum key ("bc"). */
@@ -337,6 +341,7 @@ export interface WorkbookJobDeps {
   runs: WorkbookRunStore;
   runner?: RunRunner;
   source: WorkbookJobSource;
+  readSnapshot?(id: string): Promise<NextBookSnapshotRead>;
   drafts: WorkbookDraftStore;
   files: WorkbookFiles;
   /** Null: the AI is off, and the run fails with that reason. */
@@ -634,6 +639,18 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
   }
 }
 
+/** Stable fingerprint of a JSON snapshot, independent of object key order. */
+function snapshotFingerprintOf(value: unknown): string {
+  const canonical = (v: unknown): string => {
+    if (v === null || typeof v === "boolean" || typeof v === "string") return JSON.stringify(v);
+    if (typeof v === "number" && Number.isFinite(v)) return JSON.stringify(v);
+    if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+    if (v && typeof v === "object") return `{${Object.entries(v).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, x]) => `${JSON.stringify(k)}:${canonical(x)}`).join(",")}}`;
+    throw new Error("invalid snapshot");
+  };
+  return createHash("sha256").update(canonical(value)).digest("hex");
+}
+
 /** The generator's input from a run's plan and the child's name (printed only: the plan never reads it). */
 const generateInput = (run: WorkbookRun, frame: RunFrame, name: string): GenerateInput => ({
   workbookId: run.draftKey, childId: run.childId, book: { child: name }, number: run.number,
@@ -649,6 +666,20 @@ const generateInput = (run: WorkbookRun, frame: RunFrame, name: string): Generat
  */
 async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient; solver: Solver }, lease: string, name: string, inputs: ChildInputs): Promise<RunFrame> {
   let frame = await deps.runs.frame(run.id);
+  let snapshot: Extract<NextBookSnapshotRead, { ok: true }> | undefined;
+  let snapshotFingerprint: string | undefined;
+  if (run.snapshotId) {
+    const read = await deps.readSnapshot?.(run.snapshotId);
+    if (!read || !read.ok) throw new Refusal("The next book snapshot is missing, held, or cannot be read.");
+    if (read.snapshot.id !== run.snapshotId || read.snapshot.snapshot.childId !== run.childId || read.snapshot.snapshot.parentId !== run.parentId) {
+      throw new Refusal("The next book snapshot belongs to another family or child.");
+    }
+    if (!read.planInput || !read.planHash) throw new Refusal("The next book snapshot has no valid plan input.");
+    // TODO: Verify planHash with the planner's hash function in workbook-next-book-snapshot.ts when it lands on main.
+    try { snapshotFingerprint = snapshotFingerprintOf(JSON.parse(JSON.stringify(read))); }
+    catch { throw new Refusal("The next book snapshot has no valid plan input."); }
+    snapshot = read;
+  }
   if (!frame) {
     if (run.resumes > 0 || (await deps.runs.pages(run.id)).length > 0 || (await deps.runs.attempts(run.id)).size > 0) {
       throw new Refusal("This run has no stored plan, so it cannot resume safely. Start a new run.");
@@ -656,6 +687,27 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     const key = CURRICULUM_KEYS[inputs.province];
     const curriculum = key ? curriculumFor(key) : null;
     if (!key || !curriculum) throw new Refusal(`There is no workbook curriculum for ${inputs.province} yet. Only BC has one.`);
+    if (snapshot) {
+      let planned: ReturnType<typeof planWorkbook>;
+      try {
+        if (snapshot.planInput!.workbook.number !== run.number || !isGrade(snapshot.planInput!.grade)) throw new Error("scope");
+        planned = planWorkbook(snapshot.planInput!);
+      } catch { throw new Refusal("The next book snapshot has no valid plan input."); }
+      if (!planned.ok) throw new Refusal("The next book snapshot has no valid plan input.");
+      const made: RunFrame = {
+        version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }),
+        snapshotSource: { id: run.snapshotId!, fingerprint: snapshotFingerprint! }, curriculum: key, units: skillUnits(curriculum),
+        grade: snapshot.planInput!.grade, profileRevision: null, countsCallEvents: WORKBOOK_COUNTS_CALL_EVENTS, workbooks: inputs.workbooks,
+        plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan),
+        versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
+      };
+      if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(generateInput(run, made, name), deps.fit(run.parentId));
+      made.versions.curriculum = curriculumVersion(key)!;
+      made.versions.outline = bookOutline(generateInput(run, made, name));
+      if (!(await deps.runs.saveFrame(run.id, lease, made))) throw new Stopped("the run was taken up by another call");
+      frame = await deps.runs.frame(run.id);
+      if (!frame) throw new Error("the run's plan was not stored");
+    } else {
     const prepared = await deps.source.prepareProfile(run.childId);
     if (!prepared.ok) throw new Refusal(`We couldn't build ${name}'s profile from the assessment. Try again, or check the admin profile page.`);
     inputs = { ...inputs, profile: prepared.profile };
@@ -679,6 +731,10 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     if (!(await deps.runs.saveFrame(run.id, lease, made))) throw new Stopped("the run was taken up by another call");
     frame = await deps.runs.frame(run.id);
     if (!frame) throw new Error("the run's plan was not stored");
+    }
+  }
+  if (run.snapshotId ? frame.snapshotSource?.id !== run.snapshotId || frame.snapshotSource.fingerprint !== snapshotFingerprint : !!frame.snapshotSource) {
+    throw new Refusal("The next book snapshot changed since this run started. Start a new run.");
   }
   // Every call, the first included, checks the stored plan against what this call would make it from.
   if (frame.version !== RUN_FRAME_VERSION || !isGrade(frame.grade) || !frame.plan) throw new Refusal("The run's stored plan is of another shape. Start a new run.");

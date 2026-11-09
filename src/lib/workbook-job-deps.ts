@@ -16,6 +16,8 @@ import { workbookDraftStore } from "@/lib/workbook-draft-store";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { runWorkbookJob, type JobOutcome, type WorkbookJobDeps } from "@/lib/workbook-job";
 import { excludeRunProvider, loadRunProviderGate, runAiCallLog, saveRunAiCalls, workbookJobSource, workbookRunStore } from "@/lib/workbook-job-store";
+import { nextBookSnapshotStore } from "@/lib/next-book-snapshot-store";
+import { readNextBookSnapshot } from "@/lib/next-book-snapshot";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
@@ -55,6 +57,7 @@ export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId:
     return await runWorkbookJob(runId, {
       runs: workbookRunStore(admin),
       runner: place.subscription ? "mac" : "server",
+      readSnapshot: (id) => readNextBookSnapshot(nextBookSnapshotStore(admin), id),
       source: workbookJobSource(admin, workbookProfileBuilder(admin, env)),
       drafts: workbookDraftStore(admin),
       files: workbookFiles(admin),

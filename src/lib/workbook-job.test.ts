@@ -1132,3 +1132,68 @@ describe("an admin stops a run", () => {
     expect((await s.runs.run(first))!.stoppedBy).toBe(ADMIN.email);
   });
 });
+
+describe("snapshot runs", () => {
+  function snapshotRun() {
+    const s = setup({ budgetMs: 180_000 });
+    let input: import("./workbook-plan").PlanInput | undefined;
+    const plan = planNextWorkbook({ curriculum: curriculumFor("bc")!, grade: 3, profile: null, workbooks: [{ number: 1, levels: [10] }], number: 2 }, value => { input = value; });
+    if (!plan.ok || !input) throw new Error("fixture plan failed");
+    const read = { ok: true, snapshot: { id: "snapshot", snapshot: { childId: CHILD, parentId: PARENT } }, planInput: input, planHash: "hash", runId: null, draftId: null, consumed: [], plannerHeld: [] } as unknown as Extract<import("./next-book-snapshot").NextBookSnapshotRead, { ok: true }>;
+    const prepare = vi.fn(async () => { throw new Error("live profile read"); });
+    s.deps.source.prepareProfile = prepare;
+    s.deps.readSnapshot = async () => read;
+    return { s, read, plan: plan.plan, prepare };
+  }
+  async function startSnapshot(s: ReturnType<typeof setup>) {
+    const id = await started(s);
+    Object.assign(s.runs.runs.get(id)!, { snapshotId: "snapshot", number: 2 });
+    return id;
+  }
+  it("uses the stored input, does not read the live profile, and replays the frame", async () => {
+    const { s, read, plan, prepare } = snapshotRun();
+    const id = await startSnapshot(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("handed-on");
+    const frame = await s.runs.frame(id);
+    expect(frame?.plan).toEqual(plan);
+    expect(frame?.snapshotSource?.id).toBe("snapshot");
+    expect(prepare).not.toHaveBeenCalled();
+    expect(await runWorkbookJob(id, { ...s.deps, budgetMs: 1e9 }, { resume: true })).toBe("done");
+    expect(await s.runs.frame(id)).toEqual(frame);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(read.planInput?.workbook.number).toBe(2);
+  });
+  it.each(["not-found", "held", "not-frozen", "hash-mismatch", "parent", "child", "missing-plan", "invalid-plan"])("refuses %s", async kind => {
+    const { s, read, prepare } = snapshotRun();
+    if (["not-found", "held", "not-frozen", "hash-mismatch"].includes(kind)) s.deps.readSnapshot = async () => ({ ok: false, reason: kind as "not-found" });
+    if (kind === "parent") read.snapshot.snapshot.parentId = "other";
+    if (kind === "child") read.snapshot.snapshot.childId = "other";
+    if (kind === "missing-plan") read.planInput = null;
+    if (kind === "invalid-plan") read.planInput = {} as typeof read.planInput;
+    const id = await startSnapshot(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect((await s.runs.run(id))?.error).toMatch(/snapshot/i);
+    expect(await s.runs.frame(id)).toBeNull();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+  it("keeps the normal plan unchanged and does not read a snapshot", async () => {
+    const s = setup();
+    const readSnapshot = vi.fn(async () => { throw new Error("unexpected snapshot read"); });
+    s.deps.readSnapshot = readSnapshot;
+    const expected = planNextWorkbook({ curriculum: curriculumFor("bc")!, grade: 3, profile: null, workbooks: [], number: 1 });
+    if (!expected.ok) throw new Error(expected.reason);
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    expect((await s.runs.frame(id))?.plan).toEqual(expected.plan);
+    expect((await s.runs.frame(id))?.snapshotSource).toBeUndefined();
+    expect(readSnapshot).not.toHaveBeenCalled();
+  });
+  it("refuses a changed snapshot on resume", async () => {
+    const { s, read } = snapshotRun();
+    const id = await startSnapshot(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("handed-on");
+    read.planHash = "changed";
+    expect(await runWorkbookJob(id, { ...s.deps, budgetMs: 1e9 }, { resume: true })).toBe("failed");
+    expect((await s.runs.run(id))?.error).toMatch(/snapshot changed/);
+  });
+});
