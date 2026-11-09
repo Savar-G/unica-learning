@@ -347,6 +347,8 @@ export interface WorkbookPlan {
   instructions?: InstructionsTrace;
   /** Present only when the caller explicitly supplies a versioned progress decision. Intent, not rendered behavior. */
   progress?: ProgressPlanInput & { checkWork: boolean; teachingDays: number[] };
+  /** Multi-skill preview decisions, including whether each target fits this plan. */
+  previewDecisions?: (ProgressPlanInput & { teachingDays: number[] })[];
   personal?: BookSignals & {
     start?: import("./workbook-placement").PlacementTrace;
     why?: import("./workbook-why").WorkbookWhy;
@@ -411,6 +413,8 @@ export interface PlanInput {
   instructions?: PlanInstructions;
   /** Opt-in pure preview policy. Omit this property for the unchanged production plan. */
   progress?: ProgressPlanInput;
+  /** Preview only. Each skill has one decision from the same frozen snapshot. */
+  previewDecisions?: readonly ProgressPlanInput[];
   /** Absent, or without assessment evidence: preserve the previous plan byte for byte. */
   personal?: BookSignals;
   profile: PlanProfile;
@@ -588,6 +592,14 @@ function progressProblem(input: PlanInput): string | null {
 
 /** The child's next two weeks (see the header for the rules), or why it cannot be planned. */
 export function planWorkbook(input: PlanInput): PlanResult {
+  if (input.previewDecisions !== undefined && (!Array.isArray(input.previewDecisions)
+    || input.previewDecisions.some(p => !p?.decision?.selection || !p.decision.curriculum))) {
+    return { ok: false, reason: "invalid progress planning input" };
+  }
+  if (input.previewDecisions?.length === 1 && !input.progress) {
+    const { previewDecisions, ...rest } = input;
+    return planWith({ ...rest, progress: previewDecisions[0] }, []);
+  }
   return planWith(input, []);
 }
 
@@ -597,8 +609,23 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
     const problem = progressProblem(input);
     if (problem) return { ok: false, reason: problem };
   }
+  if (input.previewDecisions !== undefined) {
+    const ps = input.previewDecisions;
+    if (input.progress || !Array.isArray(ps) || ps.length < 2 || ps.length > 100
+      || ps.some(p => !p?.decision?.selection || !p.decision.curriculum)
+      || new Set(ps.map(p => p.decision.selection.skill)).size !== ps.length
+      || ps.some(p => p.decision.snapshotId !== ps[0].decision.snapshotId || p.decision.cutoff !== ps[0].decision.cutoff
+        || p.decision.curriculum.key !== ps[0].decision.curriculum.key || p.decision.curriculum.version !== ps[0].decision.curriculum.version)) {
+      return { ok: false, reason: "invalid progress planning input" };
+    }
+    for (const p of ps) {
+      const problem = progressProblem({ ...input, progress: p });
+      if (problem) return { ok: false, reason: problem };
+    }
+  }
   const progress = input.progress?.decision;
-  const held = progress && progress.action !== "advance" && progress.action !== "skill-complete" ? progress.target : null;
+  const decisions = input.previewDecisions?.map(p => p.decision) ?? (progress ? [progress] : []);
+  const held = new Map(decisions.filter(d => d.action !== "advance" && d.action !== "skill-complete").map(d => [d.selection.skill, d.target]));
   const { level } = input;
   if (!Number.isInteger(level.number) || level.number < 1 || level.number > LEVELS) return { ok: false, reason: "the level is not U1 to U30" };
   const levelSkills = level.units.flatMap((u) => u.skills.map((s) => ({ ...s, unit: u.code })));
@@ -695,8 +722,9 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
   const stepsLeft = () => {
     const remaining = new Map<string, QueuedStep[]>();
     for (const s of taught) {
-      if (held?.skill === s.id) {
-        remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { ...held, pages: s.steps[held.step - 1].pages }]);
+      const heldStep = held.get(s.id);
+      if (heldStep) {
+        remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { ...heldStep, pages: s.steps[heldStep.step - 1].pages }]);
         continue;
       }
       if (secureUnits.includes(s.unit)) continue;
@@ -735,7 +763,7 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
       unitsLeft.push(pending.splice(at, 1)[0]);
     }
   }
-  const testWorkbook = progress && progress.action !== "skill-complete" ? false
+  const testWorkbook = decisions.some(d => d.action !== "skill-complete") ? false
     : unitsLeft.length === 0 || input.workbook.inLevel >= level.workbooks + 2;
   const support = input.support !== null && input.workbook.inLevel < SUPPORT_WORKBOOKS ? input.support : null;
 
@@ -909,17 +937,18 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
     const lastDay = new Map<string, number>();
     const done = (skill: string, day: number) => {
       // A retained target is unfinished. Teaching it once does not unlock its dependants.
-      if (held?.skill === skill) return false;
+      if (held.has(skill)) return false;
       const list = bySkill.get(skill);
       if (!list) return true;
       return (taken.get(skill) ?? 0) >= list.length && (lastDay.get(skill) ?? 0) < day;
     };
-    const ready = (skill: string, day: number) => (MAP_SKILLS.get(skill)?.skill.requires ?? []).every((r) => !levelIds.has(r) || done(r, day));
+    const ready = (skill: string, day: number) => (!input.previewDecisions || ![...prerequisites(skill)].some(r => held.has(r)))
+      && (MAP_SKILLS.get(skill)?.skill.requires ?? []).every((r) => !levelIds.has(r) || done(r, day));
     const nextStep = (day: number): QueuedStep | null => {
-      const window = order.filter((k) => (held?.skill === k || (taken.get(k) ?? 0) < bySkill.get(k)!.length) && ready(k, day)).slice(0, STEP_WINDOW);
+      const window = order.filter((k) => (held.has(k) || (taken.get(k) ?? 0) < bySkill.get(k)!.length) && ready(k, day)).slice(0, STEP_WINDOW);
       const pick = [...window].sort((a, b) => (lastDay.get(a) ?? 0) - (lastDay.get(b) ?? 0) || order.indexOf(a) - order.indexOf(b))[0];
       if (!pick) return null;
-      const step = bySkill.get(pick)![held?.skill === pick ? 0 : taken.get(pick) ?? 0];
+      const step = bySkill.get(pick)![held.has(pick) ? 0 : taken.get(pick) ?? 0];
       taken.set(pick, (taken.get(pick) ?? 0) + 1);
       lastDay.set(pick, day);
       return step;
@@ -930,7 +959,7 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
         const step = teaching && day <= lastStart ? nextStep(day) : null;
         if (step) {
           current.A = { step, left: step.pages };
-          if (held?.skill !== step.skill || !starts.some(s => s.skill === held.skill)) {
+          if (!held.has(step.skill) || !starts.some(s => s.skill === step.skill)) {
             starts.push({ ...stepRef(step), day, track: "A" });
             startDays.A.add(day);
           }
@@ -1086,7 +1115,7 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
   const stepsBefore = (day: number) => sim.starts.filter((s) => s.day < day).map((s) => s.skill);
   const supportSkills = support ? STANDARDS.get(support)!.skills.map((k) => k.id) : [];
   const taughtStep = (skill: string, day: number) => Math.max(input.passed[skill] ?? 0,
-    ...(progress?.selection.skill === skill ? [progress.selection.step] : []),
+    ...decisions.filter(d => d.selection.skill === skill).map(d => d.selection.step),
     ...sim.starts.filter(s => s.skill === skill && s.day < day).map(s => s.step),
     ...[...input.reviews, ...input.missedReviews].filter(r => r.skill === skill).map(r => r.step));
   const personalReviewStep = (skill: string, day: number): number | undefined => {
@@ -1408,6 +1437,8 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
     plan: {
       ...(ins ? { instructions: { outcomes } } : {}),
       ...(input.progress ? { progress: { ...structuredClone(input.progress), checkWork: progress!.action === "repeat-check-work", teachingDays } } : {}),
+      ...(input.previewDecisions ? { previewDecisions: input.previewDecisions.map(p => ({ ...structuredClone(p),
+        teachingDays: days.filter(d => d.pages.some(page => page.parts.some(part => part.step?.skill === p.decision.selection.skill))).map(d => d.day) })) } : {}),
       ...(personal ? { personal: { ...personal, ...(timeShortfalls.length ? { timeShortfalls } : {}), ...(notReviewed.length ? { notReviewed } : {}), ...(reviewFallbacks.length ? { reviewFallbacks } : {}) } } : {}),
       level: n,
       lead: level.lead,

@@ -119,10 +119,8 @@ export async function readWorkbookProgressHistory(store: WorkbookProgressHistory
   catch (e) { return { ok: false, availability: "unavailable", reason: e instanceof HistoryError ? e.reason : "source-error" }; }
 }
 
-async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgressHistoryInput, limits: HistoryLimits): Promise<WorkbookProgressHistoryResult> {
-  const batch = limits.batchSize ?? 100, maxRows = limits.maxRows ?? 20_000, maxRequests = limits.maxRequests ?? 1000;
-  if (!integer(batch) || batch < 1 || batch > 500 || !integer(maxRows) || maxRows < 1 || maxRows > 100_000
-    || !integer(maxRequests) || maxRequests < 1 || maxRequests > 5000) fail("invalid-contract");
+/** Validate the immutable book catalog and selected sample. */
+function prepareHistoryInput(input: WorkbookProgressHistoryInput) {
   const s = input.snapshot, proof = input.proof;
   if (input.version !== 1 || !integer(s.cutoff) || ![s.parentId, s.childId, s.id, proof.frozenPackages, proof.priorMastery, proof.issuedHistory].every(text)
     || ![s.parentId, s.childId, ...input.books.map(b => b.workbookId)].every(uuid)
@@ -169,6 +167,15 @@ async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgress
     const x = catalog.get(k)!;
     if (!s.scope.find(b => b.workbookId === x.expected.identity.workbookId)?.days.includes(x.day)) fail("invalid-contract");
   }
+  return { s, proof, bookIds, catalog, sampleKeys };
+}
+
+async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgressHistoryInput, limits: HistoryLimits): Promise<WorkbookProgressHistoryResult> {
+  const batch = limits.batchSize ?? 100, maxRows = limits.maxRows ?? 20_000, maxRequests = limits.maxRequests ?? 1000;
+  if (!integer(batch) || batch < 1 || batch > 500 || !integer(maxRows) || maxRows < 1 || maxRows > 100_000
+    || !integer(maxRequests) || maxRequests < 1 || maxRequests > 5000) fail("invalid-contract");
+  const prepared = prepareHistoryInput(input);
+  const { s } = prepared;
   const start = await store.fence(input);
   if (!start) fail("scope-unavailable");
   if (start.parentId !== s.parentId || start.childId !== s.childId || (start.markingRevision !== null && !integer(start.markingRevision))
@@ -210,6 +217,17 @@ async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgress
     if (js.some(j => !itemIds.has(j.item_id))) fail("invalid-record");
     marks.push(...ms); changes.push(...js); events.push(...es);
   }
+  const result = normalizeHistory(input, start, marks, changes, events, counts, prepared);
+  const end = await store.fence(input);
+  if (!end || !same(start, end)) fail("changed-during-read");
+  return result;
+}
+
+/** Apply the same mark, journal, correction and cutoff checks to complete frozen rows. */
+function normalizeHistory(input: WorkbookProgressHistoryInput, start: HistoryFence, marks: HistoryMarkRow[],
+  changes: HistoryChangeRow[], events: HistoryEventRow[], counts: HistoryProof["counts"], prepared: ReturnType<typeof prepareHistoryInput>,
+  reviewOnly = false): Extract<WorkbookProgressHistoryResult, { ok: true }> {
+  const { s, proof, bookIds, catalog, sampleKeys } = prepared;
   counts.items = marks.length; counts.changes = changes.length; counts.events = events.length;
   if (new Set(changes.map(j => j.id)).size !== changes.length) fail("invalid-record");
   const byEvent = new Map<string, HistoryEventRow>(), eventKeys = new Set<string>();
@@ -371,12 +389,13 @@ async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgress
   const snapshot: ProgressSnapshot = { ...s, requiredSample };
   const history = { version: 1 as const, originals, issuedDecisions: proof.issuedDecisions };
   // The approved core validates all selected records before a complete result leaves this boundary.
-  const derived = deriveWorkbookProgress(snapshot, input.curriculum, history);
+  // Review-only evidence is checked above but never enters the mastery/advance core.
+  const derived = reviewOnly ? null : deriveWorkbookProgress(snapshot, input.curriculum, history);
   // A passed later step with no proved earlier steps is its own refusal: a printed step proves no prior mastery.
-  if (!derived.ok) fail(derived.reason === "mastery-gap" ? "mastery-gap" : "invalid-record");
+  if (derived && !derived.ok) fail(derived.reason === "mastery-gap" ? "mastery-gap" : "invalid-record");
   // Every retained row has passed the source/observation/journal checks above. The no-sample path validates held
   // selected-step evidence without making an isolated mastery decision. Other steps supply no progress decision.
-  for (const h of held) {
+  for (const h of reviewOnly ? [] : held) {
     const o = h.original, k = key(o.first.observation.identity), x = catalog.get(k)!;
     if (o.first.observation.teaching?.itemStep?.skill !== s.selection.skill || o.first.observation.teaching?.itemStep?.step !== s.selection.step) {
       if (o.secondTries.length || o.cause.kind !== "unknown") fail("invalid-contract");
@@ -388,16 +407,56 @@ async function read(store: WorkbookProgressHistoryStore, input: WorkbookProgress
     { version: 1, originals: [o], issuedDecisions: [] });
     if (!check.ok) fail("invalid-record");
   }
-  const end = await store.fence(input);
-  if (!end || !same(start, end)) fail("changed-during-read");
   return structuredClone({ ok: true, availability: "complete", snapshot, history, held, heldChanges,
     proof: { cutoff: s.cutoff, scope: s.scope, markingRevision: start.markingRevision, counts,
       sources: ["scan_marking_items", "scan_mark_changes", "learning_events"],
       corrections: proof.corrections === "unavailable" ? "unavailable" : "caller-validated",
       causes: proof.causes === "unavailable" ? "unavailable" : "caller-validated",
       callerProof: { frozenPackages: proof.frozenPackages, priorMastery: proof.priorMastery, issuedHistory: proof.issuedHistory }, references, helpEvents,
-      usedVersions: derived.decision.consumed, timeNormalization: "ceil-millisecond",
+      usedVersions: derived?.ok ? derived.decision.consumed : originals.map(o => ({ key: key(o.first.observation.identity),
+        firstVersion: o.first.observation.resultVersion, effectiveVersion: (o.changes.at(-1) ?? o.first).observation.resultVersion })), timeNormalization: "ceil-millisecond",
       helpTiming: "call-before-retained-mark; original-answer-time-unavailable" } });
+}
+
+/** Complete already-frozen rows. The capture owner must prove this set was read atomically. */
+export interface FrozenHistoryRows {
+  fence: HistoryFence;
+  books: readonly { workbookId: string; items: readonly HistoryMarkRow[]; changes: readonly HistoryChangeRow[]; events: readonly HistoryEventRow[] }[];
+}
+
+/** Pure, synchronous form of the history validator for an immutable capture. */
+export function readFrozenWorkbookProgressHistory(rawInput: WorkbookProgressHistoryInput, rawRows: FrozenHistoryRows): WorkbookProgressHistoryResult {
+  return readFrozenHistory(rawInput, rawRows, false);
+}
+/** Normalize review evidence without invoking the progress or mastery core. */
+export function readFrozenWorkbookReviewHistory(rawInput: WorkbookProgressHistoryInput, rawRows: FrozenHistoryRows): WorkbookProgressHistoryResult {
+  return readFrozenHistory(rawInput, rawRows, true);
+}
+function readFrozenHistory(rawInput: WorkbookProgressHistoryInput, rawRows: FrozenHistoryRows, reviewOnly: boolean): WorkbookProgressHistoryResult {
+  try {
+    const input = structuredClone(rawInput), rows = structuredClone(rawRows);
+    const prepared = prepareHistoryInput(input), start = rows.fence;
+    if (!start || start.parentId !== input.snapshot.parentId || start.childId !== input.snapshot.childId
+      || (start.markingRevision !== null && !integer(start.markingRevision)) || start.books.length !== input.books.length
+      || !Array.isArray(rows.books) || rows.books.length !== input.books.length) fail("invalid-record");
+    const marks: HistoryMarkRow[] = [], changes: HistoryChangeRow[] = [], events: HistoryEventRow[] = [];
+    for (const b of input.books) {
+      const fs = start.books.filter(f => f.workbookId === b.workbookId), bs = rows.books.filter(r => r.workbookId === b.workbookId);
+      if (fs.length !== 1 || bs.length !== 1 || fs[0].printedRevision !== b.printedRevision || !same(fs[0].manifest, b.manifest)) fail("scope-unavailable");
+      const f = fs[0], source: FrozenHistoryRows["books"][number] = bs[0];
+      if (!Array.isArray(source.items) || !Array.isArray(source.changes) || !Array.isArray(source.events)
+        || f.counts.items !== source.items.length || f.counts.changes !== source.changes.length || f.counts.events !== source.events.length
+        || source.items.some(m => m.workbook_id !== b.workbookId || m.printed_revision !== b.printedRevision)
+        || source.events.some(e => e.workbook_id !== b.workbookId)) fail("invalid-record");
+      const ids = new Set(source.items.map(m => m.id));
+      if (source.changes.some(c => !ids.has(c.item_id))) fail("invalid-record");
+      marks.push(...source.items); changes.push(...source.changes); events.push(...source.events);
+    }
+    if (marks.length + changes.length + events.length > 20_000) fail("safety-bound");
+    return normalizeHistory(input, start, marks, changes, events, { items: 0, changes: 0, events: 0, requests: 0 }, prepared, reviewOnly);
+  } catch (e) {
+    return { ok: false, availability: "unavailable", reason: e instanceof HistoryError ? e.reason : "source-error" };
+  }
 }
 
 /** Public composition. No unavailable source can silently become an empty complete history. */
