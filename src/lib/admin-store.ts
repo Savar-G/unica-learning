@@ -480,7 +480,11 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
   const stuck = new Map((starts ?? []).filter((s) => s.state === "open" && workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
   return cards.map((c) => {
     const plan = plans?.find((p) => p.child_id === c.child_id && p.parent_id === c.parent_id);
-    const planStarted = !readsKnown ? null : completed.has(c.id) || startedKinds.has(plan?.kind ?? "") ? true : plan?.kind === "not_started" ? false : null;
+    // Started: a completed start, a sent legacy confirmation, or a stored running or ended plan. Never started: no such
+    // evidence and either no stored plan row (a first card whose parent never opened the Account tab, #790 re-review) or a
+    // stored not_started. Any other stored kind, or a row of another parent, is unknown: check Stripe. A failed read is unknown.
+    const planStarted = !readsKnown ? null : completed.has(c.id) || startedKinds.has(plan?.kind ?? "") ? true
+      : !plan && !plans.some((p) => p.child_id === c.child_id) || plan?.kind === "not_started" ? false : null;
     return {
       ...c, workbookEmails: emails && planEmails ? [...emails, ...planEmailRecords].filter((e) => e.card_setup_id === c.id) : undefined,
       workbookEmailsReadAt: emails && planEmails ? workbookEmailsReadAt : undefined,

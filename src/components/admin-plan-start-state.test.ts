@@ -113,7 +113,17 @@ for (const page of ["next steps", "parent detail"]) {
       expect(html).not.toContain("Preview welcome email");
     }
   });
-  it.each([{ missingPlan: true }, { planKind: "unknown" }, { wrongParent: true }])(`${page} shows a Stripe check when the plan evidence is unknown: %j`, async (evidence) => {
+  it(`${page} offers the first free month for a saved card with no start and no stored plan row (#790 re-review)`, async () => {
+    // A parent saved the first card and never opened the Account tab, so no plan state row exists. startPlan can start it.
+    for (const id of ["unknown"]) {
+      const html = cardHtml(await readCards(page), id);
+      expect(html).toContain("Workbook delivered: start free month");
+      expect(html).not.toContain("Check the plan in Stripe before starting a free month.");
+    }
+    const missing = cardHtml(await readCards(page, { missingPlan: true }), "legacy-state");
+    expect(missing).toContain("Workbook delivered: start free month");
+  });
+  it.each([{ planKind: "unknown" }, { wrongParent: true }])(`${page} shows a Stripe check when the plan evidence is unknown: %j`, async (evidence) => {
     const html = cardHtml(await readCards(page, evidence), "legacy-state");
     expect(html).toContain("Check the plan in Stripe before starting a free month.");
     expect(html).not.toContain("Workbook delivered: start free month");

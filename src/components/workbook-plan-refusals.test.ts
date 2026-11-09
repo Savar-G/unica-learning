@@ -22,7 +22,7 @@ const states = [
 ];
 const actions = [
   { name: "prepare", suffix: ", so no new workbook can be prepared.", view: () => createElement(PrepareWorkbook, { childId: "child", child: "Leah" }), response: (message: string) => ({ ok: false, error: message }) },
-  { name: "approve", suffix: ". Approval must wait.", view: () => createElement(ApproveDraft, { runId: "run", revision: 1, workbookPath: "/admin/workbooks/book", child: "Leah" }), response: (message: string) => ({ ok: false, reasons: [message] }) },
+  { name: "approve", suffix: ". Approval must wait.", view: () => createElement(ApproveDraft, { runId: "run", revision: 1, workbookPath: "/admin/workbooks/book", child: "Leah", pending: 0 }), response: (message: string) => ({ ok: false, reasons: [message] }) },
   { name: "mark printed", suffix: ". This workbook cannot be marked printed.", view: () => createElement(MarkWorkbook, { workbookId: "book", to: "printed", number: 2 }), response: (message: string) => ({ ok: false, reason: message }) },
   { name: "ship", suffix: ". This workbook cannot be marked shipped.", view: () => createElement(MarkWorkbook, { workbookId: "book", to: "shipped", number: 2 }), response: (message: string) => ({ ok: false, reason: message }) },
 ];
