@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-import { PLANNER_NOT_READY, prepareFromSnapshot, type AdminNextBookDeps, type AdminNextBookFamily } from "./next-book-admin";
+import { PLANNER_NOT_READY, prepareFromSnapshot, TEST_FAMILIES_ONLY, type AdminNextBookDeps, type AdminNextBookFamily } from "./next-book-admin";
 import { ADMIN, MIN, nextBookWorld, REV, uuid, type Family } from "./next-book-step.fixture";
 
 // #476: "Prepare from snapshot" through its public interface: the memory snapshot store, a fake planner, the family as
@@ -14,9 +14,9 @@ function setup() {
   const families = new Map<string, AdminNextBookFamily>();
   const reads: string[] = [];
   const add = (f: Family, over: Partial<AdminNextBookFamily> = {}) =>
-    families.set(f.childId, { parentId: f.parentId, deleting: false, deliveredBook1: f.bookId, zone: "America/Vancouver", ...over });
+    families.set(f.childId, { parentId: f.parentId, deleting: false, testFamily: true, deliveredBook1: f.bookId, zone: "America/Vancouver", ...over });
   const deps = (over: Partial<AdminNextBookDeps> = {}): AdminNextBookDeps => ({
-    planner: w.planner, prepare: w.prepare,
+    planner: w.planner, prepare: w.prepare, realFamilies: false,
     family: async id => { reads.push(id); return families.get(id) ?? null; },
     now: () => w.clock.now, ...over,
   });
@@ -38,6 +38,27 @@ describe("Prepare from snapshot", () => {
     // Pressing again is safe: the same run.
     expect(await s.press(f)).toEqual({ ok: true, line: "Next book queued." });
     expect(s.w.m.state.runs).toHaveLength(1);
+  });
+
+  // Review P2-1. Falsifier: with real families off (production until the worker reads plan_input), the admin button
+  // freezes, plans or queues anything for a family that is not in test_accounts.
+  it("refuses a real family before any write, and still queues a test family", async () => {
+    const s = setup();
+    const real = s.w.family(1), test = s.w.family(2);
+    s.add(real, { testFamily: false });
+    s.add(test);
+    s.w.claim(real, T0 - MIN);
+    s.w.claim(test, T0 - MIN);
+    expect(await s.press(real)).toEqual({ ok: false, error: "test-families-only", line: TEST_FAMILIES_ONLY });
+    expect(s.w.writes).toEqual([]);
+    expect(s.w.chainOf(real)).toBeUndefined();
+    expect(s.w.m.state.snapshots).toEqual([]);
+    expect(s.w.m.state.runs).toEqual([]);
+    expect(await s.press(test)).toEqual({ ok: true, line: "Next book queued." });
+    expect(s.w.m.state.runs).toEqual([expect.objectContaining({ childId: test.childId, number: 2 })]);
+    expect(s.w.chainOf(real)).toBeUndefined();
+    // Once the worker reads plan_input (realFamilies true), the same real family is queued.
+    expect(await s.press(real, { realFamilies: true })).toEqual({ ok: true, line: "Next book queued." });
   });
 
   it("uses the book's claim when there is one", async () => {

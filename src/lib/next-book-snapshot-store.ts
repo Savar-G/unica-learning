@@ -99,7 +99,7 @@ export function nextBookSnapshotStore(db: SupabaseClient<Database>): NextBookSna
     },
     async admit(id, by, limits): Promise<AdmitAnswer> {
       const { data, error } = await db.rpc("admit_next_book_run", { p_snapshot: id, p_by: by?.id ?? null, p_email: by?.email ?? null,
-        p_max_attempts: limits.maxAttempts, p_stale_seconds: limits.staleSeconds });
+        p_max_attempts: limits.maxAttempts, p_stale_seconds: limits.staleSeconds, p_test_only: limits.testOnly ?? false });
       const a = answer(data, error);
       if (a.status === "started" && typeof a.run === "string") return { status: "started", runId: a.run, existing: a.existing === true };
       if ((a.status === "busy" || a.status === "stalled") && typeof a.run === "string") return { status: a.status, runId: a.run };
