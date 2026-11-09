@@ -448,6 +448,8 @@ export interface CardSetupRow {
   card_saved_at: string | null;
   workbookEmails?: WorkbookEmailRecord[];
   workbookEmailsReadAt?: number;
+  /** Any completed start prevents another initial free month, including after a later refused restart. */
+  planStarted?: boolean;
   /** A plan start that needs the team: open, with Stripe's key past its life (#554). */
   stuckPlanStart?: number | null;
 }
@@ -458,8 +460,8 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
     .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
     .in("card_setup_id", cards.map((c) => c.id)).order("created_at").order("id"), "workbook emails");
   const workbookEmailsReadAt = Date.now();
-  const openStarts = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at")
-    .in("card_setup_id", cards.map((c) => c.id)).eq("state", "open").order("card_setup_id").order("generation"), "plan starts");
+  const starts = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at, state")
+    .in("card_setup_id", cards.map((c) => c.id)).order("card_setup_id").order("generation"), "plan starts");
   // The plan start emails: one per generation, on the start's record. They read as ledger rows, with the generation as the number.
   const planEmails = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, email_send_status, email_claimed_at, email_sent_at, email_subject, email_text")
     .in("card_setup_id", cards.map((c) => c.id)).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails");
@@ -467,8 +469,9 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
     id: `plan-${e.card_setup_id}-${e.generation}`, card_setup_id: e.card_setup_id, kind: "plan_start" as const, workbook_number: e.generation,
     status: e.email_send_status as WorkbookEmailStatus, claimed_at: e.email_claimed_at, sent_at: e.email_sent_at, delivery: {}, subject: e.email_subject, text_body: e.email_text,
   }));
-  const stuck = new Map(openStarts.filter((s) => workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
-  return cards.map((c) => ({ ...c, workbookEmails: [...emails, ...planEmailRecords].filter((e) => e.card_setup_id === c.id), workbookEmailsReadAt, stuckPlanStart: stuck.get(c.id) ?? null }));
+  const completed = new Set(starts.filter((s) => s.state === "started" || s.state === "other").map((s) => s.card_setup_id));
+  const stuck = new Map(starts.filter((s) => s.state === "open" && workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
+  return cards.map((c) => ({ ...c, workbookEmails: [...emails, ...planEmailRecords].filter((e) => e.card_setup_id === c.id), workbookEmailsReadAt, planStarted: completed.has(c.id), stuckPlanStart: stuck.get(c.id) ?? null }));
 }
 
 export interface WaitlistRow {

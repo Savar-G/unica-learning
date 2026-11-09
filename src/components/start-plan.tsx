@@ -3,16 +3,24 @@
 import { localDay, PACIFIC_ZONE } from "@/lib/family-time";
 
 import { useState } from "react";
+import type { StartPlanError } from "@/lib/plan-start-errors";
 
-const ERRORS: Record<string, string> = {
-  already: "This family already has a plan in Stripe. Open it in Stripe to check.",
-  no_card: "No saved card was found for this family.",
+const ERRORS: Record<StartPlanError, string> = {
+  already: "This child already has a plan in Stripe. Open it in Stripe to check.",
+  no_card: "No saved card was found for this child.",
   not_delivered: "Confirm that the first workbook has arrived at the family's home before starting the free month.",
   delivery_receipt_required: "Open this child's workbook 1 and confirm its delivery. Then return here to start the free month.",
   unconfirmed: "We could not confirm that Stripe started this plan. Do not start another one. Reload this page in 15 minutes, or check the family in Stripe.",
   needs_team: "This start needs the team: Stripe did not answer it, and after 24 hours we still find no plan. Do not start another one. Reload this page to see what to do.",
-  unavailable: "Stripe is unavailable. Try again later.",
-  failed: "Stripe could not start the plan. Check Stripe before trying again.",
+  unavailable: "The plan service is unavailable. Try again later.",
+  failed: "We could not confirm the plan start. Check this child's plan in Stripe before trying again.",
+  delivery_confirmation_required: "The delivery confirmation was not sent correctly. Reload this page and confirm delivery again.",
+  invalid: "The start request could not be read. Reload this page and try again.",
+  restart_required: "This child's plan has ended. The parent can restart it from the Account tab, or the team can use Restart.",
+  wrong_mode: "A restart for this child is in progress. Wait for it to finish before trying again.",
+  family_unavailable: "This family is being deleted. A plan cannot be started.",
+  payment_refused: "Stripe refused the saved card. Ask the parent to update it in the Account tab before trying again.",
+  not_ended: "This child's plan is still running. It cannot be restarted yet.",
 };
 
 /**
@@ -35,7 +43,7 @@ export function StartPlan({ cardId, child }: { cardId: string; child: string }) 
       if (res.status === 404) { setError("This card is unavailable or your admin access has ended."); return; }
       const result = await res.json();
       if (result.ok) { setDone(result.firstChargeAt); setUnconfirmed(result.confirmation !== "sent"); return; }
-      setError(ERRORS[result.error] ?? ERRORS.failed);
+      setError(Object.hasOwn(ERRORS, result.error) ? ERRORS[result.error as StartPlanError] : ERRORS.failed);
     } catch { setError("The response was lost. Open the family in Stripe to check before trying again."); }
     finally { setBusy(false); }
   }

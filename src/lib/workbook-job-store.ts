@@ -8,6 +8,7 @@ import { readPaged, SLOT_ATTEMPTS, STALE_SECONDS, type RunRunner, type WorkbookJ
 import type { WorkerCandidate, WorkerQueue } from "@/lib/workbook-worker";
 import type { SolveVerdict } from "@/lib/workbook-solve-check";
 import { workbookInstructions } from "@/lib/workbook-instructions";
+import { workbookPlanRefusal } from "@/lib/workbook-plan-refusal";
 
 // The runs' store (#312) in Supabase (migration add_workbook_runs), and the job's read of the child. Pass a client with
 // the secret key: the service role runs the run functions and the progress update; admins only read. The solve checks
@@ -52,7 +53,7 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       const { data, error } = await admin.rpc("start_workbook_run", {
         p_child: childId, p_by: by.id, p_by_email: by.email, p_max_attempts: o.maxAttempts, p_stale_seconds: o.staleSeconds,
       });
-      if (error?.code === "55000") return { status: "refused", reason: "the family is being deleted" };
+      if (error?.code === "55000") return { status: "refused", reason: workbookPlanRefusal(error.message, "prepare") };
       if (error) throw new Error(`workbook run start: ${error.message}`);
       const answer = data as { status: "started" | "busy" | "stalled"; run: string } | { status: "refused"; reason: string };
       return answer.status === "refused" ? answer : { status: answer.status, runId: answer.run };
@@ -133,7 +134,7 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
         p_questions: draft.counts.questions, p_failed: draft.counts.failed, p_not_checked: draft.counts.notChecked,
         p_failed_pages: draft.counts.failedPages,
       });
-      if (error?.code === "55000") return { refused: "the family is being deleted" };
+      if (error?.code === "55000") return { refused: workbookPlanRefusal(error.message, "draft") };
       if (error) throw new Error(`workbook run draft save: ${error.message}`);
       if (data === "saved" || data === "lost" || data === "used") return data;
       throw new Error(`workbook run draft save: unknown answer ${String(data)}`);

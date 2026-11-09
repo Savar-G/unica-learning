@@ -54,7 +54,7 @@ export function MarkWorkbook({ workbookId, to, number }: { workbookId: string; t
       const { status, result } = await post(`/api/admin/workbooks/${workbookId}/status`, { to });
       if (!result) { setError(status === 404 ? "This workbook is unavailable or your admin access has ended." : LOST); return; }
       if (result.ok) { router.refresh(); return; }
-      setError(typeof result.reason === "string" ? `Not changed: ${result.reason}.` : "The database is unavailable. Try again later.");
+      setError(typeof result.reason === "string" ? (result.reason.endsWith(".") ? result.reason : `Not changed: ${result.reason}.`) : "The database is unavailable. Try again later.");
     } catch { setError(LOST); }
     finally { setBusy(false); }
   }
