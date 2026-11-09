@@ -377,3 +377,77 @@ export async function prepareNextBook(trigger: NextBookTrigger, deps: NextBookDe
   if (answer.status === "held") return { status: "held", snapshotId: answer.snapshot.id, reason: "no-accepted-scans-at-backstop" };
   return advance(answer.snapshot, deps, now, trigger.kind === "admin" ? trigger.actor : null);
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The three calls for the planner owner (#476, D-308).
+
+export type NextBookSnapshotRead =
+  | { ok: true; snapshot: FrozenNextBookSnapshot; draftId: string | null; planInput: PlanInput | null; planHash: string | null;
+    consumed: SavedPlan["consumed"] | null; plannerHeld: SavedPlan["held"] | null; runId: string | null }
+  | { ok: false; reason: "not-found" | "held" | "not-frozen" | "hash-mismatch" };
+
+/** The frozen row with plan_input, as the worker reads it for a run whose snapshot_id is set. */
+export async function readNextBookSnapshot(store: NextBookSnapshotStore, snapshotId: string): Promise<NextBookSnapshotRead> {
+  const row = await store.read(snapshotId);
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.held) return { ok: false, reason: "held" };
+  if (!row.frozen) return { ok: false, reason: "not-frozen" };
+  if (row.snapshotHash !== snapshotHash(row.frozen)) return { ok: false, reason: "hash-mismatch" };
+  return { ok: true, snapshot: frozenView(row)!, draftId: row.draftId, planInput: row.plan?.planInput ?? null, planHash: row.plan?.planHash ?? null,
+    consumed: row.plan?.consumed ?? null, plannerHeld: row.plan?.held ?? null, runId: row.runId };
+}
+
+export type NewEvidence = { ok: true; days: number[]; pages: number; items: number } | { ok: false; reason: "not-found" | "not-frozen" | "evidence-regressed" | "invalid-evidence" };
+
+/**
+ * Marks of the source book that this snapshot did not already hold: a result first marked after the freeze, a pending item
+ * since marked, a parent's later change, and early Days 8-10 a Day 7 snapshot held for later. Results of other steps the
+ * snapshot saw (held outside the sample) are not new until their version changes. "New marks since this draft".
+ */
+export async function newEvidenceSince(store: NextBookSnapshotStore, snapshotId: string): Promise<NewEvidence> {
+  const row = await store.read(snapshotId);
+  if (!row) return { ok: false, reason: "not-found" };
+  if (!row.frozen) return { ok: false, reason: "not-frozen" };
+  const seen = [...row.frozen.ledger, ...row.frozen.held.filter(h => h.reason === "outside-sample")];
+  try { return { ok: true, ...evidenceDelta(seen, await store.evidence(snapshotId)) }; }
+  catch (e) { return { ok: false, reason: e instanceof Error && e.message === "evidence-regressed" ? "evidence-regressed" : "invalid-evidence" }; }
+}
+
+export type RefreshAnswer =
+  | { ok: true; snapshotId: string; revision: number; newSnapshot: ProgressSnapshot; newHistory: ProgressHistory; frozen: FrozenNextBookSnapshot }
+  | { ok: false; reason: string };
+
+/**
+ * D-308 "Update with new marks": revision n+1 of the chain that made this draft, frozen at `now` over every marked day of the
+ * current book. Refused after "Approve for print", after a source change, and with no new marks. A retry continues the
+ * revision it made. Plan it with prepareNextBook({ kind: "snapshot", snapshotId }); a refresh starts no run.
+ */
+export async function refreshNextBookSnapshot(draftId: string, actor: SnapshotActor, deps: Pick<NextBookDeps, "store" | "capture">,
+  now: number): Promise<RefreshAnswer> {
+  if (!Number.isSafeInteger(now)) return { ok: false, reason: "invalid-clock" };
+  const latest = await deps.store.latestForDraft(draftId);
+  if (!latest) return { ok: false, reason: "draft-not-found" };
+  let target = latest;
+  if (latest.revision === 1 || latest.plan) {
+    if (!latest.frozen) return { ok: false, reason: "not-frozen" };
+    const fresh = await newEvidenceSince(deps.store, latest.id);
+    if (!fresh.ok) return fresh;
+    if (fresh.items === 0) return { ok: false, reason: "no-new-evidence" };
+    const taken = await deps.store.retake(latest.id, draftId, actor);
+    if (taken.status !== "ok") return { ok: false, reason: taken.reason };
+    target = taken.snapshot;
+  }
+  let row: NextBookSnapshotRecord;
+  if (target.frozen) {
+    // Already frozen by an earlier call: the store still checks the draft is not approved before handing it back.
+    const again = await deps.store.save(target.id, target.frozen, target.snapshotHash ?? "");
+    if (again.status !== "ok") return { ok: false, reason: again.reason };
+    row = again.snapshot;
+  } else {
+    const frozen = await freeze(target, deps, now);
+    if (!frozen.ok) return { ok: false, reason: frozen.outcome.status === "refused" ? frozen.outcome.reason : frozen.outcome.status };
+    row = frozen.row;
+  }
+  if (!row.frozen || row.snapshotHash !== snapshotHash(row.frozen)) return { ok: false, reason: "snapshot-hash-mismatch" };
+  return { ok: true, snapshotId: row.id, revision: row.revision, newSnapshot: row.frozen.snapshot, newHistory: row.frozen.history, frozen: frozenView(row)! };
+}
