@@ -61,6 +61,15 @@ describe("the workbook templates", () => {
       expect(pill.said).toEqual(["Review"]);
       expect(pill.root.querySelector(".chip.c-rv")?.textContent).toBe("Review");
     });
+    it("leaves out a reminder box label that says Remember again, and keeps any other", () => {
+      const draft = book("U16"), p = first(draft, "practice");
+      if (p.content?.kind !== "day") throw new Error("not a day");
+      const page = (label: string) => parsedPage(workbookTemplate().page({ ...p, content: { ...p.content!, blocks: [{ slot: "reminder", items: [], label, note: "Read the example, then try it.", lines: ["Work it out: 32 + 3 × 6 = [50]."] }] } } as DraftPage, { qr: "", qrUrl: "" }, draft)!);
+      const remember = page("Remember");
+      expect(remember.querySelector(".chip.c-ni")?.textContent).toBe("Remember");
+      expect(remember.querySelector(".panel.p-ni .lab")).toBeNull();
+      expect(page("Likelihood")?.querySelector(".panel.p-ni .lab")?.textContent).toBe("Likelihood");
+    });
   });
 
   it.each(["Which is greater?", "Which is greater: 8 × 7 or 6 × 6?", "WHICH IS GREATER?"])("prints no repeated choice label for %s", (question) => {

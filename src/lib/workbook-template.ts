@@ -1214,7 +1214,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       if (b.label === "Likelihood words") return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="lab">Likelihood words</div><div>${escape(b.explain ?? "")}</div></div>`;
       const fig = b.figure ? figureSvg(b.figure,1,c.consistentLayout ? 40 : 30) : "";
       const why = b.explain?.trim() ? `<div class="why"><div class="lab">What's going on</div><span>${escape(b.explain)}</span></div>` : "";
-      return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px"><div class="lab">${escape(b.label ?? "Remember")}</div>${fig}<div class="wk">${(b.lines ?? []).map(line => worked(singleWorkedAnswer(line))).join("<br>")}</div></div>${why}</div></div>`;
+      // The chip above says "Remember": a box label that says it again is left out (Savar, 2026-11-09).
+      const label = (b.label ?? "").trim() && b.label!.trim().toLowerCase() !== CHIPS.reminder!.label.toLowerCase() ? `<div class="lab">${escape(b.label!)}</div>` : "";
+      return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px">${label}${fig}<div class="wk">${(b.lines ?? []).map(line => worked(singleWorkedAnswer(line))).join("<br>")}</div></div>${why}</div></div>`;
     }
     case "mixed-set":
       return chip() + `<div class="mxs" style="--rows:${Math.ceil(qs.length / 2)}">` + qs.map((q) => {
