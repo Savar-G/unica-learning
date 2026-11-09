@@ -70,3 +70,21 @@ it.each(["I think it's 5.", "Is it 5?", "Help, 5.", "My mom said 5.", "I copied 
   model.next([{ throws: true }], undefined); await text.child(said);
   expect(text.session.finalMisses).toBe(0);
 });
+
+describe("unresolved speech is never a committed miss with the model down", () => {
+  const alt = [["PT_LONG", ["115 minus 35 is 80."], "It's 10."], ["EV_TWO", ["7 times 640 is 4480.", "7 times 30 is 210.", "0", "9", "6", "4"], "It's 4690."], ["M_TRY", ["236 times 6 is 1416."], "It's 6."]] as const;
+  it.each(alt)("%s: a wrong final answer with a competing alternative counts no miss", async (id, work, other) => {
+    const model = scenarioModel();
+    const text = createTextSession({ callId: `final-alt-${id}`, package: FIXTURES[id], model, clock: () => 1000, random: 1 });
+    model.next([], undefined);
+    await text.start();
+    for (const turn of work) { model.next([{ throws: true }], { start: "has_work" }); await text.child(turn); }
+    expect(text.session.ladder.step).toBe("result");
+    for (let i = 0; i < 2; i++) {
+      model.next([{ throws: true }], undefined);
+      await text.child("It's 5.", { uncertain: false, alternatives: [other] });
+      expect(text.session.finalMisses).toBe(0);
+    }
+    expect(text.session.solved).toBeNull();
+  }, 60_000);
+});

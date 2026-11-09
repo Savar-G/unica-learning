@@ -2660,14 +2660,14 @@ function heardAnswers(session: Session): ChildAnswer[] {
   }
   // A spot-the-error or pattern work step needs a strict wrong-number reading when the model is down.
   const current = steps.find((st) => st.id === session.ladder.step);
-  if ((isSpot(pkg) || patternOf(pkg)) && current && found.length === 0 && committedTurn(session, current.id) && read.final?.type === "number" &&
+  if ((isSpot(pkg) || patternOf(pkg)) && current && found.length === 0 && committedTurn(session, current.id) && !notClear(session, {}) && read.final?.type === "number" &&
       !stepAnswers(current).some((value) => equivalent(value, read.final!))) {
     found.push({ value: read.final, step: current.id, verdict: "wrong" });
   }
   // Read a committed wrong final number after all work is complete, including when the model fails.
-  // Claim words are read separately by claimAnswers. Do not turn copied help or another speaker into a miss.
+  // Claim words are read separately by claimAnswers. Do not turn copied help, another speaker or unresolved speech (alternatives) into a miss.
   if (session.solved === null && currentStep(pkg, closeParts(pkg, session.done)) === "result" && !sessionClaim(pkg) &&
-      read.final && read.sure && !rightForQuestion(pkg, read.final) && committedTurn(session) &&
+      read.final && read.sure && !rightForQuestion(pkg, read.final) && committedTurn(session) && !notClear(session, {}) &&
       wholeTurn(session.turn.text) !== null && sentenceCount(session.turn.text) === 1 && !helpInWords(session.turn.text) &&
       !hedgedTurn(session) && takenBack(session.turn.text, readOptionsIn(session)) === null && !copiesShown(session) && !copiesShownTry(session)) {
     found.push({ value: read.final, step: "result", verdict: "wrong" });
