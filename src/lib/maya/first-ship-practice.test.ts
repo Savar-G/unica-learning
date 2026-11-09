@@ -603,17 +603,20 @@ describe("C04: the fallback path keeps to the hint ladder", () => {
     expect(told.slice(0, at).filter((t) => t.act === "guide").at(-1)!.level).toBe(3);
   });
 
-  it("does not step back to a lower check once the step was shown", async () => {
-    const { told } = await play("A", [
+  // Changed in #698 round 4: the guessed yes after the show is checked together once (D-253 item 17), with the step's
+  // question below the show. The old reason for no lower check was a given answer after H2 (hint_skipped); Maya gives no
+  // answer now (D-313). Never a second show in a row, and the check does not count in the loop guard's row: no progress
+  // after it gives the easier example.
+  it("checks a guessed yes together once after the step was shown, then the easier example", async () => {
+    const { told, hard } = await play("A", [
       { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] },
-      down("Is it 66?"), down("Yes, I said 66. I just guessed it."),
+      down("Is it 66?"), down("Yes, I said 66. I just guessed it."), down("I don't know."),
     ]);
-    // The doubtful 66 gets its confirm; then never a second show in a row, and never a lower check: the easier example
-    // (#698 round 2, P1 e).
+    expect(hard).toEqual([]);
     expect(told[2]).toMatchObject({ act: "confirm" });
-    expect(told.at(-1)).toMatchObject({ act: "example_step" });
-    expect(told.slice(2).flatMap((t) => t.lines)).not.toContain("check.guess");
-    expect(told.slice(2).filter((t) => t.act === "guide")).toEqual([]);
+    expect(told[3]).toMatchObject({ act: "guide", step: "ones", level: 2, lines: ["check.guess", "step.operation"] });
+    expect(told[4]).toMatchObject({ act: "example_step" });
+    expect(told.slice(2).flatMap((t) => t.lines)).not.toContain("step.show");
   });
 
   it("closes without the answer after a miss at H3", async () => {

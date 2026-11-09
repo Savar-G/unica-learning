@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { readAnswer, readOptionsFor } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
-import { judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type Plan, type Step } from "@/lib/maya-gate/gate";
+import { judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type Plan, type Read, type Step } from "@/lib/maya-gate/gate";
 import { createTextSession, type SavedTextSession } from "@/lib/maya-text";
 import { checkQuestionPackage, operationText, workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 
@@ -352,11 +352,15 @@ describe("#698 round 3 loop guard: guides are counted per unfinished step, not p
     expect(r.told.slice(1).map((t) => t.say).join(" ")).not.toMatch(/\b66\b/);
   };
 
-  it.each(paths)("after the show, a second show never comes, whatever lines go with it (%s)", async (_name, make) => {
+  // Round 4 changed this test: after the easier example the child's new try is a real turn, so the step may be shown once
+  // more after the example (never in a row with the first show, never a third time), then close.stuck.
+  it.each(paths)("after the show, a second show comes only after the easier example and a lower help, never a third, whatever lines go with it (%s)", async (_name, make) => {
     const r = await play([SHOW, ...Array.from({ length: 10 }, (_, i) => make("What is 7 plus 9?", { act: "guide", step: "ones", level: 3, lines: i % 2 === 0 ? ["step.show", "step.invite"] : ["step.show"] }))]);
     expect(r.told[1]).toMatchObject({ act: "guide", lines: ["step.show"] });
     expect(r.told[2].act).toBe("example_step");
-    expect(r.told.slice(2).flatMap((t) => t.lines)).not.toContain("step.show");
+    const guides = r.told.filter((t) => t.act === "guide");
+    expect(guides.filter((t) => t.lines.includes("step.show")).length).toBeLessThanOrEqual(2);
+    for (let i = 1; i < guides.length; i++) expect(guides[i].lines.includes("step.show") && guides[i - 1].lines.includes("step.show"), `${i}`).toBe(false);
     expect(r.told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
     climbs(r.told);
     safe(r);
@@ -498,5 +502,214 @@ describe("#698 round 3 loop guard: guides are counted per unfinished step, not p
     expect(trace.turns.filter((t) => t.kind === "technical")).toEqual([]);
     const says = trace.turns.flatMap((t) => (t.kind === "maya" ? t.output?.say ?? [] : [])).join(" ");
     expect(says).not.toMatch(new RegExp(`\\b${pkg.answer.value.type === "number" ? pkg.answer.value.value : -1}\\b`));
+  });
+});
+
+// The 3-run practice suite on round 3 (6a0581bd, 14 of 66 passed) and the partial run on bef51538: the loop guard ended
+// calls for children who were still working. (1) After "Did you say 66?" a doubtful yes with the right answer was
+// confirmed again and again, and code's fallback closed with close.stuck as a technical_issue (F02-r1, F02-r2, F03-r3,
+// C04-r1); D-253 item 17 checks it together instead. (2) The first turn back on the child's own question after the easier
+// example went straight to close.stuck (C03-r1, C05-r1, C01-r1). (3) and (4) A copy of the shown step, or of the step the
+// easier example worked, in a question, with "You said", with "I did that" or with work on the next column, was no copy, so
+// Maya asked the ones again until the stuck close. Each script is the run's child words, on the model's own proposal, on
+// its repair, and on code's fallback with the model down.
+describe("#698 round 4: the loop guard never closes a child who is still working", () => {
+  const SHOW: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
+  const NO_START: Step = { child: "Hi. I don't know how to start this one.", read: { start: "no_start" }, maya: [{ act: "example_step", step: "ones", lines: ["example.intro", "example.step"] }, { act: "example_step", step: "tens" }, { act: "example_step", step: "result" }] };
+  /** The ones shown at H3, then the easier example (way out) and the new try, on code's fallback. */
+  const AFTER_EXAMPLE: Step[] = [SHOW, down("Um."), down("Okay.")];
+  const PATHS: [string, (text: string, plan: Plan, read?: Read) => Step][] = [
+    ["the model", (text, plan, read) => ({ child: text, ...(read ? { read } : {}), maya: [{ ...plan, repair: { throws: true } }] })],
+    ["the model's repair", (text, plan, read) => ({ child: text, ...(read ? { read } : {}), maya: [{ act: "give_answer", repair: { ...plan, repair: { throws: true } } }] })],
+    ["code's fallback with the model down", (text) => down(text)],
+  ];
+  const ACCEPT: Plan = { act: "accept_answer", lines: ["answer.right"] };
+  const RIGHT66: Read = { answers: [[66, "result", "right"]] };
+  /** From turn `from` on: no close, no technical turn, no hard failure, no answer given. */
+  const working = (r: Awaited<ReturnType<typeof play>>, from: number) => {
+    expect(r.told.slice(from).map((t) => t.act), JSON.stringify(r.told.slice(from))).not.toContain("close");
+    expect(r.technical).toEqual([]);
+    expect(r.hard).toEqual([]);
+    expect(r.told.map((t) => t.act)).not.toContain("give_answer");
+  };
+
+  describe("(1) a doubtful yes with the right answer is checked together, never confirmed a third time", () => {
+    it.each(PATHS)("F02-r1: \"Yes, 66! Did I get it right?\" after \"Did you say 66?\" gets the check together on the tens (%s)", async (_name, make) => {
+      const r = await play([SHOW,
+        make("You said write the 6 and carry 1. So I got 66!", ACCEPT, RIGHT66),
+        make("Yes, 66! Did I get it right?", { act: "guide", step: "tens", level: 2, lines: ["check.together", "step.operation"] }, RIGHT66)]);
+      expect(r.told[2]).toMatchObject({ act: "confirm", lines: ["confirm.heard"] });
+      expect(r.told[3]).toMatchObject({ act: "guide", step: "tens", lines: ["check.together", "step.operation"] });
+      expect(r.told[3].say).not.toMatch(/\b66\b/);
+      working(r, 2);
+    });
+
+    it.each(PATHS)("F02-r1: a yes that is not sure gets the check together once, and never a third confirm (%s)", async (_name, make) => {
+      const r = await play([SHOW,
+        make("You said write the 6 and carry 1. So I got 66!", ACCEPT, RIGHT66),
+        make("Yes, I got 66! You said write the 6 and carry 1, so I did.", ACCEPT, RIGHT66),
+        make("Yes, 66! I wrote the 6 and carried the 1 like you said.", ACCEPT, RIGHT66)]);
+      const acts = r.told.map((t) => t.act);
+      for (let i = 2; i < acts.length; i++) expect(acts[i] === "confirm" && acts[i - 1] === "confirm" && acts[i - 2] === "confirm", `${i}`).toBe(false);
+      const checks = r.told.filter((t) => t.lines.includes("check.together"));
+      expect(checks).toHaveLength(1);
+      expect(checks[0]).toMatchObject({ act: "guide", step: "tens", lines: ["check.together", "step.operation"] });
+      expect(r.told.at(-1)).toMatchObject({ act: "guide", step: "tens" });
+      working(r, 2);
+    });
+
+    it.each(PATHS)("C04-r1: \"Yes, I guessed 66.\" after the easier example and its new try gets check.guess on the tens (%s)", async (_name, make) => {
+      const r = await play([...AFTER_EXAMPLE,
+        make("I wrote the 6, but I don't know the tens. Is it 66?", { act: "confirm", heard: "66" }, RIGHT66),
+        make("Yes, I guessed 66. I didn't work it out.", { act: "guide", step: "tens", level: 2, lines: ["check.guess", "step.operation"] }, RIGHT66)]);
+      expect(r.told.at(-2)).toMatchObject({ act: "confirm" });
+      expect(r.told.at(-1)).toMatchObject({ act: "guide", step: "tens", lines: ["check.guess", "step.operation"] });
+      working(r, 5);
+    });
+
+    it.each(PATHS)("F03-r3: \"Yes, my answer is 66. Is that right?\" after the tens were shown gets the check together (%s)", async (_name, make) => {
+      const r = await play([
+        named("I got 16 for the ones."),
+        { child: "Show me the tens.", read: { help: "show" }, maya: [{ act: "guide", step: "tens", level: 3, lines: ["step.show"] }] },
+        make("You said write 6, so I wrote the 6 in the tens. My answer is 66, right?", { act: "confirm", heard: "66" }, RIGHT66),
+        make("Yes, my answer is 66. Is that right?", { act: "guide", step: "result", level: 0, lines: ["check.together", "step.invite"] }, RIGHT66)]);
+      expect(r.told[3]).toMatchObject({ act: "confirm" });
+      expect(r.told[4]).toMatchObject({ act: "guide", step: "result" });
+      expect(r.told[4].lines[0]).toBe("check.together");
+      working(r, 3);
+    });
+
+    it("the whole F02-r1 tail on code's fallback never confirms a third time in a row, checks once, and ends with no technical_issue", async () => {
+      const r = await play([SHOW, ...[
+        "You said write the 6 and carry 1. So I got 66!", "Yes, I got 66! You said write the 6 and carry 1, so I did.",
+        "Yes, 66! I wrote the 6 and carried the 1 like you said.", "Okay. So is my answer for 27 plus 39 right? I got 66.",
+        "Yes, it's 66! I wrote the 6 and carried the 1 like you said. Is it right?", "Okay. I think it's 66. I wrote the 6 and carried the 1 like you said.",
+        "Yes, I think it's 66. I wrote the 6 and carried the 1 like you said.", "Yes, 66! Did I get it right?",
+        ...Array.from({ length: 12 }, () => "Yes, 66! Did I get it right?"),
+      ].map(down)]);
+      // At 6a0581bd this call ended with close.stuck from the confirm, as a technical_issue.
+      expect(r.told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
+      expect(r.outcome?.reason).toBe("child_stopped");
+      expect(r.technical).toEqual([]);
+      const acts = r.told.map((t) => t.act);
+      for (let i = 2; i < acts.length; i++) expect(acts[i] === "confirm" && acts[i - 1] === "confirm" && acts[i - 2] === "confirm", `${i}`).toBe(false);
+      expect(r.told.filter((t) => t.lines.includes("check.together")).length).toBe(1);
+      expect(r.told.filter((t) => t.lines.includes("step.show")).length).toBeLessThanOrEqual(3);
+    });
+
+    it("a close.stuck Maya chooses while a confirm is open is never a technical_issue", async () => {
+      // The ones shown twice and the easier example done: after "Did you say 66?" the model takes the stuck way out.
+      const r = await play([...AFTER_EXAMPLE, down("Um."), down("Um."),
+        { child: "Is it 66?", maya: [{ act: "confirm", heard: "66", repair: { throws: true } }] },
+        { child: "Yes, 66? I'm not sure.", maya: [{ act: "close", lines: ["close.stuck", "close.together"], repair: { throws: true } }] }]);
+      expect(r.told.at(-2)).toMatchObject({ act: "confirm" });
+      expect(r.told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
+      expect(r.outcome?.reason).toBe("child_stopped");
+      expect(r.technical).toEqual([]);
+    });
+  });
+
+  describe("(2) the first turn back on the child's own question after the easier example is a real turn", () => {
+    it.each(PATHS)("C03-r1: \"I wrote the 6. Then 2 plus 3 is 5, so I got 56.\" gets the tens and its error response, not close.stuck (%s)", async (name, make) => {
+      const r = await play([...AFTER_EXAMPLE.slice(0, 2), down("Wait, so the carried 1 goes with the 2 and 3, like your 1 plus 1 plus 1?"),
+        make("Okay. I wrote the 6. Then 2 plus 3 is 5, so I got 56.", { act: "guide", step: "tens", level: 1, lines: ["check.not_yet", "step.regroup"] }, { answers: [[5, "tens", "wrong"], [56, "result", "wrong"]] })]);
+      expect(r.told[r.told.length - 2].act).toBe("try_target");
+      expect(r.told.at(-1)).toMatchObject({ act: "guide", step: "tens" });
+      if (name !== "code's fallback with the model down") expect(r.told.at(-1)!.lines).toEqual(["check.not_yet", "step.regroup"]);
+      expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      working(r, 2);
+    });
+
+    it.each(PATHS)("a wrong ones answer after the new try gets the error response and a guide, not close.stuck (%s)", async (name, make) => {
+      const r = await play([...AFTER_EXAMPLE, make("7 plus 9 is 15. I wrote the 5.", { act: "guide", step: "ones", level: 2, lines: ["check.not_yet", "step.operation"] }, { answers: [[15, "ones", "wrong"]] })]);
+      expect(r.told.at(-1)).toMatchObject({ act: "guide", step: "ones" });
+      expect(r.told.at(-1)!.lines).not.toContain("step.show");
+      if (name !== "code's fallback with the model down") expect(r.told.at(-1)!.lines).toEqual(["check.not_yet", "step.operation"]);
+      working(r, 2);
+    });
+
+    it.each(PATHS)("C05-r1 at bef51538: a help request after the new try gets a guide, not close.stuck (%s)", async (_name, make) => {
+      const r = await play([...AFTER_EXAMPLE, make("Umm, I don't get the carry part. Where does the 1 go in 27 plus 39?", { act: "guide", step: "ones", level: 2, lines: ["step.operation"] })]);
+      expect(r.told.at(-1)).toMatchObject({ act: "guide", step: "ones" });
+      expect(r.told.at(-1)!.lines).not.toContain("step.show");
+      working(r, 2);
+    });
+
+    it.each(PATHS)("no progress after the new try climbs to one more show, never a third, then close.stuck (%s)", async (_name, make) => {
+      const r = await play([...AFTER_EXAMPLE, ...Array.from({ length: 10 }, () => make("Um.", { act: "guide", step: "ones", level: 3, lines: ["step.show"] }))]);
+      const guides = r.told.filter((t) => t.act === "guide");
+      expect(guides.filter((t) => t.lines.includes("step.show")).length).toBe(2);
+      for (let i = 1; i < guides.length; i++) expect(guides[i].lines.includes("step.show") && guides[i - 1].lines.includes("step.show"), `${i}`).toBe(false);
+      expect(r.told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
+      expect(r.told.filter((t) => t.act === "example_step" && t.lines.includes("example.intro")).length).toBe(1);
+      expect(r.outcome?.reason).toBe("child_stopped");
+      expect(r.technical).toEqual([]);
+      expect(r.hard).toEqual([]);
+    });
+  });
+
+  describe("(3, 4) a copy of the shown step, or of the step the example worked, goes on to the next step with no credit", () => {
+    const TENS: Plan = { act: "guide", step: "tens", level: 0, lines: ["step.invite"] };
+    const help = (level: number): Step => ({ child: "Help me.", maya: [{ act: "guide", step: "ones", level: level as 0, repair: { throws: true } }] });
+    const AFTER_SHOW = [
+      "You said 7 plus 9 is 16. So I write the 6, right?", // C05-r1
+      "Okay, I wrote the 6. What do I do with the tens?", // C04-r1, C05-r2
+      "You said write 6 and carry 1. Okay, I did that. What do I do with the tens?", // C01-r1 at bef51538
+      "I wrote the 6. Now what do I do with the 1?", // C05-r1 at bef51538
+      "You said 7 plus 9 is 16. So I wrote the 6. Now what do I do with the 1?", // C05-r1 at bef51538
+      "Okay, I wrote 6. You said carry 1 ten. What do I do with the tens now?", // C05-r2
+      "Okay, you said write 6 and carry 1. I did that. But I still don't know what to add for the tens.", // C01-r2
+      "I did that already! I wrote the 6 and carried the 1. Now the tens?", // F02-r1
+      "Okay, I wrote the 6. Do I add the 1 ten to the tens now?", // C05-r2
+    ];
+    it.each(AFTER_SHOW.flatMap((text) => PATHS.map(([name, make]) => [text, name, make] as const)))("after the show, %j goes on to the tens (%s)", async (text, _name, make) => {
+      const r = await play([help(1), help(2), help(3), make(text, TENS)]);
+      expect(r.told[3].lines).toContain("step.show");
+      expect(r.told[4]).toMatchObject({ act: "guide", step: "tens" });
+      expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      working(r, 1);
+    });
+
+    const AFTER_EXAMPLE_TRY = [
+      "Okay. You said to write the 6 and carry the 1, right?", // C05-r1
+      "I'd write the 6 and carry the 1 ten, like your example.", // C01-r1 at bef51538
+      "Okay, I'll try. 7 + 9 is 16. In your example you wrote 3 and carried 1 ten, so do I write 6 and carry 1?", // C01-r1 at bef51538
+    ];
+    it.each(AFTER_EXAMPLE_TRY.flatMap((text) => PATHS.map(([name, make]) => [text, name, make] as const)))("after the easier example and its new try, %j goes on to the tens (%s)", async (text, _name, make) => {
+      for (const start of [AFTER_EXAMPLE, [NO_START, down("Okay.")]]) {
+        const r = await play([...start, make(text, TENS)]);
+        expect(r.told.at(-2)!.act).toBe("try_target");
+        expect(r.told.at(-1), JSON.stringify(r.told.at(-1))).toMatchObject({ act: "guide", step: "tens" });
+        expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+        working(r, 1);
+      }
+    });
+
+    it.each(PATHS)("C01-r1: after the tens were shown, \"You said write 6, so I wrote 6 in the tens. What about the ones?\" goes on (%s)", async (_name, make) => {
+      const r = await play([named("I got 16 for the ones."),
+        { child: "Show me the tens.", read: { help: "show" }, maya: [{ act: "guide", step: "tens", level: 3, lines: ["step.show"] }] },
+        make("You said write 6, so I wrote 6 in the tens. What about the ones?", { act: "guide", step: "result", level: 0, lines: ["step.invite"] })]);
+      expect(r.told[3]).toMatchObject({ act: "guide", step: "result" });
+      working(r, 1);
+    });
+
+    it.each([
+      "Yes.", "Okay.", "6.", "I wrote it.", "Is it 16?", "I think it's 16.", "My mom said 16.", "7 plus 9 is 15.", "I wrote the 5.",
+      "I wrote the 6 and carried the 2.", "I wrote the 6 in the tens.", "16 in the ones.", "I wrote the 6. It's 15.", "I wrote the 6. 7 plus 9 is 15.",
+      "I wrote the 6. What is 7 plus 9?", "I didn't write the 6.", "I think I write the 6.", "My mom wrote the 6.", "I wrote the 6. I don't know the ones.",
+      "You said 16, so I wrote 16.", "I wrote the 6. I carried the 2.", "I wrote the 6. Is it 15?",
+    ])("after the show, %j does not go past the ones", async (text) => {
+      const r = await play([SHOW, down(text)]);
+      expect(r.told[2].step === "tens" || r.told[2].step === "result", JSON.stringify(r.told[2])).toBe(false);
+      expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+    });
+
+    it.each(["7 plus 9 is 16, I wrote 6 and carried 1.", "I'd write the 6 and carry the 1 ten.", "You said write 6 and carry 1. Okay, I did that."])("with no show and no example, %j stays no-credit on the ones (#735)", async (text) => {
+      for (const first of [named(text), down(text)]) {
+        const r = await play([first]);
+        expect(r.told[1].step, text).not.toBe("tens");
+        expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      }
+    });
   });
 });
