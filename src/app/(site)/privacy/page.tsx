@@ -10,7 +10,7 @@ export const metadata = pageMetadata({
 });
 
 export default function Privacy() {
-  return <SupportPage label="Updated 5 November 2026" title="Privacy policy">
+  return <SupportPage label="Updated 9 November 2026" title="Privacy policy">
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
     <p>Before the online assessment, families booked through a reservation form. For those bookings, we keep the name, email address, Canadian postal code, chosen plan and subject, the child&apos;s grade, and their school curriculum.</p>
@@ -33,7 +33,7 @@ export default function Privacy() {
     <p>AI comments can be wrong. We leave a work comment out when the review is not sufficiently certain. Our team can review the work and its confidence result. Contact us if you want us to check a result.</p>
     <p>When you add your card, we send your name, email address, and postal code (if your account has one) to our payment provider. We also send your plan, subject, price, your child&apos;s grade and school curriculum, and a reference for your booking. You enter your card details and shipping address on its secure page. We keep the shipping address with your payment provider&apos;s customer record and use it to ship your workbooks. You do not need to give a shipping address to create an account or take the free assessment. Our booking form does not collect your card number.</p>
     <h2>Maya, our AI Teaching Assistant</h2>
-    <p>Maya is the AI Teaching Assistant on your child&apos;s desk. Maya is an AI, not a person. Your child picks a question from a workbook page, and Maya helps with that question, one step at a time, on a shared board. We open chat with Maya to families on a workbook plan in stages, so your family may not have it yet.</p>
+    <p>Maya is the AI Teaching Assistant on your child&apos;s desk. Maya is an AI, not a person. Your child picks a question from a workbook page, and Maya helps with that question, one step at a time, on a shared board. Chat with Maya opens when your family&apos;s plan starts.</p>
     <p>Before a child&apos;s first chat, a parent must read a short notice in the parent account and agree. One agreement covers all the children in the family. We save who agreed, when, and which version of the notice. If the notice changes in an important way, we ask again. Without an agreement, no chat starts.</p>
     <p>To turn Maya off for your family, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>. We then remove your agreement, and no new chat starts. A chat already open can continue until it ends, at most 10 minutes. We still write its note and learning record.</p>
     <p>In a chat, your child types to Maya. For each turn, we send an AI model, through OpenRouter, the question, its answer and worked steps, your child&apos;s latest message, and the last 12 lines of the chat. The AI model chooses from sentences that our code wrote. In a chat, it does not write Maya&apos;s words. We do not send your name, email address, postal code, payment details or account identifiers. Maya can say your child&apos;s first name, so the AI model can read that first name in Maya&apos;s earlier lines. It also reads anything your child types. Please ask your child not to type full names, addresses, phone numbers or other personal details.</p>
