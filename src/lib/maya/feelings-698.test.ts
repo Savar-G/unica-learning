@@ -12,3 +12,7 @@ describe("hard feelings", () => {
     expect(hardFeeling("I am not worried anymore, but I am sad.")).toBe(true);
   });
 });
+
+it.each(["I am not very happy.", "I am not feeling good.", "I do not feel so good.", "I feel really down.", "No one likes me.", "I don’t feel good."])("recognizes a hard feeling: %s", (text) => {
+  expect(hardFeeling(text)).toBe(true);
+});

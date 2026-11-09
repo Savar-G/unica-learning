@@ -252,12 +252,12 @@ export const FEELING_SMALLTALK: readonly string[] = [
 const HARD_FEELING = /\b(sad|sadder|upset|unhappy|worried|worry|worries|scared|afraid|frightened|nervous|angry|mad|cry|crying|cried|sick|ill|hurt|hurts|lonely|miss|missing|died|dead|tired|sleepy|frustrated|frustrating|annoyed|annoying|hate|dumb|stupid|bored|boring|awful|terrible|horrible|bad day|don'?t want|do not want|ugh|hospital|surgery|lost|passed away|funeral|divorce|fight|bully|bullied|cancer|emergency|ambulance|accident|broken arm|broke my|stitches|dying|ran away)\b/iu;
 /** Whether the child's words tell a hard feeling: refused free talk then falls back to FEELING_SMALLTALK. */
 export const hardFeeling = (childTurn: string | null | undefined): boolean => {
-  const text = (childTurn ?? "")
+  const text = (childTurn ?? "").replace(/’/g, "'")
     .replace(/\bi found my lost\b/giu, "i found my")
     .replace(/\bi won the snowball fight\b/giu, "i won the snowball game")
     .replace(/\bnot (?:sad|sick)(?: anymore)?\b/giu, "well")
     .replace(/\bnot (?:sadder|upset|unhappy|worried|scared|afraid|frightened|nervous|angry|mad|ill|hurt|lonely|tired|sleepy|frustrated|annoyed|bored) anymore\b/giu, "well");
-  return HARD_FEELING.test(text) || /\b(?:not (?:happy|good|okay|ok)|(?:don'?t|do not) feel (?:happy|good|okay|ok)|feel(?:ing)? down|nobody likes me|no friends)\b/iu.test(text);
+  return HARD_FEELING.test(text) || /\b(?:(?:not (?:feeling )?|(?:don'?t|do not) feel )(?:(?:very|so|really|that|too) ){0,2}(?:happy|good|well|okay|ok)|feel(?:ing)? (?:(?:very|so|really|that|too) ){0,2}down|(?:nobody|no one) likes me|no friends)\b/iu.test(text);
 };
 /**
  * Cheerful wordings that must never answer a hard feeling ("My grandma is in the hospital." must not get "Oh, your grandma!

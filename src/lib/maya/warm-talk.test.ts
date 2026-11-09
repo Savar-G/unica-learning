@@ -911,3 +911,10 @@ describe("the decline (#383, C29, D-197): a request for harmful content", () => 
     expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ line: "redirect.decline" }] })).toMatchObject({ code: "line_not_offered" });
   });
 });
+
+it("refuses happy redirect words after a hard feeling", () => {
+  const c = call();
+  c.child("I am not very happy.");
+  expect(phraseOffers(c.s, "happy")).toEqual([]);
+  expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] })).not.toBeNull();
+});
