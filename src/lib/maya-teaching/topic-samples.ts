@@ -72,3 +72,69 @@ export function choicePrinted(templateId: string, text: string, source: Template
   pkg.item!.regions = [{ id: "answer", kind: "choice", mark: "circle", label: null, choices: ["true", "false"], answer: word }];
   return pkg;
 }
+
+const SCALE_DERIVED: [string, string][] = [["k", "2 + 8 * (u1 % 2)"], ["v", "10 * (2 + u2 % 9)"], ["shown", "(v + m * k) if flip == 0 else (v + m * k) + (k)"], ["lower", "v - k"], ["upper", "v + k"]];
+const MONEY_DERIVED: [string, string][] = [["w", "b20 * 2000 + qu * 25"], ["shown", "str((w if flip == 0 else w + 50) // 100) + '.' + ('0' + str((w if flip == 0 else w + 50) % 100) if (w if flip == 0 else w + 50) % 100 < 10 else str((w if flip == 0 else w + 50) % 100))"]];
+const slotsOf = (values: Record<string, number>, max = 12) => Object.entries(values).map(([name, v]) => ({ name, value: int(v), domain: { min: 0, max } }));
+
+/** "A scale's marks are .... True or false: {m} intervals above {v} is {shown}." (4.16-many-to-one#3.4), step 2 or 10. */
+export function scalePrinted(step: 2 | 10, v: number, m: number, holds: boolean): QuestionPackage {
+  const shown = v + m * step + (holds ? 0 : step);
+  return choicePrinted("4.16-many-to-one#3.4:true-false", `A scale's marks are ${v - step}, ${v}, ${v + step}. True or false: ${m} intervals above ${v} is ${shown}.`,
+    { answer: "'true' if flip == 0 else 'false'", check: null, values: null, derived: SCALE_DERIVED, slots: slotsOf({ u1: step === 10 ? 1 : 0, u2: v / 10 - 2, m, flip: holds ? 0 : 1 }, 9) },
+    holds ? "true" : "false");
+}
+
+/** "True or false: {bills} $20 bills and {quarters} quarters is ${shown}." (4.18-money-notation#3.3). */
+export function moneyPrinted(bills: number, quarters: number, holds: boolean): QuestionPackage {
+  const cents = bills * 2000 + quarters * 25 + (holds ? 0 : 50);
+  const shown = `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
+  return choicePrinted("4.18-money-notation#3.3:true-false", `True or false: ${bills} $20 bills and ${quarters} quarters is $${shown}.`,
+    { answer: "'true' if flip == 0 else 'false'", check: null, values: null, derived: MONEY_DERIVED, slots: slotsOf({ b20: bills, qu: quarters, flip: holds ? 0 : 1 }, 3) },
+    holds ? "true" : "false");
+}
+
+/** "True or false: the minute hand {marks} marks past the {number} shows {shown} minutes." (4.12-read-analog#3.4). */
+export function minutePrinted(marks: number, number: number, holds: boolean): QuestionPackage {
+  const shown = number * 5 + marks - (holds ? 0 : 1);
+  return choicePrinted("4.12-read-analog#3.4:true-false", `True or false: the minute hand ${marks} marks past the ${number} shows ${shown} minutes.`,
+    { answer: "'true' if flip == 0 else 'false'", check: "x >= 2", values: null, derived: [["shown", "k * 5 + x if flip == 0 else k * 5 + x - 1"]], slots: slotsOf({ x: marks, k: number, flip: holds ? 0 : 1 }, 11) },
+    holds ? "true" : "false");
+}
+
+const ELAPSED_DERIVED: [string, string][] = [["t", "hr * 60 + mm"], ["e", "t + m"], ["ts", "str((t // 60 - 1) % 12 + 1) + ':' + ('00' if t % 60 == 0 else ('0' + str(t % 60) if t % 60 < 10 else str(t % 60)))"]];
+const two = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * "What time is {minutes} minutes after {h}:{mm}?": the elapsed-time template (4.12-read-analog#3.5) for a start with
+ * minutes, the on-the-hour template (#3.2) for a start on the hour.
+ */
+export function clockPrinted(h: number, mm: number, minutes: number): QuestionPackage {
+  const end = h * 60 + mm + minutes;
+  const answer = `${((Math.floor(end / 60) - 1) % 12) + 1}:${two(end % 60)}`;
+  const text = `What time is ${minutes} minutes after ${h}:${two(mm)}?`;
+  if (mm === 0) {
+    return printed(`sample-clock-${h}-${minutes}`, "4.12-read-analog#3.2:bare", "4.12-read-analog", text,
+      { answer: "str(h) + ':' + (('0' + str(m)) if m < 10 else str(m))", check: null, values: null, derived: [], slots: slotsOf({ h, m: minutes }, 59) },
+      { type: "text", value: answer }, "write-words");
+  }
+  return printed(`sample-clock-${h}-${mm}-${minutes}`, "4.12-read-analog#3.5:bare", "4.12-read-analog", text,
+    { answer: "str((e // 60 - 1) % 12 + 1) + ':' + ('00' if e % 60 == 0 else ('0' + str(e % 60) if e % 60 < 10 else str(e % 60)))", check: null, values: null, derived: ELAPSED_DERIVED, slots: slotsOf({ hr: h, mm, m: minutes }, 59) },
+    { type: "text", value: answer }, "write-words");
+}
+
+/** "True or false: with {a} red, {b} blue and {c} green marbles, red is more likely than the other colours together." */
+export function marblesPrinted(a: number, b: number, c: number): QuestionPackage {
+  return choicePrinted("4.17-predict-outcome#3.3:true-false", `True or false: with ${a} red, ${b} blue and ${c} green marbles, red is more likely than the other colours together.`,
+    { answer: "'true' if a > b + c else 'false'", check: "a != b + c and 8 <= a + b + c <= 12", values: null, derived: [], slots: slotsOf({ a, b, c }, 12) },
+    a > b + c ? "true" : "false");
+}
+
+const AREA_DERIVED: [string, string][] = [["a", "2 + a0 % 7"], ["b", "2 + b0 % min(7, 50 // a - 1)"], ["c", "2 + c0 % 7"], ["d", "2 + d0 % min(7, 50 // c - 1)"]];
+
+/** "True or false: {a} by {b} squares is bigger than {c} by {d} squares." (3.9-area-square-units#4.3); small sides. */
+export function areaClaimPrinted(a: number, b: number, c: number, d: number): QuestionPackage {
+  return choicePrinted("3.9-area-square-units#4.3:true-false", `True or false: ${a} by ${b} squares is bigger than ${c} by ${d} squares.`,
+    { answer: "'true' if a * b > c * d else 'false'", check: "a * b != c * d", values: null, derived: AREA_DERIVED, slots: slotsOf({ a0: a - 2, b0: b - 2, c0: c - 2, d0: d - 2 }, 8) },
+    a * b > c * d ? "true" : "false");
+}

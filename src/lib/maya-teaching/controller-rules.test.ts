@@ -55,9 +55,9 @@ describe("rule 1: an easier example of the question's own shape, which Maya can 
   it("gives a multi-step story an example of the same expression shape", () => {
     // "4 × 23 − 46" = 46 would give 460 away: its first number changed instead.
     expect(teach(boxesThenSells("Mo", 4, 236, "beads")).easierExample?.operation).toEqual({ kind: "evaluate", operands: ["3 × 23 − 46"] });
-    // Evaluate (A2) holds a part above its one-step limits (73562 + 1000), so the adapter keeps the printed package.
-    const chain = addsThousandChain(73562);
-    expect(teach(chain)).toEqual(chain);
+    // A2 reads the trailing "= ?" as the expression's result, not a missing-number frame.
+    expect(teach(addsThousandChain(73562)).operation).toEqual({ kind: "evaluate", operands: ["73562 + 1000 + 100"] });
+    expect(heldReason(teach(addsThousandChain(73562)))).toBeNull();
   });
 
   it("holds a question when no example of its shape passes, rather than teach a smaller example of another shape", () => {

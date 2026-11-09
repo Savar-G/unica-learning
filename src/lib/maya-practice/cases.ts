@@ -11,8 +11,11 @@ import { valuesIn } from "@/lib/maya";
 import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
 import { PATTERN_PRACTICE } from "./pattern-cases";
+import { PLACE_VALUE_PRACTICE } from "./place-value-cases";
+import { PLACE_PARTS_PRACTICE } from "./place-value-parts-cases";
 import { ONE_STEP_PRACTICE } from "./one-step-cases";
 import { MISSING_NUMBER_CASES } from "./missing-number-cases";
+import { SPOT_PRACTICE } from "./spot-error-cases";
 
 /** The AI-judge dimensions of the research (section 8, "AI-judge checks"), each scored 0 to 3. */
 export const DIMENSIONS = {
@@ -509,6 +512,79 @@ export const PRACTICE_CASES: PracticeCase[] = [
     reasons: ["solved"],
     validity: { stages: [{ name: "first try", opens: "start", numbers: [4, 260, 590] }, { name: "easier example", opens: "example", numbers: exampleNumbers("EV_STORY") }, { name: "after help", opens: "help", numbers: [...EV_STORY_WORK, 450] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
     fakeScript: ["I don't know how to start.", "okay", "okay", "4 times 260 is 1040.", "I got 450.", "Because I did the boxes first.", "I wrote it."],
+  },
+  // C3b other-topic claims (src/lib/maya-teaching/topic-derivers.ts): the scale's evaluate, then A4's compare and word.
+  {
+    id: "OTC1",
+    title: "Scale claim: cannot start",
+    fixture: "SCALE",
+    persona: { name: "Lena", age: 9, question: "A scale's marks are 50, 60, 70. True or false: 2 intervals above 60 is 80.", knows: "You can multiply and add small numbers, but you do not know what an interval on a scale is until Maya tells you.", behaviour: "Start by saying you do not know how to start. Follow Maya's help one step at a time, then say your word: true or false." },
+    expected: "Say code's topic sentence (the marks go up by 10). Guide 2 × 10, then 60 + 20, then the compare with 80. Accept the circled word only in the child's own words. Never give the word.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [3, 9, 12, 13] }, { name: "after help", opens: "help", numbers: [10, 20, 80] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    fakeScript: ["I don't know how to start.", "okay", "2 times 10 is 20.", "60 plus 20 is 80.", "It's true.", "Because 2 times 10 is 20.", "I circled it."],
+  },
+  // C3c clock times (src/lib/maya/clock-lines.ts): time-add counted on to the next hour, then the minutes left.
+  {
+    id: "OTT1",
+    title: "Clock time: counts the minutes wrong at first",
+    fixture: "CLOCK2",
+    persona: { name: "Kofi", age: 9, question: "What time is 50 minutes after 4:25?", knows: "You can tell time and add minutes, but you forget that the hour changes at 60 minutes. At first you say 4:75.", behaviour: "Start by saying your answer is 4:75. Answer Maya's questions honestly, then follow her help and say the time." },
+    expected: "Do not accept 4:75. Say code's topic sentence (count on to 5:00 first). Guide the count to the next hour (35 minutes), then the 15 minutes left, and accept 5:15 only in the child's own words.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [75] }, { name: "after help", opens: "help", numbers: [35, 60, 15, 50, 25], values: [{ type: "time", hours: 5, minutes: 15, period: null }, { type: "time", hours: 5, minutes: 0, period: null }] }], firstNumbers: [75] },
+    fakeScript: ["I got 4:75.", "25 plus 35 is 60, so 35 minutes to 5:00.", "I got 5:15.", "Because 35 and 15 make 50.", "I wrote it."],
+  },
+  // C3c compare claims: an area claim, "greater" (src/lib/maya-teaching/topic-claim.ts).
+  {
+    id: "OTK1",
+    title: "Area claim: cannot start",
+    fixture: "AREA_TF",
+    persona: { name: "Rosa", age: 9, question: "True or false: 6 by 3 squares is bigger than 4 by 4 squares.", knows: "You know your multiplication facts, but you do not know that a rectangle of squares is its sides multiplied until Maya shows you.", behaviour: "Start by saying you do not know how to start. Follow Maya's help one step at a time, then say your word: true or false." },
+    expected: "Say code's topic sentence (4 by 4 squares is 16 squares). Guide 6 × 3, then the compare with 16. Accept the circled word only in the child's own words. Never give the word.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [2, 3, 4] }, { name: "after help", opens: "help", numbers: [16, 18] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    fakeScript: ["I don't know how to start.", "okay", "6 times 3 is 18.", "It's true.", "Because 18 is more than 16.", "I circled it."],
+  },
+  ...PLACE_VALUE_PRACTICE,
+  ...PLACE_PARTS_PRACTICE,
+  ...SPOT_PRACTICE,
+  // Claim questions (A4, src/lib/maya/claim.ts): the answer is the circled word, which code reads.
+  {
+    id: "CL01",
+    title: "True/false product claim, known fact",
+    fixture: "CLAIM_TF",
+    persona: { name: "Ines", age: 9, question: "True or false: 6 × 8 = 48.", knows: "You know your times tables: 6 × 8 = 48. So the sentence is true.", behaviour: "Start by saying that 6 times 8 is 48, so it's true. Explain how you know if asked. Circle your answer when Maya asks." },
+    expected: "Accept true only once the child says it, with the checked result 6 × 8 = 48. Ask the child to circle true on the page, never to write a number. Never give the word for the child.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [48] }] },
+    fakeScript: ["6 times 8 is 48, so it's true.", "Because 6 times 8 is 48.", "I circled it."],
+  },
+  {
+    id: "CL02",
+    title: "Yes/no 'greater than' claim worked with help",
+    fixture: "CLAIM_GT",
+    persona: { name: "Remy", age: 10, question: "Is 4 × 360 greater than 1436? Circle yes or no.", knows: "You can multiply a three-digit number by one digit when someone helps you, one column at a time. You do not know 4 × 360 yet, so you cannot tell yes or no.", behaviour: "Start by saying you are not sure. Follow Maya's steps one at a time. When you have the product, compare it with 1436 and say yes or no." },
+    expected: "Work 360 × 4 with the child, one step at a time, then compare the product with 1436. Accept yes only once the child says it. Ask the child to circle yes, never to write a number, and never give the word.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "after help", opens: "help", numbers: [24, 12, 14, 1440, 1436, 360] }] },
+    fakeScript: ["I'm not sure.", "4 times 0 is 0.", "4 times 6 is 24.", "4 times 3 is 12, plus 2 is 14.", "1440.", "It's yes, because 1440 is more than 1436.", "I worked out 360 times 4 one column at a time.", "I circled it."],
+  },
+  {
+    id: "CL03",
+    title: "Decimal-add claim, says true at first",
+    fixture: "CLAIM_DEC",
+    persona: { name: "Priya", age: 10, question: "True or false: 3.45 + 2.38 = 5.93.", knows: "You can add decimals in columns: 5 + 8 = 13, carry 1; 4 + 3 + 1 = 8; 3 + 2 = 5, so 5.83. At first you only look at the first digits and think the sentence is true.", behaviour: "Start by saying it's true. When Maya helps, add the columns with her and then say your answer again." },
+    expected: "Do not accept true. Help the child add 3.45 + 2.38 one column at a time, then compare 5.83 with 5.93. Accept false only once the child says it. Ask the child to circle false, never to write a number, and never give the word.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "after help", opens: "help", numbers: [13, 8, 5.83, 5.93, 3.45, 2.38] }] },
+    fakeScript: ["It's true.", "5 plus 8 is 13.", "4 plus 3 plus 1 is 8.", "3 plus 2 is 5.", "5.83.", "It's false, because 5.83 is not 5.93.", "I added the columns: 5.83.", "I circled it."],
   },
   ...MISSING_NUMBER_CASES,
 ];

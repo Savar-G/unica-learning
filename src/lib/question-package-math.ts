@@ -38,8 +38,10 @@ import {
   type OperationProblem,
   type Written,
 } from "@/lib/question-package-columns";
-import { ALGEBRA_KINDS, algebraStepText } from "@/lib/question-package-algebra";
+import { ALGEBRA_KINDS, algebraStepText, evaluateWithin } from "@/lib/question-package-algebra";
 import { MEASURE_KINDS, amountText, measureStepText } from "@/lib/question-package-measures";
+import { PLACE_VALUE_RULES, readDigitText } from "@/lib/question-package-place-value";
+import { partsStepText, withPlaceParts } from "@/lib/question-package-place-parts";
 import { missingStepText } from "@/lib/maya/missing-number-text";
 
 /** A place's unit name, for "carry 1 ten". */
@@ -445,6 +447,7 @@ const KINDS: { [K in OperationKind]: KindRules<Of<K>> } = {
   },
   ...MEASURE_KINDS,
   ...ALGEBRA_KINDS,
+  "place-value": withPlaceParts(PLACE_VALUE_RULES),
 };
 
 function decimalResult(op: { operands: [number, number] }, how: "add" | "subtract" | "multiply"): AnswerValue {
@@ -457,7 +460,15 @@ function decimalResult(op: { operands: [number, number] }, how: "add" | "subtrac
 }
 
 /** The operation kinds code computes. */
-export const isOperationKind = (kind: unknown): kind is OperationKind => typeof kind === "string" && Object.hasOwn(KINDS, kind);
+/**
+ * The kinds only Maya's session adapter makes (src/lib/maya-teaching): no default check knows them, so a stored package
+ * or a generator output that claims one stays "beyond code", as before they existed. Only a caller that passes Maya's
+ * limits explicitly (`OperationLimits.placeValue`) has them checked.
+ */
+const MAYA_ONLY_KINDS: readonly string[] = ["place-value"];
+
+/** The operation kinds every default check computes (never the Maya-only kinds). */
+export const isOperationKind = (kind: unknown): kind is OperationKind => typeof kind === "string" && Object.hasOwn(KINDS, kind) && !MAYA_ONLY_KINDS.includes(kind);
 
 /** The computation of an operation whose kind is known. */
 export function computation(op: Operation): Computation {
@@ -475,6 +486,13 @@ export interface OperationLimits {
   readonly wholeResult: number;
   /** The largest divisor of a whole-number ÷; none keeps today's 99. */
   readonly divisor?: number;
+  /** Check the place-value kind (B1a), which no default check knows. */
+  readonly placeValue?: boolean;
+  /**
+   * Accept a spot-the-error item whose "Is it right?" its template checks (template-shown, #489) and that shows no stored
+   * error, holding an operation (Maya's spot-the-error path, C2). No default check passes it.
+   */
+  readonly templateShown?: boolean;
 }
 
 /** Within the wider limits: the kind's own other rules (a multiplier to 999, a divisor from 1 to 99, no result below zero). */
@@ -489,9 +507,13 @@ const WIDER: Partial<Record<OperationKind, (a: number, b: number, limits: Operat
 export function operationCheck(operation: unknown, limits?: OperationLimits): OperationProblem | null {
   if (typeof operation !== "object" || operation === null || Array.isArray(operation)) return fail("the operation is missing");
   const op = operation as Fields;
-  if (!isOperationKind(op.kind)) return typeof op.kind === "string" ? beyond(`code cannot check the operation ${op.kind}`) : fail("the operation has no kind");
-  const problem = KINDS[op.kind].problem(op);
-  const wider = WIDER[op.kind];
+  const mayaOnly = op.kind === "place-value" && limits?.placeValue === true;
+  if (!isOperationKind(op.kind) && !mayaOnly) return typeof op.kind === "string" ? beyond(`code cannot check the operation ${op.kind}`) : fail("the operation has no kind");
+  const kind = op.kind as OperationKind;
+  const problem = KINDS[kind].problem(op);
+  // An evaluation under the wider limits: its every number and worked value a whole number up to wholeResult.
+  if (kind === "evaluate" && problem?.status === "unsupported" && limits) return evaluateWithin(op, limits.wholeResult) === null ? null : problem;
+  const wider = WIDER[kind];
   // Only "beyond code" can be widened, and only for two whole numbers (anything else failed before the size check).
   if (problem?.status !== "unsupported" || !limits || !wider || !isTwo(op.operands) || !op.operands.every(isCount)) return problem;
   const [a, b] = op.operands as [number, number];
@@ -629,11 +651,23 @@ export function stepText(step: WorkedStep, operation: Operation): string {
     case "inverse":
     case "check":
       return algebraStepText(step);
+    case "read-digit":
+      return readDigitText(step);
+    case "bigger":
+    case "place-worth":
+      return partsStepText(step)!;
     case "missing-frame":
     case "drop-zeros":
     case "try-factor":
       return missingStepText(step);
+    case "claim-compare": {
+      const { relation, value, shown, holds } = step;
+      const said = `${operationText(operation)} = ${valueText({ type: "number", value })}.`;
+      if (relation === "equal") return `${said} ${value} ${holds ? "is the same number as" : "is not"} ${shown}.`;
+      return `${said} ${value} is ${holds ? "" : "not "}${relation === "less" ? "less" : "greater"} than ${shown}.`;
+    }
     case "result": {
+      if (step.value.type === "choice") return `The answer is ${step.value.value}.`;
       const rules = computation(operation);
       return rules.say ? rules.say(operation, step.value) : `${rules.statement(operation)} = ${valueText(step.value)}`;
     }

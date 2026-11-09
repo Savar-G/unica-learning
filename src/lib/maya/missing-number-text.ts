@@ -33,11 +33,12 @@ export function tryText(t: Trial, value: number): string | null {
 }
 
 /**
- * The tries on each side of the missing factor, never the factor itself: "244 × 5 = 1220. That is less than 1464. 244 ×
- * 7 = 1708. That is more than 1464." Maya shows it at H3, so the child still finds the number between them.
+ * The try next to the missing factor, never the factor itself: the one just below ("244 × 5 = 1220. That is less than
+ * 1464."), or just above for a factor of 1. Maya shows it at H3, so the child still finds the number. One try, so the
+ * line fits a 25-word turn with 4-digit numbers said in words.
  */
 export function bracketText(t: Trial): string {
-  return [t.value - 1, t.value + 1].map((v) => (v >= 1 ? tryText(t, v) : null)).filter((x): x is string => x !== null).join(" ");
+  return tryText(t, t.value > 1 ? t.value - 1 : t.value + 1) ?? ""; // trial-factor.ts shownTry: the same try
 }
 
 /** A missing-number step in words, for a board, a voice and the easier example. The try step says the number. */
@@ -46,7 +47,8 @@ export function missingStepText(step: MissingNumberStep): string {
     case "missing-frame":
       return `To find the missing number, work out ${inverseText(step)}.`;
     case "drop-zeros":
-      return `Take ${zerosText(step.zeros)} off both numbers. ${step.from} ÷ ${step.by} is the same as ${reducedText(step)}.`;
+      // Said in the easier example: the zeros by the number they end, never as a count (lesson 12: "2 zeros" writes a 2).
+      return `Take the zeros of ${step.by} off both numbers. ${step.from} ÷ ${step.by} is the same as ${reducedText(step)}.`;
     // Short enough for a 25-word turn: the try that works. The tries that do not are said when the child makes them.
     case "try-factor":
       return `Try ${step.value}. ${step.factor} × ${step.value} = ${step.total}. So the missing number is ${step.value}.`;

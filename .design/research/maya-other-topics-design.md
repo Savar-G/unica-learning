@@ -53,8 +53,9 @@ question and the fixed workbook opening, and with the easier example's intro:
 
 ### Waits on A2: evaluate
 
-- Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "A rectangle has 2 lengths
-  and 2 widths. Add one length and one width. Then double it." Built and hooked. The session holds it for two reasons
+- Perimeter (`4.14-perimeter#3.1:bare`): `2 × (l + w)` as an `evaluate`, with the sentence "Add one length and one
+  width, then double it." (9 words, so it fits a 25-word grade-3 turn with the question line; the first wording, 17
+  words, did not: review of #741, P1b). Built and hooked. The session holds it for two reasons
   until A2's evaluate teaching lands: `evaluate` is not in `TEACHABLE_KINDS`, and Maya has no lines for its `operate`
   steps. No change is needed here then.
 
@@ -112,6 +113,66 @@ template id is not theirs, so the order does not matter.
   answer gets "not yet"; a right first step or sum is acknowledged).
 - Practice (`src/lib/maya-practice/cases.ts`): OT4 and OT5 on `SHAPES` (6 + 5 = 11). A die count has a one-digit answer,
   which a practice case cannot keep behind a stage, so the gate covers it.
+
+## C3b (second PR): what this round teaches, and what is left
+
+Branch `site/maya-other-topics-b`, from #731 at `32d3445d`, merged with A1's adapter (`e4d5048e`), A2's evaluate (#734,
+`e03ffde3`) and A4's claims (#737, `788ea9d3`). The derivers are registered in A1's `DERIVERS`.
+
+Taught now (12 more): the 8 scale claims, the 2 money claims, the 1 minute-hand claim and the perimeter question.
+- The claim's computed side is the operation: the scale's `mark + m × interval` and the minute hand's `number × 5 +
+  marks` as an `evaluate` (A2), money's bills and quarters as one decimal addition (`60 + 0.75`; A2 holds decimal
+  parts). `topicClaim` (`src/lib/maya-teaching/topic-claim.ts`) gives A4's claim session the claim when A4's own forms
+  do not match (one line in `src/lib/maya/claim.ts`). A4 teaches the compare and reads the circled word.
+- Topic sentences (code's facts): "The marks go up by 10 each time. So each interval is 10.", "Each number on the
+  clock is 5 minutes. Each small mark is 1 more minute.", "2 $20 bills make $40. 2 quarters make $0.50." They come with
+  A4's question line (`question.claim.framed`), on the first guide after a hello-only opening, and the honest close is
+  their way out.
+- Two integration fixes, A2 x A4: `withEvaluateExample` keeps a claim's own easier example, and `evaluateSteps` keeps
+  the claim's compare step after the parts, so "60 plus 20 is 80." does the compare step.
+
+Left for the next round (17), with the reason:
+- Same-denominator fractions (8): no operation to work. They need a compare step with no operation before it ("the
+  denominators are the same, so compare the numerators"), on A4's word reader. The session needs a package kind with
+  no operation, or a claim whose work is the compare alone.
+- Marbles (2): red against the others added; the claim holds when the sum is less than red, so A4's claim needs a
+  "less" relation (step type, compare words, the ask).
+- Area true/false (1): two products compared; A4's true/false ask says "Is 5 × 3 = 8 true or false?" for a "greater"
+  claim, so its true/false ask needs a "greater" form, and the second product needs its own step.
+- Area compare (2) and die compare (1): word answers ("7 by 6", "even") are not true/false or yes/no, so A4's reader
+  does not read them; they need the reader to take the printed pair of words from code.
+- Clock times (3): `time-add` with `count-on` steps; they need count-on lines and a strict reader for spoken times
+  ("nine forty", "7:03").
+
+## C3c (third PR): clock times and two compare claims
+
+Branch `site/maya-other-topics-c`, from #741 at `24d14e5b`, merged with `origin/site/maya-wave-c` (`2c52c596`) and A4's
+fixed head (#737, `7751bcae`). Taught here (6 more): the 3 clock times, the 2 marbles claims and the 1 area true/false.
+
+- Clock times (`4.12-read-analog#3.2`, `#3.5`): `time-add`, counted on to the next hour and then the minutes left
+  (`src/lib/maya/clock-lines.ts`). A time is said as the book prints it ("7:03"); the package keeps the 24-hour clock
+  with no period. The child's times are read only in exact forms (`src/lib/maya/clock-times.ts`, `ReadOptions.times`):
+  "6:53", "06:53", "six fifty-three", "seven oh three", "seven o'clock". "seven three", "half past six", "7.03",
+  "703", "13:05" and "6:75" stay numbers. The topic sentence: "First count on to the next hour, 7:00. Then count the
+  minutes left." or "The hour stays 9. Count on the minutes." The scope check allows the count's own relations
+  ("13 plus 47 is 60", "50 minus 47 is 3"). The easier example has the same number of counts, a one-digit count and
+  none of the question's numbers (lesson 11).
+- Marbles (`4.17-predict-outcome#3.3`): A4's claim with a new "less" relation: "Is 5 + 5 less than 1? True or false?",
+  after the topic sentence "Red is more likely only if there are more red marbles than blue and green together."
+- Area true/false (`3.9-area-square-units#4.3`): A4's claim, "greater", with a true/false ask of its own: "Is 5 × 3
+  greater than 8? True or false?" (A4 asked every true/false claim as "Is 5 × 3 = 8 true or false?"). The topic sentence
+  gives the other area: "4 by 2 squares is 8 squares. Bigger means more squares."
+- Lesson 11 on #741's claims: the scale and minute-hand examples now use none of the question's numbers ("3 + 3 × 3"
+  for "90 + 2 × 2", "1 × 5 + 1" for "4 × 5 + 4").
+
+Still held (11), with what they need:
+- Same-denominator fractions (8): the work is the compare alone ("the denominators are the same, so compare the
+  numerators"). Maya's session needs an operation for every question it teaches (`teachableOf`), so this needs a
+  claim with no operation: a controller-level change to the session's rule, not a hook.
+- Area compare (2) and die compare (1): the answer is printed words in a box ("7 by 6", "even"), not a circled word.
+  A4's word reader reads only a choice region's two words. They need the reader to take the two words from code and
+  read them in exact forms, after Maya's own question only (lesson 5). The die compare also has no operation (code
+  counts each outcome), so it needs the same operation-free claim.
 
 ## The 34 questions
 

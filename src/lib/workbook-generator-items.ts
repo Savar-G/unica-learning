@@ -73,14 +73,18 @@ const OPERATION_FORMATS: readonly GeneratedFormat[] = ["write-number", "show-wor
 export const FIGURE_KINDS = ["dots", "ten-frame", "number-line", "base-ten", "array"] as const;
 export type FigureKind = (typeof FIGURE_KINDS)[number];
 
-/** Every operation kind the question package computes (a kind missing here fails the build). */
+/**
+ * Every operation kind the question package computes (a kind missing here fails the build), but for MayaOnlyKind:
+ * those only Maya's session adapter makes (src/lib/maya-teaching), and the generator never offers them to the AI.
+ */
 const OPERATION_KINDS = [
   "add", "subtract", "missing-addend", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply",
   "fraction-add", "fraction-subtract", "fraction-multiply", "fraction-divide", "fraction-simplify", "fraction-equivalent",
   "convert", "quantity-add", "quantity-subtract", "quantity-multiply", "money-round", "elapsed-time", "time-add",
   "clock-convert", "evaluate", "solve",
 ] as const satisfies readonly OperationKind[];
-const ALL_KINDS: Exclude<OperationKind, (typeof OPERATION_KINDS)[number]> extends never ? true : false = true;
+type MayaOnlyKind = "place-value";
+const ALL_KINDS: Exclude<OperationKind, (typeof OPERATION_KINDS)[number] | MayaOnlyKind> extends never ? true : false = true;
 void ALL_KINDS;
 
 /** Kinds whose operands are plain numbers. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { roundToHundred, showTrial, trialEquation, trialFeedback, trialHeard, trialHelp, trialStep, wholeProduct, TRIAL_TEMPLATES } from "./trial-factor";
+import { roundToHundred, showTrial, shownTry, trialEquation, trialFeedback, trialHeard, trialHelp, trialStep, wholeProduct, TRIAL_TEMPLATES } from "./trial-factor";
 import { wholeTurn } from "./numbers";
 
 describe("trialStep", () => {
@@ -69,10 +69,13 @@ describe("the try lines", () => {
     expect(lines.find((l) => l.heard === "7")).toMatchObject({ key: "trial.big", vars: { guess: 7, product: 1652 } });
   });
 
-  it("shows the tries on each side at H3, and the equation only once it is found", () => {
+  it("shows the try next to the factor at H3, and the equation only once it is found", () => {
     expect(showTrial(step)).not.toMatch(/\b6\b/);
     expect(showTrial(trialStep(236, 236)!)).toBe("236 × 2 = 472. That is more than 236.");
     expect(trialEquation(step)).toBe("236 × 6 = 1416");
+    expect(shownTry(step)).toBe(5);
+    expect(showTrial(step)).toBe("236 × 5 = 1180. That is less than 1416.");
+    expect(shownTry(trialStep(236, 236)!)).toBe(2);
   });
 
   it("uses plain words only (D-202)", () => {
