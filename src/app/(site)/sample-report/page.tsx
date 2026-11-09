@@ -7,7 +7,8 @@ import { StartLink, StartNote } from "@/components/start-link";
 import { START_LABEL } from "@/components/sections";
 import { SupportPage } from "@/components/support-page";
 import { pageMetadata } from "@/lib/metadata";
-import { SAMPLE_CHILDREN, sampleReportView } from "@/lib/sample-children";
+import { SAMPLE_CHILDREN } from "@/lib/sample-children";
+import { sampleReportWithBook } from "@/lib/sample-book-one";
 import "@/ds/styles/personalization.css";
 
 export const metadata = pageMetadata({
@@ -17,7 +18,7 @@ export const metadata = pageMetadata({
 });
 
 export default function SampleReportPage() {
-  const view = sampleReportView();
+  const view = sampleReportWithBook();
   const name = SAMPLE_CHILDREN.a.name;
   return (
     <SupportPage label="" title="" wide>

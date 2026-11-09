@@ -4947,6 +4947,51 @@ export type Database = {
           },
         ]
       }
+      workbook_instructions: {
+        Row: {
+          child_id: string
+          instructions: Json
+          parent_id: string
+          schema_version: number
+          updated_at: string
+          updated_by: string | null
+          updated_by_email: string | null
+        }
+        Insert: {
+          child_id: string
+          instructions: Json
+          parent_id: string
+          schema_version?: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string | null
+        }
+        Update: {
+          child_id?: string
+          instructions?: Json
+          parent_id?: string
+          schema_version?: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_instructions_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_instructions_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_pages: {
         Row: {
           created_at: string
