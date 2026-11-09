@@ -1,4 +1,5 @@
-// The automatic caller of prepareNextBook (#476): one step of the /api/reminders run, every 15 minutes.
+// The automatic caller of prepareNextBook (#476): the /api/next-book-prepare cron route, every 15 minutes. It is its own
+// route, not a step of /api/reminders: it reads the plan gate, and no email sender may reach it.
 //
 // The due candidates, oldest first by their anchor time:
 //   (a) a #475 trigger claim with no snapshot chain yet          anchor: the claim time
@@ -18,7 +19,7 @@
 //
 // One deadline covers the whole step: the step's time less NEXT_BOOK_STEP_ANSWER_MS. Every candidate read, access read
 // and item races it under one AbortSignal. At the deadline the signal aborts, the step stops and answers with what it
-// did: it never holds the reminders answer past endAt. Its later database requests (a client that never retries) and a
+// did: it never holds the route's answer past endAt. Its later database requests (a client that never retries) and a
 // late planner answer are refused, and each write it already made is one atomic, re-entrant step, so the next run
 // continues it from what the store kept.
 //
@@ -32,7 +33,7 @@ import { isUuid } from "./workbook-content";
 export const NEXT_BOOK_STEP_LIMIT = 20;
 /** No new item starts with less than this left of the step's time. */
 export const NEXT_BOOK_STEP_RESERVE_MS = 8_000;
-/** The step's deadline ends this long before endAt, so the reminders run can still answer by then. */
+/** The step's deadline ends this long before endAt, so the route can still answer by then. */
 export const NEXT_BOOK_STEP_ANSWER_MS = 1_000;
 /** Candidates per read. */
 export const NEXT_BOOK_STEP_PAGE = 50;

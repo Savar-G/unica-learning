@@ -1,5 +1,6 @@
-// The one place the next-book planner is wired (#476). Both callers of prepareNextBook use it: the automatic step in the
-// /api/reminders run (src/lib/next-book-step-server.ts) and the admin's "Prepare from snapshot" on the child page.
+// The one place the next-book planner is wired (#476). Both callers of prepareNextBook use it: the automatic step in
+// the /api/next-book-prepare cron route (src/lib/next-book-step-server.ts) and the admin's "Prepare from snapshot" on
+// the child page.
 //
 // Both resolvers return null until the planner owner wires the real planner (planNextBookFromSnapshot) and the taught
 // step the snapshot samples. With either one null, neither caller reads or writes anything: no claim, no hold row, no run.

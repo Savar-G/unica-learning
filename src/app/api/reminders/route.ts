@@ -12,7 +12,6 @@ import { reminderMessage, reminderStore } from "@/lib/reminder-store";
 import { REMINDER_KINDS, dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
 import { newToken } from "@/lib/sign-in-link";
 import { adminClient } from "@/lib/supabase-auth";
-import { createNextBookStepServer } from "@/lib/next-book-step-server";
 import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/lib/workbook-scan-maintenance-server";
 
 // The reminder job (#73, D-085). Supabase pg_cron calls it every 15 minutes through pg_net, with
@@ -24,8 +23,6 @@ import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/l
 // the cron's 60-second request limit (timeout_milliseconds in migration add_reminder_cron). Also beside the emails, it brings
 // Stripe to each child's newest card (#554, src/lib/card-reconcile.ts) and reads each plan row that can still change, not read for 24 hours, again. All the card sweep's work ends 45 seconds after the run began
 // (SWEEP_END_MS in src/lib/card-sweep-server.ts), and the monthly emails' work 50 seconds after it (MONTHLY_END_MS).
-// After the scan maintenance (#475), the next-book step (#476, src/lib/next-book-step.ts) prepares book 2 from the frozen
-// snapshot of a delivered book 1, inside the same 55 seconds; it runs only when NEXT_BOOK_PREPARE_ENABLED turns it on.
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -128,23 +125,8 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
-    // After the scans, so a claim made this run is prepared this run. A stopped step hides nothing else.
-    const nextBookStep = createNextBookStepServer({
-      NEXT_BOOK_PREPARE_ENABLED: process.env.NEXT_BOOK_PREPARE_ENABLED,
-      WORKBOOK_SCAN_TEST_PARENT_IDS: process.env.WORKBOOK_SCAN_TEST_PARENT_IDS,
-    });
-    let nextBook: Awaited<ReturnType<NonNullable<typeof nextBookStep>["run"]>> | { error: "run_failed" } | undefined;
-    if (nextBookStep) {
-      try {
-        nextBook = await nextBookStep.run({ now: () => Date.now(), endAt: now + 55_000 });
-        if (nextBook.status === "ran" && nextBook.due > 0) console.info("[next book] run", JSON.stringify(nextBook));
-      } catch {
-        console.error("[next book] step stopped");
-        nextBook = { error: "run_failed" };
-      }
-    }
     return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards,
-      ...(scans ? { scans } : {}), ...(nextBook ? { nextBook } : {}) });
+      ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
     // The sweep finishes before the answer, so the function is not stopped in the middle of a call's end.

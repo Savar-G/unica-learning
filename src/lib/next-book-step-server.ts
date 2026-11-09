@@ -1,5 +1,6 @@
-// The next-book step on the service client, for the /api/reminders run (#476). Off unless NEXT_BOOK_PREPARE_ENABLED is
-// "test-only" or "families"; with no planner it answers planner-not-ready before any read or write.
+// The next-book step on the service client, for the /api/next-book-prepare cron route (#476). Off unless
+// NEXT_BOOK_PREPARE_ENABLED is "test-only" or "families"; with no planner it answers planner-not-ready before any read or
+// write.
 //
 // Every request of the step goes through one client bound to the step's deadline signal, with the SDK's retries off: a
 // GET that times out is not tried again after the deadline (the SDK retries a TimeoutError after 1, 2 and 4 seconds).
