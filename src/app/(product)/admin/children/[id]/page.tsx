@@ -10,6 +10,9 @@ import { WorkbookStatusChip } from "@/components/admin-workbook";
 import { ChildRunsTable, WorkerLine } from "@/components/admin-workbook-runs";
 import { adminClient } from "@/lib/supabase-auth";
 import { PrepareWorkbook } from "@/components/prepare-workbook";
+import { PrepareFromSnapshot } from "@/components/prepare-from-snapshot";
+import { nextBookButtonState } from "@/lib/next-book-button";
+import { nextBookWiring } from "@/lib/next-book-planner";
 import { AdminScanProgress } from "@/components/admin-scan-progress";
 import { loadAdminScanProgress } from "@/lib/admin-scan-progress-server";
 import { BookInstructions, loadBookInstructions } from "./book-instructions";
@@ -29,6 +32,17 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
   const learning = fromRow(c);
   const mix = bookMix(learning);
   const instructions = await loadBookInstructions(admin, c, workbooks);
+  // #476: "Prepare from snapshot" for the child's delivered book 1. With no planner nothing is read for it; a failed read
+  // shows a note and never breaks this page.
+  const nextBook = await nextBookButtonState({
+    ready: nextBookWiring() !== null,
+    book1Id: workbooks.find((w) => w.number === 1)?.id ?? null,
+    delivered: async (bookId) => {
+      const { data, error } = await admin.db.from("workbook_delivery_receipts").select("workbook_id").eq("workbook_id", bookId).maybeSingle();
+      if (error) throw new Error("book 1 delivery read");
+      return data?.workbook_id === bookId;
+    },
+  });
   const shipped = workbooks.filter(w => w.status === "shipped");
   const scanViews = await Promise.all(shipped.map(w => loadAdminScanProgress(admin, { parentId: c.parent_id, childId: c.id, workbookId: w.id })));
   return <AdminFrame email={admin.email} section="children" title={c.first_name}>
@@ -60,6 +74,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
     <h3>Make the next workbook</h3>
     {!!requests?.data?.length && <p role="status">Paid Restart: prepare the next workbook from the current child profile. {requests.data.length} request pending. The request stays here until a new preparation run starts.</p>}
     <PrepareWorkbook childId={c.id} child={c.first_name} runner={runner} />
+    {nextBook !== "hidden" && <PrepareFromSnapshot childId={c.id} state={nextBook} />}
     {runner === "mac" && <p className="adm-note"><WorkerLine worker={worker} /></p>}
     <ChildRunsTable runs={runs} now={new Date()} worker={runner === "mac" ? worker : undefined} />
   </AdminFrame>;

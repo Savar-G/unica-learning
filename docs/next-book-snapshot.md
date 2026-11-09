@@ -62,6 +62,67 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
   no new mark. A refresh that started before an approval cannot freeze after it.
 - Marks that arrive after approval are not used by that book. They stay for the profile and the book after next.
 
+## Who calls it
+
+Two callers run `prepareNextBook`. Both use one planner resolver, `nextBookPlanner()` (with `nextBookSelection()`, in
+`src/lib/next-book-planner.ts`). Both return `null` until the planner owner wires them. While either is `null`, neither
+caller reads or writes anything: no claim becomes a chain, no hold row is written, no run starts.
+
+**The automatic step.** Its own cron route, `POST /api/next-book-prepare` (`src/app/api/next-book-prepare/route.ts`).
+Supabase `pg_cron` posts to it every 15 minutes (job `next-book-prepare`, migration `20261109173906_next_book_prepare_cron.sql`), with the
+reminders' Vault secrets: the URL is `reminders_url` with `/api/reminders` replaced, and `Authorization: Bearer <CRON_SECRET>`.
+It is not part of `/api/reminders`: the step reads the plan gate (`childPlanAccess`), and no email sender may reach it
+(`src/lib/plan-access-emails.test.ts`). The route sends no email. `?dry=1` answers at once and writes nothing. The step
+has 55 seconds, inside the route's 60-second limit (`src/lib/next-book-step.ts`). It reads the due candidates in pages, oldest first by their
+anchor time, through a keyset cursor (anchor time to the microsecond, kind, id): each page starts strictly after the
+last, so many candidates at one identical time never hold the step on one page (#773):
+
+- a trigger claim of a book 1 with no snapshot chain yet (anchor: the claim time);
+- a live chain that is not frozen, planned or admitted yet (anchor: `prepare_from`);
+- a #628 hold with no held snapshot row yet (anchor: the hold time).
+
+Each candidate's access is checked right before its writes. Only a candidate that passes uses one of the 20 slots
+(`NEXT_BOOK_STEP_LIMIT`); a skipped one never does, so older families the release leaves out cannot keep a newer one
+waiting. The step keeps reading until 20 items were prepared, the candidates run out, or less than 8 seconds is left.
+A waiting chain costs one cheap read and stops waiting by its freeze deadline (30 minutes), and a claim or a hold leaves
+the list on its first call, so the oldest items do not block later ones for long.
+
+One deadline covers the whole step: its time less one second. Every candidate read, access read and item races it
+under one signal (#773). At the deadline the signal aborts: the database requests stop, a planner or selection answer
+that comes later is refused, and the step answers with what it did, never after its end. The step's client never
+retries (`adminClient(signal, { retry: false })`): the SDK would otherwise retry a timed-out read after 1, 2 and 4
+seconds, past the deadline. Every write the item already made is one atomic, re-entrant step, so the next run continues it.
+
+A failed or cut first read ends the step for that run with no writes; the next run tries again. A failed later read
+ends it with the items already prepared kept. An error on one item is counted, and the step goes on. The run's answer
+adds `nextBook`: counts by outcome (`waiting`, `held`, `queued`, `refused:<reason>`, ...), never a family's details.
+
+**The release switch `NEXT_BOOK_PREPARE_ENABLED`.** Unset or any other value: off, and the step does not run.
+
+- `test-only`: only the parents in `WORKBOOK_SCAN_TEST_PARENT_IDS` that are still marked in `test_accounts`. The
+  candidates are read for those parents only. The mark is read again right before each item.
+- `families`: those, and real families whose child has an open plan (`childPlanAccess`), read again right before each item.
+
+A malformed parent list (not UUIDs, a repeat, more than 20) turns the step off in both modes.
+
+**The admin button "Prepare from snapshot".** On the admin child page, beside "Prepare next workbook", for the child's
+delivered book 1. The page checks the planner first: with none it reads nothing for the button and shows it disabled
+with "The planner is not ready yet." If its delivery read fails, it shows "Next book status is unavailable." and the rest
+of the page still renders (`src/components/prepare-from-snapshot.tsx`, route `POST /api/admin/children/<id>/next-book`,
+`src/lib/next-book-admin.ts`). Admins only. It refuses a family being deleted. It uses the book's claim if there is one,
+else it starts an `admin_prepare` chain. Pressing it again continues where the last press stopped. It answers one status
+line, with times in the family's time zone:
+
+| Answer | Line |
+|---|---|
+| waiting | Waiting for the last marks (until 7:40 p.m.). |
+| held, no accepted scan | On hold: no pages scanned. |
+| held, no final mark | No marked pages yet. |
+| unsupported source book | Only book 1 can be used for now. |
+| queued | Next book queued. |
+| refused, next book exists | This book already has a next book. |
+| no planner | The planner is not ready yet. |
+
 ## Where things are
 
 | Piece | File |
@@ -70,9 +131,13 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
 | Contract, consumer and the three calls | `src/lib/next-book-snapshot.ts` |
 | Memory store (tests) | `src/lib/next-book-snapshot-memory.ts` |
 | Supabase store | `src/lib/next-book-snapshot-store.ts` |
-| Server entry (no route, no cron) | `src/lib/next-book-snapshot-server.ts` |
+| Server entry | `src/lib/next-book-snapshot-server.ts` |
+| Planner resolver (null for now) | `src/lib/next-book-planner.ts` |
+| Automatic step, due readers, server wiring | `src/lib/next-book-step.ts`, `next-book-step-store.ts`, `next-book-step-memory.ts`, `next-book-step-server.ts` |
+| Cron route and its job | `src/app/api/next-book-prepare/route.ts`, `supabase/migrations/20261109173906_next_book_prepare_cron.sql` |
+| Admin button | `src/lib/next-book-admin.ts`, `next-book-admin-server.ts`, `next-book-button.ts`, `src/app/api/admin/children/[id]/next-book/route.ts` |
 | Book 1 capture | `captureBook1Progress` in `src/lib/workbook-book1-preview.ts` |
-| Tests | `src/lib/next-book-snapshot-flow.test.ts`, `src/lib/next-book-snapshot.test.ts` |
+| Tests | `src/lib/next-book-snapshot-flow.test.ts`, `src/lib/next-book-snapshot.test.ts`, `src/lib/next-book-step.test.ts`, `src/lib/next-book-step-store.test.ts`, `src/lib/next-book-admin.test.ts`, `src/lib/next-book-button.test.ts` |
 
 The database functions are service-only:
 
@@ -88,6 +153,6 @@ The database functions are service-only:
 ## Not built yet
 
 - The worker does not read `plan_input` yet. The planner owner adds that for runs with a `snapshot_id`.
-- No real planner and no step selection are wired. The server entry takes both as parameters.
-- No route, cron or admin screen. Until the worker reads `plan_input`, nothing should call the server entry for a real family.
+- No real planner and no step selection are wired: `nextBookPlanner()` and `nextBookSelection()` return `null`, so both
+  callers stop before any write. Until the worker reads `plan_input`, keep the switch off or `test-only`.
 - The run is not routed to the Mac worker. A queued run stays on the default runner until a caller routes it.
