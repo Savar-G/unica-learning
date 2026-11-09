@@ -4,20 +4,21 @@
 import { describe, expect, it } from "vitest";
 import { readAnswer, readOptionsFor } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
-import { judge, memoryTraceStore, runBehaviour, type Behaviour, type Plan, type Step } from "@/lib/maya-gate/gate";
-import type { OperationPackage } from "@/lib/question-package";
+import { judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type Plan, type Step } from "@/lib/maya-gate/gate";
+import { createTextSession, type SavedTextSession } from "@/lib/maya-text";
+import { checkQuestionPackage, operationText, workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 
 const THROWS: Plan[] = [{ throws: true }];
 const down = (text: string): Step => ({ child: text, maya: THROWS });
 const NEXT = { act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] };
 
 interface Told { act: string | undefined; step: string | undefined; level: number | undefined; lines: string[]; say: string; refusals: string[] }
-async function play(steps: Step[]) {
-  const b: Behaviour = { id: "loop-698", title: "loop 698", fixture: "A", status: "passing", steps, expect: { outcome: {} } };
+async function play(steps: Step[], fixture: Behaviour["fixture"] = "A") {
+  const b: Behaviour = { id: "loop-698", title: "loop 698", fixture, status: "passing", steps, expect: { outcome: {} } };
   const store = memoryTraceStore();
   await runBehaviour(b, store);
   const saved = store.load(b.id)!;
-  const trace = JSON.parse(saved) as { turns: { kind: string; output?: { act: string; say: string[] }; attempts?: { refusal: { code: string; reason: string } | null; proposal?: { act?: string; step?: string; level?: number; parts?: { line?: string }[] } }[] }[]; outcome: { reason: string; assistance: string[] } | null };
+  const trace = JSON.parse(saved) as { turns: { kind: string; detail?: string; output?: { act: string; say: string[] }; attempts?: { refusal: { code: string; reason: string } | null; proposal?: { act?: string; step?: string; level?: number; parts?: { line?: string }[] } }[] }[]; outcome: { reason: string; assistance: string[] } | null };
   const told: Told[] = trace.turns.filter((t) => t.kind === "maya" && t.output).map((t) => {
     const p = t.attempts!.at(-1)!.proposal ?? {};
     return {
@@ -26,7 +27,7 @@ async function play(steps: Step[]) {
     };
   });
   const hard = judge(b, saved).failures.map((f) => `${f.code}: ${f.detail}`).filter((x) => /^(?:hint_skipped|answer_too_early|flow_mismatch)/.test(x));
-  return { told, hard, outcome: trace.outcome };
+  return { told, hard, outcome: trace.outcome, technical: trace.turns.filter(t => t.kind === "technical" && t.detail !== "the behaviour script ended before the call ended"), misses: trace.turns.filter(t => t.kind === "maya").map(t => (t as unknown as { finalMisses?: number }).finalMisses ?? 0) };
 }
 
 /** The child's turn, read by a model as the ones step right, and the model's next step. */
@@ -118,6 +119,7 @@ describe("#698 loop: the ones step is credited when the child states its own res
     expect(told[4].step).not.toBe("ones");
   });
 });
+
 
 describe("#698 loop: a sure final answer with an explanation of where it came from", () => {
   const opts = readOptionsFor(FIXTURES.A as OperationPackage);
@@ -308,5 +310,193 @@ describe("#698 round 2 loop guard: repeated step prompts outside the held total"
     expect(told.flatMap((t) => t.lines)).not.toContain("check.right_step");
     expect(told.map((t) => t.act)).not.toContain("give_answer");
     expect(told.map((t) => t.say).join(" ")).not.toMatch(/66/);
+  });
+});
+
+// Sol review of 67fcd928 (#698 round 3, P1 e): the round 2 guard refused only the exact same prompt (step, level and step
+// lines), so a model that changed the lines (H3 "step.show" with and without "step.invite") or went down a level and back
+// up (H1 "step.point", H0 "step.invite", H1 ...) asked the same unfinished step until the call time limit. The guard now
+// counts guides by step: after the show once, or after two guides with no help above the row's highest, a guide with no
+// progress must give more help, and at the top the stuck way out comes (the easier example, then close.stuck). A right
+// step, a right answer or a copy of the shown step goes on; a confirm, a wait or a redirect does not reset the count.
+describe("#698 round 3 loop guard: guides are counted per unfinished step, not per line set", () => {
+  const SHOW: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
+  // The three ways Maya's words come: the model's own proposal (code's fallback when it is refused), the model's repair of
+  // a refused proposal (code's fallback when the repair is refused too), and code's fallback with the model down.
+  const paths: [string, (text: string, guide: Plan) => Step][] = [
+    ["the model", (text, guide) => ({ child: text, maya: [{ ...guide, repair: { throws: true } }] })],
+    ["the model's repair", (text, guide) => ({ child: text, maya: [{ act: "give_answer", repair: { ...guide, repair: { throws: true } } }] })],
+    ["code's fallback with the model down", (text) => down(text)],
+  ];
+  /** The guard's rule, read from the trace: in a row of guides on one step, after the show once or after two guides with no help above the row's highest, the next guide is higher. */
+  function climbs(told: Told[]) {
+    let row: { step: string; top: number; times: number } | null = null;
+    for (const [i, t] of told.entries()) {
+      if (t.act !== "guide" || !t.lines.some((l) => l.startsWith("step."))) {
+        if (["example_step", "try_target", "close", "accept_answer", "give_answer"].includes(t.act ?? "")) row = null;
+        continue;
+      }
+      const level = t.level ?? 0;
+      if (row && row.step === t.step && row.times >= (row.top >= 3 ? 1 : 2)) expect(level, `${i}: ${JSON.stringify(t)}`).toBeGreaterThan(row.top);
+      row = row && row.step === t.step ? { step: row.step, top: Math.max(row.top, level), times: level > row.top ? 1 : row.times + 1 } : { step: t.step!, top: level, times: 1 };
+    }
+  }
+  const safe = (r: Awaited<ReturnType<typeof play>>) => {
+    expect(r.hard).toEqual([]);
+    expect(r.technical).toEqual([]);
+    expect(r.outcome?.reason).not.toBe("technical_issue");
+    expect(r.told.map((t) => t.act)).not.toContain("give_answer");
+    expect(r.told.map((t) => t.act)).not.toContain("accept_answer");
+    expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+    expect(r.misses.every((n) => n === 0)).toBe(true);
+    expect(r.told.slice(1).map((t) => t.say).join(" ")).not.toMatch(/\b66\b/);
+  };
+
+  it.each(paths)("after the show, a second show never comes, whatever lines go with it (%s)", async (_name, make) => {
+    const r = await play([SHOW, ...Array.from({ length: 10 }, (_, i) => make("What is 7 plus 9?", { act: "guide", step: "ones", level: 3, lines: i % 2 === 0 ? ["step.show", "step.invite"] : ["step.show"] }))]);
+    expect(r.told[1]).toMatchObject({ act: "guide", lines: ["step.show"] });
+    expect(r.told[2].act).toBe("example_step");
+    expect(r.told.slice(2).flatMap((t) => t.lines)).not.toContain("step.show");
+    expect(r.told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
+    climbs(r.told);
+    safe(r);
+  });
+
+  it.each(paths)("H1, H0, H1 on the same step with no progress is one row: the help climbs, then the way out (%s)", async (_name, make) => {
+    const r = await play(Array.from({ length: 12 }, (_, i) => make(i === 0 ? "Help me." : "Um.", { act: "guide", step: "ones", level: i % 2 === 0 ? 1 : 0, lines: i % 2 === 0 ? ["step.point"] : ["step.invite"] })));
+    climbs(r.told);
+    expect(r.told.filter((t) => t.act === "guide").length).toBeLessThanOrEqual(8);
+    expect(r.told.at(-1)).toMatchObject({ act: "close" });
+    expect(r.told.at(-1)!.lines).toContain("close.stuck");
+    safe(r);
+  });
+
+  // A guide with no step line gives no help: it counts in the row below every level, and is never the next help up.
+  it.each<[string, Plan]>([
+    ["a check only (check.thinking)", { lines: ["check.thinking"] }],
+    ["a warm phrase only", { lines: [], warm: "encourage" }],
+  ])("a guide with %s on every turn cannot repeat until the call time limit", async (_name, plan) => {
+    const guide: Plan = { act: "guide", step: "ones", level: 0, ...plan };
+    const r = await play(Array.from({ length: 14 }, () => ({ child: "Um.", maya: [{ ...guide, repair: { ...guide, repair: { throws: true } } }] })));
+    expect(r.told.filter((t) => t.act === "guide").length).toBeLessThanOrEqual(8);
+    expect(r.told.at(-1)).toMatchObject({ act: "close" });
+    expect(r.told.at(-1)!.lines).toContain("close.stuck");
+    climbs(r.told);
+    safe(r);
+  });
+
+  it("a confirm between does not reset the show count", async () => {
+    const r = await play([SHOW,
+      { child: "Is it 66?", maya: [{ act: "confirm", heard: "66" }] },
+      { child: "Maybe.", maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show", "step.invite"], repair: { throws: true } }] },
+    ]);
+    expect(r.told[2].act).toBe("confirm");
+    expect(r.told[3].lines).not.toContain("step.show");
+    expect(r.technical).toEqual([]);
+  });
+
+  it.each(["I'm still writing.", "Maya, are you a robot?"])("a wait or a redirect between (%j) does not reset the show count", async (text) => {
+    const r = await play([SHOW, down(text), { child: "Um.", maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show", "step.invite"], repair: { throws: true } }] }]);
+    expect(r.told[2].act).not.toBe("guide");
+    expect(r.told.at(-1)?.lines).not.toContain("step.show");
+    expect(r.technical).toEqual([]);
+  });
+
+  it.each(paths)("a right ones step at the limit goes on to the tens with its credit (%s)", async (_name, make) => {
+    const low = (text: string, level: 0 | 1, line: "step.invite" | "step.point"): Step => ({ child: text, maya: [{ act: "guide", step: "ones", level, lines: [line] }] });
+    const work = "7 plus 9 is 16. I wrote the 6.";
+    const last = _name === "code's fallback with the model down" ? make(work, {}) : { ...make(work, { act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }), read: { answers: [[16, "ones", "right"]] } } as Step;
+    const r = await play([low("Help me.", 1, "step.point"), low("Um.", 0, "step.invite"), last]);
+    expect(r.told[3]).toMatchObject({ act: "guide", step: "tens" });
+    expect(r.told[3].lines).toContain("check.right_step");
+    expect(r.technical).toEqual([]);
+  });
+
+  it.each(paths)("a right final answer after the show is accepted (%s)", async (_name, make) => {
+    const last = _name === "code's fallback with the model down" ? make("66.", {}) : { ...make("66.", { act: "accept_answer", lines: ["answer.right"] }), read: { answers: [[66, "result", "right"]] } } as Step;
+    const r = await play([SHOW, last]);
+    expect(r.told[2].act).toBe("accept_answer");
+    expect(r.technical).toEqual([]);
+  });
+
+  it.each(["16.", "7 plus 9 is 16."])("a copy of the shown step (%j) is no repeat: the tens come next, with no credit", async (text) => {
+    const r = await play([SHOW, down(text)]);
+    expect(r.told[2]).toMatchObject({ act: "guide", step: "tens" });
+    expect(r.told[2].lines).not.toContain("check.right_step");
+    expect(r.technical).toEqual([]);
+  });
+
+  it.each(["A", "B", "C", "D", "E", "F"] as const)("only \"Um.\" on every turn ends with the honest close for fixture %s, on every path", async (fixture) => {
+    for (const [name, make] of paths) {
+      const r = await play(Array.from({ length: 20 }, () => make("Um.", { act: "guide", level: 0, lines: ["step.invite"] })), fixture);
+      expect(r.outcome?.reason, `${name} ${JSON.stringify(r.told)}`).not.toBe("technical_issue");
+      expect(r.told.at(-1)?.act, `${name} ${JSON.stringify(r.told)}`).toBe("close");
+      expect(r.told.map((t) => t.act)).not.toContain("give_answer");
+      expect(r.told.map((t) => t.act)).not.toContain("accept_answer");
+    }
+  });
+
+  it.each(["12 minus 8 is 4. I wrote 5.", "I got 4 and 5.", "What is 12 minus 8?"])("a held-back subtraction turn %j repeated ends on every path", async (text) => {
+    const steps: Step[] = [
+      { child: text, read: { answers: [[4, "ones", "right"]] }, maya: [{ act: "guide", step: "tens", level: 0, repair: { act: "guide", step: "ones", level: 0, lines: ["step.invite"], read: {} } }] },
+      { child: text, read: { answers: [[4, "ones", "right"]] }, maya: [{ act: "guide", step: "tens", level: 0, repair: { throws: true } }] },
+      down(text),
+    ];
+    for (const st of steps) {
+      const r = await play(Array.from({ length: 16 }, () => st), "B");
+      expect(r.technical).toEqual([]);
+      expect(r.told.at(-1)?.act).toBe("close");
+      expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      expect(r.misses.every((n) => n === 0)).toBe(true);
+      expect(r.told.map((t) => t.act)).not.toContain("accept_answer");
+    }
+  });
+
+  it.each([
+    ["no prompt (before round 2)", (saved: SavedTextSession) => { delete saved.session.prompt; }],
+    ["a prompt with no top (round 2)", (saved: SavedTextSession) => { expect(saved.session.prompt).toBeDefined(); delete saved.session.prompt!.top; }],
+  ] as const)("a saved session with %s still loads and ends safely", async (_name, strip) => {
+    for (const fixture of ["A", "B", "C", "D", "E", "F"] as const) {
+      let now = 1000;
+      const model = scenarioModel();
+      const options = { callId: `legacy-${fixture}`, package: FIXTURES[fixture], model, clock: () => now };
+      const old = createTextSession(options);
+      await old.start();
+      now += 4000; model.next([{ throws: true }], undefined); await old.child("Um.");
+      const saved: SavedTextSession = JSON.parse(JSON.stringify(await old.saved()));
+      saved.v = 1; delete saved.log; delete saved.checkpoint; delete saved.initial;
+      strip(saved);
+      const resumed = createTextSession({ ...options, resume: saved });
+      for (let i = 0; i < 20 && !resumed.ended; i++) { now += 4000; model.next([{ throws: true }], undefined); await resumed.child("Um."); }
+      expect(resumed.ended).toBe(true);
+      expect(resumed.session.outcome?.reason).not.toBe("technical_issue");
+      expect(resumed.trace().turns.filter((t) => t.kind === "technical")).toEqual([]);
+    }
+  });
+
+  const small = (operation: Operation, answer: number, easier: Operation, easyAnswer: number): OperationPackage => ({
+    ...(FIXTURES.A as OperationPackage), operation, text: `${operationText(operation)} = ?`, steps: workedSteps(operation),
+    answer: { value: { type: "number", value: answer }, accepted: [], unit: null },
+    wrongAnswers: [{ value: { type: "number", value: answer + 1 }, cause: "O3", description: "Wrong result", step: null }],
+    easierExample: { text: `${operationText(easier)} = ?`, operation: easier, steps: workedSteps(easier), answer: { type: "number", value: easyAnswer } },
+  });
+  it.each([
+    ["one column", small({ kind: "add", operands: [2, 1] }, 3, { kind: "add", operands: [1, 1] }, 2)],
+    ["division", small({ kind: "divide", operands: [8, 2] }, 4, { kind: "divide", operands: [6, 2] }, 3)],
+    ["an easier example that would say the answer", small({ kind: "divide", operands: [8, 2] }, 4, { kind: "divide", operands: [4, 2] }, 2)],
+  ] as const)("no final answer and no dead end for %s with the model down", async (_name, pkg) => {
+    expect(checkQuestionPackage(pkg)).toMatchObject({ ok: true });
+    let now = 1000;
+    const model = scenarioModel();
+    const session = createTextSession({ callId: "small-r3", package: pkg, model, clock: () => now });
+    await session.start();
+    for (let i = 0; i < 20 && !session.ended; i++) { now += 4000; model.next([{ throws: true }], undefined); await session.child("Um."); }
+    expect(session.ended).toBe(true);
+    expect(session.session.outcome?.reason).not.toBe("technical_issue");
+    expect(session.session.outcome?.reason).not.toBe("content_issue");
+    const trace = session.trace();
+    expect(trace.turns.filter((t) => t.kind === "technical")).toEqual([]);
+    const says = trace.turns.flatMap((t) => (t.kind === "maya" ? t.output?.say ?? [] : [])).join(" ");
+    expect(says).not.toMatch(new RegExp(`\\b${pkg.answer.value.type === "number" ? pkg.answer.value.value : -1}\\b`));
   });
 });

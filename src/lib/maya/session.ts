@@ -397,12 +397,16 @@ export interface Session {
    */
   heldStep?: { step: string; times: number; asked: boolean };
   /**
-   * The loop guard's prompt count (PR #698, round 2): Maya's last guide prompt as its step, help level and step lines
-   * ("ones|0|step.invite"), how many of her turns in a row said it, and the lowest help she may give on the step after the
-   * guard made the help climb (`floor`). An act that moves the teaching on ends the row (PROMPT_ROW_ENDS); the floor stays
-   * while the step is the same. A saved session from before has no field.
+   * The loop guard's prompt count (PR #698, rounds 2 and 3): Maya's last guide prompt as its step, help level and step
+   * lines ("ones|0|step.invite"), how many of her guides on that step in a row said no help above the row's highest
+   * (`top`, round 3: counted by step and level, never by the exact lines, so H1 then H0 then H1 is a row of three), and
+   * the lowest help she may give on the step after the guard made the help climb (`floor`). An act that moves the
+   * teaching on ends the row (PROMPT_ROW_ENDS), and so does a credited step or a copy of the shown step; the floor stays
+   * while the step is the same. `shown` (round 3): Maya showed the step (H3, with any other lines) and the child has made
+   * no progress since; the row's end does not clear it, so the easier example and its new try never lead to a second
+   * show. A saved session from before has no field, or no `top` (read as `level`) and no `shown`.
    */
-  prompt?: { step: string; level: number; key: string; times: number; floor: number };
+  prompt?: { step: string; level: number; key: string; times: number; floor: number; top?: number; shown?: true };
   confirmTries: number;
   offeredOtherInput: boolean;
   redirects: number;
@@ -1328,6 +1332,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     const up = (loop === "climb" || loop === "repeat") && ladder.step === s.ladder.step ? nextHint(base) : null;
     if (up !== null) ladder.unlocked = Math.max(ladder.unlocked, up);
   }
+  // A step this turn credited, or a copy of the shown step, is progress: the loop guard's row starts again (loopGuard).
+  const progressed = done.some((id) => !base.done.includes(id)) || passed.some((id) => !(base.passed ?? []).includes(id));
+  // A guide the loop guard lets through as no repeat (a check or echo of the child's own work, or the carry explanation,
+  // each limited on its own) neither counts in its row nor ends it.
+  let exempt = false;
 
   const main = isTeaching(s.state) ? s.state : s.resume;
   // The step a guide or an example step is about comes before its words: its lines are that step's lines.
@@ -1431,11 +1440,13 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
         saidSetup(pkg!, ladder.step, s.turn.text));
       if (p.level > cap && !echo) return no("hint_too_high", `Help may rise to H${cap} now: more help needs a failed attempt or a request, not silence.`, allowedNow);
       if (echo) {
+        exempt = true;
         moveTo(s, s.solved !== null ? "CHECK" : "GUIDE_TARGET");
         break;
       }
       // The regroup explanation is new help for a child who lost the carry, whatever level the ladder is on.
       const regroupNow = spoken.chosen.some((o) => o.line === "step.regroup" || o.line === "step.why" || o.line === "step.order");
+      exempt = regroupNow;
       if (s.turn && asksWhy(s.turn.text) && offersFor(s, "guide", view).some(o => o.line === "step.why") &&
           !spoken.chosen.some(o => o.line === "step.why")) {
         return no("line_not_offered", "The child asked why the carry or trade works: use the offered step.why explanation before another prompt.", allowedNow);
@@ -1448,10 +1459,14 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
         return no("line_not_offered", "The child asked about the carried digit: answer with the offered line about it (step.point, step.regroup or step.why) before another prompt.", allowedNow);
       }
       if (ladder.failures >= 2 && p.level <= ladder.hint && !regroupNow) return no("same_hint_again", `Two attempts failed at H${ladder.hint}: give more help or offer to stop.`, allowedNow);
-      // The loop guard (round 2, P1 e): the same step prompt is never said a third time in a row, and the show (H3) never a
-      // second time in a row (loopGuard). After the guard made the help climb, help on the step never goes back below it:
-      // "How about the ones?" again after "Look at the ones column" would start the same loop over.
-      if (loop === "repeat" && s.prompt?.key === promptKey(p, spoken.chosen) && !regroupNow) {
+      // The loop guard (rounds 2 and 3, P1 e): after two guides on the step with no progress and no help above the row's
+      // highest, or after its show (H3) once, a guide on the step with no progress must give help above any in the row
+      // (loopGuard): other lines with the show, or a lower level and back up, are the same loop. After the guard made the
+      // help climb, help on the step never goes back below it: "How about the ones?" again after "Look at the ones column"
+      // would start the same loop over.
+      // A guide with no step line (only a check or a warm phrase) gives no help: it is never the next help up.
+      const helps = spoken.chosen.some((o) => o.line.startsWith("step."));
+      if (loop === "repeat" && s.prompt?.step === p.step && (!helps || p.level <= (s.prompt.shown ? 3 : s.prompt.top ?? s.prompt.level)) && !progressed && !regroupNow) {
         return no("same_hint_again", `Maya said this help on "${p.step}" just before and it is still not clear: give the next help up${nextHint(base) === null ? ", or the easier example, or close honestly" : ""}.`, allowedNow);
       }
       if (s.prompt?.step === p.step && p.level < s.prompt.floor && !regroupNow) return no("same_hint_again", `Maya already gave H${s.prompt.floor} on this step when the same help did not work: never go back below it.`, allowedNow);
@@ -1646,17 +1661,26 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.ladder = ladder;
     s.finalMisses = misses;
   }
-  // The loop guard's prompt count: the same guide prompt on the same step, Maya turn after Maya turn (loopGuard). A guide
+  // The loop guard's prompt count: guides on the same step with no progress, Maya turn after Maya turn (loopGuard). A guide
+  // above the row's highest help starts the count at one; any other guide in the row adds one, whatever its lines (round
+  // 3). A guide with no step line (a check or a warm phrase only) gives no help, so it counts below every level. A guide
   // said on a turn the guard made climb sets the step's floor.
-  const key = scoring && p.act === "guide" ? promptKey(p, spoken.chosen) : null;
+  const key = scoring && p.act === "guide" && !exempt ? promptKey(p, spoken.chosen) : null;
   if (key !== null) {
-    const same = base.prompt?.step === p.step;
-    const floor = Math.max(same ? base.prompt!.floor : -1, loop === "repeat" || loop === "climb" ? p.level! : -1);
-    s.prompt = { step: p.step!, level: p.level!, key, times: base.prompt?.key === key ? base.prompt.times + 1 : 1, floor };
-  } else if (s.prompt && PROMPT_ROW_ENDS.includes(p.act)) {
-    // An act that moves the teaching on ends the row; the floor stays. Any other act (a confirm, a wait, a redirect, a
-    // guide on the step with no step line) neither counts nor ends it, so it cannot reset the count between prompts.
-    s.prompt = { ...s.prompt, key: "", times: 0 };
+    const prev = base.prompt;
+    const same = prev?.step === p.step;
+    const row = same && prev!.times > 0 && !progressed;
+    const top = row ? (prev!.top ?? prev!.level) : -1;
+    const level = spoken.chosen.some((o) => o.line.startsWith("step.")) ? p.level! : -1;
+    const floor = Math.max(same ? prev!.floor : -1, loop === "repeat" || loop === "climb" ? level : -1);
+    const shown = level >= 3 || (same && !progressed && prev!.shown === true);
+    s.prompt = { step: p.step!, level: p.level!, key, times: row && level <= top ? prev!.times + 1 : 1, floor, top: Math.max(top, level), ...(shown ? { shown: true as const } : {}) };
+  } else if (s.prompt && (PROMPT_ROW_ENDS.includes(p.act) || (scoring && progressed))) {
+    // An act that moves the teaching on, or a turn with progress, ends the row; the floor stays, and the show stays until
+    // progress. Any other act (a confirm, a wait, a redirect, an exempt guide) neither counts nor ends it, so it cannot
+    // reset the count between prompts.
+    const { shown, ...rest } = s.prompt;
+    s.prompt = { ...rest, key: "", times: 0, ...(shown && !(scoring && progressed) ? { shown } : {}) };
   }
   // Each explanation belongs to exactly one carry, not to either adjacent column's other carry.
   const explained = spoken.chosen.filter((o) => o.line === "step.regroup" && o.slots.step).flatMap((o) => pkg ? pairOf(pkg, o.slots.step!, o.slots.other === "carry") : []);
@@ -2571,21 +2595,23 @@ function loopGuard(s: Session): "confirm" | "climb" | "repeat" | null {
     const named = columnClaims(text).length > 0 || claimPlaces(text).length > 0;
     return offered && !named && s.confirmTries < 2 && !claimJudgedWrong(s) ? "confirm" : "climb";
   }
-  // Round 2 (#698, P1 e): any turn, credit or not. Maya's same prompt on the ladder's step twice in a row, or her H3 show
-  // once, is not said again for a turn that moves nothing on: the help climbs. A copy of the shown step goes past it
-  // (copiedStep), so it is no repeat.
-  const shown = s.prompt;
-  if (!shown || shown.step !== s.ladder.step || copiedStep(s) !== null) return null;
-  return shown.times >= (shown.level >= 3 ? 1 : 2) ? "repeat" : null;
+  // Rounds 2 and 3 (#698, P1 e): any turn, credit or not. Two guides in a row on the ladder's step with no help above the
+  // row's highest (any lines, any order of levels) are not followed by the same or lower help for a turn that moves
+  // nothing on: the help climbs. After her H3 show of the step (with any other lines, before or after the easier example)
+  // no guide on it comes again: the stuck way out. A copy of the shown step goes past it (copiedStep), so it is no repeat.
+  const last = s.prompt;
+  if (!last || last.step !== s.ladder.step || copiedStep(s) !== null) return null;
+  if (last.shown) return "repeat";
+  return last.times >= ((last.top ?? last.level) >= 3 ? 1 : 2) ? "repeat" : null;
 }
 
 /** The acts that end the loop guard's row of prompts: each moves the teaching on (the example, a new try, the answer, the end). */
 const PROMPT_ROW_ENDS: readonly Act[] = ["open", "clarify", "example_step", "try_target", "accept_answer", "give_answer", "ask_write", "close"];
 
-/** A guide's prompt for the loop guard: its step, help level and step lines ("ones|0|step.invite"), or null with none. */
+/** A guide's prompt for the loop guard: its step, help level and lines ("ones|0|step.invite"; round 3: every guide, with or without a line), or null for any other act. */
 function promptKey(p: Proposal, chosen: readonly { line: string }[]): string | null {
-  const lines = chosen.filter((o) => o.line.startsWith("step.")).map((o) => o.line);
-  return p.act === "guide" && p.step !== undefined && p.level !== undefined && lines.length > 0 ? `${p.step}|${p.level}|${lines.join(",")}` : null;
+  const lines = chosen.map((o) => o.line);
+  return p.act === "guide" && p.step !== undefined && p.level !== undefined ? `${p.step}|${p.level}|${lines.join(",")}` : null;
 }
 
 /** The stuck way out at the top help (#735, decision (a)): the easier example while it is not shown and safe, then the close. */

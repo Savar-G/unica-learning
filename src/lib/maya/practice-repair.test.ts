@@ -40,9 +40,10 @@ describe("repairs from the full subscription practice", () => {
     c.child("Show me the ones.");
     c.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
     c.child("Okay.");
-    c.ok({ act: "guide", step: "ones", level: 0, parts: [line("step.invite", { step: "ones" })] });
+    // #698 round 3: after the show, a gentler prompt on the same step with no progress is the same loop (loopGuard): it is
+    // refused, the help level stays at the top, and code's fallback takes the easier example.
+    expect(c.propose({ act: "guide", step: "ones", level: 0, parts: [line("step.invite", { step: "ones" })] }).refusal?.code).toBe("same_hint_again");
     expect(c.s.ladder.hint).toBe(3);
-    c.child("I do not know.");
     expect(c.fallback().effects.some(e => e.kind === "say" && e.act === "example_step")).toBe(true);
   });
 
