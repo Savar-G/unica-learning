@@ -253,11 +253,12 @@ const HARD_FEELING = /\b(sad|sadder|upset|unhappy|worried|worry|worries|scared|a
 /** Whether the child's words tell a hard feeling: refused free talk then falls back to FEELING_SMALLTALK. */
 export const hardFeeling = (childTurn: string | null | undefined): boolean => {
   const text = (childTurn ?? "").replace(/’/g, "'")
+    .replace(/\b(?:not|don't|do not) (?:feel(?:ing)? )?(?:(?:very|so|really|that|too) )?(?:bad|down) (?:anymore|now)\b/giu, "well")
     .replace(/\bi found my lost\b/giu, "i found my")
     .replace(/\bi won the snowball fight\b/giu, "i won the snowball game")
     .replace(/\bnot (?:sad|sick)(?: anymore)?\b/giu, "well")
     .replace(/\bnot (?:sadder|upset|unhappy|worried|scared|afraid|frightened|nervous|angry|mad|ill|hurt|lonely|tired|sleepy|frustrated|annoyed|bored) anymore\b/giu, "well");
-  return HARD_FEELING.test(text) || /\b(?:(?:not (?:(?:at all|even) )?(?:feeling )?|(?:don'?t|do not) feel )(?:(?:very|so|really|that|too) ){0,2}(?:happy|good|well|okay|ok)|feel(?:ing)? (?:(?:very|so|really|that|too) ){0,2}(?:down|bad)|(?:nobody|no one) likes me|no friends)\b/iu.test(text);
+  return HARD_FEELING.test(text) || /\b(?:(?:not (?:(?:at all|even) )?(?:feeling )?|(?:don'?t|do not) feel )(?:(?:very|so|really|that|too|at all) ){0,2}(?:happy|good|great|well|okay|ok)|feel(?:ing)? (?:(?:very|so|really|that|too) ){0,2}(?:down|bad)|(?:nobody|no one) likes me|no friends)\b/iu.test(text);
 };
 /**
  * Cheerful wordings that must never answer a hard feeling ("My grandma is in the hospital." must not get "Oh, your grandma!

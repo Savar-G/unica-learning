@@ -2837,7 +2837,11 @@ export function phraseOffers(session: Session, group: PhraseGroup): { pick: numb
   const closingEffort = new Set([2, 7, 10, 13, 14]);
   const asked = askedNow(session);
   const hard = hardFeeling(childTurnText(session));
+  const turn = (childTurnText(session) ?? "").replace(/’/g, "'");
+  const positive = /\b(?:happy|glad|great|good|fun|excited|yay|awesome|love|loved|won|found|wonderful|amazing|enjoyed|proud)\b/i.test(turn)
+    && !/\b(?:not|no|never|nobody|nothing|no one|anymore)\b|n't\b/i.test(turn) && !hard;
   return PHRASES[group].flatMap((text, i) => {
+    if (group === "happy" && !positive) return [];
     if (asked && THANKS_TOLD.test(text)) return [];
     // A hard feeling never gets a cheerful wording ("Oh, your grandma! How nice.").
     if (hard && group !== "empathy" && !(group === "smalltalk" && [...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].includes(text))) return [];
@@ -2849,7 +2853,7 @@ export function phraseOffers(session: Session, group: PhraseGroup): { pick: numb
 
 /** The warm-talk purposes each act Maya may take now can use (D-196), for the text adapter beside lineOffers. */
 export function warmGroups(session: Session): Partial<Record<Act, PhraseGroup[]>> {
-  return Object.fromEntries(nextActs(session).acts.map((act) => [act, session.replies?.length ? [] : PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))]));
+  return Object.fromEntries(nextActs(session).acts.map((act) => [act, session.replies?.length ? [] : PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act) && (g !== "happy" || phraseOffers(session, g).length > 0))]));
 }
 
 /** "{echo}" filled with the child's words, a capital first at the start of a sentence. */
@@ -3113,6 +3117,7 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
   };
   const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number, only?: readonly string[]): string => {
     if (!only && hardFeeling(childTurnText(s)) && phraseOffers(s, group).length === 0) return phrase("smalltalk", null, undefined, FEELING_SMALLTALK);
+    if (!only && phraseOffers(s, group).length === 0) return phrase("smalltalk", null, undefined, NEUTRAL_SMALLTALK);
     const bank = PHRASES[group];
     const eligible = new Set(phraseOffers(s, group).map((o) => o.pick - 1));
     // A frame with the child's words when they check, else one with no slot (D-196 echo frames).

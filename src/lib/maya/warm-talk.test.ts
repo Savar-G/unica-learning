@@ -116,7 +116,7 @@ describe("the phrase bank", () => {
   it("offers the model the purposes that fit each act", () => {
     const c = call();
     const groups = warmGroups(c.s);
-    expect(groups.guide).toEqual(PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes("guide")));
+    expect(groups.guide).toEqual(PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes("guide") && g !== "happy"));
     expect(groups.clarify).toContain("smalltalk");
   });
 });
@@ -923,5 +923,27 @@ it.each(["I feel really bad.", "I am not at all happy."])("refuses a happy redir
   const c = call();
   c.child(text);
   expect(phraseOffers(c.s, "happy")).toEqual([]);
+  expect(Object.values(warmGroups(c.s)).flat()).not.toContain("happy");
   expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] })).not.toBeNull();
+});
+
+it.each(["I am not feeling at all happy.", "I don't feel at all good.", "I'm not feeling bad anymore.", "I am happy but my dog is sick.", "I have no happy news.", "Hello there."])("does not offer cheerful replies for %s", (text) => {
+  const c = call();
+  c.child(text);
+  expect(phraseOffers(c.s, "happy")).toEqual([]);
+});
+
+it.each(["I'm so happy!", "I won!"])("offers happy replies for %s", (text) => {
+  const c = call();
+  c.child(text);
+  expect(phraseOffers(c.s, "happy").length).toBeGreaterThan(0);
+  expect(c.say({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] }).text).toContain("What a happy mood!");
+});
+
+it("uses a neutral reply for a resolved bad feeling", () => {
+  const c = call();
+  c.child("I'm not feeling bad anymore.");
+  expect(hardFeeling("I'm not feeling bad anymore.")).toBe(false);
+  const said = c.say({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy" }, { line: "redirect.back" }] });
+  expect(NEUTRAL_SMALLTALK.some((line) => said.text.startsWith(bare(line)))).toBe(true);
 });
