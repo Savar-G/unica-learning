@@ -1551,7 +1551,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (m) {
       const rest = spoken.segments.filter((x) => x.kind !== "warm" && x.kind !== "talk");
       const room = turnWordLimit(s) - speechWords(rest.map((o) => o.text).join(" "));
-      const pool = m.texts.map((_, i) => i).filter((i) => speechWords(m.texts[i]) <= room);
+      const pool = firstShipWordings(m.texts).filter((i) => speechWords(m.texts[i]) <= room);
       if (pool.length > 0) {
         const pick = pool[chooseWording(s.variety, pool.map((i) => m.wordingIds?.[i] ?? `${m.key}#${i}`), s.now!)];
         const at = p.act === "accept_answer" ? rest.findIndex((x) => x.kind === "math") + 1 : 0;
@@ -2835,6 +2835,16 @@ const childTurnText = (session: Session): string | undefined => session.turn?.te
 
 // D-310: the first-ship cheer backstop keeps only calm bank phrases.
 const CHEER_AT_FIRST_SHIP = false;
+/**
+ * Fixed template wordings that celebrate ("Well done!", "Nice!", "Smart!"). While CHEER_AT_FIRST_SHIP is false (D-310)
+ * they are never chosen: a template's other, calm wordings are. Correctness itself ("That's right: 27 + 39 = 66.") stays.
+ * Final #698 re-check: answer.right, check.right_step.plain and check.method.* still celebrated.
+ */
+const CELEBRATORY_TEMPLATE = /\b(?:well done|nice|smart|great|awesome|amazing|hooray|yay|wonderful|fantastic|excellent|proud)\b|\byou did it\s*[:!]/i;
+export const celebratoryTemplate = (text: string): boolean => CELEBRATORY_TEMPLATE.test(text);
+/** The indices of a template's wordings that may be said at first ship: the calm ones, or all when cheer is on. */
+export const firstShipWordings = (texts: readonly string[]): number[] =>
+  texts.map((_, i) => i).filter((i) => CHEER_AT_FIRST_SHIP || !celebratoryTemplate(texts[i]));
 
 // Match exclamations in non-calm bank positions, including filled echo and name slots.
 const CHEER_EXCLAMATIONS = PHRASE_GROUPS.flatMap((group) => PHRASES[group].flatMap((text, index) => {
@@ -3226,7 +3236,10 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
     if (p.act === "guide" && o.level !== undefined && o.level > (p.level ?? 0)) {
       return { code: "hint_too_high", reason: `"${o.line}" is H${o.level} help, above this guide's level H${p.level ?? 0}.` };
     }
-    const text = o.texts[pickFresh(o.texts, (k) => o.wordingIds?.[k] ?? `${o.key}#${k}`)];
+    // While first-ship cheer is off, only a template's calm wordings may be said (D-310).
+    const usable = firstShipWordings(o.texts);
+    if (usable.length === 0) return { code: "line_not_offered", reason: `"${o.line}" has no calm wording while cheer is off.` };
+    const text = o.texts[usable[pickFresh(usable.map((i) => o.texts[i]), (k) => o.wordingIds?.[usable[k]] ?? `${o.key}#${usable[k]}`)]];
     // The decline counts as math (D-197): a turn that declines holds no free talk, and nothing follows it but code.
     add(isMathLine(o) || o.line === "redirect.decline" ? "math" : "plain", text);
     lines.push(text);
