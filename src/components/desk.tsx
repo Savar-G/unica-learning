@@ -185,7 +185,7 @@ export function Desk(props: DeskProps) {
             </button>
           )}
           {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} held={card?.held} /> : <>
-          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat with Maya starts soon."}</p>
+          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat and calls with Maya start soon."}</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>

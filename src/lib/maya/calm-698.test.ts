@@ -52,11 +52,12 @@ it("offers only calm choices on sad, mixed, and neutral turns across the bank", 
   }
 });
 
-it("never emits a non-calm bank phrase across warm acts, choices, and echoes", () => {
-  for (const text of ["I feel sad.", "I feel miserable.", "I love my puppy but we had to give him away.", "I am happy for my friend but I feel left out.", "I won a prize but my friends call me names.", "Hello there.", "I'm happy and heartbroken.", "I'm proud despite my grief.", "I love my dad in heaven.", "I love my dog 😭", "I'm so happy!", "I won!", "Yay!"]) {
+// One case per child turn (CI took 95 s for the whole walk in one test): the same full walk, split so each case is short.
+it.each(["I feel sad.", "I feel miserable.", "I love my puppy but we had to give him away.", "I am happy for my friend but I feel left out.", "I won a prize but my friends call me names.", "Hello there.", "I'm happy and heartbroken.", "I'm proud despite my grief.", "I love my dad in heaven.", "I love my dog 😭", "I'm so happy!", "I won!", "Yay!"])("never emits a non-calm bank phrase across warm acts, choices, and echoes after %s", (text) => {
+  {
     const s = after(text);
     for (const act of ACTS) for (const group of PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))) {
-      for (let pick = 0; pick <= PHRASES[group].length; pick++) for (const echo of [undefined, "my puppy"]) {
+      for (let pick = 0; pick <= PHRASES[group].length; pick++) for (const echo of PHRASES[group].some((p) => p.includes("{echo}")) ? [undefined, "my puppy"] : [undefined]) {
         const parts: Record<string, unknown>[] = [{ warm: group, ...(pick ? { pick } : {}), ...(echo ? { echo } : {}) }];
         if (act === "redirect") parts.push({ line: "redirect.back" });
         if (act === "guide") parts.push({ line: "step.invite", slots: { step: "ones" } });
