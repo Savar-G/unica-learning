@@ -178,6 +178,21 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   ],
 };
 
+/** Bank wordings that celebrate the child's news. The same wording is tagged in every group. */
+export const CHEERFUL_PHRASES: ReadonlySet<string> = new Set([
+  ...PHRASES.happy,
+  "Great effort!", "Nice focus!", "Your effort is awesome.",
+  "Oh, how nice!", "Nice to hear, {name}!", "What a nice thing to tell me.", "Ha, I like it!", "Oh, cool!",
+  "Oh, {echo}! How nice.", "Animals are fun to hear about.", "How nice of you to tell me.",
+  "It's nice to hear about the people in your life.", "It's nice to hear about your world.",
+  "It's nice to hear what you like to play.", "It's nice to hear what you eat.", "It's nice to hear what you play.",
+  "New trips are fun to hear about.",
+  "I'm an AI, so I don't have a life like yours. It's nice to hear about yours!",
+  "I'm an AI, and it's nice to hear about you!",
+  "Ooh, {echo}!", "Ooh, an animal friend!", "Ooh, school news!", "Ooh, a game!", "Ooh, food talk!", "Ooh, sports!", "Ooh, a trip!",
+]);
+export const isCheerfulPhrase = (text: string): boolean => CHEERFUL_PHRASES.has(text);
+
 /** The acts each purpose fits. */
 /** The acts a reply to the child's own talk fits: around the math, never inside it. */
 const REPLY_ACTS: readonly Act[] = ["open", "clarify", "redirect", "close", "check_in", "wait", "confirm"];
