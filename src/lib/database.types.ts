@@ -636,6 +636,41 @@ export type Database = {
           },
         ]
       }
+      child_plan_prices: {
+        Row: {
+          child_id: string
+          confirmed: boolean
+          monthly_cents: number
+          parent_id: string
+          released: boolean
+          start_key: string
+        }
+        Insert: {
+          child_id: string
+          confirmed?: boolean
+          monthly_cents: number
+          parent_id: string
+          released?: boolean
+          start_key: string
+        }
+        Update: {
+          child_id?: string
+          confirmed?: boolean
+          monthly_cents?: number
+          parent_id?: string
+          released?: boolean
+          start_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_plan_prices_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       child_plan_states: {
         Row: {
           child_id: string
@@ -1282,6 +1317,44 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "family_deletions"
             referencedColumns: ["parent_id"]
+          },
+        ]
+      }
+      family_plan_windows: {
+        Row: {
+          confirmed: boolean
+          ends_at: string | null
+          first_child_id: string
+          parent_id: string
+          released: boolean
+          start_key: string
+          started_at: string | null
+        }
+        Insert: {
+          confirmed?: boolean
+          ends_at?: string | null
+          first_child_id: string
+          parent_id: string
+          released?: boolean
+          start_key: string
+          started_at?: string | null
+        }
+        Update: {
+          confirmed?: boolean
+          ends_at?: string | null
+          first_child_id?: string
+          parent_id?: string
+          released?: boolean
+          start_key?: string
+          started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_plan_windows_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2686,6 +2759,7 @@ export type Database = {
           email_text: string | null
           email_to: string | null
           ended_by: string | null
+          family_terms: boolean
           finished_at: string | null
           first_charge_at: string | null
           generation: number
@@ -2693,6 +2767,7 @@ export type Database = {
           parent_id: string
           payment_method_id: string
           purpose: string
+          read_tried_at: string | null
           start_key: string
           started_at: string
           state: string
@@ -2701,6 +2776,7 @@ export type Database = {
           team_alert_email_id: string | null
           team_alert_error: string | null
           team_alert_state: string | null
+          trial_end: string | null
         }
         Insert: {
           card_setup_id: string
@@ -2718,6 +2794,7 @@ export type Database = {
           email_text?: string | null
           email_to?: string | null
           ended_by?: string | null
+          family_terms?: boolean
           finished_at?: string | null
           first_charge_at?: string | null
           generation: number
@@ -2725,6 +2802,7 @@ export type Database = {
           parent_id: string
           payment_method_id: string
           purpose?: string
+          read_tried_at?: string | null
           start_key: string
           started_at?: string
           state?: string
@@ -2733,6 +2811,7 @@ export type Database = {
           team_alert_email_id?: string | null
           team_alert_error?: string | null
           team_alert_state?: string | null
+          trial_end?: string | null
         }
         Update: {
           card_setup_id?: string
@@ -2750,6 +2829,7 @@ export type Database = {
           email_text?: string | null
           email_to?: string | null
           ended_by?: string | null
+          family_terms?: boolean
           finished_at?: string | null
           first_charge_at?: string | null
           generation?: number
@@ -2757,6 +2837,7 @@ export type Database = {
           parent_id?: string
           payment_method_id?: string
           purpose?: string
+          read_tried_at?: string | null
           start_key?: string
           started_at?: string
           state?: string
@@ -2765,6 +2846,7 @@ export type Database = {
           team_alert_email_id?: string | null
           team_alert_error?: string | null
           team_alert_state?: string | null
+          trial_end?: string | null
         }
         Relationships: [
           {
@@ -6935,6 +7017,13 @@ export type Database = {
         Returns: undefined
       }
       admin_team_ids: { Args: never; Returns: string[] }
+      admin_team_names: {
+        Args: never
+        Returns: {
+          name: string
+          user_id: string
+        }[]
+      }
       admin_template_stats: {
         Args: {
           curriculum?: string
@@ -7042,6 +7131,18 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admit_family_plan_start: {
+        Args: {
+          p_card: string
+          p_generation: number
+          p_key: string
+          p_monthly_cents: number
+          p_payment_method: string
+          p_purpose: string
+          p_revision?: string
+        }
+        Returns: Json
       }
       admit_plan_cancel: {
         Args: { p_card: string; p_parent: string }
@@ -7617,6 +7718,16 @@ export type Database = {
           parent_id: string
         }[]
       }
+      due_plan_start_reads: {
+        Args: { p_limit?: number }
+        Returns: {
+          child_id: string
+          customer: string
+          event_at: string
+          kind: string
+          parent_id: string
+        }[]
+      }
       email_copy_child_scope: {
         Args: { l: Database["public"]["Tables"]["email_log"]["Row"] }
         Returns: string[]
@@ -7654,7 +7765,22 @@ export type Database = {
         }[]
       }
       family_last_activity: { Args: { p: string }; Returns: string }
+      family_plan_price: {
+        Args: { p_agreed_cents: number; p_card: string; p_parent: string }
+        Returns: number
+      }
+      family_plan_start_answer: {
+        Args: {
+          p_admitted: boolean
+          p_row: Database["public"]["Tables"]["plan_starts"]["Row"]
+        }
+        Returns: Json
+      }
       family_plan_start_open: { Args: { p: string }; Returns: boolean }
+      family_plan_start_terms: {
+        Args: { p_card: string; p_generation: number }
+        Returns: Json
+      }
       family_retention_candidates: {
         Args: { after_id: string; page_size?: number }
         Returns: {
@@ -7692,6 +7818,17 @@ export type Database = {
           token: string
         }
         Returns: undefined
+      }
+      finish_family_plan_start: {
+        Args: {
+          p_card: string
+          p_email: boolean
+          p_first_charge: string
+          p_generation: number
+          p_state: string
+          p_subscription: string
+        }
+        Returns: boolean
       }
       finish_plan_control: {
         Args: { p_id: string; p_state: string }
@@ -7923,6 +8060,10 @@ export type Database = {
           p_token: string
         }
         Returns: boolean
+      }
+      note_plan_start_read_tried: {
+        Args: { p_child: string }
+        Returns: undefined
       }
       parent_explanation_command: {
         Args: {
@@ -8512,6 +8653,10 @@ export type Database = {
       scan_session_active: {
         Args: { p_session: string; p_user: string }
         Returns: boolean
+      }
+      seed_family_plan_history: {
+        Args: { p_parent: string }
+        Returns: undefined
       }
       send_scan_photos: {
         Args: { p_child: string; p_ids: string[]; p_parent: string }

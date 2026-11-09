@@ -401,7 +401,7 @@ export function nextStep(v: ReportView): NextStep {
     return {
       kind: "card",
       title: `Start ${name}'s books`,
-      text: `Math is CAD ${cad(PLANS.one.price)} a month, delivery included. The first month is free, starting when the first workbook arrives at your home. Cancel anytime.`,
+      text: `Math is CAD ${cad(PLANS.one.price)} a month, delivery included. Your family has one free month of 30 days from the first child's plan start, after workbook delivery. A child who starts during that window is free until it ends. A child who starts after that window is charged when their plan starts. Cancel anytime.`,
       plans: REPORT_PLANS,
       email: { label: `Choose a plan for ${name}`, step: "plan" },
     };

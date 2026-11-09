@@ -55,7 +55,7 @@ describe("workbook emails", () => {
     expect(message.text).toContain("when it is on its way");
     expect(message.text).toContain("local hand delivery");
     expect(message.text).toContain("Nothing was charged");
-    expect(message.text).toContain("free first month starts when your first workbook arrives at your home");
+    expect(message.text).toContain("Your family has one free month of 30 days from the first child's plan start, after workbook delivery.");
     expect(message.text).not.toContain("Tracking number:");
     expect(message.text).toContain("Please allow 5 to 7 days for us to prepare your first workbook.");
     expect(message.text).toContain("You have nothing to do right now.\n\n" + contact);

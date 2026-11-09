@@ -32,7 +32,7 @@ describe("shipping at card setup", () => {
     expect(checkout?.get("customer")).toBe("cus_shipping");
     expect(checkout?.get("custom_text[shipping_address][message]")).toContain("ship your workbook");
     expect(checkout?.get("mode")).toBe("setup");
-    expect(checkout?.get("custom_text[submit][message]")).toContain("starting when your first workbook arrives at your home");
+    expect(checkout?.get("custom_text[submit][message]")).toContain("Your family has one free month of 30 days");
     expect(requests.some((r) => /\/(subscriptions|payment_intents)$/.test(r.url))).toBe(false);
   });
 });

@@ -58,11 +58,11 @@ export interface FreeMonthWords {
 // "Nothing is charged today." and "your first workbook arrives at your home" are the words of the Stripe page
 // (cardTerms in src/lib/stripe.ts); a test holds them together.
 export const freeMonthWords = (name: string): FreeMonthWords => ({
-  title: `Start ${name}'s free month`,
-  button: "Start free month",
+  title: `Start ${name}'s plan`,
+  button: "Start plan",
   note: "You add your card and shipping address on a secure payment page. Nothing is charged today.",
-  bar: "Nothing is charged today. The free month starts when your first workbook arrives at your home.",
-  notSaved: "Your card is not saved yet, and nothing was charged. Start the free month when you are ready.",
+  bar: "Nothing is charged today. Your family has one free month of 30 days from the first child's plan start, after workbook delivery. A child who starts during that window is free until it ends. A child who starts after that window is charged when their plan starts.",
+  notSaved: "Your card is not saved yet, and nothing was charged. Start the plan when you are ready.",
 });
 
 export interface Step {
@@ -74,7 +74,7 @@ export interface Step {
 export const whatHappensNext = (name: string): Step[] => [
   { title: "We make Workbook 1", detail: `From this report, for ${name} only.` },
   { title: "We mail it to your home", detail: "Delivery within Canada is included." },
-  { title: "The free month starts when it arrives", detail: "We email you a reminder 7 days before the first charge." },
+  { title: "The plan starts when it arrives", detail: "Your family has one free month of 30 days from the first child's plan start, after workbook delivery." },
 ];
 
 /** The words of the page before the report. The button itself is StartTest's or SendLink's, by the start state. */

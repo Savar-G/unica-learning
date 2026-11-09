@@ -53,9 +53,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     await endCardOperation(service, card.id);
     if (!result.ok) return Response.json(result, { status: 409 });
     const access = await openAccess({ customer: card.stripe_customer_id, cardSetup: card.id, generation: result.generation, startedAt });
-    return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, price, result.firstChargeAt, new URL(request.url).origin) });
+    return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, result.monthlyPrice ?? price, result.firstChargeAt, new URL(request.url).origin) });
   } catch (e) {
     console.error("[stripe] start plan failed", e instanceof Error ? e.message : "failed");
+    if (e instanceof Error && e.message.includes("family_plan_upgrade_required")) return Response.json({ ok: false, error: "family_plan_upgrade_required" }, { status: 409 });
     return Response.json({ ok: false, error: "failed" }, { status: 502 });
   }
 }

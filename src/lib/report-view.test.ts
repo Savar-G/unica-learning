@@ -259,7 +259,7 @@ describe("the next step", () => {
     expect(step).toMatchObject({ kind: "card", title: "Start Maya's books" });
     expect(step.text).toContain("Math is CAD 79.99 a month");
     expect(step.text).not.toContain("reading");
-    expect(step.text).toContain("The first month is free, starting when the first workbook arrives at your home.");
+    expect(step.text).toContain("Your family has one free month of 30 days from the first child's plan start, after workbook delivery.");
   });
   it("offers the first month free in place of the money-back guarantee (D-139)", () => {
     expect(nextStep(view(knowsUpTo(4))).text).not.toMatch(/money-back/);

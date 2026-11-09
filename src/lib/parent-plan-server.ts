@@ -23,6 +23,7 @@ function planSubscription(s: Stripe.Subscription): PlanSubscription {
   return {
     status: s.status, cancelAtPeriodEnd: s.cancel_at_period_end, trialEnd: s.trial_end, created: s.created,
     periodEnd: item?.current_period_end ?? null, cents: item?.price.unit_amount ?? null, endedAt: s.ended_at,
+    ...((s.metadata?.start_reason === "family_window_ended" || s.metadata?.start_reason === "paid_restart") && Number.isFinite(s.created) ? { firstCharge: s.created } : {}),
   };
 }
 

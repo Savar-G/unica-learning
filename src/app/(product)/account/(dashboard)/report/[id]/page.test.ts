@@ -64,7 +64,7 @@ describe("a family the switch does not open to", () => {
     await expect(out).toMatchFileSnapshot("./report-bc.golden.html");
     expect(out).not.toContain("pd-");
     expect(out).toContain("Math, CAD 79.99 a month");
-    expect(out).not.toContain("Start free month");
+    expect(out).not.toContain("Start plan");
   });
 
   it("gets today's report from the email's plan link, with a saved card, byte for byte", async () => {
@@ -98,12 +98,12 @@ describe("a family the switch opens to", () => {
   describe("report_ready_bc", () => {
     beforeEach(() => family());
 
-    it("shows the whole report, with one Start free month button beside it and none in it", async () => {
+    it("shows the whole report, with one Start plan button beside it and none in it", async () => {
       const out = await open();
       expect(main(out)).toContain("rpt-overall");
       expect(main(out)).toContain("How we help");
-      expect(count(out, "Start free month")).toBe(1);
-      expect(rail(out)).toContain("Start free month");
+      expect(count(out, "Start plan")).toBe(1);
+      expect(rail(out)).toContain("Start plan");
       expect(count(out, 'class="rpt-plans"')).toBe(1);
       expect(main(out)).not.toContain("rpt-plans");
     });
@@ -113,7 +113,7 @@ describe("a family the switch opens to", () => {
       expect(rail(out)).not.toContain("<form");
       expect(rail(out)).not.toContain("<input");
       expect(rail(out)).toContain("Checking your card");
-      expect(rail(out)).toMatch(/<button class="btn" type="button" disabled=""[^>]*>Start free month/);
+      expect(rail(out)).toMatch(/<button class="btn" type="button" disabled=""[^>]*>Start plan/);
     });
 
     it("gives the email's plan link somewhere to land, once", async () => {
@@ -126,7 +126,7 @@ describe("a family the switch opens to", () => {
     it("says free month and the price, names the child, and never says trial, she or her", async () => {
       const out = await open();
       const side = rail(out);
-      expect(side).toContain("Start Leah&#x27;s free month");
+      expect(side).toContain("Start Leah&#x27;s plan");
       expect(side).toContain("CAD 79.99 a month");
       expect(side).toContain("Nothing is charged today.");
       expect(side).toContain("What happens next");
@@ -180,7 +180,7 @@ describe("a family the switch opens to", () => {
     it.each([["first_book_coming"], ["active"], ["ended"]] as const)("%s offers no action on the report", async (stage) => {
       family({ stage, opensOn: "overview", tabs: ["overview", "assessment", "account"], readOnly: stage === "ended" });
       const out = await open();
-      expect(out).not.toContain("Start free month");
+      expect(out).not.toContain("Start plan");
       expect(out).not.toContain('class="rpt-plans"');
       expect(out).not.toContain("Card saved");
     });
@@ -219,7 +219,7 @@ describe("a family the switch opens to", () => {
       expect(side).toContain("Start a new test");
       expect(side).toContain(`href="/account/start/${CHILD}"`);
       expect(side).toContain("btn ghost pd-new-test");
-      expect(side.indexOf("Start free month")).toBeLessThan(side.indexOf("Start a new test"));
+      expect(side.indexOf("Start plan")).toBeLessThan(side.indexOf("Start a new test"));
     });
 
     it("continues a new test that is open", async () => {

@@ -302,7 +302,7 @@ describe("a family the switch opens to", () => {
       expect(out).toContain('href="/account/test/z-old"');
       expect(out).toContain("How it works");
       expect(out).toContain('href="/sample-report"');
-      expect(out).not.toContain("Start free month");
+      expect(out).not.toContain("Start plan");
     });
 
     it("opens test_running on the test's state: here a test waiting for its report", async () => {

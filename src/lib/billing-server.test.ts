@@ -262,7 +262,7 @@ describe("the billing store", () => {
   const noStart = { start_generation: null, start_key: null, start_card: null, start_at: null, start_state: null, start_subscription: null, start_first_charge: null, start_finished_at: null, start_email: null, start_alert: null };
   const rowColumns = { card_id: "card-1", customer: "cus_1", session_id: "cs_test_1", payment_method_id: "pm_new", needs_repair: true, ...noStart };
   const startAnswer = { admitted: false, generation: 2, key: "key-1", card: "pm_first", at: new Date(1000).toISOString(), state: "started", subscription: "sub_1", first_charge: "2026-12-05T18:00:00+00:00", finished_at: new Date(2000).toISOString(), email: "pending", alert: null };
-  const planStart = { generation: 2, key: "key-1", card: "pm_first", at: 1000, state: "started", subscription: "sub_1", firstCharge: "2026-12-05T18:00:00.000Z", finished: 2000, email: "pending", alert: null };
+  const planStart = { familyTerms: false, trialEnd: null, generation: 2, key: "key-1", card: "pm_first", at: 1000, state: "started", subscription: "sub_1", firstCharge: "2026-12-05T18:00:00.000Z", finished: 2000, email: "pending", alert: null };
 
   it("reads a row by card, by customer and for the sweep, with its newest plan start when there is one", async () => {
     const withStart = { ...rowColumns, start_generation: 2, start_key: "key-1", start_card: "pm_first", start_at: startAnswer.at, start_state: "started", start_subscription: "sub_1", start_first_charge: startAnswer.first_charge, start_finished_at: startAnswer.finished_at, start_email: "pending", start_alert: null };
@@ -281,10 +281,18 @@ describe("the billing store", () => {
 
   it("admits a plan start with the generation, the key and the card, and reads the record that answers", async () => {
     const { store, sent } = rpcStore(() => Response.json(startAnswer));
-    expect(await store.admitPlanStart("card-1", 2, "key-2", "pm_second")).toEqual(planStart);
-    expect(sent).toEqual([{ name: "admit_plan_start_terms", body: { p_card: "card-1", p_generation: 2, p_key: "key-2", p_payment_method: "pm_second", p_purpose: "initial", p_monthly_cents: 0, p_revision: "" } }]);
+    expect(await store.admitPlanStart("card-1", 2, "key-2", "pm_second", { purpose: "initial", monthlyCents: 7999 })).toEqual(planStart);
+    expect(sent).toEqual([{ name: "admit_family_plan_start", body: { p_card: "card-1", p_generation: 2, p_key: "key-2", p_payment_method: "pm_second", p_purpose: "initial", p_monthly_cents: 7999, p_revision: "" } }]);
     await expect(rpcStore(() => Response.json({ key: "key-1" })).store.admitPlanStart("card-1", 1, "k", "pm")).rejects.toThrow("unreadable");
     await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.admitPlanStart("card-1", 1, "k", "pm")).rejects.toThrow("admission");
+  });
+
+  it("reads the family admission amount and absolute trial end without inventing legacy terms", async () => {
+    const family = { ...startAnswer, purpose: "initial", monthly_cents: 5999, family_terms: true, trial_end: "2026-12-05T18:00:00Z" };
+    const { store, sent } = rpcStore(() => Response.json(family));
+    expect(await store.admitPlanStart("card-1", 2, "key-2", "pm_second", { purpose: "initial", monthlyCents: 7999 })).toMatchObject({ monthlyCents: 5999, familyTerms: true, trialEnd: "2026-12-05T18:00:00.000Z" });
+    expect(await store.startTerms?.("card-1", 2)).toEqual({ purpose: "initial", monthlyCents: 5999, familyTerms: true, trialEnd: "2026-12-05T18:00:00.000Z" });
+    expect(sent.map(r => r.name)).toEqual(["admit_family_plan_start", "family_plan_start_terms"]);
   });
 
   it("closes a record, notes its email and its alert, and lets an admin close it, each by generation", async () => {

@@ -37,6 +37,7 @@ function stripeFake(family: MemoryFamily, { noCreate = false } = {}) {
   const client = new Stripe("sk_test_synthetic", { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (input, init) => {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
+    if (url.pathname === "/v1/prices") return Response.json({data:[{id:"price_7999",active:true,currency:"cad",product:"unica_math",unit_amount:7999,recurring:{interval:"month",interval_count:1,usage_type:"licensed"}}],has_more:false});
     if (url.pathname.startsWith("/v1/products/")) return json({ id: "unica_math" });
     if (method === "GET" && url.pathname === "/v1/subscriptions") return json({ object: "list", has_more: false, data: plans });
     if (method === "GET" && url.pathname.startsWith("/v1/customers/")) return json({ id: "cus_1", invoice_settings: { default_payment_method: { id: "pm_1", type: "card" } } });

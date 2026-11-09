@@ -99,7 +99,10 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
   if (!data?.stripe_customer_id || !data.card_saved_at) return { ok: false as const, error: "not_found" };
   const context = await planControlContext(db, parent, card);
   if (!context) return { ok: false as const, error: "not_found" };
-  const price = planPrice(Number(data.price), data.plan), revision = nullable(context.revision) ?? "";
+  const agreed = planPrice(Number(data.price), data.plan), revision = nullable(context.revision) ?? "";
+  const priced = await db.rpc("family_plan_price", { p_parent: parent, p_card: card, p_agreed_cents: Math.round(agreed * 100) });
+  if (priced.error || typeof priced.data !== "number") throw new Error("Restart family price unavailable");
+  const price = priced.data / 100;
   if (!Number.isFinite(price) || price <= 0) return { ok: false as const, error: "unavailable" };
   const rows = supabaseCardRows(db), row = await rows.cardRow(card);
   if (row?.planStart?.state === "open" && rows.startTerms) Object.assign(row.planStart, await rows.startTerms(card, row.planStart.generation));
@@ -124,7 +127,7 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
   // A confirmed refusal can release the hold only after the durable record is closed.
   if ((result.ok || (result.error !== "unconfirmed" && result.error !== "needs_team"))
     && (await rows.cardRow(card))?.planStart?.state !== "open") await endCardOperation(db, card);
-  return result.ok ? { ok: true as const, state: "started" as const, price, access: access ?? "pending" } : result;
+  return result.ok ? { ok: true as const, state: "started" as const, price: result.monthlyPrice ?? price, access: access ?? "pending" } : result;
 }
 
 /**
@@ -153,6 +156,12 @@ export async function adjustedPlan(db: SupabaseClient<Database>, parent: string,
   if (plan.kind !== "paying" && plan.kind !== "free_month") return plan;
   const context = await planControlContext(db, parent, card);
   if (!context || context.blocked || context.cancelled) return { kind: "unknown" };
+  if (plan.kind === "paying" && !plan.firstCharge) {
+    const start = await db.from("plan_starts").select("first_charge_at").eq("parent_id", parent).eq("card_setup_id", card)
+      .eq("state", "started").order("generation", { ascending: false }).limit(1).maybeSingle();
+    if (start.error) throw new Error("Plan first charge unavailable");
+    if (start.data?.first_charge_at) plan = { ...plan, firstCharge: start.data.first_charge_at };
+  }
   for (const raw of array(context.pauses)) {
     const pause = record(raw);
     if (pause.state !== "applied" || pause.retired === true) continue;
