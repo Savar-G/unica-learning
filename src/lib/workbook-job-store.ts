@@ -114,8 +114,14 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
         admin.from("workbook_run_attempts").select("run_id").eq("run_id", id).limit(1),
         admin.from("workbook_run_calls").select("run_id").eq("run_id", id).limit(1),
         admin.from("workbook_run_solves").select("run_id").eq("run_id", id).limit(1),
+        admin.from("workbook_run_ai_calls").select("run_id").eq("run_id", id).limit(1),
       ]);
-      return results.map((result) => must(result, "stored work load") ?? []).some((rows) => rows.length > 0);
+      if (results.map((result) => must(result, "stored work load") ?? []).some((rows) => rows.length > 0)) return true;
+      // Fail closed: progress, an error history or a saved draft on the run row is also stored work (every run has a
+      // draft key from its start, so the key alone is not work).
+      const run = must(await admin.from("workbook_runs").select("done_pages, errors, draft_id").eq("id", id).maybeSingle(), "stored work load");
+      if (!run) return true;
+      return (run.done_pages ?? 0) > 0 || (Array.isArray(run.errors) && run.errors.length > 0) || run.draft_id !== null;
     },
     async saveFrame(id, lease, frame) {
       return must(await admin.rpc("save_workbook_run_frame", { p_run: id, p_lease: lease, p_frame: toJson(frame) }), "plan save") === true;

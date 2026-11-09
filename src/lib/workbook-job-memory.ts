@@ -167,8 +167,11 @@ export function memoryRunStore(o: {
       return f ? json(f) : null;
     },
     async hasStoredWork(id) {
+      const r = runs.get(id);
+      if (!r) return true;
       return (pages.get(id)?.size ?? 0) > 0 || (attempts.get(id)?.size ?? 0) > 0 ||
-        (calls.get(id)?.size ?? 0) > 0 || (solves.get(id)?.length ?? 0) > 0;
+        (calls.get(id)?.size ?? 0) > 0 || (solves.get(id)?.length ?? 0) > 0 ||
+        (r.donePages ?? 0) > 0 || (r.errors?.length ?? 0) > 0 || r.draftId !== null;
     },
     async saveFrame(id, lease, frame) {
       const r = holding(id, lease);

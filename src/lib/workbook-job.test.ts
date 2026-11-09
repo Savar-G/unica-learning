@@ -737,6 +737,21 @@ describe("a run's plan, made once and stored (R379-8-2), and its solve checks ke
     expect((await s.runs.run(id))!.error).toContain("no stored plan");
   });
 
+  it("counts progress, an error history or a saved draft on the run as stored work (fail closed)", async () => {
+    const s = setup();
+    const id = await stoppedAt(s);
+    for (const store of [s.runs.frameStore, s.runs.pageStore, s.runs.attemptStore, s.runs.callStore, s.runs.solveStore]) store.delete(id);
+    const run = s.runs.runs.get(id)!;
+    Object.assign(run, { donePages: 0, errors: [], draftId: null });
+    expect(await s.runs.hasStoredWork(id)).toBe(false);
+    Object.assign(run, { donePages: 1 });
+    expect(await s.runs.hasStoredWork(id)).toBe(true);
+    Object.assign(run, { donePages: 0, errors: [{ at: "2026-11-09T00:00:00Z", error: "x" }] });
+    expect(await s.runs.hasStoredWork(id)).toBe(true);
+    Object.assign(run, { errors: [], draftId: "d" });
+    expect(await s.runs.hasStoredWork(id)).toBe(true);
+  });
+
   it("fails closed when a stored page or call does not fit the stored plan's pages and slots", async () => {
     // A stored page with a slot its planned page does not have.
     const s = setup();
