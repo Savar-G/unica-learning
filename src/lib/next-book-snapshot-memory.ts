@@ -1,11 +1,12 @@
 // In-memory NextBookSnapshotStore for tests (#476). Each call yields once, then decides atomically, so concurrent callers
 // interleave between calls the way separate transactions do, never inside one. Refusals match the SQL functions in
-// supabase/migrations/20261109050245_next_book_snapshots.sql; start_workbook_run is modelled as one active run per
+// supabase/migrations/20261109050245_next_book_snapshots.sql (save_next_book_plan as replaced by
+// 20261109213000_next_book_plan_shape.sql); start_workbook_run is modelled as one active run per
 // child (busy), without its stalled-run takeover. Like Postgres, the clock may be finer than a millisecond: records show
 // times truncated to milliseconds, as the Supabase adapter reads them, and a freeze is compared at milliseconds.
 import type { AdmitAnswer, FrozenPayload, HoldAnswer, NextBookSnapshotRecord, NextBookSnapshotStore, SavedPlan, SnapshotActor,
   SnapshotEvidence, StoreAnswer } from "./next-book-snapshot";
-import { plainJson, PREPARATION_LIMIT_MS } from "./next-book-snapshot";
+import { consumedShape, heldShape, plainJson, PREPARATION_LIMIT_MS } from "./next-book-snapshot";
 
 export interface MemoryBook { id: string; parentId: string; childId: string; number: number; status: "draft" | "approved" | "printed" | "shipped"; printedRevision: string | null }
 export interface MemoryClaim {
@@ -39,6 +40,8 @@ export interface MemoryNextBookState {
 }
 
 const HASH = /^[0-9a-f]{64}$/;
+/** The fields a saved plan's entries may have (save_next_book_plan, migration 20261109213000_next_book_plan_shape). */
+const CONSUMED_KEYS = ["key", "version", "firstVersion", "correctionIds"], HELD_KEYS = ["key", "reason", "skill", "step", "version"];
 const clone = <T>(v: T): T => structuredClone(v);
 const refused = (reason: string) => ({ status: "refused" as const, reason });
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -47,7 +50,8 @@ export function memoryNextBookSnapshots(clock: () => number = Date.now) {
   const state: MemoryNextBookState = { books: [], deliveries: new Set(), claims: [], holds: [], receipts: [], jobs: new Map(), marks: [],
     admins: new Set(), deletingParents: new Set(), deletedChildren: new Set(), drafts: new Map(), runs: [], snapshots: [], audit: [] };
   let ids = 0;
-  const id = (prefix: string) => `${prefix}-${String(++ids).padStart(6, "0")}`;
+  // UUIDs, as the database's ids are (the capture's source request requires one): 5 marks a snapshot, 7 a run.
+  const id = (prefix: "snapshot" | "run") => `00000000-0000-4000-8${prefix === "snapshot" ? 5 : 7}00-${String(++ids).padStart(12, "0")}`;
   const yieldTurn = () => new Promise<void>(resolve => setTimeout(resolve, 0));
   const ok = (s: NextBookSnapshotRecord): StoreAnswer => ({ status: "ok", snapshot: clone(s) });
   /** The exact prepare_from, finer than the record's millisecond value, as the database keeps it. */
@@ -166,11 +170,12 @@ export function memoryNextBookSnapshots(clock: () => number = Date.now) {
       const problem = sourceProblem(s.workbookId, s.printedRevision);
       if (problem) return refused(problem);
       if (!HASH.test(p.planHash) || !p.planInput || typeof p.planInput !== "object" || !Array.isArray(p.consumed) || !Array.isArray(p.held)
-        || p.held.some(h => typeof h?.key !== "string" || typeof h?.reason !== "string")) return refused("invalid-plan");
+        || p.held.some(h => !h || typeof h !== "object" || Object.keys(h).some(k => !HELD_KEYS.includes(k)) || !heldShape(h))) return refused("invalid-plan");
       const ledger = new Map(s.frozen.ledger.map(l => [l.key, l.version]));
       const keys = new Set<string>();
       for (const c of p.consumed) {
-        if (!c || typeof c !== "object" || Object.keys(c).length !== 2 || ledger.get(c.key) !== c.version || keys.has(c.key)) return refused("consumed-outside-ledger");
+        if (!c || typeof c !== "object" || Object.keys(c).some(k => !CONSUMED_KEYS.includes(k)) || !consumedShape(c)
+          || ledger.get(c.key) !== c.version || keys.has(c.key)) return refused("consumed-outside-ledger");
         keys.add(c.key);
       }
       s.plan = p;

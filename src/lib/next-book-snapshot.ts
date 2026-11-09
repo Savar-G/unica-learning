@@ -54,11 +54,19 @@ export interface FrozenPayload {
   held: HeldEvidence[];
 }
 
+/**
+ * One ledger item the plan used: `version` is the effective result version at the cutoff (the ledger's), `firstVersion`
+ * the item's first marked version, and `correctionIds` the child's second tries the plan read with it.
+ */
+export interface PlanConsumed { key: string; version: number; firstVersion?: number; correctionIds?: string[] }
+/** What the plan kept for later: a mark, a mark change (`<key>:version:<n>`), a second try, or a review with no question (key null). */
+export interface PlanHeld { key: string | null; reason: string; skill?: string; step?: number; version?: number }
+
 export interface SavedPlan {
   planHash: string;
   planInput: PlanInput;
-  consumed: { key: string; version: number }[];
-  held: { key: string; reason: string }[];
+  consumed: PlanConsumed[];
+  held: PlanHeld[];
 }
 
 /** One row of `next_book_snapshots`, as the store returns it. */
@@ -108,7 +116,7 @@ export interface FrozenNextBookSnapshot {
 }
 
 export type PlannerAnswer =
-  | { ok: true; planningInput: PlanInput; plan: WorkbookPlan; consumed: Array<{ key: string; version: number }>; held: Array<{ key: string; reason: string }>; planHash: string }
+  | { ok: true; planningInput: PlanInput; plan: WorkbookPlan; consumed: PlanConsumed[]; held: PlanHeld[]; planHash: string }
   | { ok: false; reason: string };
 export interface NextBookPlanner {
   plan(input: { snapshot: ProgressSnapshot; history: ProgressHistory; frozen: FrozenNextBookSnapshot }): Promise<PlannerAnswer>;
@@ -325,6 +333,16 @@ async function freeze(row: NextBookSnapshotRecord, deps: Pick<NextBookDeps, "sto
   return { ok: true, row: saved.snapshot };
 }
 
+const count = (v: unknown) => Number.isSafeInteger(v) && (v as number) >= 1;
+/** A consumed entry: firstVersion, when given, is a version at or before the effective one; correction ids are unique text. */
+export const consumedShape = (c: PlanConsumed) => !!c && typeof c.key === "string" && count(c.version)
+  && (c.firstVersion === undefined || (count(c.firstVersion) && c.firstVersion <= c.version))
+  && (c.correctionIds === undefined || (Array.isArray(c.correctionIds) && c.correctionIds.every(id => typeof id === "string" && id.length > 0)
+    && new Set(c.correctionIds).size === c.correctionIds.length));
+/** A held entry: a text key or null (a review with no printed question), a reason, and optional skill, step and version. */
+export const heldShape = (h: PlanHeld) => !!h && (h.key === null || typeof h.key === "string") && typeof h.reason === "string"
+  && (h.skill === undefined || typeof h.skill === "string") && (h.step === undefined || count(h.step)) && (h.version === undefined || count(h.version));
+
 /** Plan a frozen revision once, check consumed against the ledger, and keep the plan. */
 async function planOnce(row: NextBookSnapshotRecord, deps: NextBookDeps): Promise<Freeze> {
   if (!row.frozen || row.snapshotHash !== snapshotHash(row.frozen)) return { ok: false, outcome: refusedOutcome("snapshot-hash-mismatch", row.id) };
@@ -333,11 +351,13 @@ async function planOnce(row: NextBookSnapshotRecord, deps: NextBookDeps): Promis
   const answer = await deps.planner.plan(structuredClone({ snapshot: frozen.snapshot, history: frozen.history, frozen }));
   if (!answer.ok) return { ok: false, outcome: refusedOutcome(`planner-${answer.reason}`, row.id) };
   if (!validatePlannerEvidence(frozen, answer.consumed)) return { ok: false, outcome: refusedOutcome("consumed-outside-ledger", row.id) };
-  if (!/^[0-9a-f]{64}$/.test(answer.planHash) || !answer.held.every(h => typeof h?.key === "string" && typeof h.reason === "string")) {
+  if (!/^[0-9a-f]{64}$/.test(answer.planHash) || !answer.consumed.every(consumedShape) || !answer.held.every(heldShape)) {
     return { ok: false, outcome: refusedOutcome("invalid-plan", row.id) };
   }
+  // Only the known fields are kept, each as the planner gave it (save_next_book_plan checks the same shapes).
   const plan: SavedPlan = plainJson({ planHash: answer.planHash, planInput: answer.planningInput,
-    consumed: answer.consumed.map(({ key, version }) => ({ key, version })), held: answer.held.map(({ key, reason }) => ({ key, reason })) });
+    consumed: answer.consumed.map(({ key, version, firstVersion, correctionIds }) => ({ key, version, firstVersion, correctionIds })),
+    held: answer.held.map(({ key, reason, skill, step, version }) => ({ key, reason, skill, step, version })) });
   const saved = await deps.store.savePlan(row.id, plan);
   if (saved.status === "ok") return { ok: true, row: saved.snapshot };
   if (saved.reason === "plan-conflict") {

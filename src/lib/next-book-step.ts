@@ -107,7 +107,7 @@ export interface NextBookStepDeps {
   /** nextBookPlanner() in production; tests pass a fake. */
   planner: NextBookPlanner | null;
   /**
-   * The prepare call around this planner. Null when the rest of the wiring is missing (no service key, no selection).
+   * The prepare call around this planner. Null when the rest of the wiring is missing (no service key).
    * With the step's signal: every request and wait it makes must stop when the signal aborts.
    */
   prepare(planner: NextBookPlanner, signal?: AbortSignal): PrepareCall | null;
