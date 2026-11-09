@@ -10,6 +10,7 @@ import { mayaWeeklyStore } from "@/lib/maya-weekly-email-store";
 import { dueMonthlyEmails, runMonthlyEmails } from "@/lib/monthly-summary-email";
 import { monthlySummaryEmailStore } from "@/lib/monthly-summary-email-store";
 import { reminderMessage, reminderStore } from "@/lib/reminder-store";
+import { retryReportsNow } from "@/lib/report-retry-server";
 import { REMINDER_KINDS, dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
 import { newToken } from "@/lib/sign-in-link";
 import { adminClient } from "@/lib/supabase-auth";
@@ -24,6 +25,9 @@ import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/l
 // the cron's 60-second request limit (timeout_milliseconds in migration add_reminder_cron). Also beside the emails, it brings
 // Stripe to each child's newest card (#554, src/lib/card-reconcile.ts) and reads each plan row that can still change, not read for 24 hours, again. All the card sweep's work ends 45 seconds after the run began
 // (SWEEP_END_MS in src/lib/card-sweep-server.ts), and the monthly emails' work 50 seconds after it (MONTHLY_END_MS).
+// Also beside the emails, it retries the report job of each finished test that still has no report, or whose report
+// email was refused (#771, src/lib/report-retry.ts): bounded retries, each started through the retry route, under one
+// signal that ends 40 seconds after the run began (REPORT_RETRY_END_MS in src/lib/report-retry-server.ts).
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -64,12 +68,13 @@ export async function POST(request: Request) {
   let sweep: Promise<unknown> | null = null;
   let cards: Promise<unknown> | null = null;
   let cancels: Promise<unknown> | null = null;
+  let reports: Promise<unknown> | null = null;
   try {
     if (new URL(request.url).searchParams.get("dry") === "1") {
       const maya = dueWeeklyEmails(await mayaWeeklyStore(admin).load(now), now).length;
       const monthly = dueMonthlyEmails(await monthlySummaryEmailStore(admin).load(now), now).length;
       const abandoned = (await sweepAbandonedCallsNow(admin, { dry: true })).due;
-      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, monthly, sweep: abandoned, cards: await dueCardCount(now), planReads: await duePlanReadCount() });
+      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, monthly, sweep: abandoned, cards: await dueCardCount(now), planReads: await duePlanReadCount(), reports: await retryReportsNow({ origin, startedAt: now, dry: true }) });
     }
     const scanEnv = {
       WORKBOOK_SCAN_PROGRESS_ENABLED: process.env.WORKBOOK_SCAN_PROGRESS_ENABLED,
@@ -96,6 +101,10 @@ export async function POST(request: Request) {
     );
     cards = sweepCardsNow({ origin, startedAt: now, transport });
     cancels = sweepOpenCancelsNow({ origin, startedAt: now, transport });
+    reports = retryReportsNow({ origin, startedAt: now, transport }).then((r) => {
+      if ("due" in r && r.due > 0) console.info("[report retry] run", JSON.stringify(r));
+      return r;
+    });
     const result = await runReminders(store, now, {
       newToken,
       message: (reminder, token, state) => reminderMessage(reminder, token, state, origin),
@@ -128,7 +137,7 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
-    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards, cancels: await cancels,
+    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
       ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
@@ -136,6 +145,7 @@ export async function POST(request: Request) {
     await sweep;
     await cards;
     await cancels;
+    await reports;
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }

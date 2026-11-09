@@ -1,4 +1,5 @@
 import "server-only";
+import { resultLate } from "@/lib/report-late";
 import {
   REPORTED_STRAND_NAMES, areaLevels, attemptState, storedLevelCertainty,
   type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillTestResult,
@@ -309,7 +310,7 @@ export interface OverviewView {
   areas: AreaBarView[];
   /** The newest finished test's report is not ready, so no older result shows in its place. */
   resultPreparing: boolean;
-  /** The report is more than an hour late: the report job may have failed, and it does not retry on its own. */
+  /** The report is more than an hour late (src/lib/report-late.ts): the report job and its retries have not made it yet. */
   resultLate: boolean;
   /** The current workbook and its scanned days; null when no day of it is scanned. */
   workbook: { number: number; scannedDays: number; days: number } | null;
@@ -351,8 +352,6 @@ function scannedDays(pages: readonly WorkbookPageRecord[], scans: readonly Saved
  * ready, they come from no test. Nothing comes from a raw profile, a learning event, a Maya call or an AI finding. Marked
  * pages do not count yet: no marking is live.
  */
-const RESULT_LATE_MS = 3_600_000;
-
 export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
   const [child, children, family, tests, reports, workbooks, plans, cards, pinSet, scans] = await Promise.all([
     readChild(reader, childId, now), reader.children(), reader.family(), reader.tests(), reader.reports(), reader.shippedWorkbooks(),
@@ -388,9 +387,9 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
   const action = ACTION_STAGES.has(child.stage) ? items.find(([, applies]) => applies)?.[0] ?? null : null;
 
   const resultPreparing = latest !== null && !reportReady;
-  const resultLate = resultPreparing && now - latest!.completedAt! > RESULT_LATE_MS;
+  const late = resultPreparing && resultLate(latest!.completedAt!, now);
   const summaryMonth = offeredSummaryMonth(await readFirstDeliveryMonth(reader, child.id, zone), now, zone);
-  return { child, level, areas, resultPreparing, resultLate, workbook, action, summaryMonth };
+  return { child, level, areas, resultPreparing, resultLate: late, workbook, action, summaryMonth };
 }
 
 /** The Level tile and the area bars of one finished test with a report, scored by the assessment core. */
