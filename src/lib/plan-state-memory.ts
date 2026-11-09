@@ -6,7 +6,15 @@
 // together interleave as two requests would; the check and the write after it happen together, as in one statement.
 import type { PlanReadRows } from "@/lib/card-reconcile";
 import { parentPlan, type KnownPlan, type PlanSubscription } from "@/lib/parent-plan";
-import { PLAN_READ_KINDS, type PlanOwner, type PlanRead, type PlanStates, type StoredPlanState } from "@/lib/plan-state";
+import { PLAN_READ_KINDS, PLAN_START_READ_KINDS, type PlanOwner, type PlanRead, type PlanStates, type StoredPlanState } from "@/lib/plan-state";
+
+/** One public.plan_starts record, as the re-read sees it. finishedAt is on the database's clock (`now`), null while open. */
+export interface MemoryPlanStart {
+  childId: string;
+  generation: number;
+  state: "open" | "started" | "other" | "refused" | "team_ended";
+  finishedAt: number | null;
+}
 
 export interface MemoryPlanRow extends StoredPlanState {
   parentId: string;
@@ -22,7 +30,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
  * The store over `cards` (card_setups) and the provider over `subscriptions` (Stripe). The returned `rows` are the
  * store's rows and `subscriptions` is Stripe's list per customer, so a test can change and check them.
  */
-export function memoryPlanStates({ cards, subscriptions: initial = {}, now = Date.now }: { cards: PlanOwner[]; subscriptions?: Record<string, PlanSubscription[]>; now?: () => number }) {
+export function memoryPlanStates({ cards, subscriptions: initial = {}, now = Date.now, starts = [] }: { cards: PlanOwner[]; subscriptions?: Record<string, PlanSubscription[]>; now?: () => number; starts?: MemoryPlanStart[] }) {
   const rows: MemoryPlanRow[] = [];
   /** read_at and read_tried_at, on the database's clock (`now`). */
   const readAt = new Map<string, number>();
@@ -99,22 +107,55 @@ export function memoryPlanStates({ cards, subscriptions: initial = {}, now = Dat
     },
   };
 
+  const DAY = 24 * 60 * 60 * 1000;
   const lookedAt = (childId: string) => Math.max(readAt.get(childId) ?? 0, triedAt.get(childId) ?? 0);
-  /** The rules of the database functions due_plan_reads and note_plan_read_tried; supabase/tests/child_plan_states.sql checks the same cases. */
+  const byLookedAt = (a: PlanRead, b: PlanRead) => lookedAt(a.childId) - lookedAt(b.childId) || a.childId.localeCompare(b.childId);
+  /** The child's newest plan start record, by generation. */
+  const newestStart = (childId: string) => starts.filter((p) => p.childId === childId).sort((a, b) => b.generation - a.generation)[0];
+  /** plan_starts.read_tried_at, per record (`child:generation`), on the database's clock (`now`). */
+  const startTriedAt = new Map<string, number>();
+  const startTried = (r: PlanRead) => {
+    const newest = newestStart(r.childId);
+    return newest ? startTriedAt.get(`${r.childId}:${newest.generation}`) : undefined;
+  };
+  /**
+   * The rules of the database functions due_plan_reads, note_plan_read_tried, due_plan_start_reads and note_plan_start_read_tried;
+   * supabase/tests/child_plan_states.sql and supabase/tests/plan_start_reads.sql check the same cases.
+   */
   const reads: PlanReadRows = {
     async duePlanReads(limit) {
       await tick();
       const due = rows.flatMap((row): PlanRead[] => {
         const kind = PLAN_READ_KINDS.find((k) => k === row.plan.kind);
         const customer = cards.find((c) => c.childId === row.childId)?.customer;
-        if (!kind || !customer || (readAt.get(row.childId) ?? 0) >= now() - 24 * 60 * 60 * 1000) return [];
+        if (!kind || !customer || (readAt.get(row.childId) ?? 0) >= now() - DAY) return [];
         return [{ parentId: row.parentId, childId: row.childId, customer, kind, eventAt: row.eventAt }];
       });
-      return due.sort((a, b) => lookedAt(a.childId) - lookedAt(b.childId) || a.childId.localeCompare(b.childId)).slice(0, limit);
+      return due.sort(byLookedAt).slice(0, limit);
     },
     async notePlanReadTried(childId) {
       await tick();
-      triedAt.set(childId, now());
+      if (rows.some((r) => r.childId === childId)) triedAt.set(childId, now());
+    },
+    /** The newest start is `started` and finished in the last 40 days, and the row does not show it yet. Never tried first. */
+    async dueStartReads(limit) {
+      await tick();
+      const due = cards.flatMap((card): PlanRead[] => {
+        const newest = newestStart(card.childId);
+        if (newest?.state !== "started" || newest.finishedAt === null || newest.finishedAt <= now() - 40 * DAY) return [];
+        const row = rows.find((r) => r.childId === card.childId);
+        if (!row) return [{ parentId: card.parentId, childId: card.childId, customer: card.customer, kind: null, eventAt: null }];
+        const kind = PLAN_START_READ_KINDS.find((k) => k === row.plan.kind);
+        const read = readAt.get(row.childId) ?? 0;
+        if (!kind || (read >= newest.finishedAt && read >= now() - DAY)) return [];
+        return [{ parentId: row.parentId, childId: row.childId, customer: card.customer, kind, eventAt: row.eventAt }];
+      });
+      return due.sort((a, b) => (startTried(a) ?? -Infinity) - (startTried(b) ?? -Infinity) || a.childId.localeCompare(b.childId)).slice(0, limit);
+    },
+    async noteStartReadTried(childId) {
+      await tick();
+      const newest = newestStart(childId);
+      if (newest?.state === "started") startTriedAt.set(`${childId}:${newest.generation}`, now());
     },
   };
 
@@ -122,6 +163,8 @@ export function memoryPlanStates({ cards, subscriptions: initial = {}, now = Dat
     ...seams,
     reads,
     rows,
+    /** public.plan_starts. A test pushes the record startPlan leaves. */
+    starts,
     subscriptions,
     calls,
     fail,

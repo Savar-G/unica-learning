@@ -2693,6 +2693,7 @@ export type Database = {
           parent_id: string
           payment_method_id: string
           purpose: string
+          read_tried_at: string | null
           start_key: string
           started_at: string
           state: string
@@ -2725,6 +2726,7 @@ export type Database = {
           parent_id: string
           payment_method_id: string
           purpose?: string
+          read_tried_at?: string | null
           start_key: string
           started_at?: string
           state?: string
@@ -2757,6 +2759,7 @@ export type Database = {
           parent_id?: string
           payment_method_id?: string
           purpose?: string
+          read_tried_at?: string | null
           start_key?: string
           started_at?: string
           state?: string
@@ -7617,6 +7620,16 @@ export type Database = {
           parent_id: string
         }[]
       }
+      due_plan_start_reads: {
+        Args: { p_limit?: number }
+        Returns: {
+          child_id: string
+          customer: string
+          event_at: string
+          kind: string
+          parent_id: string
+        }[]
+      }
       email_copy_child_scope: {
         Args: { l: Database["public"]["Tables"]["email_log"]["Row"] }
         Returns: string[]
@@ -7923,6 +7936,10 @@ export type Database = {
           p_token: string
         }
         Returns: boolean
+      }
+      note_plan_start_read_tried: {
+        Args: { p_child: string }
+        Returns: undefined
       }
       parent_explanation_command: {
         Args: {

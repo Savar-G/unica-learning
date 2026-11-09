@@ -79,6 +79,8 @@ function network(net: Net) {
     if (rpc) {
       net.rpcs.push({ name: rpc, body: JSON.parse(text || "{}") });
       if (rpc === "card_recovery_rows") return net.cardRowsFail ? Response.json({ message: "down" }, { status: 500 }) : Response.json(net.row ? [net.row] : []);
+      // No start rows here: src/lib/plan-read-sweep.test.ts and src/lib/plan-state-server.test.ts cover them.
+      if (rpc === "due_plan_start_reads") return Response.json([]);
       if (rpc === "due_plan_reads") return net.planRowsFail ? Response.json({ message: "down" }, { status: 500 }) : Response.json(net.planRows ?? []);
       if (rpc === "note_plan_read_tried") {
         const body = JSON.parse(text || "{}");
