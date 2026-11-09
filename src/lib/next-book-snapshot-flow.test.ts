@@ -10,6 +10,7 @@ import { sourceHash } from "./workbook-progress-hash";
 import { itemKey, newEvidenceSince, prepareNextBook, readNextBookSnapshot, refreshNextBookSnapshot, type NextBookCapture, type NextBookDeps,
   type NextBookPlanner, type PrepareOutcome } from "./next-book-snapshot";
 import { memoryNextBookSnapshots } from "./next-book-snapshot-memory";
+import { snapshotRecord } from "./next-book-snapshot-store";
 
 // #476 through the public interfaces: a memory store with the SQL's refusals, the real history reader on synthetic
 // retained records (no customer data), and a fake planner. Each case names what would disprove it.
@@ -301,6 +302,46 @@ describe("prepareNextBook", () => {
     w.f.parentChange(8, "right", "2026-11-07T14:00:00.000Z");
     w.syncMarks();
     expect(await newEvidenceSince(w.m.store, w.rows()[0].id)).toMatchObject({ ok: true, items: 4 });
+  });
+
+  // Falsifier (review P2-2): scans whose items are all still pending give an empty ledger, and a draft is queued anyway.
+  it("holds a book whose scans have no final mark, and writes nothing", async () => {
+    const w = world();
+    for (const row of w.f.marks) {
+      const o = row.observation as unknown as Observation;
+      row.observation = json({ ...o, state: "pending", result: null, certainty: "uncertain", readAnswerText: null, regions: [], help: "unknown" });
+      row.original_event = null; row.event_id = null;
+    }
+    w.f.events.length = 0;
+    w.syncMarks();
+    expect(w.m.state.marks).toEqual([]);
+    const trigger = w.claim();
+    expect(await prepareNextBook(trigger, w.deps(), T0 + MIN)).toEqual({ status: "held", snapshotId: w.rows()[0].id, reason: "no-marked-scans" });
+    expect(w.rows()).toEqual([expect.objectContaining({ revision: 1, frozen: null, snapshotHash: null, plan: null, runId: null, held: null })]);
+    expect(w.m.state.runs).toHaveLength(0);
+    expect(w.calls).toHaveLength(0);
+    // A later call, once a mark is final, drafts from the same chain.
+    w.f.parentChange(0, "right", "2026-11-07T11:30:00.000Z");
+    w.syncMarks();
+    w.clock.now = T0 + 2 * MIN;
+    queued(await prepareNextBook(trigger, w.deps(), w.clock.now));
+    expect(w.rows()[0].frozen!.ledger).toHaveLength(1);
+  });
+
+  // Falsifier (review P2-3): a prepare_from finer than a millisecond, read back truncated, refuses the first refresh.
+  it("accepts the first refresh when the database clock is finer than a millisecond", async () => {
+    const row = snapshotRecord({ id: "s", trigger_id: null, trigger_reason: "admin_prepare", parent_id: PARENT, child_id: CHILD, workbook_id: BOOK,
+      number: 1, printed_revision: REV, trigger_at: "2026-11-08T10:00:12.500717+00:00", prepare_from: "2026-11-08T10:00:12.500717+00:00",
+      revision: 1, draft_id: null, receipt_ids: [], delivery_audit_id: null, held_reason: null, held_at: null, actor_id: ADMIN.id, actor_email: null,
+      frozen_at: null, snapshot_hash: null, plan_hash: null, run_id: null, created_at: "2026-11-08T10:00:12.500717+00:00" });
+    expect(row.prepareFrom).toBe(Date.parse("2026-11-08T10:00:12.500Z"));
+    const w = world();
+    const done = queued(await prepareNextBook(w.claim(), w.deps(), T0 + MIN));
+    w.m.finishRun(done.runId, "draft-2");
+    w.clock.now = T0 + 2 * 24 * 60 * MIN + 0.717;
+    const refreshed = await refreshNextBookSnapshot("draft-2", ADMIN, w.deps(), Math.floor(w.clock.now));
+    expect(refreshed).toMatchObject({ ok: true, revision: 2, newSnapshot: { cutoff: Math.floor(w.clock.now) } });
+    expect(w.rows().find(r => r.revision === 2)!.prepareFrom).toBe(Math.floor(w.clock.now));
   });
 
   it("refuses the SQL's other cases in the store: a second run, a conflicting plan, a source change", async () => {

@@ -18,7 +18,9 @@ There is one chain of snapshots per delivered workbook 1. Three paths reach it, 
   chain, which needs a delivery receipt and at least one accepted scan.
 
 If the backstop found no accepted scan at all, #475 records a hold instead of a claim. We then record the chain as
-**held** (#628) and queue nothing. A later claim still starts the chain normally.
+**held** (#628) and queue nothing. A later claim still starts the chain normally. A book with scans but no final mark
+yet (every item still pending) is held too (`no-marked-scans`): nothing is written, and a later call drafts once a mark
+is final.
 
 Whichever path comes first wins. The others get the same chain and the same run back.
 
@@ -41,7 +43,8 @@ Whichever path comes first wins. The others get the same chain and the same run 
    plan is refused. The plan is saved once. The same plan again is a retry; a different one is refused.
 5. **Queue one run.** The run is started through the ordinary run start (one active run per child). It is linked to
    the snapshot (`workbook_runs.snapshot_id`). If another run for the child is active, the answer is `planned`, and
-   the next call admits the run.
+   the next call admits the run. The run is always book 2: admission holds the child and its later drafts while it
+   checks, so an approval of book 2 at the same moment is seen, and a run with any other number is undone.
 
 Every step is safe to repeat. A retry, a lost answer or a restart reads back what is stored and continues from there.
 

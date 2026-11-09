@@ -1,7 +1,8 @@
 // In-memory NextBookSnapshotStore for tests (#476). Each call yields once, then decides atomically, so concurrent callers
 // interleave between calls the way separate transactions do, never inside one. Refusals match the SQL functions in
 // supabase/migrations/20261108233000_next_book_snapshots.sql; start_workbook_run is modelled as one active run per
-// child (busy), without its stalled-run takeover.
+// child (busy), without its stalled-run takeover. Like Postgres, the clock may be finer than a millisecond: records show
+// times truncated to milliseconds, as the Supabase adapter reads them, and a freeze is compared at milliseconds.
 import type { AdmitAnswer, FrozenPayload, HoldAnswer, NextBookSnapshotRecord, NextBookSnapshotStore, SavedPlan, SnapshotActor,
   SnapshotEvidence, StoreAnswer } from "./next-book-snapshot";
 import { plainJson, PREPARATION_LIMIT_MS } from "./next-book-snapshot";
@@ -49,6 +50,9 @@ export function memoryNextBookSnapshots(clock: () => number = Date.now) {
   const id = (prefix: string) => `${prefix}-${String(++ids).padStart(6, "0")}`;
   const yieldTurn = () => new Promise<void>(resolve => setTimeout(resolve, 0));
   const ok = (s: NextBookSnapshotRecord): StoreAnswer => ({ status: "ok", snapshot: clone(s) });
+  /** The exact prepare_from, finer than the record's millisecond value, as the database keeps it. */
+  const exactFrom = new Map<string, number>();
+  const ms = (t: number) => Math.floor(t);
   const live = (workbookId: string, revision: number) => state.snapshots.find(s => s.workbookId === workbookId && s.revision === revision && !s.held);
 
   function sourceProblem(workbookId: string, printedRevision: string | null): string | null {
@@ -68,7 +72,9 @@ export function memoryNextBookSnapshots(clock: () => number = Date.now) {
   }
   const writable = (parentId: string) => !state.deletingParents.has(parentId);
   function insert(row: Omit<NextBookSnapshotRecord, "id" | "createdAt" | "frozen" | "snapshotHash" | "plan" | "runId">): NextBookSnapshotRecord {
-    const s: NextBookSnapshotRecord = { ...row, id: id("snapshot"), createdAt: clock(), frozen: null, snapshotHash: null, plan: null, runId: null };
+    const s: NextBookSnapshotRecord = { ...row, triggerAt: ms(row.triggerAt), prepareFrom: ms(row.prepareFrom), id: id("snapshot"),
+      createdAt: ms(clock()), frozen: null, snapshotHash: null, plan: null, runId: null };
+    exactFrom.set(s.id, row.prepareFrom);
     state.snapshots.push(s);
     return s;
   }
@@ -143,7 +149,7 @@ export function memoryNextBookSnapshots(clock: () => number = Date.now) {
         || f.snapshot.parentId !== s.parentId || f.snapshot.childId !== s.childId || f.sources.parentId !== s.parentId || f.sources.childId !== s.childId
         || f.historyFence.parentId !== s.parentId || f.historyFence.childId !== s.childId
         || f.ledger.some(l => typeof l.key !== "string" || !Number.isSafeInteger(l.version) || l.version < 1) || new Set(keys).size !== keys.length
-        || f.frozenAt < s.prepareFrom || f.frozenAt > clock() + 60_000) return refused("invalid-snapshot");
+        || !Number.isSafeInteger(f.frozenAt) || f.frozenAt < ms(exactFrom.get(s.id)!) || f.frozenAt > clock() + 60_000) return refused("invalid-snapshot");
       s.frozen = f; s.snapshotHash = hash;
       return ok(s);
     },
@@ -214,6 +220,7 @@ export function memoryNextBookSnapshots(clock: () => number = Date.now) {
       const active = state.runs.find(r => r.childId === s.childId && (r.status === "queued" || r.status === "running"));
       if (active) return { status: "busy", runId: active.id };
       const number = Math.max(0, ...state.books.filter(b => b.childId === s.childId).map(b => b.number)) + 1;
+      if (number !== s.number + 1) return refused("next-book-exists");
       const run: MemoryRun = { id: id("run"), parentId: s.parentId, childId: s.childId, number, status: "queued", draftId: null,
         snapshotId: s.id, startedBy: by?.id ?? null };
       state.runs.push(run);

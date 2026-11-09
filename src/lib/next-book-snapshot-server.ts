@@ -20,7 +20,8 @@ export type NextBookSelection = (scope: Omit<CaptureRequest, "scope" | "cutoff">
 
 /**
  * The capture through the existing Book 1 loaders: read the frozen sources, capture, read again and refuse a change in
- * between (as loadWorkbookProgressSources does). A book with no marked scan is held (#628).
+ * between (as loadWorkbookProgressSources does). A book with no marked scan is held (#628). The preview counts pending
+ * item rows as marks, so the freeze also holds a capture with no final mark in its ledger.
  */
 export function book1Capture(sources: WorkbookProgressSourceStoreV2, selection: NextBookSelection): NextBookCapture {
   return async r => {

@@ -267,7 +267,8 @@ export interface CaptureRequest {
 export type CaptureAnswer =
   | { status: "captured"; sources: FrozenWorkbookSourcesV2; fence: HistoryFence; snapshot: ProgressSnapshot; history: ProgressHistory;
     held: readonly { reason: HeldReason; original: ProgressOriginal }[] }
-  /** The book has no marked scan at all (#628): never advance or repeat by plan. Nothing is recorded; try again later. */
+  /** The book has no marked scan at all (#628): never advance or repeat by plan. Nothing is recorded; try again later.
+   * A capture whose ledger has no final mark (only pending items) is held the same way by the freeze. */
   | { status: "held"; reason: "no-marked-scans" }
   | { status: "unavailable"; reason: string };
 export interface NextBookCapture { (request: CaptureRequest): Promise<CaptureAnswer> }
@@ -315,6 +316,9 @@ async function freeze(row: NextBookSnapshotRecord, deps: Pick<NextBookDeps, "sto
     ...freezeEvidence(captured.snapshot, captured.history, captured.held),
   });
   if (!validatePlannerEvidence({ history: payload.history, evidence: payload.ledger }, [])) return { ok: false, outcome: refusedOutcome("invalid-ledger", row.id) };
+  // #628 in the snapshot's own terms: scans with no final mark (only pending items) give the planner nothing to use.
+  // Hold, write nothing, and let a later call draft once a mark is final. evaluateBook1Preview is not changed by this.
+  if (payload.ledger.length === 0) return { ok: false, outcome: { status: "held", snapshotId: row.id, reason: "no-marked-scans" } };
   // The first freeze wins. A concurrent caller gets that freeze back, never its own.
   const saved = await deps.store.save(row.id, payload, snapshotHash(payload));
   if (saved.status !== "ok") return { ok: false, outcome: refusedOutcome(saved.reason, row.id) };

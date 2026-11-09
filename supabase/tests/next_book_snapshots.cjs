@@ -125,17 +125,23 @@ const clockVersion = 'family-time/deliveryDeadlines:542e4a5b;node=' + process.ve
     grant select on workbook_runs, workbook_drafts to service_role;
     create trigger fence_family_write before insert or update on public.workbook_runs for each row execute function public.fence_family_write();`);
   await db.query(functionSql(sql('20261106120000_workbook_start_resume_lock.sql'), 'start_workbook_run'));
+  // Fixture only: a test session can make start_workbook_run's run carry another number, as a workbook written without a
+  // draft lock between the later-book check and the run would.
+  await db.query(`create function public.fixture_force_run_number() returns trigger language plpgsql as $$
+    begin if nullif(current_setting('test.force_run_number', true), '') is not null then new.number := current_setting('test.force_run_number')::int; end if;
+    return new; end $$;
+    create trigger fixture_force_run_number before insert on public.workbook_runs for each row execute function public.fixture_force_run_number();`);
   await db.query(sql('20261108233000_next_book_snapshots.sql'));
   const snaps = f => db.query('select * from next_book_snapshots where workbook_id=$1 order by revision,created_at', [f.w]).then(x => x.rows);
   async function delivered(number = 1) {
     const f = await book({ number, delivered: '2026-11-01T12:00:00Z' });
     return f;
   }
-  async function claim(f, reason = 'day7_scanned') {
+  async function claim(f, reason = 'day7_scanned', claimedAt = null) {
     const audit = (await db.query('select audit_id from workbook_delivery_receipts where workbook_id=$1', [f.w])).rows[0].audit_id;
     const r = await db.query(`insert into workbook_scan_trigger_claims(workbook_id,parent_id,child_id,number,printed_revision,reason,effective_at,
-      delivery_audit_id,delivered_at,time_zone,zone_override,backstop_at,receipt_ids) values($1,$2,$3,$4,$5,$6,now(),$7,'2026-11-01T12:00:00Z','UTC',false,
-      case when $6='delivery_backstop' then now() end,$8) returning id`, [f.w, f.p, f.c, f.number, revision, reason, audit, [randomUUID()]]);
+      delivery_audit_id,delivered_at,time_zone,zone_override,backstop_at,receipt_ids,claimed_at) values($1,$2,$3,$4,$5,$6,now(),$7,'2026-11-01T12:00:00Z','UTC',false,
+      case when $6='delivery_backstop' then now() end,$8,coalesce($9::timestamptz,clock_timestamp())) returning id`, [f.w, f.p, f.c, f.number, revision, reason, audit, [randomUUID()], claimedAt]);
     return r.rows[0].id;
   }
   const hex = c => c.repeat(64);
@@ -294,6 +300,55 @@ const clockVersion = 'family-time/deliveryDeadlines:542e4a5b;node=' + process.ve
     assert.deepEqual(await rpc(service, 'claim_next_book_snapshot', [other.t, null, null, null]), { status: 'refused', reason: 'child-unavailable' });
     await db.query('delete from children where id=$1', [h.c]);
     assert.equal((await snaps(h)).length, 0);
+  });
+  await test('P2-1: an approval of book 2 racing the admission is serialized; the book 1 snapshot never queues book 3', async () => {
+    const f = await delivered(), { s } = await frozenPlanned(f), draft = randomUUID();
+    await db.query('insert into workbook_drafts values($1,$2,$3,2)', [draft, f.p, f.c]);
+    const approval = await open(), admitting = await open('service_role');
+    try {
+      // The approval holds the draft as approve_workbook_draft does and has written book 2, not yet committed.
+      await approval.query('begin');
+      await approval.query('select 1 from workbook_drafts where id=$1 for no key update', [draft]);
+      await approval.query("insert into workbooks(id,parent_id,child_id,number,status) values($1,$2,$3,2,'approved')", [draft, f.p, f.c]);
+      let settled = false;
+      const pending = rpc(admitting, 'admit_next_book_run', [s.id, null, null, 2, 360]).finally(() => { settled = true; });
+      await new Promise(r => setTimeout(r, 400));
+      assert.equal(settled, false, 'the admission must wait for the approval');
+      await approval.query('commit');
+      assert.deepEqual(await pending, { status: 'refused', reason: 'next-book-exists' });
+    } finally { await close(approval); await close(admitting); }
+    assert.equal((await db.query('select count(*)::int n from workbook_runs where child_id=$1', [f.c])).rows[0].n, 0);
+    assert.equal((await snaps(f))[0].run_id, null);
+    // A run that would not be book 2 (a workbook written with no draft lock) is rolled back with its audit row.
+    const g = await delivered(), other = await frozenPlanned(g), c = await open('service_role');
+    try {
+      await c.query("select set_config('test.force_run_number','3',false)");
+      assert.deepEqual(await rpc(c, 'admit_next_book_run', [other.s.id, null, null, 2, 360]), { status: 'refused', reason: 'next-book-exists' });
+    } finally { await close(c); }
+    assert.equal((await db.query('select count(*)::int n from workbook_runs where child_id=$1', [g.c])).rows[0].n, 0);
+    assert.equal((await db.query("select count(*)::int n from workbook_audit where child_id=$1 and action='run-started'", [g.c])).rows[0].n, 0);
+    assert.equal((await rpc(service, 'admit_next_book_run', [other.s.id, null, null, 2, 360])).status, 'started');
+  });
+
+  await test('P2-3: a cutoff at the millisecond the app reads for a microsecond prepare_from is accepted', async () => {
+    const f = await delivered(), t = await claim(f, 'day7_scanned', '2026-11-08T10:00:12.500717Z');
+    const s = (await rpc(service, 'claim_next_book_snapshot', [t, null, null, null])).snapshot;
+    assert.equal((await db.query("select extract(microseconds from prepare_from)::int % 1000 n from next_book_snapshots where id=$1", [s.id])).rows[0].n, 717);
+    const at = Date.parse('2026-11-08T10:00:12.500Z');
+    assert.deepEqual(await rpc(service, 'save_next_book_snapshot', [s.id, frozenData(f, s, { frozenAt: at - 1, scope: { kind: 'day7', cutoff: at - 1 } }), hex('a')]),
+      { status: 'refused', reason: 'invalid-snapshot' });
+    const saved = await rpc(service, 'save_next_book_snapshot', [s.id, frozenData(f, s, { frozenAt: at, scope: { kind: 'day7', cutoff: at } }), hex('a')]);
+    assert.equal(saved.status, 'ok', JSON.stringify(saved));
+    assert.equal(Date.parse(saved.snapshot.frozen_at), at);
+    // The first refresh: its prepare_from comes from clock_timestamp() and is read back at milliseconds.
+    assert.equal((await rpc(service, 'save_next_book_plan', [s.id, {}, hex('b'), JSON.stringify([{ key: 'k1', version: 2 }]), JSON.stringify([])])).status, 'ok');
+    const run = (await rpc(service, 'admit_next_book_run', [s.id, null, null, 2, 360])).run, draft = randomUUID();
+    await db.query('insert into workbook_drafts values($1,$2,$3,2)', [draft, f.p, f.c]);
+    await db.query('update workbook_runs set draft_id=$2 where id=$1', [run, draft]);
+    const r2 = (await rpc(service, 'retake_next_book_snapshot', [s.id, draft, adminId, null])).snapshot;
+    const read = (await db.query('select prepare_from from next_book_snapshots where id=$1', [r2.id])).rows[0].prepare_from.getTime();
+    const refresh = await rpc(service, 'save_next_book_snapshot', [r2.id, frozenData(f, r2, { frozenAt: read, scope: { kind: 'refresh', cutoff: read } }), hex('c')]);
+    assert.equal(refresh.status, 'ok', JSON.stringify(refresh));
   });
   console.log('NEXT_BOOK_SNAPSHOTS_OK', passed);
   console.log('PROOF: actual concurrent PostgreSQL sessions on a local throwaway cluster with a reduced dependency schema; not hosted proof.');

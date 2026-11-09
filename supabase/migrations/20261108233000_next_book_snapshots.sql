@@ -7,9 +7,12 @@
 -- the backstop claim and the admin action all reach the same chain through the partial unique index
 -- next_book_snapshots_chain. A backstop with no accepted scans (#628) writes one held row instead and queues nothing.
 --
--- Lock order in every function: parent SHARE (assert_family_writable), then the draft NO KEY UPDATE (as approval
--- takes it), then the source book KEY SHARE and the per-book advisory lock, then the snapshot row FOR UPDATE, then
--- (admission only) start_workbook_run's child and run locks. Nothing here locks a snapshot row before a draft.
+-- Lock order in every function: parent SHARE (assert_family_writable), then (admission only) the child NO KEY UPDATE
+-- that start_workbook_run takes, then the draft NO KEY UPDATE (as approve_workbook_draft takes it), then the source book
+-- KEY SHARE and the per-book advisory lock, then the snapshot row FOR UPDATE, then start_workbook_run's run lock.
+-- Nothing here locks a snapshot row before a draft, or a draft before the child.
+--
+-- Times: the app reads timestamps at millisecond precision, so a cutoff is compared with prepare_from at milliseconds.
 
 create table public.next_book_snapshots (
   id uuid primary key default gen_random_uuid(),
@@ -251,7 +254,7 @@ begin
   if problem is not null then return jsonb_build_object('status','refused','reason',problem); end if;
   scope_kind := case when s.revision > 1 then 'refresh' when s.trigger_reason = 'day7_scanned' then 'day7' else 'backstop' end;
   if p_hash is null or p_hash !~ '^[0-9a-f]{64}$' or jsonb_typeof(p_data) is distinct from 'object'
-    or jsonb_typeof(p_data->'frozenAt') is distinct from 'number'
+    or jsonb_typeof(p_data->'frozenAt') is distinct from 'number' or (p_data->>'frozenAt') !~ '^[0-9]{1,15}$'
     or jsonb_typeof(p_data->'scope') is distinct from 'object' or p_data->'scope'->>'kind' is distinct from scope_kind
     or jsonb_typeof(p_data->'sources') is distinct from 'object' or jsonb_typeof(p_data->'historyFence') is distinct from 'object'
     or jsonb_typeof(p_data->'snapshot') is distinct from 'object' or jsonb_typeof(p_data->'history') is distinct from 'object'
@@ -267,9 +270,11 @@ begin
     or (select count(*) <> count(distinct x->>'key') from jsonb_array_elements(p_data->'ledger') x) then
     return jsonb_build_object('status','refused','reason','invalid-snapshot');
   end if;
-  at_time := to_timestamp((p_data->>'frozenAt')::numeric / 1000);
-  -- The cutoff is the actual freeze time: not before the window opened, and not ahead of this database's clock.
-  if at_time < s.prepare_from or at_time > clock_timestamp() + interval '1 minute' then
+  -- Exact milliseconds since the epoch (no float rounding of the seconds).
+  at_time := timestamptz 'epoch' + (p_data->>'frozenAt')::bigint * interval '1 millisecond';
+  -- The cutoff is the actual freeze time: not before the window opened, and not ahead of this database's clock. The app
+  -- reads prepare_from truncated to milliseconds, so compare at that precision: a refresh may freeze at prepare_from.
+  if at_time < date_trunc('milliseconds', s.prepare_from) or at_time > clock_timestamp() + interval '1 minute' then
     return jsonb_build_object('status','refused','reason','invalid-snapshot');
   end if;
   update public.next_book_snapshots set frozen_at = at_time, scope = p_data->'scope', sources = p_data->'sources',
@@ -366,13 +371,18 @@ end $$;
 
 -- One run per chain, from revision 1's saved plan, through start_workbook_run's own rules (one active run per child,
 -- stalled and busy answers, the family and plan fences). Only a run this call started receives the snapshot.
+-- The run must be book source + 1. The later-book check, an approval and the run's number are serialized: the child
+-- lock start_workbook_run takes and the draft locks approve_workbook_draft takes are held from before the check until
+-- commit. A run numbered otherwise (a workbook written without a draft lock) is rolled back and refused.
 create function public.admit_next_book_run(p_snapshot uuid, p_by uuid, p_email text, p_max_attempts integer, p_stale_seconds integer)
 returns jsonb language plpgsql security definer set search_path = '' as $$
-declare s public.next_book_snapshots; answer jsonb; rid uuid; problem text;
+declare s public.next_book_snapshots; answer jsonb; rid uuid; problem text; made integer;
 begin
   select * into s from public.next_book_snapshots where id = p_snapshot;
   if not found then return jsonb_build_object('status','refused','reason','snapshot-not-found'); end if;
   perform public.assert_family_writable(s.parent_id);
+  perform 1 from public.children where id = s.child_id for no key update;
+  perform 1 from public.workbook_drafts where child_id = s.child_id and number > s.number order by id for no key update;
   select * into s from public.next_book_snapshots where id = p_snapshot for update;
   if s.run_id is not null then return jsonb_build_object('status','started','run',s.run_id,'existing',true); end if;
   if s.held_reason is not null then return jsonb_build_object('status','refused','reason','held'); end if;
@@ -383,7 +393,16 @@ begin
   if exists(select 1 from public.workbooks where child_id = s.child_id and number > s.number) then
     return jsonb_build_object('status','refused','reason','next-book-exists');
   end if;
-  answer := public.start_workbook_run(s.child_id, p_by, p_email, p_max_attempts, p_stale_seconds);
+  begin
+    answer := public.start_workbook_run(s.child_id, p_by, p_email, p_max_attempts, p_stale_seconds);
+    if answer->>'status' = 'started' then
+      select number into made from public.workbook_runs where id = (answer->>'run')::uuid;
+      if made is distinct from s.number + 1 then raise exception 'next_book_number' using errcode = 'NB001'; end if;
+    end if;
+  exception when sqlstate 'NB001' then
+    -- Rolls back to the block start: the run and its run-started audit row are gone.
+    return jsonb_build_object('status','refused','reason','next-book-exists');
+  end;
   if answer->>'status' <> 'started' then return answer; end if;
   rid := (answer->>'run')::uuid;
   update public.workbook_runs set snapshot_id = s.id where id = rid;
