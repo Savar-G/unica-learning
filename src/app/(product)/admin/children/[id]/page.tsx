@@ -51,6 +51,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
     {/* #312: drafts made in the background, with their progress and check results. */}
     <h2>Workbook drafts</h2>
     <p><Link className="btn adm-btn" href={`/admin/children/${c.id}/preview-plan`} prefetch={false}>Preview plan</Link></p>
+    <p><Link className="btn adm-btn" href={`/admin/children/${c.id}/preview-marks`} prefetch={false}>Preview from marks</Link></p>
     <BookInstructions child={c} note={learning?.note ?? ""} data={instructions} />
     <h3>Make the next workbook</h3>
     {!!requests?.data?.length && <p role="status">Paid Restart: prepare the next workbook from the current child profile. {requests.data.length} request pending. The request stays here until a new preparation run starts.</p>}
