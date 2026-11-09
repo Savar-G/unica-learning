@@ -35,3 +35,12 @@ export function explanationAiClient(env: Readonly<Record<string, string | undefi
     return client ? { client, costMicros: () => cost } : null;
   };
 }
+
+/**
+ * Whether "Explain this problem" can give an explanation at all: the feature's own client exists. explainParentProblem answers
+ * `retry` for an uncached explanation when it does not. Builds the client only; makes no request. Other checks (the plan, marking,
+ * the price row) are per request.
+ */
+export function explanationAvailable(env: Readonly<Record<string, string | undefined>> = process.env, base: typeof globalThis.fetch = globalThis.fetch): boolean {
+  return explanationAiClient(env, base)(async () => {}) !== null;
+}

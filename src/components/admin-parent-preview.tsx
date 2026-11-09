@@ -137,7 +137,7 @@ function planControl(name: string, state: string, cardId: string) {
     preview: preview ? { token: "sample-token", weeks: 2, remaining: 6, year: 2026, late: state === "pause_late", targetNumber: 5, charge: "December 10, 2026", earliest: state === "pause_late" ? null : "December 10", latest: state === "pause_late" ? null : "December 15" } : null,
     restart: state === "restart_review" ? { price: PLANS.one.price, token: "sample-token" } : null,
     error: pending ? "We cannot confirm this change yet. Check again before you make another change or delete the account." : state === "restart_declined" ? "Your payment did not go through. Please update your card. Then return here to restart the plan." : null,
-    done: state === "pause_saved" || state === "restart_started", onOpen: noAction, setWeeks: noAction, setPreview: noAction, send: noAction, close: noAction, cardId };
+    done: state === "pause_saved" ? "pause" : state === "restart_started" ? "restart" : null, onOpen: noAction, setWeeks: noAction, setPreview: noAction, send: noAction, close: noAction, cardId };
   return <PlanControlView {...props} />;
 }
 

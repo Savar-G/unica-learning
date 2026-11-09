@@ -13,6 +13,10 @@ import type { CallNote } from "@/lib/maya-call-note";
 // The one allowed exception, for an email no one asked for: the monthly summary imports only `dashboardSwitchOpen` from
 // parent-dashboard-access.ts, the dashboard's switch with no plan (its own test: parent-dashboard-access.test.ts).
 //
+// The second exception, for words only: the plan start email (workbook-email-server.ts) imports only `markingAccess` from
+// scan-marking-access.ts, to pick step 3's words (marks now, or marks later). It sends either way, and a failed read gives the
+// "marks later" words (workbook-email-server.test.ts). Every sender that reaches workbook-email-server.ts gets its two edges.
+//
 // Three emails only a signed-in parent's own press sends sit behind the gate, and each goes to that parent: the two delete codes
 // (behind planManagementAccess, so a closed family can leave) and "Email me the link" (the route's scanSession reads
 // scanPagesAccess, and the sender itself reads no gate). Opening a plan sends none of them.
@@ -34,9 +38,9 @@ const GATE_MODULES = new Set([
 ]);
 
 function resolve(from: string, spec: string): string | null {
-  const base = spec.startsWith("@/") ? path.join("src", spec.slice(2)) : spec.startsWith(".") ? path.join(path.dirname(from), spec) : null;
+  const base = spec.startsWith("@/") ? path.posix.join("src", spec.slice(2)) : spec.startsWith(".") ? path.posix.join(path.posix.dirname(from), spec) : null;
   if (!base) return null;
-  return [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), base].find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
+  return [`${base}.ts`, `${base}.tsx`, path.posix.join(base, "index.ts"), base].find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
 }
 
 /** The code imports of a file, with the names taken. `import type` carries no code. A dynamic import is named "dynamic". */
@@ -81,7 +85,7 @@ function sends(file: string, source: string): boolean {
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const file = path.join(dir, entry.name);
+    const file = path.posix.join(dir, entry.name);
     if (entry.isDirectory()) return sourceFiles(file);
     return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) && !/-memory\.ts$/.test(entry.name) ? [file] : [];
   });
@@ -97,6 +101,25 @@ const ALLOWED: Record<string, string[]> = {
   "src/app/api/account/family/delete/code/route.ts": ["src/app/api/account/family/delete/code/route.ts -> src/lib/parent-dashboard-access.ts { planManagementAccess }"],
   "src/app/api/account/children/[id]/delete/code/route.ts": ["src/app/api/account/children/[id]/delete/code/route.ts -> src/lib/parent-dashboard-access.ts { planManagementAccess }"],
 };
+
+/** The marking rule's own edges into the gate, reached only through the plan start email's words. */
+const PLAN_START_EMAIL = "src/lib/workbook-email-server.ts";
+const MARKING_WORDS = [
+  "src/lib/scan-marking-access.ts -> src/lib/plan-access.ts { childPlanAccess as sharedChildPlanAccess }",
+  "src/lib/scan-marking-access.ts -> src/lib/scan-pages-access.ts { markedFamily }",
+];
+/** Whether `start` imports `target`, directly or through modules that hold no gate. */
+function reaches(start: string, target: string): boolean {
+  const seen = new Set([start]), queue = [start];
+  while (queue.length) {
+    for (const { to } of imports(queue.shift()!)) {
+      if (to === target) return true;
+      if (!GATE_MODULES.has(to) && !seen.has(to)) { seen.add(to); queue.push(to); }
+    }
+  }
+  return false;
+}
+const allowed = (file: string) => [...(ALLOWED[file] ?? []), ...(file === PLAN_START_EMAIL || reaches(file, PLAN_START_EMAIL) ? MARKING_WORDS : [])].sort();
 
 describe("no email sender reaches the plan gate", () => {
   it("finds a sender by an alias import, a relative import, a type import, a dynamic import and a direct fetch; a mention alone is no send", () => {
@@ -121,8 +144,22 @@ describe("no email sender reaches the plan gate", () => {
     for (const file of ["src/app/api/reminders/route.ts", "src/lib/reminder-store.ts", "src/lib/maya-weekly-email.ts", "src/lib/maya-weekly-email-store.ts", "src/lib/monthly-summary-email-store.ts", "src/lib/workbook-scan-reminder-send.ts", "src/lib/workbook-scan-maintenance-server.ts", "src/lib/card-sweep-server.ts", "src/lib/workbook-email-server.ts", "src/lib/scan-link.ts", "src/lib/report-job.ts", "src/app/api/admin/cards/[id]/start/route.ts"]) expect(senders).toContain(file);
   });
 
+  it("writes every path with forward slashes, on every system, so the path literals here match on Windows", () => {
+    const all = sourceFiles("src");
+    expect(all.length).toBeGreaterThan(100);
+    expect(all.filter((f) => f.includes("\\"))).toEqual([]);
+    expect(senders.flatMap((f) => imports(f).map((i) => i.to)).filter((f) => f.includes("\\"))).toEqual([]);
+    expect(readFileSync("src/lib/plan-access-emails.test.ts", "utf8")).not.toMatch(/path\.(join|dirname)\(/);
+  });
+
   it.each(senders)("%s", (file) => {
-    expect(gateEdges(file)).toEqual(ALLOWED[file] ?? []);
+    expect(gateEdges(file).sort()).toEqual(allowed(file));
+  });
+
+  it("the plan start email takes only markingAccess from the marking rule, and no other module of the sender graph takes it", () => {
+    const users = sourceFiles("src").filter((file) => imports(file).some((i) => i.to === "src/lib/scan-marking-access.ts") && senders.some((s) => s === file || reaches(s, file)));
+    expect(users).toEqual([PLAN_START_EMAIL]);
+    expect(imports(PLAN_START_EMAIL).filter((i) => i.to === "src/lib/scan-marking-access.ts").map((i) => i.names)).toEqual(["{ markingAccess }"]);
   });
 
   it("the monthly summary's exception names only the switch, which reads no plan", () => {

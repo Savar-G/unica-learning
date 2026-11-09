@@ -286,8 +286,8 @@ export function assertComparisonResultIdentity(manifest: ComparisonManifest, res
   }
 }
 /** Why an item goes to our team instead of the AI. */
-export type TeamReason = "two-ways-method-marks-off" | "team-method";
-const TEAM_REASON_TEXT: Record<TeamReason, string> = { "two-ways-method-marks-off": "two-ways method marking is off", "team-method": "its method is our team's" };
+export type TeamReason = "two-ways-method-marks-off" | "team-method" | "parent-method" | "unscored-method" | "unavailable-method";
+const TEAM_REASON_TEXT: Record<TeamReason, string> = { "two-ways-method-marks-off": "two-ways method marking is off", "team-method": "its method is team", "parent-method": "its method is parent", "unscored-method": "its method is unscored", "unavailable-method": "its method is unavailable" };
 /**
  * D-267 counts unsure only on the items the AI is meant to mark. An item our team marks by design is not model unsure:
  * one whose method is the team's, and a two-ways item while the method rules are off. That is a temporary state while a
@@ -299,7 +299,7 @@ const TEAM_REASON_TEXT: Record<TeamReason, string> = { "two-ways-method-marks-of
  */
 export function teamReason(e: ExpectedItem | undefined): TeamReason | null {
   if (e === undefined) return null;
-  if (e.method !== "code") return "team-method";
+  if (e.method !== "code") return `${e.method}-method`;
   return e.twoWays === true && !TWO_WAYS_METHOD_MARKS ? "two-ways-method-marks-off" : null;
 }
 export const teamMarked = (e: ExpectedItem | undefined) => teamReason(e) !== null;
