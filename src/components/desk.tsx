@@ -149,7 +149,7 @@ export function Desk(props: DeskProps) {
           <Avatar size={48} />
           <div className="desk-who"><h1>Maya</h1>{where && <p>{where}</p>}</div>
           <dl className="desk-limits" aria-label="Help from Maya">
-            <div><dt><Icon name="phone" size={14} />Calls</dt><dd>30 min a week</dd></div>
+            {/* No Calls row while voice calls are closed (the Call button below is off): the desk never promises call minutes it cannot give. */}
             <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null, props.chatPlanClosed === true)}</dd></div>
           </dl>
         </header>
