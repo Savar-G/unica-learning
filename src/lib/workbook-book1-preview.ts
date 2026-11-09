@@ -7,7 +7,7 @@
 // no marked scan at all (#628: never advance or repeat by plan). Only a Book 1 to book 2 preview is supported here:
 // later books need book 2's issued decisions (#473, #476).
 import "server-only";
-import { book1BindingProblem, book2Planning, readBook1Baseline, type Book1Baseline } from "./workbook-book1-baseline";
+import { book1BindingProblem, book2Planning, readBook1Baseline, type Book1Baseline, type Book2PlanningRefusal } from "./workbook-book1-baseline";
 import { readBook1Corrections, type CorrectionRefusal } from "./workbook-correction-journal";
 import type { CurriculumKey } from "./workbook-curriculum/types";
 import type { PlanInput, WorkbookPlan } from "./workbook-plan";
@@ -22,7 +22,7 @@ export const PREVIEW_ENGINE_V2 = "workbook-preview-sources/2;progress/1;history/
 
 export type Book1PreviewRefusal = "baseline-invalid" | "baseline-owner" | `baseline-binding-${"owner" | "book" | "revision" | "approval" | "frame" | "issues"}`
   | "not-book2-scope" | "selection-not-issued" | "selection-not-in-baseline-curriculum" | CorrectionRefusal
-  | "curriculum-version-changed" | "profile-unreadable" | "next-planner-refused" | "invalid-planning" | `history-${HistoryRefusal}`
+  | Book2PlanningRefusal | `history-${HistoryRefusal}`
   | `preview-${PlanPreviewRefusal}`;
 interface Book1Common {
   requiredSample: SourceUnavailable["requiredSample"];
@@ -116,7 +116,8 @@ export async function captureBook1Progress(request: WorkbookPreviewRequest, froz
     return structuredClone({ ok: false, availability: "held", reasons: ["no-marked-scans"], sourceStatus: { catalog: "validated", book1: "held" }, ...common, sources, consumedVersions: [], decision: null, plan: null,
       baseline: { id: baseline.id, hash: f.baseline.hash } } satisfies Book1Held);
   }
-  const next = book2Planning(baseline);
+  // A saved preview is replayed by running this again (workbook-preview-record.ts): it keeps the exact curriculum version.
+  const next = book2Planning(baseline, { exactCurriculum: true });
   if (!next.ok) return refuse(next.reason);
   const approval = selected.approvals.filter(a => a.action === "workbook-approved").sort((a, b) => a.id - b.id).at(-1)!;
   const manifest = w.print_manifest!;

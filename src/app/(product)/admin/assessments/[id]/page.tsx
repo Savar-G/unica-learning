@@ -12,6 +12,7 @@ import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/a
 import { QuestionSkills } from "@/components/admin-question-skills";
 import { StrokeReplay } from "@/components/stroke-replay";
 import { ResultCertainty } from "@/components/admin-certainty";
+import { DELIVERY_WORDS, reportAlertState, reportEmailState } from "@/lib/delivery-state";
 
 export default async function TestDetailPage({ params }: PageProps<"/admin/assessments/[id]">) {
   const admin = await requireAdmin();
@@ -47,7 +48,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
     <h2>How sure the result is</h2>
     <ResultCertainty placement={t.placement} />
     <h2>Report and delivery</h2>
-    {report ? <><p><Link href={adminReportPath(report.id)}>Open the report</Link></p><RecordFacts facts={[["Created (Pacific)", when(report.created_at)], ["Questions", report.questions], ["Minutes", report.minutes], ["Parent email (Pacific)", when(report.emailed_at)], ["Parent email error", report.email_error], ["Alert (Pacific)", when(report.alerted_at)], ["Alert error", report.alert_error]]} /></> : <p className="adm-note">No report has been stored.</p>}
+    {report ? <><p><Link href={adminReportPath(report.id)}>Open the report</Link></p><RecordFacts facts={[["Created (Pacific)", when(report.created_at)], ["Questions", report.questions], ["Minutes", report.minutes], ["Parent email", DELIVERY_WORDS[reportEmailState(report)]], ["Parent email claimed (Pacific)", when(report.emailed_at)], ["Parent email error", report.email_error], ["Alert", DELIVERY_WORDS[reportAlertState(report)]], ["Alert (Pacific)", when(report.alerted_at)], ["Alert error", report.alert_error]]} /></> : <p className="adm-note">No report has been stored.</p>}
     <h2>Answers and times</h2>
     <p className="adm-note">Thinking time is measured in the browser. Time on the server runs from when the server sent the question to when the answer arrived (#184). Changes, read aloud and away: what the child did before Next. A dash: not recorded (a test from before #184).</p>
     <Table label="Answers" head={["#", t.stored.adaptive ? "Block" : "Stage", "Level / strand", "Template / BC", "Question", "Right answer", "Child answer", "Result", "Thinking time", "Time on the server", "Changes", "Read aloud", "Away", "Mistake"]} empty="No answers yet.">

@@ -19,6 +19,7 @@ import { isDeepStrictEqual as same } from "node:util";
 import { storedChildProfile } from "./child-profile";
 import { isUuid } from "./workbook-content";
 import { curriculumFor, curriculumVersion } from "./workbook-curriculum";
+import { nextBookCurriculumCompat, type CurriculumCompatRefusal, type CurriculumCompatSource } from "./workbook-curriculum/compat";
 import type { CurriculumSkill, CurriculumStep } from "./workbook-curriculum/types";
 import type { RunFrame, RunPlanningCapture } from "./workbook-job";
 import { planNextWorkbook, prepareNextWorkbookInput } from "./workbook-placement";
@@ -251,16 +252,26 @@ export function book1BindingProblem(b: Book1Baseline, x: Book1BoundBook): Book1B
   return null;
 }
 
-export type Book2PlanningResult = { ok: true; input: PlanInput } | { ok: false; reason: "curriculum-version-changed" | "profile-unreadable" | "next-planner-refused" | "invalid-planning" };
+export type Book2PlanningRefusal = CurriculumCompatRefusal | "profile-unreadable" | "next-planner-refused" | "invalid-planning";
+export type Book2PlanningResult = { ok: true; input: PlanInput } | { ok: false; reason: Book2PlanningRefusal; difference?: string };
 /**
  * The next book's planning input, from the frozen Book 1 placement facts and the bound book, through the one public
  * planner (planNextWorkbook). The baseline's own PlanInput is never changed. No spaced review is added here (#473).
+ * Today's curriculum may differ from Book 1's only where its structure stays the same (nextBookCurriculumCompat):
+ * a frozen version not in the archive is curriculum-history-missing, a changed structure is curriculum-incompatible with
+ * the first difference. `exactCurriculum` keeps the exact version rule (curriculum-version-changed) for the saved
+ * preview records, whose replay re-runs this (workbook-book1-preview.ts, workbook-preview-record.ts). `curricula` is
+ * the test seam for the curriculum now and the archive.
  */
-export function book2Planning(b: Book1Baseline, options: { prepareOnly?: boolean } = {}): Book2PlanningResult {
+export function book2Planning(b: Book1Baseline, options: { prepareOnly?: boolean; exactCurriculum?: boolean; curricula?: CurriculumCompatSource } = {}): Book2PlanningResult {
   try {
     const placement = structuredClone(b.planning.placement);
     const curriculum = curriculumFor(placement.curriculum.key);
-    if (!curriculum || curriculumVersion(placement.curriculum.key) !== placement.curriculum.version) return { ok: false, reason: "curriculum-version-changed" };
+    if (!curriculum || (options.exactCurriculum && curriculumVersion(placement.curriculum.key) !== placement.curriculum.version)) {
+      return { ok: false, reason: "curriculum-version-changed" };
+    }
+    const compat = nextBookCurriculumCompat(placement.curriculum.key, placement.curriculum.version, options.curricula);
+    if (!compat.ok) return { ok: false, reason: compat.reason, ...(compat.difference ? { difference: compat.difference } : {}) };
     const captured: PlanInput[] = [];
     // Book 1's admin instructions are not Book 2's: a next run reads the child's current set, so this plan leaves them out.
     const { curriculum: _version, workbooks, number, profile: frozenProfile, instructions: _book1Instructions, ...facts } = placement;
