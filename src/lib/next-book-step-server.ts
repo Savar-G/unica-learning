@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
 import { nextBookPlanner, nextBookWiring } from "./next-book-planner";
 import { nextBookSnapshotServer } from "./next-book-snapshot-server";
-import { nextBookRelease, runNextBookStep, type NextBookStepEnvironment, type NextBookStepResult } from "./next-book-step";
+import { nextBookRelease, runNextBookStep, untilAborted, type NextBookStepEnvironment, type NextBookStepResult } from "./next-book-step";
 import { isTestAccount, nextBookDueStore } from "./next-book-step-store";
 import { childPlanAccess } from "./plan-access";
 import { adminClient } from "./supabase-auth";
@@ -17,18 +17,24 @@ export function createNextBookStepServer(env: NextBookStepEnvironment,
   if (!release) return null;
   return {
     async run(time: { now(): number; endAt: number }): Promise<NextBookStepResult> {
+      let stepSignal: AbortSignal | undefined;
       let db: SupabaseClient<Database> | null | undefined;
-      // The client is made only when a planner exists, and its requests stop at the step's end.
-      const service = () => db === undefined ? (db = client(AbortSignal.timeout(Math.max(1, time.endAt - time.now())))) : db;
+      // Clients are made only when a planner exists, and their requests stop at the step's end.
+      const signal = () => stepSignal ??= AbortSignal.timeout(Math.max(1, time.endAt - time.now()));
+      const service = () => db === undefined ? (db = client(signal())) : db;
       const unavailable = (): never => { throw new Error("next_book_service_unavailable"); };
       return runNextBookStep({
         release, planner: nextBookPlanner(), time,
-        prepare: planner => {
+        prepare: (planner, itemSignal) => {
           const wiring = nextBookWiring(planner);
-          const server = wiring ? nextBookSnapshotServer(wiring, service()) : null;
+          if (!wiring) return null;
+          // Each item has its own client: once its deadline passes, none of its requests reach the database.
+          const itemDb = itemSignal ? client(AbortSignal.any([itemSignal, signal()])) : service();
+          const selection = itemSignal ? ((scope: Parameters<typeof wiring.selection>[0]) => untilAborted(() => wiring.selection(scope), itemSignal)) : wiring.selection;
+          const server = itemDb ? nextBookSnapshotServer({ planner: wiring.planner, selection }, itemDb) : null;
           return server ? server.prepare : null;
         },
-        reader: { due: input => nextBookDueStore(service() ?? unavailable()).due(input) },
+        reader: { page: input => nextBookDueStore(service() ?? unavailable()).page(input) },
         testAccount: parentId => isTestAccount(service() ?? unavailable(), parentId),
         openPlan: async input => (await childPlanAccess(input, { db: service() ?? unavailable() })).open,
       });

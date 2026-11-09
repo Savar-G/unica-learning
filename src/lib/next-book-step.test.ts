@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import type { NextBookTrigger } from "./next-book-snapshot";
-import { NEXT_BOOK_STEP_LIMIT, nextBookRelease, runNextBookStep, type NextBookStepDeps, type NextBookStepResult } from "./next-book-step";
+import type { NextBookPlanner } from "./next-book-snapshot";
+import { NEXT_BOOK_STEP_ANSWER_MS, NEXT_BOOK_STEP_LIMIT, NEXT_BOOK_STEP_PAGE, nextBookRelease, runNextBookStep, type NextBookStepDeps,
+  type NextBookStepResult } from "./next-book-step";
 import { memoryNextBookDue } from "./next-book-step-memory";
 import { MIN, nextBookWorld, uuid, type Family } from "./next-book-step.fixture";
 
@@ -9,6 +11,7 @@ import { MIN, nextBookWorld, uuid, type Family } from "./next-book-step.fixture"
 // due reader, a fake planner, and a passed-in clock and budget.
 
 const T0 = Date.parse("2026-11-08T18:00:00.000Z");
+afterEach(() => { vi.useRealTimers(); });
 
 function setup(env: { mode?: string; tests?: Family[] | string } = {}) {
   const w = nextBookWorld(T0);
@@ -185,7 +188,7 @@ describe("the step", () => {
     };
     // 30 s: three items start with 30, 20 and 10 s left; the fourth would start with none.
     const r = ran(await s.step({ prepare: slow, time: { now: () => s.w.clock.now, endAt: start + 30_000 } }));
-    expect(r).toMatchObject({ due: 5, prepared: 3, outOfTime: true });
+    expect(r).toMatchObject({ due: 3, prepared: 3, outOfTime: true });
     expect(families.map(f => !!s.w.chainOf(f))).toEqual([true, true, true, false, false]);
     // With less than 8 s at the start it does not even read.
     const reads = s.reader.reads;
@@ -204,6 +207,64 @@ describe("the step", () => {
     expect(s.w.writes).toEqual([]);
     expect(s.w.m.state.snapshots).toEqual([]);
     expect(ran(await s.step()).outcomes).toEqual({ queued: 1 });
+  });
+
+  it("a failed later read stops the step and keeps the items already prepared", async () => {
+    const s = setup({ mode: "families" });
+    for (let n = 1; n <= NEXT_BOOK_STEP_PAGE + 5; n++) {
+      const f = s.w.family(n);
+      s.w.claim(f, T0 - (100 - n) * MIN);
+      if (n === 1) s.openPlans.add(f.childId);
+    }
+    s.reader.failAfter = 1;
+    const r = ran(await s.step());
+    expect(r).toMatchObject({ readFailed: true, prepared: 1, skipped: NEXT_BOOK_STEP_PAGE - 1, outcomes: { queued: 1 } });
+  });
+
+  it("skipped items use no slot: 60 older items left out by the release, and the newer released one is prepared on the first run", async () => {
+    const s = setup({ mode: "families" });
+    // Ten test families' children no longer marked as tests, and real families with closed plans, all older.
+    const testParents: string[] = [];
+    for (let n = 1; n <= 60; n++) {
+      const f = s.w.family(n);
+      s.w.claim(f, T0 - (200 - n) * MIN);
+      if (n <= 10) testParents.push(f.parentId);
+    }
+    const customer = s.w.family(61);
+    s.w.claim(customer, T0 - MIN);
+    s.openPlans.add(customer.childId);
+    const r = ran(await s.step({ tests: testParents.join(",") }));
+    expect(r).toMatchObject({ due: 61, skipped: 60, prepared: 1, outcomes: { queued: 1 }, outOfTime: false });
+    expect(s.w.chainOf(customer)?.runId).toBeTruthy();
+    expect(s.calls).toEqual([{ kind: "claim", triggerId: uuid(61 * 10 + 4) }]);
+    expect(s.reader.reads).toBe(2);
+  });
+
+  it("stops a slow planner at its deadline before endAt, saves no plan after it, and the next run finishes the item", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now: T0 });
+    const s = setup({ mode: "families" });
+    const f = s.w.family(1), later = s.w.family(2);
+    s.w.claim(f, T0 - 2 * MIN);
+    s.w.claim(later, T0 - MIN);
+    s.openPlans.add(f.childId).add(later.childId);
+    const slow: NextBookPlanner = { plan: input => new Promise(resolve => setTimeout(() => resolve(s.w.planner.plan(input)), 120_000)) };
+    const endAt = Date.now() + 55_000;
+    let returnedAt = 0;
+    const running = s.step({ planner: slow, time: { now: () => Date.now(), endAt } }).then(r => { returnedAt = Date.now(); return r; });
+    await vi.advanceTimersByTimeAsync(55_000);
+    const r = ran(await running);
+    expect(returnedAt).toBe(endAt - NEXT_BOOK_STEP_ANSWER_MS);
+    expect(r).toMatchObject({ timedOut: true, outOfTime: true, prepared: 0, due: 1 });
+    // The slow answer arrives later and is refused: the chain stays frozen without a plan, and no run starts.
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(s.w.chainOf(f)).toMatchObject({ plan: null, runId: null });
+    expect(s.w.chainOf(f)!.frozen).not.toBeNull();
+    expect(s.w.chainOf(later)).toBeUndefined();
+    vi.useRealTimers();
+    s.w.clock.now = T0 + 3 * MIN;
+    const next = ran(await s.step({ time: { now: () => s.w.clock.now, endAt: s.w.clock.now + 55_000 } }));
+    expect(next).toMatchObject({ prepared: 2, outcomes: { queued: 2 } });
+    expect(s.w.chainOf(f)?.runId).toBeTruthy();
   });
 
   it("counts an error on one item and goes on to the next", async () => {

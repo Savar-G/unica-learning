@@ -2,15 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { NextBookButtonState } from "@/lib/next-book-button";
 
 /**
  * #476: "Prepare from snapshot" on a child's delivered book 1. It prepares book 2 from what the child marked in book 1
- * and shows one status line. Pressing it again is safe: it picks up where the last press stopped.
+ * and shows one status line. Pressing it again is safe: it picks up where the last press stopped. Until the planner is
+ * wired it shows disabled; when the page could not read the book's delivery it shows only a note.
  */
-export function PrepareFromSnapshot({ childId }: { childId: string }) {
+export function PrepareFromSnapshot({ childId, state }: { childId: string; state: Exclude<NextBookButtonState, "hidden"> }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState("");
+  if (state === "unavailable") return <p className="adm-note">Next book status is unavailable.</p>;
   async function prepare() {
     if (busy) return;
     setBusy(true);
@@ -24,8 +27,10 @@ export function PrepareFromSnapshot({ childId }: { childId: string }) {
     } catch { setLine("The response was lost. Press again to see where it stands."); }
     finally { setBusy(false); }
   }
+  const ready = state === "ready";
   return <div className="adm-row">
-    <button type="button" className="btn adm-btn" onClick={prepare} disabled={busy}>{busy ? "Preparing..." : "Prepare from snapshot"}</button>
+    <button type="button" className="btn adm-btn" onClick={prepare} disabled={busy || !ready}>{busy ? "Preparing..." : "Prepare from snapshot"}</button>
+    {!ready && <p className="adm-note">The planner is not ready yet.</p>}
     {line && <p role="status" className="adm-note">{line}</p>}
   </div>;
 }
