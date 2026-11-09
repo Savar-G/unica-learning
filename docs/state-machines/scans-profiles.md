@@ -41,7 +41,7 @@ Method: rg/sed over src/lib, src/app, src/components, supabase/migrations, docs.
   - none -> reserved: `admit_scan_photo` (POST /api/account/scans). Re-admit of the same id answers its current state. Latest def: 20261105_scan_marking.sql (adds the unfinished-marking queue cap).
   - reserved -> processing: `start_scan_photo` (PUT /api/account/scans/[id]); latest def 20261105_scan_marking.sql (uses `scan_active_jobs`).
   - processing: `identify_scan_photo` freezes page_id/workbook_id/printed_revision/width/height (no state change); `finish_scan_photo` -> pending.
-  - pending -> saved: `change_scan_photo(save)` (POST /api/account/scans/[id]); requires created_at > now-24h.
+  - pending -> saved: `change_scan_photo(save)` (POST /api/account/scans/[id]); asks `scan_photo_is_active` (pending: under 23.5 h old; saved: not expired), since migration `scan_photo_save_window` (B14); before, it allowed a pending photo up to 24 h old.
   - any non-terminal -> deleted / rejected: `change_scan_photo(delete|reject)` (DELETE route; PUT failure path calls `reject`, route.ts:42).
   - reserved -> rejected: `release_scan_photo` (20261105_scan_release.sql; POST .../release).
   - -> expired: `expire_scan_photos()` pg_cron `scan-photo-expiry` every 5 min (latest def 20261102_scan_photo_frozen_expiry.sql); also called inside `/api/scan-cleanup` (scan-photo-server.ts:73). Rules: expires_at passed; or not saved and older than 23h30m; or reserved/processing with lease over.

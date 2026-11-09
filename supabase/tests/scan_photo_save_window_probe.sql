@@ -2,7 +2,7 @@
 -- so nothing is kept. Before migration scan_photo_save_window: late_save=saved active=false. After: late_save=refused.
 do $$ declare ph public.scan_photos; r text := ''; begin
 select p.* into ph from public.scan_photos p join public.test_accounts t on t.parent_id = p.parent_id
-  where p.page_id is not null and p.printed_revision is not null and p.width > 0 and p.height > 0
+  where p.page_id is not null and p.printed_revision is not null and p.width > 0 and p.height > 0 and p.state not in ('deleted','expired','rejected')
   and not exists (select 1 from public.family_deletions d where d.parent_id = p.parent_id) limit 1;
 if ph.id is null then raise exception 'PROBE: no test-family photo'; end if;
 -- 23 h 45 min old and pending: past the 23.5 h window the site uses everywhere else.
