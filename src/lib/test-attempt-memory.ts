@@ -5,7 +5,7 @@
 // in one database statement. Answers (#147): one answer per place in a test (the unique index on assessment_id and
 // position), and the drawings bucket as a map by path. Finish (#150): a test is completed only while it is in progress.
 // Strokes (#186): the stroke files of the same bucket, as their own map by path, so a test can check them apart.
-import { fromRemovedRound, type Attempt, type HelpAnswer, type Placement, type Route, type Stage3Route, type StoredTest, type Submission } from "@/lib/assessment";
+import { RESUME_HOURS, fromRemovedRound, type Attempt, type HelpAnswer, type Placement, type Route, type Stage3Route, type StoredTest, type Submission } from "@/lib/assessment";
 import type { FactsTest } from "@/lib/assessment";
 import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from "@/lib/test-attempt";
 import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
@@ -308,9 +308,14 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("lockBlock");
       const row = tests.find(t => t.id === id && t.status === "in_progress");
       if (!row?.test.adaptive) return "closed";
-      if (row.test.adaptive.locked !== expected || !sameAnswers(row.answers, answers)) return "changed";
+      // As lock_assessment_block (20261105_assessment_blocks.sql): the lock count first, then a complete test is closed,
+      // then the answers; the deadline and the last answer time only move forward.
+      if (row.test.adaptive.locked !== expected) return "changed";
+      if (row.test.adaptive.complete) return "closed";
+      if (!sameAnswers(row.answers, answers)) return "changed";
       row.test.adaptive = structuredClone(adaptive);
-      row.resumeUntil = resumeUntil;
+      row.lastAnswerAt = Math.max(row.lastAnswerAt ?? -Infinity, resumeUntil - RESUME_HOURS * 60 * 60_000);
+      row.resumeUntil = Math.max(row.resumeUntil, resumeUntil);
       return "stored";
     },
     async complete(id, { at, placement, help, answers }) {

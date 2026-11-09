@@ -76,3 +76,26 @@ describe("durable assessment block locks",()=>{
     expect(m.tests[0].placement).toBeUndefined();
   });
 });
+
+describe("the in-memory lockBlock answers as lock_assessment_block does", ()=>{
+  const lock = (m: ReturnType<typeof family>, resumeUntil: number) => {
+    const row = m.tests[0];
+    return m.store.lockBlock("a1", { expected: row.test.adaptive!.locked, adaptive: structuredClone(row.test.adaptive!), answers: row.answers, resumeUntil });
+  };
+  it("is closed for a complete test, before it compares the answers", async ()=>{
+    const m=family(); m.tests[0].test.adaptive!.complete = true;
+    expect(await lock(m, now + 1000)).toBe("closed");
+  });
+  it("is changed for a stale lock count, even on a complete test", async ()=>{
+    const m=family(); m.tests[0].test.adaptive!.complete = true;
+    const row = m.tests[0];
+    expect(await m.store.lockBlock("a1", { expected: row.test.adaptive!.locked + 1, adaptive: row.test.adaptive!, answers: row.answers, resumeUntil: now })).toBe("changed");
+  });
+  it("moves the deadline and the last answer time only forward", async ()=>{
+    const m=family(); const later = m.tests[0].resumeUntil + 60_000;
+    m.tests[0].resumeUntil = later;
+    expect(await lock(m, later - 120_000)).toBe("stored");
+    expect(m.tests[0].resumeUntil).toBe(later);
+    expect(m.tests[0].lastAnswerAt).toBe(later - 120_000 - 24 * 60 * 60_000);
+  });
+});

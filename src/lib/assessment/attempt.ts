@@ -1,5 +1,6 @@
 // Stop, resume and retake (#72, D-083): pure rules over a child's test attempts.
 // No clock: the server passes `now` and every stored time, as epoch milliseconds from its own clock.
+import type { Table } from "@/lib/state-machine";
 
 /** A stopped test can continue until this long after its last stored answer (or its start, before any answer). */
 export const RESUME_HOURS = 24;
@@ -9,7 +10,22 @@ export const RETAKE_DAYS = 30;
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
 
-export type AttemptStatus = "in_progress" | "completed" | "expired";
+/** The stored status of a test (public.assessments.status); equal to its check constraint. */
+export const ATTEMPT_STATUSES = ["in_progress", "completed", "expired"] as const;
+export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
+/** "finish": the test is scored. "expire": it ran out of time (see attemptState for when). */
+export type AttemptEvent = "finish" | "expire";
+/**
+ * The moves of a stored test. Only a test in progress moves; a completed or expired test never changes status. The
+ * guards stay with the callers: attemptState says when a test has run out of time, and the test attempt module finishes
+ * a test only when every answer is in. The database writes the same moves under its own guards (complete_test, and the
+ * expire update in src/lib/test-attempt-server.ts, both on status = 'in_progress').
+ */
+export const ATTEMPT_MOVES: Table<AttemptStatus, AttemptEvent> = {
+  in_progress: { finish: "completed", expire: "expired" },
+  completed: {},
+  expired: {},
+};
 
 /** One try at the test, as the server stores it (a row of public.assessments). */
 export interface Attempt {
