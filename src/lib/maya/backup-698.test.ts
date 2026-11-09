@@ -137,3 +137,15 @@ it('still offers the non-final ones show for 27 + 39', () => {
  expect(lineOffers(r.s).guide?.some(o=>o.line==='step.show' && o.slots.step==='ones')).toBe(true);
  r.show('ones');
 });
+
+it('refuses a math slot that equals the answer', async () => {
+ const { workedSteps } = await import('@/lib/question-package');
+ const operation = { kind: 'add' as const, operands: [3, 0] as [number, number] };
+ const easier = { kind: 'add' as const, operands: [0, 0] as [number, number] };
+ const pkg = { ...FIXTURES.A, operation, steps: workedSteps(operation), text: '3 + 0',
+  answer: { value: { type: 'number' as const, value: 3 }, accepted: [], unit: null },
+  wrongAnswers: [{ value: { type: 'number' as const, value: 4 }, cause: 'O3', description: 'Wrong sum', step: null }],
+  easierExample: { text: '0 + 0', operation: easier, answer: { type: 'number' as const, value: 0 }, steps: workedSteps(easier) } };
+ const r = rig(pkg); r.child('Help.');
+ expect(r.prop({ act: 'guide', step: pkg.steps[0].id, level: 1, parts: [{ line: 'step.point', slots: { step: pkg.steps[0].id } }] }).refusal).toMatchObject({ code: 'reveals_answer' });
+});

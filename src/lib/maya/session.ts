@@ -42,7 +42,7 @@ import { talkMath } from "./claims";
 import { closeExpressionContainsAnswer } from "./backup-close";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
-import { compensations, findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
+import { compensations, findOffer, normalSlots, packageLines, workbookOpening, WORKBOOK_OPENING, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { kindOf, writtenFractions, claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
@@ -1318,7 +1318,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     roles = board;
   }
   const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult;
-  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, spoken)) {
+  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, spoken, forcedOpening)) {
     return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
   }
   const bad = pb.board ? boardProblem(s, pb.board, role, spoken, done) : null;
@@ -2651,7 +2651,9 @@ function end(s: Session, cause: Reason, effects: Effect[], cancel: boolean) {
 }
 
 /** Check filled line values, free words, and visible board values before releasing the answer. */
-function revealsAnswer(s: Session, p: Proposal, spoken: Spoken): boolean {
+const REFERENCE_SLOTS = new Set(["page", "number", "workbook"]);
+
+function revealsAnswer(s: Session, p: Proposal, spoken: Spoken, forcedOpening: string | null = null): boolean {
   const pkg = s.package!;
   const answer = pkg.answer.value;
   // An equal form the child said (14/16 for 7/8, #407) gives nothing away when Maya says it back; the answer's own
@@ -2665,7 +2667,19 @@ function revealsAnswer(s: Session, p: Proposal, spoken: Spoken): boolean {
   const withoutExpression = (text: string) => text.split(expression).join("");
   const filled = spoken.chosen.flatMap((offer) => Object.values(offer.filled ?? {}).map(String));
   const codeLines = new Set(spoken.chosen.flatMap((offer) => offer.texts));
-  const other = spoken.segments.filter((segment) => segment.kind === "warm" || segment.kind === "talk" || !codeLines.has(segment.text)).map((segment) => segment.text);
+  const other = spoken.segments.filter((segment) => segment.text !== forcedOpening && (segment.kind === "warm" || segment.kind === "talk" || !codeLines.has(segment.text))).map((segment) => segment.text);
+  if (forcedOpening) {
+    // Reference placeholders identify the printed question. Every other placeholder must be known and checked.
+    const values: Record<string, string> = { expr: expression };
+    let unknown = false;
+    const checkedOpening = WORKBOOK_OPENING.replace(/\{(\w+)\}/g, (_match, slot: string) => {
+      if (REFERENCE_SLOTS.has(slot)) return "";
+      if (!Object.hasOwn(values, slot)) { unknown = true; return ""; }
+      return values[slot];
+    });
+    if (unknown) return true;
+    other.push(checkedOpening);
+  }
   const board = boardVisible(p.board ?? []).map(([, value]) => value);
   if ([...filled, ...other, ...board].some((text) => valuesIn(withoutExpression(text), readOptionsFor(pkg)).some(reveals))) return true;
   const highest = answer.type === "number" ? PLACE_NAMES[String(Math.trunc(Math.abs(answer.value))).length - 1] : undefined;
