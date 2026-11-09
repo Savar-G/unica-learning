@@ -43,7 +43,7 @@ export function preparationState(triggerAt: number, now: number, jobs: readonly 
 }
 
 /** Reject duplicate identities and any version the frozen history did not hold. */
-export function validatePlannerEvidence(frozen: FrozenNextBookSnapshot, used: readonly { key: string; version: number }[]): boolean {
+export function validatePlannerEvidence(frozen: Pick<FrozenNextBookSnapshot, "history" | "evidence">, used: readonly { key: string; version: number }[]): boolean {
   const available = new Map<string, number>();
   for (const original of frozen.history.originals) {
     const effective = original.changes.at(-1) ?? original.first;

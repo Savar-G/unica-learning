@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { historyFixture } from "./workbook-progress-history.fixture";
 import { readWorkbookProgressHistory } from "./workbook-progress-history";
-import { newEvidenceSince, preparationState, validatePlannerEvidence, type FrozenNextBookSnapshot } from "./next-book-snapshot";
+import { newEvidenceSince, preparationState, validatePlannerEvidence } from "./next-book-snapshot";
 
 vi.mock("server-only", () => ({}));
 
@@ -23,7 +23,7 @@ describe("next-book snapshot primitives", () => {
     const i = item.identity;
     const key = JSON.stringify([i.workbookId, i.printedRevision, i.pageId, i.itemId]);
     const used = { key, version: item.resultVersion };
-    const frozen = { history: result.history, evidence: [{ ...used, day: 1, pageId: i.pageId }] } as FrozenNextBookSnapshot;
+    const frozen = { history: result.history, evidence: [{ ...used, day: 1, pageId: i.pageId }] };
     expect(validatePlannerEvidence(frozen, [used])).toBe(true);
     expect(validatePlannerEvidence({ ...frozen, evidence: [] }, [used])).toBe(false);
     expect(validatePlannerEvidence(frozen, [used, used])).toBe(false);
