@@ -434,16 +434,14 @@ const CSS = `
 .cv .for{margin-top:32px;font-weight:500;font-size:22px;line-height:1.4;color:#44444C;max-height:62px;overflow:hidden}
 .cv h1{margin:20px 0 0;font-weight:300;font-size:66px;line-height:1.18;letter-spacing:-.03em;height:164px;overflow:hidden}
 .cv h1 .hl{display:inline-block;background:#FFD23F;padding:0 10px;margin-left:-10px;line-height:1.12}
-.made{margin-top:28px;background:#FFF1EA;border:1.5px solid #FF6A3D;border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:14px;max-height:268px;overflow:hidden}
-.made .lab{font-size:12px;color:#0C0C0E;text-transform:none}
-.cv .cover-plan .lab{text-transform:none}
-.made p{margin:0;font-size:17px}
-.cv .cover-plan{margin-top:36px;display:flex;flex-direction:column;gap:16px}
-.cv .cover-plan ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:18px}
-.cv .cover-plan li{border-top:1px solid #D4D4DA;padding-top:12px;font-size:21px;line-height:1.3}
-.made ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
-.made li{display:flex;gap:12px;align-items:baseline;font-size:15px}
-.made li i{display:block;width:8px;height:8px;background:#FF6A3D;flex:none;transform:translateY(-1px)}
+/* The two cover cards (variant D): identical white cards with a dark outline, the sentence and the plan's topics. */
+.cv .card{margin-top:20px;background:#fff;border:1.5px solid #0C0C0E;border-radius:10px;padding:20px 24px;display:flex;flex-direction:column;gap:12px}
+.cv .card .lab{font-size:12px;font-weight:500;letter-spacing:.04em;color:#44444C;text-transform:none}
+.made{max-height:268px;overflow:hidden}
+.cv .made p{margin:0;font-size:17px;line-height:1.4}
+.cv .cover-plan ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.cv .cover-plan li{display:grid;grid-template-columns:5px 1fr;column-gap:12px;align-items:start;font-size:17px;line-height:1.4}
+.cv .cover-plan li i{display:block;width:5px;height:5px;background:#0C0C0E;margin-top:calc(17px*1.4/2 - 2.5px)}
 .cv .pl{margin:24px 0 0;font-size:15px;height:42px;overflow:hidden}
 .cv .nx{margin:auto 0 0;font-size:15px;color:#44444C;height:21px;overflow:hidden;white-space:nowrap}
 /* how + plan */
@@ -1476,11 +1474,11 @@ function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { 
   const label = c.madeFrom === "assessment" ? `Made from ${name}'s assessment` : `Made from ${name}'s last workbook`;
   const plan = book.pages.find(p => p.content?.kind === "how-plan")?.content;
   const topics = plan?.kind === "how-plan" ? [...new Set(plan.rows.map(row => row.topic))].slice(0, 3) : [];
-  const path = topics.length ? `<section class="cover-plan"><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}>${escape(topic)}</li>`).join("")}</ul></section>` : "";
+  const path = topics.length ? `<section class="card cover-plan"><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}><i></i><span>${escape(topic)}</span></li>`).join("")}</ul></section>` : "";
   return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
     + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(name)} · Level U${c.level}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
-    + `<div class="made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence.replaceAll(c.child, name))}</p></div>${path}`
+    + `<div class="card made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence.replaceAll(c.child, name))}</p></div>${path}`
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
 
