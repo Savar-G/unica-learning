@@ -70,3 +70,8 @@
 .wbr-layout-review select,.wbr-layout-review textarea,.wbr-layout-review input:not([type=checkbox]) { display:block; width:100%; min-width:0; margin-top:5px; padding:8px; border:1px solid var(--line); border-radius:5px; font:inherit; }
 .wbr-layout-review textarea { min-height:76px; resize:vertical; }
 .wbr-layout-review .btn { width:100%; white-space:normal; }
+.wbr-comparison { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
+.wbr-before img { display:block; width:100%; background:#fff; }
+.wbr-thumbs label { display:block; font-size:11px; margin-bottom:12px; }
+.wbr-thumbs input,.wbr-buttons input { width:auto; }
+.wbr-bar select { width:auto; padding:4px; }
