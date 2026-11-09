@@ -614,9 +614,13 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
         expect(hardFeeling(turn), turn).toBe(true);
       }
       expect(hard().refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })?.code).toBe("line_not_offered");
-      // The same pick on a happy turn is still offered.
+      // Cheer is an allow-list (#698 round 8): a turn with no explicit positive word gets no cheerful pick, even good news.
+      const plain = call();
+      plain.child("We went on a trip to the lake!");
+      expect(plain.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })?.code).toBe("line_not_offered");
+      // The same pick on an explicitly happy turn is still offered.
       const happy = call();
-      happy.child("We went on a trip to the lake!");
+      happy.child("We went on a trip to the lake! I'm so happy!");
       expect(happy.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })).toBeNull();
     });
 
