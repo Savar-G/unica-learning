@@ -1,8 +1,8 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { isAuthSessionMissingError, type AuthError } from "@supabase/supabase-js";
 import { cleanChild, cleanDetails, fail, validPassword, type AccountResult, type FinishPayload } from "@/lib/account";
-import { createFamily, isPhone, linkOrigin, sendSignInLink, sendWelcome } from "@/lib/account-server";
+import { claimFamilyFinish, createFamily, isPhone, linkOrigin, releaseFamilyFinish, sendSignInLink, sendWelcome } from "@/lib/account-server";
 import { adminClient, sessionClient } from "@/lib/supabase-auth";
 
 // The one step that writes a family: the parent row and the first child (#63, #82). The id and the email come from the
@@ -15,6 +15,10 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 // 2. Before any step that can fail, the password becomes one that nobody knows, and every other session ends. The
 //    password from the signup form (or from /account/finish) is set after that.
 // 3. An existing family changes nothing: no new child, no new password.
+// 4. One finish at a time for a user (claim_family_finish, docs/state-machines.md item 12). Two tabs that finish at once
+//    would otherwise both change the password, and the one that lost create_family's race would answer "existing"
+//    after its change. The claim comes before the first password change and goes when the route ends. A second tab
+//    waits for it, and then finds the family and changes nothing.
 //
 // Both password changes go through the parent's own session (PUT /auth/v1/user). Supabase Auth then ends every other
 // session of the user in the same transaction and keeps the parent's. An admin password change (updateUserById) ends
@@ -69,6 +73,24 @@ export async function POST(request: Request) {
 
   if (!signInMethods(jwt).some((method) => PROVED.has(method))) return fail("unproved", 403);
 
+  const claim = randomUUID();
+  const held = await claimFamilyFinish(admin, user.id, claim);
+  if (held === "exists") return Response.json({ ok: true, existing: true } satisfies AccountResult);
+  if (held !== "claimed") return fail("store_failed", 502);
+  try {
+    return await finishClaimed(request, session, admin, { id: user.id, email: user.email });
+  } finally {
+    await releaseFamilyFinish(admin, user.id, claim);
+  }
+}
+
+/** The finish under the claim: rules 2 and 3 above, then the family. */
+async function finishClaimed(
+  request: Request,
+  session: Awaited<ReturnType<typeof sessionClient>>,
+  admin: NonNullable<ReturnType<typeof adminClient>>,
+  user: { id: string; email: string },
+): Promise<Response> {
   const { error: resetError } = await session.auth.updateUser({ password: unknownPassword() });
   if (resetError) return passwordFailed("password reset", resetError, false);
 
