@@ -2,8 +2,13 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { WhatsIncluded } from "@/components/whats-included";
+import { describe, expect, it, vi } from "vitest";
+import { WhatsIncluded, SHOW_CALL_SCREENS, SHOW_VOICE_DEMO } from "@/components/whats-included";
+import { SHOW_VOICE_DEMO as SHOW_HOME_VOICE_DEMO } from "@/components/guidance-demo";
+import { SHOW_OLD_SAMPLE_PLANS } from "@/lib/maya-public-images";
+import Home from "@/app/(site)/page";
+
+vi.mock("@/components/card-return", () => ({ CardReturn: () => null }));
 
 // Follow public page imports into components and shared copy, and include all published content.
 const root = resolve(process.cwd(), "src");
@@ -14,7 +19,7 @@ function files(dir: string): string[] {
   });
 }
 function publicSources(): string[] {
-  const pending = [...files(join(root, "app/(site)")), ...files(join(root, "content")), ...files(join(root, "app/llms.txt"))];
+  const pending = [...files(join(root, "app/(site)")), ...files(join(root, "content")), ...files(join(root, "app/llms.txt")), join(root, "app/opengraph-image.tsx")];
   const seen = new Set<string>();
   while (pending.length) {
     const path = pending.pop()!;
@@ -33,7 +38,7 @@ function publicSources(): string[] {
   return [...seen];
 }
 
-const forbidden = /out loud|talk with the teaching assistant|voice calls?|companion calls|call with maya|\bcall the|call notes|numbers on this page are made up to show the design/i;
+const forbidden = /speaks to your child|unlimited chat|(?:every grade.{0,80}(?:maya|chat)|(?:maya|chat).{0,80}every grade)|gives your child the answer|call maya|call the teaching assistant|out loud|talk with the teaching assistant|voice calls?|companion calls|call with maya|\bcall the|call notes|numbers on this page are made up/i;
 
 describe("first ship public Maya copy", () => {
   it("has no voice claims in public sources", () => {
@@ -60,8 +65,14 @@ describe("first ship public Maya copy", () => {
     expect(violations).toEqual([]);
   });
 
-  it("does not render the call screens or their dashboard section", () => {
-    const html = renderToStaticMarkup(createElement(WhatsIncluded));
-    expect(html).not.toMatch(/dash-main\.jpg|dash-side\.png|dash\.jpg|app-callnotes\.png|Companion calls|Call with Maya|call notes|Numbers on this page are made up to show the design|Every scan updates your dashboard/i);
+  it("keeps the first ship image and voice flags off", () => {
+    expect([SHOW_OLD_SAMPLE_PLANS, SHOW_CALL_SCREENS, SHOW_VOICE_DEMO, SHOW_HOME_VOICE_DEMO]).toEqual([false, false, false, false]);
+  });
+
+  it("does not render the hidden images on either public page", () => {
+    for (const page of [Home, WhatsIncluded]) {
+      const html = renderToStaticMarkup(createElement(page));
+      expect(html).not.toMatch(/(?:leah|mateo)-02-plan\.jpg|app-marked\.png|dash-main\.jpg|dash-side\.png|dash\.jpg|app-callnotes\.png|Companion calls|Call with Maya|call notes|Numbers on this page are made up|Every scan updates your dashboard/i);
+    }
   });
 });

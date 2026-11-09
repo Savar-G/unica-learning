@@ -101,7 +101,7 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     good: ["Explaining live and answering questions", "Adjusting to your child each session", "Help with homework and tests"],
     hardTitle: "Harder with a tutor",
     hard: ["Often an hour or two a week; the other days are up to you", "$40-$100 an hour: about $170-$430 a month for 1 hour a week", "How much you hear about gaps depends on the tutor"],
-    us: ["Practice 5 days a week, built from their recent work", "Children in Grade 3 and up can chat with the Teaching Assistant, plus a report and worked solutions after every scan", `$${PLANS.one.price} a month. You can keep a tutor too.`],
+    us: ["Practice 5 days a week, built from their recent work", "Children in Grade 3 and up can chat with the Teaching Assistant. A report and worked solutions after every scan", `$${PLANS.one.price} a month. You can keep a tutor too.`],
   },
   {
     id: "centre",
