@@ -7,6 +7,7 @@ import type { DraftRendering } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
 import type { MarkResult, WorkbookShipStore } from "@/lib/workbook-ship";
 import { teachingFrame } from "@/lib/workbook-teaching-frame";
+import { workbookPlanRefusal } from "@/lib/workbook-plan-refusal";
 
 // The ship store (#314) in Supabase (migration workbook_ship). Pass a client with the secret key: approve_workbook_draft
 // and mark_workbook are service-only. The draft's current revision is its latest; its content is the revision's own
@@ -50,7 +51,7 @@ export function workbookShipStore(db: SupabaseClient<Database>): WorkbookShipSto
         p_by: actor.id, p_by_email: actor.email,
       });
       if (error) {
-        if (error.code === "55000") return { status: "refused", reason: "the family is being deleted" };
+        if (error.code === "55000") return { status: "refused", reason: workbookPlanRefusal(error.message, "approve") };
         throw new Error(`workbook approve: ${error.message}`);
       }
       const a = answerOf(data);
@@ -63,7 +64,7 @@ export function workbookShipStore(db: SupabaseClient<Database>): WorkbookShipSto
       if (!isUuid(workbookId)) return { status: "not-found" };
       const { data, error } = await db.rpc("mark_workbook", { p_workbook: workbookId, p_to: to, p_by: actor.id, p_by_email: actor.email });
       if (error) {
-        if (error.code === "55000") return { status: "refused", reason: "the family is being deleted" };
+        if (error.code === "55000") return { status: "refused", reason: workbookPlanRefusal(error.message, to) };
         throw new Error(`workbook mark: ${error.message}`);
       }
       const a = answerOf(data);

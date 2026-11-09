@@ -790,6 +790,6 @@ async function write(
   });
   if (isLost()) throw new Stopped("the run was taken up by another call");
   if (result.status === "paused") return "paused";
-  if (result.status === "refused") throw new Refusal(`The draft was not stored: ${result.reason}.`);
+  if (result.status === "refused") throw new Refusal(result.reason.endsWith(".") ? result.reason : `The draft was not stored: ${result.reason}.`);
   return result.draft;
 }

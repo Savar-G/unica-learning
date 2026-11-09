@@ -297,12 +297,11 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
     if (refusedByStripe(e)) {
       // Nothing started, and Stripe answers this key the same way for 24 hours, so the next press opens a new generation.
       await closeRecord(rows, p.cardSetup, held.generation, { state: "refused" });
-      if (purpose === "restart") {
-        // closeRecord can fail after the provider refused. Require the durable result before releasing any hold.
-        const confirmed = (await rows.cardRow(p.cardSetup))?.planStart;
-        return { ok: false, error: confirmed?.generation === held.generation && confirmed.state === "refused" ? "payment_refused" : "unconfirmed" };
-      }
-      throw e;
+      // Preserve the initial start's general failure for permission and request errors. They do not prove a card refusal.
+      if (purpose === "initial" && !(e instanceof Stripe.errors.StripeCardError)) throw e;
+      // closeRecord can fail after the provider refused. An open record still needs recovery.
+      const confirmed = (await rows.cardRow(p.cardSetup))?.planStart;
+      return { ok: false, error: confirmed?.generation === held.generation && confirmed.state === "refused" ? "payment_refused" : "unconfirmed" };
     }
     console.error("[stripe] plan start not confirmed", e instanceof Error ? e.message : "failed");
     return { ok: false, error: "unconfirmed" };

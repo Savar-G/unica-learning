@@ -159,6 +159,33 @@ describe("a run", () => {
     expect(s.runs.audit.map((a) => a.action)).toEqual(["run-started", "run-failed"]);
   });
 
+  it.each([
+    "This family's plan is cancelled, so this workbook draft cannot be saved.",
+    "A pause, cancellation or restart for this family is still in progress, so this workbook draft cannot be saved.",
+    "This family's pause requires the previous workbook to be shipped first, so this workbook draft cannot be saved.",
+    "This family's plan is paused, so this workbook draft cannot be saved.",
+  ])("shows a draft-save plan refusal once without a wrapper: %s", async (reason) => {
+    const s = setup();
+    const id = await started(s);
+    const save = vi.spyOn(s.runs, "saveDraft").mockResolvedValue({ refused: reason });
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect(save).toHaveBeenCalledOnce();
+    const run = (await s.runs.run(id))!;
+    expect(run).toMatchObject({ status: "failed", attempts: 1, error: reason, draftId: null });
+    expect(run.error).not.toContain("..");
+    expect(run.error).not.toContain("The draft was not stored:");
+    expect(s.drafts.drafts.size).toBe(0);
+  });
+
+  it("keeps the draft-save wrapper for an old lowercase reason", async () => {
+    const s = setup();
+    const id = await started(s);
+    const save = vi.spyOn(s.runs, "saveDraft").mockResolvedValue({ refused: "the family is being deleted" });
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect(save).toHaveBeenCalledOnce();
+    expect((await s.runs.run(id))!.error).toBe("The draft was not stored: the family is being deleted.");
+  });
+
   it("fails when the AI is off, before any AI call", async () => {
     const s = setup({ ai: null });
     const id = await started(s);

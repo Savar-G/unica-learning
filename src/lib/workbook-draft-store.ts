@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
+import { workbookPlanRefusal } from "@/lib/workbook-plan-refusal";
 import { draftProblem, GENERATED_DRAFT_VERSION, READABLE_DRAFT_VERSIONS, type WorkbookDraftStore } from "@/lib/workbook-generator";
 
 // The draft store (#311) in Supabase (migration add_workbook_drafts): one row per generator run, the whole draft as
@@ -25,7 +26,7 @@ export function workbookDraftStore(admin: SupabaseClient<Database>): WorkbookDra
       if (!error) return { status: "saved", draftId: draft.id };
       if (error.code === "23505") return { status: "refused", reason: "the draft id is already used" };
       if (error.code === "23503") return { status: "refused", reason: "the child is not known" };
-      if (error.code === "55000") return { status: "refused", reason: "the family is being deleted" };
+      if (error.code === "55000") return { status: "refused", reason: workbookPlanRefusal(error.message, "state") };
       throw new Error(`workbook draft save: ${error.message}`);
     },
     async draft(id) {
