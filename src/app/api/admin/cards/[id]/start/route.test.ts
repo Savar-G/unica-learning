@@ -65,10 +65,11 @@ it("lets go of the hold when startPlan answers unconfirmed: a timeout takes this
   expect(await response.json()).toEqual({ ok: false, error: "unconfirmed" });
   expect(f.release).toHaveBeenCalledExactlyOnceWith({ service: true }, id);
 });
-it("keeps the hold when startPlan throws: its work stopped at a point it cannot name, and a retry with the same key ends the hold", async () => {
+it("releases the route hold even when startPlan throws", async () => {
   f.start.mockRejectedValue(new Error("Store down"));
   expect((await POST(request(), context)).status).toBe(502);
-  expect(f.release).not.toHaveBeenCalled();
+  expect(f.release).toHaveBeenCalledExactlyOnceWith({ service: true }, id);
+  f.release.mockClear();
   f.start.mockResolvedValue({ ok: true, subscription: "sub", firstChargeAt: "2026-12-02", generation: 1 });
   expect((await POST(request(), context)).status).toBe(200);
   expect(f.release).toHaveBeenCalledExactlyOnceWith({ service: true }, id);
