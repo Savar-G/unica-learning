@@ -41,18 +41,25 @@ import {
 } from "@/lib/question-package";
 import { teachingLimits } from "@/lib/maya-teaching/limits";
 import { partsClaim } from "@/lib/maya-teaching/topic-claim";
+import { checkMissingNumber, frameState, isMissingNumber, type FrameState } from "./missing-number";
+import { shownNumbers, trialHeard } from "./trial-factor";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
-import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
+import { findOffer, normalSlots, packageLines, stepEquation, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { frameOwed, topicQuestion } from "./topic-frame";
 import { clockAnswers, clockValues } from "./clock-lines";
-import { closeParts, compareEquationSaid, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
-import { claimActs, claimAnswers, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
+import { isPlaceValue, placeAutoDraw, placeBoardOffers, WHY_KEYS } from "./place-value-lines";
+import { asksPlace, placeStepHeard } from "./place-value-turns";
+import { partsStepHeard, partsStepTotal } from "./place-value-parts-turns";
+import { partsChartFits } from "./place-value-parts-lines";
+import { isPartsOperation } from "@/lib/question-package-place-parts";
+import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
+import { closeParts, compareEquationSaid, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -91,6 +98,8 @@ export const SAFETY_GUIDANCE = {
  */
 export const TEACHABLE_KINDS: readonly OperationKind[] = [
   "add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply", "fraction-add", "fraction-subtract",
+  // B1a: the digit in a place, and its value (src/lib/maya/place-value*.ts).
+  "place-value",
   // A multi-step expression in the order of operations, part by part (evaluate.ts).
   "evaluate",
   // A clock-time question (clock-lines.ts, C3c): count on to the next hour, then the minutes left.
@@ -509,7 +518,116 @@ export function createSession(input: {
  * session adapter made (src/lib/maya-teaching, operationSource "maya-teaching"). The adapter checks its output here too.
  */
 export function mayaPackageCheck(raw: unknown): PackageCheck {
-  return checkQuestionPackage(raw, undefined, teachingLimits(raw));
+  // A missing number's framing steps are Maya's own: her check computes them again (missing-number.ts).
+  return checkMissingNumber(raw, teachingLimits(raw)) ?? checkQuestionPackage(raw, undefined, teachingLimits(raw));
+}
+
+/**
+ * The one rule for every miss count on a missing number and on a claim's word, a fail-closed allow-list (reviews of #732
+ * at 5ad7cf4b and 2c25d53c, lesson 6, D-199, Savar Brain P6): a turn can be a miss only when the child's own words are a
+ * committed answer in an allowed form. That is one sentence on one line with no question mark (wholeTurn, sentenceCount),
+ * no help request in any clause (helpInWords), no hedge (hedgedTurn, the controller's one doubt check), and then:
+ * - a missing number: nothing taken back (takenBack), no copy of what H3 showed (copiesShownTry), and a final answer the
+ *   D-199 reader holds committed (readAnswer's `sure`: plain answer words only, as "7.", "It's 7.", "I got 7.",
+ *   "7 centimetres" or the step's own equation "5 times 236 is 1170.");
+ * - a claim: a word the claim reader holds committed (claimCommitted: "It's no.", "The answer is yes.", "I circle false.",
+ *   a full comparison it accepts, "6 times 8 is 48, so it's true.", or a plain yes to Maya's "Is no the word you
+ *   circle?" after a bare "No.").
+ * - other-topic and place-value steps: a committed number, with no copy of a step H3 showed (copiesShown).
+ * - place value (B1a, B1b): every answer as a missing number's; a
+ *   compare's circled word as a claim's, and its digit steps as numbers (`step`: the step the checked answer is for).
+ * Everything else is never a miss, whatever a model reads: help in any position ("Help, no.", "No, help me.", "I'm stuck,
+ * but it's 7."), hedges, questions, copies, negation, corrections, mixed turns. Every other package: unchanged (true).
+ */
+function committedTurn(s: Session, step = "result"): boolean {
+  const claim = sessionClaim(s.package);
+  const place = isPlaceValue(s.package);
+  const topic = !!s.package && topicQuestion(s.package.text, s.package.operation);
+  if (!isMissingNumber(s.package) && !claim && !place && !topic) return true;
+  if (!s.turn) return false;
+  const text = s.turn.text;
+  if (wholeTurn(text) === null || sentenceCount(text) !== 1 || helpInWords(text) || hedgedTurn(s)) return false;
+  if (claim && !((place || topic) && step !== "result")) return claimCommitted(claimTurn(s));
+  if (copiesShownTry(s) || ((place || topic) && copiesShown(s))) return false;
+  const opts = readOptionsIn(s);
+  if (takenBack(text, opts) !== null) return false;
+  const read = readAnswer(text, opts);
+  return read.final !== null && read.sure;
+}
+
+/** The sentences of a turn: an end mark not inside a decimal ("3.45 plus 2.38 is 5.83." is one). */
+const sentenceCount = (text: string) => text.split(/[.!?]+(?!\d)/).filter((x) => x.trim() !== "").length;
+
+/**
+ * Whether a checked wrong answer may count: missing-number, place-value and other-topic steps use committedTurn.
+ * Other claims use it for their word; their operation columns keep the operation's own rules.
+ */
+const missMayCount = (s: Session, step: string) => (sessionClaim(s.package) && !isPlaceValue(s.package) &&
+  !(s.package && topicQuestion(s.package.text, s.package.operation)) && step !== "result") || committedTurn(s, step);
+
+/**
+ * The child's own words hold a number that answers neither the current step nor the question, as code checks them:
+ * on a missing number at the top hint, it takes the way out even when no reading of it stands (a number taken back by
+ * a negation or a correction: "I'm not stuck, it's 7.", "I'm stuck I mean 7"). Right work is never stray (round 10 of
+ * #732): a number of a credited step's own equation or its value ("236 times 6 is 1416." again, once the try is
+ * credited) keeps the call on the step Maya asks for.
+ */
+function strayNumber(s: Session): boolean {
+  const pkg = s.package;
+  if (!pkg || !s.turn) return false;
+  const st = workSteps(pkg).find((x) => x.id === s.ladder.step);
+  const credited = creditedNumbers(s);
+  return valuesIn(s.turn.text, readOptionsFor(pkg)).some((v) => !rightForQuestion(pkg, v) && !(st && answersStep(st, v)) &&
+    !(v.type === "number" && credited.includes(v.value)));
+}
+
+/** The numbers of the child's credited steps, as code writes them: each done step's equation and its values. */
+function creditedNumbers(s: Session): number[] {
+  const pkg = s.package;
+  if (!pkg) return [];
+  return workSteps(pkg).filter((st) => s.done.includes(st.id)).flatMap((st) => [
+    ...(stepEquation(st, pkg)?.match(/\d+(?:\.\d+)?/g) ?? []).map(Number),
+    ...stepAnswers(st).flatMap((v) => (v.type === "number" ? [v.value] : [])),
+  ]);
+}
+
+/** The reading judged a number of the child's question wrong. */
+const wrongTarget = (reading: Reading) => (reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+
+/** The turn holds a real miss on the child's question: a checked wrong answer in a committed turn (committedTurn). */
+const realMissNow = (s: Session, reading: Reading) => committedTurn(s) && wrongTarget(reading);
+
+/** Other-topic questions give the answer only after two committed misses, including at the time close. */
+const topicWayOut = (s: Session, reading: Reading, misses: number) => {
+  if (!s.package || !topicQuestion(s.package.text, s.package.operation)) return false;
+  const now = (reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && a.verdict === "wrong" && missMayCount(s, a.step));
+  return misses < 2 && s.ladder.failures + Number(now) < 2;
+};
+
+/**
+ * A missing number before two real misses (D-199): the current step's failed attempts, this turn's included, and the
+ * wrong final answers, each fewer than two. Help requests and copies are never misses (lessons 7 and 13). Until then the
+ * way out is the easier example and the honest close, never a given answer; after, the path's given answer stands.
+ */
+const missingWayOut = (s: Session, reading: Reading, misses: number) =>
+  isMissingNumber(s.package) && s.ladder.failures + (realMissNow(s, reading) ? 1 : 0) < 2 && misses < 2;
+
+/** The highest hint a step has: H3 for a work step, H0 for the final step (its one invite). */
+const topHint = (pkg: OperationPackage, stepId: string) => Math.max(0, ...packageLines(pkg).help(stepId).map((o) => o.level ?? 0));
+
+/**
+ * After H3 on a try step, the child's turn only says back what H3 showed ("236 times 5 is 1180.", "5."): every number in
+ * it, as code reads the child's own words, is one H3 showed, and it names the try or its product (trial-factor.ts
+ * shownNumbers). A copy of Maya's help, never a miss (lesson 13), whatever value a model reads in it: it sets no failure
+ * and raises no unlock; on a missing number it leads to the easier example, then the honest close (missingWayOut).
+ */
+function copiesShownTry(s: Session): boolean {
+  const st = s.package ? workSteps(s.package).find((x) => x.id === s.ladder.step) : undefined;
+  if (st?.kind !== "try-factor" || s.ladder.hint < 3 || !s.turn) return false;
+  const shown = shownNumbers(st);
+  const said = valuesIn(s.turn.text, readOptionsFor(s.package));
+  const number = (v: AnswerValue) => (v.type === "number" ? v.value : null);
+  return said.length > 0 && said.every((v) => shown.all.includes(number(v) ?? NaN)) && said.some((v) => shown.own.includes(number(v) ?? NaN));
 }
 
 /** The package Maya teaches from, or why she holds it (the content hold's reason). */
@@ -626,6 +744,7 @@ function stepAnswers(step: WorkedStep): AnswerValue[] {
       return [number(step.value)];
     case "divide-digit":
       return [number(step.quotient)];
+    case "try-factor":
     case "operate":
       return [number(step.value)];
     // Fraction steps (#407), each in its exact written form: 6/8 answers the common denominator of 3/4 + 1/8, 3/4 does not.
@@ -638,6 +757,12 @@ function stepAnswers(step: WorkedStep): AnswerValue[] {
       return [number(step.numerator), fraction({ numerator: step.numerator, denominator: step.denominator })];
     case "simplify":
       return [fraction(step.to)];
+    case "read-digit":
+      return [number(step.digit)];
+    // B1b: the bigger digit, and a digit's value (place-value-parts-turns.ts).
+    case "bigger":
+    case "place-worth":
+      return [number(partsStepTotal(step))];
     // A claim's compare step (claim.ts): the result the child puts together.
     case "claim-compare":
       return [number(step.value)];
@@ -818,6 +943,12 @@ function gate(s: Session, reading: Reading): Allowed | null {
 /** The teaching states where the final step's given answer replaces more help (D-199): not after the answer stands. */
 const FINAL_GIVE_STATES: readonly Teaching[] = ["ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET"];
 
+/** Two wrong final answers once every work step is done, and no answer stands: the final step's answer is given (D-199). */
+function finalGiveDue(s: Session, rightResult: boolean, misses: number): boolean {
+  const main = isTeaching(s.state) ? s.state : s.resume;
+  return misses >= 2 && !rightResult && s.solved === null && !!main && FINAL_GIVE_STATES.includes(main);
+}
+
 const MAIN_ACTS: Record<Teaching, Act[]> = {
   OPEN: ["open"],
   ASSESS: ["accept_answer", "clarify", "example_step", "try_target", "guide"],
@@ -851,11 +982,22 @@ function topicHelpOnly(s: Session, reading: Reading, rightResult: boolean): bool
 function asksWhy(text: string): boolean {
   return /^\s*why\W*$/i.test(text) || /\b(?:why|where|what|how)\b[^.!\n]*\b(?:carry|carried|regroup\w*|trad\w*|ten|10|one|1)\b/i.test(text);
 }
+/** After H3 on a work step, the child's turn only says back the step Maya showed (no credit, #698): still stuck (B1b). */
+function copiesShown(s: Session): boolean {
+  const st = s.package ? workSteps(s.package).find((x) => x.id === s.ladder.step) : undefined;
+  // Only after Maya showed the step (H3): at a lower top help (a step with no H3) the child's number is their own.
+  return !!st && s.ladder.hint >= 3 && s.turn !== null && valuesIn(s.turn.text, readOptionsFor(s.package)).some((v) => stepAnswers(st).some((a) => equivalent(a, v)));
+}
+/** The child asks why (asksWhy), or, on a place-value question, which place is which (asksPlace, J06). */
+const asksWhyIn = (s: Session): boolean => s.turn !== null && (asksWhy(s.turn.text) || (isPlaceValue(s.package) && asksPlace(s.turn.text)));
 
 function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
-  // A claim question never gives its word (claim.ts).
+  // A claim question gives its word only as D-199 gives a number (claim.ts).
   const allowed = teachingActsOf(s, reading, rightResult, progress, misses, offering);
   if (!sessionClaim(s.package)) return allowed;
+  // ...except after two real wrong words once every work step is done: Maya gives the word, as D-199 gives a number (Savar
+  // Brain P6, #737 review). Only a committed word is a miss (committedTurn, the one rule).
+  if (allowed.acts[0] === "give_answer" && finalGiveDue(s, rightResult, misses)) return allowed;
   // A child who only asks for help at the top of a claim's final step closes honestly (claim.ts, lesson 10).
   const helpOnly = claimHelpOnly(s, reading, rightResult);
   const stuck = s.ladder.step === "result" && s.ladder.hint >= 2 && helpOnly;
@@ -873,9 +1015,13 @@ function claimHelpOnly(s: Session, reading: Reading, rightResult: boolean): bool
     !(reading.answers ?? []).some((a) => a.verdict === "right");
 }
 
-/** A claim question whose easier example is not worked yet, and whose child has done no step of their own. */
+/**
+ * A claim question whose easier example is not worked yet, and whose child has done no step of their own. A place-value
+ * compare (a claim too, place-value-claim.ts) has its own way out, the place-value rule of teachingActsOf: the steps'
+ * help up to the top help, then the easier example, then the honest close (B1b, PVC07, PVC09).
+ */
 function claimExampleDue(s: Session): boolean {
-  return !!s.package && !!sessionClaim(s.package) && s.exampleShown < s.package.easierExample.steps.length && s.done.length === 0 && s.solved === null;
+  return !!s.package && !!sessionClaim(s.package) && !isPlaceValue(s.package) && s.exampleShown < s.package.easierExample.steps.length && s.done.length === 0 && s.solved === null;
 }
 
 function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, progress: boolean, misses: number, offering: boolean): Allowed {
@@ -889,8 +1035,10 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
   const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && !claimResultUnconfirmable(s) &&
     (stepSaidUnheard(s) || claimResultUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
-    const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
-      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
+    // Place value and a missing number before two real misses have no given answer, not even at the time close (reviews
+    // of #738 and #732).
+    const acts: Act[] = (s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
+      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"]).filter((a): a is Act => a !== "give_answer" || !(isPlaceValue(s.package) || missingWayOut(s, reading, misses) || topicWayOut(s, reading, misses)));
     return { acts: [...acts, ...confirm], code: "act_not_allowed", reason: "Time is almost up: finish the question and close." };
   }
   // A child who says they wrote it is done writing, whatever the model reads (#605). "I'm writing" keeps its time.
@@ -952,7 +1100,7 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
   // the loop, without recording the shown work as the child's progress.
   const rightHere = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.step === s.ladder.step && a.verdict === "right");
   const needsMore = reading.help !== undefined || (s.turn !== null && asksForHelp(s.turn.text)) ||
-    reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong");
+    (reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong") && !copiesShownTry(s));
   // An "other-topic" question (topic-frame.ts) whose one step is its answer has no H3 to show. A child who only asks for
   // help at its top hint gets the easier example, then an honest close with no answer (lessons from review 7 and 10;
   // controller decision (a)). A wrong answer is a miss, not a help request: D-199 is unchanged.
@@ -964,13 +1112,37 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
         reason: "The child still only asks for help after the easier example: close honestly with the close.honest line (this one is hard, it's fine to stop), never with the answer.",
       };
   }
+  // Place value has no given answer (parent lane, 2026-11-07): a child still stuck gets the easier example, then an honest close.
+  // The step's top help is its highest line (topHint): H2 on a last step (and a zero digit's step), else H3 (review of #738:
+  // "I'm stuck." again and again on a last step met H2 forever). `misses` counts only committed answers (committedTurn).
+  if (isPlaceValue(s.package) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= topHint(s.package!, s.ladder.step) && (needsMore || copiesShown(s))) ||
+      (misses >= 2 && FINAL_GIVE_STATES.includes(main)))) {
+    return s.exampleShown < steps
+      ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child is still stuck: show the easier example, step by step (example_step). There is no given answer for place value." }
+      : { acts: ["close"], code: "act_not_allowed", reason: "The child is still stuck after the easier example: close kindly (close.together), never with the answer." };
+  }
+  // A missing number's way out (review of #732, lessons 7, 10 and 13, D-199): only a committed answer is a miss
+  // (committedTurn). Before two real misses (missingWayOut), give_answer is not offered; at the step's top hint a turn
+  // that is no real miss but asks for help, copies, or holds a number (said or read) gets the easier example, then the
+  // honest close. After two real misses, D-199 stands.
+  if (missingWayOut(s, reading, misses) && isTeaching(s.state) && s.solved === null && !rightResult && s.turn !== null && !rightHere &&
+      s.ladder.hint >= topHint(s.package!, s.ladder.step) && !realMissNow(s, reading) &&
+      (reading.help !== undefined || helpInWords(s.turn.text) || copiesShownTry(s) || wrongTarget(reading) || strayNumber(s))) {
+    return s.exampleShown < steps
+      ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child asks for help (or copies the hint) at the top hint: show the easier example, step by step (example_step). Help is never a miss." }
+      : { acts: ["close"], code: "act_not_allowed", reason: "The child is still stuck after the easier example: close kindly, with no answer and no number of the question." };
+  }
+  if (isPlaceValue(s.package) || missingWayOut(s, reading, misses) || topicWayOut(s, reading, misses)) acts = acts.filter((a) => a !== "give_answer");
+  // After the whole easier example, a committed wrong answer on a missing number is answered on the step (guide), as a
+  // right one is: never a dead end (review of #732, MN14).
+  if (isMissingNumber(s.package) && main === "MODEL_EXAMPLE" && s.exampleShown === steps && realMissNow(s, reading) && !acts.includes("guide")) acts = [...acts, "guide"];
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" &&
       s.ladder.hint >= 3 && needsMore && (!noStart || s.retried) && acts.includes("give_answer")) {
     return { acts: ["give_answer", ...confirm], code: "act_not_allowed", reason: "This step was shown at H3 and the child still needs help: give the answer with code's explanation." };
   }
   // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
   // Maya gives the answer, and code says how the parts make it (D-199). Never sooner, and never over a right answer.
-  if (misses >= 2 && !rightResult && s.solved === null && FINAL_GIVE_STATES.includes(main)) {
+  if (finalGiveDue(s, rightResult, misses)) {
     return {
       acts: ["give_answer", ...confirm], code: "act_not_allowed",
       reason: "Every step is done and the child gave two wrong final answers: give the answer (give_answer). Code shows how the parts make it and says it.",
@@ -1260,11 +1432,13 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   let failed = false;
   let regroup = regroupOf(s);
   if (pkg && scoring) {
+    // On a missing number and a claim's word only a committed answer in an allowed form is a failed attempt
+    // (committedTurn, the one rule; missMayCount).
     for (const { answer: a, problem } of checked) {
       if (problem !== "target") continue;
       if (a.verdict === "right" && a.step !== "result" && !done.includes(a.step)) done.push(a.step);
-      // An equal fraction is not a failed attempt (#407).
-      if (a.verdict === "wrong" && !(a.step === "result" && isEqualForm(pkg, a.value))) failed = true;
+      // An equal fraction is not a failed attempt (#407), and neither is a copy of the try H3 showed (lesson 13).
+      if (a.verdict === "wrong" && !(a.step === "result" && isEqualForm(pkg, a.value)) && missMayCount(s, a.step)) failed = true;
     }
     // An equal fraction shows every work step done: the final step simplifies the child's own fraction (#407).
     if (equal || claimResultDone(pkg, done)) for (const st of workSteps(pkg)) if (!done.includes(st.id)) done.push(st.id);
@@ -1314,7 +1488,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (p.board && !s.modelBoard) {
     return no("board_not_code", "Maya does not build board commands: pick code's board offers with `draw` (see drawOffers).", allowedNow);
   }
-  const drawn = p.draw ? drawBoard(s, p, view, spoken) : [];
+  // A place-value line that says Maya drew the chart, a stripe or a circle comes with it, at any hint level (B1a).
+  const auto = isPlaceValue(pkg) && !s.noBoard && BOARD_ACTS.includes(p.act) && p.act !== "example_step"
+    ? placeAutoDraw(spoken.chosen, Object.hasOwn(s.boardRoles, "question"), (p.draw ?? []).map((d) => d.offer)).map((offer) => ({ offer })) : [];
+  const drawn = p.draw || auto.length ? drawBoard(s, { ...p, draw: [...(p.draw ?? []), ...auto] }, view, spoken) : [];
   if (typeof drawn === "string") return no("board_not_code", drawn, allowedNow);
   const commands = [...(p.board ?? []), ...drawn];
   const pb: Proposal = { ...p, board: commands.length > 0 ? commands : undefined };
@@ -1382,7 +1559,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // A check of the child's own right answer (check.together, check.guess, #605) may ask the step's question (up to
       // H2: "Let's check it together. What is 7 + 9?"); it checks an answer the child gave, so it is no new help either.
       const checking = spoken.chosen.some((o) => o.line === "check.together" || o.line === "check.guess") && p.level <= 2;
-      const echo = checking || (s.turn !== null && spoken.chosen.length > 0 && spoken.chosen.every((o) => o.line === "step.operation") &&
+      // The answer to the child's question about a place (where.place, J06) answers what they asked: no new help either.
+      const answersPlace = isPlaceValue(pkg) && s.turn !== null && asksPlace(s.turn.text) && spoken.chosen.some((o) => WHY_KEYS.includes(o.key)) && p.level <= 1;
+      const echo = checking || answersPlace || (s.turn !== null && spoken.chosen.length > 0 && spoken.chosen.every((o) => o.line === "step.operation") &&
         saidSetup(pkg!, ladder.step, s.turn.text));
       if (p.level > cap && !echo) return no("hint_too_high", `Help may rise to H${cap} now: more help needs a failed attempt or a request, not silence.`, allowedNow);
       if (echo) {
@@ -1391,7 +1570,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       }
       // The regroup explanation is new help for a child who lost the carry, whatever level the ladder is on.
       const regroupNow = spoken.chosen.some((o) => o.line === "step.regroup" || o.line === "step.why" || o.line === "step.order");
-      if (s.turn && asksWhy(s.turn.text) && offersFor(s, "guide", view).some(o => o.line === "step.why") &&
+      if (asksWhyIn(s) && offersFor(s, "guide", view).some(o => o.line === "step.why") &&
           !spoken.chosen.some(o => o.line === "step.why")) {
         return no("line_not_offered", "The child asked why the carry or trade works: use the offered step.why explanation before another prompt.", allowedNow);
       }
@@ -1499,6 +1678,12 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
           return no("act_not_allowed", "The honest close says the close.honest line: this one is hard, it's fine to stop, and one next step.", allowedNow);
         }
         s.honestClose = true;
+      }
+      // A missing number closed as the way out for a stuck child says the honest close in code's words (review of #732),
+      // never a warm phrase alone. A stop, the time limit and silence keep their own closes.
+      if (isMissingNumber(pkg) && s.solved === null && !s.stopRequested && s.state !== "TIME_CLOSE" && s.silence !== "close_due" &&
+          !spoken.chosen.some((o) => o.line === "close.together")) {
+        return no("line_not_offered", "Close a missing number the child is stuck on with its honest close line (close.together).", allowedNow);
       }
       // A claim question closed as the way out for a stuck child (claim.ts, lesson 10) says the honest close in code's
       // words, not only warm talk. A stop, the clock and silence keep their own close.
@@ -1870,10 +2055,20 @@ function notClear(s: Session, reading: Reading): boolean {
   // A claim's word the child committed to is their answer, whatever the numbers of their reason (claim.ts).
   if (turnRead(s).final?.type === "choice") return false;
   const read = readAnswer(s.turn.text, readOptionsIn(s));
-  // A hedge ("I think it's 66", "maybe", a question) is not clear either, though the reader may find it sure.
-  const hedged = showsDoubt(s.turn.text, readOptionsFor(s.package)) || /\b(?:i think|i guess|i believe|probably|maybe|might be)\b/i.test(s.turn.text);
-  return read.choice || (read.final !== null && (!read.sure || hedged));
+  return read.choice || (read.final !== null && (!read.sure || hedgedTurn(s)));
 }
+
+/** A hedge ("I think it's 66", "maybe", a question) is not clear, though the reader may find it sure: the one doubt check. */
+function hedgedTurn(s: Session): boolean {
+  if (!s.turn) return false;
+  return showsDoubt(s.turn.text, readOptionsFor(s.package)) || /\b(?:i think|i guess|i believe|probably|maybe|might be)\b/i.test(s.turn.text);
+}
+
+/**
+ * The child's own words hold a clear help request, even beside a number ("I'm stuck, but it's 7."): one of the turn's
+ * clauses is a help request by asksForHelp. Decided from the text, never the model's reading.
+ */
+const helpInWords = (text: string) => text.split(/[,;.!?\n]+|\bbut\b/i).some((part) => part.trim() !== "" && asksForHelp(part.trim()));
 
 /** The child's final answer in this turn is this number ("Yes, I said 66. I'm not sure."). */
 function sameFinal(s: Session, value: AnswerValue): boolean {
@@ -1948,7 +2143,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || at.kind === "count-on" || (at.kind === "claim-compare" && partsClaim(pkg))) && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || at.kind === "count-on" || at.kind === "try-factor" || at.kind === "read-digit" || at.kind === "bigger" || at.kind === "place-worth" || (at.kind === "claim-compare" && partsClaim(pkg))) && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
@@ -1980,6 +2175,8 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
 function finalMisses(s: Session, checked: readonly Checked[]): number {
   const before = s.finalMisses ?? 0;
   const pkg = s.package;
+  // Only a committed answer in an allowed form is a wrong final answer (committedTurn: missing numbers and claims).
+  if (!committedTurn(s)) return before;
   // An equal fraction is not a wrong final answer (#407).
   if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && !isEqualForm(pkg, c.answer.value))) return before;
   const done = closeParts(pkg, [...s.done, ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)]);
@@ -2194,6 +2391,16 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
  */
 function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolean {
   const pkg = s.package;
+  // A place-value digit step: its own templates (place-value-turns.ts), on the same rules: the first step not done, not after H3.
+  if (pkg && s.turn && step.kind === "read-digit") {
+    return workSteps(pkg).find((st) => !s.done.includes(st.id))?.id === step.id &&
+      placeStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, step, value, copy: s.ladder.step === step.id && s.ladder.hint >= 3, asked: s.stepAsked ?? null });
+  }
+  // B1b's bigger and place-worth steps: the same rules, their own templates (place-value-parts-turns.ts).
+  if (pkg && s.turn && (step.kind === "bigger" || step.kind === "place-worth")) {
+    return workSteps(pkg).find((st) => !s.done.includes(st.id))?.id === step.id &&
+      partsStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, step, value, copy: s.ladder.step === step.id && s.ladder.hint >= 3, asked: s.stepAsked ?? null });
+  }
   // A claim's result (claim.ts). A scale, money or minute-hand claim (C3b, topic-claim.ts partsClaim) is heard from a
   // whole turn after its earlier parts (compareTurnHeard, review of #741 P1a); any other claim, marbles and area
   // included, through A4's own whole-turn templates, which may come before the columns, as a whole result.
@@ -2203,16 +2410,20 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
       resultAsked: s.resultAsked ?? null, shown: s.ladder.step === step.id && s.ladder.hint >= 3 });
   }
   // A part of an evaluate question is a step too: its result is its total (evaluate.ts).
-  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "operate" && step.kind !== "count-on")) return false;
+  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "operate" && step.kind !== "count-on" && step.kind !== "try-factor")) return false;
   // A turn code could not hear for sure is no step credit: it gets its confirm first.
   const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
   if (body === null) return false;
   // Only the first step not done: no tens credit before the ones. A part is its own columns' step: it is first while one
-  // of its columns is the first not done (currentPart).
-  if (currentColumn(s)?.id !== step.id && workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
-  const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
+  // of its columns is the first not done, whatever the column's kind (currentPart).
+  // A missing factor's try (trial-factor.ts) is first when it is the first step not done; then its value, a yes to Maya's
+  // own confirm, or its own product.
+  if (step.kind === "try-factor") {
+    if (workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
+    return trialHeard(step, body, value, s.stepAsked ?? null, shownStep(s, step));
+  }
   if (step.kind === "count-on") {
-    if (copy) return false;
+    if (workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id || shownStep(s, step)) return false;
     const bare = wholeValue(body.replace(/\s+minutes?$/, ""));
     if (bare !== null) return saidAs(number(bare), value);
     // A count to the hour can include the addition and the destination in one complete sentence.
@@ -2222,6 +2433,8 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
       sum.operands.includes(step.from.minutes) && sum.operands.includes(step.minutes) &&
       plainNumber(m![2]) === step.minutes && m![3] === `${step.to.hours}:${String(step.to.minutes).padStart(2, "0")}` && saidAs(number(step.minutes), value);
   }
+  if (!currentSteps(s).some((st) => st.id === step.id)) return false;
+  const copy = shownStep(s, step);
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16). A part's total is its result.
   const total = saidAs(number(step.kind === "operate" ? step.value : step.total), value);
   // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
@@ -2297,14 +2510,42 @@ const rightFinalIn = (s: Session) => {
   return !!final && rightForQuestion(s.package!, final);
 };
 
+/** A step a whole-turn template may credit, with a total its confirm asks about. */
+type CreditStep = Extract<WorkedStep, { kind: "add-column" | "operate" | "read-digit" | "bigger" | "place-worth" }>;
+
 /**
- * The first step not done, when it is a column of an addition; else, in an evaluate question, the part whose column is
- * the first step not done (its result is a step answer with the same rules, evaluate.ts).
+ * The steps a whole-turn template may credit now: the first step not done when it is a column of an addition or a
+ * place-value digit (read-digit, bigger, place-worth: its total is the digit, B1a and B1b), and in an evaluate question
+ * the part whose column is the first step not done, of any kind (its result is a step answer with the same rules,
+ * evaluate.ts). The part comes first: "85" for (47 + 38) × 3 is the part, never the ones column.
  */
-function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" | "operate" }> | null {
+function currentSteps(s: Session): CreditStep[] {
   const st = s.package ? workSteps(s.package).find((x) => !s.done.includes(x.id)) : undefined;
-  if (st?.kind === "add-column") return st;
-  return st && s.package ? currentPart(s.package, st.id) : null;
+  if (!st || !s.package) return [];
+  const part = currentPart(s.package, st.id);
+  const own = st.kind === "add-column" || st.kind === "read-digit" || st.kind === "bigger" || st.kind === "place-worth";
+  return [...(part ? [part] : []), ...(own ? [st] : [])];
+}
+
+/**
+ * Maya showed this step at H3: the ladder is on it, or, for a part of an evaluate question, on one of its columns (a
+ * row's show says the part's result: "The tens row: 160 × 50 = 8000."). A value or a yes after it only copies her.
+ */
+const shownStep = (s: Session, step: WorkedStep) =>
+  s.ladder.hint >= 3 && (s.ladder.step === step.id || (step.kind === "operate" && !!s.package && partIdOf(s.package, s.ladder.step) === step.id));
+
+/** The total a step's confirm asks about: a column's total, a part's result, or a place-value step's digit or value. */
+const totalOf = (st: CreditStep) =>
+  number(st.kind === "operate" ? st.value : st.kind === "add-column" ? st.total : st.kind === "read-digit" ? st.digit : partsStepTotal(st));
+
+/** The current step whose total is the turn's one number, with that total, for the step confirm. */
+function confirmTarget(s: Session): { step: CreditStep; total: AnswerValue } | null {
+  if (!s.turn || !s.package) return null;
+  const opts = readOptionsFor(s.package);
+  const values = valuesIn(s.turn.text, opts);
+  if (values.length !== 1 || readAnswer(s.turn.text, opts).kept.length !== 1 || !confirmWordsOnly(s.turn.text)) return null;
+  const step = currentSteps(s).find((st) => saidAs(values[0], totalOf(st)));
+  return step ? { step, total: totalOf(step) } : null;
 }
 
 /**
@@ -2314,12 +2555,7 @@ function currentColumn(s: Session): Extract<WorkedStep, { kind: "add-column" | "
  * will not credit, and a claim about a column cannot pass as a hearing problem. Reviews of 6528f2ca and 66491fd5.
  */
 function stepConfirmable(s: Session): AnswerValue | null {
-  const st = currentColumn(s);
-  if (!st || !s.turn || !s.package) return null;
-  const opts = readOptionsFor(s.package);
-  const values = valuesIn(s.turn.text, opts);
-  const total = number(st.kind === "operate" ? st.value : st.total);
-  return values.length === 1 && readAnswer(s.turn.text, opts).kept.length === 1 && saidAs(values[0], total) && confirmWordsOnly(s.turn.text) ? total : null;
+  return confirmTarget(s)?.total ?? null;
 }
 
 /**
@@ -2327,9 +2563,8 @@ function stepConfirmable(s: Session): AnswerValue | null {
  * not a right final answer the child is sure of (that is judged as the answer).
  */
 function stepSaidUnheard(s: Session): boolean {
-  const st = currentColumn(s);
-  const total = stepConfirmable(s);
-  if (!st || !total || !s.turn || s.ladder.hint >= 3 && s.ladder.step === st.id || stepTurnHeard(s, st, total)) return false;
+  const target = confirmTarget(s);
+  if (!target || !s.turn || shownStep(s, target.step) || stepTurnHeard(s, target.step, target.total)) return false;
   const read = turnRead(s);
   return !(read.final && read.sure && rightForQuestion(s.package!, read.final));
 }
@@ -2367,12 +2602,12 @@ function claimResultAsked(s: Session): AnswerValue | null {
  * (P11, P15); a yes to that credits no step, because only stepAsked does.
  */
 function stepOnlyTurn(s: Session): boolean {
-  const st = currentColumn(s);
-  if (!st || !s.turn || !s.package || stepSaidUnheard(s)) return false;
+  const steps = currentSteps(s);
+  if (steps.length === 0 || !s.turn || !s.package || stepSaidUnheard(s)) return false;
   const opts = readOptionsFor(s.package);
   if (columnClaims(s.turn.text).length > 0) return !rightFinalIn(s);
   const final = readAnswer(s.turn.text, opts).final;
-  return final ? answersStep(st, final) && !rightForQuestion(s.package, final) : valuesIn(s.turn.text, opts).some((v) => answersStep(st, v));
+  return final ? steps.some((st) => answersStep(st, final)) && !rightForQuestion(s.package, final) : valuesIn(s.turn.text, opts).some((v) => steps.some((st) => answersStep(st, v)));
 }
 
 /**
@@ -2474,8 +2709,11 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   const regroup = pkg ? regroupAfter(s, checked, done) : { due: [], said: [] };
   const ladderStep = pkg ? guideStep(pkg, done, regroup) : "result";
   const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
+  // The acts come from the reading `step` will check, a claim's word included (review of #740: a wrong word at a compare's
+  // top help left only guide offers, which the place-value rule refuses, and the call ended with no safe line).
+  const actsReading: Reading = { ...(reading ?? {}), ...(answers.length > 0 ? { answers } : {}) };
   const misses = finalMisses(s, checked);
-  const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0, misses)).acts;
+  const acts = (gate(s, {}) ?? teachingActs(s, actsReading, rightResult, done.length > 0, misses)).acts;
   // A right final answer the child was not sure of: the confirmation comes before more help (#605).
   const read = session.turn && pkg ? turnRead(session) : null;
   const doubtful = !rightResult && s.solved === null && pkg !== null && read?.final != null && !read.sure && rightForQuestion(pkg, read.final) ? read.final : null;
@@ -2504,7 +2742,11 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         // A step the child just did right is said first ("Yes! 7 + 9 = 16."), else a checked wrong answer on this step.
         const fresh = done.filter((id) => !session.done.includes(id) && !(pkg && partCovered(pkg, done, id))).at(-1);
         const judge = offers.find((o) => o.line === "check.equal") ?? offers.find((o) => o.line === "check.right_step" && o.slots.step === fresh) ??
-          offers.find((o) => o.line === "check.not_yet" && o.slots.step === ladderStep);
+          offers.find((o) => o.line === "check.not_yet" && o.slots.step === ladderStep) ??
+          // A claim's wrong word while a column is on the ladder ("It's no." at the ones' top help): "Not quite." for the
+          // answer first, which `step` requires for checked wrong work, so the help after it is not refused (#737 review).
+          (claimPkg && checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong")
+            ? offers.find((o) => o.line === "check.not_yet" && o.slots.step === "result") : undefined);
         // A due regroup is said before any other help on its column.
         const due = (view.regroup ?? []).some((c) => c.at === ladderStep);
         // The next level up comes first on a step the child is still stuck on (#605), H3 for a child who asks to be shown,
@@ -2516,7 +2758,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         const target = reading?.help === "show" ? 3 : session.turn && !own ? hint + 1 : 0;
         const lv = (o: LineOffer) => o.level ?? 0;
         const levelled = [...byLevel(free).filter((o) => lv(o) >= target), ...byLevel(free).filter((o) => lv(o) < target).reverse()];
-        const why = s.turn !== null && asksWhy(s.turn.text);
+        const why = asksWhyIn(s);
         const help = levelled.sort((a, b) => (due ? Number(b.line === "step.regroup") - Number(a.line === "step.regroup")
           : why ? Number(b.line === "step.why") - Number(a.line === "step.why")
           // A claim's step help before its question lines: "Let's find 282 × 6 first." after the result asks for the step
@@ -2692,7 +2934,7 @@ function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
 }
 
 /** The proposal creates this object for the child's question in the same batch. */
-const createsTarget = (p: Proposal, id: string) => p.act !== "example_step" && (p.board ?? []).some((c) => isObject(c) && c.op === "columns" && c.id === id);
+const createsTarget = (p: Proposal, id: string) => p.act !== "example_step" && (p.board ?? []).some((c) => isObject(c) && (c.op === "columns" || c.op === "place_chart") && c.id === id);
 
 /**
  * The board objects a batch creates, with their role, or why the batch mixes the problems: a new `columns` object shows
@@ -2705,7 +2947,9 @@ function boardRoles(s: Session, role: Problem, board: unknown[]): Record<string,
   const created: Record<string, Problem> = {};
   for (const raw of board) {
     const c = raw as Record<string, unknown>;
-    if ((c.op === "columns" || c.op === "write" || c.op === "model") && typeof c.id === "string") {
+    if ((c.op === "columns" || c.op === "write" || c.op === "model" || c.op === "place_chart") && typeof c.id === "string") {
+      // A place-value chart shows this turn's problem's own number.
+      if (c.op === "place_chart" && !(operation.kind === "place-value" && (isPartsOperation(operation) ? partsChartFits(c, operation) : c.number === String(operation.operands[0])))) return `The board shows ${name} now.`;
       if (c.op === "columns") {
         const operands = Array.isArray(c.operands) ? c.operands.map((o) => (isObject(o) ? Number(o.value) : NaN)) : [];
         const want = operandsOf(operation);
@@ -2941,6 +3185,9 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
   }
   const main = isTeaching(s.state) ? s.state : s.resume;
   const solved = s.solved ?? (view.rightResult ? "child" : null);
+  // A missing number's framing rides on the first step's hint until Maya has said it (missing-number.ts).
+  const framing = frameState(pkg.steps, s.turns.filter((t) => t.speaker === "maya").map((t) => t.text),
+    [...s.turns.filter((t) => t.speaker === "child").map((t) => t.text), ...(s.turn ? [s.turn.text] : [])]);
   const right = l.stepIds.flatMap(l.rightStep);
   switch (act) {
     case "open":
@@ -2988,7 +3235,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       // "How do you know?" after another person's claim result ("My mom said 1440.") asks about work the child did not do:
       // the step's invite asks for their own (claim.ts, #737 review P3).
       const thinking = sessionClaim(pkg) && claimResultUnconfirmable(s) ? [] : l.thinking();
-      return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...thinking];
+      return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing, turnWordLimit(s) === 25)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...thinking];
     }
     case "accept_answer": {
       const form = view.checked.find((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right")?.answer.value ?? s.answerForm ?? undefined;
@@ -2996,7 +3243,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     }
     case "give_answer":
       // Never the final step's question before code gives its answer (D-199).
-      return [...view.steps.filter((id) => id !== "result").flatMap((id) => regroupHelp(l, id, view)), ...right];
+      return [...view.steps.filter((id) => id !== "result").flatMap((id) => regroupHelp(l, id, view, framing, turnWordLimit(s) === 25)), ...right];
     case "ask_write": {
       // Never a request to write what the child already wrote, or said they wrote or would not write (#389).
       const written = s.wrote === true || s.paper !== "unknown";
@@ -3012,10 +3259,8 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      // An "other-topic" question left unsolved, and a claim question whose word Maya may not give (claim.ts), close
-      // honestly: no answer, one next step.
       return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed")
-        : l.closeHonest().length > 0 ? l.closeHonest() : sessionClaim(pkg) ? l.honestClose() : [];
+        : isPlaceValue(pkg) || isMissingNumber(pkg) ? l.closeUnsolved() : l.closeHonest().length > 0 ? l.closeHonest() : sessionClaim(pkg) ? l.honestClose() : [];
     case "confirm": {
       // A claim's word said unsure or with both words: which word the child circles; a bare word: said back (claim.ts).
       const word = claimConfirm(claimTurn(s));
@@ -3029,7 +3274,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "redirect":
       return [...l.decline(), ...l.redirect(), ...l.question()];
     case "repair":
-      return [...l.repair(), ...l.question(), ...view.steps.flatMap((id) => regroupHelp(l, id, view)).filter((o) => (o.level ?? 0) <= Math.max(0, s.ladder.hint))];
+      return [...l.repair(), ...l.question(), ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing, turnWordLimit(s) === 25)).filter((o) => (o.level ?? 0) <= Math.max(0, s.ladder.hint))];
     default:
       return [];
   }
@@ -3040,14 +3285,15 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
  * the gentlest invite, so no line names a carried digit before the child hears where it comes from. The regroup line
  * of the column a carry comes from is offered only then (it says that column's sum).
  */
-function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View): LineOffer[] {
+function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View, framing: FrameState = "due", compact = false): LineOffer[] {
   const pending = (view.regroup ?? []).filter((c) => c.at === id);
-  const own = l.help(id);
+  const own = l.help(id, framing, compact);
   // Once said, the line comes again only when the child denies the carry, which makes it pending (regroupAfter).
   const said = (view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= 1;
   // The second way (step.why, #605) comes only after the regroup line, for "why?" or when the first did not land.
   if (pending.length === 0) {
-    return own.filter((o) => (o.line === "step.why" ? said
+    // A place-value step.why (WHY_KEYS) and a missing number's (missing-number.ts: about its first step) are no regroup lines.
+    return own.filter((o) => (o.line === "step.why" ? said || WHY_KEYS.includes(o.key) || o.key === "frame.why" || o.key === "trial.why"
       : o.line !== "step.regroup" || !((view.regroupSaid ?? []).some((c) => c.in === id) || (view.regroupTimes?.[id] ?? 0) >= MAX_REGROUP_SAYS)));
   }
   // Explain an incoming carry before any outgoing explanation that uses it.
@@ -3064,7 +3310,8 @@ const meets = (requires: NonNullable<LineOffer["requires"]>, view: View, pkg: Op
     ? view.done.includes(requires.step) && !(pkg && partCovered(pkg, view.done, requires.step))
     : requires.answer === "equal"
       ? !!view.equal && (requires.heard === undefined || valueText(view.equal) === requires.heard)
-      : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong");
+      : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong"
+        && (requires.heard === undefined || valueText(c.answer.value) === requires.heard));
 
 /** The first two words of each sentence of a text, in lower case, to keep two sentences of one turn from starting alike. */
 const openings = (text: string) =>
@@ -3247,9 +3494,10 @@ function boardPlaces(s: Session, batch: readonly string[], exampleStep: boolean)
 /** The columns of a problem as code lays them out, with a code-made id ("question" or "example"). */
 function columnsOf(s: Session, problem: Problem): Command | null {
   const pkg = s.package!;
-  const { operation } = problemOf(pkg, problem);
+  const { operation, steps } = problemOf(pkg, problem);
   const layout = BOARD_OPERATION[operation.kind];
-  if (!layout) return null;
+  // A missing factor found by trying numbers has no long division to lay out (trial-factor.ts).
+  if (!layout || steps.some((st) => st.kind === "try-factor")) return null;
   const [a, b] = operandsOf(operation);
   return { op: "columns", id: problem === "target" ? "question" : "example", operation: layout, operands: [{ id: "top", value: String(a) }, { id: "bottom", value: String(b) }], place: { region: "main" } } as unknown as Command;
 }
@@ -3280,7 +3528,9 @@ function boardOffersFor(s: Session, act: Act, view: View, spoken: Pick<Spoken, "
     const ex = columnsOf(s, "example");
     if (ex && !Object.hasOwn(s.boardRoles, "example")) out.push({ id: "example.columns", shows: `the easier example in columns: ${operationText(pkg.easierExample.operation)}`, commands: (place) => at(ex, place) });
     strips("example-strips", fractionsOf(pkg.easierExample.operation), `the easier example's fractions as strips: ${operationText(pkg.easierExample.operation)}`);
-  } else {
+  }
+  if (isPlaceValue(pkg)) out.push(...placeBoardOffers({ pkg, act, roles: s.boardRoles, batch: s.batches, chosen: spoken?.chosen ?? [], exampleShown: s.exampleShown }));
+  else if (act !== "example_step") {
     strips("question-strips", fractionsOf(pkg.operation), `the question's fractions as strips: ${operationText(pkg.operation)}`);
     const common = workSteps(pkg).find((st) => st.kind === "common-denominator");
     const shownNow = (spoken?.chosen ?? []).some((o) => o.line === "step.show" && o.slots.step === common?.id);
@@ -3328,7 +3578,7 @@ function drawBoard(s: Session, p: Proposal, view: View, spoken: Spoken): Command
     const o = offers.find((x) => x.id === d.offer);
     if (!o) return `"${d.offer}" is not a board offer for ${p.act} now. Offered: ${offers.map((x) => x.id).join(", ") || "none"}.`;
     if (ids.includes(o.id)) return `"${o.id}" is drawn twice.`;
-    const places = boardPlaces(s, out.flatMap((command) => "id" in command && ["columns", "write", "model"].includes(command.op) ? [command.id] : []), p.act === "example_step");
+    const places = boardPlaces(s, out.flatMap((command) => "id" in command && ["columns", "write", "model", "place_chart"].includes(command.op) ? [command.id] : []), p.act === "example_step");
     const place = places[d.place ?? "main"];
     if (!place) return `"${d.place}" is not a board place now. Places: ${Object.keys(places).join(", ")}.`;
     ids.push(o.id);
@@ -3361,7 +3611,7 @@ export function drawOffers(session: Session): Partial<Record<Act, { id: string; 
 /** The fields of a board command a child sees as words. */
 const BOARD_WORDS: ReadonlySet<string> = new Set(["text", "label"]);
 /** The fields of a board command a child sees as numbers. */
-const BOARD_NUMBERS: ReadonlySet<string> = new Set(["value", "dividend", "divisor", "numerator", "denominator", "whole", "min", "max", "tick", "fromValue", "toValue"]);
+const BOARD_NUMBERS: ReadonlySet<string> = new Set(["value", "dividend", "divisor", "numerator", "denominator", "whole", "min", "max", "tick", "fromValue", "toValue", "number"]);
 
 /** Every word or number field a child sees on the board, in any command, at any depth, with its field name. */
 function boardVisible(v: unknown, key = ""): [string, string][] {
@@ -3399,6 +3649,8 @@ function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoke
       }
       continue;
     }
+    // A place-value compare's circled word (B1b), in the turn Maya's answer line says it back.
+    if (pkg.answer.value.type === "choice" && isPlaceValue(pkg) && t === pkg.answer.value.value && spoken.chosen.some((o) => o.line === "answer.right")) continue;
     const values = valuesIn(t);
     if (values.length === 0 || /\p{L}/u.test(t.replace(/\bR\b/g, ""))) return { code: "wrong_math", reason: `Code cannot read "${t}" as a number to show on the board.` };
     const off = values.find((x) => !allowed.some((a) => equivalent(a, x)));

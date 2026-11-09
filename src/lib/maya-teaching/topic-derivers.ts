@@ -134,7 +134,7 @@ export function scaleExamples(operation: Operation): Operation[] {
   const out: Operation[] = [];
   // A round start first; a 1-digit start after, for a question with few digits (an example must have fewer, as the
   // package check counts them: "90 + 3 × 2" has 4).
-  for (const start of [10, 20, 30, 40, 4, 6, 8]) for (const step of [5, 2, 10, 3]) for (const count of [2, 3, 4]) {
+  for (const start of [10, 20, 30, 40, 4, 6, 8]) for (const step of [5, 2, 10, 3, 4]) for (const count of [2, 3, 4]) {
     const got = start + count * step;
     const numbers = [start, count, step];
     if (numbers.some((x) => x <= 1 || own.includes(x) || x === answer) || got === answer || tenfold(got)) continue;

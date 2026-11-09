@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createSession, heldReason, mayaPackageCheck } from "@/lib/maya";
 import { checkQuestionPackage, operationProblem, workedSteps, type QuestionPackage } from "@/lib/question-package";
-import { printedWorkbookQuestion, withTeachingOperation } from "@/lib/workbook-maya-operation";
+import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { teachingPackage } from "./index";
-import { shapedExamples } from "./examples";
-import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "./limits";
+import { MAYA_TEACHING_LIMITS } from "./limits";
 import { multiStepOperation } from "./multi-step";
 import { addsThousandChain, boxesThenSells, eachHasStory, putsInEachStory, subtractFromTenThousand, thousandsSum } from "./samples";
 
@@ -97,19 +96,9 @@ describe("the session adapter: multi-step stories", () => {
   });
 
   it("reads a printed chain as written, not as the template's one-step expression", () => {
-    expect(multiStepOperation(addsThousandChain(73562))).toEqual({ kind: "evaluate", operands: ["73562 + 1000 + 100"] });
-    // Integration with A2 (#734) on this branch: A2's evaluate reads the printed trailing "= ?" as a missing-number frame,
-    // which it cannot read yet, so every example of the chain's shape is held, the adapter adds no teaching data and
-    // the call is held (review of #741, P3b). A2's later head reads "= ?" as the expression and teaches the chain.
-    const stored = addsThousandChain(73562);
-    const operation = multiStepOperation(stored)!;
-    for (const example of shapedExamples(operation)) {
-      const made = withTeachingOperation(stored, operation, { type: "number", value: 74662 }, { source: TEACHING_SOURCE, limits: MAYA_TEACHING_LIMITS, examples: [example] });
-      expect(heldReason(made), JSON.stringify(example.operands)).toMatch(/missing-number question/);
-    }
-    const made = teach(stored);
-    expect(made.operation).toBeNull();
-    expect(held(made)).not.toBeNull();
+    const made = teach(addsThousandChain(73562));
+    expect(made.operation).toEqual({ kind: "evaluate", operands: ["73562 + 1000 + 100"] });
+    expect(held(made)).toBeNull();
   });
 });
 

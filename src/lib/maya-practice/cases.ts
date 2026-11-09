@@ -10,7 +10,10 @@ import type { Reason } from "@/lib/maya";
 import { valuesIn } from "@/lib/maya";
 import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
+import { PLACE_VALUE_PRACTICE } from "./place-value-cases";
+import { PLACE_PARTS_PRACTICE } from "./place-value-parts-cases";
 import { ONE_STEP_PRACTICE } from "./one-step-cases";
+import { MISSING_NUMBER_CASES } from "./missing-number-cases";
 
 /** The AI-judge dimensions of the research (section 8, "AI-judge checks"), each scored 0 to 3. */
 export const DIMENSIONS = {
@@ -543,6 +546,8 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [2, 3, 4] }, { name: "after help", opens: "help", numbers: [16, 18] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
     fakeScript: ["I don't know how to start.", "okay", "6 times 3 is 18.", "It's true.", "Because 18 is more than 16.", "I circled it."],
   },
+  ...PLACE_VALUE_PRACTICE,
+  ...PLACE_PARTS_PRACTICE,
   // Claim questions (A4, src/lib/maya/claim.ts): the answer is the circled word, which code reads.
   {
     id: "CL01",
@@ -577,6 +582,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "after help", opens: "help", numbers: [13, 8, 5.83, 5.93, 3.45, 2.38] }] },
     fakeScript: ["It's true.", "5 plus 8 is 13.", "4 plus 3 plus 1 is 8.", "3 plus 2 is 5.", "5.83.", "It's false, because 5.83 is not 5.93.", "I added the columns: 5.83.", "I circled it."],
   },
+  ...MISSING_NUMBER_CASES,
 ];
 
 /** How many times each case runs (research, section 8: three recorded repetitions). */

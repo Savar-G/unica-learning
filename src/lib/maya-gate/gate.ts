@@ -325,7 +325,9 @@ function build(plan: Plan, reading: Reading | undefined, input: ModelInput): unk
     const met = same.filter((l) => !l.requires || (l.requires.answer === "right"
       ? input.done.includes(l.requires.step) || (reading?.answers ?? []).some((a) => a.step === l.requires!.step && a.verdict === "right")
       : (reading?.answers ?? []).some((a) => a.step === l.requires!.step && a.verdict === "wrong")));
-    const pool = met.length > 0 ? met : same;
+    const judged = met.length > 0 ? met : same;
+    // A not-yet line for one wrong try names the try it answers (trial-factor.ts): the plan's `heard` picks it.
+    const pool = plan.heard !== undefined && judged.some((l) => l.slots.heard === plan.heard) ? judged.filter((l) => l.slots.heard === plan.heard) : judged;
     return pool.find((l) => typeof l.slots.step !== "string" || l.slots.step === step) ?? pool.at(-1);
   };
   let ids: LineId[];
@@ -486,6 +488,9 @@ type MayaTurn = Extract<TraceTurn, { kind: "maya" }>;
 const mayaTurns = (t: MayaTrace) => t.turns.filter((x): x is MayaTurn => x.kind === "maya");
 const accepted = (m: MayaTurn) => (m.output ? m.attempts.at(-1) : undefined);
 const proposalOf = (m: MayaTurn) => (accepted(m)?.proposal ?? {}) as { act?: Act; level?: number; step?: string; reading?: { help?: string | null; stop?: boolean | null; answers?: { value: AnswerValue; step: string; problem?: string | null }[] | null } | null };
+
+/** The judge's own reading of a claim turn that is no miss: a help request, doubt or a question (D-199, #737 review). */
+const CLAIM_NOT_A_MISS = /\?|\b(?:stuck|help|show me|confused|i think|i guess|i believe|maybe|probably|might be|not sure)\b/i;
 
 /** The counts of a saved trace, read from its turns and board. */
 export function countsOf(t: MayaTrace): GateCounts {
@@ -775,9 +780,14 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       }
       // An equal fraction shows every work step done (#407).
       if ((p.reading?.answers ?? []).some((a) => (a.problem ?? "target") === "target" && a.step === "result" && isEqualForm(op, a.value))) workIds.forEach((id) => doneSteps.add(id));
-      const allDone = workIds.every((id) => doneSteps.has(id));
+      // A claim's compare step holds the whole product: once it is found, every column is done (claim.ts, claimResultDone).
+      const allDone = workIds.every((id) => doneSteps.has(id)) || (answer?.type === "choice" && doneSteps.has("claim"));
       const wrongFinal = (p.reading?.answers ?? []).some((a) => (a.problem ?? "target") === "target" && a.step === "result" && !rightForQuestion(op, a.value) && !isEqualForm(op, a.value));
-      if (allDone && wrongFinal) wrongFinals += 1;
+      // A claim's word is read by code, never put in the reading (claim.ts): a committed wrong word in the child's last turn
+      // counts, by the claim reader's allow-list. Help, doubt and a question are never a miss (D-199, Savar Brain P6).
+      const word = childSince && answer?.type === "choice" && !CLAIM_NOT_A_MISS.test(lastChild) ? claimFinal(op, lastChild, askedWord, askedHeard !== null) : null;
+      const wrongWord = word !== null && !rightForQuestion(op, word);
+      if (allDone && (wrongFinal || wrongWord)) wrongFinals += 1;
     }
     // The answer is released by an accepted right answer or a given one; before that, neither words nor board show it.
     if (act === "accept_answer" || act === "give_answer") released = true;

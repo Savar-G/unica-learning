@@ -228,7 +228,7 @@ describe("an invalid simulation never counts as a pass", () => {
     expect(await codesOf(C37, ["So it is minus 40."])).toContain("number_not_allowed");
   });
 
-  it("every case's right answer is behind a stage: never a single digit or an operand, and not open at the start unless the persona solves it", () => {
+  it("every case's right answer is behind a stage: never an operand, and not open at the start unless the persona solves it", () => {
     for (const c of PRACTICE_CASES) {
       const pkg = FIXTURES[c.fixture];
       const right = pkg.answer!.value;
@@ -238,6 +238,8 @@ describe("an invalid simulation never counts as a pass", () => {
         expect(c.validity.stages.filter(s => s.opens === "start").flatMap(s => s.values ?? [])).toContainEqual(right);
         continue;
       }
+      // A compare's answer is its circled word, which code reads (B1b, PV4).
+      if (pkg.operation?.kind === "place-value" && pkg.operation.ask === "compare") continue;
       // A clock time (C3c): its validity stage holds it as a typed value, after help.
       if (right.type === "time") {
         expect(c.id.startsWith("OTT"), c.id).toBe(true);
@@ -246,7 +248,12 @@ describe("an invalid simulation never counts as a pass", () => {
       }
       expect(right.type, c.id).toBe("number");
       const value = (right as { value: number }).value;
-      expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
+      // A single digit is always allowed, except the right answer itself (a missing factor found by trying numbers, MN2). A
+      // "which digit" question's answer is a single digit, which a child may always say: the judge's expected behaviour
+      // carries "never the digit first" there (B1a, PV1).
+      const digitAsk = pkg.operation?.kind === "place-value" && pkg.operation.ask === "digit";
+      expect([...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
+      if (!digitAsk && [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].includes(value)) expect(c.id).toBe("MN2");
       const atStart = c.validity.stages.filter((s) => s.opens === "start").flatMap((s) => s.numbers);
       // The personas that solve it on their own: C07, C09, C26, C28, the harmful requests, the free-talk cases (D-197) and
       // OT5 (Wave C, the child's own words). CL01 knows its claim's product (6 × 8 = 48) from the start; its answer is the

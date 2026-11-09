@@ -2,9 +2,12 @@
 // Ordinary help has no vocabulary test. A model can add restrictions, never an allowed expression.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
+import { missingScope } from "./missing-number";
 import { completeExpression, readNumbers } from "./numbers";
 import { topicNumbers, topicRelations } from "./topic-frame";
-import { partProblems } from "./evaluate";
+import { placeRelations } from "@/lib/question-package-place-value";
+import { isPartsOperation, partsRelations } from "@/lib/question-package-place-parts";
+import { frameProblems, partProblems } from "./evaluate";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
@@ -59,8 +62,8 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
     }
   };
   const problems = [pkg, ...(exampleChosen ? [pkg.easierExample] : [])];
-  // An evaluate question's parts are one-step problems of their own (evaluate.ts).
-  for (const p of [...problems, ...problems.flatMap((x) => partProblems(x.operation))]) {
+  // An evaluate question's parts are one-step problems of their own, and a missing-number frame checks its number (evaluate.ts).
+  for (const p of [...problems, ...problems.flatMap((x) => partProblems(x.operation)), ...frameProblems(pkg)]) {
     const op = family(p.operation);
     collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : p.answer);
     // An "other-topic" question's checked counted numbers (topic-frame.ts): the die's odd or even numbers.
@@ -69,6 +72,10 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
     for (const r of topicRelations(p.operation, p.text)) add(r.op, r.operands.map(num));
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
+    // Place value (B1a): the digit times its place, and code's wrong-answer work, as the child says it.
+    if (p.operation.kind === "place-value") for (const [d, worth] of placeRelations(p.operation)) add("multiply", [num(d), num(worth)]);
+    // B1b: a sum's two values and their multiplications.
+    if (p.operation.kind === "place-value" && isPartsOperation(p.operation)) for (const r of partsRelations(p.operation)) add(r.op, r.operands.map(num));
     const placeTerms = operands.flatMap(v => {
       if (v.type !== "number" || v.value < 0) return [];
       const [whole, fraction = ""] = String(v.value).split(".");
@@ -116,6 +123,7 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
         }
       }
       if (st.kind === "combine-numerators") add(st.op, st.numerators.map(num));
+      for (const [op, operands] of missingScope(st)) add(op, operands.map(num));
       if (st.kind === "common-denominator") for (let i = 0; i < st.from.length; i++) {
         add("multiply", [num(st.from[i].numerator), num(st.factors[i])]);
         add("multiply", [num(st.from[i].denominator), num(st.factors[i])]);
