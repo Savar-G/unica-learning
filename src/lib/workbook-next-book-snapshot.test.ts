@@ -6,8 +6,45 @@ import { nextBookIssuedSkills, planNextBookFromSnapshot } from "./workbook-next-
 import type { Observation } from "./scan-observation";
 import type { Json } from "./database";
 import { firstObservation } from "./scan-observation";
+import { BC_SKILL_MAP } from "./assessment";
+import { BC_CURRICULUM, curriculumFromData, curriculumProblems } from "./workbook-curriculum";
+import { jsonHash } from "./workbook-book1-baseline";
+import { planLevel } from "./workbook-plan";
+import { skillUnits } from "./workbook-teaching-frame";
 
 describe("next book from a frozen U16 capture", () => {
+  it("cannot recover an unprinted unit's frozen order from the saved structural fields", async () => {
+    const job = await jobBook(5), { baseline } = baselineOf(job);
+    const original = BC_CURRICULUM;
+    const changed = structuredClone(original);
+    const level = changed.levels.find(l => l.id === "U18")!;
+    // Unit 5.2 is in the real customer's frozen placement facts, but not in the U16 plan or printed skill records.
+    expect(level.units[0]).toBe("5.2");
+    level.units = ["5.16", ...level.units.filter(u => u !== "5.16")];
+    let order = 0;
+    level.units.forEach((unit, unitIndex) => {
+      const skills = changed.skills.filter(s => s.unit === unit).sort((a, b) => a.order - b.order);
+      skills.forEach((skill, skillIndex) => {
+        skill.order = ++order;
+        skill.position = `${level.id}.${unitIndex + 1}.${skillIndex + 1}`;
+        for (const step of changed.steps.filter(s => s.skill === skill.id)) step.position = `${skill.position}.${step.number}`;
+      });
+    });
+    // A valid structural change must differ from the original, while all saved structural evidence stays equal.
+    expect(curriculumProblems(original, BC_SKILL_MAP)).toEqual([]);
+    expect(curriculumProblems(changed, BC_SKILL_MAP)).toEqual([]);
+    const before = curriculumFromData(original), after = curriculumFromData(changed);
+    expect(after.level("U18")!.units.indexOf("5.2")).not.toBe(before.level("U18")!.units.indexOf("5.2"));
+    expect(after.skill("5.2-decimal-place-value")!.order).not.toBe(before.skill("5.2-decimal-place-value")!.order);
+    expect(baseline.binding.levels).toEqual([16]);
+    expect(baseline.curriculum.skills.some(s => s.skill.unit === "5.2")).toBe(false);
+    expect(skillUnits(before)).toEqual(job.frame.units);
+    expect(planLevel(before, "U16")).toEqual(baseline.planning.input.level);
+    const evidence = (c: typeof before) => ({ units: skillUnits(c), level: planLevel(c, "U16"),
+      skills: baseline.curriculum.skills.map(s => ({ skill: c.skill(s.skill.id), steps: c.skillSteps(s.skill.id) })) });
+    expect(jsonHash(evidence(after))).toBe(jsonHash(evidence(before)));
+  }, 120000);
+
   it("uses printed review marks, holds missing work and makes a stable plan", async () => {
     const job = await jobBook(5), { baseline, record } = baselineOf(job);
     const book = shippedBook(approvedWorkbook(job.final), job.runId, job.frame);
