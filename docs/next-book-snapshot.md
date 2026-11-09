@@ -69,7 +69,7 @@ Two callers run `prepareNextBook`. Both use one planner resolver, `nextBookPlann
 caller reads or writes anything: no claim becomes a chain, no hold row is written, no run starts.
 
 **The automatic step.** Its own cron route, `POST /api/next-book-prepare` (`src/app/api/next-book-prepare/route.ts`).
-Supabase `pg_cron` posts to it every 15 minutes (job `next-book-prepare`, migration `20261109173217_next_book_prepare_cron.sql`), with the
+Supabase `pg_cron` posts to it every 15 minutes (job `next-book-prepare`, migration `20261109173906_next_book_prepare_cron.sql`), with the
 reminders' Vault secrets: the URL is `reminders_url` with `/api/reminders` replaced, and `Authorization: Bearer <CRON_SECRET>`.
 It is not part of `/api/reminders`: the step reads the plan gate (`childPlanAccess`), and no email sender may reach it
 (`src/lib/plan-access-emails.test.ts`). The route sends no email. `?dry=1` answers at once and writes nothing. The step
@@ -134,7 +134,7 @@ line, with times in the family's time zone:
 | Server entry | `src/lib/next-book-snapshot-server.ts` |
 | Planner resolver (null for now) | `src/lib/next-book-planner.ts` |
 | Automatic step, due readers, server wiring | `src/lib/next-book-step.ts`, `next-book-step-store.ts`, `next-book-step-memory.ts`, `next-book-step-server.ts` |
-| Cron route and its job | `src/app/api/next-book-prepare/route.ts`, `supabase/migrations/20261109173217_next_book_prepare_cron.sql` |
+| Cron route and its job | `src/app/api/next-book-prepare/route.ts`, `supabase/migrations/20261109173906_next_book_prepare_cron.sql` |
 | Admin button | `src/lib/next-book-admin.ts`, `next-book-admin-server.ts`, `next-book-button.ts`, `src/app/api/admin/children/[id]/next-book/route.ts` |
 | Book 1 capture | `captureBook1Progress` in `src/lib/workbook-book1-preview.ts` |
 | Tests | `src/lib/next-book-snapshot-flow.test.ts`, `src/lib/next-book-snapshot.test.ts`, `src/lib/next-book-step.test.ts`, `src/lib/next-book-step-store.test.ts`, `src/lib/next-book-admin.test.ts`, `src/lib/next-book-button.test.ts` |
