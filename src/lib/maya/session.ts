@@ -790,7 +790,7 @@ const MAIN_ACTS: Record<Teaching, Act[]> = {
  * once every work step is done, with this turn's (D-199).
  */
 function asksForHelp(text: string): boolean {
-  return saysStuck(text) || /^(?:(?:can|could|would|will) you (?:please )?|please )?show me\b/i.test(text.trim());
+  return saysStuck(text) || /^help(?: me)?[.!?]*$/i.test(text.trim()) || /^(?:(?:can|could|would|will) you (?:please )?|please )?show me\b/i.test(text.trim());
 }
 
 /**

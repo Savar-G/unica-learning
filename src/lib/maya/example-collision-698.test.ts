@@ -61,3 +61,15 @@ it("has a fallback when the model reads no start before an unsafe example", asyn
   expect(out.ended?.reason).toBe("child_stopped");
   expect(out.say.join(" ")).toContain("We worked on");
 });
+
+it.each(["Help.", "Help!", "help me"])("escapes repeated bare %s requests with the model down", async (help) => {
+  let at = 1000;
+  const session = createTextSession({ callId: "bare-help", package: FIXTURES.A, grade: 2, clock: () => at,
+    model: fakeMayaModel({ answer: () => { throw new Error("model unavailable"); } }) });
+  let output = await session.start();
+  for (let i = 0; i < 20 && !output.ended; i++) {
+    at += 4000;
+    output = await session.child(help);
+  }
+  expect(output.ended?.reason).toBe("child_stopped");
+});
