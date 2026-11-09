@@ -50,7 +50,7 @@ create function public.claim_next_book_snapshot(p_trigger uuid) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare t public.workbook_scan_trigger_claims; s public.next_book_snapshots; w public.workbooks;
 begin
-  select * into t from public.workbook_scan_trigger_claims where id=p_trigger;
+  select * into t from public.workbook_scan_trigger_claims where id=p_trigger for update;
   if not found then return jsonb_build_object('status','refused','reason','trigger-not-found'); end if;
   select * into w from public.workbooks where id=t.workbook_id for key share;
   if w.number <> 1 then return jsonb_build_object('status','refused','reason','unsupported-source-book'); end if;
@@ -60,7 +60,7 @@ begin
   insert into public.next_book_snapshots(trigger_id,parent_id,child_id,workbook_id,printed_revision,trigger_reason,trigger_at,revision,receipt_ids)
     values(t.id,t.parent_id,t.child_id,t.workbook_id,t.printed_revision,t.reason,t.claimed_at,1,t.receipt_ids)
     on conflict(trigger_id,revision) do nothing;
-  select * into s from public.next_book_snapshots where trigger_id=t.id and revision=1;
+  select * into s from public.next_book_snapshots where trigger_id=t.id and revision=1 for update;
   return jsonb_build_object('status','ok','snapshot',to_jsonb(s));
 end $$;
 
@@ -116,6 +116,8 @@ begin
     return jsonb_build_object('status','refused','reason','source-changed');
   end if;
   perform 1 from public.workbook_scan_trigger_claims where id=s.trigger_id for update;
+  select * into s from public.next_book_snapshots where id=p_snapshot for update;
+  if not found then return jsonb_build_object('status','refused','reason','snapshot-not-found'); end if;
   if s.revision <> (select max(revision) from public.next_book_snapshots where trigger_id=s.trigger_id) then
     return jsonb_build_object('status','refused','reason','stale-revision');
   end if;
@@ -129,6 +131,42 @@ begin
   return jsonb_build_object('status','ok','snapshot',to_jsonb(n));
 end $$;
 
+-- The same immutable plan record is used for refreshes and for run admission.
+create function public.save_next_book_plan(p_snapshot uuid,p_plan_input jsonb,p_plan_hash text,p_consumed jsonb,p_held jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare s public.next_book_snapshots;
+begin
+  select * into s from public.next_book_snapshots where id=p_snapshot;
+  if not found then return jsonb_build_object('status','refused','reason','snapshot-not-found'); end if;
+  if s.draft_id is not null then
+    perform 1 from public.workbook_drafts where id=s.draft_id for no key update;
+    if not found or exists(select 1 from public.workbooks where id=s.draft_id and status in ('approved','printed','shipped')) then
+      return jsonb_build_object('status','refused','reason','already-approved');
+    end if;
+  end if;
+  select * into s from public.next_book_snapshots where id=p_snapshot for update;
+  if not found then return jsonb_build_object('status','refused','reason','snapshot-not-found'); end if;
+  if s.plan_hash is not null then
+    if s.plan_hash is distinct from p_plan_hash or s.plan_input is distinct from p_plan_input
+      or s.planner_consumed is distinct from p_consumed or s.planner_held is distinct from p_held then
+      return jsonb_build_object('status','refused','reason','plan-conflict');
+    end if;
+    return jsonb_build_object('status','ok','snapshot',to_jsonb(s));
+  end if;
+  if s.frozen_at is null or p_plan_hash is null or p_plan_hash !~ '^[0-9a-f]{64}$' or p_plan_input is null
+    or jsonb_typeof(p_consumed) is distinct from 'array' or jsonb_typeof(p_held) is distinct from 'array'
+    or jsonb_typeof(s.consumed_ledger) is distinct from 'array' then
+    return jsonb_build_object('status','refused','reason','invalid-plan');
+  end if;
+  if exists(select 1 from jsonb_array_elements(p_consumed) x where not (s.consumed_ledger @> jsonb_build_array(x)))
+    or (select count(*)<>count(distinct x->>'key') from jsonb_array_elements(p_consumed) x) then
+    return jsonb_build_object('status','refused','reason','invalid-plan');
+  end if;
+  update public.next_book_snapshots set plan_input=p_plan_input,plan_hash=p_plan_hash,planner_consumed=p_consumed,planner_held=p_held
+    where id=p_snapshot returning * into s;
+  return jsonb_build_object('status','ok','snapshot',to_jsonb(s));
+end $$;
+
 -- Serialize on the snapshot. Only a newly started run may receive this snapshot; a busy unrelated run is never adopted.
 create function public.admit_next_book_run(p_snapshot uuid,p_plan_input jsonb,p_plan_hash text,p_consumed jsonb,p_held jsonb,
   p_by uuid,p_email text,p_max_attempts integer,p_stale_seconds integer) returns jsonb
@@ -139,23 +177,19 @@ begin
   if not found then return jsonb_build_object('status','refused','reason','snapshot-not-found'); end if;
   if s.run_id is not null then return jsonb_build_object('status','started','run',s.run_id); end if;
   if s.revision <> 1 then return jsonb_build_object('status','refused','reason','refresh-does-not-start-run'); end if;
-  if s.frozen_at is null or p_plan_hash !~ '^[0-9a-f]{64}$' or p_plan_input is null
-    or jsonb_typeof(p_consumed)<>'array' or jsonb_typeof(p_held)<>'array'
-    or exists(select 1 from jsonb_array_elements(p_consumed) x where not (s.consumed_ledger @> jsonb_build_array(x)))
-    or (select count(*)<>count(distinct x->>'key') from jsonb_array_elements(p_consumed) x) then
-    return jsonb_build_object('status','refused','reason','invalid-plan');
-  end if;
+  answer:=public.save_next_book_plan(p_snapshot,p_plan_input,p_plan_hash,p_consumed,p_held);
+  if answer->>'status'<>'ok' then return answer; end if;
   answer:=public.start_workbook_run(s.child_id,p_by,p_email,p_max_attempts,p_stale_seconds);
   if answer->>'status'<>'started' then return answer; end if;
   rid:=(answer->>'run')::uuid;
   update public.workbook_runs set snapshot_id=s.id where id=rid;
-  update public.next_book_snapshots set plan_input=p_plan_input,plan_hash=p_plan_hash,planner_consumed=p_consumed,planner_held=p_held,run_id=rid where id=s.id;
+  update public.next_book_snapshots set run_id=rid where id=s.id;
   return answer;
 end $$;
 
 revoke all on function public.claim_next_book_snapshot(uuid), public.save_next_book_snapshot(uuid,jsonb,text),
-  public.retake_next_book_snapshot(uuid,uuid,uuid,text), public.admit_next_book_run(uuid,jsonb,text,jsonb,jsonb,uuid,text,integer,integer)
+  public.retake_next_book_snapshot(uuid,uuid,uuid,text), public.save_next_book_plan(uuid,jsonb,text,jsonb,jsonb), public.admit_next_book_run(uuid,jsonb,text,jsonb,jsonb,uuid,text,integer,integer)
   from public,anon,authenticated;
 grant execute on function public.claim_next_book_snapshot(uuid), public.save_next_book_snapshot(uuid,jsonb,text),
-  public.retake_next_book_snapshot(uuid,uuid,uuid,text), public.admit_next_book_run(uuid,jsonb,text,jsonb,jsonb,uuid,text,integer,integer)
+  public.retake_next_book_snapshot(uuid,uuid,uuid,text), public.save_next_book_plan(uuid,jsonb,text,jsonb,jsonb), public.admit_next_book_run(uuid,jsonb,text,jsonb,jsonb,uuid,text,integer,integer)
   to service_role;
