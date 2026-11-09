@@ -108,6 +108,18 @@ it("shows confirmed pause dates beside a stored plan, without moving a later ren
  b.block();expect(await adjustedPlan(b.db,"parent",card,plan)).toEqual({kind:"unknown"});
 });
 
+it("a paid plan cancelled after its pause began shows no date rather than a past one (#750 review)",async()=>{
+ // The pause ran from previousCharge to chargeAt, both now past; after a paid resume the period ends later than the stored plan says.
+ const day=86_400_000,iso=(t:number)=>new Date(t).toISOString(),start=Date.now()-20*day,end=Date.now()-6*day;
+ const b=fixture();
+ b.pauses.push({state:"applied",retired:true,quote:{weeks:2,year:2026,used:0,subscription:"sub",kind:"paid",previousCharge:iso(start),chargeAt:iso(end),bookId:"book",targetNumber:2,late:false,earliest:null,latest:null,shippedAt:"2026-11-01",deliveredAt:"2026-11-03",today:"2026-11-05"}});
+ b.cancel();
+ expect(await adjustedPlan(b.db,"parent",card,{kind:"paying",nextCharge:iso(end).replace(".000Z","+00:00"),monthly:79.99})).toEqual({kind:"unknown"});
+ // A stored plan that already shows another renewal is not a paused one, and ends there.
+ const later=iso(Date.now()+25*day);
+ expect(await adjustedPlan(b.db,"parent",card,{kind:"paying",nextCharge:later,monthly:79.99})).toEqual({kind:"ending",endsOn:later,free:false});
+});
+
 const trialPause=(retired=false)=>({state:"applied",retired,quote:{weeks:2,year:2026,used:0,subscription:"sub",kind:"trial",previousCharge:"2026-12-08T20:42:20.000Z",chargeAt:"2026-12-22T20:42:20.000Z",bookId:"book",targetNumber:2,late:false,earliest:null,latest:null,shippedAt:"2026-11-01",deliveredAt:"2026-11-03",today:"2026-11-08"}});
 const freeMonth={kind:"free_month" as const,firstCharge:"2026-12-08T20:42:20+00:00",monthly:79.99};
 it("moves a stored first charge written in the database's form to the free-month pause's new date",async()=>{
