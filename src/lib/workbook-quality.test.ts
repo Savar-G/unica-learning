@@ -5,7 +5,7 @@ import { buildPlannedItem, planItem } from "./workbook-item-plan";
 import type { GeneratedPage } from "./workbook-generator";
 import { curriculumFor } from "./workbook-curriculum";
 import { buildStepItem, stepTemplateItem } from "./workbook-step-items";
-import { workbookPageInstruction } from "./workbook-page-instructions";
+import { workbookPageInstruction, workbookWorkLine } from "./workbook-page-instructions";
 
 function page(number: number, day: number, count = 2): GeneratedPage {
   return { number, day, pageOfDay: 1, dayLabel: `Day ${day}`, type: "practice", qrToken: "token-000000000001", attempts: 0, fit: { status: "fits" }, questions: Array.from({ length: count }, (_, i) => {
@@ -24,16 +24,16 @@ it("checks the displayed numbered work instruction before every U16 instruction 
   p.questions = p.questions.map(q => ({ ...q, package: { ...q.package!, text: "245 + 126 = ?" } }));
   const before = structuredClone(p);
   const projected = workbookPageInstruction(p)!;
-  expect(projected).toBe("Write in boxes. Show your work for questions 1 and 2.");
+  expect(projected).toBe("Write in boxes.");
+  expect(workbookWorkLine(p)).toBe("Show your work under questions 1 and 2.");
   const quality = workbookQuality([p]);
   const shown = { ...p, content: { ...p.content, subtitle: projected } };
   expect(workbookQuality([shown])).toEqual(quality);
   expect(quality.issues.filter(issue => /instruction/.test(issue.reason))).toEqual([]);
   expect(p).toEqual(before);
+  // Every level prints the work line (Savar, 2026-11-09), so a U15 page asks for its work too.
   const legacy = { ...shown, content: { ...shown.content, level: 15 } };
-  expect(workbookQuality([legacy]).issues).toContainEqual(expect.objectContaining({
-    reason: "the page with work space lacks its work instruction",
-  }));
+  expect(workbookQuality([legacy]).issues.filter(issue => /work (?:line|instruction)/.test(issue.reason))).toEqual([]);
 });
 
 it("rejects an ordinary step template in a Mixed set even when its answer is checked", () => {

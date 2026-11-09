@@ -1,5 +1,5 @@
 import { questionWorkSpace } from "./workbook-work-space";
-import { workbookPageInstruction, workQuestionNumbers } from "@/lib/workbook-page-instructions";
+import { printedInstruction, workbookWorkLine, workQuestionNumbers } from "@/lib/workbook-page-instructions";
 // The workbook templates (#310, spec #296): one layout for every page type of .design/workbooks/DESIGN.md (section
 // 7), with its tokens (section 1 to 4): the 8-page and 6-page days, Math in the world, the cover, How + Plan, the back
 // cover with its level map, Friday 5, Show what you know, the level test, parent-led U1 to U3 pages, the early-level
@@ -36,11 +36,15 @@ import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 
-/** Teaching data does not select a print layout or change a printed method. */
+/**
+ * Teaching data does not select a print layout or change a printed method. The printed instruction follows the current
+ * rules on a stored book too (its content stays as stored): see printedInstruction.
+ */
 function printedPage(page: DraftPage): DraftPage {
   const printed = { ...page, questions: page.questions.map(q => ({ ...q, package: printedWorkbookQuestion(q.package) })) };
-  const subtitle = workbookPageInstruction(printed);
-  return subtitle && printed.content?.kind === "day" ? { ...printed, content: { ...printed.content, subtitle } } : printed;
+  if (printed.content?.kind !== "day") return printed;
+  const subtitle = printedInstruction(printed) ?? printed.content.subtitle;
+  return subtitle === printed.content.subtitle ? printed : { ...printed, content: { ...printed.content, subtitle } };
 }
 
 /**
@@ -60,8 +64,8 @@ const fontFace = (family: string, weights: string, woff2: Uint8Array) =>
 /** The type ramp and box sizes of a level band (DESIGN.md section 2, minimum sizes by level; section 7.3). */
 interface Band {
   consistentLayout?: boolean;
-  /** The questions the page's instruction already asks to show their work for ("Show your work for questions 1-3."):
-   * their work spaces print no "Show your work" label of their own and are plain white (Savar's book 1 review). */
+  /** The questions the page's work line already asks to show their work for ("Show your work under questions 1, 2
+   * and 3."): their work spaces print no "Show your work" label of their own and are plain white (Savar's book 1 review). */
   instructed?: ReadonlySet<number>;
   name: "parent" | "early" | "mid";
   title: number;
@@ -270,6 +274,12 @@ const CSS = `
 .dl{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:var(--small);line-height:1.2;letter-spacing:.04em;text-transform:uppercase;max-height:calc(var(--small)*2.4);overflow:hidden}
 .tt{margin:2px 0 0;font-weight:300;font-size:var(--title);line-height:1.25;padding-bottom:2px;white-space:nowrap;overflow:hidden}
 .st{white-space:nowrap;margin:0;font-size:var(--body);color:#44444C;max-height:calc(var(--body)*1.4);overflow:hidden}
+/* The work line: its own line under the instruction, bold on the cover's yellow highlight (Savar, 2026-11-09). */
+.sw{white-space:nowrap;margin:0;font-size:var(--body);line-height:1.25;color:#0C0C0E;max-height:calc(var(--body)*1.25);overflow:hidden}
+.sw b{display:inline-block;max-width:100%;overflow:hidden;vertical-align:top;font-weight:600;background:#FFD23F;padding:0 6px}
+/* A header with the work line keeps the page's content room: its lines sit 2 px closer, the work line 1.25 high. */
+.hd:has(.sw){gap:6px}
+.pg.consistent .hd:has(.sw){max-height:none}
 .gu{margin:0;font-size:var(--body);color:#0C0C0E;background:#F4F4F5;border-radius:8px;padding:6px 12px;overflow:hidden}
 .gu b{font-weight:500}
 .ct{flex:1 1 auto;flex-shrink:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:12px}
@@ -647,8 +657,8 @@ const CHIPS: Partial<Record<SlotName, Chip>> = {
 const NEW_IDEA: Chip = { label: "New idea", cls: "c-ni", icon: ICONS.book };
 const PRACTICE: Chip = { label: "Practice", cls: "c-pr", icon: ICONS.target };
 const NOTES: Partial<Record<SlotName, string>> = {
-  // The Challenge page's subtitle says "One (or two) to stretch you."; its chip has no note.
-  "warm-up": "Do as many as you can.",
+  // The Challenge page's subtitle says "One (or two) to stretch you."; its chip has no note. The warm-up's instruction
+  // says what it is (WARM_UP_INSTRUCTION): its chip has no note either, never a counting one.
   "spot-the-error": "One move is wrong. Find it, then write the fix.",
   "mixed-set": "Tick the operation, then write the answer.",
   "friday-5": "5 from earlier days. No hints.",
@@ -1077,7 +1087,8 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));
   const chip = (fallback?: Chip, note?: string) => {
     const own = CHIPS[b.slot] ?? fallback;
-    return own ? `<div data-measure="chip-${i}">${chipHtml(own, b.note ?? note ?? NOTES[b.slot])}</div>` : "";
+    const said = b.slot === "warm-up" ? undefined : b.note ?? note ?? NOTES[b.slot];
+    return own ? `<div data-measure="chip-${i}">${chipHtml(own, said)}</div>` : "";
   };
   const firstOfPage = i === 0 && (ctx.page.type === "remember-these" || ctx.page.type === "remember-these-mixed-set");
   const allReview = b.reviewFrom !== undefined && qs.length > 0 && qs[0].number >= b.reviewFrom;
@@ -1415,9 +1426,11 @@ function footer(page: DraftPage, parts: PageParts, id: string): string {
 }
 
 function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
-  // (`page` is the printed page: its subtitle is the instruction workbookPageInstruction prints, when it has one.)
+  // (`page` is the printed page: its subtitle is the instruction printedInstruction prints; its work line names the
+  // questions to show work for.)
+  const work = workbookWorkLine(page);
   const band:Band = {...bandOf(c.level),consistentLayout:c.consistentLayout,
-    instructed: new Set(workbookPageInstruction(page) ? workQuestionNumbers(page) : [])};
+    instructed: new Set(work ? workQuestionNumbers(page) : [])};
   const byNumber = new Map(page.questions.map((q) => [q.number, q]));
   const ctx: Ctx = {
     page, c, band, six: c.pages <= 6 && band.name === "mid",
@@ -1433,6 +1446,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   const header = `<header class="hd">${c.page === 1 ? `<div class="nd" ${mark.slot("name-date")}><span>Name</span><i class="r1"></i><span>Date</span><i class="r2"></i></div>` : ""}`
     + `<div class="dl" ${mark.slot("day-label")}>${escape(label)}${pageExtra}</div><h1 class="tt" ${mark.slot("title")}>${escape(c.title)}</h1>`
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
+    + (work ? `<p class="sw"><b ${mark.slot("work-line")}>${escape(work)}</b></p>` : "")
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
   // (A block's rows: the sum of its grids' --rows, so blocks grow by their rows too.)
@@ -1627,6 +1641,11 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
     problems.push({ question: null, slot: "subtitle", reason: `${at}: the page instruction is missing or does not fit` });
   if (c.level === 16 && c.consistentLayout && instruction?.text.trim() !== c.subtitle)
     problems.push({ question: null, slot: "subtitle", reason: `${at}: the printed instruction does not match the page's answer and work regions` });
+  // The work line prints in full on its one line, naming the page's questions with work space.
+  const workText = workbookWorkLine(page), workLine = measured.get("slot-work-line");
+  if (workText && (!workLine?.visible || !workLine.textPrinted || workLine.text.trim() !== workText
+    || workLine.scrollHeight > workLine.clientHeight + 1 || workLine.scrollWidth > workLine.clientWidth + 1))
+    problems.push({ question: null, slot: "work-line", reason: `${at}: the work line is missing or does not fit` });
   if (c.level > 3 && c.grownUp) problems.push({ question: null, slot: "grown-up", reason: `${at}: grown-up text is only for Kindergarten` });
   if (c.page !== 1 && measured.has("slot-name-date")) problems.push({ question: null, slot: "name-date", reason: `${at}: name and date belong only on the first page` });
 

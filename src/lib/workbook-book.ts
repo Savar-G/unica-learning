@@ -44,6 +44,7 @@ import { figureCount } from "@/lib/question-package-items";
 import { relationChoices } from "@/lib/question-package";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { curriculumTitleSkills, pageTitle } from "@/lib/workbook-titles";
+import { WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 import {
   headerGrowth,
   pageId,
@@ -94,7 +95,8 @@ export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: numb
     : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
   const subtitles: Record<string, string> = {
     // From U13 the warm-up's facts go past 20 (times tables, adding hundreds): it names no range then.
-    "warm-up": level >= 16 ? "Facts you know. Beat your own count from last time." : level >= 13 ? "Facts you know. Take your time: there is no timer." : "Facts to 20. Take your time: there is no timer.",
+    // Every warm-up says what it is and that every question is done: no timing or counting words (Savar, 2026-11-09).
+    "warm-up": WARM_UP_INSTRUCTION,
     "new-idea": level >= 19 ? "Try it first. Then see how it works." : "Read how it works, then try it.",
     practice: "Read the example, then answer the questions.",
     "practice-2": "Each row is a little harder than the one before.",

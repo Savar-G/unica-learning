@@ -1,5 +1,6 @@
 import { reviewMasteryStep } from "./workbook-review-level";
-import { questionWorkSpace, WORK_INSTRUCTION } from "./workbook-work-space";
+import { questionWorkSpace } from "./workbook-work-space";
+import { answerInstruction } from "./workbook-page-instructions";
 import type { EditCall } from "@/lib/workbook-edit-calls";
 import { choiceInstruction } from "@/lib/workbook-layout-check";
 // The workbook generator (#311, spec #296): a two-week plan (#308, src/lib/workbook-plan.ts) in, one coherent draft
@@ -2340,7 +2341,9 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
     if (w.page.extraPractice) Object.assign(content, { extraPractice: true, title: "Extra practice", subtitle: `Answer questions from this workbook.${circleLine ? ` ${circleLine}` : ""}` });
   }
   if (content.kind === "day" && questions.some(q => q.package && (questionWorkSpace(q.package, q.place) > 0 || q.package.item?.regions.some(r => r.kind === "work")))) {
-    content.subtitle = [choiceInstruction(questions), WORK_INSTRUCTION].filter(Boolean).join(" ");
+    // The work line under the instruction names the questions to work (workbookWorkLine): the instruction says only
+    // what to circle, or else where to write (Savar, 2026-11-09).
+    content.subtitle = choiceInstruction(questions) ?? answerInstruction(questions);
   }
   return content;
 }
