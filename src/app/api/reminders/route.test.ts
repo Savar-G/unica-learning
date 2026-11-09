@@ -21,6 +21,7 @@ const h = vi.hoisted(() => ({
   claimMs: 0,
   weeklySend: false,
   sendTimes: [] as number[],
+  cancelRuns: 0,
   cardRuns: 0,
   cardFails: false,
   cardSends: 0,
@@ -55,6 +56,12 @@ vi.mock("@/lib/email-resend", () => ({
       return h.mail.transport.send(m);
     },
   }),
+}));
+vi.mock("@/lib/plan-cancel-recovery-server", () => ({
+  sweepOpenCancelsNow: async ({ transport }: { transport: unknown }) => {
+    h.cancelRuns++; h.transports.add(transport);
+    return { checked: 1, sent: 1, failed: 0, outOfTime: false };
+  },
 }));
 vi.mock("@/lib/card-sweep-server", () => ({
   dueCardCount: async () => 3,
@@ -274,4 +281,11 @@ it("the card sweep runs beside the emails, a failed sweep hides nothing else, an
   const runs = h.cardRuns;
   expect(await (await call("?dry=1")).json()).toMatchObject({ ok: true, dry: true, cards: 3, planReads: 2 });
   expect(h.cardRuns).toBe(runs);
+});
+
+it("runs the cancellation sweep on the shared transport and skips it in a dry run", async () => {
+  h.cancelRuns = 0;
+  expect(await (await call()).json()).toMatchObject({ ok: true, cancels: { checked: 1, sent: 1 } });
+  expect(h.cancelRuns).toBe(1);
+  await call("?dry=1"); expect(h.cancelRuns).toBe(1);
 });
