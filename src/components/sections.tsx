@@ -63,7 +63,7 @@ export function Hero() {
         <p className="lead">{HERO.lead}</p>
         <div className="ctas">
           <GetStarted src="hero" />
-          <Link className="btn ghost" href="/sample-report">See a sample report</Link>
+          <Link className="btn ghost" href="/whats-included">What&apos;s included</Link>
         </div>
         <ul className="facts">{HERO_FACTS.map((f) => <li key={f}>{f}</li>)}</ul>
       </div>
