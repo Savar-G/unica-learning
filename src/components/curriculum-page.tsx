@@ -26,7 +26,7 @@ const HOW: [string, string][] = [
   ["Shown first, then small steps", "Each new idea starts with a worked example. Practice then builds from easy to harder, one small change at a time."],
   ["Remember these?", "Every day brings back something learned earlier, so old skills stay fresh."],
   ["A Fix it box", "Anything your child got wrong last time comes back in the next workbook as new questions."],
-  ["Stuck? Chat with Maya", "Children in Grade 3 and up can type to the Unica Teaching Assistant for help, within daily and weekly limits. After you scan the day's pages, they try to fix any mistakes first."],
+  ["Stuck? Chat with Maya", "Children in Grade 3 and up can type to the Unica Teaching Assistant for help. After you scan the day's pages, they try to fix any mistakes first."],
   ["Adjusts as they go", "We look at the pages you scan. The next workbook adds practice where it's needed and new ideas when they're ready."],
   ["A test to move up", "A test at the end of each level, done in one sitting, shows when your child is ready for the next one."],
 ];

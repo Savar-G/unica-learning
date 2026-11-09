@@ -65,7 +65,7 @@ export function Story() {
               <p>{BRAND} is the middle ground: personal like a tutor, structured like a learning centre, and affordable.</p>
               <p>
                 A free 20-minute test shows where your child is and what they&apos;re missing. Then we mail workbooks built around it: 15 to 30 minutes of practice a day,
-                on paper, following the BC curriculum. Each new workbook adjusts to how the last one went, and children in Grade 3 and up can chat with the AI Teaching Assistant for help, within daily and weekly limits.
+                on paper, following the BC curriculum. Each new workbook adjusts to how the last one went, and children in Grade 3 and up can chat with the AI Teaching Assistant for help.
               </p>
               <p><Link className="story-more" href="/#how">See how it works <span className="arr">→</span></Link></p>
             </Rise>

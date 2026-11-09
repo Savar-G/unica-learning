@@ -20,6 +20,9 @@ const STEPS: Step[] = [
 
 const LABEL = "Demo: Maya, the Unica AI Teaching Assistant, works through 27 + 39 with a child on a shared board, showing how to carry the 1 to get 66. Captions show what is said.";
 
+// #535: Voice is for a later ship.
+const SHOW_VOICE_DEMO = false;
+
 type Kind = "wide" | "board";
 
 export function GuidanceDemo() {
@@ -53,6 +56,8 @@ export function GuidanceDemo() {
   const start = STEPS[active][kind];
   const end = STEPS[active + 1]?.[kind] ?? dur;
   const fill = Math.min(1, Math.max(0, (t - start) / (end - start)));
+
+  if (!SHOW_VOICE_DEMO) return null;
 
   return (
     <div className="gd-body" ref={wrap}>

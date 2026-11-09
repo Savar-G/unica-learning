@@ -141,7 +141,7 @@ const CARDS = [
     ),
   },
   {
-    tone: "t3", title: "AI Teaching Assistant", text: "Children in Grade 3 and up can chat with Maya for help on a shared board, within daily and weekly limits.",
+    tone: "t3", title: "AI Teaching Assistant", text: "Children in Grade 3 and up can chat with Maya for help on a shared board.",
     im: (
       <div className="ct-board">
         <div className="ct-sum"><span>300</span><span>− 128</span><span className="ans">172</span></div>
@@ -161,6 +161,9 @@ const CARDS = [
     ),
   },
 ];
+
+// #535: Voice is for a later ship.
+const SHOW_VOICE_DEMO = false;
 
 const MAYA_LABEL = "Demo: Maya, the AI Teaching Assistant, explains 27 + 39 on a shared whiteboard and draws each step, carrying the 1 to get 66. Captions show what Maya says.";
 
@@ -196,12 +199,12 @@ export function WhatsIncluded() {
           </Section>
 
           <Section className="wi-gd" aria-labelledby="wiTa">
-            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Children in Grade 3 and up can type to Maya, the Unica AI Teaching Assistant, about a workbook question. Maya gives hints and can show an easier example on a shared board. Daily and weekly limits apply." />
-            <Rise className="gd-media">
+            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Children in Grade 3 and up can type to Maya, the Unica AI Teaching Assistant, about a workbook question. Maya gives hints and can show an easier example on a shared board." />
+            {SHOW_VOICE_DEMO && <Rise className="gd-media">
               <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={MAYA_LABEL} />
               <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={MAYA_LABEL} />
               <p className="gd-cap">This demo shows a planned voice call. Voice calls are not available yet; Maya is available by typed chat.</p>
-            </Rise>
+            </Rise>}
           </Section>
 
           <Section className="wi-full" aria-labelledby="wiApp">

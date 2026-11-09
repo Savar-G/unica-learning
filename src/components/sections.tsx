@@ -177,7 +177,7 @@ export function Pricing() {
             "Free online math assessment and report, before you choose a plan",
             "A program built from your child's level and gaps",
             "2 paper workbooks a month, mailed home",
-            "The Unica Teaching Assistant: chat for Grade 3 and up, within daily and weekly limits",
+            "The Unica Teaching Assistant: chat for Grade 3 and up",
             "The parent app: instant answer checks, solutions and progress reports",
             "Rewards for every page and every week",
             "Delivery included. Cancel anytime",
