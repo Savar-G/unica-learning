@@ -119,6 +119,9 @@ function Sources() {
   );
 }
 
+// #535: Call screens are for a later voice release.
+const SHOW_CALL_SCREENS = false;
+
 // ---------- closing cards ----------
 const CARDS = [
   {
@@ -212,10 +215,10 @@ export function WhatsIncluded() {
             <ScanPhoto />
           </Section>
 
-          <Section className="wi-full center" aria-labelledby="wiDb">
+          {SHOW_CALL_SCREENS && <Section className="wi-full center" aria-labelledby="wiDb">
             <StepHead id="wiDb" eyebrow="Parent dashboard" title="Every scan updates your dashboard." lead="Level, skills, past work and every session with Maya, on our website. Use the same account on your phone or laptop." />
             <DashboardDemo />
-          </Section>
+          </Section>}
 
           <Section className="wi-full" aria-labelledby="wiNx">
             <StepHead id="wiNx" eyebrow="Next workbook" title="Then the next workbook is made from all of it." lead="Her marked pages, her sessions with Maya and her assessment decide what comes next: more practice where she slipped, less where she is strong. It arrives before this one runs out." />
@@ -228,7 +231,7 @@ export function WhatsIncluded() {
               <h2 id="wiAll">From a free assessment to the next workbook.</h2>
             </Rise>
             <ul className="wi-cards">
-              {CARDS.map((c) => (
+              {CARDS.filter((c) => SHOW_CALL_SCREENS || c.title !== "Parent dashboard").map((c) => (
                 <li key={c.title}>
                   <div className={`im ${c.tone}`} aria-hidden="true">{c.im}</div>
                   <h3>{c.title}</h3>
