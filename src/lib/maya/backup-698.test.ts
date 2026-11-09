@@ -94,3 +94,10 @@ it('uses both approved close lines when the expression does not contain the answ
   if(value===65) expect(out.proposal?.parts.map((part)=>('line' in part ? part.line : undefined))).toEqual(['close.stuck','close.together']);
  }
 });
+it('requires both honest close lines in the closing minute after work', () => {
+ const r=setup('done');
+ r.send({type:'tick',at:542000}); r.child("I'm stuck.");
+ const alone={act:'close',parts:[{line:'close.stuck'}]};
+ expect(r.prop(alone).refusal).not.toBeNull();
+ expect(r.prop({act:'close',parts:[{line:'close.stuck'},{line:'close.together'}]}).refusal).toBeNull();
+});

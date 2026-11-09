@@ -1175,7 +1175,7 @@ export const BEHAVIOURS: Behaviour[] = [
     status: "passing",
     steps: [
       child("I got 56.", { start: "has_work", answers: [[56, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
-      { at: 541, maya: [{ act: "close", lines: ["close.stuck"] }] },
+      { at: 541, maya: [{ act: "close", lines: ["close.stuck", "close.together"] }] },
     ],
     expect: { outcome: { reason: "time_limit", assistance: "independent" }, acts: [OPEN, "guide", "close"] },
   },
@@ -1186,7 +1186,7 @@ export const BEHAVIOURS: Behaviour[] = [
     status: "passing",
     steps: [
       child("I got 56.", { start: "has_work", answers: [[56, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
-      { at: 541, maya: [{ act: "close", lines: ["close.stuck"] }] },
+      { at: 541, maya: [{ act: "close", lines: ["close.stuck", "close.together"] }] },
     ],
     expect: { outcome: { reason: "time_limit", assistance: "independent" }, acts: [OPEN, "guide", "close"] },
   },

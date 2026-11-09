@@ -1463,7 +1463,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     }
     case "close":
-      if (backupClose) {
+      if (backupClose || p.parts.some((part) => "line" in part && part.line === "close.stuck")) {
         const alone = pkg !== null && closeExpressionContainsAnswer(pkg.operation, pkg.answer.value);
         if (p.parts.length !== (alone ? 1 : 2) || !("line" in p.parts[0]) || p.parts[0].line !== "close.stuck" ||
             (!alone && (!("line" in p.parts[1]) || p.parts[1].line !== "close.together"))) {
