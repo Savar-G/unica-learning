@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { readAnswer, readOptionsFor } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
-import { judge, memoryTraceStore, runBehaviour, type Behaviour, type Plan, type Read, type Step } from "@/lib/maya-gate/gate";
+import { judge, memoryTraceStore, runBehaviour, type Behaviour, type Plan, type Step } from "@/lib/maya-gate/gate";
 import type { OperationPackage } from "@/lib/question-package";
 
 const THROWS: Plan[] = [{ throws: true }];
@@ -145,5 +145,88 @@ describe("#698 loop: a sure final answer with an explanation of where it came fr
     expect(told[2].refusals).toEqual([]);
     const fallback = await play([{ child: "Is it 66?", maya: [{ act: "confirm", heard: "66", repair: { throws: true } }] }, down(text)]);
     expect(fallback.told.map((t) => t.act)).toEqual(["open", "confirm", "accept_answer"]);
+  });
+});
+
+describe("#698 loop guard: never the same step line a third time", () => {
+  const held = "I know 7 and 9 make 16.";
+  /** The model reads the ones right; its tens step is refused (not committed), and code chooses the repair or the fallback. */
+  const refusedOnes = (text: string, repair: Plan | undefined): Step => ({
+    child: text, read: { answers: [[16, "ones", "right"]] },
+    maya: [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], ...(repair ? { repair } : {}) }],
+  });
+  const key = (t: Told) => JSON.stringify([t.act, t.step, t.lines]);
+  const noThreeInARow = (told: Told[]) => {
+    for (let i = 2; i < told.length; i++) expect(key(told[i]) === key(told[i - 1]) && key(told[i]) === key(told[i - 2]), `${i}: ${key(told[i])}`).toBe(false);
+  };
+  const paths: [string, Plan | undefined][] = [["the model's repair", undefined], ["code's fallback", { throws: true }]];
+
+  it.each(paths)("two turns held back lead to the step confirm, and a third climbs the ladder (%s)", async (_name, repair) => {
+    const { told } = await play([refusedOnes(held, repair), refusedOnes(held, repair), refusedOnes(held, repair)]);
+    expect(told[1]).toMatchObject({ act: "guide", step: "ones" });
+    expect(told[2]).toMatchObject({ act: "confirm", lines: ["confirm.heard"] });
+    expect(told[2].say).toContain("16");
+    expect(told[3].act === "close" || (told[3].act === "guide" && told[3].step === "ones" && told[3].level! > told[1].level!), JSON.stringify(told[3])).toBe(true);
+    expect(told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+    noThreeInARow(told);
+  });
+
+  it.each(paths)("goes on up to the honest close, never the same step line three times in a row (%s)", async (_name, repair) => {
+    const { told, outcome } = await play(Array.from({ length: 8 }, () => refusedOnes(held, repair)));
+    noThreeInARow(told);
+    const levels = told.filter((t) => t.act === "guide").map((t) => t.level!);
+    expect(levels).toEqual([...levels].sort((a, b) => a - b));
+    expect(new Set(levels).size).toBe(levels.length);
+    expect(told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
+    expect(outcome?.reason).not.toBe("technical_issue");
+    expect(told.map((t) => t.say).join(" ")).not.toMatch(/66/);
+  });
+
+  it.each(paths)("credits the ones after a plain yes to the confirm (%s)", async (_name, repair) => {
+    const { told } = await play([refusedOnes(held, repair), refusedOnes(held, repair), { child: "Yes.", maya: [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], ...(repair ? { repair } : {}) }] }]);
+    expect(told[2]).toMatchObject({ act: "confirm" });
+    expect(told[3]).toMatchObject(NEXT);
+  });
+
+  it("asks no confirm for a total in a named place, which may mean 16 written in the ones, and climbs instead", async () => {
+    for (const repair of [undefined, { throws: true } as Plan]) {
+      const { told } = await play([refusedOnes("16 in the ones.", repair), refusedOnes("16 in the ones.", repair), refusedOnes("16 in the ones.", repair), { child: "Yes.", maya: repair ? [{ ...repair }] : [] }]);
+      expect(told.map((t) => t.act)).not.toContain("confirm");
+      expect(told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      noThreeInARow(told);
+    }
+  });
+});
+
+describe("#698 loop: step credit never releases the answer (D-199)", () => {
+  it("counts no miss, unlocks no H3 and gives no answer after the steps are credited", async () => {
+    const { told, outcome } = await play([
+      // The model asks to show the tens at once after the ones credit: H3 is not unlocked by a credit.
+      { child: "I got 16 for the ones.", read: { answers: [[16, "ones", "right"]] }, maya: [{ act: "guide", step: "tens", level: 3, lines: ["check.right_step", "step.show"], repair: { act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] } }] },
+      // The model tries to give the answer after the tens credit: never offered.
+      { child: "2 plus 3 plus 1 is 6. I wrote the 6.", read: { answers: [[6, "tens", "right"]] }, maya: [{ act: "give_answer", repair: { act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] } }] },
+      { child: "66.", read: { answers: [[66, "result", "right"]] } },
+    ]);
+    expect(told[1]).toMatchObject({ ...NEXT, level: 0 });
+    expect(told[1].refusals.join(" ")).toMatch(/^hint_too_high/);
+    expect(told[2]).toMatchObject({ act: "guide", step: "result", lines: ["check.right_step", "step.invite"] });
+    expect(told[2].refusals.join(" ")).toMatch(/^act_not_allowed: The answer is not offered/);
+    expect(told.slice(0, 3).map((t) => t.say).join(" ")).not.toMatch(/66/);
+    expect(told[3]).toMatchObject({ act: "accept_answer" });
+    expect(outcome).toMatchObject({ assistance: "independent" });
+  });
+
+  it("does not count a credited step as a committed miss: only the wrong final answer after them counts", async () => {
+    const steps: Step[] = [
+      named("I got 16 for the ones."),
+      { child: "2 plus 3 plus 1 is 6. I wrote the 6.", read: { answers: [[6, "tens", "right"]] }, maya: [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }] },
+      { child: "56.", read: { answers: [[56, "result", "wrong"]] } },
+    ];
+    const store = memoryTraceStore();
+    const b: Behaviour = { id: "loop-698-misses", title: "misses", fixture: "A", status: "passing", steps, expect: { outcome: {} } };
+    await runBehaviour(b, store);
+    const trace = JSON.parse(store.load(b.id)!) as { turns: { kind: string; finalMisses?: number }[] };
+    // The opening, the two step credits, then the one wrong final answer.
+    expect(trace.turns.filter((t) => t.kind === "maya").map((t) => t.finalMisses ?? 0)).toEqual([0, 0, 0, 1]);
   });
 });

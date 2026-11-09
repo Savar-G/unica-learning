@@ -391,6 +391,11 @@ export interface Session {
   heardAsked?: AnswerValue | null;
   /** The column total Maya asked about in that confirmation (stepConfirmable): the only number a yes credits for a step. */
   stepAsked?: AnswerValue | null;
+  /**
+   * The loop guard (PR #698): the current column whose total the child said in child turns in a row that code could not
+   * credit (heldStepNow), how many, and whether Maya then asked its confirm. A saved session from before has no field.
+   */
+  heldStep?: { step: string; times: number; asked: boolean };
   confirmTries: number;
   offeredOtherInput: boolean;
   redirects: number;
@@ -967,6 +972,16 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
       reason: "Close honestly without giving the answer.",
     };
   }
+  // The loop guard (PR #698): the same column's total twice in words code cannot credit gets the step confirm; after it,
+  // the next help up, and at the top help the honest close (loopGuard).
+  const loop = s.solved === null && !rightResult ? loopGuard(s) : null;
+  if (loop === "confirm") {
+    const total = heldStepNow(s)!;
+    return { acts: ["confirm"], code: "confirm_first", reason: `The child said ${valueText(total.value)} for ${total.step} again in words code cannot credit: ask once if that is what they said (confirm.heard ${valueText(total.value)}).` };
+  }
+  if (loop === "climb" && s.ladder.step === heldStepNow(s)!.step && nextHint(s) === null) {
+    return { acts: ["close"], code: "act_not_allowed", reason: "This step is still not clear after Maya asked about it and gave the top help: close honestly with close.stuck, with no answer." };
+  }
   acts = [...acts, ...confirm.filter((a) => !acts.includes(a))];
   // Offered before the reading: a turn with no number may be off topic (flattery, a promise, a question about Maya), so
   // the model sees the redirect and its reply phrases. Before #605 it saw them through the confirmation offered on every
@@ -1256,6 +1271,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
 
   // 3. The ladder after this reading: failures and requests raise what help is allowed; right steps move on.
   const scoring = !blocked;
+  // The loop guard, as teachingActs read it for this turn (loopGuard), and the column the turn holds back (heldStepNow).
+  const loop = scoring && s.solved === null && !rightResult ? loopGuard(base) : null;
+  const heldNow = scoring ? heldStepNow(base) : null;
   const ladder = { ...s.ladder };
   const done = [...s.done];
   const passed = [...(s.passed ?? [])];
@@ -1292,6 +1310,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (reading.help === "show") ladder.unlocked = Math.max(ladder.unlocked, ladder.hint >= 3 ? 4 : 3);
     // A lost carry is a located error: its regroup line (H1) is allowed at once.
     if (pendingRegroup(regroup).some((c) => c.at === ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 1);
+    // The loop guard climbs: the next help up is allowed now (loopGuard).
+    const up = loop === "climb" && ladder.step === s.ladder.step ? nextHint(base) : null;
+    if (up !== null) ladder.unlocked = Math.max(ladder.unlocked, up);
   }
 
   const main = isTeaching(s.state) ? s.state : s.resume;
@@ -1413,6 +1434,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
         return no("line_not_offered", "The child asked about the carried digit: answer with the offered line about it (step.point, step.regroup or step.why) before another prompt.", allowedNow);
       }
       if (ladder.failures >= 2 && p.level <= ladder.hint && !regroupNow) return no("same_hint_again", `Two attempts failed at H${ladder.hint}: give more help or offer to stop.`, allowedNow);
+      // The loop guard: after its confirm, the same step is never asked again at the same help (loopGuard).
+      if (loop === "climb" && p.level <= ladder.hint) return no("same_hint_again", `Maya asked about this step and it is still not clear: give the next help up, above H${ladder.hint}.`, allowedNow);
       if (p.level > ladder.hint) ladder.failures = 0;
       ladder.hint = Math.max(ladder.hint, p.level);
       ladder.unlocked = Math.max(ladder.unlocked, p.level);
@@ -1499,7 +1522,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       const asked = spoken.chosen.filter((o) => o.line === "confirm.heard" || o.line === "confirm.which");
       // After a claim judged wrong (a confirm only an unclear hearing allows), a yes gives no number.
       s.heardAsked = !claimJudgedWrong(s) && asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots.heard ? valuesIn(asked[0].slots.heard, readOptionsFor(pkg))[0] ?? null : null;
-      const total = stepSaidUnheard(s) ? stepConfirmable(s) : null;
+      const guarded = loop === "confirm" ? heldStepNow(base)!.value : null;
+      // The loop guard's confirm asks the column's total, the one number its yes credits.
+      if (guarded && !(s.heardAsked && saidAs(guarded, s.heardAsked))) return no("line_not_offered", `Ask if the child said ${valueText(guarded)}: confirm.heard with ${valueText(guarded)}.`, allowedNow);
+      const total = stepSaidUnheard(s) ? stepConfirmable(s) : guarded;
       s.stepAsked = total && s.heardAsked && saidAs(total, s.heardAsked) ? s.heardAsked : null;
       enterInterrupt(s, "CONFIRM_HEARD");
       break;
@@ -1589,6 +1615,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (equal) s.equalForm = equal;
   if (scoring) {
     if (failed) s.stuckStep ??= ladder.step;
+    // The loop guard's count: the same column held back turn after turn, and whether Maya asked its confirm (loopGuard).
+    if (heldNow && !done.includes(heldNow.step)) {
+      const prev = base.heldStep?.step === heldNow.step ? base.heldStep : undefined;
+      s.heldStep = { step: heldNow.step, times: (prev?.times ?? 0) + 1, asked: (prev?.asked ?? false) || (p.act === "confirm" && loop === "confirm") };
+    } else if (s.turn) delete s.heldStep;
     s.done = done;
     if (passed.length > 0) s.passed = passed.filter((id) => !done.includes(id));
     s.ladder = ladder;
@@ -1960,7 +1991,7 @@ export function committedValue(s: Session, a: ChildAnswer): boolean {
  * a final answer is the last number kept outside the child's explanations, readAnswer, D-199), and each verdict is what
  * code computes. Fills `checked`; returns the first problem.
  */
-function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): { code: RefusalCode; reason: string; unheard?: boolean } | null {
+function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): { code: RefusalCode; reason: string; unheard?: boolean; held?: boolean } | null {
   const pkg = s.package!;
   if (!s.turn) return { code: "answer_not_heard", reason: "There is no child turn to read an answer from." };
   const read = turnRead(s);
@@ -2014,7 +2045,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
       const unheard = stepSaidUnheard(s);
-      return { code: "answer_not_committed", reason: `The child's whole turn does not say ${valueText(a.value)} for ${a.step} clearly: ${unheard ? "confirm what they said (confirm)" : "help with this step, and do not say it is right"}.`, unheard };
+      return { code: "answer_not_committed", reason: `The child's whole turn does not say ${valueText(a.value)} for ${a.step} clearly: ${unheard ? "confirm what they said (confirm)" : "help with this step, and do not say it is right"}.`, unheard, held: true };
     }
     if (a.verdict === "wrong" && right) return { code: "rejects_right_answer", reason: `${valueText(a.value)} is right for ${a.step}.` };
     // The child's sure final answer is right: never "not yet" for it as a step (practice: "I think the tens make 66."
@@ -2477,6 +2508,44 @@ function stepOnlyTurn(s: Session): boolean {
 }
 
 /**
+ * The current column, when the child's turn says its total and code cannot credit it: the whole-turn refusal of
+ * checkAnswers ("The child's whole turn does not say 16 for ones clearly"), read by code for the column's total whatever
+ * the model reads. Null for any other turn: a step code credits, a copy after H3, a wrong claim, a plan to write the sum.
+ */
+function heldStepNow(s: Session): { step: string; value: AnswerValue } | null {
+  const st = currentColumn(s);
+  if (!st || !s.turn || !s.package || s.solved !== null) return null;
+  const value = number(st.total);
+  return checkAnswers(s, [{ value, step: st.id, verdict: "right" }], [])?.held ? { step: st.id, value } : null;
+}
+
+/**
+ * The loop guard (PR #698, practice at bef51538: Maya asked the ones again and again while the child said 16 in words
+ * code could not credit). The second turn in a row that says the same column's total code cannot credit gets the step
+ * confirm ("Did you say 16?"), whose plain yes credits it (stepAsked). After that confirm, such a turn goes up the ladder
+ * ("climb"), and at the top help the honest close: never the same step line a third time. A turn that names a column or
+ * claims a digit ("16 in the ones.") gets no confirm, as stepConfirmable: it climbs at once. Null for any other turn.
+ */
+function loopGuard(s: Session): "confirm" | "climb" | null {
+  const prev = s.heldStep;
+  if (!prev || !s.turn || !s.package) return null;
+  const held = heldStepNow(s);
+  if (!held || held.step !== prev.step) return null;
+  if (prev.asked) return "climb";
+  const text = s.turn.text;
+  const offered = offersFor(s, "confirm", { steps: [], done: s.done, checked: [], rightResult: false, equal: null })
+    .some((o) => o.line === "confirm.heard" && o.slots.heard === valueText(held.value));
+  const named = columnClaims(text).length > 0 || claimPlaces(text).length > 0;
+  return offered && !named && s.confirmTries < 2 && !claimJudgedWrong(s) ? "confirm" : "climb";
+}
+
+/** The first help level above the ladder's on its step that Maya can say, or null at the top. */
+function nextHint(s: Session): number | null {
+  const above = sayableHints(s).filter((level) => level > s.ladder.hint);
+  return above.length > 0 ? Math.min(...above) : null;
+}
+
+/**
  * The answers code reads in the child's own words, for a turn the model did not read (its call failed, or its reading named
  * none): first-ship practice, C28-r1 and C29-r1, where "7 plus 9 is 16." got "Find the ones." and "Yes, it's 66." got the
  * ones again. Only right answers, never a judgement of wrong work, and each is checked by `checkAnswers` like a model's.
@@ -2648,7 +2717,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
       case "confirm":
         // The child's doubtful final answer first (#605), then the number they said last.
         {
-          const stepTotal = unheard ? stepConfirmable(s) : null;
+          const stepTotal = unheard ? stepConfirmable(s) : loopGuard(session) === "confirm" ? heldStepNow(session)!.value : null;
           const first = doubtful ?? stepTotal;
           const fits = (o: LineOffer) => Number(o.line === "confirm.heard" && !!first && o.slots.heard === valueText(first));
           lineSets = [...free].reverse().sort((a, b) => fits(b) - fits(a)).map((o) => make(act, [o]));
