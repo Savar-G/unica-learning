@@ -374,6 +374,7 @@ export type InvalidCode = keyof typeof INVALID;
 
 /** A hard failure of a practice run: the scripted gate's, plus the two the practice suite adds. */
 /** Only the recorded D-199 replacement permits a stopped result in a solved-only case. */
+// This check trusts counters written only by the controller.
 export function backupStop(trace: MayaTrace, pkg: QuestionPackage): boolean {
   if (trace.version < 10 || trace.outcome?.reason !== "child_stopped" || !pkg.operation || !pkg.answer) return false;
   const answer = pkg.answer.value;
