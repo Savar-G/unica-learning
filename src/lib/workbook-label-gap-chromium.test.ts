@@ -20,9 +20,10 @@ describe.skipIf(!chromium)("the room above a section label in Chromium", () => {
     const pages = GAPS.map((extraGap, i) => ({ ...LABEL_GAP_PAGE, number: 101 + i, content: { ...(LABEL_GAP_PAGE.content as DayContent), extraGap } }));
     const result = await renderWorkbook({ draft: { ...LABEL_GAP_BOOK, pages }, parentId: "11111111-1111-4111-8111-111111111111", template, engine: chromiumPrintEngine() });
     const problems = result.status === "failed" ? result.problems.map((p) => ({ page: p.page, reason: p.reason })) : [];
-    // No gap of any width puts a label closer than a row gap (at 12 px the page runs out of room, which the generator
-    // never keeps: it takes its gaps back), and the page as planned, 8 px wider, prints with no problem at all.
+    // No gap puts a label closer than a row gap. The new work line makes this fixed page exceed its space at 8 px;
+    // the generator checks fit and takes gaps back. Keep the overflow check separate from the label-spacing check.
     expect(problems.filter((p) => /above the label|between rows|above its questions/.test(p.reason))).toEqual([]);
-    expect(problems.filter((p) => p.page <= 103)).toEqual([]);
+    expect(problems.filter((p) => p.page <= 102)).toEqual([]);
+    expect(problems.some((p) => p.page === 103 && /past the bottom/.test(p.reason))).toBe(true);
   }, 120_000);
 });
