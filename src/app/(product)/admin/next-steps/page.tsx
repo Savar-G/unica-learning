@@ -16,7 +16,8 @@ export default async function NextStepsPage({ searchParams }: PageProps<"/admin/
     <h2>Books on hold</h2>
     {holds.unavailable && <p role="status">Some scan holds are unavailable. Check again.</p>}
     {!holds.rows.length && !holds.unavailable && <p>No books on hold.</p>}
-    {holds.rows.map(hold => <section key={hold.workbookId}><Link href={`/admin/children/${hold.childId}`}>Open child and workbook {hold.number}</Link><ScanHold number={hold.number} /></section>)}
+    {holds.rows.map(hold => <section key={hold.workbookId}><Link href={`/admin/children/${hold.childId}`}>Open child and workbook {hold.number}</Link>{hold.testFamily && " (test family)"}<ScanHold number={hold.number} /></section>)}
+    {holds.more && <p>More books may be on hold. Only the newest are shown here. Open each child to check the rest.</p>}
     <h2>Card setups</h2><CardsTable cards={cards.rows} />
     <h2>Waitlist</h2><WaitlistTable waitlist={waitlist.rows} />
     <More more={cards.more || waitlist.more} max={LIST_MAX} offset={offset} action="/admin/next-steps" />

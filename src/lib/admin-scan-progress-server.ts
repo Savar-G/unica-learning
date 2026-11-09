@@ -28,26 +28,30 @@ export async function loadAdminScanProgress(admin: AdminSession, scope: ScanProg
   }
 }
 
-/** Read every hold and recheck it against current delivery and scan facts. */
+/** Holds are immutable facts, so old ones stay forever. Bound the read: the newest HOLD_READ holds, then one batched
+ * query drops every hold whose book now has an accepted scan, and at most HOLD_CHECK candidates are rechecked in full. */
+export const HOLD_READ = 100;
+export const HOLD_CHECK = 20;
 export async function loadAdminScanHolds(admin: AdminSession) {
-  const holds: { workbook_id: string; child_id: string; parent_id: string }[] = [];
-  let total: number | null = null;
-  for (let offset = 0; ; offset += 500) {
-    const { data, error, count } = await admin.db.from("workbook_scan_backstop_holds").select("workbook_id,child_id,parent_id", { count: "exact" })
-      .order("workbook_id").order("delivery_audit_id").range(offset, offset + 499);
-    if (error || !data || count === null || (total !== null && count !== total)
-      || data.length !== Math.min(500, Math.max(0, count - offset))) return { rows: [], unavailable: true };
-    total = count;
-    holds.push(...data);
-    if (holds.length === count) break;
-  }
-  const unique = [...new Map(holds.map(h => [h.workbook_id, h])).values()];
-  const rows: { workbookId: string; childId: string; number: number }[] = [];
+  const read = await admin.db.from("workbook_scan_backstop_holds").select("workbook_id,child_id,parent_id")
+    .order("held_at", { ascending: false }).order("workbook_id").limit(HOLD_READ + 1);
+  if (read.error || !read.data) return { rows: [], unavailable: true, more: false };
+  const holds = [...new Map(read.data.slice(0, HOLD_READ).map(h => [h.workbook_id, h])).values()];
+  if (!holds.length) return { rows: [], unavailable: false, more: false };
+  const ids = holds.map(h => h.workbook_id), parents = [...new Set(holds.map(h => h.parent_id))];
+  const [scanned, tests] = await Promise.all([
+    admin.db.from("workbook_scan_receipts").select("workbook_id").in("workbook_id", ids),
+    admin.db.from("test_accounts").select("parent_id").in("parent_id", parents),
+  ]);
+  if (scanned.error || !scanned.data || tests.error || !tests.data) return { rows: [], unavailable: true, more: false };
+  const withScans = new Set(scanned.data.map(r => r.workbook_id)), testParents = new Set(tests.data.map(r => r.parent_id));
+  const candidates = holds.filter(h => !withScans.has(h.workbook_id));
+  const rows: { workbookId: string; childId: string; number: number; testFamily: boolean }[] = [];
   let unavailable = false;
-  for (const h of unique) {
+  for (const h of candidates.slice(0, HOLD_CHECK)) {
     const { view } = await loadAdminScanProgress(admin, { workbookId: h.workbook_id, childId: h.child_id, parentId: h.parent_id }, false);
     if (!view) unavailable = true;
-    else if (view.held) rows.push({ workbookId: h.workbook_id, childId: h.child_id, number: view.number });
+    else if (view.held) rows.push({ workbookId: h.workbook_id, childId: h.child_id, number: view.number, testFamily: testParents.has(h.parent_id) });
   }
-  return { rows, unavailable };
+  return { rows, unavailable, more: read.data.length > HOLD_READ || candidates.length > HOLD_CHECK };
 }
