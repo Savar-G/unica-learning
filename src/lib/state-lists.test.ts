@@ -3,8 +3,10 @@
 // To add a machine, add one line here with its list and its column.
 import { describe, expect, it } from "vitest";
 import { AD_STEPS } from "@/lib/ad-visit-steps";
+import { ATTEMPT_STATUSES } from "@/lib/assessment";
 import { FAMILY_BUCKETS } from "@/lib/assessment/deletion";
 import { allowedValues } from "@/lib/database-checks";
+import { LOG_KINDS, LOG_STATUSES } from "@/lib/email-log-kinds";
 import { FLAG_LEVELS } from "@/lib/maya-call";
 import { ASSISTANCE } from "@/lib/maya/session";
 import { DELIVERY_TYPES } from "@/lib/resend-webhook";
@@ -16,6 +18,9 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "FLAG_LEVELS", list: FLAG_LEVELS, table: "maya_call_alerts", column: "level" },
   { name: "ASSISTANCE", list: ASSISTANCE, table: "maya_calls", column: "assistance" },
   { name: "FAMILY_BUCKETS", list: FAMILY_BUCKETS, table: "child_deleted_folders", column: "bucket" },
+  { name: "LOG_KINDS", list: LOG_KINDS, table: "email_log", column: "kind" },
+  { name: "LOG_STATUSES", list: LOG_STATUSES, table: "email_log", column: "status" },
+  { name: "ATTEMPT_STATUSES", list: ATTEMPT_STATUSES, table: "assessments", column: "status" },
 ];
 
 describe("state lists equal the database checks", () => {
