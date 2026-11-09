@@ -136,7 +136,7 @@ it("renders the actual confirmation, late mailing, paid restart, decline and sca
   expect(text("report", "unreliable")).toContain("Start a new test");
   expect(text("report", "waitlist")).toContain("Join the waitlist");
   expect(text("report", "waitlist")).not.toContain("BC topics");
-  expect(text("report", "choose")).toContain("Start free month");
+  expect(text("report", "choose")).toContain("Start plan");
   const areas = dom(rendered("report", "choose")).querySelectorAll(".rpt-areas tbody tr");
   const strands = sampleReportView().model.strands;
   expect(areas).toHaveLength(strands.length);

@@ -55,12 +55,14 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
       const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true });
       if (!result.ok) return Response.json(result, { status: 409 });
       const access = await openAccess({ customer: card.stripe_customer_id, cardSetup: card.id, generation: result.generation, startedAt });
-      return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, price, result.firstChargeAt, new URL(request.url).origin) });
+      return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, result.monthlyPrice ?? price, result.firstChargeAt, new URL(request.url).origin) });
     } finally {
       await endCardOperation(service, card.id);
     }
   } catch (e) {
     console.error("[stripe] start plan failed", e instanceof Error ? e.message : "failed");
+    // PR B: a sibling start through an older deployment's call shape is refused by the database (accepted stop).
+    if (e instanceof Error && e.message.includes("family_plan_upgrade_required")) return fail("family_plan_upgrade_required", 409);
     return fail("failed", 502);
   }
 }

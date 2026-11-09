@@ -448,6 +448,8 @@ export interface CardSetupRow {
   price: number;
   stripe_customer_id: string | null;
   card_saved_at: string | null;
+  planMonthly?: number | null;
+  planFirstCharge?: string | null;
   workbookEmails?: WorkbookEmailRecord[];
   workbookEmailsReadAt?: number;
   /** Any completed start prevents another initial free month. Null or absent means the evidence is unknown. */
@@ -461,6 +463,16 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
   const emails = await allRows(a.db.from("workbook_emails")
     .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
     .in("card_setup_id", cards.map((c) => c.id)).order("created_at").order("id"), "workbook emails").catch(() => null);
+  const priceStarts = await allRows(a.db.from("plan_starts").select("card_setup_id,generation,state,monthly_cents,first_charge_at")
+    .in("card_setup_id", cards.map(c => c.id)).in("state", ["open", "started"]).order("card_setup_id").order("generation"), "plan price terms").catch(() => []);
+  const priceStates = await allRows(a.db.from("child_plan_states").select("child_id,kind,monthly_cents,next_charge_at")
+    .in("child_id", cards.map(c => c.child_id)).order("child_id"), "plan price states").catch(() => []);
+  cards = cards.map(card => {
+    const start = priceStarts.filter(s => s.card_setup_id === card.id).at(-1), state = priceStates.find(s => s.child_id === card.child_id);
+    const cents = start?.state === "open" ? start.monthly_cents : state?.monthly_cents ?? start?.monthly_cents;
+    return { ...card, planMonthly: cents == null ? null : cents / 100,
+      planFirstCharge: start?.state === "open" ? null : state?.kind === "free_month" ? state.next_charge_at : start?.first_charge_at ?? null };
+  });
   const workbookEmailsReadAt = Date.now();
   const starts = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at, state")
     .in("card_setup_id", cards.map((c) => c.id)).order("card_setup_id").order("generation"), "plan starts").catch(() => null);

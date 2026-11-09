@@ -80,24 +80,24 @@ describe("the free month's words", () => {
   const terms = cardTerms(PLANS.one.price);
   const words = freeMonthWords("Leah");
 
-  it("says free month, on the button and in the heading, with the child's name", () => {
-    expect(words.button).toBe("Start free month");
-    expect(words.title).toBe("Start Leah's free month");
+  it("names the plan without promising another free month", () => {
+    expect(words.button).toBe("Start plan");
+    expect(words.title).toBe("Start Leah's plan");
   });
 
   it("uses the Stripe page's own wording for what is charged and when", () => {
     expect(terms.startsWith("Nothing is charged today.")).toBe(true);
     expect(words.note).toContain("Nothing is charged today.");
     expect(words.bar).toContain("Nothing is charged today.");
-    expect(terms).toContain("your first workbook arrives at your home");
-    expect(words.bar).toContain("your first workbook arrives at your home");
-    const reminder = "We email you a reminder 7 days before the first charge";
-    expect(terms).toContain(reminder);
-    expect(whatHappensNext("Leah").map((s) => s.detail)).toContain(`${reminder}.`);
+    const sharedWindow = "Your family gets one free month. It starts when your first workbook arrives.";
+    expect(terms).toContain(sharedWindow);
+    expect(words.bar).toContain(sharedWindow);
+    expect(whatHappensNext("Leah").some((s) => s.detail.includes(sharedWindow))).toBe(true);
+    expect(words.bar).toContain("A child who starts after that window is charged when their plan starts.");
   });
 
   it("gives the same price as the Stripe page, in the report's own sentence", () => {
-    const text = nextStep(sampleReportView()).text;
+    const text = nextStep({ ...sampleReportView(), planOffer: { monthly: PLANS.one.price, window: "new" } }).text;
     expect(terms).toContain(`CAD ${PLANS.one.price.toFixed(2)}`);
     expect(text).toContain(`CAD ${PLANS.one.price.toFixed(2)} a month`);
   });

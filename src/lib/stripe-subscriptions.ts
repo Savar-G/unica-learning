@@ -57,7 +57,8 @@ const idOf = (value: string | { id: string } | null | undefined) => (typeof valu
 export function planCard(x: Stripe.Subscription): PlanCard {
   return {
     id: x.id, status: x.status, defaultCard: idOf(x.default_payment_method), startKey: x.metadata?.start_key ?? null,
-    firstCharge: x.trial_end ? new Date(x.trial_end * 1000).toISOString() : null,
+    ...(x.metadata?.start_reason === "paid_restart" ? { paidRestart: true } : {}),
+    firstCharge: x.trial_end ? new Date(x.trial_end * 1000).toISOString() : (x.metadata?.start_reason === "family_window_ended" || x.metadata?.start_reason === "paid_restart") && Number.isFinite(x.created) ? new Date(x.created * 1000).toISOString() : null,
   };
 }
 

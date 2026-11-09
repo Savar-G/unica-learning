@@ -70,11 +70,11 @@ it.each(["next steps", "parent detail"])("%s reload shows a started state for an
   const html = (id: string) => renderToStaticMarkup(createElement(CardsTable, { cards: cards.filter((c) => c.id === id) }));
   for (const id of ["started", "other", "old-start"]) {
     expect(html(id)).toContain("Plan started.");
-    expect(html(id)).not.toContain("Workbook delivered: start free month");
+    expect(html(id)).not.toContain("Workbook delivered: start plan");
   }
-  for (const id of ["new", "refused", "open"]) expect(html(id)).toContain("Workbook delivered: start free month");
+  for (const id of ["new", "refused", "open"]) expect(html(id)).toContain("Workbook delivered: start plan");
   expect(html("stuck")).toContain("Stripe did not answer");
-  expect(html("stuck")).not.toContain("Workbook delivered: start free month");
+  expect(html("stuck")).not.toContain("Workbook delivered: start plan");
 });
 
 async function readCards(page: string, evidence: Evidence = {}) {
@@ -90,23 +90,23 @@ it.each(["next steps", "parent detail"])("%s keeps recovery for an unresolved re
   const html = cardHtml(await readCards(page), "restart");
   expect(html).toContain("Plan started.");
   expect(html).toContain("I checked Stripe: close this start");
-  expect(html).not.toContain("Workbook delivered: start free month");
+  expect(html).not.toContain("Workbook delivered: start plan");
 });
 it.each(["next steps", "parent detail"])("%s recognises a sent legacy plan confirmation with no start row", async (page) => {
   const html = cardHtml(await readCards(page), "legacy-email");
   expect(html).toContain("Plan started.");
-  expect(html).not.toContain("Workbook delivered: start free month");
+  expect(html).not.toContain("Workbook delivered: start plan");
 });
 for (const page of ["next steps", "parent detail"]) {
   it.each(["free_month", "paying", "payment_failed", "paused", "ending", "ended"])(`${page} recognises the legacy %s plan with no start row`, async (planKind) => {
     const html = cardHtml(await readCards(page, { planKind }), "legacy-state");
     expect(html).toContain("Plan started.");
-    expect(html).not.toContain("Workbook delivered: start free month");
+    expect(html).not.toContain("Workbook delivered: start plan");
   });
   it.each(["plan_starts", "plan_emails", "workbook_emails", "child_plan_states"])(`${page} shows a Stripe check and no start after a failed %s read`, async (failRead) => {
     const html = cardHtml(await readCards(page, { failRead }), "new");
     expect(html).toContain("Check the plan in Stripe before starting a free month.");
-    expect(html).not.toContain("Workbook delivered: start free month");
+    expect(html).not.toContain("Workbook delivered: start plan");
     expect(html).not.toContain("Plan started.");
     if (failRead === "workbook_emails" || failRead === "plan_emails") {
       expect(html).toContain("Workbook email history is unavailable. Reload this page.");
@@ -117,16 +117,16 @@ for (const page of ["next steps", "parent detail"]) {
     // A parent saved the first card and never opened the Account tab, so no plan state row exists. startPlan can start it.
     for (const id of ["unknown"]) {
       const html = cardHtml(await readCards(page), id);
-      expect(html).toContain("Workbook delivered: start free month");
+      expect(html).toContain("Workbook delivered: start plan");
       expect(html).not.toContain("Check the plan in Stripe before starting a free month.");
     }
     const missing = cardHtml(await readCards(page, { missingPlan: true }), "legacy-state");
-    expect(missing).toContain("Workbook delivered: start free month");
+    expect(missing).toContain("Workbook delivered: start plan");
   });
   it.each([{ planKind: "unknown" }, { wrongParent: true }])(`${page} shows a Stripe check when the plan evidence is unknown: %j`, async (evidence) => {
     const html = cardHtml(await readCards(page, evidence), "legacy-state");
     expect(html).toContain("Check the plan in Stripe before starting a free month.");
-    expect(html).not.toContain("Workbook delivered: start free month");
+    expect(html).not.toContain("Workbook delivered: start plan");
   });
 }
 it.each(["pending", "sending", "failed", "unknown", "skipped"])("a %s legacy email does not prove a completed start", async (emailStatus) => {
@@ -140,7 +140,7 @@ it.each(["welcome", "dispatch", "ready"])("a sent %s email does not prove a comp
 it("keeps recovery when another evidence read fails", async () => {
   const html = cardHtml(await readCards("next steps", { failRead: "child_plan_states" }), "restart");
   expect(html).toContain("I checked Stripe: close this start");
-  expect(html).not.toContain("Workbook delivered: start free month");
+  expect(html).not.toContain("Workbook delivered: start plan");
 });
 it.each(["restart", "stuck"])("closing %s offers an initial free month only when none has completed", async (cardId) => {
   const cards = (await readCards("next steps")).filter((c) => c.id === cardId);
@@ -159,7 +159,7 @@ it.each(["restart", "stuck"])("closing %s offers an initial free month only when
       body: JSON.stringify({ generation: cardId === "restart" ? 2 : 1, checkedStripe: true }),
     }));
     expect(container.textContent).toContain("Start closed.");
-    if (cardId === "restart") expect(container.textContent).not.toContain("Workbook delivered: start free month");
-    else expect(container.textContent).toContain("Workbook delivered: start free month");
+    if (cardId === "restart") expect(container.textContent).not.toContain("Workbook delivered: start plan");
+    else expect(container.textContent).toContain("Workbook delivered: start plan");
   } finally { await act(async () => root.unmount()); }
 });

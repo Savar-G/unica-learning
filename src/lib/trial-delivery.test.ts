@@ -1,11 +1,13 @@
 import Stripe from "stripe";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryBilling } from "@/lib/billing-memory";
 import { startPlan } from "@/lib/stripe";
 
 vi.mock("server-only", () => ({}));
 
 const deliveredAt = new Date("2026-11-05T18:00:00Z");
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(deliveredAt); });
+afterEach(() => vi.useRealTimers());
 const setup = { cardSetup: "card-1", customer: "cus_family", price: 79.99 };
 const locks = () => memoryBilling({ children: [{ parentId: "p", childId: "c", firstName: "Leah", card: { id: "card-1", customer: "cus_family", saved: true } }] }).store;
 
@@ -20,6 +22,7 @@ function provider(alreadyStarted = false, pages: unknown[] = [{ data: alreadySta
     const data = url.pathname.endsWith("/subscriptions") && method === "GET" ? pages[Math.min(reads++, pages.length - 1)]
       : url.pathname.includes("/customers/") ? customer
       : url.pathname.endsWith("/payment_methods") ? { data: [{ id: "pm_card" }], has_more: false }
+      : url.pathname.endsWith("/prices") ? { data: [{ id: "price_7999", active: true, currency: "cad", product: "unica_math", unit_amount: 7999, recurring: { interval: "month", interval_count: 1, usage_type: "licensed" } }], has_more: false }
       : url.pathname.includes("/products/") ? { id: "unica_math" }
       : url.pathname.endsWith("/subscriptions") && method === "POST" ? { id: "sub_trial", trial_end: deliveredAt.getTime() / 1000 + 30 * 86400 }
       : null;
@@ -38,10 +41,11 @@ describe("the free month starts after home delivery confirmation", () => {
   });
   it("starts a full 30-day trial after delivery, with an audit reason and a recorded send key", async () => {
     const f = provider();
-    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks())).toEqual({ ok: true, subscription: "sub_trial", firstChargeAt: "2026-12-05T18:00:00.000Z", generation: 1 });
+    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks())).toEqual({ ok: true, subscription: "sub_trial", firstChargeAt: "2026-12-05T18:00:00.000Z", generation: 1, monthlyPrice: 79.99 });
     const create = f.requests.filter((r) => r.path.endsWith("/subscriptions") && r.method === "POST");
     expect(create).toHaveLength(1);
-    expect(create[0].body.get("trial_period_days")).toBe("30");
+    expect(create[0].body.get("trial_end")).toBe(String(deliveredAt.getTime() / 1000 + 30 * 86400));
+    expect(create[0].body.has("trial_period_days")).toBe(false);
     expect(create[0].body.get("metadata[trial_start_reason]")).toBe("workbook_delivered");
     expect(create[0].body.get("metadata[delivery_confirmed]")).toBe("true");
     expect(create[0].key).toMatch(/^start-plan-card-1-[0-9a-f-]{36}$/);
