@@ -5,7 +5,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
 import { familyProvince, familyZone } from "./family-time";
 import type { AdminNextBookDeps, AdminNextBookFamily } from "./next-book-admin";
-import { nextBookPlanner, nextBookWiring } from "./next-book-planner";
+import { NEXT_BOOK_REAL_FAMILIES, nextBookPlanner, nextBookWiring } from "./next-book-planner";
+import { isTestAccount } from "./next-book-step-store";
 import { nextBookSnapshotServer } from "./next-book-snapshot-server";
 
 const must = <T>(r: { data: T; error: unknown }, what: string): T => {
@@ -27,13 +28,15 @@ export async function adminNextBookFamily(db: SupabaseClient<Database>, childId:
   const kids = must(children, "children") ?? [];
   const book1 = must(book, "book");
   const delivered = book1 ? must(await db.from("workbook_delivery_receipts").select("workbook_id").eq("workbook_id", book1.id).maybeSingle(), "delivery") : null;
-  return { parentId: p.id, deleting: p.deletion_requested_at !== null, deliveredBook1: delivered?.workbook_id ?? null,
+  const testFamily = await isTestAccount(db, p.id);
+  return { parentId: p.id, deleting: p.deletion_requested_at !== null, testFamily, deliveredBook1: delivered?.workbook_id ?? null,
     zone: familyZone({ timeZone: p.time_zone, postal: p.postal, province: familyProvince(kids) }) };
 }
 
 export function adminNextBookDeps(db: SupabaseClient<Database>): AdminNextBookDeps {
   return {
     planner: nextBookPlanner(),
+    realFamilies: NEXT_BOOK_REAL_FAMILIES,
     prepare: planner => {
       const wiring = nextBookWiring(planner);
       const server = wiring ? nextBookSnapshotServer(wiring, db) : null;

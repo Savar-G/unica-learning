@@ -17,6 +17,7 @@ import type { CurriculumKey } from "./workbook-curriculum/types";
 import type { HistoryFence, FrozenHistoryRows, WorkbookProgressHistoryInput } from "./workbook-progress-history";
 import { readFrozenWorkbookReviewHistory } from "./workbook-progress-history";
 import { sourceHash } from "./workbook-progress-hash";
+import { ledgerTime } from "./workbook-correction-journal";
 import { validateCatalog, type FrozenWorkbookSourcesV2, type WorkbookPreviewRequest } from "./workbook-progress-source";
 import type { CaptureAnswer, CaptureRequest } from "./next-book-snapshot";
 
@@ -60,9 +61,17 @@ export function captureNextBookEvidence(r: CaptureRequest, sources: FrozenWorkbo
     const scope = catalog.outcome.scope.find(s => s.workbookId === book.book.id);
     if (!scope) return unavailable("scope-unavailable");
     // Marks of pages of no day (extra practice) are held: no sample has them (as captureBook1Progress does).
-    const items = book.items.filter(m => !off.pageIds.has(m.page_id)), ids = new Set(items.map(m => m.id));
+    const dated = book.items.filter(m => !off.pageIds.has(m.page_id));
     // #628: with no marked scan of the book, hold book 2. Never advance or repeat by plan.
-    if (!items.length) return { status: "held", reason: "no-marked-scans" };
+    if (!dated.length) return { status: "held", reason: "no-marked-scans" };
+    // A first mark after the cutoff cannot prove the item's state at the cutoff (the history reader refuses it as
+    // unproved-past-state), so it stays out of the history, as planNextBookFromSnapshot keeps it out and holds it "after
+    // cutoff". Its rows stay in the frozen sources, and a later refresh reads it as a new mark.
+    const firstAt = (m: (typeof dated)[number]) => {
+      const first = book.changes.filter(c => c.item_id === m.id).sort((a, b) => a.to_version - b.to_version)[0];
+      return ledgerTime(first ? (first.previous as unknown as { evidence_at: string }).evidence_at : m.evidence_at);
+    };
+    const items = dated.filter(m => firstAt(m) <= r.cutoff), ids = new Set(items.map(m => m.id));
     const changes = book.changes.filter(c => ids.has(c.item_id));
     const events = book.events.filter(e => e.workbook_page === null || !off.numbers.has(e.workbook_page));
     const approval = book.approvals.filter(a => a.action === "workbook-approved").sort((a, b) => a.id - b.id).at(-1);

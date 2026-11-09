@@ -4,6 +4,7 @@ vi.mock("next/headers", () => ({ cookies: async () => ({ getAll: () => [], set: 
 vi.mock("./next-book-planner", () => ({
   nextBookPlanner: () => ({ plan: async () => ({ ok: false, reason: "unused" }) }),
   nextBookWiring: (planner: unknown) => ({ planner }),
+  NEXT_BOOK_REAL_FAMILIES: false,
 }));
 import { createClient } from "@supabase/supabase-js";
 import { createNextBookStepServer } from "./next-book-step-server";

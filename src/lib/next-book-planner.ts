@@ -11,6 +11,14 @@ import { nextBookIssuedSkills, planNextBookFromSnapshot, type NextBookSnapshot }
 import type { FrozenNextBookSnapshot, NextBookPlanner } from "./next-book-snapshot";
 import type { NextBookServerOptions } from "./next-book-snapshot-server";
 
+/**
+ * False until the workbook worker makes a run with a snapshot_id from its saved plan_input. Until then such a run is
+ * planned with planNextWorkbook and does not use the marks, so both callers prepare test families
+ * (public.test_accounts) only, whatever NEXT_BOOK_PREPARE_ENABLED says. Set it to true in the change that makes the
+ * worker read plan_input.
+ */
+export const NEXT_BOOK_REAL_FAMILIES = false;
+
 export const BOOK1_RECORD_UNAVAILABLE = "The Book 1 starting record is unavailable.";
 export const SCOPE_MISMATCH = "The snapshot scope does not match its capture.";
 

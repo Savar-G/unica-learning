@@ -19,6 +19,7 @@ import { memoryNextBookDue } from "./next-book-step-memory";
 import { runNextBookStep } from "./next-book-step";
 import { prepareFromSnapshot } from "./next-book-admin";
 import { book1Capture } from "./next-book-snapshot-server";
+import { captureNextBookEvidence } from "./next-book-capture";
 import { BOOK1_RECORD_UNAVAILABLE, nextBookPlanner, nextBookWiring, plannerScope, snapshotPlanner } from "./next-book-planner";
 import type { FrozenWorkbookSourcesV2 } from "./workbook-progress-source";
 
@@ -30,7 +31,8 @@ const MIN = 60_000;
 const ADMIN = { id: "00000000-0000-4000-8000-0000000000ad", email: "admin@example.invalid" };
 type Item = ReturnType<typeof printedItems>[number];
 let sources: FrozenWorkbookSourcesV2, baseline: Book1Baseline, bookId: string, revision: string;
-let later: Item, area: Item[];
+let later: Item, area: Item[], fresh: Item;
+let sourceBook: ReturnType<typeof shippedBook>, record: ReturnType<typeof baselineOf>["record"];
 
 beforeAll(async () => {
   const job = await jobBook(5), made = baselineOf(job);
@@ -40,10 +42,14 @@ beforeAll(async () => {
   // A printed review (3.9, step 4) marked right, an expanded-form question marked wrong, and a Day 8 question marked early.
   area = all.filter(e => e.teaching?.itemStep?.skill === "3.9-area-square-units" && e.teaching.itemStep.step === 4);
   for (const e of area) mark(book, e, "right");
-  mark(book, all.find(e => e.teaching?.itemStep?.skill === "4.1-expanded-form")!, "wrong");
+  const wrong = all.find(e => e.teaching?.itemStep?.skill === "4.1-expanded-form")!;
+  mark(book, wrong, "wrong");
+  // Not marked here: the after-cutoff test marks it first at CUTOFF + 1 s.
+  fresh = all.find(e => e !== wrong && !area.includes(e))!;
   later = printedItems(book).find(e => e.day >= 8 && e.mastery.eligible)!;
   mark(book, later, "right");
   sources = frozenOf(book, made.record);
+  sourceBook = structuredClone(book); record = made.record;
   bookId = book.book.id; revision = book.book.printed_revision!;
 }, 300_000);
 
@@ -217,6 +223,33 @@ describe("the next-book planner wiring", () => {
     } finally { cv.newer = null; }
   }, 120_000);
 
+  // Falsifier (review P2-2): a first scored mark after the cutoff makes the capture unavailable
+  // (history-unproved-past-state), or enters the ledger, or leaves the frozen sources.
+  it("a first scored mark after the cutoff is left out of the history and the ledger, kept in the sources, and held by the planner", async () => {
+    const b = structuredClone(sourceBook);
+    const row = mark(b, fresh, "right", new Date(CUTOFF + 1000).toISOString());
+    const late = frozenOf(b, record);
+    const key = keyOf(fresh);
+    const request = { snapshotId: "00000000-0000-4000-8500-000000000099", parentId: PARENT, childId: CHILD, workbookId: bookId,
+      printedRevision: revision, scope: "day7" as const, cutoff: CUTOFF };
+    const captured = captureNextBookEvidence(request, late);
+    if (captured.status !== "captured") throw Error(JSON.stringify(captured));
+    expect(captured.sources.books[0].items.some(m => m.id === row.id)).toBe(true);
+    expect(captured.fence.books[0].counts.items).toBe(b.items.length - 1);
+    // The real planner on the same sources plans, and holds the mark "after cutoff".
+    const planned = planNextBookFromSnapshot({ sources: late, snapshot: { id: request.snapshotId, workbookId: bookId, cutoff: CUTOFF, scope: "day7",
+      issuedSkills: nextBookIssuedSkills(late)! } });
+    if (!planned.ok) throw Error(planned.reason);
+    expect(planned.held).toEqual(expect.arrayContaining([expect.objectContaining({ key, reason: "after cutoff" })]));
+    // Through the whole flow: queued, the late mark outside the ledger and outside consumed.
+    const w = world({ capture: book1Capture({ capture: async () => structuredClone(late) }) });
+    expect(await prepareNextBook(w.claim(), w.deps(), CUTOFF)).toMatchObject({ status: "queued" });
+    const { plan, frozen } = planOf(w.row());
+    expect(frozen.ledger.some(l => l.key === key)).toBe(false);
+    expect(plan.consumed.some(c => c.key === key)).toBe(false);
+    expect(plan.held).toEqual(expect.arrayContaining([expect.objectContaining({ key, reason: "after cutoff" })]));
+  }, 120_000);
+
   // Falsifier: the callers still see no planner, or their paths stop before the planner.
   it("nextBookWiring is ready, and the cron step and the admin button both reach the planner", async () => {
     const planner = nextBookPlanner();
@@ -228,13 +261,14 @@ describe("the next-book planner wiring", () => {
     step.claim();
     const result = await runNextBookStep({ release: { mode: "test-only", testParents: [PARENT] }, planner: s.planner,
       prepare: p => (trigger, now) => prepareNextBook(trigger, step.deps(p), now), reader: memoryNextBookDue(step.m.state),
-      testAccount: async () => true, openPlan: async () => false, time: { now: () => CUTOFF, endAt: CUTOFF + 55_000 } });
+      testAccount: async () => true, realFamilies: false, openPlan: async () => false, time: { now: () => CUTOFF, endAt: CUTOFF + 55_000 } });
     expect(result).toMatchObject({ status: "ran", due: 1, prepared: 1, outcomes: { queued: 1 } });
     expect(s.seen.map(x => x.scope)).toEqual(["day7"]);
 
     const admin = world(), a = recording();
     const answer = await prepareFromSnapshot(ADMIN, CHILD, { planner: a.planner, prepare: p => (trigger, now) => prepareNextBook(trigger, admin.deps(p), now),
-      family: async () => ({ parentId: PARENT, deleting: false, deliveredBook1: bookId, zone: "America/Vancouver" }), now: () => CUTOFF });
+      realFamilies: false, family: async () => ({ parentId: PARENT, deleting: false, testFamily: true, deliveredBook1: bookId, zone: "America/Vancouver" }),
+      now: () => CUTOFF });
     expect(answer).toEqual({ ok: true, line: "Next book queued." });
     expect(a.seen.map(x => x.scope)).toEqual(["backstop"]);
   }, 240_000);

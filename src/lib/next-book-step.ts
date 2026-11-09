@@ -114,6 +114,11 @@ export interface NextBookStepDeps {
   reader: NextBookDueReader;
   /** test_accounts still marks this listed parent. Read again before each item. */
   testAccount(parentId: string, signal: AbortSignal): Promise<boolean>;
+  /**
+   * May a real family be prepared at all? NEXT_BOOK_REAL_FAMILIES in production (false until the worker reads
+   * plan_input). When false, "families" admits only listed test families, as "test-only" does.
+   */
+  realFamilies: boolean;
   /** The child's plan is open (childPlanAccess). Read again before each item. */
   openPlan(input: { parentId: string; childId: string }, signal: AbortSignal): Promise<boolean>;
   time: { now(): number; endAt: number };
@@ -131,7 +136,7 @@ const outcomeKey = (o: PrepareOutcome) => o.status === "refused" ? `refused:${o.
 /** May this family's item be prepared now? Checked right before the item's writes. */
 async function released(item: NextBookDueItem, release: NextBookRelease, deps: NextBookStepDeps, signal: AbortSignal): Promise<boolean> {
   if (release.testParents.includes(item.parentId) && await deps.testAccount(item.parentId, signal)) return true;
-  return release.mode === "families" && await deps.openPlan({ parentId: item.parentId, childId: item.childId }, signal);
+  return release.mode === "families" && deps.realFamilies && await deps.openPlan({ parentId: item.parentId, childId: item.childId }, signal);
 }
 
 class Deadline extends Error {}

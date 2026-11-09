@@ -37,7 +37,9 @@ Whichever path comes first wins. The others get the same chain and the same run 
      They never count as blank or wrong;
    - **held for later**: results outside the days in scope or after the cutoff.
    The capture (`src/lib/next-book-capture.ts`) picks no skill: the ledger holds the marks of every skill and step the
-   printed Book 1 issued, on the days in scope, because the planner binds all of them.
+   printed Book 1 issued, on the days in scope, because the planner binds all of them. An item whose first mark is after the cutoff stays out of
+   the history and the ledger (its state at the cutoff is not proved), as the planner holds it "after cutoff". Its rows
+   stay in the frozen sources, and a refresh reads it as a new mark.
 3. **Scope.** A Day 7 snapshot uses current-book Days 1 to 7 only. Days 8 to 10, even if scanned early, are held
    for later. A backstop or admin snapshot uses every accepted day.
 4. **Plan.** The planner gets the frozen snapshot and history. It answers with the plan input, the plan, its hash,
@@ -71,6 +73,16 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
 Two callers run `prepareNextBook`. Both use one planner resolver, `nextBookPlanner()` in `src/lib/next-book-planner.ts`.
 With no planner (`null`), neither caller reads or writes anything: no claim becomes a chain, no hold row is written, no
 run starts.
+
+**Test families only, for now.** The worker still plans a run with `planNextWorkbook` and does not read the saved
+`plan_input`, so a book 2 run would not use the marks. Until it does, `NEXT_BOOK_REAL_FAMILIES` (`src/lib/next-book-planner.ts`)
+is `false`, and both callers prepare only families in `public.test_accounts`, whatever `NEXT_BOOK_PREPARE_ENABLED` says:
+
+- the admin button refuses any other family before any write, with "Only test families can get the next book for now.";
+- the automatic step admits a family only when it is listed in `WORKBOOK_SCAN_TEST_PARENT_IDS` and still marked as a
+  test; with `families`, it does not admit real families with an open plan.
+
+Set it to `true` in the change that makes the worker read `plan_input`.
 
 ## The planner
 
@@ -158,6 +170,7 @@ line, with times in the family's time zone:
 | queued | Next book queued. |
 | refused, next book exists | This book already has a next book. |
 | no planner | The planner is not ready yet. |
+| not a test family (until the worker reads `plan_input`) | Only test families can get the next book for now. |
 
 ## Where things are
 
@@ -189,6 +202,6 @@ The database functions are service-only:
 ## Not built yet
 
 - The worker does not read `plan_input` yet. The planner owner adds that for runs with a `snapshot_id`.
-- The real planner is wired, so the admin button is live. Until the worker reads `plan_input`, keep the switch
-  (`NEXT_BOOK_PREPARE_ENABLED`) off or `test-only`.
+- The real planner is wired. Until the worker reads `plan_input`, both callers prepare test families only
+  (`NEXT_BOOK_REAL_FAMILIES` is `false`).
 - The run is not routed to the Mac worker. A queued run stays on the default runner until a caller routes it.

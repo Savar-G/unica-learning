@@ -7,7 +7,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
-import { nextBookPlanner, nextBookWiring } from "./next-book-planner";
+import { NEXT_BOOK_REAL_FAMILIES, nextBookPlanner, nextBookWiring } from "./next-book-planner";
 import { nextBookSnapshotServer } from "./next-book-snapshot-server";
 import { nextBookRelease, runNextBookStep, type NextBookStepEnvironment, type NextBookStepResult } from "./next-book-step";
 import { isTestAccount, nextBookDueStore } from "./next-book-step-store";
@@ -29,7 +29,7 @@ export function createNextBookStepServer(env: NextBookStepEnvironment,
       };
       const service = (signal: AbortSignal) => clientFor(signal) ?? (() => { throw new Error("next_book_service_unavailable"); })();
       return runNextBookStep({
-        release, planner: nextBookPlanner(), time,
+        release, planner: nextBookPlanner(), time, realFamilies: NEXT_BOOK_REAL_FAMILIES,
         prepare: (planner, signal) => {
           const wiring = nextBookWiring(planner);
           if (!wiring) return null;
