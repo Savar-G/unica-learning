@@ -165,7 +165,8 @@ describe("an invalid simulation never counts as a pass", () => {
     ["talks too long for the age", C07, () => sayEach([`${"so ".repeat(45)}I got 66.`, ...solved]), "too_long"],
     ["breaks its output schema", C07, () => answer(() => ({ action: "shout", text: "hi", seconds: null, stop: false })), "simulator_error"],
     ["fails as a model call", C07, () => answer(() => { throw new Error("OpenRouter answered 500: boom"); }), "simulator_error"],
-    ["never lets the call end", C07, () => answer(() => ({ action: "say", text: "Um.", seconds: null, stop: false })), "turn_cap"],
+    // A child who only says "Um." is closed by the loop guard since #698 round 2; one who keeps writing gets Maya's wait.
+    ["never lets the call end", C07, () => answer(() => ({ action: "say", text: "I'm still writing.", seconds: null, stop: false })), "turn_cap"],
   ];
 
   it.each(invalidCases)("a child that %s is invalid, and the judge is not asked", async (_, c, simulator, code) => {
@@ -256,10 +257,13 @@ describe("an invalid simulation never counts as a pass", () => {
 });
 
 describe("the turn cap counts spoken child turns (#604)", () => {
-  /** A child who says "Um." and waits a second, in turn: as many waits as words. */
+  /**
+   * A child who says they are still writing and waits a second, in turn: as many waits as words. ("Um." is closed by the
+   * loop guard since #698 round 2: Maya never shows the same step again and again.)
+   */
   const umAndWait = () => {
     let n = 0;
-    return answer(() => (n++ % 2 === 0 ? { action: "say", text: "Um.", seconds: null, stop: false } : { action: "wait", text: null, seconds: 1, stop: false }));
+    return answer(() => (n++ % 2 === 0 ? { action: "say", text: "I'm still writing.", seconds: null, stop: false } : { action: "wait", text: null, seconds: 1, stop: false }));
   };
 
   it("cuts a child who waits between turns after 24 spoken turns, not 24 turns in all", async () => {

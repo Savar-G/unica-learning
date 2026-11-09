@@ -240,3 +240,73 @@ describe("#735: a step's sum with its written digit and carry", () => {
     expect((await play([down(text)])).told[1]).toMatchObject(NEXT);
   });
 });
+
+// Sol review of 4b268e7d (#698 round 2, P1 c): the source explanation is left out only after a declared answer. A question
+// in any punctuation, a hedge or "right" keeps the turn as said, so it keeps its confirm and is never solved at once.
+describe("#698 round 2: an explanation after a question or a hedge keeps the confirm", () => {
+  const opts = readOptionsFor(FIXTURES.A as OperationPackage);
+  const UNSURE = [
+    "Is it 66. I followed the steps.",
+    "Is it 66 because you showed me the steps.",
+    "Is it 66 I followed the steps",
+    "Maybe 66. I followed the steps.",
+    "66 right. I followed the steps.",
+    "I think it's 66. That's what I got.",
+  ];
+  it.each(UNSURE)("reads %j as not sure", (text) => {
+    expect(readAnswer(text, opts).sure).toBe(false);
+  });
+  const paths: [string, Plan[]][] = [
+    ["the model's repair", [{ act: "accept_answer" }]],
+    ["code's fallback after a refused accept", [{ act: "accept_answer", repair: { throws: true } }]],
+    ["code's fallback with the model down", THROWS],
+  ];
+  it.each(UNSURE.flatMap((text) => paths.map(([name, maya]) => [text, name, maya] as const)))("asks the confirm for %j and does not accept it (%s)", async (text, _name, maya) => {
+    const { told, outcome } = await play([{ child: text, read: { answers: [[66, "result", "right"]] }, maya }]);
+    expect(told[1], JSON.stringify(told[1])).toMatchObject({ act: "confirm", lines: ["confirm.heard"] });
+    expect(told.map((t) => t.act)).not.toContain("accept_answer");
+    expect(outcome?.reason).not.toBe("solved");
+  });
+  it.each(["Yes, it's 66. I got it from the steps you showed me.", "Yes, I said 66. I got it from the steps you showed me."])("still reads %j as sure", (text) => {
+    expect(readAnswer(text, opts)).toMatchObject({ final: { type: "number", value: 66 }, sure: true });
+  });
+});
+
+// Sol review of 4b268e7d (#698 round 2, P1 e): turns that fail before checkAnswers holds them still looped on the same
+// step prompt. The guard counts Maya's repeated step prompts apart from credit: never a third in a row, and at H3 never a
+// second show in a row; at the top the easier example, then close.stuck. No credit, no miss, no answer.
+describe("#698 round 2 loop guard: repeated step prompts outside the held total", () => {
+  const TURNS = ["7 plus 9 is 16, I wrote 5.", "I got 16 and 15.", "What is 7 plus 9?"];
+  const turn = (text: string, repair: Plan): Step => ({
+    child: text, read: { answers: [[16, "ones", "right"]] },
+    maya: [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair }],
+  });
+  const paths: [string, (text: string) => Step][] = [
+    // A repair that drops the bad answer reading and asks the ones again at H0, every time.
+    ["the model's repair", (text) => turn(text, { act: "guide", step: "ones", level: 0, lines: ["step.invite"], read: {} })],
+    ["code's fallback after a refused step", (text) => turn(text, { throws: true })],
+    ["code's fallback with the model down", (text) => down(text)],
+  ];
+  const prompt = (t: Told) => (t.act === "guide" ? JSON.stringify([t.step, t.lines.filter((l) => l.startsWith("step."))]) : null);
+  it.each(TURNS.flatMap((text) => paths.map(([name, step]) => [text, name, step] as const)))("%j repeated (%s) climbs to close.stuck", async (text, _name, step) => {
+    const { told, outcome } = await play(Array.from({ length: 10 }, () => step(text)));
+    const guides = told.filter((t) => t.act === "guide");
+    for (let i = 2; i < told.length; i++) {
+      const k = prompt(told[i]);
+      expect(k !== null && k === prompt(told[i - 1]) && k === prompt(told[i - 2]), `${i}: ${k}`).toBe(false);
+    }
+    // At H3 never a second show of the step in a row, and never a third show at all.
+    for (let i = 1; i < told.length; i++) expect(told[i].lines.includes("step.show") && told[i - 1].lines.includes("step.show"), `${i}`).toBe(false);
+    expect(guides.filter((t) => t.lines.includes("step.show")).length).toBeLessThanOrEqual(2);
+    // It climbs: help above H0 is given, and the call ends with the honest close.
+    expect(Math.max(...guides.map((t) => t.level ?? 0))).toBeGreaterThan(0);
+    expect(told.at(-1)).toMatchObject({ act: "close" });
+    expect(told.at(-1)!.lines).toContain("close.stuck");
+    expect(outcome?.reason).not.toBe("technical_issue");
+    expect(outcome?.reason).not.toBe("solved");
+    // No credit and no final answer.
+    expect(told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+    expect(told.map((t) => t.act)).not.toContain("give_answer");
+    expect(told.map((t) => t.say).join(" ")).not.toMatch(/66/);
+  });
+});

@@ -1018,23 +1018,29 @@ function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRea
  * Where the answer came from, after it, as an exact allow-list (PR #698 practice: "Yes, it's 66. I got it from the steps
  * you showed me." was not sure): a last sentence "I got it from the steps you showed me.", "I followed the steps.",
  * "That's what I got.", or a last clause "because you showed me the steps". It holds no number, hedge, question or other
- * speaker, so it says nothing about the answer: it is left out before the turn is read. Any other sentence stays, and a
- * turn with a hedge or a question keeps it.
+ * speaker, so it says nothing about the answer: it is left out before the turn is read, but only when what is left is
+ * one declared answer (DECLARED_ANSWER): "Yes, it's 66.", "It's 66.", "I said 66.", "My answer is 66.", "66.". Any other
+ * answer keeps the whole turn as it was, so it stays not sure: a question in any punctuation ("Is it 66. I followed the
+ * steps.", "Is it 66 because you showed me the steps."), a hedge ("Maybe 66.", "I think it's 66."), "66 right", "66 or 56".
+ * Fail-closed review of the round-1 fix (#698, P1 c).
  */
 const SOURCE_SENTENCE = /^(?:i got (?:it|that|this) from (?:the|your) steps(?: (?:you showed me|you did|we did))?|i (?:did|followed|used) (?:the|your) steps(?: (?:you showed me|we did))?|(?:that's|that is) what i got)$/;
-const SOURCE_REASON = /,?\s+because\s+(?:you showed me(?: the steps| how)?|of the steps(?: you showed me)?|i (?:did|followed|used) (?:the|your) steps(?: you showed me)?)([.!]?)$/i;
+const SOURCE_REASON = /,?\s+because\s+(?:you showed me(?: the steps| how)?|of the steps(?: you showed me)?|i (?:did|followed|used) (?:the|your) steps(?: you showed me)?)([.!]?)$/;
+/** One declared answer, with at most a yes before it: the number is checked by plainNumber. */
+const DECLARED_ANSWER = /^(?:(?:yes|yeah|yep)[,\s]+)?(?:(?:it's|it is|i said|i got|my answer is|the answer is)\s+)?(.+?)[.!]?$/;
 function withoutSource(said: string): string {
-  const t = said.trim();
-  // A hedge or a question anywhere keeps the whole turn as it was, so it stays not sure ("Yes, I think it's 66. I got it
-  // from the steps you showed me.").
-  if (t.includes("\n") || t.includes("?") || /\b(?:think|guess|guessed|believe|probably|maybe|might|sure)\b/i.test(t)) return said;
-  const sentences = t.split(/(?<=[.!])\s+/).filter(Boolean);
+  const t = said.trim().replace(/’/g, "'");
+  if (t.includes("\n") || t.includes("?")) return said;
+  const sentences = t.split(/(?<=[.!])\s+/).filter(Boolean).map((x) => x.toLowerCase());
   if (sentences.length === 0) return said;
-  while (sentences.length > 1 && SOURCE_SENTENCE.test(sentences.at(-1)!.replace(/’/g, "'").replace(/[.!]+$/, "").trim().toLowerCase())) sentences.pop();
+  while (sentences.length > 1 && SOURCE_SENTENCE.test(sentences.at(-1)!.replace(/[.!]+$/, "").trim())) sentences.pop();
   const last = sentences.length - 1;
-  sentences[last] = sentences[last].replace(/’/g, "'").replace(SOURCE_REASON, "$1");
+  sentences[last] = sentences[last].replace(SOURCE_REASON, "$1");
   const kept = sentences.join(" ");
-  return kept === t ? said : kept;
+  if (kept === t.toLowerCase()) return said;
+  // Only one declared answer is left: anything else keeps the turn as the child said it.
+  const declared = sentences.length === 1 ? DECLARED_ANSWER.exec(sentences[0].trim()) : null;
+  return declared && plainNumber(declared[1]) !== null ? kept : said;
 }
 
 /**

@@ -79,7 +79,10 @@ describe("the rest of the review", () => {
     const shown: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
     const { told } = await play([shown, stated, onToTens("Yes.")]);
     expect(told[2].lines).not.toContain("check.stated");
-    expect(told[3].step ?? "ones").toBe("ones");
+    // No move past the ones: the show is not said a second time in a row, so the easier example comes, and the yes after
+    // it goes back to the child's question (#698 round 2, P1 e).
+    expect(told.slice(2).filter((t) => t.act === "guide").map((t) => t.step ?? "ones")).not.toContain("tens");
+    expect(told.slice(2).flatMap((t) => t.lines)).not.toContain("check.right_step");
   });
 
 

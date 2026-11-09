@@ -226,7 +226,10 @@ describe("#605 item 3: repeated fallbacks raise help up to the level the ladder 
 
   it("rises one level per child turn on the same step, and stops at the top", () => {
     const c = call();
-    expect([stuck(c), stuck(c), stuck(c), stuck(c), stuck(c)].map((f) => f.proposal.level)).toEqual([0, 1, 2, 3, 3]);
+    const turns = [stuck(c), stuck(c), stuck(c), stuck(c), stuck(c)];
+    expect(turns.slice(0, 4).map((f) => f.proposal.level)).toEqual([0, 1, 2, 3]);
+    // #698 round 2 (P1 e): never a second show in a row; the stuck way out (the easier example) comes instead.
+    expect(turns[4].proposal.act).toBe("example_step");
   });
 
   it("starts low again on the next step", () => {

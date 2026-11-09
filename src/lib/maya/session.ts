@@ -396,6 +396,13 @@ export interface Session {
    * credit (heldStepNow), how many, and whether Maya then asked its confirm. A saved session from before has no field.
    */
   heldStep?: { step: string; times: number; asked: boolean };
+  /**
+   * The loop guard's prompt count (PR #698, round 2): Maya's last guide prompt as its step, help level and step lines
+   * ("ones|0|step.invite"), how many of her turns in a row said it, and the lowest help she may give on the step after the
+   * guard made the help climb (`floor`). An act that moves the teaching on ends the row (PROMPT_ROW_ENDS); the floor stays
+   * while the step is the same. A saved session from before has no field.
+   */
+  prompt?: { step: string; level: number; key: string; times: number; floor: number };
   confirmTries: number;
   offeredOtherInput: boolean;
   redirects: number;
@@ -973,15 +980,22 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
     };
   }
   // The loop guard (PR #698): the same column's total twice in words code cannot credit gets the step confirm; after it,
-  // the next help up, and at the top help the honest close (loopGuard).
-  const loop = s.solved === null && !rightResult ? loopGuard(s) : null;
+  // and after the same step prompt twice in a row (once at H3), the next help up, and at the top help the stuck way out:
+  // the easier example, then the honest close (loopGuard). Never over a step this turn did right.
+  const loop = s.solved === null && !rightResult && !rightHere ? loopGuard(s) : null;
   if (loop === "confirm") {
     const total = heldStepNow(s)!;
     return { acts: ["confirm"], code: "confirm_first", reason: `The child said ${valueText(total.value)} for ${total.step} again in words code cannot credit: ask once if that is what they said (confirm.heard ${valueText(total.value)}).` };
   }
-  if (loop === "climb" && s.ladder.step === heldStepNow(s)!.step && nextHint(s) === null) {
-    return { acts: ["close"], code: "act_not_allowed", reason: "This step is still not clear after Maya asked about it and gave the top help: close honestly with close.stuck, with no answer." };
+  if (loop === "climb" && s.ladder.step === heldStepNow(s)?.step && nextHint(s) === null) {
+    return repeatWayOut(s) === "example_step"
+      ? { acts: ["example_step"], code: "act_not_allowed", reason: "Maya gave this step's top help and it is still not clear: work the easier example (example_step), never the same help again." }
+      : { acts: ["close"], code: "act_not_allowed", reason: "This step is still not clear after the top help and the easier example: close honestly with close.stuck, with no answer." };
   }
+  // A repeated prompt ("repeat") is Maya's own words, not the turn's: propose refuses only that prompt again. At the top
+  // help the way out is offered beside the other acts, and code's fallback takes it (fallbackProposals). Before the reading
+  // (offering) a right answer may still come, so nothing is added.
+  if (loop === "repeat" && !offering && nextHint(s) === null && acts.includes("guide") && !acts.includes(repeatWayOut(s))) acts = [...acts, repeatWayOut(s)];
   acts = [...acts, ...confirm.filter((a) => !acts.includes(a))];
   // Offered before the reading: a turn with no number may be off topic (flattery, a promise, a question about Maya), so
   // the model sees the redirect and its reply phrases. Before #605 it saw them through the confirmation offered on every
@@ -1311,7 +1325,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     // A lost carry is a located error: its regroup line (H1) is allowed at once.
     if (pendingRegroup(regroup).some((c) => c.at === ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 1);
     // The loop guard climbs: the next help up is allowed now (loopGuard).
-    const up = loop === "climb" && ladder.step === s.ladder.step ? nextHint(base) : null;
+    const up = (loop === "climb" || loop === "repeat") && ladder.step === s.ladder.step ? nextHint(base) : null;
     if (up !== null) ladder.unlocked = Math.max(ladder.unlocked, up);
   }
 
@@ -1434,6 +1448,13 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
         return no("line_not_offered", "The child asked about the carried digit: answer with the offered line about it (step.point, step.regroup or step.why) before another prompt.", allowedNow);
       }
       if (ladder.failures >= 2 && p.level <= ladder.hint && !regroupNow) return no("same_hint_again", `Two attempts failed at H${ladder.hint}: give more help or offer to stop.`, allowedNow);
+      // The loop guard (round 2, P1 e): the same step prompt is never said a third time in a row, and the show (H3) never a
+      // second time in a row (loopGuard). After the guard made the help climb, help on the step never goes back below it:
+      // "How about the ones?" again after "Look at the ones column" would start the same loop over.
+      if (loop === "repeat" && s.prompt?.key === promptKey(p, spoken.chosen) && !regroupNow) {
+        return no("same_hint_again", `Maya said this help on "${p.step}" just before and it is still not clear: give the next help up${nextHint(base) === null ? ", or the easier example, or close honestly" : ""}.`, allowedNow);
+      }
+      if (s.prompt?.step === p.step && p.level < s.prompt.floor && !regroupNow) return no("same_hint_again", `Maya already gave H${s.prompt.floor} on this step when the same help did not work: never go back below it.`, allowedNow);
       // The loop guard: after its confirm, the same step is never asked again at the same help (loopGuard).
       if (loop === "climb" && p.level <= ladder.hint) return no("same_hint_again", `Maya asked about this step and it is still not clear: give the next help up, above H${ladder.hint}.`, allowedNow);
       if (p.level > ladder.hint) ladder.failures = 0;
@@ -1624,6 +1645,18 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (passed.length > 0) s.passed = passed.filter((id) => !done.includes(id));
     s.ladder = ladder;
     s.finalMisses = misses;
+  }
+  // The loop guard's prompt count: the same guide prompt on the same step, Maya turn after Maya turn (loopGuard). A guide
+  // said on a turn the guard made climb sets the step's floor.
+  const key = scoring && p.act === "guide" ? promptKey(p, spoken.chosen) : null;
+  if (key !== null) {
+    const same = base.prompt?.step === p.step;
+    const floor = Math.max(same ? base.prompt!.floor : -1, loop === "repeat" || loop === "climb" ? p.level! : -1);
+    s.prompt = { step: p.step!, level: p.level!, key, times: base.prompt?.key === key ? base.prompt.times + 1 : 1, floor };
+  } else if (s.prompt && PROMPT_ROW_ENDS.includes(p.act)) {
+    // An act that moves the teaching on ends the row; the floor stays. Any other act (a confirm, a wait, a redirect, a
+    // guide on the step with no step line) neither counts nor ends it, so it cannot reset the count between prompts.
+    s.prompt = { ...s.prompt, key: "", times: 0 };
   }
   // Each explanation belongs to exactly one carry, not to either adjacent column's other carry.
   const explained = spoken.chosen.filter((o) => o.line === "step.regroup" && o.slots.step).flatMap((o) => pkg ? pairOf(pkg, o.slots.step!, o.slots.other === "carry") : []);
@@ -2526,17 +2559,38 @@ function heldStepNow(s: Session): { step: string; value: AnswerValue } | null {
  * ("climb"), and at the top help the honest close: never the same step line a third time. A turn that names a column or
  * claims a digit ("16 in the ones.") gets no confirm, as stepConfirmable: it climbs at once. Null for any other turn.
  */
-function loopGuard(s: Session): "confirm" | "climb" | null {
+function loopGuard(s: Session): "confirm" | "climb" | "repeat" | null {
+  if (!s.turn || !s.package) return null;
   const prev = s.heldStep;
-  if (!prev || !s.turn || !s.package) return null;
-  const held = heldStepNow(s);
-  if (!held || held.step !== prev.step) return null;
-  if (prev.asked) return "climb";
-  const text = s.turn.text;
-  const offered = offersFor(s, "confirm", { steps: [], done: s.done, checked: [], rightResult: false, equal: null })
-    .some((o) => o.line === "confirm.heard" && o.slots.heard === valueText(held.value));
-  const named = columnClaims(text).length > 0 || claimPlaces(text).length > 0;
-  return offered && !named && s.confirmTries < 2 && !claimJudgedWrong(s) ? "confirm" : "climb";
+  const held = prev ? heldStepNow(s) : null;
+  if (prev && held && held.step === prev.step) {
+    if (prev.asked) return "climb";
+    const text = s.turn.text;
+    const offered = offersFor(s, "confirm", { steps: [], done: s.done, checked: [], rightResult: false, equal: null })
+      .some((o) => o.line === "confirm.heard" && o.slots.heard === valueText(held.value));
+    const named = columnClaims(text).length > 0 || claimPlaces(text).length > 0;
+    return offered && !named && s.confirmTries < 2 && !claimJudgedWrong(s) ? "confirm" : "climb";
+  }
+  // Round 2 (#698, P1 e): any turn, credit or not. Maya's same prompt on the ladder's step twice in a row, or her H3 show
+  // once, is not said again for a turn that moves nothing on: the help climbs. A copy of the shown step goes past it
+  // (copiedStep), so it is no repeat.
+  const shown = s.prompt;
+  if (!shown || shown.step !== s.ladder.step || copiedStep(s) !== null) return null;
+  return shown.times >= (shown.level >= 3 ? 1 : 2) ? "repeat" : null;
+}
+
+/** The acts that end the loop guard's row of prompts: each moves the teaching on (the example, a new try, the answer, the end). */
+const PROMPT_ROW_ENDS: readonly Act[] = ["open", "clarify", "example_step", "try_target", "accept_answer", "give_answer", "ask_write", "close"];
+
+/** A guide's prompt for the loop guard: its step, help level and step lines ("ones|0|step.invite"), or null with none. */
+function promptKey(p: Proposal, chosen: readonly { line: string }[]): string | null {
+  const lines = chosen.filter((o) => o.line.startsWith("step.")).map((o) => o.line);
+  return p.act === "guide" && p.step !== undefined && p.level !== undefined && lines.length > 0 ? `${p.step}|${p.level}|${lines.join(",")}` : null;
+}
+
+/** The stuck way out at the top help (#735, decision (a)): the easier example while it is not shown and safe, then the close. */
+function repeatWayOut(s: Session): "example_step" | "close" {
+  return s.package && s.exampleShown < s.package.easierExample.steps.length && !exampleRevealsAnswer(s) ? "example_step" : "close";
 }
 
 /** The first help level above the ladder's on its step that Maya can say, or null at the top. */
@@ -2649,7 +2703,12 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const ladderStep = pkg ? guideStep(pkg, [...done, ...passed], regroup) : "result";
   const view: View = { steps: [ladderStep], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
   const misses = finalMisses(s, checked);
-  const acts = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0, misses)).acts;
+  const allowedActs = (gate(s, {}) ?? teachingActs(s, reading ?? {}, rightResult, done.length > 0, misses)).acts;
+  // The loop guard at the top help: after the same prompt (the show once), code takes the way out teachingActs offers, the
+  // easier example or the honest close, never the same help again or a lower one (loopGuard, P1 e).
+  // It takes the guide's place, so a confirm of a doubtful right answer still comes first.
+  const wayOut = !rightResult && s.solved === null && ladderStep === s.ladder.step && loopGuard(s) === "repeat" && nextHint(s) === null && allowedActs.includes(repeatWayOut(s)) ? repeatWayOut(s) : null;
+  const acts = wayOut ? [...new Set(allowedActs.map((a) => (a === "guide" ? wayOut : a)))] : allowedActs;
   // A right final answer the child was not sure of: the confirmation comes before more help (#605).
   const read = session.turn && pkg ? turnRead(session) : null;
   const doubtful = !rightResult && s.solved === null && pkg !== null && read?.final != null && !read.sure && rightForQuestion(pkg, read.final) ? read.final : null;
@@ -2659,7 +2718,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   // A step a model named, in a turn that is not heard: the confirm question comes before more help. Only that refusal: a
   // claim judged wrong is not a hearing problem (review of fec3dac4).
   const unheard = refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
-  const rank = (a: Act) => ((solved && a === "ask_write") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : FALLBACK_ORDER.indexOf(a));
+  const rank = (a: Act) => ((solved && a === "ask_write") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : a === wayOut ? FALLBACK_ORDER.indexOf("guide") : FALLBACK_ORDER.indexOf(a));
   const order = [...new Set(unheard && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({
     version: PROPOSAL_VERSION, act, parts: offers.map((o) => ({ line: o.line, slots: o.slots })), ...extra, ...(reading ? { reading } : {}),
@@ -2712,7 +2771,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
         break;
       case "close":
         // A content hold (#527): the held lines together, in order.
-        lineSets = s.state === "CONTENT_HOLD" ? [make(act, offers)] : [...(!gate(s, reading ?? {}) && acts.length === 1 && acts[0] === "close" && free.some((o) => o.line === "close.stuck") && free.some((o) => o.line === "close.together") ? [make(act, [free.find((o) => o.line === "close.stuck")!, ...(pkg && closeExpressionContainsAnswer(pkg.operation, pkg.answer.value) ? [] : [free.find((o) => o.line === "close.together")!])])] : []), ...byLevel(free).map((o) => make(act, [o], o.slots.step ? { step: o.slots.step } : {}))];
+        lineSets = s.state === "CONTENT_HOLD" ? [make(act, offers)] : [...(!gate(s, reading ?? {}) && ((acts.length === 1 && acts[0] === "close") || wayOut === "close") && free.some((o) => o.line === "close.stuck") && free.some((o) => o.line === "close.together") ? [make(act, [free.find((o) => o.line === "close.stuck")!, ...(pkg && closeExpressionContainsAnswer(pkg.operation, pkg.answer.value) ? [] : [free.find((o) => o.line === "close.together")!])])] : []), ...byLevel(free).map((o) => make(act, [o], o.slots.step ? { step: o.slots.step } : {}))];
         break;
       case "confirm":
         // The child's doubtful final answer first (#605), then the number they said last.

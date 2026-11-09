@@ -310,10 +310,13 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
       const first = (await play("A", [step])).told.at(-1)!;
       expect(first.lines).not.toContain("check.right_step");
       expect(first.say).not.toMatch(/7 \+ 9 = 16/);
-      // After H3 Maya may show the sum again; she never says the claim was right.
-      const shownFirst = (await play("A", [shown, step])).told.at(-1)!;
-      expect(shownFirst.lines).not.toContain("check.right_step");
-      expect(shownFirst.step ?? "ones").toBe("ones");
+      // After H3 she never says the claim was right, and never guides past the ones. The show is not said a second time
+      // in a row: the easier example comes instead (#698 round 2, P1 e).
+      const after = (await play("A", [shown, step])).told.slice(2);
+      expect(after.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      expect(after.filter((t) => t.act === "guide").map((t) => t.step ?? "ones")).not.toContain("tens");
+      expect(after.filter((t) => t.act === "guide").map((t) => t.step ?? "ones")).not.toContain("result");
+      expect(after.length).toBeGreaterThan(0);
     }
   });
 
@@ -605,8 +608,12 @@ describe("C04: the fallback path keeps to the hint ladder", () => {
       { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] },
       down("Is it 66?"), down("Yes, I said 66. I just guessed it."),
     ]);
-    expect(told.at(-1)).toMatchObject({ act: "guide", step: "ones", level: 3 });
-    expect(told.at(-1)!.lines).not.toContain("check.guess");
+    // The doubtful 66 gets its confirm; then never a second show in a row, and never a lower check: the easier example
+    // (#698 round 2, P1 e).
+    expect(told[2]).toMatchObject({ act: "confirm" });
+    expect(told.at(-1)).toMatchObject({ act: "example_step" });
+    expect(told.slice(2).flatMap((t) => t.lines)).not.toContain("check.guess");
+    expect(told.slice(2).filter((t) => t.act === "guide")).toEqual([]);
   });
 
   it("closes without the answer after a miss at H3", async () => {
