@@ -151,6 +151,10 @@ class Store implements MarkingStore {
   prices = new Map([[MARKING_MODEL, 10_000], ["comparison-model", 10_000]]);
   spend = new Map<string, { period: string; reserved: number; charged: number | null }>();
   events: LearningEvent[] = [];
+  owners = new Map<string, string>();
+  pendingReceipts = new Map<string, { photo: string; version: number }>();
+  teamEvents: { evidence: { kind: "scan"; id: string } }[] = [];
+  progressResolutions: { photo: string; item: string }[] = [];
   imageReads = 0;
   constructor(...frames: MarkingFrame[]) { for (const f of frames) this.frames.set(f.photo, f); }
   async frame(ref: MarkingRef) { return this.deleted ? null : this.frames.get(ref.photo) ?? null; }
@@ -159,6 +163,10 @@ class Store implements MarkingStore {
     if (ref.parent !== f.parentId || this.terminal.has(ref.photo) || this.frozen || this.deleted) return "terminal" as const;
     if ([...this.jobs.values()].some((j) => !j.done && j.until > this.clock)) return "busy" as const;
     for (const e of expectedItems(f)) if (!this.items.has(itemKey(e.identity))) this.items.set(itemKey(e.identity), { expected: e, observation: firstObservation(e, ref.photo), originalEvent: null, eventId: null, at: new Date(this.clock).toISOString(), model: null, prompt: null });
+    for (const e of expectedItems(f)) {
+      const key = itemKey(e.identity), item = this.items.get(key)!;
+      if (item.observation.state === "pending") this.owners.set(key, ref.photo);
+    }
     const old = this.jobs.get(ref.photo);
     const j = { token, items: structuredClone([...this.items.values()]), extraction: old?.extraction ?? null, until: this.clock + 180_000, dispatches: old?.dispatches ?? 0, done: false };
     this.jobs.set(ref.photo, j); return j;
@@ -191,8 +199,13 @@ class Store implements MarkingStore {
     if (status === "attempts") {
       for (const m of this.items.values()) {
         const o = m.observation;
-        if (o.evidence?.photoRevision === ref.photo && o.result === null && o.state === "pending" && m.model === null && o.certainty === "not-read")
-          m.observation = { ...o, certainty: "uncertain", issue: "read-failed", resultVersion: o.resultVersion + 1 };
+        const key = itemKey(m.expected.identity), frame = this.frames.get(ref.photo)!;
+        const unread = o.certainty === "not-read" || (o.certainty === "uncertain" && o.issue === "read-failed" && o.readAnswerText === null && o.regions.length === 0);
+        if (this.owners.get(key) === ref.photo && m.expected.identity.pageId === frame.pageId && m.expected.identity.workbookId === frame.workbookId
+          && m.expected.identity.printedRevision === frame.printedRevision && o.result === null && o.state === "pending" && m.model === null && unread) {
+          m.observation = { ...o, evidence: { photoRevision: ref.photo }, certainty: "uncertain", issue: "read-failed", resultVersion: o.resultVersion + 1 };
+          this.owners.delete(key);
+        }
       }
       job.done = true;
     }
@@ -205,7 +218,15 @@ class Store implements MarkingStore {
   teamMark(key: string, version: number, result: "right" | "wrong" | "blank") {
     const m = this.items.get(key);
     if (!m || !waitsForTeam(m) || m.observation.resultVersion !== version) return false;
+    const photo = m.observation.evidence?.photoRevision ?? this.owners.get(key);
+    const previousOwner = this.owners.get(key) ?? m.observation.evidence?.photoRevision;
+    if (!photo) return false;
     m.observation = { ...m.observation, state: "parent-checked", method: "parent", actor: "admin", result, resultVersion: version + 1 };
+    this.owners.delete(key);
+    this.teamEvents.push({ evidence: { kind: "scan", id: photo } });
+    const pending = this.pendingReceipts.get(key);
+    if (pending && pending.photo === previousOwner && pending.photo === m.observation.evidence?.photoRevision && pending.version <= version)
+      this.progressResolutions.push({ photo: pending.photo, item: key });
     return true;
   }
 }
@@ -1125,6 +1146,29 @@ describe("S4 shared budget", () => {
     expect(s.teamMark(itemKey(item.expected.identity), item.observation.resultVersion, "wrong")).toBe(true);
     expect(s.items.get(itemKey(item.expected.identity))!.observation).toMatchObject({ state: "parent-checked", actor: "admin", result: "wrong", resultVersion: 3 });
   });
+});
+
+it("binds an exhausted retake to the retake for a team mark and its resolution", async () => {
+  const a = frame("photo-a", [0]), b = structuredClone(a); b.photo = "photo-b";
+  const s = new Store(a, b);
+  const failing: MarkingClientFactory = before => ({ client: { model: MARKING_MODEL, async json() {
+    await before(); await before(); throw new Error("lost responses");
+  } }, costMicros: () => null });
+  async function exhaust(photo: string) {
+    expect(await run(s, photo, failing)).toBe("pending");
+    expect(await run(s, photo, client(output(["0"])))).toBe("attempts");
+  }
+  await exhaust(a.photo);
+  const key = itemKey(expectedItems(a)[0].identity), item = s.items.get(key)!;
+  expect(item.observation.evidence?.photoRevision).toBe(a.photo);
+  s.pendingReceipts.set(key, { photo: b.photo, version: item.observation.resultVersion });
+  await exhaust(b.photo);
+  expect(s.teamQueue()).toHaveLength(1);
+  expect(item.observation).toMatchObject({ evidence: { photoRevision: b.photo }, issue: "read-failed", resultVersion: 3 });
+  expect(s.owners.has(key)).toBe(false);
+  expect(s.teamMark(key, item.observation.resultVersion, "right")).toBe(true);
+  expect(s.teamEvents).toEqual([{ evidence: { kind: "scan", id: b.photo } }]);
+  expect(s.progressResolutions).toEqual([{ photo: b.photo, item: key }]);
 });
 
 it("effective projection replaces append-only originals; Try first and parent explanations enter neither facts nor skill denominator", async () => {

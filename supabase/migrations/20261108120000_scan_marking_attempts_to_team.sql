@@ -140,10 +140,15 @@ begin
     if p_data->>'status' in ('off','budget','price-unverified','attempts','pending') then
       if p_data->>'status'='attempts' then
         update public.scan_marking_items set observation=observation||jsonb_build_object(
-          'certainty','uncertain','issue','read-failed','resultVersion',result_version+1),
-          result_version=result_version+1
-        where owner_photo=p_photo and parent_id=p_parent and observation->>'result' is null
-          and observation->>'state'='pending' and model is null and observation->>'certainty'='not-read';
+          'certainty','uncertain','issue','read-failed','resultVersion',result_version+1,
+          'evidence',jsonb_build_object('photoRevision',p_photo::text)),
+          result_version=result_version+1,owner_photo=null
+        where owner_photo=p_photo and parent_id=p_parent and workbook_id=s.workbook_id and page_id=s.page_id
+          and printed_revision=s.printed_revision and observation->>'result' is null
+          and observation->>'state'='pending' and model is null
+          and (observation->>'certainty'='not-read' or (observation->>'certainty'='uncertain'
+            and observation->>'issue'='read-failed' and observation->>'readAnswerText' is null
+            and observation->'regions'='[]'::jsonb));
       end if;
       update public.scan_marking_jobs set state=case when p_data->>'status'='attempts' then 'finished' else 'queued' end, blocked_reason=p_data->>'status',lease_until=null where photo_id=p_photo;
     end if;
