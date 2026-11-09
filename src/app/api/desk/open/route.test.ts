@@ -59,6 +59,14 @@ describe("POST /api/desk/open with the Maya notice", () => {
     expect((await post({})).headers.get("location")).toContain("/account/pin");
   });
 
+  it("asks for the notice when only another parent's desk cookie is on the device", async () => {
+    state.due = true;
+    state.cookie = lockCookie("44444444-4444-4444-8444-444444444444", CHILD);
+    const res = await post({});
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/account/maya-notice");
+    expect(opened(res)).toBe(false);
+  });
+
   it("does not stop an open desk for the notice", async () => {
     state.due = true;
     state.cookie = lockCookie(PARENT, CHILD);
