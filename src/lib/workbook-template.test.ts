@@ -4,10 +4,10 @@ import { packageItem } from "@/lib/question-package";
 import { workbookProblem } from "@/lib/workbook-content";
 import { renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
-import { bandOf, workbookTemplate } from "@/lib/workbook-template";
+import { bandOf, COVER_FOR_CHARS, coverForLine, pagePlan, reviewLayout, workbookTemplate } from "@/lib/workbook-template";
 import { generatedDayTime } from "@/lib/workbook-feedback-check";
 import { Window } from "happy-dom";
-import type { Block } from "@/lib/workbook-page";
+import type { Block, DayContent } from "@/lib/workbook-page";
 
 // The workbook templates (#310) through the renderer with the fake print engine: every page type of the sample books
 // has a layout and prints its number and QR code, the rendered book is one the store takes, and the template's fit
@@ -60,6 +60,38 @@ describe("the workbook templates", () => {
       const pill = review("Place value up to 100,000", n => [{ slot: "on-your-own", items: n.slice(0, 4) }, { slot: "remember-these", items: n.slice(4) }]);
       expect(pill.said).toEqual(["Review"]);
       expect(pill.root.querySelector(".chip.c-rv")?.textContent).toBe("Review");
+    });
+    // (The review of 42bd5a6d: the fit check's plan split a block in two grids the printed page kept as one.)
+    it("plans the grids the printed page prints, one shared decision (reviewLayout)", () => {
+      const draft = book("U16"), p = first(draft, "practice");
+      if (p.content?.kind !== "day") throw new Error("not a day");
+      const n = p.questions.map(q => q.number).slice(0, 6);
+      expect(n).toHaveLength(6);
+      // Three own questions and three review ones: an odd part each side of the split.
+      const at = (title: string): DraftPage => ({ ...p, questions: p.questions.filter(q => n.includes(q.number)),
+        content: { ...p.content as DayContent, title, consistentLayout: true, blocks: [{ slot: "on-your-own", items: n, reviewFrom: n[3] }] } });
+      const grids = (page: DraftPage) => {
+        const root = parsedPage(workbookTemplate().page(page, { qr: "", qrUrl: "" }, draft)!);
+        return [...root.querySelectorAll(".two, .cols")].map(g => [...g.querySelectorAll('[data-measure^="question-"]')].map(q => q.getAttribute("data-measure")!).filter(m => /^question-\d+$/.test(m)).map(m => Number(m.slice(9))));
+      };
+      for (const title of ["Review", "Remember these?", "Mixed review"]) {
+        const said = at(title);
+        expect(reviewLayout(said)).toEqual([{ open: false, pill: false, at: -1 }]);
+        expect(grids(said)).toEqual([n]);
+        expect(pagePlan(said)).toMatchObject({ rows: [n.slice(0, 2), n.slice(2, 4), n.slice(4)], incomplete: [] });
+      }
+      const split = at("Place value up to 100,000");
+      expect(reviewLayout(split)).toEqual([{ open: true, pill: false, at: 3 }]);
+      expect(grids(split)).toEqual([n.slice(0, 3), n.slice(3)]);
+      expect(pagePlan(split)).toMatchObject({ rows: [n.slice(0, 2), n.slice(3, 5)], incomplete: [n[2], n[5]] });
+    });
+    it("names the level on the cover unless the line would need a third line (U18, the longest level name)", () => {
+      const name = (n: number) => "Alexandra Maximiliano Wilhelmina Bartholomew Montgomery".padEnd(n, "a").slice(0, n);
+      expect(coverForLine(name(20), 18)).toBe(`Made for ${name(20)} · Level U18 · Decimals to thousandths and moving shapes`);
+      expect(coverForLine(name(40), 18)).toBe(`Made for ${name(40)} · Level U18`);
+      expect(coverForLine(name(60), 18)).toBe(`Made for ${name(60)} · Level U18`);
+      expect(coverForLine("Mila", 16)).toBe("Made for Mila · Level U16 · Big numbers and multiplication facts");
+      for (let level = 1; level <= 30; level++) for (const n of [1, 20, 40, 60]) expect(coverForLine(name(n), level).length).toBeLessThanOrEqual(Math.max(COVER_FOR_CHARS, `Made for ${name(n)} · Level U${level}`.length));
     });
     it("leaves out a reminder box label that says Remember again, and keeps any other", () => {
       const draft = book("U16"), p = first(draft, "practice");

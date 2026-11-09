@@ -1,5 +1,5 @@
 import { questionWorkSpace } from "./workbook-work-space";
-import { printedInstruction, workbookWorkLine, workQuestionNumbers } from "@/lib/workbook-page-instructions";
+import { isWarmUpPage, printedInstruction, workbookWorkLine, workQuestionNumbers } from "@/lib/workbook-page-instructions";
 // The workbook templates (#310, spec #296): one layout for every page type of .design/workbooks/DESIGN.md (section
 // 7), with its tokens (section 1 to 4): the 8-page and 6-page days, Math in the world, the cover, How + Plan, the back
 // cover with its level map, Friday 5, Show what you know, the level test, parent-led U1 to U3 pages, the early-level
@@ -72,6 +72,8 @@ interface Band {
   /** The questions the page's work line already asks to show their work for ("Show your work under questions 1, 2
    * and 3."): their work spaces print no "Show your work" label of their own and are plain white (Savar's book 1 review). */
   instructed?: ReadonlySet<number>;
+  /** A warm-up page: its instruction names no choice, so a circled choice prints its own "Circle one" (isWarmUpPage). */
+  cueChoices?: boolean;
   name: "parent" | "early" | "mid";
   title: number;
   body: number;
@@ -887,7 +889,9 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
         // Choices in words ("less than 5", "not equal", "cats") stack in the body type: a card has no room for them in
         // a row at the size of a fact.
         const words = !shapes && r.choices.some((c) => /[a-z]{2}/i.test(c));
-        return `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        const circled = `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        // (Unless the question says it: "Circle yes or no.")
+        return o.band.cueChoices && !/\bcircle\b/i.test(q.package.text) ? `<span class="rg"><span class="t1" data-measure="cue-${q.number}-${r.id}"><span>Circle one</span></span>${circled}</span>` : circled;
       }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
       const words = (s: string) => ` ${s.toLowerCase().replace(/[?!.:;,]/g, " ").replace(/\s+/g, " ").trim()} `;
@@ -1062,11 +1066,55 @@ interface Ctx {
   band: Band;
   q: (n: number) => DraftQuestion;
   six: boolean;
-  /**
-   * The page's one Review heading (Savar, 2026-11-09: "Remember these" reads "Review", and never twice on a page): false
-   * once a label or pill printed it, or from the start when the page title already says it ("Review", "Mixed review").
-   */
-  review: { open: boolean };
+  /** The page's one Review heading, block by block (reviewLayout, which pagePlan reads too). */
+  review: ReviewLayout[];
+}
+
+/** Each block's part in the page's one Review heading (reviewLayout). */
+export interface ReviewLayout {
+  /** The page has not said "Review" yet when the block starts. */
+  open: boolean;
+  /** The block prints the Review pill (a "remember-these" block that is not the page's first). */
+  pill: boolean;
+  /** Where the block's review questions start a grid of their own under a Review label; -1 for one grid. */
+  at: number;
+}
+
+/** Slots whose questions print through blockHtml's `list`, the one place a block's review questions can take their own grid. */
+function listsQuestions(slot: SlotName, parent: boolean): boolean {
+  switch (slot) {
+    case "warm-up": case "remember-these": case "finish-these": case "on-your-own": case "practice-row": case "unit-b-practice":
+    case "picture-stories": case "friday-5": case "unit-check": case "mini-test": case "already-know-it":
+      return true;
+    case "fix-it": case "now-you": case "show-what-you-know": case "level-test":
+      return parent;
+    default:
+      return false;
+  }
+}
+
+/**
+ * The page's one Review heading (Savar, 2026-11-09: "Remember these" reads "Review", and never twice on a page), decided
+ * once for the printed page (blockHtml) and the fit check's plan (pagePlan): the heading is open until a label or pill
+ * prints it, or closed from the start when the page title already says it ("Review", "Mixed review"). A block whose
+ * review questions come after the heading was said keeps them in its one grid.
+ */
+export function reviewLayout(page: DraftPage): ReviewLayout[] {
+  const c = page.content;
+  if (c?.kind !== "day") return [];
+  const parent = bandOf(c.level).name === "parent";
+  const present = new Set(page.questions.map(q => q.number));
+  let open = !/\breview\b/i.test(reviewTitle(c.title));
+  return c.blocks.map((b, i) => {
+    const start = open;
+    const firstOfPage = i === 0 && (page.type === "remember-these" || page.type === "remember-these-mixed-set");
+    const pill = b.slot === "remember-these" && !firstOfPage && open;
+    if (pill) open = false;
+    const items = b.items.filter(n => present.has(n));
+    const at = listsQuestions(b.slot, parent) && b.reviewFrom !== undefined && open ? items.findIndex(n => n >= b.reviewFrom!) : -1;
+    if (at >= 0) open = false;
+    return { open: start, pill, at };
+  });
 }
 
 function blockHtml(b: Block, i: number, ctx: Ctx): string {
@@ -1083,8 +1131,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   };
   const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => {
     // (With the page's Review heading already said, the block's review questions continue its grid.)
-    const at = b.reviewFrom !== undefined && ctx.review.open ? qs.findIndex((q) => q.number >= b.reviewFrom!) : -1;
-    if (at >= 0) ctx.review.open = false;
+    const at = ctx.review[i]?.at ?? -1;
     if (at < 0) return `${grid(cls, qs)}${qs.map((q, k) => {
       const last = ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1;
       const html = render(q, k);
@@ -1102,7 +1149,6 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     const said = b.slot === "warm-up" ? undefined : b.note ?? note ?? NOTES[b.slot];
     return own ? `<div data-measure="chip-${i}">${chipHtml(own, said)}</div>` : "";
   };
-  const firstOfPage = i === 0 && (ctx.page.type === "remember-these" || ctx.page.type === "remember-these-mixed-set");
   const allReview = b.reviewFrom !== undefined && qs.length > 0 && qs[0].number >= b.reviewFrom;
 
   switch (b.slot) {
@@ -1115,8 +1161,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       // (Savar, 2026-11-04: "In your head" said nothing; mental math says what to do.)
       return `<div class="panel p-hd"><div class="lab">${escape(b.label && !/^in your head$/i.test(b.label) ? b.label : "Mental math")}</div><div class="note-mm" data-measure="note-${i}">Work it out without writing it down.</div><div class="list" style="margin-top:10px">${qs.map((q) => lineItem(q, band)).join("")}</div></div>`;
     case "remember-these": {
-      const pill = !firstOfPage && ctx.review.open;
-      if (pill) ctx.review.open = false;
+      const pill = !!ctx.review[i]?.pill;
       return (pill ? chip() : "") + items(parent ? "pcards" : "two");
     }
     case "try-first":
@@ -1171,9 +1216,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label && !/^example$/i.test(b.label) ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>${b.explain ? `<span class="${/^Watch out:/.test(b.explain) ? "wo" : ""}">${escape(b.explain)}</span>` : ""}</div>`;
     case "finish-these":
       // (A block of review only prints "Remember these" alone, never under "Getting started" as the page's skill.)
-      return (allReview && ctx.review.open ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
+      return (allReview && !!ctx.review[i]?.open ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
     case "on-your-own": {
-      const head = prev === "finish-these" ? (allReview && ctx.review.open ? "" : `<div class="lab" data-measure="heading-${i}">On your own</div>`) : chipHtml(PRACTICE, b.note);
+      const head = prev === "finish-these" ? (allReview && !!ctx.review[i]?.open ? "" : `<div class="lab" data-measure="heading-${i}">On your own</div>`) : chipHtml(PRACTICE, b.note);
       // Column sums on the 8-page day; the 6-page practice page lists them, as in the sample (DESIGN.md 7.2).
       const columns = band.name === "mid" && !parent && !ctx.six && qs.length > 0 && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1 && !questionWorkSpace(q.package));
       return head + (columns ? list((q) => columnItem(q, band), "cols") : items(c.consistentLayout || ctx.six ? "two" : "list"));
@@ -1363,10 +1408,12 @@ export function pagePlan(page: DraftPage): PagePlan | null {
     if (shape && !shape.below && !shape.places) answers(n, "top", 0);
   };
   const wideLine = (n: number) => { const q = byNumber.get(n); return !!q && (lineShape(q, band).wide || lineShape(q, band).placesWide); };
-  for (const b of c.blocks) {
+  const review = reviewLayout(page);
+  for (const [i, b] of c.blocks.entries()) {
     const items = b.items.filter((n) => byNumber.has(n));
-    // A block's review questions print in a grid of their own, under "Remember these" (blockHtml's `list`).
-    const at = b.reviewFrom !== undefined ? items.findIndex((n) => n >= b.reviewFrom!) : -1;
+    // A block's review questions print in a grid of their own under "Review", unless the page said it already (the
+    // printed page's decision, reviewLayout).
+    const at = review[i]?.at ?? -1;
     const parts = at <= 0 ? [items] : [items.slice(0, at), items.slice(at)];
     const grid = (cols: number, wide?: (n: number) => boolean) => parts.forEach(p => {
       const spans = (n: number) => !!wide?.(n) || ["friday-5", "mini-test"].includes(b.slot) && n === items.at(-1);
@@ -1447,10 +1494,10 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   // questions to show work for.)
   const work = workbookWorkLine(page);
   const band:Band = {...bandOf(c.level),consistentLayout:c.consistentLayout,
-    instructed: new Set(work ? workQuestionNumbers(page) : [])};
+    instructed: new Set(work ? workQuestionNumbers(page) : []), cueChoices: isWarmUpPage(c)};
   const byNumber = new Map(page.questions.map((q) => [q.number, q]));
   const ctx: Ctx = {
-    page, c, band, six: c.pages <= 6 && band.name === "mid", review: { open: !/\breview\b/i.test(c.title) },
+    page, c, band, six: c.pages <= 6 && band.name === "mid", review: reviewLayout(page),
     q: (n) => {
       const q = byNumber.get(n);
       if (!q) throw new Error(`page ${page.number}: a slot names question ${n}, which the page does not have`);
@@ -1508,15 +1555,28 @@ const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i>
  */
 export const coverLevelName = (level: number): string | null => curriculumFor("bc")?.level(`U${level}`)?.title ?? null;
 
+/**
+ * The longest "Made for" line that keeps the level's name: two lines of `.cv .for` (688 px at 22 px) held 101 characters
+ * of a name of m and w in Chromium, and 117 of real names (2026-11-09, U18). A longer line leaves the name out, so a long
+ * child's name (the database takes 60 characters) never needs a third line; the fit check stays the backstop.
+ */
+export const COVER_FOR_CHARS = 96;
+
+/** The cover's "Made for" line: "Made for {child} · Level U{n} · {level name}", without the name when it would not fit. */
+export function coverForLine(child: string, level: number): string {
+  const short = `Made for ${child} · Level U${level}`, levelName = coverLevelName(level);
+  const full = levelName ? `${short} · ${levelName}` : short;
+  return full.length <= COVER_FOR_CHARS ? full : short;
+}
+
 function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "cover" }>, book: WorkbookDraft): string {
   const name = coverName(c.child);
-  const levelName = coverLevelName(c.level);
   const label = c.madeFrom === "assessment" ? `Made from ${name}'s assessment` : `Made from ${name}'s last workbook`;
   const plan = book.pages.find(p => p.content?.kind === "how-plan")?.content;
   const topics = plan?.kind === "how-plan" ? [...new Set(plan.rows.map(row => row.topic))].slice(0, 3) : [];
   const path = topics.length ? `<section class="card cover-plan"><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}><i></i><span>${escape(topic)}</span></li>`).join("")}</ul></section>` : "";
   return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
-    + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(name)} · Level U${c.level}${levelName ? ` · ${escape(levelName)}` : ""}</div>`
+    + `<div class="for" ${mark.slot("made-for")}>${escape(coverForLine(name, c.level))}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
     + `<div class="card made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence.replaceAll(c.child, name))}</p></div>${path}`
     + `</div>${footer(page, parts, c.id)}</div>`;

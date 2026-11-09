@@ -2,7 +2,9 @@ import sharp from "sharp";
 import { mkdir, writeFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
-import { proofPages, renderWorkbook, type DraftPage, type WorkbookDraft } from "@/lib/workbook-render";
+import { proofPages, renderWorkbook, type DraftPage, type MeasuredElement, type WorkbookDraft } from "@/lib/workbook-render";
+import type { AnswerRegion, ItemFormat } from "@/lib/question-package";
+import { WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
@@ -228,6 +230,54 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const long = { ...cover, content: { ...content, title: ["Fractions, measuring", "and time and much more besides"] as [string, string] } };
     const result = await renderWorkbook({ draft: { ...draft, pages: [long] }, parentId: PARENT, template, engine });
     expect(result.status === "failed" && result.problems).toEqual([{ page: 1, question: null, slot: "cover-title", reason: "the cover-title does not fit its space" }]);
+  }, 60_000);
+
+  // (The review of 42bd5a6d: a 60-character name with U18's level name ran the "Made for" line to a third line.)
+  it.each([20, 40, 60])("fits the cover's Made for line in two lines at U18 with a %s-character name", async (n) => {
+    const child = "Alexandra Maximiliano Wilhelmina Bartholomew Montgomery Fitz".slice(0, n);
+    const draft = sampleBook({ level: "U18", workbookId: "55555555-5555-4555-8555-000000000018", childId: CHILD, child, number: 1 }).draft;
+    let line = "";
+    const result = await renderWorkbook({ draft: { ...draft, pages: [draft.pages[0]] }, parentId: PARENT,
+      template: { ...template, page: (p, parts) => template.page(p, parts, draft) },
+      engine: { print: async job => { const out = await engine.print(job); line = out.measured.find(m => m.name === "slot-made-for")?.text ?? ""; return out; } } });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    expect(line).toBe(`Made for ${child} · Level U18${n === 20 ? " · Decimals to thousandths and moving shapes" : ""}`);
+  }, 60_000);
+
+  // (The review of 42bd5a6d: the warm-up sentence and "Circle yes or no." ran to 733 px of 688 at U8 and U9.)
+  it.each([["U8", 1], ["U8", 2], ["U9", 1], ["U9", 2]] as const)("prints a %s workbook %s warm-up page with a circle and a tick question: the warm-up sentence alone, a cue on each", async (level, number) => {
+    const draft = sampleBook({ level, workbookId: `55555555-5555-4555-8555-00000000008${number}`, childId: CHILD, child: "Mateo", number }).draft;
+    const warm = draft.pages.find(p => p.content?.kind === "day" && p.content.blocks.some(b => b.slot === "warm-up"))!;
+    if (warm.content?.kind !== "day") throw new Error("no warm-up page");
+    const fact = warm.questions[0];
+    const ask = (n: number, text: string, regions: AnswerRegion[], format: ItemFormat) => ({ ...fact, number: n,
+      package: { ...fact.package, id: `${fact.package.id}-c${n}`, ref: { ...fact.package.ref, question: n } as typeof fact.package.ref, text, operation: null,
+        item: { format, scorable: true, parentChecked: false, error: null, checks: [], regions } } });
+    const yesNo = { id: "right", kind: "choice", mark: "circle", label: null, choices: ["Yes", "No"], answer: "Yes" } as const;
+    const fixIt = warm.content.blocks.find(b => b.slot === "fix-it");
+    const next = Math.max(...warm.questions.map(q => q.number)) + 1;
+    const added = [ask(next, "7 + 6 = 13", [{ ...yesNo, choices: ["true", "false"], answer: "true" }], "circle"), ask(next + 1, "9 + 4 = 12", [{ ...yesNo, mark: "tick", label: "Is it right?" }], "tick-one")];
+    const blocks = fixIt ? warm.content.blocks.map(b => b === fixIt ? { ...b, items: added.map(q => q.number) } : b)
+      : [...warm.content.blocks, { slot: "fix-it" as const, items: added.map(q => q.number) }];
+    const kept = new Set(blocks.flatMap(b => b.items));
+    // As a stored book holds it: the choice words after the warm-up sentence. (The sample's own layout: on the measured
+    // layout a choice card in Fix it fails the beside-the-first-line check with or without a cue, a separate issue.)
+    const page: DraftPage = { ...warm, questions: [...warm.questions, ...added].filter(q => kept.has(q.number)),
+      content: { ...warm.content, subtitle: `${WARM_UP_INSTRUCTION} Circle true or false.`, blocks } };
+    let measured: MeasuredElement[] = [];
+    let png: Uint8Array | null = null;
+    const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT,
+      template: { ...template, page: (p, parts) => template.page(p, parts, draft) },
+      engine: { print: async job => { const out = await engine.print(job); measured = out.measured; png = out.images[0].png; return out; } } });
+    await mkdir("/tmp/ui-review/warm-up-cues", { recursive: true });
+    if (png) await writeFile(`/tmp/ui-review/warm-up-cues/${level}-wb${number}.png`, png);
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    const subtitle = measured.find(m => m.name === "slot-subtitle")!;
+    expect(subtitle.text).toBe(WARM_UP_INSTRUCTION);
+    expect(subtitle.scrollWidth).toBeLessThanOrEqual(subtitle.clientWidth + 1);
+    const text = (n: number) => measured.find(m => m.name === `question-${n}`)?.text ?? "";
+    expect(text(next)).toContain("Circle one");
+    expect(text(next + 1)).toContain("Tick one");
   }, 60_000);
 
   it("fails a page given more questions than fit, naming the slot and the question pushed out, and shows it on a proof", async () => {

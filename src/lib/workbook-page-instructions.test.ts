@@ -97,6 +97,32 @@ describe("truthful printed U16 instructions",()=>{
    expect(root.querySelector('[data-measure="slot-work-line"]')).toBeNull();
   }
  });
+ // (The review of 42bd5a6d: at U8 and U9 the warm-up sentence and "Circle yes or no." ran to 733 px of 688.)
+ it.each([8,9,16])("names no choice on a U%s warm-up page: each choice question prints its own cue",level=>{
+  const said={...circle,choices:["yes","no"],answer:"yes"};
+  const qs=[question(1,"5 + 4 = ?",[box]),question(2,"Is 7 + 6 = 13?",[said],"circle"),question(3,"Is it right?",[{...said,mark:"tick"},{...box,id:"fix"}],"spot-the-error"),question(4,"Is 9 + 9 = 19? Circle yes or no.",[said],"circle")];
+  for(const stored of [`${WARM_UP_INSTRUCTION} Circle yes or no.`,"Circle yes or no.",`${WARM_UP_INSTRUCTION} Circle your answers.`]) {
+   const p=page(qs);p.content.level=level;p.content.subtitle=stored;
+   p.content.blocks=[{slot:"warm-up",items:[1]},{slot:"fix-it",items:[2,3,4]}];
+   const expected=level===16?`${WARM_UP_INSTRUCTION} Write in boxes.`:WARM_UP_INSTRUCTION;
+   expect(printedInstruction(p)).toBe(expected);
+   expect(circleProblem({...p.content,subtitle:expected},qs)).toBeNull();
+   const root=new Window().document.createElement("div");
+   root.innerHTML=workbookTemplate().page(p,{qr:"",qrUrl:""},sample())!;
+   expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe(expected);
+   const card=(n:number)=>root.querySelector(`[data-measure="question-${n}"]`)?.textContent ?? "";
+   expect(card(2)).toContain("Circle one");
+   expect(card(3)).toContain("Tick one");
+   // (Its own text says it already.)
+   expect(card(4)).not.toContain("Circle one");
+  }
+  // Another page keeps its choice words and prints no extra cue.
+  const other=page([question(2,"Is 7 + 6 = 13?",[said],"circle")]);other.content.level=level;other.content.subtitle="Circle yes or no.";
+  const root=new Window().document.createElement("div");
+  root.innerHTML=workbookTemplate().page(other,{qr:"",qrUrl:""},sample())!;
+  expect(root.querySelector('[data-measure^="cue-"]')).toBeNull();
+  expect(circleProblem({...other.content,subtitle:"Write in boxes."},other.questions)).not.toBeNull();
+ });
  it.each([4,10,15,17,19])("keeps U%s outside this first-delivery correction",level=>{
   const p=page([question(1,"245 + 126 = ?",[box])]);p.content.level=level;
   expect(workbookPageInstruction(p)).toBeNull();

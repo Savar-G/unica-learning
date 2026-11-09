@@ -11,12 +11,19 @@ export const WARM_UP_INSTRUCTION = "A warm-up on things you learned before. Do e
 export interface InstructionQuestion { number: number; package: QuestionPackage | null; place?: string | null }
 interface InstructionPage { content?: PageContent; questions: readonly InstructionQuestion[] }
 
-/** Name the response targets that actually print, without calling boxed answers circled answers. */
-export function answerInstruction(questions: readonly Pick<InstructionQuestion, "package">[]): string {
+/**
+ * A page with a warm-up (Savar, 2026-11-09): its instruction is the warm-up sentence and names no choice ("Circle yes or
+ * no."): with it the line ran past its one line at U8 and U9 (723 px of 688). Each choice question on the page prints
+ * its own cue instead: a tick strip its "Tick one", a circled choice its "Circle one" (src/lib/workbook-template.ts).
+ */
+export const isWarmUpPage = (content: PageContent | null | undefined) => content?.kind === "day" && content.blocks.some(b => b.slot === "warm-up");
+
+/** Name the response targets that actually print, without calling boxed answers circled answers; `choices` false leaves the choices out. */
+export function answerInstruction(questions: readonly Pick<InstructionQuestion, "package">[], choices = true): string {
   const regions = questions.flatMap(q => q.package ? packageItem(q.package).regions : []);
   const box = regions.some(r => r.kind === "box"), lines = regions.some(r => r.kind === "lines");
-  const circle = regions.some(r => r.kind === "choice" && r.mark === "circle");
-  const tick = regions.some(r => r.kind === "choice" && r.mark === "tick");
+  const circle = choices && regions.some(r => r.kind === "choice" && r.mark === "circle");
+  const tick = choices && regions.some(r => r.kind === "choice" && r.mark === "tick");
   return [box ? lines ? "Write in the answer spaces." : "Write in boxes." : lines ? "Write on the lines." : null,
     circle && tick ? "Circle or tick one choice." : circle ? "Circle one choice." : tick ? "Tick one choice." : null]
     .filter(Boolean).join(" ") || "Read each question.";
@@ -64,13 +71,15 @@ export function workbookWorkLine(page: InstructionPage): string | null {
 
 /** Words a stored instruction may still hold that the page now says elsewhere, or no longer says. */
 const SAID_ELSEWHERE = [WORK_INSTRUCTION, /Show your work (?:for|under) questions? [^.]*\./g];
-const RETIRED_WARM_UP = ["Beat your own count from last time.", "Do as many as you can.", "Take your time: there is no timer.", "Facts you know.", "Facts to 20."];
-const warmUp = (page: InstructionPage) => page.content?.kind === "day" && page.content.blocks.some(b => b.slot === "warm-up");
+const RETIRED_WARM_UP = ["Beat your own count from last time.", "Do as many as you can.", "Take your time: there is no timer.", "Facts you know.", "Facts to 20.",
+  // (The choice words a stored warm-up page may hold: its choice questions print their own cue, isWarmUpPage.)
+  /\b(?:Circle|Tick) (?:one choice|or tick one choice|your answers?|true or false|yes or no)\./g];
+const warmUp = (page: InstructionPage) => isWarmUpPage(page.content);
 
 /** The first-delivery U16 template's instruction, from the page's answer regions. Stored questions and content stay unchanged. */
 export function workbookPageInstruction(page: InstructionPage): string | null {
   if (page.content?.kind !== "day" || page.content.level !== 16 || !page.content.consistentLayout) return null;
-  return [warmUp(page) ? WARM_UP_INSTRUCTION : null, answerInstruction(page.questions)].filter(Boolean).join(" ");
+  return [warmUp(page) ? WARM_UP_INSTRUCTION : null, answerInstruction(page.questions, !warmUp(page))].filter(Boolean).join(" ");
 }
 
 /**

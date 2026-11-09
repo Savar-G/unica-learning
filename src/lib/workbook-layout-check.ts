@@ -27,7 +27,7 @@ import type { DraftPage, FitProblem, MeasuredElement } from "@/lib/workbook-rend
 import type { QuestionPackage } from "@/lib/question-package";
 import type { PagePlan } from "@/lib/workbook-template";
 import { questionWorkSpace } from "./workbook-work-space";
-import { answerInstruction, workbookPageInstruction, workbookWorkLine } from "@/lib/workbook-page-instructions";
+import { answerInstruction, isWarmUpPage, workbookPageInstruction, workbookWorkLine } from "@/lib/workbook-page-instructions";
 
 /** How far measured things may differ and still count as lined up or even, in CSS pixels. */
 export const LAYOUT_TOLERANCE = {
@@ -342,12 +342,15 @@ export function choiceInstruction(questions: ChoiceQuestions): string | null {
 export function circleProblem(content: DayContent | null | undefined, questions: readonly { package: QuestionPackage | null; place?: string | null }[]): string | null {
   if (!content) return null;
   const instruction = content.subtitle ?? "";
+  // (A warm-up page names no choice: each choice question prints its own cue, isWarmUpPage.)
+  const warmUp = isWarmUpPage(content);
   if (content.level === 16 && content.consistentLayout) {
-    const expected = answerInstruction(questions);
+    const expected = answerInstruction(questions, !warmUp);
     // (A warm-up's instruction says what it is first: "A warm-up on things you learned before. Do every question.")
     return instruction === expected || instruction.startsWith(`${expected} `) || instruction.endsWith(` ${expected}`) ? null
       : "the page instruction does not match its boxed, circled and ticked answers";
   }
+  if (warmUp) return null;
   if (circled(questions).length && !/\bcircle\b/i.test(instruction)) return "the page has a question to circle, but its instruction does not say to circle";
   // (Every kind, other choices too: "Circle true or false" on a page that also prints never/sometimes/always passed,
   // Codex on #633.)
