@@ -27,7 +27,7 @@ describe("is the run working", () => {
   it("warns when the job goes silent, with the time and the real stop rule", () => {
     const v = runProgress(run({ heartbeatAt: ago(WARN_SECONDS + 60) }), activity(pages(20, 5)), NOW);
     expect(v.signal.warn).toBe(true);
-    expect(v.signal.text).toBe(`No signal from the job for 3 minutes. The run stops if this reaches ${STALE_SECONDS / 60} minutes.`);
+    expect(v.signal.text).toBe(`No signal from the job for 3 minutes. If nothing moves for ${STALE_SECONDS / 60} minutes, pressing Prepare next workbook again takes the run up again.`);
     expect(v.timeLeft).toBe("Time left is not known until the run moves again.");
   });
 
@@ -36,7 +36,7 @@ describe("is the run working", () => {
     expect(v.signal.warn).toBe(true);
     expect(v.signal.text).toContain("still running");
     expect(v.signal.text).toContain("saved for 3 minutes");
-    expect(v.signal.text).toContain("only if the job goes silent");
+    expect(v.signal.text).toContain("If the job sends no signal for 6 minutes");
     expect(v.timeLeft).toBe("Time left is not known until the run moves again.");
   });
 

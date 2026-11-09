@@ -62,6 +62,8 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
   const updates = new Map<string, MemoryCardRow>();
   /** public.plan_starts: each card setup's records, oldest generation first. Never cleared. */
   const planStarts = new Map<string, PlanStart[]>();
+  const familyWindows = new Map<string, { child: string; key: string; end: string | null; confirmed: boolean }>();
+  const childPrices = new Map<string, { monthly: number; key: string; confirmed: boolean }>();
   /** Who closed a record: plan_starts.ended_by. */
   const endedBy = new Map<string, string>();
   const newestStart = (cardId: string) => planStarts.get(cardId)?.at(-1) ?? null;
@@ -161,7 +163,22 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       if (!updates.has(child.childId)) updates.set(child.childId, newRow());
       const latest = newestStart(cardId);
       if ((latest?.generation ?? 0) === generation - 1 && latest?.state !== "open") {
-        const start: PlanStart = { ...terms, generation, key, card, at: Date.now(), state: "open", subscription: null, firstCharge: null, finished: null, email: "none", alert: null };
+        let frozen = terms;
+        let trialEnd: string | null | undefined;
+        if (terms) {
+          let window = familyWindows.get(child.parentId);
+          if (window && !window.confirmed) throw Error("family_start_pending");
+          if (!window) {
+            window = { child: child.childId, key, end: terms.purpose === "initial" ? new Date(Date.now() + 30 * 86400000).toISOString() : null, confirmed: false };
+            familyWindows.set(child.parentId, window);
+          }
+          const prior = childPrices.get(child.childId);
+          const monthly = Math.min(terms.monthlyCents, prior?.monthly ?? (window.child === child.childId ? 7999 : 5999));
+          childPrices.set(child.childId, { monthly, key: prior?.confirmed ? prior.key : key, confirmed: prior?.confirmed ?? false });
+          frozen = { ...terms, monthlyCents: monthly };
+          trialEnd = terms.purpose === "initial" && window.end && Date.parse(window.end) > Date.now() ? window.end : null;
+        }
+        const start: PlanStart = { ...frozen, ...(terms ? { familyTerms: true, trialEnd } : {}), generation, key, card, at: Date.now(), state: "open", subscription: null, firstCharge: null, finished: null, email: "none", alert: null };
         planStarts.set(cardId, [...(planStarts.get(cardId) ?? []), start]);
         return { ...start };
       }
@@ -172,6 +189,17 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       begin("finish");
       const start = startOf(cardId, generation);
       if (start?.state !== "open") return;
+      const child = children.find(c => c.card?.id === cardId);
+      if (child) {
+        const window = familyWindows.get(child.parentId), price = childPrices.get(child.childId);
+        if (outcome.state === "refused") {
+          if (window?.key === start.key && !window.confirmed) familyWindows.delete(child.parentId);
+          if (price?.key === start.key && !price.confirmed) childPrices.delete(child.childId);
+        } else {
+          if (window?.key === start.key) window.confirmed = true;
+          if (price) price.confirmed = true;
+        }
+      }
       Object.assign(start, {
         state: outcome.state, finished: Date.now(),
         subscription: outcome.state === "refused" ? null : outcome.subscription,
@@ -285,6 +313,11 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
     if (url.pathname === "/v1/payment_methods") {
       const of = paymentMethods[url.searchParams.get("customer")!] ?? [];
       return answer({ object: "list", has_more: false, data: of.filter((m) => m.type === url.searchParams.get("type")).slice(0, 1) });
+    }
+    if (url.pathname === "/v1/prices") {
+      const key = url.searchParams.get("lookup_keys[0]") ?? "";
+      const amount = Number(key.split("_").at(-1));
+      return answer({ data: [{ id: `price_${amount}`, active: true, currency: "cad", product: "unica_math", unit_amount: amount, recurring: { interval: "month", interval_count: 1, usage_type: "licensed" } }], has_more: false });
     }
     if (url.pathname.startsWith("/v1/products/")) return answer({ id: url.pathname.split("/").at(-1) });
     throw new Error(`Unexpected Stripe request ${method} ${url.pathname}`);

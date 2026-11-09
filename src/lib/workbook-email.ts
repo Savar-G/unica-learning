@@ -1,3 +1,4 @@
+import { familyPlanWords as w } from "@/lib/family-plan-words";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import { cad } from "@/lib/site";
@@ -63,7 +64,7 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
     `Thank you for choosing Unica Learning for ${p.childName}. We are preparing your first workbook.`,
     "Please allow 5 to 7 days for us to prepare your first workbook.",
     "We will email you again when it is on its way. If we send it by mail, that email will include tracking details. For local hand delivery, we will contact you to arrange it.",
-    "Nothing was charged when you added your card. Your free first month starts when your first workbook arrives at your home.",
+    `Nothing was charged when you added your card. ${w.freeMonth} ${w.insideWindow} ${w.afterWindow}`,
     "You have nothing to do right now.",
     `If anything does not work, or if you have feedback, email ${SUPPORT_EMAIL} or use https://unicalearning.com/account/feedback.`,
   ] : ready ? [
@@ -94,8 +95,8 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
  * problem", and says the marks come later, as the scan page does. `explain`: "Explain this problem" can give an explanation
  * (explanationAvailable); without it, step 3 keeps the marks and drops its Explain sentence.
  */
-export function planStartEmail(p: { parentName: string; childName: string; grade: number; price: number; firstCharge: string; marking: boolean; explain: boolean }) {
-  const subject = `Welcome to Unica Learning: how ${p.childName}'s free month works`;
+export function planStartEmail(p: { parentName: string; childName: string; grade: number; price: number; firstCharge: string; marking: boolean; explain: boolean; sharedWindow?: boolean; free?: boolean; reminder?: boolean }) {
+  const subject = p.sharedWindow ? w.emailSubject(p.childName) : `Welcome to Unica Learning: how ${p.childName}'s free month works`;
   const steps = [
     `1. Follow the schedule. See which pages ${p.childName} does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.`,
     `2. Scan the finished pages. After ${p.childName} finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.`,
@@ -108,15 +109,15 @@ export function planStartEmail(p: { parentName: string; childName: string; grade
   ];
   const paragraphs = [
     `Hi ${p.parentName},`,
-    `Thanks for joining Unica Learning. ${p.childName}'s first workbook has arrived, so your free first month has started. Nothing has been charged.`,
+    ...(p.sharedWindow ? [`Thanks for joining Unica Learning. ${w.planStarted(p.childName)}`, ...(p.free ? ["Nothing has been charged."] : [])] : [`Thanks for joining Unica Learning. ${p.childName}'s first workbook has arrived, so your free first month has started. Nothing has been charged.`]),
     "As a parent, here are your responsibilities:",
     steps.join("\n"),
     `If anything is broken, if anything does not work, or if you have feedback, email ${SUPPORT_EMAIL} or use https://unicalearning.com/account/feedback.`,
-    `Your plan: On ${p.firstCharge}, we charge CAD ${cad(p.price)} to your saved card. We then charge CAD ${cad(p.price)} each month until you cancel. Delivery is included. We will email you a reminder 7 days before the first charge.`,
-    `To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan". If you cancel before ${p.firstCharge}, you pay nothing.`,
+    `Your plan: On ${p.firstCharge}, we charge CAD ${cad(p.price)} to your saved card. We then charge CAD ${cad(p.price)} each month until you cancel. Delivery is included.${p.reminder !== false ? " We will email you a reminder 7 days before the first charge." : ""}`,
+    `To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan".${p.free !== false ? ` If you cancel before ${p.firstCharge}, you pay nothing.` : ""}`,
   ];
   const footer = { why: "You received this email about your Unica Learning program." };
   const text = [...paragraphs, emailSignatureText(), emailFooterText(footer)].join("\n\n");
   const body = `<tr><td style="padding:0 24px">${paragraphs.map((s) => `<p style="margin:0 0 16px">${paragraphHtml(s)}</p>`).join("")}</td></tr>`;
-  return { subject, text, html: emailDocument({ title: subject, preview: `Your first charge is on ${p.firstCharge}. Cancel before then and you pay nothing.`, body, footer }) };
+  return { subject, text, html: emailDocument({ title: subject, preview: p.free === false ? w.emailPreview : `Your first charge is on ${p.firstCharge}. Cancel before then and you pay nothing.`, body, footer }) };
 }

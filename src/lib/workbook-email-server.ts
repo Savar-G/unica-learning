@@ -139,13 +139,20 @@ export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { card
   ]);
   if (parent.error || child.error || !parent.data || !child.data) throw Error("store_failed");
   const zone = familyZone({ timeZone: parent.data.time_zone, postal: parent.data.postal, province: familyProvince([{ id: card.child_id, province: child.data.province }]) });
-  const firstCharge = formatInZone(p.firstChargeAt, zone, { year: "numeric", month: "long", day: "numeric" });
+  const terms = await db.from("plan_starts").select("monthly_cents,first_charge_at,family_terms,trial_end").eq("card_setup_id", p.cardId).eq("generation", p.generation).maybeSingle();
+  if (terms.error) throw Error("store_failed");
+  if (terms.data?.family_terms && (terms.data.monthly_cents == null || !terms.data.first_charge_at)) throw Error("Plan start terms incomplete");
+  const price = terms.data?.monthly_cents == null ? p.price : terms.data.monthly_cents / 100;
+  const chargeAt = terms.data?.first_charge_at ?? p.firstChargeAt;
+  const free = !terms.data?.family_terms || !!terms.data.trial_end;
+  const reminder = !terms.data?.family_terms || !!terms.data.trial_end && Date.parse(terms.data.trial_end) - Date.now() >= 7 * 86400000;
+  const firstCharge = formatInZone(chargeAt, zone, { year: "numeric", month: "long", day: "numeric" });
   const marks = await markingOpen(marking, db, card.parent_id, card.child_id);
   let explains = false;
   try { explains = marks && explain() === true; } catch { explains = false; }
   const message: EmailMessage = {
     sender: { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
-    ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, grade: child.data.grade, price: p.price, firstCharge, marking: marks, explain: explains }),
+    ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, grade: child.data.grade, price, firstCharge, marking: marks, explain: explains, ...(terms.data?.family_terms ? { sharedWindow: true, free, reminder } : {}) }),
   };
   return sendEmailOnceInTime(planStartEmailLedger(db, message), { cardId: p.cardId, generation: p.generation }, message, { transport, inTime });
 }

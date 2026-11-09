@@ -114,9 +114,9 @@ export function runProgress(run: ProgressRun, activity: RunActivity | undefined,
   const stuck = !silent && writing && activity !== undefined && waiting >= WARN_SECONDS;
 
   const signal = silent
-    ? { warn: true, text: `No signal from the job for ${span(heard)}. The run stops if this reaches ${STOP_MINUTES} minutes.` }
+    ? { warn: true, text: `No signal from the job for ${span(heard)}. If nothing moves for ${STOP_MINUTES} minutes, pressing Prepare next workbook again takes the run up again.` }
     : stuck
-      ? { warn: true, text: `The job is still running, but no new page or AI answer has been saved for ${span(waiting)}. It may be waiting on a slow AI call. The run stops only if the job goes silent for ${STOP_MINUTES} minutes.` }
+      ? { warn: true, text: `The job is still running, but no new page or AI answer has been saved for ${span(waiting)}. It may be waiting on a slow AI call. If the job sends no signal for ${STOP_MINUTES} minutes, pressing Prepare next workbook again takes the run up again.` }
       : writing && workAt !== null
         ? { warn: false, text: `Working. Last saved work ${span(age(workAt))} ago.` }
         : writing && activity !== undefined

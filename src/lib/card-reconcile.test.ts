@@ -57,6 +57,7 @@ function stripeFake({ customerDefault = "pm_old", plans = [] as string[], lose, 
     const body = new URLSearchParams(String(init?.body ?? ""));
     const id = url.pathname.split("/").at(-1)!;
     if (url.pathname.startsWith("/v1/checkout/sessions/")) return json(SESSIONS[id as keyof typeof SESSIONS]);
+    if (url.pathname === "/v1/prices") return Response.json({data:[{id:"price_7999",active:true,currency:"cad",product:"unica_math",unit_amount:7999,recurring:{interval:"month",interval_count:1,usage_type:"licensed"}}],has_more:false});
     if (url.pathname.startsWith("/v1/products/")) return json({ id: "unica_math" });
     if (method === "GET" && url.pathname === "/v1/subscriptions") return json({ object: "list", has_more: false, data: Object.keys(state.plans).map(planBody) });
     if (method === "GET" && url.pathname.startsWith("/v1/customers/")) return json({ id, invoice_settings: { default_payment_method: url.search.includes("expand") ? { id: state.customerDefault, type: "card" } : state.customerDefault } });
@@ -332,7 +333,7 @@ describe("a plan creation lands late (the review's second case)", () => {
     const f = await creationLandsLate();
     dropEvents(f);
     const answer = await f.start();
-    expect(answer).toEqual({ ok: true, subscription: "sub_made_1", firstChargeAt: new Date(1_900_000_000_000).toISOString(), generation: 1 });
+    expect(answer).toEqual({ ok: true, subscription: "sub_made_1", firstChargeAt: new Date(1_900_000_000_000).toISOString(), generation: 1, monthlyPrice: 79.99 });
     expect(f.stripe.creates()).toHaveLength(1);
     expect(plans(f).map((p) => p.default)).toEqual(["pm_b"]);
     expect(record(f)?.state).toBe("started");
@@ -596,20 +597,18 @@ describe("a creation that may land after 24 hours", () => {
     expect(record(down)?.state).toBe("open");
   });
 
-  it("after the admin closed it, a new start uses a new key", async () => {
+  it("after team closure, an uncertain family reservation still blocks a new admission", async () => {
     let lost = true;
     const f = family({ stripe: stripeFake({ lose: (w) => w.kind === "create" && lost }) });
     expect(await finishCardUpdate("p1", "cs_test_a", f.updates)).toBe("updated");
     expect(await f.start()).toEqual({ ok: false, error: "unconfirmed" });
-    const first = f.stripe.creates()[0];
     later(PLAN_KEY_MS + 1);
     expect(await end(f)).toEqual({ ok: true });
     lost = false;
-    expect((await f.start()).ok).toBe(true);
+    expect(await f.start()).toEqual({ ok: false, error: "unconfirmed" });
     const creates = f.stripe.creates();
-    expect(creates).toHaveLength(2);
-    expect(creates[1]).not.toEqual(first);
-    expect(record(f)).toMatchObject({ generation: 2, state: "started" });
+    expect(creates).toHaveLength(1);
+    expect(record(f)).toMatchObject({ generation: 1, state: "team_ended" });
   });
 
   it("the team's alert goes through the delivery module once: a refused send goes again, and an unknown one does not", async () => {

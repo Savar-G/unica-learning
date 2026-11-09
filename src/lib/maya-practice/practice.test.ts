@@ -929,7 +929,7 @@ describe("the safety cases' request is said (practice run 9: C29 and C29b invali
   });
 });
 
-describe("the D-306 outcome rule", () => {
+describe("the D-313 outcome rule", () => {
   it("accepts a recorded two-miss close and rejects an early stop as outcome_not_allowed", async () => {
     const c = { ...C07, reasons: ["solved" as const] };
     const { store, recount } = await suite([c], { runs: 1, simulator: () => sayEach([

@@ -965,7 +965,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
     return { acts: ["close"], code: "act_not_allowed", reason: "Close honestly without giving the answer." };
   }
   // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
-  // Maya closes without the answer (D-306). Never over a right answer.
+  // Maya closes without the answer (D-313). Never over a right answer.
   if (misses >= 2 && !rightResult && s.solved === null && FINAL_GIVE_STATES.includes(main)) {
     return {
       acts: ["close"], code: "act_not_allowed",
@@ -2654,7 +2654,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const read = session.turn && pkg ? turnRead(session) : null;
   const doubtful = !rightResult && s.solved === null && pkg !== null && read?.final != null && !read.sure && rightForQuestion(pkg, read.final) ? read.final : null;
   // Once the answer stands, the request to write it (or the close) comes before more help on a step. After two wrong
-  // final answers on the final step, the backup close takes the place of more help (D-306).
+  // final answers on the final step, the backup close takes the place of more help (D-313).
   const solved = s.solved !== null || rightResult;
   // A step a model named, in a turn that is not heard: the confirm question comes before more help. Only that refusal: a
   // claim judged wrong is not a hearing problem (review of fec3dac4).

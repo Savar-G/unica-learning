@@ -1200,7 +1200,7 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "C36",
-    title: "The package has a wrong key: say plainly Maya cannot teach it yet, and offer another question on the page (D-312)",
+    title: "The package has a wrong key: say plainly Maya cannot teach it yet, and offer another question on the page (D-314)",
     fixture: "A_BAD_KEY",
     status: "passing",
     steps: [],
@@ -1209,7 +1209,7 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "C36b",
-    title: "Equivalent fractions: say plainly Maya cannot teach it yet, and offer another question, with no unchecked teaching (D-312)",
+    title: "Equivalent fractions: say plainly Maya cannot teach it yet, and offer another question, with no unchecked teaching (D-314)",
     fixture: "G",
     status: "passing",
     steps: [],
@@ -1375,7 +1375,7 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "V3",
-    title: "The package turns out wrong during teaching: no new hello; say plainly Maya cannot teach it yet, then invite another question (D-312)",
+    title: "The package turns out wrong during teaching: no new hello; say plainly Maya cannot teach it yet, then invite another question (D-314)",
     fixture: "A",
     status: "passing",
     steps: [

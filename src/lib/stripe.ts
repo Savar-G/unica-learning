@@ -1,13 +1,14 @@
 import "server-only";
+import { familyPlanWords as w } from "@/lib/family-plan-words";
 import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { gradeName } from "@/lib/assessment/grades";
 import { PLAN_KEY_MS, PLAN_RETRY_MS, planNotOver, pressStep, settleNewestCard, startedOutcome, writeWindow, type CardRow, type CardRows, type PlanCard, type PlanStartOutcome } from "@/lib/card-reconcile";
 import { liveCardRows } from "@/lib/card-reconcile-server";
 import { RUNNING_PLAN } from "@/lib/parent-plan";
-import { cad, priceWithOffer } from "@/lib/site";
+import { ADDITIONAL_CHILD_PRICE, PLANS, cad, priceWithOffer } from "@/lib/site";
 import { CARD_READ, CARD_WRITE, cancelSubscriptionNow, customerSubscriptions, planCard as planCardOf, refusedByStripe, stripeCards } from "@/lib/stripe-subscriptions";
-import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
+import { PLAN_PRODUCT, planTerms } from "@/lib/subscription-plan";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
 // see "we'll email you a link to add your card" and Savar sends one by hand.
@@ -53,7 +54,7 @@ export interface CardSetup {
 
 /** What the parent agrees to on Stripe's page. Stripe requires the amount, timing and how to cancel. */
 export const cardTerms = (price: number) =>
-  `Nothing is charged today. Your first month is free, starting when your first workbook arrives at your home. On day 30 we charge CAD ${cad(price)}, then CAD ${cad(price)} every month until you cancel. We email you a reminder 7 days before the first charge, with a link to manage or cancel your plan. Cancel before day 30 and you pay nothing.`;
+  `Nothing is charged today. ${w.freeMonth} ${w.insideWindow} ${w.afterWindow} ${w.ceiling(price)} ${w.siblingPrice} ${w.cancel}`;
 
 /**
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
@@ -188,7 +189,7 @@ export function stripeCustomerUrl(customer: string): string | null {
 
 export type StartPlanOutcome =
   /** `generation`: the start's record, the key of its one confirmation email. */
-  | { ok: true; subscription: string; firstChargeAt: string; generation: number }
+  | { ok: true; subscription: string; firstChargeAt: string; generation: number; monthlyPrice?: number }
   /**
    * "unconfirmed": Stripe may still make the plan. The record stays open, and the webhook, the sweep or the next press decides it.
    * "needs_team": Stripe's key has expired with no plan found, so no press can be safe. Only an admin's check closes the record.
@@ -206,6 +207,17 @@ async function planProduct(s: Stripe) {
     if (!missing(e)) throw e;
     await s.products.create({ id: PLAN_PRODUCT.id, name: PLAN_PRODUCT.name }, { ...CARD_WRITE, idempotencyKey: `product-${PLAN_PRODUCT.id}` });
   }
+}
+
+/** Named current prices. Older lower offers retain their inline amount. Never accept a mismatched lookup key. */
+async function monthlyPrice(s: Stripe, monthlyCents: number): Promise<Stripe.SubscriptionCreateParams.Item> {
+  if (monthlyCents !== Math.round(PLANS.one.price * 100) && monthlyCents !== Math.round(ADDITIONAL_CHILD_PRICE * 100)) return { price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: monthlyCents, recurring: { interval: "month" } } };
+  const lookup = `unica_math_cad_monthly_${monthlyCents}`;
+  const found = await s.prices.list({ lookup_keys: [lookup], limit: 1 }, CARD_READ);
+  const price = found.data[0] ?? await s.prices.create({ currency: "cad", product: PLAN_PRODUCT.id, unit_amount: monthlyCents, recurring: { interval: "month" }, lookup_key: lookup }, { ...CARD_WRITE, idempotencyKey: `price-${lookup}` });
+  if (price.currency !== "cad" || price.product !== PLAN_PRODUCT.id || price.unit_amount !== monthlyCents
+    || price.recurring?.interval !== "month" || price.recurring.interval_count !== 1 || price.recurring.usage_type !== "licensed" || !price.active) throw Error("Plan price mismatch");
+  return { price: price.id };
 }
 
 /**
@@ -252,7 +264,7 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
       // An earlier press whose answer was lost: its subscription is here, so this press gets its answer.
       await closeRecord(rows, p.cardSetup, generationOfRow, startedOutcome(step.plan));
       await settleAfterStart(s, rows, p.cardSetup, canWrite, step.plan);
-      return planNotOver(step.plan.status) ? { ok: true, subscription: step.plan.id, firstChargeAt: purpose === "restart" ? now.toISOString() : step.plan.firstCharge ?? firstChargeAt(now, planTerms(p.price).trialDays).toISOString(), generation: generationOfRow } : { ok: false, error: "already" };
+      return planNotOver(step.plan.status) ? { ok: true, subscription: step.plan.id, firstChargeAt: step.plan.firstCharge ?? (purpose === "restart" ? now.toISOString() : new Date(row!.planStart!.at).toISOString()), generation: generationOfRow, monthlyPrice: (row?.planStart?.monthlyCents ?? Math.round(p.price * 100)) / 100 } : { ok: false, error: "already" };
     }
     case "other":
       await settleAfterStart(s, rows, p.cardSetup, canWrite);
@@ -269,12 +281,18 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
   if (purpose === "initial" && (current.length > 0 || row?.planStart?.state === "started" || row?.planStart?.state === "other")) return { ok: false, error: "restart_required" };
   if (purpose === "restart" && !current.some((plan) => !planNotOver(plan.status))) return { ok: false, error: "not_ended" };
   // An older open record has no frozen price. Only matching-key recovery can resolve it safely.
-  if (row?.planStart?.state === "open" && row.planStart.monthlyCents === null) return { ok: false, error: "unconfirmed" };
+  if (row?.planStart?.state === "open" && (row.planStart.monthlyCents == null || row.planStart.familyTerms !== true)) return { ok: false, error: "unconfirmed" };
   const card = step.card ?? row?.paymentMethod ?? await planCard(s, p.customer);
   if (!card) return { ok: false, error: "no_card" };
   const terms = planTerms(p.price);
   await planProduct(s);
-  const held = await rows.admitPlanStart(p.cardSetup, step.generation, `start-plan-${p.cardSetup}-${randomUUID()}`, card, { purpose, monthlyCents: terms.monthlyCents, revision: p.restartRevision });
+  let held;
+  try {
+    held = await rows.admitPlanStart(p.cardSetup, step.generation, `start-plan-${p.cardSetup}-${randomUUID()}`, card, { purpose, monthlyCents: terms.monthlyCents, revision: p.restartRevision });
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("family_start_pending")) return { ok: false, error: "unconfirmed" };
+    throw e;
+  }
   if (held.state === "started" || held.state === "other") {
     // Another press finished after this press read its list.
     await settleAfterStart(s, rows, p.cardSetup, canWrite);
@@ -283,26 +301,30 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
   // Another press's start with an answer this press did not read, or a key too near its end to send. The next press reads it all again.
   if (held.state !== "open" || held.generation !== step.generation || Date.now() - held.at >= PLAN_RETRY_MS) return { ok: false, error: "unconfirmed" };
   if ((held.purpose ?? "initial") !== purpose) return { ok: false, error: "wrong_mode" };
-  const monthlyCents = held.monthlyCents ?? terms.monthlyCents;
+  if (held.familyTerms !== true || held.monthlyCents == null) return { ok: false, error: "unconfirmed" };
+  const monthlyCents = held.monthlyCents;
+  const trialEnd = held.trialEnd ? Math.floor(Date.parse(held.trialEnd) / 1000) : null;
+  // Do not convert an expired, possibly dispatched trial request into an immediate charge under the same key.
+  if (trialEnd !== null && (!Number.isFinite(trialEnd) || trialEnd * 1000 <= Date.now())) return { ok: false, error: "unconfirmed" };
+  const item = await monthlyPrice(s, monthlyCents);
   let created: Stripe.Subscription;
   try {
     created = await s.subscriptions.create({
       customer: p.customer,
-      items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: monthlyCents, recurring: { interval: "month" } } }],
-      ...(purpose === "initial" ? { trial_period_days: terms.trialDays } : { payment_behavior: "error_if_incomplete" as const, billing_mode: { type: "flexible" as const } }),
+      items: [item],
+      ...(trialEnd !== null ? { trial_end: trialEnd } : { payment_behavior: "error_if_incomplete" as const, billing_mode: { type: "flexible" as const } }),
       default_payment_method: held.card,
-      metadata: { card_setup: p.cardSetup, start_key: held.key, price: cad(monthlyCents / 100), ...(purpose === "initial" ? { trial_start_reason: "workbook_delivered", delivery_confirmed: "true" } : { start_reason: "paid_restart" }) },
+      metadata: { card_setup: p.cardSetup, start_key: held.key, price: cad(monthlyCents / 100), ...(trialEnd !== null ? { trial_start_reason: "workbook_delivered", delivery_confirmed: "true" } : { start_reason: purpose === "restart" ? "paid_restart" : "family_window_ended" }) },
     }, { ...CARD_WRITE, idempotencyKey: held.key });
   } catch (e) {
     if (refusedByStripe(e)) {
       // Nothing started, and Stripe answers this key the same way for 24 hours, so the next press opens a new generation.
       await closeRecord(rows, p.cardSetup, held.generation, { state: "refused" });
-      if (purpose === "restart") {
-        // closeRecord can fail after the provider refused. Require the durable result before releasing any hold.
-        const confirmed = (await rows.cardRow(p.cardSetup))?.planStart;
-        return { ok: false, error: confirmed?.generation === held.generation && confirmed.state === "refused" ? "payment_refused" : "unconfirmed" };
-      }
-      throw e;
+      // Preserve the initial start's general failure for permission and request errors. They do not prove a card refusal.
+      if (purpose === "initial" && !(e instanceof Stripe.errors.StripeCardError)) throw e;
+      // closeRecord can fail after the provider refused. An open record still needs recovery.
+      const confirmed = (await rows.cardRow(p.cardSetup))?.planStart;
+      return { ok: false, error: confirmed?.generation === held.generation && confirmed.state === "refused" ? "payment_refused" : "unconfirmed" };
     }
     console.error("[stripe] plan start not confirmed", e instanceof Error ? e.message : "failed");
     return { ok: false, error: "unconfirmed" };
@@ -310,8 +332,8 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
   const plan = planCardOf(created);
   await closeRecord(rows, p.cardSetup, held.generation, startedOutcome(plan));
   await settleAfterStart(s, rows, p.cardSetup, canWrite, { ...plan, defaultCard: plan.defaultCard ?? held.card });
-  const end = purpose === "restart" ? now : created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
-  return { ok: true, subscription: created.id, firstChargeAt: end.toISOString(), generation: held.generation };
+  const end = plan.firstCharge ? new Date(plan.firstCharge) : now;
+  return { ok: true, subscription: created.id, firstChargeAt: end.toISOString(), generation: held.generation, monthlyPrice: monthlyCents / 100 };
 }
 
 export type EndStuckStartOutcome =
