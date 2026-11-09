@@ -114,7 +114,7 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     ["Is it 16?", 16], ["Uh, 16?", 16], ["16?", 16], ["7 plus 9 is 16?", 16], ["I wrote 6?", 6],
     ["7 and 9 make 16 and 3.", 16], ["66 is 16.", 16], ["16 or 15", 16],
     ["7 is 16.", 16], ["9 and 16.", 16], ["9 is 16.", 16], ["My mom said 7 plus 9 is 16.", 16], ["Mia says 7 plus 9 is 16.", 16], ["I think 7 plus 9 is 16.", 16], ["Maybe 7 plus 9 is 16.", 16], ["I guess 7 plus 9 is 16.", 16],
-    ["7 plus 9 is not 16.", 16], ["Then 7 plus 9 is 16.", 16], ["I know 7 plus 9 is 16.", 16], ["The ones make 16.", 16], ["It's 16. I got 16.", 16], ["It's 16, I think.", 16], ["I got 16 for the ones.", 16], ["My mom got 16.", 16], ["It's not 16.", 16], ["It is 16?", 16], ["I got 16?", 16], ["7 plus 9 is 16, so I write 6.", 16], ["I write 6 and carry 1 ten.", 6],
+    ["7 plus 9 is not 16.", 16], ["Then 7 plus 9 is 16.", 16], ["I know 7 plus 9 is 16.", 16], ["The ones make 16.", 16], ["It's 16. I got 16.", 16], ["It's 16, I think.", 16], ["16 in the ones.", 16], ["My mom got 16.", 16], ["It's not 16.", 16], ["It is 16?", 16], ["I got 16?", 16], ["7 plus 9 is 16, so I write 6.", 16], ["I write 6 and carry 1 ten.", 6],
     // A lone written digit is not the column's total (decision after review of fec3dac4).
     ["6", 6], ["6.", 6], ["It's 6.", 6], ["I got 6.", 6], ["I wrote 6.", 6], ["Wrote 6.", 6], ["So I wrote 6.", 6], ["I put 6 in the ones.", 6], ["I wrote 6 in the tens.", 6],
     ["16 and 3.", 16], ["I didn't write 6.", 6], ["I wrote 6. I think.", 6],
@@ -435,8 +435,16 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
   it.each(["6 in the ones.", "The ones are 6.", "I got 6 for the ones.", "6 tens?"])("gives the tens no confirm and no credit: %j (27 + 39)", async (text) => {
     await noStepConfirm(27, 39, [onesDone], text, 6, "tens");
   });
-  it.each(["16 in the tens.", "The tens make 16.", "16 tens?", "The answer is 16.", "My mom said 16.", "16. My mom said.", "The ones make 16.", "I got 16 for the ones."])("gives the ones no confirm and no credit: %j (27 + 39)", async (text) => {
+  it.each(["16 in the tens.", "The tens make 16.", "16 tens?", "The answer is 16.", "My mom said 16.", "16. My mom said.", "The ones make 16.", "16 in the ones."])("gives the ones no confirm and no credit: %j (27 + 39)", async (text) => {
     await noStepConfirm(27, 39, [], text, 16, "ones");
+  });
+  // #698 loop round (practice at bef51538): the child names the ones and their total in their own words, so it credits.
+  // "16 in the ones." stays above: it may mean 16 written in the ones place.
+  it("credits the ones for 'I got 16 for the ones.' (27 + 39)", async () => {
+    for (const first of [{ child: "I got 16 for the ones.", read: { answers: [[16, "ones", "right"]] } as Read, maya: [THROWS_REPAIR] }, { child: "I got 16 for the ones.", maya: THROWS }]) {
+      const told = await playSum(27, 39, [first]);
+      expect(told[1]).toMatchObject({ ...NEXT, step: "tens" });
+    }
   });
   it("gives the hundreds no confirm and no credit: '3 in the ones?' (156 + 237)", async () => {
     await noStepConfirm(156, 237, [{ child: "6 plus 7 is 13.", read: { answers: [[13, "ones", "right"]] } }, { child: "5 plus 3 plus 1 is 9.", read: { answers: [[9, "tens", "right"]] } }], "3 in the ones?", 3, "hundreds");

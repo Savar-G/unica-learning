@@ -45,7 +45,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { compensations, findOffer, normalSlots, packageLines, workbookOpening, WORKBOOK_OPENING, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, CALM_PHRASES, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { kindOf, writtenFractions, claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
+import { kindOf, writtenFractions, claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, nextStepQuestion, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -2252,13 +2252,16 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   const pkg = s.package;
   if (!pkg || !s.turn || step.kind !== "add-column") return false;
   // A turn code could not hear for sure is no step credit: it gets its confirm first.
-  const body = s.turn.uncertain ? null : stepTurnBody(s.turn.text, step.carryOut);
-  if (body === null) return false;
+  if (s.turn.uncertain) return false;
   // Only the first step not done or passed: no tens credit before the ones.
   if (workSteps(pkg).find((st) => !behind(s).includes(st.id))?.id !== step.id) return false;
   const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16).
   const total = saidAs(number(step.total), value);
+  // A step statement ("I got 16 for the ones.", "7 plus 9 is 16. I wrote the 6."): the total, so only a copy after H3.
+  if (total && stepStatement(pkg, step, s.turn.text)) return !copy;
+  const body = stepTurnBody(s.turn.text, step.carryOut);
+  if (body === null) return false;
   // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
   const yes = wholeYes(body);
   if (yes) {
@@ -2310,6 +2313,80 @@ function stepForm(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-
   return checkColumnClaims(pkg, step, pkg.steps, step, body) === "right" ? "claim" : null;
 }
 
+/** Where a clause of a step statement ends inside a sentence: a comma, a colon, or "and" or "so" before "wrote" ("and wrote the 6"). */
+const STATEMENT_JOIN = /\s*[,;:]\s*|\s+(?:and|so)\s+(?=(?:i\s+)?wrote\b)/;
+
+/**
+ * The child's turn states this addition column's own result in one of the exact forms of a step statement (PR #698, the
+ * step-credit loop: "I got 16 for the ones. What do I do next?" got the ones again and again). An allow-list over the
+ * whole turn, fail-closed: every clause of every sentence is one of these, bound to the step's own numbers, and exactly
+ * one of them states the column's total:
+ * - the total in the child's own words: "16", "I got 16", "It's 16", "I got 16 for the ones", "For the ones, I got 16";
+ * - the step's own sum, with its operands and carry-in in any order: "7 + 9 is 16", "7 plus 9 is 16", "I did 7 plus 9 is 16";
+ * - what the child added, beside the total: "I added 7 and 9" ("I added 7 and 9. I got 16.");
+ * - a lead that names this column: "For the ones", "Ones first";
+ * - "I already did that one" (or "that", "it") before the total;
+ * - "That's what I got.";
+ * - after the total, the step's own written digit in the first person and the past tense, with no column or carry ("so I
+ *   wrote the 6", "and wrote the 6"): a claim with a column or a carry keeps the claim rules (stepForm, checkColumnClaims).
+ * Next-step questions from the closed list (nextStepQuestion) may follow, at the end. The turn's first words may start
+ * with one "So", "Okay", "Um" or "Oh", as wholeTurn allows; a later sentence or clause with one "so", "and" or "then"
+ * ("Then I wrote the 6."). Any other clause or question, another speaker ("My mom got 16"), a hedge ("I think", "maybe"), a
+ * negation, a wrong digit ("I wrote 5"), a false sum, or the total said twice fits none of them.
+ */
+function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>, text: string): boolean {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("\n")) return false;
+  const sentences = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+  // Next-step questions only at the end of the turn.
+  let end = sentences.length;
+  while (end > 0 && nextStepQuestion(sentences[end - 1], step.carryOut)) end--;
+  const said = sentences.slice(0, end).filter((x) => !/^(?:so|okay|ok|um|uh|oh)[.!]?$/i.test(x.trim()));
+  if (said.length === 0 || said.some((x) => x.includes("?"))) return false;
+  const place = step.place.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const operands = (step.carryIn > 0 ? [...step.digits, step.carryIn] : step.digits).slice().sort((a, b) => a - b).join(",");
+  const lead = new RegExp(`^(?:for the ${place}|(?:the )?${place} first)$`);
+  const already = new RegExp(`^i (?:already did (?:that|that one|this one|it|the ${place})|did (?:that|that one|it) already)$`);
+  const result = new RegExp(`^(?:i (?:already )?(?:got|get)|it's|it is)\\s+(.+?)(?: for the ${place})?$`);
+  const placeResult = new RegExp(`^for the ${place},? i (?:already )?(?:got|get) (.+)$`);
+  const clauses = said.flatMap((x, n) => {
+    const sentence = x.trim().replace(/[.!]+$/, "").toLowerCase();
+    // The turn's first words as wholeTurn takes them; a later sentence may go on with one "so", "and" or "then".
+    const opened = n === 0 ? sentence.replace(/^(?:so|okay|ok|um|oh)\b[,.\s]*/, "") : sentence.replace(/^(?:so|and|then)\b,?\s*/, "");
+    return opened.split(STATEMENT_JOIN).map((c, i) => (i === 0 ? c : c.replace(/^(?:so|and|then)\b\s*/, "")).trim());
+  });
+  let totals = 0;
+  for (const c of clauses) {
+    if (c === "") return false;
+    if (lead.test(c) || already.test(c) || /^(?:that's|that is) what i got$/.test(c)) continue;
+    const add = /^i added (.+?) (?:and|plus|\+) (.+?)(?: (?:and|plus|\+) (.+?))?$/.exec(c);
+    if (add) {
+      const ns = add.slice(1).filter((x) => x !== undefined).map(plainNumber);
+      if (ns.some((n) => n === null) || ns.map(Number).sort((a, b) => a - b).join(",") !== operands) return false;
+      continue;
+    }
+    const sum = wholeSum(c.replace(/^i did\s+/, ""));
+    if (sum) {
+      if (sum.sum !== step.total || [...sum.operands].sort((a, b) => a - b).join(",") !== operands) return false;
+      totals += 1;
+      continue;
+    }
+    const got = placeResult.exec(c) ?? result.exec(c);
+    if (got || plainNumber(c) !== null) {
+      if (plainNumber(got ? got[1] : c) !== step.total) return false;
+      totals += 1;
+      continue;
+    }
+    // The written digit comes after the total.
+    const w = /^(?:i )?wrote (?:the )?(.+)$/.exec(c);
+    if (w && totals === 1 && plainNumber(w[1]) === step.write) continue;
+    return false;
+  }
+  if (totals !== 1) return false;
+  // The same written-digit check every reading of a column gets.
+  return checkColumnClaims(pkg, step, pkg.steps, step, said.join(" ")) === "right";
+}
+
 /** The steps the ladder is past: done by the child, or passed after Maya showed them at H3 (copiedStep). */
 const behind = (s: Session) => (s.passed?.length ? [...s.done, ...s.passed] : s.done);
 
@@ -2329,6 +2406,7 @@ function copiedStep(s: Session): string | null {
   const st = workSteps(pkg).find((x) => !behind(s).includes(x.id));
   if (!st || st.kind !== "add-column" || s.ladder.step !== st.id || s.ladder.hint < 3) return null;
   if (onlyNextStepQuestions(s.turn.text, st.carryOut)) return st.id;
+  if (stepStatement(pkg, st, s.turn.text)) return st.id;
   const body = stepTurnBody(s.turn.text, st.carryOut);
   if (body === null) return null;
   return stepForm(pkg, st, number(st.total), body) === "total" || echoesShown(body, st.total) ? st.id : null;

@@ -986,7 +986,7 @@ export function readAnswer(said: string, options?: ReadOptions): AnswerRead {
  * never commits a new one (takenBack).
  */
 function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRead; sureApart: boolean } {
-  const text = prepared(said, options);
+  const text = prepared(withoutSource(said), options);
   const committed = committedText(text);
   if (offersChoice(committed)) return { read: { kept: [], final: null, choice: true, sure: false, outside: [] }, sureApart: false };
   // What a negative takes back is gone (#605): the rest of the turn is read as usual.
@@ -1012,6 +1012,29 @@ function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRea
   // second answer either (practice at 361a05c9, C09).
   const sure = sureApart && numeric.filter((x, i) => i === numeric.length - 1 || !(pointsBack(x, options) || methodSentence(x))).length === 1;
   return { read: { kept, final, choice: false, sure, outside: unclear ? [] : answer.values }, sureApart };
+}
+
+/**
+ * Where the answer came from, after it, as an exact allow-list (PR #698 practice: "Yes, it's 66. I got it from the steps
+ * you showed me." was not sure): a last sentence "I got it from the steps you showed me.", "I followed the steps.",
+ * "That's what I got.", or a last clause "because you showed me the steps". It holds no number, hedge, question or other
+ * speaker, so it says nothing about the answer: it is left out before the turn is read. Any other sentence stays, and a
+ * turn with a hedge or a question keeps it.
+ */
+const SOURCE_SENTENCE = /^(?:i got (?:it|that|this) from (?:the|your) steps(?: (?:you showed me|you did|we did))?|i (?:did|followed|used) (?:the|your) steps(?: (?:you showed me|we did))?|(?:that's|that is) what i got)$/;
+const SOURCE_REASON = /,?\s+because\s+(?:you showed me(?: the steps| how)?|of the steps(?: you showed me)?|i (?:did|followed|used) (?:the|your) steps(?: you showed me)?)([.!]?)$/i;
+function withoutSource(said: string): string {
+  const t = said.trim();
+  // A hedge or a question anywhere keeps the whole turn as it was, so it stays not sure ("Yes, I think it's 66. I got it
+  // from the steps you showed me.").
+  if (t.includes("\n") || t.includes("?") || /\b(?:think|guess|guessed|believe|probably|maybe|might|sure)\b/i.test(t)) return said;
+  const sentences = t.split(/(?<=[.!])\s+/).filter(Boolean);
+  if (sentences.length === 0) return said;
+  while (sentences.length > 1 && SOURCE_SENTENCE.test(sentences.at(-1)!.replace(/’/g, "'").replace(/[.!]+$/, "").trim().toLowerCase())) sentences.pop();
+  const last = sentences.length - 1;
+  sentences[last] = sentences[last].replace(/’/g, "'").replace(SOURCE_REASON, "$1");
+  const kept = sentences.join(" ");
+  return kept === t ? said : kept;
 }
 
 /**
@@ -1088,13 +1111,15 @@ const SENTENCE_LEAD = /^(?:(?:so|okay|ok|um|uh|oh|and|then)\b[,\s]*)*/;
 /**
  * The sentence is one next-step question from a closed list (first-ship practice, C01: "I got 16, like I said. What do I
  * do next?"): "What do I do next?", "What do I do now?", "What do I do with the 1?", "Where does the 1 go?", "Do I write the
- * 1 at the top of the tens?", "What about the tens?", "Now what?", "What's next?". The only number it may hold is `carry`,
+ * 1 at the top of the tens?", "Is the 1 the carry?", "What about the tens?", "Now what?", "What's next?". The only number it may hold is `carry`,
  * the step's own carry, as "the 1", "the one" or "the ten" (or "the carried 1"); no other speaker, hedge, negation or check
  * of a value ("Is it 16?", "Is that right?") is on the list. A step with no carry has only the forms with no number.
  */
 export function nextStepQuestion(sentence: string, carry: number): boolean {
   const s = sentence.trim().replace(/’/g, "'").toLowerCase().replace(/[?.!]+$/, "").trim().replace(SENTENCE_LEAD, "").replace(/\s+/g, " ");
-  if (/^(?:what do i do (?:next|now)|what do we do (?:next|now)|now what|then what|what's next|what is next|what about the tens(?: column)?|what do i do with the tens(?: column)?)$/.test(s)) return true;
+  // "Then what?": its "then" is no filler here.
+  if (/^(?:(?:and |so |okay |ok )?then what)$/.test(sentence.trim().replace(/[?.!,]+/g, "").trim().toLowerCase())) return true;
+  if (/^(?:what do i do (?:next|now)|what do we do (?:next|now)|now what|what's next|what is next|what about the tens(?: column)?|what do i do with the tens(?: column)?)$/.test(s)) return true;
   const ref = (phrase: string) => {
     if (phrase === "the carry") return carry > 0;
     const m = /^the (?:carried |carry )?(\w+)(?: i carried)?$/.exec(phrase);
@@ -1104,6 +1129,8 @@ export function nextStepQuestion(sentence: string, carry: number): boolean {
   if (what) return ref(what[1]);
   const where = /^where (?:does|do) (the .+?) go$/.exec(s);
   if (where) return ref(where[1]);
+  const carried = /^is (the .+?) (?:the|a) carry$/.exec(s);
+  if (carried) return ref(carried[1]);
   const put = /^do i (?:write|put|carry) (the (?:carried |carry )?\w+)(?: (?:in|at|on|to|into|over) the (?:top(?: of the tens(?: column)?)?|tens(?: column| place)?))?$/.exec(s);
   return !!put && ref(put[1]);
 }
