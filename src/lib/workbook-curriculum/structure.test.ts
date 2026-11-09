@@ -102,7 +102,10 @@ describe("curriculum structure", () => {
     // A structural change to BC fails this: the customer's next book would then be refused as curriculum-incompatible.
     const frozen = archivedCurriculumStructure("bc", FROZEN);
     expect(frozen).not.toBeNull();
-    expect(structureDifference(frozen!, curriculumStructure("bc")!)).toBeNull();
+    expect(structureDifference(frozen!, curriculumStructure("bc")!),
+      "This structural change to the BC curriculum refuses the first customer's next book (baseline d018b981) as curriculum-incompatible. "
+      + "Do not edit src/lib/workbook-curriculum/history/*.json to make this pass: it is the frozen curriculum, made by scripts/curriculum-history.mjs. "
+      + "See docs/next-book-curriculum-history.md and ask the Workbook Generator lead.").toBeNull();
     expect(archivedCurriculumStructure("bc", "e".repeat(28))).toBeNull();
     expect(archivedCurriculumStructure("on", FROZEN)).toBeNull();
   });
