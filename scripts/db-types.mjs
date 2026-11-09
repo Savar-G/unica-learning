@@ -4,31 +4,17 @@
 //
 // Usage: npm run db:types
 // The Supabase CLI needs an access token of an account that can see the project. The script uses, in this order:
-// SUPABASE_ACCESS_TOKEN, the macOS Keychain item "supabase-pagewise", the CLI's own login. The token goes only to this
+// SUPABASE_ACCESS_TOKEN, the macOS Keychain item "supabase-pagewise" (scripts/supabase-token.mjs), the CLI's own login. The token goes only to this
 // CLI call, so the CLI login (often another account) stays as it is. To store the token once:
 //   security add-generic-password -a "$USER" -s supabase-pagewise -w
 // When the CLI fails it prints its error on stdout, so the output is checked before it replaces the file.
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { KEYCHAIN_ITEM, PROJECT, supabaseToken } from "./supabase-token.mjs";
 
-const PROJECT = "cdjobwsyzndtltzfpyqa";
-const KEYCHAIN_ITEM = "supabase-pagewise";
 const OUT = new URL("../src/lib/database.types.ts", import.meta.url);
 
-function keychainToken() {
-  if (process.platform !== "darwin") return undefined;
-  try {
-    const token = execFileSync("security", ["find-generic-password", "-s", KEYCHAIN_ITEM, "-w"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return token.trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const token = process.env.SUPABASE_ACCESS_TOKEN || keychainToken();
+const token = supabaseToken();
 let types;
 try {
   types = execFileSync("supabase", ["gen", "types", "typescript", "--project-id", PROJECT, "--schema", "public"], {
