@@ -230,3 +230,13 @@ describe("#698 loop: step credit never releases the answer (D-199)", () => {
     expect(trace.turns.filter((t) => t.kind === "maya").map((t) => t.finalMisses ?? 0)).toEqual([0, 0, 0, 1]);
   });
 });
+
+// #735 (Chief of Staff, 2026-11-09): a written digit with its carry after the step's own sum stays no-credit in #698. It
+// fails closed and the loop guard climbs past it (the PR #624 review tests require no credit). #735 decides whether it
+// credits.
+describe("#735: a step's sum with its written digit and carry", () => {
+  it.skip.each(["7 plus 9 is 16, I wrote 6 and carried 1."])("credits the ones for %j (model reads it, and code's fallback)", async (text) => {
+    expect((await play([named(text)])).told[1]).toMatchObject(NEXT);
+    expect((await play([down(text)])).told[1]).toMatchObject(NEXT);
+  });
+});
