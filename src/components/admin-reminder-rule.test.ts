@@ -16,6 +16,11 @@ it("states the same rule on the dashboard's free trial stage, with no day 30 for
  expect(STAGE_ACTION.trial).toBe("In the free first month. If at least 7 days remain when the plan starts, Stripe emails the parent a reminder 7 days before the first charge.");
 });
 
+it("keeps both stage lines after the merge with main: main's start action and this branch's reminder rule", () => {
+ expect(STAGE_ACTION.card_saved).toBe("After you confirm the first workbook has arrived at the family's home, press \"Workbook delivered: start plan\" under Cards and waitlist.");
+ expect(STAGE_ACTION.trial).toBe("In the free first month. If at least 7 days remain when the plan starts, Stripe emails the parent a reminder 7 days before the first charge.");
+});
+
 it("decides the reminder by the time left at the plan start, with exactly 7 days included", () => {
  const start = Date.parse("2026-11-10T18:00:00Z"), day = 86_400_000;
  expect(planReminderDue(start, start + 30 * day)).toBe(true);

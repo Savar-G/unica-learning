@@ -19,7 +19,7 @@ const time = "2026-11-08T20:00:00Z";
 let clientId = 0;
 beforeEach(() => vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-08T21:00:00Z")));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-type Evidence = { failPrices?: boolean; failRead?: string; emailStatus?: string; emailKind?: string; planKind?: string; missingPlan?: boolean; wrongParent?: boolean; noReceipt?: string[]; noBook?: string[] };
+type Evidence = { failPrices?: boolean; failPrice?: "plan_starts" | "child_plan_states"; cents?: { starts?: Record<string, number>; states?: Record<string, number> }; failRead?: string; emailStatus?: string; emailKind?: string; planKind?: string; missingPlan?: boolean; wrongParent?: boolean; noReceipt?: string[]; noBook?: string[] };
 const bookOf = (cardIndex: number) => `00000000-0000-4000-8000-${String(cardIndex + 1).padStart(12, "0")}`;
 function admin(starts: { card_setup_id: string; state: string; generation: number; started_at: string }[], evidence: Evidence = {}) {
   const cards = ["new", "started", "other", "refused", "open", "stuck", "old-start", "restart", "legacy-email", "legacy-state", "unknown"].map((id) => ({
@@ -33,6 +33,7 @@ function admin(starts: { card_setup_id: string; state: string; generation: numbe
       const name = url.pathname.split("/").at(-1);
       const read = name === "plan_starts" && url.searchParams.has("email_send_status") ? "plan_emails" : name;
       if (evidence.failPrices && (name === "plan_starts" && url.searchParams.get("select")?.includes("monthly_cents") || name === "child_plan_states" && url.searchParams.get("select")?.includes("monthly_cents"))) return Response.json({ code: "XX000", message: "Price read failed" }, { status: 500 });
+      if (name === evidence.failPrice && url.searchParams.get("select")?.includes("monthly_cents")) return Response.json({ code: "XX000", message: "Price read failed" }, { status: 500 });
       if (read === evidence.failRead) return Response.json({ code: "XX000", message: "Evidence read failed" }, { status: 500 });
       if (name === "workbook_emails") return Response.json([{
         id: "email", card_setup_id: "legacy-email", kind: evidence.emailKind ?? "plan_start", workbook_number: ["dispatch", "ready"].includes(evidence.emailKind ?? "plan_start") ? 1 : 0,
@@ -40,7 +41,7 @@ function admin(starts: { card_setup_id: string; state: string; generation: numbe
       }]);
       if (name === "child_plan_states") return Response.json(cards.filter((c) => c.id !== "unknown" && !(c.id === "legacy-state" && evidence.missingPlan)).map((c) => ({
         child_id: c.child_id, parent_id: evidence.wrongParent && c.id === "legacy-state" ? "another-parent" : parent,
-        kind: c.id === "legacy-state" ? evidence.planKind ?? "paying" : "not_started",
+        kind: c.id === "legacy-state" ? evidence.planKind ?? "paying" : "not_started", monthly_cents: evidence.cents?.states?.[c.id] ?? null,
       })));
       if (name === "admin_card_setups") return Response.json(cards);
       // Every child has a shipped workbook 1 with its delivery receipt, unless the evidence says otherwise.
@@ -62,7 +63,8 @@ function admin(starts: { card_setup_id: string; state: string; generation: numbe
       if (name === "plan_starts") {
         if (url.searchParams.has("email_send_status")) return Response.json([]);
         const filter = url.searchParams.get("state");
-        return Response.json(starts.filter((s) => !filter || filter === `eq.${s.state}` || filter.startsWith("in.") && filter.includes(s.state)));
+        return Response.json(starts.filter((s) => !filter || filter === `eq.${s.state}` || filter.startsWith("in.") && filter.includes(s.state))
+          .map((s) => ({ ...s, monthly_cents: evidence.cents?.starts?.[s.card_setup_id] ?? null })));
       }
       if (["admin_waitlist_joins", "admin_assessments", "email_log", "admin_emails", "admin_tests"].includes(name ?? "")) return Response.json([]);
       throw Error(`Unexpected read: ${url.pathname}`);
@@ -230,4 +232,24 @@ it.each(["next steps", "parent detail"])("%s labels the ceiling when both price 
   const cards = await readCards(page, { failPrices: true });
   expect(cardHtml(cards, "started")).toContain("Plan started.");
   for (const id of priceCards) expect(cardHtml(cards, id)).toContain("up to CAD 79.99 (price not read)");
+});
+
+// One price read fails (PR #803 review, P3): the ceiling label shows only where the failed read could hold the card's price.
+// "started" is a sibling with a stored price in both reads, "legacy-state" has a stored state price only, "open" is an open start
+// with a price, and "new" has no start and no price.
+const cents = { starts: { started: 5999, open: 5999 }, states: { started: 5999, "legacy-state": 5999 } };
+it.each(["next steps", "parent detail"])("%s labels the ceiling only where a failed price-terms read could hold the price", async (page) => {
+  const cards = await readCards(page, { cents, failPrice: "plan_starts" });
+  expect(cardHtml(cards, "started")).toContain("CAD 59.99");
+  expect(cardHtml(cards, "legacy-state")).toContain("CAD 59.99");
+  for (const id of ["started", "legacy-state"]) expect(cardHtml(cards, id)).not.toContain("price not read");
+  for (const id of ["open", "new"]) expect(cardHtml(cards, id)).toContain("up to CAD 79.99 (price not read)");
+});
+
+it.each(["next steps", "parent detail"])("%s labels the ceiling only where a failed plan-states read could hold the price", async (page) => {
+  const cards = await readCards(page, { cents, failPrice: "child_plan_states" });
+  expect(cardHtml(cards, "started")).toContain("CAD 59.99");
+  expect(cardHtml(cards, "open")).toContain("CAD 59.99");
+  for (const id of ["started", "open"]) expect(cardHtml(cards, id)).not.toContain("price not read");
+  for (const id of ["legacy-state", "new"]) expect(cardHtml(cards, id)).toContain("up to CAD 79.99 (price not read)");
 });
