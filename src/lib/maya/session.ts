@@ -343,6 +343,18 @@ export interface Session {
    * from before has no field (none).
    */
   doubtChecks?: string[];
+  /**
+   * How many of Maya's guides on each step said a carry or trade explanation (step.regroup, step.why, step.order; PR #698
+   * round 5). The first two on a step answer the child's carry question as no new help (D-253 item 6); after them such a
+   * guide counts in the loop guard's row like any other. A saved session from before has no field (none).
+   */
+  carryLines?: Record<string, number>;
+  /**
+   * The steps whose setup Maya said back (step.operation after the child said the column's addition; D-253 item 10, PR
+   * #698 round 5): once per step it is no new help; after it the operation line counts like any other guide. A saved
+   * session from before has no field (none).
+   */
+  setupEchoed?: string[];
   ladder: Ladder;
   highestHint: HintLevel | null;
   /** Hints given: guide turns from H1, and a given answer. */
@@ -897,7 +909,11 @@ function stuckWayOut(s: Session, reading: Reading, rightResult: boolean): "examp
   if (main === "MODEL_EXAMPLE" && s.exampleShown < steps) return null;
   if ((reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && (a.verdict !== "wrong" || committedValue(s, a)))) return null;
   if (reading.help === undefined && !asksForHelp(s.turn.text)) return null;
-  if (copiedStep(s) !== null || helpHint(s) < topHint(s)) return null;
+  // Round 5: the easier example's end takes the ladder back below the show (afterExample), so the child's next turn is a
+  // real turn. Decision (a) still holds for a turn that only asks for help right after the example, when this step's top
+  // help (its show) came before it: the honest close.
+  const topBefore = main === "MODEL_EXAMPLE" && s.exampleShown >= steps && (s.shows?.[s.ladder.step] ?? 0) > 0;
+  if (copiedStep(s) !== null || (helpHint(s) < topHint(s) && !topBefore)) return null;
   return s.exampleShown < steps && !exampleRevealsAnswer(s) ? "example" : "close";
 }
 
@@ -1432,26 +1448,18 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       s.exampleIntroduced = true;
       s.exampleShown = index + 1;
       s.assistance.push("worked_example");
+      // Round 5 (#698, P1-3): the child's turn after the whole example is a real turn on the step they were on, with or
+      // without the new try (try_target is not offered after progress on an earlier step).
+      if (s.exampleShown === pkg!.easierExample.steps.length && !s.retried) afterExample(s, ladder);
       moveTo(s, "MODEL_EXAMPLE");
       break;
     }
     case "try_target":
       if (s.exampleShown === pkg!.easierExample.steps.length) {
         // Round 4 (#698, practice on 6a0581bd: C03-r1, C05-r1): the new try after the easier example is a real turn on the
-        // child's own question. The ladder of its step goes back below the show (to H1 at most, so the next help is H2, never
-        // the show twice in a row), and the loop guard's row and show go with it; the show count stays (shows), so a
-        // copy of a shown step still goes past it, and the step is never shown a third time. The example is offered once, so
-        // the call still ends: no progress up the ladder again leads to close.stuck.
-        if (!s.retried) {
-          if (ladder.hint >= 3 && !(s.shows?.[ladder.step])) s.shows = { ...(s.shows ?? {}), [ladder.step]: 1 };
-          Object.assign(ladder, { hint: Math.min(ladder.hint, 1), unlocked: Math.min(ladder.unlocked, 2), failures: 0 });
-          // The row and the show go; the floor stays at H1 at most, so the help never starts over at H0 (the call stays short).
-          if (s.prompt) {
-            const rest = { ...s.prompt, key: "", times: 0, floor: Math.min(s.prompt.floor, 1) };
-            delete rest.shown;
-            s.prompt = rest;
-          }
-        }
+        // child's own question (afterExample). Round 5 makes that reset when the example ends; nothing moves the ladder
+        // between, so here it changes nothing, except for a session saved between the two.
+        if (!s.retried) afterExample(s, ladder);
         s.retried = true;
       }
       moveTo(s, "TRY_TARGET");
@@ -1470,31 +1478,41 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // A check of the child's own right answer (check.together, check.guess, #605) may ask the step's question (up to
       // H2: "Let's check it together. What is 7 + 9?"); it checks an answer the child gave, so it is no new help either.
       const checking = spoken.chosen.some((o) => o.line === "check.together" || o.line === "check.guess") && p.level <= 2;
-      const echo = checking || (s.turn !== null && spoken.chosen.length > 0 && spoken.chosen.every((o) => o.line === "step.operation") &&
-        saidSetup(pkg!, ladder.step, s.turn.text));
+      // Round 5 (#698, P1-2): the setup is said back once per step (D-253 item 10); after it the operation line is help like
+      // any other, under the cap and in the loop guard's row ("So 2 plus 3 plus 1?" fourteen times got it fourteen times).
+      const setupEcho = s.turn !== null && spoken.chosen.length > 0 && spoken.chosen.every((o) => o.line === "step.operation") &&
+        saidSetup(pkg!, ladder.step, s.turn.text) && !(s.setupEchoed ?? []).includes(ladder.step);
+      const echo = checking || setupEcho;
       if (p.level > cap && !echo) return no("hint_too_high", `Help may rise to H${cap} now: more help needs a failed attempt or a request, not silence.`, allowedNow);
       if (echo) {
         exempt = true;
         // Round 4: the check of a doubtful answer comes once per step in a call; after it, that answer is not confirmed again.
         if (checking && !(s.doubtChecks ?? []).includes(p.step)) s.doubtChecks = [...(s.doubtChecks ?? []), p.step];
+        if (setupEcho && !checking) s.setupEchoed = [...(s.setupEchoed ?? []), p.step];
         moveTo(s, s.solved !== null ? "CHECK" : "GUIDE_TARGET");
         break;
       }
-      // The regroup explanation is new help for a child who lost the carry, whatever level the ladder is on.
+      // The regroup explanation is new help for a child who lost the carry, whatever level the ladder is on. Round 5 (#698,
+      // P1-2): a carry or trade explanation (regroup, why, order) is no repeat only for the first two on a step in a call,
+      // and a due regroup (its own limit, MAX_REGROUP_SAYS); after them it counts in the loop guard's row like any other
+      // guide, so the help climbs and the stuck way out comes ("Why?" fourteen times got step.why eleven times).
       const regroupNow = spoken.chosen.some((o) => o.line === "step.regroup" || o.line === "step.why" || o.line === "step.order");
-      exempt = regroupNow;
-      if (s.turn && asksWhy(s.turn.text) && offersFor(s, "guide", view).some(o => o.line === "step.why") &&
+      const carryLeft = carryLinesLeft(s, ladder.step);
+      const dueRegroup = pendingRegroup(regroup).some((c) => c.at === ladder.step) && spoken.chosen.some((o) => o.line === "step.regroup");
+      const carryFree = regroupNow && (carryLeft || dueRegroup);
+      exempt = carryFree;
+      if (carryLeft && s.turn && asksWhy(s.turn.text) && offersFor(s, "guide", view).some(o => o.line === "step.why") &&
           !spoken.chosen.some(o => o.line === "step.why")) {
         return no("line_not_offered", "The child asked why the carry or trade works: use the offered step.why explanation before another prompt.", allowedNow);
       }
       // A question about the carried digit on the column that takes it ("What do I do with the 1 I carried?") is answered
       // with a line about that carry, never the same invitation again (first-ship practice, C26).
       const carryLine = (o: LineOffer) => o.line === "step.why" || o.line === "step.regroup" || (o.line === "step.point" && o.key === "point.add.carry");
-      if (s.turn && asksWhy(s.turn.text) && offersFor(s, "guide", view).some((o) => carryLine(o) && o.slots.step === ladder.step && (o.level ?? 0) <= cap) &&
+      if (carryLeft && s.turn && asksWhy(s.turn.text) && offersFor(s, "guide", view).some((o) => carryLine(o) && o.slots.step === ladder.step && (o.level ?? 0) <= cap) &&
           !spoken.chosen.some(carryLine)) {
         return no("line_not_offered", "The child asked about the carried digit: answer with the offered line about it (step.point, step.regroup or step.why) before another prompt.", allowedNow);
       }
-      if (ladder.failures >= 2 && p.level <= ladder.hint && !regroupNow) return no("same_hint_again", `Two attempts failed at H${ladder.hint}: give more help or offer to stop.`, allowedNow);
+      if (ladder.failures >= 2 && p.level <= ladder.hint && !carryFree) return no("same_hint_again", `Two attempts failed at H${ladder.hint}: give more help or offer to stop.`, allowedNow);
       // The loop guard (rounds 2 and 3, P1 e): after two guides on the step with no progress and no help above the row's
       // highest, or after its show (H3) once, a guide on the step with no progress must give help above any in the row
       // (loopGuard): other lines with the show, or a lower level and back up, are the same loop. After the guard made the
@@ -1506,10 +1524,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (p.level >= 3 && helps && (s.shows?.[p.step] ?? 0) >= 2) {
         return no("same_hint_again", `Maya already showed "${p.step}" twice in this call: give the easier example, or close honestly.`, allowedNow);
       }
-      if (loop === "repeat" && s.prompt?.step === p.step && (!helps || p.level <= (s.prompt.shown ? 3 : s.prompt.top ?? s.prompt.level)) && !progressed && !regroupNow) {
+      if (loop === "repeat" && s.prompt?.step === p.step && (!helps || p.level <= (s.prompt.shown ? 3 : s.prompt.top ?? s.prompt.level)) && !progressed && !carryFree) {
         return no("same_hint_again", `Maya said this help on "${p.step}" just before and it is still not clear: give the next help up${nextHint(base) === null ? ", or the easier example, or close honestly" : ""}.`, allowedNow);
       }
-      if (s.prompt?.step === p.step && p.level < s.prompt.floor && !regroupNow) return no("same_hint_again", `Maya already gave H${s.prompt.floor} on this step when the same help did not work: never go back below it.`, allowedNow);
+      if (s.prompt?.step === p.step && p.level < s.prompt.floor && !carryFree) return no("same_hint_again", `Maya already gave H${s.prompt.floor} on this step when the same help did not work: never go back below it.`, allowedNow);
       // The loop guard: after its confirm, the same step is never asked again at the same help (loopGuard).
       if (loop === "climb" && p.level <= ladder.hint) return no("same_hint_again", `Maya asked about this step and it is still not clear: give the next help up, above H${ladder.hint}.`, allowedNow);
       if (p.level > ladder.hint) ladder.failures = 0;
@@ -1517,6 +1535,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       ladder.unlocked = Math.max(ladder.unlocked, p.level);
       s.highestHint = Math.max(s.highestHint ?? 0, p.level) as HintLevel;
       if (p.level >= 3 && helps) s.shows = { ...(s.shows ?? {}), [p.step]: (s.shows?.[p.step] ?? 0) + 1 };
+      if (regroupNow) s.carryLines = { ...(s.carryLines ?? {}), [p.step]: (s.carryLines?.[p.step] ?? 0) + 1 };
       if (p.level >= 1) {
         s.hints += 1;
         s.stuckStep ??= ladder.step;
@@ -2552,8 +2571,8 @@ const behind = (s: Session) => (s.passed?.length ? [...s.done, ...s.passed] : s.
  * #698, C04-r2: "You said 16, so I wrote 6" got the ones again until Maya gave the answer). The step is the first one the
  * ladder is not past, an addition column, and the one Maya showed at H3. The turn is, as a whole (stepTurnBody, with
  * next-step questions beside it), the step's value or sum ("16.", "7 plus 9 is 16."), Maya's number said back ("You said
- * 16.", "You said 16, so it's 16."), a plain acknowledgement ("I see.", "Got it."), or only next-step questions ("Where does
- * the 1 go?"). A bare "Yes." or "Okay." is none of these: a yes moves Maya past nothing she did not ask about (j06-review,
+ * 16.", "You said 16, so it's 16."), or, only right after the show (justShown, round 5), a plain acknowledgement ("I see.",
+ * "Got it.") or only next-step questions ("Where does the 1 go?"). A bare "Yes." or "Okay." is none of these: a yes moves Maya past nothing she did not ask about (j06-review,
  * P3). Null for any other turn: a help request or a failure keeps the H3 rule. A claim about the child's own paper is no
  * copy: it is credited as theirs (stepTurnHeard).
  */
@@ -2563,20 +2582,53 @@ function copiedStep(s: Session): string | null {
   const steps = workSteps(pkg);
   const st = steps.find((x) => !behind(s).includes(x.id));
   if (!st || st.kind !== "add-column" || s.ladder.step !== st.id) return null;
-  const shown = shownStep(s, st.id);
-  const example = exampleStepFor(s, st.id);
-  if (!shown && !example) return null;
-  if (shown) {
-    if (onlyNextStepQuestions(s.turn.text, st.carryOut)) return st.id;
-    if (stepStatement(pkg, st, s.turn.text)) return st.id;
-    const body = stepTurnBody(s.turn.text, st.carryOut);
-    if (body !== null && (stepForm(pkg, st, number(st.total), body) === "total" || echoesShown(body, st.total))) return st.id;
-  }
-  // Round 4 (#698, practice on 6a0581bd and bef51538): a turn that restates the shown step, or the step the easier example
-  // worked, in this step's own numbers, or says it did it, with questions about the next column or work on it beside
-  // ("You said 7 plus 9 is 16. So I write the 6, right?", "I'd write the 6 and carry the 1 ten, like your example.").
+  // Round 5 (#698, P1-1): only a step of this question that Maya showed at H3 in this call. The easier example's steps
+  // never pass a step of the child's own question: the example is another problem, and its carry ("Oh, so you carry the
+  // 1.") or "I did that" after it says nothing about this one.
+  if (!shownStep(s, st.id)) return null;
+  // A turn with none of this step's numbers (an acknowledgement, a next-step question, "I did that", a carry alone) is a
+  // copy only right after the show (justShown), never after the easier example or later help.
+  const just = justShown(s, st.id);
+  if (just && onlyNextStepQuestions(s.turn.text, st.carryOut)) return st.id;
+  if (stepStatement(pkg, st, s.turn.text)) return st.id;
+  const body = stepTurnBody(s.turn.text, st.carryOut);
+  if (body !== null && (stepForm(pkg, st, number(st.total), body) === "total" || (echoesShown(body, st.total) && (just || valuesIn(body).length > 0)))) return st.id;
+  // Round 4 (#698, practice on 6a0581bd and bef51538): a turn that restates the shown step in this step's own numbers, or
+  // (right after the show) says it did it, with questions about the next column or work on it beside ("You said 7 plus 9
+  // is 16. So I write the 6, right?", "I'd write the 6 and carry the 1 ten, like your example."). The example's own
+  // numbers may come beside, after "in your example", as a tag.
   const after = steps[steps.indexOf(st) + 1];
-  return copiesStep(st, after?.kind === "add-column" ? after : null, s.turn.text, example) ? st.id : null;
+  return copiesStep(st, after?.kind === "add-column" ? after : null, s.turn.text, exampleStepFor(s, st.id), just) ? st.id : null;
+}
+
+/**
+ * Maya's last guide was her show (H3) of this step, and nothing has moved the teaching on since: no example, no new try, no
+ * other guide (a confirm, a wait or a redirect between keeps it). Round 5: only then may a turn with none of the step's own
+ * numbers pass it.
+ */
+function justShown(s: Session, id: string): boolean {
+  const last = s.prompt;
+  if (!last || last.step !== id || last.key === "" || last.times === 0) return false;
+  return last.shown === true || (last.top ?? last.level) >= 3;
+}
+
+/**
+ * The easier example is over (PR #698 rounds 4 and 5): the child's next turn is a real turn on their own question. The ladder
+ * of the step they were on goes back below the show (to H1 at most, so the next help is H2, never the show twice in a
+ * row), and the loop guard's row and show go with it; the show count stays (shows), so a copy of a shown step still goes
+ * past it, and the step is never shown a third time. The floor stays at H1 at most, so the help never starts over at H0.
+ * The example is offered once, so the call still ends: no progress up the ladder again leads to close.stuck. Round 4 made
+ * this reset only with the new try (try_target), which is not offered after progress on an earlier step, so after the tens
+ * were shown and the example worked, the child's next turn was closed at once (round 5, P1-3).
+ */
+function afterExample(s: Session, ladder: Ladder) {
+  if (ladder.hint >= 3 && !(s.shows?.[ladder.step])) s.shows = { ...(s.shows ?? {}), [ladder.step]: 1 };
+  Object.assign(ladder, { hint: Math.min(ladder.hint, 1), unlocked: Math.min(ladder.unlocked, 2), failures: 0 });
+  if (s.prompt) {
+    const rest = { ...s.prompt, key: "", times: 0, floor: Math.min(s.prompt.floor, 1) };
+    delete rest.shown;
+    s.prompt = rest;
+  }
 }
 
 /** Maya showed this target step at H3 in this call (round 4: kept past the easier example's new try, which starts its ladder again). */
@@ -2609,18 +2661,19 @@ const HELP_STATEMENT = /^(?:i (?:still )?(?:don't|do not|didn't) (?:know|get|und
  * One clause restates this addition column in its own numbers (copiesStep), with its filler, source and check tag
  * removed: its sum ("7 plus 9 is 16"), its total ("16", "I got 16 for the ones"), its written digit ("I wrote the
  * 6", "So I write the 6", "the 6 goes in the ones"), its carry ("carry the 1 ten", "I carried the 1 up top"), both joined by
- * "and", or that the child did it ("I did that", "I already did the ones"). "copy" for one of these; "tag" for a clause
- * that says nothing ("Okay", "like your example", "right" in a question); null for anything else: another number, a
- * hedge, a negation, another speaker, another column.
+ * "and", or that the child did it ("I did that", "I already did the ones"). "copy" for one with its sum, total or written
+ * digit; "weak" (round 5) for a carry alone or "I did that", which say none of the column's own numbers; "tag" for a
+ * clause that says nothing ("Okay", "like your example", "right" in a question); null for anything else: another number,
+ * a hedge, a negation, another speaker, another column.
  */
-function copyClause(step: AddColumn, next: AddColumn | null, clause: string, question: boolean): "copy" | "tag" | null {
+function copyClause(step: AddColumn, next: AddColumn | null, clause: string, question: boolean): "copy" | "weak" | "tag" | null {
   let c = clause.trim().replace(/[.!?]+$/, "").trim();
   for (let i = 0; i < 4; i++) c = c.replace(COPY_FILLER, "").replace(COPY_SOURCE, "");
   c = c.replace(COPY_TAIL, "").trim();
   if (c === "" || COPY_ACK.test(c) || (question && CHECK_TAG.test(c))) return "tag";
   c = c.replace(/^(?:so do i|then do i|do i|should i|can i|i should|i need to|i have to)\s+/, "");
   const place = escapeRe(step.place);
-  if (new RegExp(`^(?:i (?:already )?(?:did|done|finished) (?:that|it|this|that one|that part|the ${place})|i've done (?:that|it|the ${place})|the ${place} (?:is|are) done)$`).test(c)) return "copy";
+  if (new RegExp(`^(?:i (?:already )?(?:did|done|finished) (?:that|it|this|that one|that part|the ${place})|i've done (?:that|it|the ${place})|the ${place} (?:is|are) done)$`).test(c)) return "weak";
   const operands = (step.carryIn > 0 ? [...step.digits, step.carryIn] : step.digits).slice().sort((a, b) => a - b).join(",");
   const sum = wholeSum(c.replace(/^i (?:did|added|add)\s+/, ""));
   if (sum) return sum.sum === step.total && [...sum.operands].sort((a, b) => a - b).join(",") === operands ? "copy" : null;
@@ -2632,10 +2685,13 @@ function copyClause(step: AddColumn, next: AddColumn | null, clause: string, que
   const write = new RegExp(`^${subject}(?:write|wrote|written|put)(?: down)? (?:the |a |just )?(\\S+)(?: down)?(?: (?:in|on|at|under|into) the (\\w+)(?: (?:column|place|spot))?)?$`);
   const goes = /^(?:the )?(\S+) goes (?:down|(?:in|at|under|on) the (\w+)(?: (?:column|place|spot))?)$/;
   const carry = new RegExp(`^${subject}(?:carry|carried|carrying|move|moved)(?: over| up)? (?:the |a )?(\\S+)(?: ten| one)?(?: (?:to|into|over to|up to|on|at|in|over) (?:the )?(\\w+)(?: (?:column|place|spot))?)?(?: (?:up top|on top|at the top))?$`);
+  // Round 5: a carry alone is "weak" (the easier example may carry the same digit); a written digit makes it a copy.
+  let written = false;
   for (const part of parts) {
     const w = write.exec(part) ?? goes.exec(part);
     if (w) {
       if (plainNumber(w[1]) !== step.write || (w[2] !== undefined && w[2] !== step.place)) return null;
+      written = true;
       continue;
     }
     const k = carry.exec(part);
@@ -2645,27 +2701,29 @@ function copyClause(step: AddColumn, next: AddColumn | null, clause: string, que
     }
     return null;
   }
-  return "copy";
+  return written ? "copy" : "weak";
 }
 
 /**
- * The child's turn copies or acknowledges this addition column, which Maya showed at H3 or the easier example worked
- * (`example`, its step with the same id), in the column's own numbers (PR #698 round 4: "You said 7 plus 9 is 16. So I write
- * the 6, right?", "Okay, I wrote the 6. What do I do with the tens?", "I'd write the 6 and carry the 1 ten, like your
- * example." each got the ones again, until the stuck close). An allow-list over the whole turn, fail-closed: at least one
- * clause restates the column (copyClause), and every other sentence is one of:
+ * The child's turn copies or acknowledges this addition column, which Maya showed at H3, in the column's own numbers (PR
+ * #698 round 4: "You said 7 plus 9 is 16. So I write the 6, right?", "Okay, I wrote the 6. What do I do with the tens?",
+ * "I'd write the 6 and carry the 1 ten, like your example." each got the ones again, until the stuck close). An allow-list
+ * over the whole turn, fail-closed: at least one clause restates the column with its sum, total or written digit
+ * (copyClause "copy"), or, only right after the show (`just`, round 5), with a carry alone or "I did that" ("weak"); and
+ * every other sentence is one of:
  * - a filler, an acknowledgement or, in a question, a check tag ("Okay.", "Is that right?");
  * - a next-step question (nextStepQuestion), or any question whose only numbers are the carry or the next column's own
  *   numbers and which does not name this column ("Now the tens?", "Do I add the 1 ten to the tens now?");
  * - a help statement whose only number is the carry, not about this column ("But I still don't know the tens.");
- * - a clause about the easier example in the example step's own numbers, led by "in your example";
+ * - a clause about the easier example (`example`, its step with the same id) in that step's own numbers, led by "in your
+ *   example": a tag, never a copy;
  * - work after it: a question, or a sentence led by "then", "next", "now", "so", "yes", "I think", "my answer" or "the
  *   answer", that does not name this column, say a carry, claim a digit written, or add this column's numbers, and whose
  *   numbers are the next column's sum or larger than this column can make ("Then 2 plus 3 is 5, so I got 56.", "Is it 66?").
  * A wrong total, digit, carry or column, a negation, a hedge before the copy, or another speaker fits none of them. A copy
  * is no credit: the ladder only goes past the column (copiedStep), and the reading judges the work after it.
  */
-function copiesStep(step: AddColumn, next: AddColumn | null, text: string, example: AddColumn | null): boolean {
+function copiesStep(step: AddColumn, next: AddColumn | null, text: string, example: AddColumn | null, just: boolean): boolean {
   const t = text.trim().replace(/[’‘]/g, "'").toLowerCase();
   if (t === "" || t.includes("\n")) return false;
   const place = new RegExp(`\\b${escapeRe(step.place)}\\b`);
@@ -2681,6 +2739,7 @@ function copiesStep(step: AddColumn, next: AddColumn | null, text: string, examp
   };
   const LEAD = /^(?:(?:and )?then|next|now|so|yes|yeah|i think|my answer|the answer)\b/;
   let copies = 0;
+  let weak = 0;
   for (const sentence of t.split(/(?<=[.!?])\s+/).filter(Boolean)) {
     if (asNext(sentence)) continue;
     const question = /\?\s*$/.test(sentence);
@@ -2688,8 +2747,10 @@ function copiesStep(step: AddColumn, next: AddColumn | null, text: string, examp
     const led = LEAD.test(body.replace(/^(?:okay|ok|oh|um+|uh)\b[,\s]*/, ""));
     for (const clause of body.split(/\s*[,;:]\s*|\s+(?=(?:so|then|but)\s)/).filter((c) => c.trim() !== "")) {
       const ex = /^(?:(?:so|and|okay|ok|oh)\b[,\s]*)*(?:like )?in (?:your|the) example,?\s*(?:you )?(.+)$/.exec(clause);
-      const kind = ex ? (example && copyClause(example, null, ex[1], question) === "copy" ? "tag" : null) : copyClause(step, next, clause, question);
+      const exampleKind = ex && example ? copyClause(example, null, ex[1], question) : null;
+      const kind = ex ? (exampleKind === "copy" || exampleKind === "weak" ? "tag" : null) : copyClause(step, next, clause, question);
       if (kind === "copy") copies += 1;
+      if (kind === "weak") weak += 1;
       if (kind !== null) continue;
       // Any other clause says nothing about this column: no place word, carry, written digit or this column's sum.
       const c = clause.replace(COPY_FILLER, "");
@@ -2705,7 +2766,8 @@ function copiesStep(step: AddColumn, next: AddColumn | null, text: string, examp
       if (said.some((n) => n <= most && n !== step.carryOut && !nextNumbers.includes(n))) return false;
     }
   }
-  return copies > 0;
+  // Round 5 (#698, P1-1): "I did that" or a carry alone passes only right after the show (`just`).
+  return copies > 0 || (weak > 0 && just);
 }
 
 /**
@@ -2812,6 +2874,11 @@ function loopGuard(s: Session): "confirm" | "climb" | "repeat" | null {
   if (last.shown) return "repeat";
   return last.times >= ((last.top ?? last.level) >= 3 ? 1 : 2) ? "repeat" : null;
 }
+
+/** The carry or trade explanations on a step that are no repeat in a call (round 5; D-253 item 6: once, and once more). */
+const CARRY_LINES_FREE = 2;
+/** Maya may still give a carry or trade explanation on this step as no repeat (carryLines, round 5). */
+const carryLinesLeft = (s: Session, step: string) => (s.carryLines?.[step] ?? 0) < CARRY_LINES_FREE;
 
 /** The acts that end the loop guard's row of prompts: each moves the teaching on (the example, a new try, the answer, the end). */
 const PROMPT_ROW_ENDS: readonly Act[] = ["open", "clarify", "example_step", "try_target", "accept_answer", "give_answer", "ask_write", "close"];
@@ -2978,7 +3045,8 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
         const target = reading?.help === "show" ? 3 : session.turn ? hint + 1 : 0;
         const lv = (o: LineOffer) => o.level ?? 0;
         const levelled = [...byLevel(free).filter((o) => lv(o) >= target), ...byLevel(free).filter((o) => lv(o) < target).reverse()];
-        const why = s.turn !== null && asksWhy(s.turn.text);
+        // Round 5: only while a carry explanation on the step is still no repeat (carryLinesLeft); after that the help climbs.
+        const why = s.turn !== null && asksWhy(s.turn.text) && carryLinesLeft(s, ladderStep);
         // A question about the carry gets the second way (step.why) when it is offered, else the line that says where the
         // carried digit goes (step.point), else where it comes from (step.regroup) (C26).
         const whyRank = (o: LineOffer) => (o.line === "step.why" ? 3 : o.line === "step.point" && (o.level ?? 0) <= hint + 1 ? 2 : o.line === "step.regroup" ? 1 : 0);

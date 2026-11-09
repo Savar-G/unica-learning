@@ -173,12 +173,22 @@ describe("#698 loop guard: never the same step line a third time", () => {
     noThreeInARow(told);
   });
 
+  // Round 5 changed this test: the turn after the easier example is a real turn (P1-3), so the help climbs once more from
+  // below the show (H2, then the second and last show) before the honest close. Before round 5 the call closed on the first
+  // turn after the example. Each part of the ladder, before and after the example, still climbs with no level twice.
   it.each(paths)("goes on up to the honest close, never the same step line three times in a row (%s)", async (_name, repair) => {
-    const { told, outcome } = await play(Array.from({ length: 8 }, () => refusedOnes(held, repair)));
+    const { told, outcome } = await play(Array.from({ length: 12 }, () => refusedOnes(held, repair)));
     noThreeInARow(told);
-    const levels = told.filter((t) => t.act === "guide").map((t) => t.level!);
-    expect(levels).toEqual([...levels].sort((a, b) => a - b));
-    expect(new Set(levels).size).toBe(levels.length);
+    const example = told.findIndex((t) => t.act === "example_step");
+    expect(example).toBeGreaterThan(0);
+    for (const part of [told.slice(0, example), told.slice(example)]) {
+      const levels = part.filter((t) => t.act === "guide").map((t) => t.level!);
+      expect(levels).toEqual([...levels].sort((a, b) => a - b));
+      expect(new Set(levels).size).toBe(levels.length);
+    }
+    const shows = told.filter((t) => t.lines.includes("step.show")).length;
+    expect(shows).toBeLessThanOrEqual(2);
+    expect(told.length).toBeLessThanOrEqual(21);
     expect(told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
     expect(outcome?.reason).not.toBe("technical_issue");
     expect(told.map((t) => t.say).join(" ")).not.toMatch(/66/);
@@ -675,14 +685,24 @@ describe("#698 round 4: the loop guard never closes a child who is still working
       "I'd write the 6 and carry the 1 ten, like your example.", // C01-r1 at bef51538
       "Okay, I'll try. 7 + 9 is 16. In your example you wrote 3 and carried 1 ten, so do I write 6 and carry 1?", // C01-r1 at bef51538
     ];
-    it.each(AFTER_EXAMPLE_TRY.flatMap((text) => PATHS.map(([name, make]) => [text, name, make] as const)))("after the easier example and its new try, %j goes on to the tens (%s)", async (text, _name, make) => {
-      for (const start of [AFTER_EXAMPLE, [NO_START, down("Okay.")]]) {
-        const r = await play([...start, make(text, TENS)]);
-        expect(r.told.at(-2)!.act).toBe("try_target");
-        expect(r.told.at(-1), JSON.stringify(r.told.at(-1))).toMatchObject({ act: "guide", step: "tens" });
-        expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
-        working(r, 1);
-      }
+    // Round 5 changed this test (P1-1): it also ran each turn after the easier example with no show of the ones before it
+    // (a no-start child), and expected the tens. The example is another problem, so its steps never pass a step of the
+    // child's own question: with no show, the turn now stays on the ones (#735 keeps it no-credit). After the ones were
+    // shown, the copy in the ones' own numbers still goes on.
+    it.each(AFTER_EXAMPLE_TRY.flatMap((text) => PATHS.map(([name, make]) => [text, name, make] as const)))("after the show, the easier example and its new try, %j goes on to the tens (%s)", async (text, _name, make) => {
+      const r = await play([...AFTER_EXAMPLE, make(text, TENS)]);
+      expect(r.told.at(-2)!.act).toBe("try_target");
+      expect(r.told.at(-1), JSON.stringify(r.told.at(-1))).toMatchObject({ act: "guide", step: "tens" });
+      expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      working(r, 1);
+    });
+
+    it.each(AFTER_EXAMPLE_TRY.flatMap((text) => PATHS.map(([name, make]) => [text, name, make] as const)))("after only the easier example and its new try (no show), %j stays on the ones (%s)", async (text, _name, make) => {
+      const r = await play([NO_START, down("Okay."), make(text, TENS)]);
+      expect(r.told.at(-2)!.act).toBe("try_target");
+      expect(r.told.at(-1), JSON.stringify(r.told.at(-1))).toMatchObject({ act: "guide", step: "ones" });
+      expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      working(r, 1);
     });
 
     it.each(PATHS)("C01-r1: after the tens were shown, \"You said write 6, so I wrote 6 in the tens. What about the ones?\" goes on (%s)", async (_name, make) => {
@@ -710,6 +730,220 @@ describe("#698 round 4: the loop guard never closes a child who is still working
         expect(r.told[1].step, text).not.toBe("tens");
         expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
       }
+    });
+  });
+});
+
+// Adversarial review of 94c8fbb7 (#698 round 4). P1-1: a copy passed a step after only the easier example ("I did that.",
+// "The ones are done.", "I carried the 1." after 18 + 15 skipped the ones, and the model's tens line then said the ones
+// digit). P1-2: the carry and why lines and the setup echo were outside the loop guard with no limit ("Why?" fourteen
+// times got step.why eleven times, "So 2 plus 3 plus 1?" got the echo thirteen times, and the call never ended). P1-3:
+// after progress on the ones and the tens shown, the first turn after the easier example got close.stuck. Each script
+// runs on the model's own proposal, on its repair and on code's fallback with the model down where it applies.
+describe("#698 round 5: copies pass only this question's shown step; carry and echo lines count; a real turn after the example", () => {
+  const NO_START: Step = { child: "Hi. I don't know how to start this one.", read: { start: "no_start" }, maya: [{ act: "example_step", step: "ones", lines: ["example.intro", "example.step"] }, { act: "example_step", step: "tens" }, { act: "example_step", step: "result" }] };
+  const SHOW: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
+  const ONES_RIGHT: Step = { child: "I got 16 for the ones.", read: { answers: [[16, "ones", "right"]] }, maya: [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }] };
+  const PATHS: [string, (text: string, plan: Plan) => Step][] = [
+    ["the model", (text, plan) => ({ child: text, maya: [{ ...plan, repair: { throws: true } }] })],
+    ["the model's repair", (text, plan) => ({ child: text, maya: [{ act: "give_answer", repair: { ...plan, repair: { throws: true } } }] })],
+    ["code's fallback with the model down", (text) => down(text)],
+  ];
+  /** No answer and no part of it: no 66, no "Write 6" (a digit of 66), no answer act, no credit. */
+  const noAnswer = (r: Awaited<ReturnType<typeof play>>) => {
+    expect(r.told.map((t) => t.act)).not.toContain("give_answer");
+    expect(r.told.slice(1).map((t) => t.say).join(" ")).not.toMatch(/\b66\b/);
+    expect(r.technical).toEqual([]);
+    expect(r.hard).toEqual([]);
+  };
+  /** The call ended with the honest close within 20 of Maya's turns after her opening, with no technical issue. */
+  const ends = (r: Awaited<ReturnType<typeof play>>) => {
+    expect(r.told.at(-1), JSON.stringify(r.told.map((t) => [t.act, t.step, t.level, t.lines]))).toMatchObject({ act: "close" });
+    expect(r.told.at(-1)!.lines).toContain("close.stuck");
+    expect(r.told.length - 1).toBeLessThanOrEqual(20);
+    expect(r.outcome?.reason).toBe("child_stopped");
+  };
+
+  describe("P1-1: the easier example's steps never pass a step of the child's own question", () => {
+    const AFTER_EXAMPLE_ONLY = [
+      "I did that.", "I already did the ones.", "The ones are done.", "I carried the 1.", "You carry the 1, right?", "Then I carry the 1.",
+      "I did that. Is it 33?", "Okay, I'm ready. I did that.", "Like your example, I carry the 1.", "So you carry the 1 ten to the tens.",
+      "I'd carry the 1 like you did.", "I finished that.", "I did it.", "I did this.", "Yes, I did that already.", "I did that. 33.",
+      "I did that. Then I got 33.", "I did that. So the answer is 33.", "I did that. My answer is 33.",
+    ];
+    // The model's plan is the round 4 probe's: the tens at H1 with the regroup line, which says the ones digit of 66.
+    const TENS_REGROUP: Plan = { act: "guide", step: "tens", level: 1, lines: ["step.regroup"] };
+    it.each(AFTER_EXAMPLE_ONLY.flatMap((text) => PATHS.map(([name, make]) => [text, name, make] as const)))("after only the easier example and its new try, %j stays on the ones (%s)", async (text, _name, make) => {
+      const r = await play([NO_START, down("Okay."), make(text, TENS_REGROUP)]);
+      expect(r.told.at(-2)!.act).toBe("try_target");
+      expect(r.told.at(-1), JSON.stringify(r.told.at(-1))).toMatchObject({ act: "guide", step: "ones" });
+      expect(r.told.at(-1)!.say).not.toMatch(/Write 6/);
+      expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      noAnswer(r);
+    });
+
+    it.each(PATHS)("\"I did that.\" twice after only the example asks the ones both times, never \"So what is 27 + 39?\" (%s)", async (_name, make) => {
+      const r = await play([NO_START, down("Okay."), make("I did that.", { act: "guide", step: "tens", level: 0, lines: ["step.invite"] }), make("I did that.", { act: "guide", step: "result", level: 0, lines: ["step.invite"] })]);
+      expect(r.told.slice(-2).map((t) => [t.act, t.step])).toEqual([["guide", "ones"], ["guide", "ones"]]);
+      noAnswer(r);
+    });
+
+    it("\"I already did the ones.\" and help after only the example are help on the ones (model down)", async () => {
+      const r = await play([NO_START, down("Okay."), down("I already did the ones."), down("Help me."), down("Help me.")]);
+      expect(r.told.slice(-3).every((t) => t.act === "guide" && t.step === "ones"), JSON.stringify(r.told.slice(-3))).toBe(true);
+      expect(r.told.map((t) => t.say).join(" ")).not.toMatch(/Only the 6 goes in the ones/);
+      noAnswer(r);
+    });
+
+    it.each(PATHS)("\"Oh, so you carry the 1.\" about the example, before the new try, passes nothing (%s)", async (_name, make) => {
+      const r = await play([NO_START, down("Oh, so you carry the 1."), make("Help me.", { act: "guide", step: "tens", level: 1, lines: ["step.regroup"] })]);
+      expect(r.told.at(-2)!.act).toBe("try_target");
+      expect(r.told.at(-1)).toMatchObject({ act: "guide", step: "ones" });
+      noAnswer(r);
+    });
+
+    it.each(PATHS)("after the tens were shown and the example worked, \"I did that.\" or \"Oh I see.\" does not pass the tens (%s)", async (_name, make) => {
+      for (const text of ["I did that.", "Oh I see.", "I carried the 1."]) {
+        const r = await play([ONES_RIGHT, { child: "Show me the tens.", read: { help: "show" }, maya: [{ act: "guide", step: "tens", level: 3, lines: ["step.show"] }] }, down("Um."), make(text, { act: "guide", step: "result", level: 0, lines: ["step.invite"] })]);
+        expect(r.told.some((t) => t.act === "example_step"), text).toBe(true);
+        expect(r.told.at(-1), `${text} ${JSON.stringify(r.told.at(-1))}`).toMatchObject({ act: "guide", step: "tens" });
+        noAnswer(r);
+      }
+    });
+
+    it.each(PATHS)("right after this question's show, \"I did that.\" still passes the ones with no credit (%s)", async (_name, make) => {
+      for (const text of ["I did that.", "I carried the 1.", "Got it."]) {
+        const r = await play([SHOW, make(text, { act: "guide", step: "tens", level: 0, lines: ["step.invite"] })]);
+        expect(r.told[2], text).toMatchObject({ act: "guide", step: "tens" });
+        expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
+        noAnswer(r);
+      }
+    });
+
+    it.each(PATHS)("after the show, the example and its new try, the ones in their own numbers still pass, \"I did that.\" alone does not (%s)", async (_name, make) => {
+      const AFTER = [SHOW, down("Um."), down("Okay.")];
+      const own = await play([...AFTER, make("I wrote the 6 and carried the 1.", { act: "guide", step: "tens", level: 0, lines: ["step.invite"] })]);
+      expect(own.told.at(-1)).toMatchObject({ act: "guide", step: "tens" });
+      const bare = await play([...AFTER, make("I did that.", { act: "guide", step: "tens", level: 0, lines: ["step.invite"] })]);
+      expect(bare.told.at(-1)).toMatchObject({ act: "guide", step: "ones" });
+      noAnswer(own);
+      noAnswer(bare);
+    });
+  });
+
+  describe("P1-2: carry, why and setup echo lines have a limit, then count in the loop guard", () => {
+    const tensLoop = (text: string, plan: Plan): Step => ({ child: text, maya: [{ ...plan, repair: { throws: true } }] });
+    it.each(["What is 2 plus 3 plus 1?", "Why?", "Why does the 1 go to the tens?", "Where does the 1 go?", "So 2 plus 3 plus 1?"])("ones credited, then %j fourteen times with the model down ends with the honest close", async (text) => {
+      const r = await play([down("I got 16 for the ones."), ...Array.from({ length: 14 }, () => down(text))]);
+      ends(r);
+      noAnswer(r);
+      const carry = r.told.filter((t) => t.lines.some((l) => l === "step.why" || l === "step.regroup")).length;
+      expect(carry).toBeLessThanOrEqual(4);
+      expect(r.told.filter((t) => t.lines.includes("step.show")).length).toBeLessThanOrEqual(2);
+    });
+
+    it("the model's setup echo fourteen times: said back once, then the help climbs to the honest close", async () => {
+      const r = await play([ONES_RIGHT, ...Array.from({ length: 14 }, () => tensLoop("So 2 plus 3 plus 1?", { act: "guide", step: "tens", level: 2, lines: ["step.operation"] }))]);
+      ends(r);
+      noAnswer(r);
+      // Before the example: one echo that is no new help, then at most two H2 guides in the loop guard's row before it climbs.
+      const before = r.told.slice(0, r.told.findIndex((t) => t.act === "example_step"));
+      expect(before.filter((t) => t.act === "guide" && t.lines.includes("step.operation")).length).toBeLessThanOrEqual(3);
+      expect(before.some((t) => t.lines.includes("step.show"))).toBe(true);
+    });
+
+    it.each(["What is 2 plus 3 plus 1?", "So 2 plus 3 plus 1?"])("the model's setup echo for %j fourteen times ends", async (text) => {
+      const r = await play([ONES_RIGHT, ...Array.from({ length: 14 }, () => tensLoop(text, { act: "guide", step: "tens", level: 2, lines: ["step.operation"] }))]);
+      ends(r);
+      noAnswer(r);
+    });
+
+    it.each(["Um.", "Why does the 1 go to the tens?", "Why?"])("the model's step.why after each %j ends with the honest close", async (text) => {
+      const r = await play([ONES_RIGHT, tensLoop("Help me.", { act: "guide", step: "tens", level: 1, lines: ["step.regroup"] }),
+        ...Array.from({ length: 14 }, () => tensLoop(text, { act: "guide", step: "tens", level: 1, lines: ["step.why"] }))]);
+      ends(r);
+      noAnswer(r);
+      // The first two carry explanations are no repeat; after them the help climbs above H1 before any more.
+      const carry = r.told.flatMap((t, i) => (t.lines.some((l) => l === "step.why" || l === "step.regroup") ? [i] : []));
+      const firstClimb = r.told.findIndex((t, i) => i > carry[1] && t.act === "guide" && (t.level ?? 0) >= 2);
+      expect(firstClimb, JSON.stringify(r.told.map((t) => [t.act, t.level, t.lines]))).toBeGreaterThan(0);
+      expect(carry.filter((i) => i < firstClimb).length).toBeLessThanOrEqual(4);
+    });
+
+    it.each(["Why?", "Why do I trade a ten?", "Where does the 10 come from?"])("fixture B: %j fourteen times with the model down ends", async (text) => {
+      const r = await play([down("Help me."), ...Array.from({ length: 14 }, () => down(text))], "B");
+      ends(r);
+      expect(r.told.slice(1).map((t) => t.say).join(" ")).not.toMatch(/\b24\b/);
+      expect(r.told.filter((t) => t.lines.some((l) => l === "step.why" || l === "step.regroup")).length).toBeLessThanOrEqual(4);
+    });
+
+    it("fixture B: the model's subtract.why after each \"Why?\" ends", async () => {
+      const r = await play([down("Help me."), ...Array.from({ length: 14 }, () => tensLoop("Why?", { act: "guide", step: "ones", level: 2, lines: ["step.why"] }))], "B");
+      ends(r);
+      expect(r.told.slice(1).map((t) => t.say).join(" ")).not.toMatch(/\b24\b/);
+    });
+
+    it("a carry question still gets its explanation once the ones are credited (D-253 item 6 kept)", async () => {
+      for (const first of [ONES_RIGHT, down("I got 16 for the ones.")]) {
+        const r = await play([first, down("Why does the 1 go to the tens?")]);
+        expect(r.told.at(-1)!.lines.some((l) => l === "step.why" || l === "step.regroup" || l === "step.point"), JSON.stringify(r.told.at(-1))).toBe(true);
+      }
+    });
+  });
+
+  describe("P1-3: after progress and the easier example, the child gets a real turn on the step they were on", () => {
+    const helpTens = (level: number): Step => ({ child: "Help me.", maya: [{ act: "guide", step: "tens", level: level as 0, repair: { throws: true } }] });
+    const BEFORE: Step[] = [ONES_RIGHT, helpTens(1), helpTens(2), helpTens(3), down("Help me.")];
+    it.each(["Okay.", "Okay, let me try.", "Hmm, so I add 2 and 3 and the 1?", "Um.", "Oh I see."])("%j after the example gets a guide on the tens, not close.stuck (model down)", async (text) => {
+      const r = await play([...BEFORE, down(text)]);
+      expect(r.told.filter((t) => t.act === "example_step").length).toBeGreaterThan(0);
+      expect(r.told.at(-1), JSON.stringify(r.told.at(-1))).toMatchObject({ act: "guide", step: "tens" });
+      expect(r.told.at(-1)!.lines).not.toContain("step.show");
+      noAnswer(r);
+    });
+
+    it.each(PATHS)("the model's H2 on the tens after the example is said (%s)", async (name, make) => {
+      const r = await play([...BEFORE, make("Okay, let me try.", { act: "guide", step: "tens", level: 2, lines: ["step.operation"] })]);
+      expect(r.told.at(-1)).toMatchObject({ act: "guide", step: "tens" });
+      if (name !== "code's fallback with the model down") expect(r.told.at(-1)).toMatchObject({ level: 2, lines: ["step.operation"] });
+      expect(r.told.at(-1)!.refusals.filter((x) => !x.startsWith("act_not_allowed"))).toEqual([]);
+      noAnswer(r);
+    });
+
+    it.each(PATHS)("no progress after the example climbs to one more show, never two in a row or a third, then close.stuck (%s)", async (_name, make) => {
+      const r = await play([...BEFORE, ...Array.from({ length: 10 }, () => make("Um.", { act: "guide", step: "tens", level: 3, lines: ["step.show"] }))]);
+      const guides = r.told.filter((t) => t.act === "guide");
+      expect(guides.filter((t) => t.lines.includes("step.show")).length).toBe(2);
+      for (let i = 1; i < r.told.length; i++) expect(r.told[i].lines.includes("step.show") && r.told[i - 1].lines.includes("step.show"), `${i}`).toBe(false);
+      const example = r.told.findIndex((t) => t.act === "example_step");
+      expect(r.told.slice(example).filter((t) => t.act === "guide").length).toBeGreaterThan(0);
+      ends(r);
+      noAnswer(r);
+    });
+
+    // Decision (a) of #735 is kept: a turn that only asks for help right after the example, when the step's show came
+    // before it, gets the honest close. Every other turn gets the real turn above.
+    it.each(["Help me.", "I'm stuck."])("%j right after the example, after the tens were shown, still gets the honest close (decision (a))", async (text) => {
+      const r = await play([...BEFORE, down(text)]);
+      ends(r);
+      noAnswer(r);
+    });
+
+    it("a right tens step after the example is credited and goes on (model down)", async () => {
+      const r = await play([...BEFORE, down("2 plus 3 plus 1 is 6.")]);
+      expect(r.told.at(-1)).toMatchObject({ act: "guide", step: "result" });
+      noAnswer(r);
+    });
+
+    it("fixture B: ones right, tens shown, example, then \"Okay.\" gets a guide on the tens, and the call still ends", async () => {
+      const head: Step[] = [{ child: "12 minus 8 is 4.", read: { answers: [[4, "ones", "right"]] }, maya: [{ act: "guide", step: "tens", level: 0, repair: { throws: true } }] },
+        down("Help me."), down("Help me."), down("Help me."), down("Help me.")];
+      const r = await play([...head, down("Okay.")], "B");
+      expect(r.told.at(-1), JSON.stringify(r.told.at(-1))).toMatchObject({ act: "guide", step: "tens" });
+      const all = await play([...head, ...Array.from({ length: 10 }, () => down("Okay."))], "B");
+      ends(all);
+      expect(all.told.filter((t) => t.lines.includes("step.show")).length).toBe(2);
+      expect(all.told.slice(1).map((t) => t.say).join(" ")).not.toMatch(/\b24\b/);
     });
   });
 });
