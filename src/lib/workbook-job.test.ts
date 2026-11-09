@@ -889,6 +889,36 @@ it("finishes a personalized run whose stored plan comes back in jsonb key order 
   expect((await s.runs.frame(id))?.plan.level).toBe(16);
 }, 180_000);
 
+it("plans from the child's book instructions once, and a resume keeps the set the run started with", async () => {
+  const profile = { revision: 1, profile: firstCustomerProfile() };
+  const inputs = child({ grade: 4, profile, instructions: { version: 1, startLevel: "U17", teachMore: [], teachLess: [], addReview: ["4.5"], difficulty: null } });
+  const s = setup({ inputs, budgetMs: 150_000 + 3 * AI_SECONDS * 1000 });
+  const id = await started(s);
+  expect(await runWorkbookJob(id, s.deps)).toBe("handed-on");
+  const frame = (await s.runs.frame(id))!;
+  expect(frame.plan.level).toBe(17);
+  expect(frame.plan.instructions?.instructions).toEqual(inputs.instructions);
+  expect(frame.plan.instructions?.outcomes.map(o => [o.section, o.value, o.applied])).toEqual([["start-level", "U17", true], ["add-review", "4.5", true]]);
+  expect(frame.planning?.placement.instructions).toEqual(inputs.instructions);
+  expect(frame.planning?.input.instructions).toMatchObject({ addReview: ["4.5"], weakBelowChecks: true });
+  // An admin changes the instructions while the run waits: the run keeps its own plan.
+  inputs.instructions = { version: 1, startLevel: "U19", teachMore: [], teachLess: [], addReview: [], difficulty: "harder" };
+  expect(await runWorkbookJob(id, { ...s.deps, budgetMs: 1e9 }, { resume: true })).toBe("done");
+  expect(await s.runs.frame(id)).toEqual(frame);
+  const draft = (await s.drafts.draft((await s.runs.run(id))!.draftId!))!;
+  expect(draft.levels).toEqual([17]);
+}, 180_000);
+
+it("plans as before when the child has no book instructions", async () => {
+  const s = setup({ inputs: child({ grade: 4, profile: { revision: 1, profile: firstCustomerProfile() }, instructions: null }), budgetMs: 1 });
+  const id = await started(s);
+  await runWorkbookJob(id, s.deps);
+  const frame = (await s.runs.frame(id))!;
+  expect(frame.plan.instructions).toBeUndefined();
+  expect(frame.planning?.placement).not.toHaveProperty("instructions");
+  expect(frame.planning?.input).not.toHaveProperty("instructions");
+});
+
 // The Stop button: an admin ends a run. The clock is fake, and each case holds the job at a known point.
 describe("an admin stops a run", () => {
   const FAST = 2;

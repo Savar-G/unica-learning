@@ -167,4 +167,13 @@ describe("Why this book and read-only preview", () => {
     expect(rows.find(r => r.label === "AI notes from the test")).toMatchObject({ status: "Used", value: expect.stringContaining("3.3") });
     expect(rows.find(r => r.label === "AI notes from later learning")).toMatchObject({ status: "Not used", value: expect.not.stringContaining("3.3") });
   });
+  it("names the team's request as the reason for harder work", () => {
+    const told = previewWorkbook({ curriculum, grade: 4, facts: facts(), workbooks: [],
+      instructions: { version: 1, startLevel: null, teachMore: [], teachLess: [], addReview: [], difficulty: "harder" } }, planNextWorkbook);
+    expect(told.ok).toBe(true);
+    if (!told.ok) return;
+    const day1 = told.why.pages.find(p => p.label === "Day 1, page 1")!.choices;
+    expect(day1).toContain("Harder work starts 2 days earlier because the team asked for harder work.");
+    expect(preview().why.pages.find(p => p.label === "Day 1, page 1")!.choices).toContain("Harder work starts 2 days earlier because of the working level and test results.");
+  });
 });

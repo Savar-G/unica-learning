@@ -1,0 +1,51 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Report clarity options</title>
+<style>
+  body { margin: 0; font-family: var(--font-sans); color: var(--foreground); }
+  .wrap { display: grid; gap: 28px; }
+  h2 { margin: 0 0 4px; font-size: 18px; }
+  .opt { display: grid; gap: 10px; }
+  .tag { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); font: 600 12px/1.6 var(--font-mono); }
+  .order { margin: 0; font: 12.5px/1.5 var(--font-mono); color: var(--muted-foreground); }
+  .row { display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 13.5px; line-height: 1.45; }
+  .row b { font-weight: 600; }
+  img { width: 100%; border-radius: var(--radius); border: 1px solid var(--border); display: block; }
+  .cap { font-size: 12px; color: var(--muted-foreground); }
+  .shared { padding: 14px 16px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--border); font-size: 13.5px; line-height: 1.5; }
+  .shared ul { margin: 6px 0 0; padding-left: 18px; }
+</style></head>
+<body><div class="wrap">
+  <div class="shared"><b>In all three options</b> (sample child Leah: Grade 3, working at grade 2)
+    <ul>
+      <li>No "This level may be too high" warning.</li>
+      <li>"Working level" is defined under the headline.</li>
+      <li>"To work on" is split into <b>Gaps to fix</b> (grade 2 and below, with Leah's answers) and <b>Next to learn</b> (grade 3).</li>
+      <li><b>What's in workbook 1</b> comes from the real planner: main work, review and challenge, then the path after workbook 1.</li>
+      <li>The call offer sits beside the card offer: "Want to change workbook 1?"</li>
+    </ul>
+  </div>
+
+  <div class="opt">
+    <h2><span class="tag">A</span>Fix in place</h2>
+    <p class="order">Headline + definition → By area → Strengths → Gaps to fix → Next to learn → Number facts → What's in workbook 1 → Next step</p>
+    <div class="row"><span><b>Bet:</b> today's order, each section fixed where it is. <b>Cost:</b> "what will my child get" is still at the bottom, after the evidence.</span></div>
+    <img src="/Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/report-clarity/.design/experiments/r-report-clarity/shots/a-fix-in-place--wb1.jpg" alt="Option A: What's in workbook 1">
+    <p class="cap">What's in workbook 1 and the path after it (the same block is in B and C).</p>
+    <img src="/Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/report-clarity/.design/experiments/r-report-clarity/shots/a-fix-in-place--gaps.jpg" alt="Option A: Gaps to fix">
+    <p class="cap">Gaps to fix: each card says where it is covered ("In workbook 1", "Review in workbook 1", "In a later grade 2 book").</p>
+  </div>
+
+  <div class="opt">
+    <h2><span class="tag">B</span>Answer first</h2>
+    <p class="order">Headline + definition → Where Leah is (Secure / Gaps / Next) → What's in workbook 1 → Next step → THE DETAILS: By area, Strengths, Gaps with answers, Next to learn, Number facts</p>
+    <div class="row"><span><b>Bet:</b> the whole story fits in the first two screens, and the evidence becomes proof below. <b>Cost:</b> the topic names appear twice.</span></div>
+    <img src="/Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/report-clarity/.design/experiments/r-report-clarity/shots/b-answer-first--glance.jpg" alt="Option B: Where Leah is">
+  </div>
+
+  <div class="opt">
+    <h2><span class="tag">C</span>Grade ladder</h2>
+    <p class="order">Headline + ladder (test results and workbook 1 per grade) + definition → Workbook 1 in detail → Next step → THE DETAILS</p>
+    <div class="row"><span><b>Bet:</b> one picture shows that workbook 1 spans grades: review below, main work at the working level, later books above. <b>Cost:</b> the densest graphic, and the hardest to put in the email.</span></div>
+    <img src="/Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/report-clarity/.design/experiments/r-report-clarity/shots/c-grade-ladder--band.jpg" alt="Option C: grade ladder">
+  </div>
+</div></body></html>

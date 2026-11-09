@@ -75,7 +75,7 @@ describe("the report view (#161)", () => {
       childId: "child-1",
       assessmentId: "test-1",
       // No learner profile is stored (#198).
-      view: { id: "report-1", childName: "Asha", province: "BC", timeZone: "America/Vancouver", completedAt: "2026-10-10T19:30:00Z", questions: 36, minutes: 34, model, findings: null },
+      view: { id: "report-1", childName: "Asha", province: "BC", timeZone: "America/Vancouver", completedAt: "2026-10-10T19:30:00Z", questions: 36, minutes: 34, model, findings: null, bookOne: null },
     };
     for (const loaded of [asParent, asAdmin]) {
       const { workImages, ...view } = loaded!.view;
@@ -248,7 +248,7 @@ describe("the parent's part of the learner profile on the report view (#198)", (
     const page = renderToStaticMarkup(createElement(ReportCard, { view, readOnly: true }));
     const email = reportEmail({ view, parentName: "Priya Shah", url: "https://unicalearning.com/account/report/report-1", unsubscribeUrl: "https://unicalearning.com/unsubscribe" });
     for (const place of [page, email.text, email.html]) {
-      expect(place).toContain("To work on");
+      expect(place).toMatch(/Gaps to fix|Next to learn/);
       expect(place).not.toContain("Word problems");
       expect(place).not.toContain("1 of 3");
     }

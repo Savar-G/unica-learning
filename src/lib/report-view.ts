@@ -15,7 +15,6 @@ import {
   WORKING_LEVEL_PERCENT,
   comparedGrade,
   type Certainty,
-  type FindingTopic,
   type Level,
   type Province,
   type ReportFindings,
@@ -24,9 +23,11 @@ import {
   type StrandStatus,
 } from "@/lib/assessment";
 import type { ReportSrc } from "@/lib/next-step";
+import type { BookOne } from "@/lib/report-book-one";
 import { formatInZone, zoneForProvince, type FamilyZone } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { PLANS, cad, type PlanId } from "@/lib/site";
+import { UNIT_TITLES } from "@/lib/workbook-unit-titles";
 
 /** One stored report, ready to show. */
 export interface ReportView {
@@ -50,6 +51,11 @@ export interface ReportView {
    * shown before its profile was stored. Never the profile itself: its admin-only parts stay on the server.
    */
   findings?: ReportFindings | null;
+  /**
+   * D-305: workbook 1 as the generator would plan it from this test (report-book-one.ts). Absent or null for a family
+   * on the waitlist, a test without a learner profile, or a plan that failed: the report then shows "How we help".
+   */
+  bookOne?: BookOne | null;
 }
 
 /** "Right answer" or "Not right", under each piece of the child's work (#67, D-087). */
@@ -105,7 +111,15 @@ export function verdictSentence(v: ReportView): string {
  * #68: the paragraph the AI wrote from the report model, with the child's name in place of REPORT_TEXT_NAME. Null when
  * the report has none (the AI is off or failed, or its text broke a rule): the plain sentences then stand alone.
  */
-export const summaryText = (v: ReportView): string | null => (v.model.summary ? v.model.summary.replaceAll(REPORT_TEXT_NAME, v.childName) : null);
+/**
+ * #68: the AI paragraph with the child's name. D-305: a summary written before the help warning was removed may still
+ * say the level "may be too high"; that sentence is dropped, as the report no longer makes that claim.
+ */
+export const summaryText = (v: ReportView): string | null => {
+  if (!v.model.summary) return null;
+  const sentences = v.model.summary.replaceAll(REPORT_TEXT_NAME, v.childName).split(/(?<=[.!?])\s+/);
+  return sentences.filter((s) => !/too high/i.test(s)).join(" ").trim() || null;
+};
 
 const BAND_WORDS = { lower: "lower quarter", middle: "middle half", upper: "upper quarter" } as const;
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : n % 10 === 1 ? "st" : n % 10 === 2 ? "nd" : n % 10 === 3 ? "rd" : "th"}`;
@@ -169,18 +183,38 @@ export function thresholdsLine(v: ReportView): string {
   const thresholds = `Secure: ${STRAND_SECURE_PERCENT}% or more right. Developing: ${STRAND_DEVELOPING_PERCENT}-${STRAND_SECURE_PERCENT - 1}%. Needs attention: under ${STRAND_DEVELOPING_PERCENT}%.`;
   const labelled = v.model.strands.some((s) => s.certainty);
   return labelled
-    ? `${thresholds} Clear: one more right or wrong answer would not change the result. Early sign: one more answer could change it.`
+    ? `${thresholds} Clear: one more right or wrong answer would not change the result. Early sign: one more answer could change it.${books(v) ? " Workbook 1 checks early signs." : ""}`
     : `${thresholds} ${v.questions} questions is an early signal, not a final verdict.`;
 }
 
+/** The family can start the books (BC, D-082): the report may name workbook 1. */
+const books = (v: ReportView) => v.model.callToAction === "card";
+
 /**
- * How sure one result is (#189, D-108): "Clear", or "Early sign: workbook 1 checks this". A family on the waitlist has
- * no workbook yet, so their early sign names none. Null for a result stored before the labels.
+ * How sure one result is (#189, D-108): "Clear" or "Early sign". D-305: what workbook 1 does about early signs is said
+ * once per section (thresholdsLine, earlySignNote), not on every row. Null for a result stored before the labels.
  */
-export function certaintyText(v: ReportView, certainty: Certainty | undefined): string | null {
+export function certaintyText(_v: ReportView, certainty: Certainty | undefined): string | null {
   if (!certainty) return null;
-  if (certainty === "clear") return "Clear";
-  return v.model.callToAction === "card" ? "Early sign: workbook 1 checks this" : "Early sign";
+  return certainty === "clear" ? "Clear" : "Early sign";
+}
+
+/** D-305: the one line under a topic list when any of its results is an early sign; null when all are clear. */
+export function earlySignNote(v: ReportView, topics: readonly { certainty: Certainty }[]): string | null {
+  if (!topics.some((t) => t.certainty !== "clear")) return null;
+  return `Topics not marked Clear are early signs: one more answer could change them.${books(v) ? " Workbook 1 checks them." : ""}`;
+}
+
+/**
+ * D-305 (Cedric's call with a parent, 2026-11-08): "working at a grade 5 level" read as "only grade 5 work". This says
+ * what the working level is, under the ruler; for a family that can start the books, that the books cover more.
+ */
+export function workingLevelNote(v: ReportView): string {
+  const name = v.childName;
+  const what = `Working level is the grade where ${name}'s answers show secure skills today.`;
+  return books(v)
+    ? `${what} It is a starting point, not the only grade ${name}'s workbooks cover: each book also reviews earlier skills and adds harder problems.`
+    : what;
 }
 
 /** #189: wrong answers from a run of very fast answers that left the score; null when there were none. */
@@ -317,25 +351,8 @@ export const reportDate = (v: ReportView) => familyDate(v, Date.parse(v.complete
 
 const DAY_MS = 24 * 60 * 60_000;
 
-/**
- * #71: help was likely, so the level may be too high. The flags behind it never reach the parent. The retake follows
- * the 30-day rule of #72 (RETAKE_DAYS after this test finished): the date is the first whole day the next test is
- * open, in the family's time zone, so it is true all day. The account shows the exact time.
- */
-export function helpWarning(v: ReportView, retake?: RetakeState): { title: string; text: string; retake: string } | null {
-  if (!v.model.helpWarning) return null;
-  const title = "This level may be too high";
-  const text = "We saw signs in this test that can make a level look higher than it is, such as help with some questions or answers given very quickly.";
-  const trust = `For a level you can trust, ${v.childName} can take a new test alone, with new questions`;
-  // #189: after a result that may not be reliable, the retake line agrees with the reliability note (D-108).
-  if (v.model.reliability) {
-    const when = retakeWhen(v, retake);
-    const tail = when.kind === "unknown" ? ". Your account shows when it opens." : when.kind === "now" ? ". It is open now." : `, from ${when.date}.`;
-    return { title, text, retake: `${trust}${tail}` };
-  }
-  // The last moment of the 24 hours from the opening falls on the day after it, unless it opens at midnight.
-  return { title, text, retake: `${trust}, from ${firstWholeDay(v, Date.parse(v.completedAt) + RETAKE_DAYS * DAY_MS)}.` };
-}
+// D-305: the "This level may be too high" warning (#71) is gone from the report and the email (Savar, 2026-11-08). The
+// model keeps helpWarning for admins: the report alert, and the comparison rule above.
 
 /** The short curriculum name: "BC", "Ontario". */
 const curriculumName = (p: Province) => (p === "BC" ? "BC" : CURRICULA[p]);
@@ -477,57 +494,54 @@ export const topicName = (text: string) =>
   text.replace(/\s*\([^)]*\)/g, "").replace(/,\s+(using|introducing|including|based on|concretely|both|single)\b.*$/, "").trim();
 
 /**
- * "a", "a and b", "a, b and c"; with semicolons when a topic has a comma of its own. A topic of another grade than
- * `grade` names its grade ("grade 5 addition and subtraction facts to 20"): BC repeats some topics from grade to grade.
+ * D-305: a BC topic in plain words: the unit's short workbook title ("Adding and subtracting"), else the curriculum's
+ * own words shortened. The BC wording stays beside it, small (TopicResult.bc).
  */
-function topicList(topics: readonly FindingTopic[], grade: number): string {
-  const names = topics.map((t) => `${t.grade === grade ? "" : `${levelName(t.grade)} `}${topicName(t.text)}`);
-  if (names.length < 2) return names.join("");
-  const comma = names.some((n) => n.includes(",")) ? "; " : ", ";
-  return `${names.slice(0, -1).join(comma)}${comma === "; " ? "; and " : " and "}${names[names.length - 1]}`;
-}
+const plainTopic = (t: { code: string; text: string }) => UNIT_TITLES[t.code] ?? capital(topicName(t.text));
 
-/** One BC topic of the report, with its result: "Grade 4", "6 of 6 right", and how sure. */
+/** One BC topic of the report, with its result: "Grade 4", "6 of 6 right", and "Clear" when it is clear. */
 export interface TopicResult {
   code: string;
+  /** The plain topic name (plainTopic). */
   title: string;
+  /** The BC wording, shortened (topicName). */
+  bc: string;
   grade: string;
+  level: Level;
   count: string;
   certainty: Certainty;
-  /** "Clear", or "Early sign: workbook 1 checks this" (certaintyText). */
+  /** "Clear", or empty for an early sign: D-305 says that once per section (earlySignNote). */
   sure: string;
 }
 
-const topicResult = (v: ReportView, t: { code: string; text: string; grade: Level; correct: number; total: number; certainty: Certainty }): TopicResult => ({
+const topicResult = (t: { code: string; text: string; grade: Level; correct: number; total: number; certainty: Certainty }): TopicResult => ({
   code: t.code,
-  title: capital(topicName(t.text)),
+  title: plainTopic(t),
+  bc: capital(topicName(t.text)),
   grade: gradeLabel(t.grade),
+  level: t.grade,
   count: `${t.correct} of ${t.total} right`,
   certainty: t.certainty,
-  sure: certaintyText(v, t.certainty) ?? "",
+  sure: t.certainty === "clear" ? "Clear" : "",
 });
 
 /**
- * #198: the report shows this many strengths and struggles in full. The page folds the rest under "Show n more", and
- * the email says the full report has them all: a long list would hide the first ones, which rest on the most answers.
+ * #198: the report shows this many strengths and gaps in full. The page folds the rest under "Show n more", and the
+ * email says the full report has them all: a long list would hide the first ones, which rest on the most answers.
  */
 export const STRENGTHS_SHOWN = 6;
 export const STRUGGLES_SHOWN = 3;
 
-/** The one-line explanations of the new rows (#198), shared by the page and the email. */
-export const strengthsNote = (v: ReportView) => `BC topics where ${v.childName} got ${STRAND_SECURE_PERCENT}% or more right.`;
-export const strugglesNote = (v: ReportView) =>
-  `BC topics up to ${levelName(v.model.level.grade)} where ${v.childName} got under ${STRAND_SECURE_PERCENT}% right, with one of ${v.childName}'s answers for each.`;
 /** "and 4 more", after the shown ones. */
 export const moreCount = (n: number) => `${n} more`;
 
 /** #198 (spec story 5): the BC topics the child is secure in, clear ones first; null when there are none. */
 export function strengthsView(v: ReportView): TopicResult[] | null {
   const strengths = v.findings?.strengths ?? [];
-  return strengths.length ? strengths.map((s) => topicResult(v, s)) : null;
+  return strengths.length ? strengths.map(topicResult) : null;
 }
 
-/** One struggle: its topic and result, one of the child's wrong answers, and the likely cause. */
+/** One struggle: its topic and result, one of the child's wrong answers, the likely cause, and where workbook 1 is. */
 export interface StruggleView extends TopicResult {
   status: StrandStatus;
   question: string;
@@ -536,17 +550,31 @@ export interface StruggleView extends TopicResult {
   rightAnswer: string;
   /** In plain words; null when neither the AI nor a known mistake gives one. */
   cause: string | null;
+  /** D-305: "In workbook 1", "Review in workbook 1" or "In a later book"; null when the report cannot say. */
+  cover: string | null;
+}
+
+/**
+ * D-305: where the books take up a topic the child has not mastered, from workbook 1's real plan (report-book-one.ts):
+ * taught or reviewed in workbook 1, or a later book (the rest of its level, or a level above it). Null without a plan,
+ * and for a topic below workbook 1's level that it does not review.
+ */
+function coverOf(v: ReportView, code: string, grade: Level): string | null {
+  const book = v.bookOne;
+  if (!book) return null;
+  if (book.covers[code] === "main") return "In workbook 1";
+  if (book.covers[code] === "review") return "Review in workbook 1";
+  if (book.later.includes(code) || grade > book.next.grade) return "In a later book";
+  return null;
 }
 
 /**
  * #198 (spec story 6): each BC topic at or below the school grade that is not secure, with one real wrong answer and the
  * likely cause: the AI's text when it wrote one (#197), else the known mistake the answer matches. Null when none.
  */
-export function strugglesView(v: ReportView): StruggleView[] | null {
-  const struggles = v.findings?.struggles ?? [];
-  if (!struggles.length) return null;
-  return struggles.map((s) => ({
-    ...topicResult(v, s),
+function struggles(v: ReportView): StruggleView[] {
+  return (v.findings?.struggles ?? []).map((s) => ({
+    ...topicResult(s),
     status: s.status,
     question: s.answer.prompt,
     answer: s.answer.response,
@@ -554,18 +582,140 @@ export function strugglesView(v: ReportView): StruggleView[] | null {
     cause: !s.cause ? null
       : s.cause.source === "ai" ? s.cause.text.replaceAll(REPORT_TEXT_NAME, v.childName)
       : `This answer matches a common mistake, where a child ${lowerFirst(s.cause.text)}.`,
+    cover: coverOf(v, s.code, s.grade),
   }));
 }
 
 /**
- * #198 (spec story 9): "Workbook 1 focuses on X. We will challenge {child} on Y." Text only, from the AI's workbook
- * plan (#197). Null without it, and for a family on the waitlist, which has no workbook yet.
+ * D-305: "To work on" in two parts. Gaps to fix: topics at or below the working level that the child has not mastered.
+ * Next to learn: topics above the working level, up to the school grade. Null when a part is empty.
  */
-export function workbookPreview(v: ReportView): string | null {
-  const preview = v.findings?.preview;
-  if (!preview || v.model.callToAction !== "card") return null;
-  const { grade } = v.model.level;
-  const focus = preview.focus.length ? `Workbook 1 focuses on ${topicList(preview.focus, grade)}.` : null;
-  const challenge = preview.challenge.length ? `We will challenge ${v.childName} on ${topicList(preview.challenge, grade)}.` : null;
-  return [focus, challenge].filter(Boolean).join(" ") || null;
+export function gapsView(v: ReportView): StruggleView[] | null {
+  const list = struggles(v).filter((s) => s.level <= v.model.level.working);
+  return list.length ? list : null;
+}
+
+export function nextView(v: ReportView): StruggleView[] | null {
+  const list = struggles(v).filter((s) => s.level > v.model.level.working);
+  return list.length ? list : null;
+}
+
+/** The one-line explanations of the topic rows, shared by the page and the email. */
+export const strengthsNote = (v: ReportView) => `Topics where ${v.childName} got ${STRAND_SECURE_PERCENT}% or more right.`;
+export const gapsNote = (v: ReportView) =>
+  `Topics at or below ${levelName(v.model.level.working)} that ${v.childName} has not mastered, with one of ${v.childName}'s answers for each.`;
+export const nextNote = (v: ReportView) => {
+  const { working, grade } = v.model.level;
+  const span = grade - working > 1 ? `${levelName(working + 1)} to ${grade}` : levelName(grade);
+  return `Topics from ${span} that ${v.childName} has not mastered yet. Later books teach them.`;
+};
+
+/** One topic in "Where {child} is": its plain name, and a small line (its grade when it differs, where the books take it up). */
+export interface WhereTopic {
+  title: string;
+  meta: string | null;
+}
+
+/** D-305, option B "answer first": every topic the test asked about, in three groups, before the details. */
+export interface WhereView {
+  secure: WhereTopic[];
+  gaps: WhereTopic[];
+  next: WhereTopic[];
+}
+
+/**
+ * Null without findings (no learner profile), or when the test found no topic at all. A topic names its grade when it is
+ * not the working level (secure, gaps), or when the next topics span more than one grade.
+ */
+export function whereView(v: ReportView): WhereView | null {
+  if (!v.findings) return null;
+  const { working, grade } = v.model.level;
+  const meta = (...parts: (string | null)[]) => parts.filter(Boolean).join(" · ") || null;
+  const otherGrade = (level: Level) => (level === working ? null : levelName(level));
+  const secure = (strengthsView(v) ?? []).map((t) => ({ title: t.title, meta: otherGrade(t.level) }));
+  const gaps = (gapsView(v) ?? []).map((t) => ({ title: t.title, meta: meta(otherGrade(t.level), t.cover) }));
+  const next = (nextView(v) ?? []).map((t) => ({ title: t.title, meta: grade - working > 1 ? levelName(t.level) : null }));
+  return secure.length + gaps.length + next.length ? { secure, gaps, next } : null;
+}
+
+/** The three groups' headings and one-line notes, shared by the page and the email. */
+export function whereNotes(v: ReportView) {
+  const name = v.childName;
+  return {
+    secure: { title: "Secure", note: `${name} can do these.` },
+    gaps: { title: "Gaps to fix", note: `At or below ${levelName(v.model.level.working)}. ${name} should already know these.` },
+    next: { title: "Next to learn", note: "For later books." },
+  };
+}
+
+/** D-305: "What's in workbook 1" in plain words, from the real plan. */
+export interface BookOneView {
+  note: string;
+  main: { title: string; grade: string; skills: string[]; why: string | null };
+  review: { title: string; grade: string; items: string[]; why: string | null } | null;
+  challenge: { title: string; grade: string; items: string[] } | null;
+  path: { title: string; text: string }[];
+  footnote: string;
+}
+
+const gradeList = (grades: readonly Level[]) => {
+  const unique = [...new Set(grades)].sort((a, b) => a - b).map((g) => (g === 0 ? "Kindergarten" : String(g)));
+  if (unique.length === 1) return unique[0] === "Kindergarten" ? "Kindergarten" : `Grade ${unique[0]}`;
+  return `Grades ${unique.slice(0, -1).join(", ")} and ${unique[unique.length - 1]}`;
+};
+const join = (items: readonly string[]) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
+const REVIEW_SKILLS_SHOWN = 3;
+/** The review part lists this many units; more say "and n more earlier topics". */
+const REVIEW_UNITS_SHOWN = 5;
+
+/** Null without a plan: a family on the waitlist, or a plan that failed. The report then shows "How we help". */
+export function bookOneView(v: ReportView): BookOneView | null {
+  const book = v.bookOne;
+  if (!book || !books(v)) return null;
+  const name = v.childName;
+  const tally = new Map((v.findings?.struggles ?? []).map((s) => [s.code, s]));
+  const mainTitle = book.main.map((u) => u.title).join(" · ");
+  const missed = book.main.flatMap((u) => {
+    const s = tally.get(u.code);
+    return s ? [`${s.correct} of ${s.total}${book.main.length > 1 ? ` in ${u.title}` : ""}`] : [];
+  });
+  // BC repeats some units from grade to grade ("Facts to 20"): a repeated title names its grade.
+  const titles = book.review.map((u) => u.title);
+  const reviewTitle = (u: BookOne["review"][number]) => (titles.indexOf(u.title) !== titles.lastIndexOf(u.title) ? `${u.title} (${levelName(u.grade)})` : u.title);
+  const reviewItem = (u: BookOne["review"][number]) =>
+    `${reviewTitle(u)}: ${u.skills.slice(0, REVIEW_SKILLS_SHOWN).map(lowerFirst).join("; ")}${u.skills.length > REVIEW_SKILLS_SHOWN ? "; and more" : ""}`;
+  const moreReview = book.review.length - REVIEW_UNITS_SHOWN;
+  const reviewMissed = book.review.some((u) => tally.has(u.code));
+  const after: BookOneView["path"] = [{ title: "Workbook 1", text: mainTitle }];
+  after.push(book.next.titles.length
+    ? { title: "Next books", text: `${book.next.titles.join(" · ")}, then the ${levelName(book.next.grade)} level test` }
+    : { title: "Next", text: `The ${levelName(book.next.grade)} level test` });
+  if (book.then) {
+    after.push({ title: book.then.grade === book.next.grade ? "Then" : `Then ${levelName(book.then.grade)}`, text: book.then.titles.join(" · ") });
+  }
+  const challenge = [
+    ...(book.challenge.harder ? ["Harder questions on the main topic"] : []),
+    ...(book.challenge.twoWays ? ["Solve it two ways"] : []),
+    ...(book.challenge.showWhatYouKnow ? ["Last day: Show what you know"] : []),
+  ];
+  return {
+    note: `${book.days} days${book.minutes ? `, about ${book.minutes} minutes a day` : ""}. Made from ${name}'s answers.`,
+    main: {
+      title: mainTitle,
+      grade: `${gradeList(book.main.map((u) => u.grade))} · most of each day`,
+      skills: book.main.flatMap((u) => u.skills),
+      why: missed.length ? `Why: ${name} got ${join(missed)}${book.main.length > 1 ? "" : " of these"} right on the test.` : null,
+    },
+    review: book.review.length
+      ? {
+          title: "Earlier skills",
+          grade: `${gradeList(book.review.map((u) => u.grade))} · a few questions most days`,
+          items: [...book.review.slice(0, REVIEW_UNITS_SHOWN).map(reviewItem), ...(moreReview > 0 ? [`And ${moreReview} more earlier ${moreReview === 1 ? "topic" : "topics"}`] : [])],
+          why: reviewMissed ? `Why: ${name} missed some of these on the test.` : null,
+        }
+      : null,
+    challenge: challenge.length ? { title: "Harder problems", grade: "On the main topic", items: challenge } : null,
+    path: after,
+    footnote: `Each book ends with a photo check-in. What ${name} has mastered drops out, and the next book moves on. ${name} never sees a grade number on the pages.`,
+  };
 }

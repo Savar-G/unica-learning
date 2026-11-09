@@ -69,7 +69,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const loadingResult = active && (currentProgress?.status === "done" || currentProgress?.status === "failed");
   const stalled = active && (currentProgress ? currentProgress.phase === "stalled" : detail.editBatch?.stalled);
   const working = active && !stalled;
-  const resultMessage = workbookEditMessage(detail.editBatch, detail.comments);
+  const resultMessage = workbookEditMessage(detail.editBatch, detail.comments, draft.revision);
   const pending = detail.comments.filter((c) => c.status === "pending" || c.status === "failed");
   const layoutComments = pending.filter(c => workbookCommentRoute(pages.find(p => p.number === c.page), c.note, c.route) === "layout");
   const page = pages.find((p) => p.number === selected)!;
@@ -106,7 +106,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
         body: JSON.stringify({ revision: draft.revision, ...body }) });
       const result = await r.json();
       if (!r.ok) throw new Error(result.reason ?? "The comment could not be saved.");
-      if (result.status === "layout-review") setNotice(result.reason);
+      if (result.status === "layout-review" && result.reason !== LAYOUT_REVIEW_MESSAGE && result.reason !== "Page-layout comments are saved for review. They remain open.") setNotice(result.reason);
       router.refresh(); return true;
     } catch (e) { setError(e instanceof Error ? e.message : "Reload to check whether the comment was saved."); return false; }
     finally { setSaving(false); }
@@ -144,7 +144,6 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     {active && progressErrors > 0 && <p className="wbr-message" role="alert">Progress is unavailable. Retrying shortly.{currentProgress ? " The last saved counts stay above." : " No saved count is available yet."}</p>}
     {resultMessage && <p role="alert" className="wbr-message">{resultMessage}</p>}
     {notice && <p role="status" className="wbr-message">{notice}</p>}
-    {layoutComments.length > 0 && <p className="wbr-message" role="note">{layoutComments.length} page-layout {layoutComments.length === 1 ? "comment needs" : "comments need"} review. Send all comments applies supported question text. Layout requests stay open in the review path below.</p>}
     <div className="wbr-body">
       <nav className="wbr-thumbs" aria-label="Workbook pages">{pages.map((p) => {
         const count = detail.comments.filter((c) => c.page === p.number).length;
