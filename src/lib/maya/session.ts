@@ -815,15 +815,28 @@ function asksWhy(text: string): boolean {
  * leaving out a line that would say the answer (revealsAnswer refuses it: "8 ÷ 2 = 4" is the H3 of 8 ÷ 2, so its top is
  * H2). The final step's simplify help counts too (#407).
  */
-function topHint(s: Session): number {
+function sayableHints(s: Session): number[] {
   const pkg = s.package!;
   const answer = pkg.answer.value;
   const done = [...s.done];
   const after = regroupAfter(s, [], done);
   const view: View = { steps: [s.ladder.step], done, checked: [], rightResult: false, equal: null, regroup: pendingRegroup(after), regroupSaid: after.said, regroupTimes: after.times };
   const sayable = (o: LineOffer) => Object.values(o.filled ?? {}).every((v) => !valuesIn(String(v).split(operationText(pkg.operation)).join(""), readOptionsFor(pkg)).some((n) => equivalent(n, answer)));
-  return offersFor(s, "guide", view).filter((o) => o.level !== undefined && (o.slots.step === undefined || o.slots.step === s.ladder.step) && sayable(o))
-    .reduce((top, o) => Math.max(top, o.level ?? 0), 0);
+  return offersFor(s, "guide", view).filter((o) => o.level !== undefined && (o.slots.step === undefined || o.slots.step === s.ladder.step) && sayable(o)).map((o) => o.level!);
+}
+
+function topHint(s: Session): number {
+  return Math.max(0, ...sayableHints(s));
+}
+
+/** Skip help levels that cannot be said without revealing the answer. */
+function helpHint(s: Session): number {
+  if (!s.turn || !asksForHelp(s.turn.text)) return s.ladder.hint;
+  const levels = sayableHints(s);
+  let hint = s.ladder.hint;
+  if (hint < 0) return hint;
+  while (hint < 3 && !levels.includes((hint + 1) as HintLevel)) hint++;
+  return hint;
 }
 
 /** Refuse an example if any of its offered words or board text can reveal the target answer. */
@@ -851,7 +864,7 @@ function stuckWayOut(s: Session, reading: Reading, rightResult: boolean): "examp
   if (main === "MODEL_EXAMPLE" && s.exampleShown < steps) return null;
   if ((reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && (a.verdict !== "wrong" || committedValue(s, a)))) return null;
   if (reading.help === undefined && !asksForHelp(s.turn.text)) return null;
-  if (copiedStep(s) !== null || s.ladder.hint < topHint(s)) return null;
+  if (copiedStep(s) !== null || helpHint(s) < topHint(s)) return null;
   return s.exampleShown < steps && !exampleRevealsAnswer(s) ? "example" : "close";
 }
 
@@ -1365,9 +1378,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     case "guide": {
       if (p.step !== ladder.step) return no("wrong_step", `Guide the first step the child has not done: "${ladder.step}".`, allowedNow);
       if (p.level === undefined) return no("invalid_proposal", "A guide needs a hint level.", allowedNow);
+      if (s.turn && asksForHelp(s.turn.text) && s.ladder.hint >= 0 && p.level === 0 && spoken.chosen.some((o) => o.line === "check.thinking")) return no("same_hint_again", "The child asked for help: move on to the next safe help.", allowedNow);
       // A child with a located error can start at H2 at most; otherwise help rises one level per failure or request.
       // Code's fallback for a child still stuck on this step rises one level per child turn (#605), never on silence.
-      const stuck = fallback && s.turn !== null ? Math.min(3, ladder.hint + 1) : -1;
+      const stuck = fallback && s.turn !== null ? Math.min(3, helpHint(s) + 1) : -1;
       const feedbackHelp = checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong") ? Math.min(3, ladder.hint + 1) : -1;
       const cap = Math.max(stuck, feedbackHelp, (main === "ASSESS" || main === "TRY_TARGET") && ladder.hint === -1 ? Math.max(ladder.unlocked, 2) : ladder.unlocked);
       // The operation line after the child said this step's own setup ("so 2 plus 3 plus 1?") only says it back: it
@@ -2515,7 +2529,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
         const due = (view.regroup ?? []).some((c) => c.at === ladderStep);
         // The next level up comes first on a step the child is still stuck on (#605), H3 for a child who asks to be shown,
         // then the levels above it, then the ones below: a line above what the session allows is refused and passed over.
-        const hint = ladderStep === s.ladder.step ? s.ladder.hint : -1;
+        const hint = ladderStep === s.ladder.step ? helpHint(s) : -1;
         const target = reading?.help === "show" ? 3 : session.turn ? hint + 1 : 0;
         const lv = (o: LineOffer) => o.level ?? 0;
         const levelled = [...byLevel(free).filter((o) => lv(o) >= target), ...byLevel(free).filter((o) => lv(o) < target).reverse()];

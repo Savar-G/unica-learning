@@ -90,3 +90,19 @@ it.each([[2, 1], [12, 11]])("closes safely with answer 1 for %i - %i when the mo
   expect(output.ended?.reason).toBe("child_stopped");
   expect(output.say.join(" ")).toMatch(/stop/i);
 });
+
+it.each([[3, 0], [0, 1]])("advances on repeated help for %i + %i with the model down", async (a, b) => {
+  const operation = { kind: "add" as const, operands: [a, b] as [number, number] };
+  const easier = { kind: "add" as const, operands: [0, 0] as [number, number] };
+  const pkg = { ...FIXTURES.A, text: `${a} + ${b}`, operation, steps: workedSteps(operation),
+    answer: { value: { type: "number" as const, value: a + b }, accepted: [], unit: null },
+    wrongAnswers: [{ value: { type: "number" as const, value: 9 }, cause: "O3", description: "Wrong sum", step: null }],
+    easierExample: { text: "0 + 0", operation: easier, answer: { type: "number" as const, value: 0 }, steps: workedSteps(easier) } };
+  expect(checkQuestionPackage(pkg), JSON.stringify(checkQuestionPackage(pkg))).toMatchObject({ ok: true });
+  let at = 1000;
+  const session = createTextSession({ callId: "help-zero", package: pkg, grade: 2, clock: () => at,
+    model: fakeMayaModel({ answer: () => { throw new Error("offline"); } }) });
+  let output = await session.start();
+  for (let i = 0; i < 20 && !output.ended; i++) { at += 4000; output = await session.child("Help."); }
+  expect(output.ended?.reason).toBe("child_stopped");
+});
