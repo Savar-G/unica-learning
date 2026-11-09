@@ -7,7 +7,7 @@ import { PLAN_KEY_MS, PLAN_RETRY_MS, planNotOver, pressStep, settleNewestCard, s
 import { liveCardRows } from "@/lib/card-reconcile-server";
 import { RUNNING_PLAN } from "@/lib/parent-plan";
 import { ADDITIONAL_CHILD_PRICE, PLANS, cad, priceWithOffer } from "@/lib/site";
-import { CARD_READ, CARD_WRITE, cancelSubscriptionNow, customerSubscriptions, planCard as planCardOf, refusedByStripe, stripeCards } from "@/lib/stripe-subscriptions";
+import { CARD_READ, CARD_WRITE, cancelSubscriptionNow, customerSubscriptions, planCancelTerms, planCard as planCardOf, refusedByStripe, stripeCards } from "@/lib/stripe-subscriptions";
 import { PLAN_PRODUCT, planTerms } from "@/lib/subscription-plan";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
@@ -411,13 +411,13 @@ export async function cancelPlan(s: Stripe, customer: string, beforeWrite: () =>
       const subscription = released.released_subscription;
       if (released.status !== "released" || subscription !== plan.id) throw new Error("Plan schedule release unconfirmed");
     }
-    if (plan.status !== "trialing" && plan.status !== "active") {
+    const { atPeriodEnd, end } = planCancelTerms(plan);
+    if (!atPeriodEnd) {
       beforeWrite();
       await s.subscriptions.cancel(plan.id);
       changed = true;
       continue;
     }
-    const end = plan.trial_end && plan.status === "trialing" ? plan.trial_end : plan.items.data[0]?.current_period_end;
     if (end) endsAt = new Date(end * 1000).toISOString();
     if (plan.cancel_at_period_end) continue;
     beforeWrite();

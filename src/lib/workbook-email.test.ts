@@ -134,10 +134,12 @@ Thanks for joining Unica Learning. Alex's first workbook has arrived, so your fr
 
 As a parent, here are your responsibilities:
 
-1. Follow the schedule. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
+1. Follow the schedule, 5 days a week. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday with the weekend off. You can choose any 5 days, but do the days in order, Day 1 to Day 10. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
 2. Scan the finished pages. After Alex finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.
 3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with Alex.
 4. Set up Maya. If Alex gets stuck, Alex can chat with Maya, our AI Teaching Assistant. Sign in at https://unicalearning.com/account, set a PIN, agree to the Maya notice, then open Alex's desk.
+
+Why 5 days? Two days off each week give Alex time to rest, or to look back at the week's pages, and come back ready to learn. A steady 5 days builds a habit. Working every day can wear kids out and make math feel like a chore, for Alex and for you.
 
 If anything is broken, if anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.
 
@@ -150,6 +152,21 @@ To cancel, sign in and open https://unicalearning.com/account/plan, then press "
     for (const paragraph of expected.split("\n\n")) expect(htmlText).toContain(paragraph);
     expect(message.text).toContain("Thank you,\nThe Unica Learning team");
     expect(message.text).toContain("16557 87A Ave");
+  });
+  it.each([false, true])("pins the five-day copy in both formats for shared window %s", (sharedWindow) => {
+    for (const marking of [false, true]) for (const explain of [false, true]) {
+      const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking, explain, sharedWindow });
+      const step = "1. Follow the schedule, 5 days a week. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday with the weekend off. You can choose any 5 days, but do the days in order, Day 1 to Day 10. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.";
+      const why = "Why 5 days? Two days off each week give Alex time to rest, or to look back at the week's pages, and come back ready to learn. A steady 5 days builds a habit. Working every day can wear kids out and make math feel like a chore, for Alex and for you.";
+      const htmlText = message.html.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "").replace(/&#39;/g, "'").replace(/&quot;/g, '\"');
+      for (const format of [message.text, htmlText]) {
+        expect(format).toContain(step);
+        expect(format).toContain(why);
+      }
+      expect(message.text.split("\n").filter(line => line.startsWith("1. "))).toEqual([step]);
+      expect(message.text).toContain(`\n\n${why}\n\n`);
+      expect(message.html).toContain('<a href="https://unicalearning.com/account/schedule"');
+    }
   });
   it("promises no marks and no Explain button while marking is closed for the child: step 3 says the marks come later", () => {
     const open = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking: true, explain: true });
@@ -177,5 +194,18 @@ To cancel, sign in and open https://unicalearning.com/account/plan, then press "
     const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking, explain });
     expect(message.text.split("\n").filter((l) => l.startsWith("3. "))).toEqual([step]);
     if (!(marking && explain)) for (const format of [message.text, message.html]) expect(format).not.toContain("Explain");
+  });
+});
+
+describe("the plan start email's reminder words (PR #803 review)", () => {
+  // Every reminder case renders byte for byte as main renders it without the shared reminder rule. The digest was first taken at
+  // b4d9feb3, then again after the merge of main at b8e938ef, which added #806's approved five-day guidance; all 72 renders were
+  // compared with main's own workbook-email.ts and matched exactly.
+  const cases = [undefined, true].flatMap((sharedWindow) => [undefined, true, false].flatMap((free) => [undefined, true, false].map((reminder) => ({ sharedWindow, free, reminder }))));
+  it("keeps the parent email unchanged for every window, free and reminder case", async () => {
+    const { createHash } = await import("node:crypto");
+    const rendered = cases.map((c) => planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 59.99, firstCharge: "December 15, 2026", marking: true, explain: true, ...c }));
+    expect(createHash("sha256").update(JSON.stringify(rendered)).digest("hex")).toBe("e062e3b2ae7195b52a4daaf337e4d856700bf0017b6c6ba7d03760a726cc68ed");
+    rendered.forEach((m, i) => expect(m.text.includes(" We will email you a reminder 7 days before the first charge.")).toBe(cases[i].reminder !== false));
   });
 });

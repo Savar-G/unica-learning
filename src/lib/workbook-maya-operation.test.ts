@@ -245,7 +245,7 @@ it("keeps Extra plan minutes unchanged when Maya adds a multi-step operation", (
   const template = workbookTemplate(), parts = { qr: "", qrUrl: "sample" };
   const before = template.page(plan, parts, original)!;
   expect(before).toContain('data-measure="slot-required-time-1">5 min');
-  expect(before).toContain("Extra blocks are optional.");
+  expect(before).toContain("plus Extra if there's time.");
   expect(template.page(plan, parts, current)).toBe(before);
   expect(template.page(current.pages[1], parts, current)).toBe(template.page(day, parts, original));
 });

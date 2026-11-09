@@ -2,8 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { CardSetupRow, ChildRow, EmailRow, ParentDetail, ParentRow, WaitlistRow } from "@/lib/admin-store";
 import { EMAIL_LABEL } from "@/lib/admin-dashboard";
+import { DELIVERY_WORDS, logDeliveryState } from "@/lib/delivery-state";
 import { stripeCustomerUrl } from "@/lib/stripe";
-import { adminParentPath, adminReportPath, adminTestPath, when, type AnswerLine } from "@/lib/admin-view";
+import { adminParentPath, adminReportPath, adminTestPath, adminWorkbookPath, when, type AnswerLine } from "@/lib/admin-view";
+import { DELIVERY_RECEIPT_TEXT } from "@/lib/plan-start-errors";
 import { Chip, Table, TestsTable, gradeAndPlace } from "@/components/admin";
 import { PlanStartStuck } from "@/components/plan-start-stuck";
 import { StartPlan } from "@/components/start-plan";
@@ -21,11 +23,9 @@ export function ChildrenTable({ rows }: { rows: ChildRow[] }) {
   </Table>;
 }
 
-const EMAIL_STATUS: Record<string, string> = { sent: "Sent", failed: "Failed", claimed: "Sending" };
-
 export function EmailTable({ emails }: { emails: EmailRow[] }) {
   return <Table label="Emails" head={["Created (Pacific)", "Parent", "Child", "Email", "Status", "Attempts", "Sent (Pacific)", "Test", "Error"]} empty="No reminder emails or unsubscribes.">
-    {emails.map((e) => <tr key={e.id}><td className="adm-nowrap">{when(e.created_at)}</td><td><Link href={adminParentPath(e.parent_id)}>{e.parent?.name ?? e.parent_id}</Link></td><td>{e.child?.first_name ?? "-"}</td><td>{EMAIL_LABEL[e.kind]}</td><td>{e.status ? (EMAIL_STATUS[e.status] ?? e.status) : "Reminders off"}</td><td>{e.attempts}</td><td className="adm-nowrap">{when(e.sent_at)}</td><td>{e.assessment_id ? <Link href={adminTestPath(e.assessment_id)}>Test</Link> : "-"}</td><td>{e.error ?? "-"}</td></tr>)}
+    {emails.map((e) => <tr key={e.id}><td className="adm-nowrap">{when(e.created_at)}</td><td><Link href={adminParentPath(e.parent_id)}>{e.parent?.name ?? e.parent_id}</Link></td><td>{e.child?.first_name ?? "-"}</td><td>{EMAIL_LABEL[e.kind]}</td><td>{e.status ? DELIVERY_WORDS[logDeliveryState(e.status, e.error)] : "Reminders off"}</td><td>{e.attempts}</td><td className="adm-nowrap">{when(e.sent_at)}</td><td>{e.assessment_id ? <Link href={adminTestPath(e.assessment_id)}>Test</Link> : "-"}</td><td>{e.error ?? "-"}</td></tr>)}
   </Table>;
 }
 
@@ -35,13 +35,25 @@ export function CardsTable({ cards }: { cards: (CardSetupRow & People)[] }) {
   return <Table label="Cards" head={["Updated (Pacific)", "Family", "Child", "Plan", "Monthly price", "Card saved (Pacific)", "Stripe", "Report", "Plan start", "Workbook emails"]} empty="No card setups.">
     {cards.map((c) => {
       const stripe = c.stripe_customer_id ? stripeCustomerUrl(c.stripe_customer_id) : null;
-      return <tr key={c.id}><td className="adm-nowrap">{when(c.updated_at)}</td><td><Link href={adminParentPath(c.parent_id)}>{c.parent?.name ?? "Family"}</Link></td><td><Link href={childPath(c.child_id)}>{c.child?.first_name ?? "Child"}</Link></td><td>{c.plan === "one" ? "Math" : "Math and reading"}</td><td>CAD {c.planMonthly ?? c.price}{c.planFirstCharge && <p className="adm-note">First charge {when(c.planFirstCharge)}</p>}</td><td>{c.card_saved_at ? when(c.card_saved_at) : <Chip tone="warn">Not saved</Chip>}</td><td>{stripe ? <a href={stripe} target="_blank" rel="noopener noreferrer">Open in Stripe</a> : "-"}</td><td>{c.report_id ? <Link href={adminReportPath(c.report_id)}>Report</Link> : "-"}</td><td>
+      return <tr key={c.id}><td className="adm-nowrap">{when(c.updated_at)}</td><td><Link href={adminParentPath(c.parent_id)}>{c.parent?.name ?? "Family"}</Link></td><td><Link href={childPath(c.child_id)}>{c.child?.first_name ?? "Child"}</Link></td><td>{c.plan === "one" ? "Math" : "Math and reading"}</td><td>{c.planPriceUnread ? `up to CAD ${c.price} (price not read)` : `CAD ${c.planMonthly ?? c.price}`}{c.planFirstCharge && <p className="adm-note">First charge {when(c.planFirstCharge)}</p>}</td><td>{c.card_saved_at ? when(c.card_saved_at) : <Chip tone="warn">Not saved</Chip>}</td><td>{stripe ? <a href={stripe} target="_blank" rel="noopener noreferrer">Open in Stripe</a> : "-"}</td><td>{c.report_id ? <Link href={adminReportPath(c.report_id)}>Report</Link> : "-"}</td><td>
         {c.planStarted === true ? <span className="adm-note">Plan started.</span> : c.planStarted !== false ? <span className="adm-note">Check the plan in Stripe before starting a free month.</span> : null}
-        {c.stuckPlanStart ? <PlanStartStuck cardId={c.id} child={c.child?.first_name ?? "this child"} generation={c.stuckPlanStart} allowInitialStart={c.planStarted === false} />
-          : c.planStarted === false ? c.card_saved_at && c.stripe_customer_id ? <StartPlan cardId={c.id} child={c.child?.first_name ?? "this child"} /> : "-" : null}
+        {c.stuckPlanStart ? <PlanStartStuck cardId={c.id} child={c.child?.first_name ?? "this child"} generation={c.stuckPlanStart} allowInitialStart={c.planStarted === false && !!c.firstWorkbook?.delivered} familyWindow={c.familyWindow} />
+          : c.planStarted === false ? c.card_saved_at && c.stripe_customer_id ? <StartGate card={c} /> : "-" : null}
       </td><td>{c.card_saved_at && c.parent && c.child ? c.workbookEmails ? <WorkbookEmails cardId={c.id} parentName={c.parent.name} parentEmail={c.parent.email} childName={c.child.first_name} records={c.workbookEmails ?? []} observedAt={c.workbookEmailsReadAt ?? 0} /> : <span className="adm-note">Workbook email history is unavailable. Reload this page.</span> : "-"}</td></tr>;
     })}
   </Table>;
+}
+
+/**
+ * The start button shows only when the child's workbook 1 has its delivery receipt, as the start route requires. Without one,
+ * the card shows the route's sentence and a link to workbook 1 (or to the child, before a workbook 1 exists).
+ */
+function StartGate({ card: c }: { card: CardSetupRow & People }) {
+  const child = c.child?.first_name ?? "this child";
+  if (c.firstWorkbook?.delivered) return <StartPlan cardId={c.id} child={child} familyWindow={c.familyWindow} />;
+  if (!c.firstWorkbook) return <span className="adm-note">We could not read the delivery of workbook 1. Reload this page.</span>;
+  const book = c.firstWorkbook.id;
+  return <p className="adm-note">{DELIVERY_RECEIPT_TEXT} <Link href={book ? adminWorkbookPath(book) : childPath(c.child_id)}>{book ? "Open workbook 1" : "Open this child"}</Link></p>;
 }
 
 export function WaitlistTable({ waitlist }: { waitlist: (WaitlistRow & People)[] }) {

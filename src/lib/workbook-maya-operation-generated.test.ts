@@ -20,7 +20,7 @@ it("generates and teaches all five missing factors from their printed products",
       env: { ...process.env, WORKBOOK_SAMPLE_ID: "17fc5da1-2442-488a-a450-611a471e73e6" }, maxBuffer: 2_000_000,
     });
     const draft: GeneratedWorkbook = JSON.parse(await readFile(join(out, "U16-draft.json"), "utf8"));
-    const expected = [[21, 1, 20, 6000], [22, 1, 20, 2000], [24, 1, 50, 2000], [24, 4, 20, 8000], [27, 9, 50, 5000]];
+    const expected = [[21, 1, 20, 6000], [22, 1, 20, 2000], [24, 4, 20, 8000], [25, 2, 50, 2000], [27, 9, 50, 5000]];
     const missing = draft.pages.flatMap(page => page.questions.flatMap(q => q.package?.templateId === "5.9-multiply-tens#3.3:missing"
       ? [[page.number, q.number, q.package] as const] : []));
     expect(missing).toHaveLength(5);

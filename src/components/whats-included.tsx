@@ -5,7 +5,6 @@
 /* eslint-disable @next/next/no-img-element -- fixed-size product mockups; next/image wrappers would break the absolute layout */
 import Link from "next/link";
 import { BRAND } from "@/lib/site";
-import { SHOW_OLD_SAMPLE_PLANS } from "@/lib/maya-public-images";
 import { warpTransform, type Quad } from "@/lib/warp";
 import { Eyebrow, Nav as NavBar, Section } from "@/ds";
 import { Motion } from "@/components/motion";
@@ -120,9 +119,6 @@ function Sources() {
   );
 }
 
-// #535: Call screens are for a later voice release.
-export const SHOW_CALL_SCREENS = false;
-
 // ---------- closing cards ----------
 const CARDS = [
   {
@@ -139,13 +135,13 @@ const CARDS = [
     tone: "t2", title: "Workbook", text: "Made from the free assessment. Mailed home, two a month.",
     im: (
       <div className="ct-books">
-        {SHOW_OLD_SAMPLE_PLANS && <img className="back" src={`${ASSETS}/wb/leah-02-plan.jpg`} alt="" />}
+        <img className="back" src={`${ASSETS}/wb/leah-02-plan.jpg`} alt="" />
         <img className="front" src={`${ASSETS}/wb/leah-01-cover.jpg`} alt="" />
       </div>
     ),
   },
   {
-    tone: "t3", title: "AI Teaching Assistant", text: "Children in Grade 3 and up can chat with Maya for help on a shared board.",
+    tone: "t3", title: "AI Teaching Assistant", text: "Maya works through a stuck question on a shared whiteboard.",
     im: (
       <div className="ct-board">
         <div className="ct-sum"><span>300</span><span>− 128</span><span className="ans">172</span></div>
@@ -153,7 +149,7 @@ const CARDS = [
       </div>
     ),
   },
-  { tone: "t4", title: "Scan pages", text: "Scan the pages with your phone, on our website. They come back marked, with the steps.", im: SHOW_OLD_SAMPLE_PLANS && <img className="ct-phone" src={`${ASSETS}/app-marked.png`} alt="" /> },
+  { tone: "t4", title: "Scan pages", text: "Scan the pages with your phone, on our website. They come back marked, with the steps.", im: <img className="ct-phone" src={`${ASSETS}/app-marked.png`} alt="" /> },
   { tone: "t5", title: "Parent dashboard", text: "Level, skills, past work and sessions with Maya.", im: <div className="mini-br wide"><div className="bar" /><img src={`${ASSETS}/dash.jpg`} alt="" /></div> },
   {
     tone: "t6", title: "Next workbook", text: "Built on everything before it. Arrives before this one ends.",
@@ -165,9 +161,6 @@ const CARDS = [
     ),
   },
 ];
-
-// #535: Voice is for a later ship.
-export const SHOW_VOICE_DEMO = false;
 
 const MAYA_LABEL = "Demo: Maya, the AI Teaching Assistant, explains 27 + 39 on a shared whiteboard and draws each step, carrying the 1 to get 66. Captions show what Maya says.";
 
@@ -199,16 +192,16 @@ export function WhatsIncluded() {
 
           <Section className="wi-band" aria-labelledby="wiWb">
             <StepHead id="wiWb" eyebrow="Personalized workbook" title="Then your child's workbook arrives." lead="Made from the free assessment, personalized for your child, and mailed home." />
-            {SHOW_OLD_SAMPLE_PLANS && <WorkbookReader />}
+            <WorkbookReader />
           </Section>
 
           <Section className="wi-gd" aria-labelledby="wiTa">
-            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Children in Grade 3 and up can type to Maya, the Unica AI Teaching Assistant, about a workbook question. Maya gives hints and can show an easier example on a shared board." />
-            {SHOW_VOICE_DEMO && <Rise className="gd-media">
+            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Maya, the Unica AI Teaching Assistant, opens the exact question from the workbook on a whiteboard they both see. Maya explains each step out loud and draws it. Your child answers, asks why, or picks up the pen." />
+            <Rise className="gd-media">
               <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={MAYA_LABEL} />
               <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={MAYA_LABEL} />
-              <p className="gd-cap">This demo shows a planned voice call. Voice calls are not available yet; Maya is available by typed chat.</p>
-            </Rise>}
+              <p className="gd-cap">Shown without sound. The captions show what Maya says.</p>
+            </Rise>
           </Section>
 
           <Section className="wi-full" aria-labelledby="wiApp">
@@ -216,10 +209,10 @@ export function WhatsIncluded() {
             <ScanPhoto />
           </Section>
 
-          {SHOW_CALL_SCREENS && <Section className="wi-full center" aria-labelledby="wiDb">
+          <Section className="wi-full center" aria-labelledby="wiDb">
             <StepHead id="wiDb" eyebrow="Parent dashboard" title="Every scan updates your dashboard." lead="Level, skills, past work and every session with Maya, on our website. Use the same account on your phone or laptop." />
             <DashboardDemo />
-          </Section>}
+          </Section>
 
           <Section className="wi-full" aria-labelledby="wiNx">
             <StepHead id="wiNx" eyebrow="Next workbook" title="Then the next workbook is made from all of it." lead="Her marked pages, her sessions with Maya and her assessment decide what comes next: more practice where she slipped, less where she is strong. It arrives before this one runs out." />
@@ -232,9 +225,9 @@ export function WhatsIncluded() {
               <h2 id="wiAll">From a free assessment to the next workbook.</h2>
             </Rise>
             <ul className="wi-cards">
-              {CARDS.filter((c) => SHOW_CALL_SCREENS || c.title !== "Parent dashboard").map((c) => (
+              {CARDS.map((c) => (
                 <li key={c.title}>
-                  {c.im && <div className={`im ${c.tone}`} aria-hidden="true">{c.im}</div>}
+                  <div className={`im ${c.tone}`} aria-hidden="true">{c.im}</div>
                   <h3>{c.title}</h3>
                   <p>{c.text}</p>
                 </li>

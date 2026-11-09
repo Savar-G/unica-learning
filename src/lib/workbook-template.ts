@@ -1,5 +1,5 @@
 import { questionWorkSpace } from "./workbook-work-space";
-import { workbookPageInstruction, workQuestionNumbers } from "@/lib/workbook-page-instructions";
+import { isWarmUpPage, printedInstruction, workbookWorkLine, workQuestionNumbers } from "@/lib/workbook-page-instructions";
 // The workbook templates (#310, spec #296): one layout for every page type of .design/workbooks/DESIGN.md (section
 // 7), with its tokens (section 1 to 4): the 8-page and 6-page days, Math in the world, the cover, How + Plan, the back
 // cover with its level map, Friday 5, Show what you know, the level test, parent-led U1 to U3 pages, the early-level
@@ -34,12 +34,22 @@ import { titleProblem } from "@/lib/workbook-titles";
 import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
 import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
+import { curriculumFor } from "@/lib/workbook-curriculum";
 
-/** Teaching data does not select a print layout or change a printed method. */
+/** A review page's title, as a child reads it: "Remember these?" prints "Review" (Savar, 2026-11-09). */
+export const reviewTitle = (title: string) => title === "Remember these?" ? "Review" : title;
+/** A plan row's second line, the same way: "Remember these?" and "Remember these? and a challenge". */
+const reviewTopic = (topic: string) => topic.replace(/^Remember these\?/, "Review");
+
+/**
+ * Teaching data does not select a print layout or change a printed method. The printed instruction and title follow
+ * the current rules on a stored book too (its content stays as stored): see printedInstruction and reviewTitle.
+ */
 function printedPage(page: DraftPage): DraftPage {
   const printed = { ...page, questions: page.questions.map(q => ({ ...q, package: printedWorkbookQuestion(q.package) })) };
-  const subtitle = workbookPageInstruction(printed);
-  return subtitle && printed.content?.kind === "day" ? { ...printed, content: { ...printed.content, subtitle } } : printed;
+  if (printed.content?.kind !== "day") return printed;
+  const subtitle = printedInstruction(printed) ?? printed.content.subtitle, title = reviewTitle(printed.content.title);
+  return subtitle === printed.content.subtitle && title === printed.content.title ? printed : { ...printed, content: { ...printed.content, subtitle, title } };
 }
 
 /**
@@ -59,9 +69,11 @@ const fontFace = (family: string, weights: string, woff2: Uint8Array) =>
 /** The type ramp and box sizes of a level band (DESIGN.md section 2, minimum sizes by level; section 7.3). */
 interface Band {
   consistentLayout?: boolean;
-  /** The questions the page's instruction already asks to show their work for ("Show your work for questions 1-3."):
-   * their work spaces print no "Show your work" label of their own and are plain white (Savar's book 1 review). */
+  /** The questions the page's work line already asks to show their work for ("Show your work under questions 1, 2
+   * and 3."): their work spaces print no "Show your work" label of their own and are plain white (Savar's book 1 review). */
   instructed?: ReadonlySet<number>;
+  /** A warm-up page: its instruction names no choice, so a circled choice prints its own "Circle one" (isWarmUpPage). */
+  cueChoices?: boolean;
   name: "parent" | "early" | "mid";
   title: number;
   body: number;
@@ -269,6 +281,12 @@ const CSS = `
 .dl{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:var(--small);line-height:1.2;letter-spacing:.04em;text-transform:uppercase;max-height:calc(var(--small)*2.4);overflow:hidden}
 .tt{margin:2px 0 0;font-weight:300;font-size:var(--title);line-height:1.25;padding-bottom:2px;white-space:nowrap;overflow:hidden}
 .st{white-space:nowrap;margin:0;font-size:var(--body);color:#44444C;max-height:calc(var(--body)*1.4);overflow:hidden}
+/* The work line: its own line under the instruction, bold on the cover's yellow highlight (Savar, 2026-11-09). */
+.sw{white-space:nowrap;margin:0;font-size:var(--body);line-height:1.25;color:#0C0C0E;max-height:calc(var(--body)*1.25);overflow:hidden}
+.sw b{display:inline-block;max-width:100%;overflow:hidden;vertical-align:top;font-weight:600;background:#FFD23F;padding:0 6px}
+/* A header with the work line keeps the page's content room: its lines sit 2 px closer, the work line 1.25 high. */
+.hd:has(.sw){gap:6px}
+.pg.consistent .hd:has(.sw){max-height:none}
 .gu{margin:0;font-size:var(--body);color:#0C0C0E;background:#F4F4F5;border-radius:8px;padding:6px 12px;overflow:hidden}
 .gu b{font-weight:500}
 .ct{flex:1 1 auto;flex-shrink:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:12px}
@@ -434,16 +452,14 @@ const CSS = `
 .cv .for{margin-top:32px;font-weight:500;font-size:22px;line-height:1.4;color:#44444C;max-height:62px;overflow:hidden}
 .cv h1{margin:20px 0 0;font-weight:300;font-size:66px;line-height:1.18;letter-spacing:-.03em;height:164px;overflow:hidden}
 .cv h1 .hl{display:inline-block;background:#FFD23F;padding:0 10px;margin-left:-10px;line-height:1.12}
-.made{margin-top:28px;background:#FFF1EA;border:1.5px solid #FF6A3D;border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:14px;max-height:268px;overflow:hidden}
-.made .lab{font-size:12px;color:#0C0C0E;text-transform:none}
-.cv .cover-plan .lab{text-transform:none}
-.made p{margin:0;font-size:17px}
-.cv .cover-plan{margin-top:36px;display:flex;flex-direction:column;gap:16px}
-.cv .cover-plan ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:18px}
-.cv .cover-plan li{border-top:1px solid #D4D4DA;padding-top:12px;font-size:21px;line-height:1.3}
-.made ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
-.made li{display:flex;gap:12px;align-items:baseline;font-size:15px}
-.made li i{display:block;width:8px;height:8px;background:#FF6A3D;flex:none;transform:translateY(-1px)}
+/* The two cover cards (variant D): identical white cards with a dark outline, the sentence and the plan's topics. */
+.cv .card{margin-top:20px;background:#fff;border:1.5px solid #0C0C0E;border-radius:10px;padding:20px 24px;display:flex;flex-direction:column;gap:12px}
+.cv .card .lab{font-size:12px;font-weight:500;letter-spacing:.04em;color:#44444C;text-transform:none}
+.made{max-height:268px;overflow:hidden}
+.cv .made p{margin:0;font-size:17px;line-height:1.4}
+.cv .cover-plan ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.cv .cover-plan li{display:grid;grid-template-columns:5px 1fr;column-gap:12px;align-items:start;font-size:17px;line-height:1.4}
+.cv .cover-plan li i{display:block;width:5px;height:5px;background:#0C0C0E;margin-top:calc(17px*1.4/2 - 2.5px)}
 .cv .pl{margin:24px 0 0;font-size:15px;height:42px;overflow:hidden}
 .cv .nx{margin:auto 0 0;font-size:15px;color:#44444C;height:21px;overflow:hidden;white-space:nowrap}
 /* how + plan */
@@ -451,7 +467,7 @@ const CSS = `
 .hp .top{display:flex;justify-content:space-between;font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:12px;letter-spacing:.04em}
 .hp table{margin-top:18px;width:100%;border-collapse:collapse;table-layout:fixed}
 .hp th{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:11px;letter-spacing:.04em;color:#44444C;text-align:left;padding:0 0 8px;border-bottom:1px solid #0C0C0E}
-.hp td{height:56px;border-bottom:1px solid #E0E0E5;padding:0;vertical-align:middle}
+.hp td{height:54px;border-bottom:1px solid #E0E0E5;padding:0;vertical-align:middle}
 .hp .d{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:16px;width:96px}
 .hp .tp{display:block;height:50px;overflow:hidden;padding-top:4px}
 .hp .tp b{display:block;font-weight:500;font-size:18px;line-height:1.3;white-space:nowrap}
@@ -635,7 +651,7 @@ const CHIPS: Partial<Record<SlotName, Chip>> = {
   "mixed-set": { label: "Mixed set", cls: "c-mx", icon: ICONS.shuffle },
   "friday-5": { label: "Friday 5", cls: "c-mx", icon: ICONS.shuffle },
   challenge: { label: "Challenge", cls: "c-ch", icon: ICONS.bulb },
-  "remember-these": { label: "Remember these", cls: "c-rv" },
+  "remember-these": { label: "Review", cls: "c-rv" },
   "picture-stories": { label: "Stories", cls: "c-wp", icon: ICONS.book },
   "math-in-the-world": { label: "Math in the world", cls: "c-wp" },
   "show-what-you-know": { label: "Show what you know", cls: "c-rv", icon: ICONS.star },
@@ -648,8 +664,8 @@ const CHIPS: Partial<Record<SlotName, Chip>> = {
 const NEW_IDEA: Chip = { label: "New idea", cls: "c-ni", icon: ICONS.book };
 const PRACTICE: Chip = { label: "Practice", cls: "c-pr", icon: ICONS.target };
 const NOTES: Partial<Record<SlotName, string>> = {
-  // The Challenge page's subtitle says "One (or two) to stretch you."; its chip has no note.
-  "warm-up": "Do as many as you can.",
+  // The Challenge page's subtitle says "One (or two) to stretch you."; its chip has no note. The warm-up's instruction
+  // says what it is (WARM_UP_INSTRUCTION): its chip has no note either, never a counting one.
   "spot-the-error": "One move is wrong. Find it, then write the fix.",
   "mixed-set": "Tick the operation, then write the answer.",
   "friday-5": "5 from earlier days. No hints.",
@@ -873,7 +889,9 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
         // Choices in words ("less than 5", "not equal", "cats") stack in the body type: a card has no room for them in
         // a row at the size of a fact.
         const words = !shapes && r.choices.some((c) => /[a-z]{2}/i.test(c));
-        return `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        const circled = `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        // (Unless the question says it: "Circle yes or no.")
+        return o.band.cueChoices && !/\bcircle\b/i.test(q.package.text) ? `<span class="rg"><span class="t1" data-measure="cue-${q.number}-${r.id}"><span>Circle one</span></span>${circled}</span>` : circled;
       }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
       const words = (s: string) => ` ${s.toLowerCase().replace(/[?!.:;,]/g, " ").replace(/\s+/g, " ").trim()} `;
@@ -1048,6 +1066,55 @@ interface Ctx {
   band: Band;
   q: (n: number) => DraftQuestion;
   six: boolean;
+  /** The page's one Review heading, block by block (reviewLayout, which pagePlan reads too). */
+  review: ReviewLayout[];
+}
+
+/** Each block's part in the page's one Review heading (reviewLayout). */
+export interface ReviewLayout {
+  /** The page has not said "Review" yet when the block starts. */
+  open: boolean;
+  /** The block prints the Review pill (a "remember-these" block that is not the page's first). */
+  pill: boolean;
+  /** Where the block's review questions start a grid of their own under a Review label; -1 for one grid. */
+  at: number;
+}
+
+/** Slots whose questions print through blockHtml's `list`, the one place a block's review questions can take their own grid. */
+function listsQuestions(slot: SlotName, parent: boolean): boolean {
+  switch (slot) {
+    case "warm-up": case "remember-these": case "finish-these": case "on-your-own": case "practice-row": case "unit-b-practice":
+    case "picture-stories": case "friday-5": case "unit-check": case "mini-test": case "already-know-it":
+      return true;
+    case "fix-it": case "now-you": case "show-what-you-know": case "level-test":
+      return parent;
+    default:
+      return false;
+  }
+}
+
+/**
+ * The page's one Review heading (Savar, 2026-11-09: "Remember these" reads "Review", and never twice on a page), decided
+ * once for the printed page (blockHtml) and the fit check's plan (pagePlan): the heading is open until a label or pill
+ * prints it, or closed from the start when the page title already says it ("Review", "Mixed review"). A block whose
+ * review questions come after the heading was said keeps them in its one grid.
+ */
+export function reviewLayout(page: DraftPage): ReviewLayout[] {
+  const c = page.content;
+  if (c?.kind !== "day") return [];
+  const parent = bandOf(c.level).name === "parent";
+  const present = new Set(page.questions.map(q => q.number));
+  let open = !/\breview\b/i.test(reviewTitle(c.title));
+  return c.blocks.map((b, i) => {
+    const start = open;
+    const firstOfPage = i === 0 && (page.type === "remember-these" || page.type === "remember-these-mixed-set");
+    const pill = b.slot === "remember-these" && !firstOfPage && open;
+    if (pill) open = false;
+    const items = b.items.filter(n => present.has(n));
+    const at = listsQuestions(b.slot, parent) && b.reviewFrom !== undefined && open ? items.findIndex(n => n >= b.reviewFrom!) : -1;
+    if (at >= 0) open = false;
+    return { open: start, pill, at };
+  });
 }
 
 function blockHtml(b: Block, i: number, ctx: Ctx): string {
@@ -1063,7 +1130,8 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     return `<div class="${cls}" style="--rows:${gridRows(part.map((q) => q.number), cls === "list" ? 1 : 2, wide).length}">`;
   };
   const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => {
-    const at = b.reviewFrom !== undefined ? qs.findIndex((q) => q.number >= b.reviewFrom!) : -1;
+    // (With the page's Review heading already said, the block's review questions continue its grid.)
+    const at = ctx.review[i]?.at ?? -1;
     if (at < 0) return `${grid(cls, qs)}${qs.map((q, k) => {
       const last = ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1;
       const html = render(q, k);
@@ -1071,16 +1139,16 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         && packageItem(q.package).format === "write-number" && questionWorkSpace(q.package) > 0;
       return html.replace(/^(<div class=")([^"]+)(")/, `$1$2${compact ? " compact-wide" : ""}$3${last ? ' style="grid-column:1/-1"' : ""}`);
     }).join("")}</div>`;
-    if (at === 0) return `<div class="lab" data-measure="review-${i}">Remember these</div>${grid(cls, qs)}${qs.map((q, k) => render(q, k).replace(/^(<div class="[^"]+")/, ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1 ? '$1 style="grid-column:1/-1"' : "$1")).join("")}</div>`;
-    return `${grid(cls, qs.slice(0, at))}${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Remember these</div>${grid(cls, qs.slice(at))}${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
+    if (at === 0) return `<div class="lab" data-measure="review-${i}">Review</div>${grid(cls, qs)}${qs.map((q, k) => render(q, k).replace(/^(<div class="[^"]+")/, ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1 ? '$1 style="grid-column:1/-1"' : "$1")).join("")}</div>`;
+    return `${grid(cls, qs.slice(0, at))}${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Review</div>${grid(cls, qs.slice(at))}${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
   };
   const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k], 80, b.figures?.[k]));
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));
   const chip = (fallback?: Chip, note?: string) => {
     const own = CHIPS[b.slot] ?? fallback;
-    return own ? `<div data-measure="chip-${i}">${chipHtml(own, b.note ?? note ?? NOTES[b.slot])}</div>` : "";
+    const said = b.slot === "warm-up" ? undefined : b.note ?? note ?? NOTES[b.slot];
+    return own ? `<div data-measure="chip-${i}">${chipHtml(own, said)}</div>` : "";
   };
-  const firstOfPage = i === 0 && (ctx.page.type === "remember-these" || ctx.page.type === "remember-these-mixed-set");
   const allReview = b.reviewFrom !== undefined && qs.length > 0 && qs[0].number >= b.reviewFrom;
 
   switch (b.slot) {
@@ -1092,8 +1160,10 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "in-your-head":
       // (Savar, 2026-11-04: "In your head" said nothing; mental math says what to do.)
       return `<div class="panel p-hd"><div class="lab">${escape(b.label && !/^in your head$/i.test(b.label) ? b.label : "Mental math")}</div><div class="note-mm" data-measure="note-${i}">Work it out without writing it down.</div><div class="list" style="margin-top:10px">${qs.map((q) => lineItem(q, band)).join("")}</div></div>`;
-    case "remember-these":
-      return (firstOfPage ? "" : chip()) + items(parent ? "pcards" : "two");
+    case "remember-these": {
+      const pill = !!ctx.review[i]?.pill;
+      return (pill ? chip() : "") + items(parent ? "pcards" : "two");
+    }
     case "try-first":
       return (prev === undefined ? chipHtml(NEW_IDEA, b.note) : "")
         + `<div class="outl"><div class="lab">Try this first</div>${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div>`;
@@ -1146,9 +1216,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label && !/^example$/i.test(b.label) ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>${b.explain ? `<span class="${/^Watch out:/.test(b.explain) ? "wo" : ""}">${escape(b.explain)}</span>` : ""}</div>`;
     case "finish-these":
       // (A block of review only prints "Remember these" alone, never under "Getting started" as the page's skill.)
-      return (allReview ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
+      return (allReview && !!ctx.review[i]?.open ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
     case "on-your-own": {
-      const head = prev === "finish-these" ? (allReview ? "" : `<div class="lab" data-measure="heading-${i}">On your own</div>`) : chipHtml(PRACTICE, b.note);
+      const head = prev === "finish-these" ? (allReview && !!ctx.review[i]?.open ? "" : `<div class="lab" data-measure="heading-${i}">On your own</div>`) : chipHtml(PRACTICE, b.note);
       // Column sums on the 8-page day; the 6-page practice page lists them, as in the sample (DESIGN.md 7.2).
       const columns = band.name === "mid" && !parent && !ctx.six && qs.length > 0 && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1 && !questionWorkSpace(q.package));
       return head + (columns ? list((q) => columnItem(q, band), "cols") : items(c.consistentLayout || ctx.six ? "two" : "list"));
@@ -1189,7 +1259,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       if (b.label === "Likelihood words") return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="lab">Likelihood words</div><div>${escape(b.explain ?? "")}</div></div>`;
       const fig = b.figure ? figureSvg(b.figure,1,c.consistentLayout ? 40 : 30) : "";
       const why = b.explain?.trim() ? `<div class="why"><div class="lab">What's going on</div><span>${escape(b.explain)}</span></div>` : "";
-      return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px"><div class="lab">${escape(b.label ?? "Remember")}</div>${fig}<div class="wk">${(b.lines ?? []).map(line => worked(singleWorkedAnswer(line))).join("<br>")}</div></div>${why}</div></div>`;
+      // The chip above says "Remember": a box label that says it again is left out (Savar, 2026-11-09).
+      const label = (b.label ?? "").trim() && b.label!.trim().toLowerCase() !== CHIPS.reminder!.label.toLowerCase() ? `<div class="lab">${escape(b.label!)}</div>` : "";
+      return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px">${label}${fig}<div class="wk">${(b.lines ?? []).map(line => worked(singleWorkedAnswer(line))).join("<br>")}</div></div>${why}</div></div>`;
     }
     case "mixed-set":
       return chip() + `<div class="mxs" style="--rows:${Math.ceil(qs.length / 2)}">` + qs.map((q) => {
@@ -1336,10 +1408,12 @@ export function pagePlan(page: DraftPage): PagePlan | null {
     if (shape && !shape.below && !shape.places) answers(n, "top", 0);
   };
   const wideLine = (n: number) => { const q = byNumber.get(n); return !!q && (lineShape(q, band).wide || lineShape(q, band).placesWide); };
-  for (const b of c.blocks) {
+  const review = reviewLayout(page);
+  for (const [i, b] of c.blocks.entries()) {
     const items = b.items.filter((n) => byNumber.has(n));
-    // A block's review questions print in a grid of their own, under "Remember these" (blockHtml's `list`).
-    const at = b.reviewFrom !== undefined ? items.findIndex((n) => n >= b.reviewFrom!) : -1;
+    // A block's review questions print in a grid of their own under "Review", unless the page said it already (the
+    // printed page's decision, reviewLayout).
+    const at = review[i]?.at ?? -1;
     const parts = at <= 0 ? [items] : [items.slice(0, at), items.slice(at)];
     const grid = (cols: number, wide?: (n: number) => boolean) => parts.forEach(p => {
       const spans = (n: number) => !!wide?.(n) || ["friday-5", "mini-test"].includes(b.slot) && n === items.at(-1);
@@ -1416,12 +1490,14 @@ function footer(page: DraftPage, parts: PageParts, id: string): string {
 }
 
 function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
-  // (`page` is the printed page: its subtitle is the instruction workbookPageInstruction prints, when it has one.)
+  // (`page` is the printed page: its subtitle is the instruction printedInstruction prints; its work line names the
+  // questions to show work for.)
+  const work = workbookWorkLine(page);
   const band:Band = {...bandOf(c.level),consistentLayout:c.consistentLayout,
-    instructed: new Set(workbookPageInstruction(page) ? workQuestionNumbers(page) : [])};
+    instructed: new Set(work ? workQuestionNumbers(page) : []), cueChoices: isWarmUpPage(c)};
   const byNumber = new Map(page.questions.map((q) => [q.number, q]));
   const ctx: Ctx = {
-    page, c, band, six: c.pages <= 6 && band.name === "mid",
+    page, c, band, six: c.pages <= 6 && band.name === "mid", review: reviewLayout(page),
     q: (n) => {
       const q = byNumber.get(n);
       if (!q) throw new Error(`page ${page.number}: a slot names question ${n}, which the page does not have`);
@@ -1434,6 +1510,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   const header = `<header class="hd">${c.page === 1 ? `<div class="nd" ${mark.slot("name-date")}><span>Name</span><i class="r1"></i><span>Date</span><i class="r2"></i></div>` : ""}`
     + `<div class="dl" ${mark.slot("day-label")}>${escape(label)}${pageExtra}</div><h1 class="tt" ${mark.slot("title")}>${escape(c.title)}</h1>`
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
+    + (work ? `<p class="sw"><b ${mark.slot("work-line")}>${escape(work)}</b></p>` : "")
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
   // (A block's rows: the sum of its grids' --rows, so blocks grow by their rows too.)
@@ -1471,16 +1548,37 @@ const missingHtml = (b: Block) => (b.missing ?? []).map((m) =>
 
 const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i></i><i class="o"></i><i></i><i class="g"></i><i></i><i></i></div>`;
 
+/**
+ * The level's plain name from the curriculum data ("Big numbers and multiplication facts" for U16), printed on the cover
+ * after "Level U16" (Savar, 2026-11-09). A cover stores no curriculum key: BC is the only curriculum, so a stored book
+ * gets the name at its next layout redraw.
+ */
+export const coverLevelName = (level: number): string | null => curriculumFor("bc")?.level(`U${level}`)?.title ?? null;
+
+/**
+ * The longest "Made for" line that keeps the level's name: two lines of `.cv .for` (688 px at 22 px) held 101 characters
+ * of a name of m and w in Chromium, and 117 of real names (2026-11-09, U18). A longer line leaves the name out, so a long
+ * child's name (the database takes 60 characters) never needs a third line; the fit check stays the backstop.
+ */
+export const COVER_FOR_CHARS = 96;
+
+/** The cover's "Made for" line: "Made for {child} · Level U{n} · {level name}", without the name when it would not fit. */
+export function coverForLine(child: string, level: number): string {
+  const short = `Made for ${child} · Level U${level}`, levelName = coverLevelName(level);
+  const full = levelName ? `${short} · ${levelName}` : short;
+  return full.length <= COVER_FOR_CHARS ? full : short;
+}
+
 function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "cover" }>, book: WorkbookDraft): string {
   const name = coverName(c.child);
   const label = c.madeFrom === "assessment" ? `Made from ${name}'s assessment` : `Made from ${name}'s last workbook`;
   const plan = book.pages.find(p => p.content?.kind === "how-plan")?.content;
   const topics = plan?.kind === "how-plan" ? [...new Set(plan.rows.map(row => row.topic))].slice(0, 3) : [];
-  const path = topics.length ? `<section class="cover-plan"><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}>${escape(topic)}</li>`).join("")}</ul></section>` : "";
+  const path = topics.length ? `<section class="card cover-plan"><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}><i></i><span>${escape(topic)}</span></li>`).join("")}</ul></section>` : "";
   return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
-    + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(name)} · Level U${c.level}</div>`
+    + `<div class="for" ${mark.slot("made-for")}>${escape(coverForLine(name, c.level))}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
-    + `<div class="made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence.replaceAll(c.child, name))}</p></div>${path}`
+    + `<div class="card made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence.replaceAll(c.child, name))}</p></div>${path}`
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
 
@@ -1497,11 +1595,11 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
   const timeText = (minutes: number, hasExtra: boolean) => `about ${roundedMinutes(minutes)} minutes${hasExtra ? ", plus Extra if there's time" : ""}`;
   const rows = c.rows.map((r) => {
     const time = times.get(r.day);
-    return `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(r.second)}</span></span></td>`
+    return `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(reviewTopic(r.second))}</span></span></td>`
     + `<td class="pp">${r.pages[0]}–${r.pages[1]}${time ? `<span class="plan-time" ${mark.slot(`required-time-${r.day}`)}>${roundedMinutes(time.requiredMinutes)} min</span>` : ""}</td><td class="dn"><i class="tb"></i></td></tr>`;
   }).join("");
   const how = [
-    { chip: { label: "Every day", cls: "c-pr", icon: ICONS.target }, text: times.size ? `${c.pagesADay} pages a day, ${timeText(Math.max(...[...times.values()].map(t => t.requiredMinutes)), extra)}.${extra ? " Extra blocks are optional." : ""}` : `${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
+    { chip: { label: "5 days a week", cls: "c-pr", icon: ICONS.target }, text: times.size ? `One day of the book on 5 days of the week, for example Monday to Friday. Do the days in order. ${c.pagesADay} pages a day, ${timeText(Math.max(...[...times.values()].map(t => t.requiredMinutes)), extra)}.` : `One day of the book on 5 days of the week, for example Monday to Friday. Do the days in order. ${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
     { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Open unicalearning.com/account in your browser. Sign in, select your child, then Scan pages." },
     { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Ask for help using Maya, the AI Teaching Assistant." },
     { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: c.workbook === 1 ? "Scan finished pages. Questions your child needs to practise can return in the next workbook." : "Anything your child got wrong in the previous workbook comes back as new questions." },
@@ -1620,6 +1718,11 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
     problems.push({ question: null, slot: "subtitle", reason: `${at}: the page instruction is missing or does not fit` });
   if (c.level === 16 && c.consistentLayout && instruction?.text.trim() !== c.subtitle)
     problems.push({ question: null, slot: "subtitle", reason: `${at}: the printed instruction does not match the page's answer and work regions` });
+  // The work line prints in full on its one line, naming the page's questions with work space.
+  const workText = workbookWorkLine(page), workLine = measured.get("slot-work-line");
+  if (workText && (!workLine?.visible || !workLine.textPrinted || workLine.text.trim() !== workText
+    || workLine.scrollHeight > workLine.clientHeight + 1 || workLine.scrollWidth > workLine.clientWidth + 1))
+    problems.push({ question: null, slot: "work-line", reason: `${at}: the work line is missing or does not fit` });
   if (c.level > 3 && c.grownUp) problems.push({ question: null, slot: "grown-up", reason: `${at}: grown-up text is only for Kindergarten` });
   if (c.page !== 1 && measured.has("slot-name-date")) problems.push({ question: null, slot: "name-date", reason: `${at}: name and date belong only on the first page` });
 

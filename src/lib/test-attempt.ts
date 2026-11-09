@@ -1,4 +1,5 @@
-import { createAdaptiveSession, lockAdaptiveBlock, UNKNOWN_RESPONSE, type AdaptiveTest } from "@/lib/assessment";
+import { ATTEMPT_MOVES, createAdaptiveSession, lockAdaptiveBlock, UNKNOWN_RESPONSE, type AdaptiveTest } from "@/lib/assessment";
+import { next as nextStatus } from "@/lib/state-machine";
 // One child's test attempt on the server (spec #144, #146): start or continue it ("Start test", "Continue test",
 // "Finish test", "Start again", #72), read its next step, answer a question with its whiteboard work (#147), run the
 // timed facts section (#148), and finish it: score it once and store the placement (#150).
@@ -872,7 +873,7 @@ interface ReadTest {
 async function openTest(store: AttemptStore, parent: string, id: string, now: number): Promise<ReadTest | Refusal> {
   const read = await readTest(store, parent, id);
   if (!read.ok || attemptState(read.attempt, now) !== "expired") return read;
-  if (read.attempt.status === "in_progress") {
+  if (nextStatus(ATTEMPT_MOVES, read.attempt.status, "expire")) {
     try {
       await store.expire(id, now);
     } catch (e) {
@@ -1118,7 +1119,7 @@ async function finishOnce(store: AttemptStore, parent: string, id: string, help:
   if (!open.ok) return open;
   const { attempt, session } = open;
   if (attempt.status === "completed") return { ok: true, id: attempt.id, finished: "already" };
-  if (attempt.status !== "in_progress" || testStep(session).status !== "complete" || (session.adaptive && !session.adaptive.sufficientEvidence)) return { ok: false, error: "incomplete" };
+  if (!nextStatus(ATTEMPT_MOVES, attempt.status, "finish") || testStep(session).status !== "complete" || (session.adaptive && !session.adaptive.sufficientEvidence)) return { ok: false, error: "incomplete" };
   // As before the module, the help answer is checked only for a test that can be finished now.
   if (help === "invalid") return { ok: false, error: "invalid" };
   // The timed facts section (#70) goes into the placement beside the test; none when the child had none.

@@ -3,7 +3,6 @@ import { dirname, join, resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { WhatsIncluded, SHOW_CALL_SCREENS, SHOW_VOICE_DEMO } from "@/components/whats-included";
 import { SHOW_VOICE_DEMO as SHOW_HOME_VOICE_DEMO } from "@/components/guidance-demo";
 import { SHOW_OLD_SAMPLE_PLANS } from "@/lib/maya-public-images";
 import Home from "@/app/(site)/page";
@@ -19,7 +18,8 @@ function files(dir: string): string[] {
   });
 }
 function publicSources(): string[] {
-  const pending = [...files(join(root, "app/(site)")), ...files(join(root, "content")), ...files(join(root, "app/llms.txt")), join(root, "app/opengraph-image.tsx")];
+  // Savar 2026-11-09: What's included stays exactly as before #778
+  const pending = [...files(join(root, "app/(site)")).filter((path) => !path.startsWith(join(root, "app/(site)/whats-included/"))), ...files(join(root, "content")), ...files(join(root, "app/llms.txt")), join(root, "app/opengraph-image.tsx")];
   const seen = new Set<string>();
   while (pending.length) {
     const path = pending.pop()!;
@@ -49,7 +49,6 @@ describe("first ship public Maya copy", () => {
       "content/resources/bc-grade-4-math-and-reading.tsx": [/recall the 2s/],
       // These components remain in the source for a later release. The render test checks that they are hidden.
       "components/whats-included-dash.tsx": [/const NAV = .*Companion calls/],
-      "components/whats-included.tsx": [/This demo shows a planned voice call/],
       "components/guidance-demo.tsx": [/This demo shows a planned voice call/],
       "components/guidance.tsx": [/\/\/ "voice call" wording/],
     };
@@ -67,11 +66,12 @@ describe("first ship public Maya copy", () => {
   });
 
   it("keeps the first ship image and voice flags off", () => {
-    expect([SHOW_OLD_SAMPLE_PLANS, SHOW_CALL_SCREENS, SHOW_VOICE_DEMO, SHOW_HOME_VOICE_DEMO]).toEqual([false, false, false, false]);
+    expect([SHOW_OLD_SAMPLE_PLANS, SHOW_HOME_VOICE_DEMO]).toEqual([false, false]);
   });
 
-  it("does not render the hidden images on either public page", () => {
-    for (const page of [Home, WhatsIncluded]) {
+  it("does not render the hidden images on the home page", () => {
+    // Savar 2026-11-09: What's included stays exactly as before #778
+    for (const page of [Home]) {
       const html = renderToStaticMarkup(createElement(page));
       expect(html).not.toMatch(/(?:leah|mateo)-02-plan\.jpg|app-marked\.png|dash-main\.jpg|dash-side\.png|dash\.jpg|app-callnotes\.png|Companion calls|Call with Maya|call notes|Numbers on this page are made up|Every scan updates your dashboard/i);
     }

@@ -3,6 +3,7 @@ import { isHelpAnswer } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
 import { linkOrigin } from "@/lib/account-server";
 import { runReportJob } from "@/lib/report-job";
+import { reportEmailAllowed } from "@/lib/report-retry-server";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { refusalResponse, testFail, type FinishResult } from "@/lib/test-api";
 import { finishTest, type HelpInput } from "@/lib/test-attempt";
@@ -24,8 +25,14 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   if (!result.ok) return refusalResponse(result);
   // The report (#65) is built, stored and emailed after the response, so it never blocks or fails the finish.
   // The job is safe to run twice, so a repeated finish also completes a report step that failed before.
+  // A first finish emails every family, test families too, and alerts the team when the job fails. A repeated finish
+  // (#771 review) emails only when the retries' rule allows it (reportEmailAllowed, by the database's clock: finished
+  // at least 10 minutes and under 48 hours ago, not a test family or a team account), so a parent never gets the email
+  // late from an old test. Within the first 10 minutes it builds only: the first finish's own job sends the email, and
+  // the retries send it when that job failed.
   const origin = linkOrigin(request);
-  after(() => runReportJob(result.id, origin));
+  const assessmentId = result.id;
+  after(() => runReportJob(assessmentId, origin, result.finished === "already" ? { mayEmail: () => reportEmailAllowed(assessmentId) } : {}));
   return Response.json({ ok: true } satisfies FinishResult);
 }
 

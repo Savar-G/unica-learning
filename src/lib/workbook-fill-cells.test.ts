@@ -91,7 +91,7 @@ it("adds white calculation space but gives no work area to a place-value recall"
   p.content.subtitle = "Circle your answers.";
   const template = workbookTemplate();
   expect(template.page(draft(p), { qr: "", qrUrl: "" }, book)).toBe(html);
-  expect(html).toContain("Show your work for question 1.");
+  expect(html).toContain("Show your work under question 1.");
   expect(workbookQuality([p])).toEqual(quality);
   const root = new Window().document.createElement("div");
   root.innerHTML = html;
@@ -102,7 +102,7 @@ it("adds white calculation space but gives no work area to a place-value recall"
   expect.soft(instructionProblems(new Map([[header.name, { ...header, text: "Circle your answers." }]]))).toHaveLength(1);
   expect.soft(instructionProblems(new Map())).toHaveLength(1);
   const legacy = { ...p, content: { ...p.content, level: 15 } };
-  expect(workbookQuality([legacy]).issues.some(i => /lacks its work instruction/.test(i.reason))).toBe(true);
+  expect(workbookQuality([legacy]).issues.some(i => /lacks its work/.test(i.reason))).toBe(false);
 });
 
 it("makes the final bag step compare an event with the combined alternatives", () => {

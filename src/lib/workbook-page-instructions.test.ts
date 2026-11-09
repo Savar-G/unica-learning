@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
-import { answerInstruction, workbookPageInstruction, workQuestionNumbers } from "@/lib/workbook-page-instructions";
+import { answerInstruction, printedInstruction, WARM_UP_INSTRUCTION, workbookPageInstruction, workbookWorkLine, workLine, workQuestionNumbers } from "@/lib/workbook-page-instructions";
 import { circleProblem } from "@/lib/workbook-layout-check";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { workbookTemplate } from "@/lib/workbook-template";
@@ -33,15 +33,18 @@ describe("truthful printed U16 instructions",()=>{
  it("requires written work only for the numbered calculation and method questions",()=>{
   const p=page([question(1,"Which digit is in the tens place?",[box]),question(2,"True or false?",[circle],"circle"),question(7,"245 + 126 = ?",[box]),question(8,"Use two methods.",[{id:"method",kind:"work",label:"Method 1"},box],"two-ways")]);
   expect(workQuestionNumbers(p)).toEqual([7,8]);
-  expect(workbookPageInstruction(p)).toBe("Write in boxes. Circle one choice. Show your work for questions 7 and 8.");
+  // The work is asked on its own line, never in the instruction too (Savar, 2026-11-09).
+  expect(workbookPageInstruction(p)).toBe("Write in boxes. Circle one choice.");
+  expect(workbookWorkLine(p)).toBe("Show your work under questions 7 and 8.");
  });
  it("does not require work for a warm-up or an error correction solely because its text has arithmetic",()=>{
   const p=page([question(1,"500 + 245 = ?",[box]),question(2,"700 - 245 = ?",[box])]);
   p.content.blocks=[{slot:"warm-up",items:[1]},{slot:"spot-the-error",items:[2]}];
   expect(workQuestionNumbers(p)).toEqual([]);
-  expect(workbookPageInstruction(p)).toBe("Write in boxes. Beat your own count from last time.");
+  expect(workbookWorkLine(p)).toBeNull();
+  expect(workbookPageInstruction(p)).toBe("A warm-up on things you learned before. Do every question. Write in boxes.");
  });
- it("retains the warm-up count task in every day's printed instruction without changing stored text",()=>{
+ it("prints the warm-up instruction with no timing or counting words on every day, without changing stored text",()=>{
   for(let day=1;day<=10;day++) {
    const p=page([question(1,"500 + 245 = ?",[box])]);
    p.content.day=day;
@@ -49,18 +52,76 @@ describe("truthful printed U16 instructions",()=>{
    p.content.subtitle="Facts you know. Beat your own count from last time.";
    const before=structuredClone(p),root=new Window().document.createElement("div");
    root.innerHTML=workbookTemplate().page(p,{qr:"",qrUrl:""},sample())!;
-   expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe("Write in boxes. Beat your own count from last time.");
+   expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe("A warm-up on things you learned before. Do every question. Write in boxes.");
+   expect(root.textContent).not.toMatch(/Beat your own|Do as many|no timer/);
    expect(p).toEqual(before);
   }
  });
  it("still requires space for a money comparison when it uses a circled answer",()=>{
   const p=page([question(7,"True or false: 2 bills and 3 quarters make 40 dollars.",[circle],"circle")]);
   expect(workQuestionNumbers(p)).toEqual([7]);
-  expect(workbookPageInstruction(p)).toBe("Circle one choice. Show your work for question 7.");
+  expect(workbookPageInstruction(p)).toBe("Circle one choice.");
+  expect(workbookWorkLine(p)).toBe("Show your work under question 7.");
  });
- it("compresses three consecutive numbers while preserving gaps and the last number",()=>{
+ it("names the real question numbers in plain words, a run of four or more as a range",()=>{
   const p=page([1,2,3,5,7,8,9].map(n=>question(n,"245 + 126 = ?",[box])));
-  expect(workbookPageInstruction(p)).toBe("Write in boxes. Show your work for questions 1-3, 5 and 7-9.");
+  expect(workbookPageInstruction(p)).toBe("Write in boxes.");
+  expect(workbookWorkLine(p)).toBe("Show your work under questions 1, 2, 3, 5, 7, 8 and 9.");
+  expect(workLine([1,2,3,4,5,6,8,9])).toBe("Show your work under questions 1 to 6, 8 and 9.");
+  expect(workLine([4])).toBe("Show your work under question 4.");
+  expect(workLine([])).toBeNull();
+ });
+ it("prints the work line at every level and takes the old work sentence out of a stored instruction",()=>{
+  for(const level of [4,10,15,19]) {
+   const p=page([question(1,"Which digit is in the tens place?",[box]),question(7,"245 + 126 = ?",[box])]);p.content.level=level;
+   expect(printedInstruction(p)).toBe("Circle your answers.");
+   const root=new Window().document.createElement("div");
+   root.innerHTML=workbookTemplate().page(p,{qr:"",qrUrl:""},sample())!;
+   expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe("Circle your answers.");
+   expect(root.querySelector('[data-measure="slot-work-line"]')?.textContent).toBe("Show your work under question 7.");
+   expect(root.querySelector(".sw b")).not.toBeNull();
+  }
+  // Only work alone: the page says where to write.
+  const p=page([question(7,"245 + 126 = ?",[box])]);p.content.level=12;p.content.subtitle="Show your work in the white space under a question.";
+  expect(printedInstruction(p)).toBe("Write in boxes.");
+ });
+ it("gives a stored warm-up at any level the warm-up instruction in place of its timing words",()=>{
+  for(const [level,stored] of [[8,"Facts to 20. Take your time: there is no timer."],[13,"Facts you know. Take your time: there is no timer."],[17,"Facts you know. Beat your own count from last time."]] as const) {
+   const p=page([question(1,"5 + 4 = ?",[box])]);p.content.level=level;p.content.subtitle=stored;
+   p.content.blocks=[{slot:"warm-up",items:[1],note:"Do as many as you can."}];
+   expect(printedInstruction(p)).toBe(WARM_UP_INSTRUCTION);
+   const root=new Window().document.createElement("div");
+   root.innerHTML=workbookTemplate().page(p,{qr:"",qrUrl:""},sample())!;
+   expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe(WARM_UP_INSTRUCTION);
+   expect(root.textContent).not.toMatch(/Beat your own|Do as many|no timer|Facts to 20|Facts you know/);
+   expect(root.querySelector('[data-measure="slot-work-line"]')).toBeNull();
+  }
+ });
+ // (The review of 42bd5a6d: at U8 and U9 the warm-up sentence and "Circle yes or no." ran to 733 px of 688.)
+ it.each([8,9,16])("names no choice on a U%s warm-up page: each choice question prints its own cue",level=>{
+  const said={...circle,choices:["yes","no"],answer:"yes"};
+  const qs=[question(1,"5 + 4 = ?",[box]),question(2,"Is 7 + 6 = 13?",[said],"circle"),question(3,"Is it right?",[{...said,mark:"tick"},{...box,id:"fix"}],"spot-the-error"),question(4,"Is 9 + 9 = 19? Circle yes or no.",[said],"circle")];
+  for(const stored of [`${WARM_UP_INSTRUCTION} Circle yes or no.`,"Circle yes or no.",`${WARM_UP_INSTRUCTION} Circle your answers.`]) {
+   const p=page(qs);p.content.level=level;p.content.subtitle=stored;
+   p.content.blocks=[{slot:"warm-up",items:[1]},{slot:"fix-it",items:[2,3,4]}];
+   const expected=level===16?`${WARM_UP_INSTRUCTION} Write in boxes.`:WARM_UP_INSTRUCTION;
+   expect(printedInstruction(p)).toBe(expected);
+   expect(circleProblem({...p.content,subtitle:expected},qs)).toBeNull();
+   const root=new Window().document.createElement("div");
+   root.innerHTML=workbookTemplate().page(p,{qr:"",qrUrl:""},sample())!;
+   expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe(expected);
+   const card=(n:number)=>root.querySelector(`[data-measure="question-${n}"]`)?.textContent ?? "";
+   expect(card(2)).toContain("Circle one");
+   expect(card(3)).toContain("Tick one");
+   // (Its own text says it already.)
+   expect(card(4)).not.toContain("Circle one");
+  }
+  // Another page keeps its choice words and prints no extra cue.
+  const other=page([question(2,"Is 7 + 6 = 13?",[said],"circle")]);other.content.level=level;other.content.subtitle="Circle yes or no.";
+  const root=new Window().document.createElement("div");
+  root.innerHTML=workbookTemplate().page(other,{qr:"",qrUrl:""},sample())!;
+  expect(root.querySelector('[data-measure^="cue-"]')).toBeNull();
+  expect(circleProblem({...other.content,subtitle:"Write in boxes."},other.questions)).not.toBeNull();
  });
  it.each([4,10,15,17,19])("keeps U%s outside this first-delivery correction",level=>{
   const p=page([question(1,"245 + 126 = ?",[box])]);p.content.level=level;
@@ -70,7 +131,8 @@ describe("truthful printed U16 instructions",()=>{
   const p=page([question(1,"Which digit is in the tens place?",[box]),question(7,"245 + 126 = ?",[box])]);
   const book=sample(),before=structuredClone(p),root=new Window().document.createElement("div");
   root.innerHTML=workbookTemplate().page(p,{qr:"",qrUrl:""},book)!;
-  expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe("Write in boxes. Show your work for question 7.");
+  expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe("Write in boxes.");
+  expect(root.querySelector('[data-measure="slot-work-line"]')?.textContent).toBe("Show your work under question 7.");
   expect(p).toEqual(before);
  });
  it("rejects an actually printed header that disagrees with the question-specific instruction",()=>{

@@ -4,11 +4,13 @@
 import { digestOf } from "@/lib/workbook-digest";
 import { BC_CURRICULUM as RAW_BC_CURRICULUM } from "./bc";
 import { withHouseTemplates } from "./house-templates";
+import { curriculumStructureOf, type CurriculumStructure } from "./structure";
 import { verifiedWatchOut } from "./watch-out";
 import type { CurriculumData, CurriculumKey, CurriculumLevel, CurriculumSkill, CurriculumStep, CurriculumUnit, TemplateContexts } from "./types";
 
 export type * from "./types";
 export { curriculumProblems } from "./check";
+export { curriculumStructureOf, structureDifference, type CurriculumStructure } from "./structure";
 function stepForGenerator(step: CurriculumStep): CurriculumStep {
   // Template selection reads a step many times. Filter only when its mistakes are read,
   // against both the source and the view, so a later edit to either cannot expose stale approval.
@@ -106,4 +108,12 @@ export function curriculumVersion(key: string): string | null {
   if (!Object.hasOwn(DATA, key)) return null;
   if (!versions.has(key)) versions.set(key, digestOf(DATA[key as CurriculumKey]));
   return versions.get(key)!;
+}
+
+const structures = new Map<string, CurriculumStructure>();
+/** The structure of a curriculum's data now (./structure.ts): levels, units, skills and steps in order. Null for an unknown key. */
+export function curriculumStructure(key: string): CurriculumStructure | null {
+  if (!Object.hasOwn(DATA, key)) return null;
+  if (!structures.has(key)) structures.set(key, curriculumStructureOf(DATA[key as CurriculumKey]));
+  return structuredClone(structures.get(key)!);
 }
