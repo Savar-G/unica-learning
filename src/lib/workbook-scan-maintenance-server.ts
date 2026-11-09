@@ -5,8 +5,8 @@ import { SUPPORT_EMAIL } from "@/lib/contact";
 import type { MailTransport } from "@/lib/email-delivery";
 import { newToken } from "@/lib/sign-in-link";
 import { isUuid } from "@/lib/workbook-content";
-import { scanMaintenanceRelease, scanProgressAccess, type ScanMaintenanceEnvironment } from "@/lib/workbook-scan-access";
-export { scanMaintenanceRelease } from "@/lib/workbook-scan-access";
+import { scanMaintenanceRelease, type ScanMaintenanceEnvironment } from "@/lib/workbook-scan-release";
+export { scanMaintenanceRelease } from "@/lib/workbook-scan-release";
 import { workbookScanClockRequestsForBooks, workbookScanClockStore, workbookScanClockVersion } from "@/lib/workbook-scan-clock-store";
 import { runWorkbookScanMaintenance } from "@/lib/workbook-scan-maintenance";
 import { workbookScanProgressStore } from "@/lib/workbook-scan-progress-store";
@@ -22,7 +22,6 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
   const release = scanMaintenanceRelease(options.env);
   if (!release) return null;
   let permissionReadFailed = false;
-  const access = scanProgressAccess(db, release);
   async function testDeliveries(limit: number) {
     // This test-only sweep selects its allowed parents before the bound. Reusing a global due selector could
     // repeatedly return excluded real families and never reach a test book. SQL still decides all eligibility.
@@ -41,11 +40,14 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
   }
   async function testParent(parent: string): Promise<boolean> {
     if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
-    try { return await access.testParent(parent); } catch (error) { permissionReadFailed = true; throw error; }
+    if (!release!.parents.includes(parent.toLowerCase())) return false;
+    const { data, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
+    if (error) { permissionReadFailed = true; throw new Error("scan_maintenance_test_gate_read"); }
+    return data?.parent_id === parent;
   }
   async function allowed(parent: string, child?: string): Promise<boolean> {
     if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
-    try { return !!child && await access.allowed(parent, child); } catch (error) { permissionReadFailed = true; throw error; }
+    return !!child && await testParent(parent);
   }
   const store = workbookScanReminderSendStore(db, { beforeAdmit: handle => testParent(handle.parentId) });
   const sender = createWorkbookScanReminderSender({ gapMs: options.gapMs, transport: options.provider,
@@ -90,7 +92,7 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
           return sender.send({ parentId: parent, episodeIds, unsubscribeHash, signal,
             message: { sender: { to: "parent" }, to: data.email, replyTo: SUPPORT_EMAIL, ...email } });
         } } : {}),
-      }, { limit: 5, clockVersion: workbookScanClockVersion(), time, signal: options.signal });
+      }, { phase: "reminders", limit: 5, clockVersion: workbookScanClockVersion(), time, signal: options.signal });
       // The sender must retain an uncertain admission. It can therefore consume a thrown gate error itself.
       // Keep the invocation failed even when no further parent remains to call allowed again.
       if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");

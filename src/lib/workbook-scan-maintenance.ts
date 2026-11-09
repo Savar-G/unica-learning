@@ -2,8 +2,7 @@ import { isUuid } from "@/lib/workbook-content";
 import { recoverWorkbookScanClocks, type ScanClockRecovery, type ScanClockStore } from "@/lib/workbook-scan-clock";
 import { proposeWorkbookScanInactivity, type ScanInactivityCalendarStore } from "@/lib/workbook-scan-reminder-calendar";
 import type { ScanProgressStore } from "@/lib/workbook-scan-progress-reader";
-import type { ScanReminderSendOutcome } from "@/lib/workbook-scan-reminder-send";
-import type { ScanRecoveryBook, ScanRecoveryKind, ScanReminderDue } from "@/lib/workbook-scan-reminder-store";
+import type { ScanRecoveryBook, ScanRecoveryKind, ScanReminderDue } from "@/lib/workbook-scan-progress-sweep-store";
 
 export interface ScanMaintenanceDependencies {
   books(kind: ScanRecoveryKind, limit: number): Promise<readonly ScanRecoveryBook[]>;
@@ -14,7 +13,7 @@ export interface ScanMaintenanceDependencies {
   calendars: ScanInactivityCalendarStore;
   due(parentId: string): Promise<ScanReminderDue>;
   /** Omit this function for recovery without delivery. One sender/transport must serve the whole run. */
-  send?(parentId: string, episodeIds: readonly string[], signal?: AbortSignal): Promise<ScanReminderSendOutcome>;
+  send?(parentId: string, episodeIds: readonly string[], signal?: AbortSignal): Promise<{ status: string }>;
 }
 export interface ScanMaintenanceResult {
   selectedBooks: number;
@@ -28,7 +27,7 @@ export interface ScanMaintenanceResult {
 
 /** One bounded turn. SQL determines due time and admission; this clock controls execution only. */
 export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependencies, options: {
-  limit: number; clockVersion: string; time: { now(): number; endAt: number }; signal?: AbortSignal;
+  limit: number; clockVersion: string; phase?: "progress" | "reminders"; time: { now(): number; endAt: number }; signal?: AbortSignal;
 }): Promise<ScanMaintenanceResult> {
   const { limit, clockVersion, time, signal } = options;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !clockVersion.trim()
@@ -63,6 +62,7 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
   }
   const stop = () => ({ ...result, outOfTime: true });
   if (expired()) return stop();
+  if (options.phase !== "reminders") {
   const unseeded = await permitted(await read("unseeded"));
   if (expired()) return stop();
   const due = (await permitted(await read("due"))).filter(row => !unseeded.some(book => book.workbookId === row.workbookId))
@@ -129,6 +129,8 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
     result.calendars.push({ workbookId: row.workbookId, status });
   }
   if (expired()) return stop();
+  }
+  if (options.phase === "progress") return result;
   const reminders = await permitted(await read("reminder-due"));
   for (const parentId of [...new Set(reminders.map(r => r.parentId))]) {
     if (expired()) return stop();

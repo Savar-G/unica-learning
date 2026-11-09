@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/lib/workbook-scan-maintenance-server";
+import { createWorkbookScanProgressSweep } from "@/lib/workbook-scan-progress-sweep-server";
 vi.mock("server-only", () => ({}));
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -74,7 +75,12 @@ function setup({ delivery = true, test = true, revokeBeforeAdmission = false, pr
   const server = createWorkbookScanMaintenanceServer(db, { env: { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: families ? "families" : "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: delivery ? "test-only" : "off" },
     origin: "https://unicalearning.com", provider, gapMs: 0 });
   if (!server) throw new Error("missing configured server");
-  return { db, provider, server, calls, deliveries, copies, run: () => server.run({ now: () => 0, endAt: 100 }) };
+  const progress = createWorkbookScanProgressSweep(db, { env: { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: families ? "families" : "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: delivery ? "test-only" : "off" } })!;
+  return { db, provider, server, calls, deliveries, copies, run: async () => {
+    const result = await progress.run({ now: () => 0, endAt: 100 });
+    const reminders = await server.run({ now: () => 0, endAt: 100 });
+    return { ...result, reminders: reminders.reminders };
+  } };
 }
 
 describe("scan maintenance server release and integration", () => {
@@ -171,7 +177,7 @@ describe("scan maintenance server release and integration", () => {
     expect(f.deliveries).toEqual([]);
     expect(f.calls.some(c => c.name === "admit_workbook_scan_reminder" || c.name === "release_workbook_scan_reminder")).toBe(false);
     const count = f.calls.length;
-    await expect(f.run()).rejects.toThrow("scan_maintenance_test_gate_read");
+    await expect(f.server.run({ now: () => 0, endAt: 100 })).rejects.toThrow("scan_maintenance_test_gate_read");
     expect(f.calls).toHaveLength(count);
   });
 
