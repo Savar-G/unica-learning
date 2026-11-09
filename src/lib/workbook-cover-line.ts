@@ -54,15 +54,17 @@ export function workbookCoverLine(plan: WorkbookPlan, child: string, workbook: n
     return f?.source !== "none" && f?.state === "known" && !!r && r.answered > 0 && r.correct > 0 && r.correct <= r.answered
       && r.accuracy === "secure" && r.speed === "quick" && r.medianMs !== null && Number.isFinite(r.medianMs) && r.medianMs > 0;
   });
-  const ahead = trusted && s.adjustments.trustedAboveGrade && s.weak.length === 0 && secureAreas && secureFacts;
-  const catchUp = s.start?.rule === "P3" || !!s.working && s.working.working < s.grade;
+  // An admin start level (I1) is not what the assessment showed: the cover makes no claim about the level.
+  const instructed = s.start?.rule === "I1";
+  const ahead = !instructed && trusted && s.adjustments.trustedAboveGrade && s.weak.length === 0 && secureAreas && secureFacts;
+  const catchUp = !instructed && (s.start?.rule === "P3" || !!s.working && s.working.working < s.grade);
   for (const name of [child, "Your child"]) for (let count = topics.length; count > 0; count--) {
     const selected = topics.slice(0, count);
     const line = ahead
       ? `${name} did very well on every part of the assessment, so this book moves ahead to ${list(selected)}.`
       : catchUp
         ? `This book starts with ${selected[0]}, step by step${selected.length > 1 ? `, then moves on to ${list(selected.slice(1))}` : ""}.`
-        : trusted
+        : trusted && !instructed
           ? `This book works on ${list(selected)}, at the level ${name === "Your child" ? "your child" : name} showed on the assessment.`
           : `This book gives ${name === "Your child" ? "your child" : name} practice with ${list(selected)}, step by step.`;
     if (!coverLineProblem(line)) return line;

@@ -18,7 +18,7 @@ export function workbookEditRendering(db: SupabaseClient<Database>, template: Wo
       const one = { ...full, pages: full.pages.filter(p => p.number === page) };
       const result = await renderWorkbook({ draft: one, parentId: snapshot.parentId,
         template: { ...template, page: (p, parts) => template.page(p, parts, full) }, engine, fileKey: randomBytes(12).toString("hex") });
-      if (result.status !== "rendered") throw new Error(result.problems.map(p => p.reason).join(" "));
+      if (result.status !== "rendered") throw new Error(`fit check: ${result.problems.map(p => p.reason).join(" ")}`);
       const image = result.files.find(f => f.path === result.workbook.pages[0].image!.path)!;
       try { await files.put(image); } catch (e) { await files.remove([image.path]).catch(() => undefined); throw e; }
       return { page: renderedPages(result)[0], paths: [image.path] };

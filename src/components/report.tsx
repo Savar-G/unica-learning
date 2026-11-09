@@ -1,8 +1,10 @@
 // The parent's report (#65), in the chosen design (D-087, option A3 "Report card + ruler", #80): a report card across
 // the nav width; the header table; the level and the verdict in a grainy colour band with the big K-8 ruler; the
-// context (FSA line, comparison, help warning); then rows with the title on the left and the content on the right.
-// #198 (D-120, round r198, option A): under the areas, the strengths, the struggles (each with one of the child's
-// answers and the likely cause); the workbook 1 preview in "How we help".
+// context (FSA line, comparison); then rows with the title on the left and the content on the right.
+// D-305 (round r-report-clarity, option B "answer first"): the answers come first: what the working level means, where
+// the child is (secure, gaps to fix, next to learn), what is in workbook 1 (from the real planner), and the next step.
+// Then "The details": the areas, the strengths, the gaps and the next topics (each with one of the child's answers and
+// the likely cause), number facts and the child's work.
 // A server component: only the next step needs JavaScript in the browser (report-next.tsx).
 // The words come from src/lib/report-view.ts, which the report email uses too.
 import type { CSSProperties, ReactNode } from "react";
@@ -19,17 +21,22 @@ import {
   AREA_NOTE,
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
+  bookOneView,
   certaintyText,
   comparisonView,
+  earlySignNote,
   factsView,
-  helpWarning,
+  gapsNote,
+  gapsView,
   howWeHelp,
   leftOutLine,
   levelName,
   levelNotes,
   levelSentence,
   metaLine,
+  nextNote,
   nextStep,
+  nextView,
   reliabilityNote,
   type RetakeState,
   reportDate,
@@ -48,9 +55,9 @@ import {
   rulerLevels,
   strengthsNote,
   strengthsView,
-  strugglesNote,
-  strugglesView,
-  workbookPreview,
+  whereNotes,
+  whereView,
+  workingLevelNote,
 } from "@/lib/report-view";
 import "./report.css";
 
@@ -77,25 +84,34 @@ export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, n
       <ReportHeader view={view} />
       <ReportOverall view={view} />
       <ReportContext view={view} newTest={newTest} />
+      <ReportWhere view={view} />
+      {bookOneView(view) ? <ReportBookOne view={view} /> : <ReportHelp view={view} />}
+      {actionBeside ? BOOKING_URL && <Row id="rpt-call" title="Questions"><BookCall childName={view.childName} /></Row> : nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
+      <div className="rpt-details-h" id={DETAILS_ID}>
+        <p className="eyebrow">The details</p>
+        <p>How we measured, and {view.childName}&apos;s own answers.</p>
+      </div>
       <ReportAreas view={view} />
       <ReportStrengths view={view} />
-      <ReportStruggles view={view} />
+      <ReportGaps view={view} />
+      <ReportNextTopics view={view} />
       <ReportNumberFacts view={view} />
       <ReportWork view={view} />
-      <ReportHelp view={view} />
-      {actionBeside ? BOOKING_URL && <Row id="rpt-call" title="Questions"><BookCall childName={view.childName} /></Row> : nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
       <p className="rpt-meta">{metaLine(view)}</p>
     </article>
   );
 }
 
-/** One report row: the title and a one-line explanation, then the content (D-087). */
-function Row({ id, title, note, children }: { id: string; title: string; note?: string; children: ReactNode }) {
+const DETAILS_ID = "rpt-details";
+
+/** One report row: the title and a one-line explanation, then the content (D-087). D-305: `early`, the early-sign line. */
+function Row({ id, title, note, early, children }: { id: string; title: string; note?: string; early?: string | null; children: ReactNode }) {
   return (
     <section className="rpt-row" aria-labelledby={id}>
       <div className="rpt-row-h">
         <h2 id={id}>{title}</h2>
         {note && <p>{note}</p>}
+        {early && <p className="rpt-early">{early}</p>}
       </div>
       <div className="rpt-row-c">{children}</div>
     </section>
@@ -166,6 +182,8 @@ function ReportOverall({ view }: { view: ReportView }) {
       <p className="rpt-verdict">{verdictSentence(view)}</p>
       <Certainty view={view} certainty={view.model.level.certainty} lead="How sure:" />
       <LevelScale view={view} />
+      {/* D-305: a parent read "working at a grade 5 level" as "only grade 5 work". */}
+      <p className="rpt-def"><b>What &ldquo;working level&rdquo; means.</b> {workingLevelNote(view)}</p>
       {levelNotes(view).map((note) => <p key={note} className="rpt-note">{note}</p>)}
       {summary && <p className="rpt-summary">{summary}</p>}
     </section>
@@ -187,14 +205,13 @@ export function ReportLevelPreview({ view }: { view: ReportView }) {
   );
 }
 
-// Below the band, side by side: the FSA line (BC, grades 4 and 7), the comparison for the data stage, and the help
-// warning (#71). Below 100 eligible children the ruler above is the whole comparison (#101, D-084).
+// Below the band, side by side: the FSA line (BC, grades 4 and 7) and the comparison for the data stage. Below 100
+// eligible children the ruler above is the whole comparison (#101, D-084). D-305: no help warning (#71) any more.
 function ReportContext({ view, newTest }: { view: ReportView; newTest: NewTestOffer | null }) {
   const { fsa } = view.model;
-  const warning = helpWarning(view, newTest?.state);
   const comparison = comparisonView(view);
   const reliability = reliabilityNote(view, newTest?.state);
-  if (!fsa && !warning && !comparison && !reliability) return null;
+  if (!fsa && !comparison && !reliability) return null;
   return (
     <div className="rpt-context">
       {reliability && (
@@ -218,13 +235,6 @@ function ReportContext({ view, newTest }: { view: ReportView; newTest: NewTestOf
           <p className="rpt-k">{comparison.title}</p>
           <p>{comparison.text}</p>
           <p className="rpt-source">{comparison.note}</p>
-        </aside>
-      )}
-      {warning && (
-        <aside className="rpt-help-warning" aria-labelledby="rpt-help-warning">
-          <h2 id="rpt-help-warning">{warning.title}</h2>
-          <p>{warning.text}</p>
-          <p>{warning.retake}</p>
         </aside>
       )}
     </div>
@@ -293,24 +303,28 @@ function Folded<T>({ items, shown, className, render }: { items: readonly T[]; s
   );
 }
 
-/** One BC topic's grade, count and certainty, on one mono line. */
-function TopicMeta({ topic }: { topic: TopicResult }) {
+/** One BC topic's grade, count and "Clear" (D-305: early signs are said once per section), and where the books take it up. */
+function TopicMeta({ topic, cover }: { topic: TopicResult; cover?: string | null }) {
   return (
     <p className="rpt-topic-m">
       <span>{topic.grade}</span><span>{topic.count}</span>
-      <span className={`rpt-sure is-${topic.certainty}`}>{topic.sure}</span>
+      {topic.sure && <span className={`rpt-sure is-${topic.certainty}`}>{topic.sure}</span>}
+      {cover && <span className="rpt-cover">{cover}</span>}
     </p>
   );
 }
+
+/** D-305: the BC wording under the plain topic name, small. */
+const Bc = ({ topic }: { topic: TopicResult }) => (topic.bc !== topic.title ? <p className="rpt-bc">BC: {topic.bc}</p> : null);
 
 // #198 (spec story 5): the BC topics the child is secure in. Nothing when there are none, or no learner profile.
 function ReportStrengths({ view }: { view: ReportView }) {
   const strengths = strengthsView(view);
   if (!strengths) return null;
   return (
-    <Row id="rpt-strengths" title="Strengths" note={strengthsNote(view)}>
+    <Row id="rpt-strengths" title="Strengths" note={strengthsNote(view)} early={earlySignNote(view, strengths)}>
       <Folded items={strengths} shown={STRENGTHS_SHOWN} className="rpt-strengths" render={(t) => (
-        <li key={t.code}><p className="rpt-topic-t">{t.title}</p><TopicMeta topic={t} /></li>
+        <li key={t.code}><p className="rpt-topic-t">{t.title}</p><Bc topic={t} /><TopicMeta topic={t} /></li>
       )} />
     </Row>
   );
@@ -324,7 +338,8 @@ function Struggle({ view, s }: { view: ReportView; s: StruggleView }) {
         <h3>{s.title}</h3>
         <span className={`rpt-chip is-${s.status}`}>{STATUS_LABEL[s.status]}</span>
       </div>
-      <TopicMeta topic={s} />
+      <Bc topic={s} />
+      <TopicMeta topic={s} cover={s.cover} />
       <dl className="rpt-answer">
         <div className="is-q"><dt>Question</dt><dd>{s.question}</dd></div>
         <div className="is-wrong"><dt>{view.childName}&apos;s answer</dt><dd>{s.answer}</dd></div>
@@ -340,13 +355,91 @@ function Struggle({ view, s }: { view: ReportView; s: StruggleView }) {
   );
 }
 
-// #198 (spec story 6): each BC topic at or below the school grade that is not secure, the clear ones first.
-function ReportStruggles({ view }: { view: ReportView }) {
-  const struggles = strugglesView(view);
-  if (!struggles) return null;
+// #198 (spec story 6), D-305: the topics at or below the working level that the child has not mastered, each with one
+// of the child's answers, the clear ones first.
+function ReportGaps({ view }: { view: ReportView }) {
+  const gaps = gapsView(view);
+  if (!gaps) return null;
   return (
-    <Row id="rpt-struggles" title="To work on" note={strugglesNote(view)}>
-      <Folded items={struggles} shown={STRUGGLES_SHOWN} className="rpt-struggles" render={(s) => <Struggle key={s.code} view={view} s={s} />} />
+    <Row id="rpt-struggles" title="Gaps to fix" note={gapsNote(view)} early={earlySignNote(view, gaps)}>
+      <Folded items={gaps} shown={STRUGGLES_SHOWN} className="rpt-struggles" render={(s) => <Struggle key={s.code} view={view} s={s} />} />
+    </Row>
+  );
+}
+
+// D-305: the topics above the working level, up to the school grade, that the child has not mastered yet: short cards,
+// as they are for later books.
+function ReportNextTopics({ view }: { view: ReportView }) {
+  const next = nextView(view);
+  if (!next) return null;
+  return (
+    <Row id="rpt-next-topics" title="Next to learn" note={nextNote(view)} early={earlySignNote(view, next)}>
+      <ul className="rpt-next-list">
+        {next.map((t) => (
+          <li key={t.code}>
+            <p className="rpt-next-t">{t.title}</p>
+            <p className="rpt-next-m"><span className={`rpt-chip is-${t.status}`}>{STATUS_LABEL[t.status]}</span><span>{t.grade}</span><span>{t.count}</span></p>
+            <Bc topic={t} />
+          </li>
+        ))}
+      </ul>
+    </Row>
+  );
+}
+
+// D-305: every topic the test asked about, in three groups, before the details.
+function ReportWhere({ view }: { view: ReportView }) {
+  const where = whereView(view);
+  if (!where) return null;
+  const notes = whereNotes(view);
+  const group = (key: "secure" | "gaps" | "next", items: readonly { title: string; meta: string | null }[]) => items.length > 0 && (
+    <div className={`is-${key}`}>
+      <p className="rpt-k">{notes[key].title} · {items.length}</p>
+      <p className="rpt-glance-d">{notes[key].note}</p>
+      <ul>{items.map((t, i) => <li key={i}>{t.title}{t.meta && <span>{t.meta}</span>}</li>)}</ul>
+    </div>
+  );
+  return (
+    <Row id="rpt-where" title={`Where ${view.childName} is`} note="Every topic the test asked about, in three groups.">
+      <div className="rpt-glance">
+        {group("secure", where.secure)}
+        {group("gaps", where.gaps)}
+        {group("next", where.next)}
+      </div>
+      <p className="rpt-small rpt-after"><a href={`#${DETAILS_ID}`}>See every answer in the details below ↓</a></p>
+    </Row>
+  );
+}
+
+// D-305: what workbook 1 holds, from the real plan: the main work, the review, the harder problems, and what comes after.
+function ReportBookOne({ view }: { view: ReportView }) {
+  const book = bookOneView(view);
+  if (!book) return null;
+  const part = (kind: string, label: string, p: { title: string; grade: string; items: string[]; why?: string | null }) => (
+    <div className={`rpt-part is-${kind}`}>
+      <p className="rpt-k">{label}</p>
+      <h3>{p.title}</h3>
+      <p className="rpt-part-g">{p.grade}</p>
+      <ul>{p.items.map((item) => <li key={item}>{item}</li>)}</ul>
+      {p.why && <p className="rpt-part-why">{p.why}</p>}
+    </div>
+  );
+  return (
+    <Row id="rpt-book-one" title={"What's in workbook\u00a01"} note={book.note}>
+      <div className="rpt-wb1">
+        {part("main", "Main work", { ...book.main, items: book.main.skills })}
+        {book.review && part("review", "Review", book.review)}
+        {book.challenge && part("stretch", "Challenge", book.challenge)}
+      </div>
+      <div className="rpt-path">
+        <p className="rpt-k">After workbook 1</p>
+        <ol>
+          {book.path.map((step, i) => (
+            <li key={step.title}><i className="rpt-path-n">{i + 1}</i><b>{step.title}</b><span>{step.text}</span></li>
+          ))}
+        </ol>
+        <p className="rpt-small">{book.footnote}</p>
+      </div>
     </Row>
   );
 }
@@ -420,20 +513,14 @@ function ReportWork({ view }: { view: ReportView }) {
   );
 }
 
-// How the books help (by verdict); then, #198 (spec story 9), the workbook 1 preview when the AI's plan exists.
+// How the books help (by verdict), when the report has no workbook 1 plan (D-305): a family on the waitlist, a report
+// without a learner profile, or a plan that failed.
 function ReportHelp({ view }: { view: ReportView }) {
   const help = howWeHelp(view);
-  const preview = workbookPreview(view);
   return (
     <Row id="rpt-help" title="How we help">
       <h3>{help.title}</h3>
       <p className="rpt-help-text">{help.text}</p>
-      {preview && (
-        <aside className="rpt-preview" aria-labelledby="rpt-preview">
-          <p className="rpt-k" id="rpt-preview">Workbook 1</p>
-          <p>{preview}</p>
-        </aside>
-      )}
     </Row>
   );
 }

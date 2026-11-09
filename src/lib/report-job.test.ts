@@ -424,20 +424,15 @@ describe("the report email and the report page (#163)", () => {
     expectEverywhere(places(email, page), [words(summary)]);
   });
 
-  it("hold the same finish date: the retake date of a report that warns about help, in the family's time zone", async () => {
-    // Asha said someone helped. The warning gives the first whole day of the retake, 30 days after the finish
-    // (2026-10-10 12:00 UTC), in Vancouver time.
+  it("hold the same facts, and neither says the level may be too high when help is likely (D-305)", async () => {
     const db = database({ helped: true });
     const mail = memoryTransport();
     await run(db, mail, memoryReportLedger());
     const [email] = mail.delivered;
     const page = await reportPage(db);
 
-    expectEverywhere(places(email, page), [
-      "This level may be too high",
-      "For a level you can trust, Asha can take a new test alone, with new questions, from November 10, 2026.",
-      "42 questions in 14 minutes",
-    ]);
+    expectEverywhere(places(email, page), ["42 questions in 14 minutes", "What's in workbook 1"]);
+    for (const body of [email.text, email.html, page.text]) expect(body).not.toMatch(/may be too high/);
     // The page also shows the finish date itself.
     expect(page.text).toContain("October 10, 2026");
   });
@@ -1007,13 +1002,13 @@ describe("the learner profile's AI parts", () => {
     // Both: a strength, the struggle with Asha's own wrong answer to one question, and the right answer.
     expect(strengths.length).toBeGreaterThan(0);
     expectEverywhere(places(email, page), [words(shown.prompt), shown.response, shown.rightAnswer]);
-    // The email: the likely cause from the known mistake, and no workbook 1 preview: the AI wrote after it went.
+    // The email: the likely cause from the known mistake (the AI wrote after it went). D-305: workbook 1 comes from the
+    // planner, not the AI, so the email and the page both have it.
     expect(words(email.text)).toContain(mistake);
-    for (const body of [email.text, email.html]) expect(body).not.toContain("Workbook 1 focuses on");
-    // The page, opened after the AI parts were stored: the AI's likely cause, and the preview.
+    // The page, opened after the AI parts were stored: the AI's likely cause.
     expect(page.text).toContain("The wrong answers match a known mistake, and a skill this builds on may not be secure yet.");
     expect(page.text).not.toContain(mistake);
-    expect(page.text).toContain("Workbook 1 focuses on");
+    expectEverywhere(places(email, page), ["What's in workbook 1"]);
     // Never how to help, the model id or the build id: admin only.
     for (const body of [email.text, email.html, page.html]) {
       for (const secret of ["short daily sets", MODEL, "buildId"]) expect(body).not.toContain(secret);

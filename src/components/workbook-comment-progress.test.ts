@@ -98,7 +98,7 @@ describe("mounted comment routing", () => {
     const source = detail();source.editBatch = null;source.comments = [{ ...source.comments[0], status: "pending", route: "layout" }];
     const fetch = vi.fn(async () => Response.json({ status: "layout-review", reason: "This request still needs reviewed layout changes." }));vi.stubGlobal("fetch", fetch);
     await mount(source);
-    expect(container.textContent).toContain("Layout requests stay open in the review path below.");
+    expect(container.textContent).toContain("1 page-layout comment is saved and open for the team. It stays open until the pages are re-rendered.");
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.startsWith("Send all comments"))!.click());
     expect(container.textContent).toContain("This request still needs reviewed layout changes.");
     expect(container.textContent).toContain("Awaiting layout review");
