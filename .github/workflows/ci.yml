@@ -110,6 +110,11 @@ jobs:
           PGPASSWORD: maya-ci-only
       - run: npx eslint src
         timeout-minutes: 5
+      # The daily Family retention workflow runs a bundle that plain Node must load. Build it and load it with --help
+      # (no credentials, no database), so an import Node cannot resolve fails here and not at 15:17 UTC (2026-11-06).
+      - name: Retention worker loads
+        run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
+        timeout-minutes: 2
 
   # The required check. Keep this name exactly `test`: Vercel's Deployment Check and branch rules use it.
   test:
