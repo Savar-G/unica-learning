@@ -87,7 +87,7 @@ export type Book1BaselineResult = { ok: true; baseline: Book1Baseline; record: B
 /** Where a PlanInput breaks the first-book starting-mastery policy, or null. */
 export function masteryPolicyProblem(input: PlanInput): string | null {
   if (!input || typeof input !== "object") return "no input";
-  if (Object.hasOwn(input, "progress")) return "a progress decision";
+  if (Object.hasOwn(input, "progress") || Object.hasOwn(input, "previewDecisions")) return "a progress decision";
   if (!input.workbook || input.workbook.number !== 1 || input.workbook.inLevel !== 0) return "not workbook 1";
   if (!input.passed || typeof input.passed !== "object" || Object.keys(input.passed).length) return "passed steps";
   if (input.reviews?.length || input.missedReviews?.length || input.misses?.length) return "carried reviews or misses";
@@ -272,7 +272,7 @@ export function book2Planning(b: Book1Baseline): Book2PlanningResult {
       input => { captured.push(input); });
     if (!planned.ok || captured.length !== 1) return { ok: false, reason: "next-planner-refused" };
     const input = stored(captured[0]);
-    if (input.workbook.number !== b.number + 1 || Object.hasOwn(input, "progress")) return { ok: false, reason: "invalid-planning" };
+    if (input.workbook.number !== b.number + 1 || Object.hasOwn(input, "progress") || Object.hasOwn(input, "previewDecisions")) return { ok: false, reason: "invalid-planning" };
     return { ok: true, input };
   } catch { return { ok: false, reason: "invalid-planning" }; }
 }

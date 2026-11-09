@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { BOUNDARY, CHILD, CUTOFF, MARKED, PARENT, approvedWorkbook, baselineOf, frozenOf, id, jobBook, mark, parentChange, printedItems, requestOf, secondTry, shippedBook } from "./workbook-book1.fixture";
-import { book2Planning, createBook1Baseline, jsonHash, readBook1Baseline, type Book1Baseline, type Book1BaselineRecord } from "./workbook-book1-baseline";
+import { book2Planning, createBook1Baseline, jsonHash, masteryPolicyProblem, readBook1Baseline, type Book1Baseline, type Book1BaselineRecord } from "./workbook-book1-baseline";
 import { evaluateBook1Preview, type Book1Complete, type Book1PreviewOutcome } from "./workbook-book1-preview";
 import { readBook1Corrections, type SecondTryRow } from "./workbook-correction-journal";
 import { createWorkbookPreviewRecord, createWorkbookPreviewRecordAny, replayWorkbookPreview, replayWorkbookPreviewAny } from "./workbook-preview-record";
@@ -71,6 +71,10 @@ describe("Book 1 baseline capture", () => {
     expect(createBook1Baseline({ id: id(0xb2), parentId: PARENT, childId: CHILD, final: second, frame: made.frame, planning: proof })).toEqual({ ok: false, reason: "not-book1" });
     const frame = structuredClone(made.frame); frame.planning!.input.passed = { [SELECTION.skill]: 1 };
     expect(createBook1Baseline({ id: id(0xb2), parentId: PARENT, childId: CHILD, final: made.final, frame, planning: proof }).ok).toBe(false);
+  });
+  it("refuses multi-skill preview decisions as Book 1 starting mastery", () => {
+    const input = { ...baseline.planning.input, previewDecisions: [] };
+    expect(masteryPolicyProblem(input)).toBe("a progress decision");
   });
   it("computes book 2 from the frozen Book 1 inputs without changing the original PlanInput", () => {
     const before = structuredClone(baseline.planning.input);

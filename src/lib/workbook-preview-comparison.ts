@@ -24,7 +24,16 @@ export function compareWorkbookPreviews(earlier: ComparablePreview, later: Compa
   const a = pages(earlier.plan), b = pages(later.plan);
   const changedPages = [...new Set([...a.keys(), ...b.keys()])].filter(k => JSON.stringify(a.get(k)) !== JSON.stringify(b.get(k)))
     .map(k => { const [day, page] = k.split(":").map(Number); return { day, page }; });
-  return { newMarks, changedMarks, removedMarks, changedPages,
-    stepsChanged: JSON.stringify(earlier.plan.newSteps) !== JSON.stringify(later.plan.newSteps),
+  const stepKey = (s: WorkbookPlan["newSteps"][number]) => JSON.stringify([s.unit, s.skill, s.step]);
+  const oldSteps = new Map(earlier.plan.newSteps.map(s => [stepKey(s), s]));
+  const newSteps = new Map(later.plan.newSteps.map(s => [stepKey(s), s]));
+  const addedSteps = later.plan.newSteps.filter(s => !oldSteps.has(stepKey(s)));
+  const removedSteps = earlier.plan.newSteps.filter(s => !newSteps.has(stepKey(s)));
+  const movedSteps = later.plan.newSteps.flatMap(s => {
+    const old = oldSteps.get(stepKey(s));
+    return old && (old.day !== s.day || old.track !== s.track) ? [{ before: old, after: s }] : [];
+  });
+  return { newMarks, changedMarks, removedMarks, changedPages, addedSteps, removedSteps, movedSteps,
+    stepsChanged: !!(addedSteps.length || removedSteps.length || movedSteps.length),
     decisionChanged: JSON.stringify([earlier.decision.action, earlier.decision.target]) !== JSON.stringify([later.decision.action, later.decision.target]) };
 }

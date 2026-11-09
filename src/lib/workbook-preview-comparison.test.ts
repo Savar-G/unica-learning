@@ -15,6 +15,14 @@ describe("saved preview comparison", () => {
     b.plan.days[0].pages[0].type = "warm-up";
     expect(compareWorkbookPreviews(a, b)).toMatchObject({ newMarks: [{ key: "b" }], changedMarks: [{ key: "a" }], removedMarks: [], changedPages: [{ day: 1, page: 1 }], stepsChanged: false });
   });
+  it("lists added, removed and moved steps", () => {
+    const a = preview(), b = structuredClone(a);
+    a.plan.newSteps = [{ unit: "1", skill: "count", step: 1, day: 1, track: "A" }, { unit: "1", skill: "add", step: 1, day: 2, track: "A" }];
+    b.plan.newSteps = [{ unit: "1", skill: "count", step: 1, day: 3, track: "A" }, { unit: "1", skill: "subtract", step: 1, day: 4, track: "B" }];
+    expect(compareWorkbookPreviews(a, b)).toMatchObject({ stepsChanged: true,
+      removedSteps: [{ skill: "add", step: 1 }], addedSteps: [{ skill: "subtract", step: 1 }],
+      movedSteps: [{ before: { skill: "count", day: 1 }, after: { skill: "count", day: 3 } }] });
+  });
   it("refuses a different child, book, skill or reversed time", () => {
     const a = preview();
     for (const b of [{ ...preview(), childId: "other" }, { ...preview(), workbookId: "other" }, { ...preview(), selection: { ...a.selection, step: 2 } }, { ...preview(), cutoff: 0 }]) {
