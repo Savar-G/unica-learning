@@ -1250,6 +1250,24 @@ export type Database = {
         }
         Relationships: []
       }
+      family_finish_claims: {
+        Row: {
+          claim: string
+          claimed_at: string
+          user_id: string
+        }
+        Insert: {
+          claim: string
+          claimed_at?: string
+          user_id: string
+        }
+        Update: {
+          claim?: string
+          claimed_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       family_payment_operations: {
         Row: {
           customer_id: string
@@ -3075,6 +3093,50 @@ export type Database = {
             foreignKeyName: "question_shows_assessment_id_fkey"
             columns: ["assessment_id"]
             isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_retries: {
+        Row: {
+          alert_email_id: string | null
+          alert_error: string | null
+          assessment_id: string
+          attempts: number
+          created_at: string
+          gave_up_at: string | null
+          last_attempt_at: string | null
+          last_email: boolean | null
+          next_at: string
+        }
+        Insert: {
+          alert_email_id?: string | null
+          alert_error?: string | null
+          assessment_id: string
+          attempts?: number
+          created_at?: string
+          gave_up_at?: string | null
+          last_attempt_at?: string | null
+          last_email?: boolean | null
+          next_at?: string
+        }
+        Update: {
+          alert_email_id?: string | null
+          alert_error?: string | null
+          assessment_id?: string
+          attempts?: number
+          created_at?: string
+          gave_up_at?: string | null
+          last_attempt_at?: string | null
+          last_email?: boolean | null
+          next_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_retries_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: true
             referencedRelation: "assessments"
             referencedColumns: ["id"]
           },
@@ -7012,10 +7074,13 @@ export type Database = {
         }[]
       }
       _maya_zone_at: { Args: { p_at: string; p_zone: string }; Returns: string }
+      _next_book_consumed_ok: { Args: { x: Json }; Returns: boolean }
+      _next_book_count: { Args: { v: Json }; Returns: boolean }
       _next_book_draft_locked: {
         Args: { p_child: string; p_draft: string; p_parent: string }
         Returns: string
       }
+      _next_book_held_ok: { Args: { x: Json }; Returns: boolean }
       _next_book_source_problem: {
         Args: { p_book: string; p_revision: string }
         Returns: string
@@ -7699,6 +7764,10 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: Json
       }
+      claim_family_finish: {
+        Args: { p_claim: string; p_user: string }
+        Returns: string
+      }
       claim_family_retention: {
         Args: { p: string; subscription_ended_at: string; token: string }
         Returns: Json
@@ -7781,6 +7850,28 @@ export type Database = {
           p_token: string
         }
         Returns: boolean
+      }
+      claim_report_give_up: {
+        Args: {
+          p_assessment: string
+          p_email_age_s: number
+          p_max_attempts: number
+          p_min_age_s: number
+        }
+        Returns: string
+      }
+      claim_report_retry: {
+        Args: {
+          p_assessment: string
+          p_delays_s: number[]
+          p_email_age_s: number
+          p_max_attempts: number
+          p_min_age_s: number
+        }
+        Returns: {
+          out_attempt: number
+          out_email: boolean
+        }[]
       }
       claim_scan_link_email: {
         Args: {
@@ -8210,6 +8301,16 @@ export type Database = {
         Returns: string
       }
       is_admin: { Args: never; Returns: boolean }
+      issue_sign_in_link: {
+        Args: {
+          p_child: string
+          p_max: number
+          p_parent: string
+          p_token_hash: string
+          p_ttl_seconds: number
+        }
+        Returns: string
+      }
       link_booking_family: {
         Args: { pid: string; sid: number }
         Returns: undefined
@@ -8547,6 +8648,10 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
+      release_family_finish: {
+        Args: { p_claim: string; p_user: string }
+        Returns: undefined
+      }
       release_plan_start_email: {
         Args: { p_card: string; p_generation: number; p_token: string }
         Returns: boolean
@@ -8593,6 +8698,22 @@ export type Database = {
           p_token: string
         }
         Returns: Json
+      }
+      report_retries_due: {
+        Args: { p_email_age_s: number; p_limit: number; p_min_age_s: number }
+        Returns: {
+          out_assessment: string
+          out_attempts: number
+        }[]
+      }
+      report_retry_need: {
+        Args: {
+          p_assessment: string
+          p_at: string
+          p_email_age_s: number
+          p_min_age_s: number
+        }
+        Returns: string
       }
       request_child_deletion_held: {
         Args: { c: string; hold: string; p: string }
