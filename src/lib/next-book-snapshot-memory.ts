@@ -1,6 +1,6 @@
 // In-memory NextBookSnapshotStore for tests (#476). Each call yields once, then decides atomically, so concurrent callers
 // interleave between calls the way separate transactions do, never inside one. Refusals match the SQL functions in
-// supabase/migrations/20261108233000_next_book_snapshots.sql; start_workbook_run is modelled as one active run per
+// supabase/migrations/20261109050245_next_book_snapshots.sql; start_workbook_run is modelled as one active run per
 // child (busy), without its stalled-run takeover. Like Postgres, the clock may be finer than a millisecond: records show
 // times truncated to milliseconds, as the Supabase adapter reads them, and a freeze is compared at milliseconds.
 import type { AdmitAnswer, FrozenPayload, HoldAnswer, NextBookSnapshotRecord, NextBookSnapshotStore, SavedPlan, SnapshotActor,

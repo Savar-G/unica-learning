@@ -131,7 +131,7 @@ const clockVersion = 'family-time/deliveryDeadlines:542e4a5b;node=' + process.ve
     begin if nullif(current_setting('test.force_run_number', true), '') is not null then new.number := current_setting('test.force_run_number')::int; end if;
     return new; end $$;
     create trigger fixture_force_run_number before insert on public.workbook_runs for each row execute function public.fixture_force_run_number();`);
-  await db.query(sql('20261108233000_next_book_snapshots.sql'));
+  await db.query(sql('20261109050245_next_book_snapshots.sql'));
   const snaps = f => db.query('select * from next_book_snapshots where workbook_id=$1 order by revision,created_at', [f.w]).then(x => x.rows);
   async function delivered(number = 1) {
     const f = await book({ number, delivered: '2026-11-01T12:00:00Z' });

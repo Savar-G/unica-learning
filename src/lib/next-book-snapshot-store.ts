@@ -1,5 +1,5 @@
 // Supabase adapter of NextBookSnapshotStore (#476). Service role only: the SQL functions own every decision, lock and
-// refusal (supabase/migrations/20261108233000_next_book_snapshots.sql). This file maps rows and answers, and reads.
+// refusal (supabase/migrations/20261109050245_next_book_snapshots.sql). This file maps rows and answers, and reads.
 // The caller authorizes the session; the service client is not caller authorization.
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";

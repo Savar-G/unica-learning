@@ -66,7 +66,7 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
 
 | Piece | File |
 |---|---|
-| Table, column and functions | `supabase/migrations/20261108233000_next_book_snapshots.sql` (not applied yet) |
+| Table, column and functions | `supabase/migrations/20261109050245_next_book_snapshots.sql` (applied as version 20261109050245) |
 | Contract, consumer and the three calls | `src/lib/next-book-snapshot.ts` |
 | Memory store (tests) | `src/lib/next-book-snapshot-memory.ts` |
 | Supabase store | `src/lib/next-book-snapshot-store.ts` |

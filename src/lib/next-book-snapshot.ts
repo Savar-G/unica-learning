@@ -1,7 +1,7 @@
 // #476 (S12), D-308. The next-book snapshot: one chain per delivered Book 1, reached by the Day 7 claim, the backstop
 // claim or the admin action. Revision 1 freezes the evidence for the book 2 draft; revisions 2+ are the D-308 refresh
 // before "Approve for print". The store seam (`NextBookSnapshotStore`) owns every durable decision with the same
-// refusals in SQL (supabase/migrations/20261108233000_next_book_snapshots.sql) and in memory.
+// refusals in SQL (supabase/migrations/20261109050245_next_book_snapshots.sql) and in memory.
 //
 // This module decides nothing about learning: no mastery threshold, repeat, review or level. The planner is a seam.
 import "server-only";
