@@ -48,10 +48,14 @@ export function versionStatus(version: ReviewVersion, sends: ReviewSend[], comme
   const made = sends.find(s => s.revision === version.revision);
   const applied = made ? comments.filter(c => c.batchId === made.id && c.status === "done" && commentResult(c, made) === "Applied").length : 0;
   let line = `Version ${version.revision}, made ${version.displayAt ?? vancouverTime(version.createdAt)}`;
-  if (made && applied) line += ` from ${applied} ${applied === 1 ? "comment" : "comments"}`;
   if (version.byUser || version.byEmail) line += ` by ${author(version.byUser, version.byEmail, names)}`;
+  line += ".";
   const included = comments.filter(c => c.status === "done" && sends.some(s => s.id === c.batchId && s.revision !== null && s.revision <= version.revision)).length;
-  if (included > applied) line += `. It includes ${included} applied comments`;
+  const total = Math.max(included, made ? applied : 0);
+  const plural = (n: number) => `${n} ${n === 1 ? "comment" : "comments"}`;
+  if (total > applied && applied > 0) line += ` ${plural(total)} applied in total (${applied} in this version).`;
+  else if (total > 0 && applied === 0) line += ` ${plural(total)} applied in total.`;
+  else if (applied > 0) line += ` ${plural(applied)} applied in this version.`;
   const later = sends.find(s => (s.status === "done" || s.status === "failed") && Date.parse(s.finishedAt ?? s.createdAt) > Date.parse(version.createdAt) && s.revision === null && comments.some(c => c.batchId === s.id));
   if (!later) return { line, later: null };
   const group = comments.filter(c => c.batchId === later.id), kept = group.filter(c => commentResult(c, later) === "Kept as is");

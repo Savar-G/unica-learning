@@ -12,9 +12,14 @@ const names = { a: "Savar", b: "Cedric" };
 describe("review display", () => {
   it("reports the version and a later send without erasing the applied comments", () => {
     const cs = [comment(), ...[22, 52, 81].map((page, i) => comment({ id: String(i), page, batchId: "kept", resultNote: "Kept" }))];
-    expect(versionStatus(version, [kept, made], cs, names)).toEqual({ line: "Version 3, made Nov 8, 3:57 pm from 1 comment by Savar", later: "Last send, Nov 8, 4:01 pm: nothing changed. 3 comments were kept as they were (pages 22, 52 and 81)." });
+    expect(versionStatus(version, [kept, made], cs, names)).toEqual({ line: "Version 3, made Nov 8, 3:57 pm by Savar. 1 comment applied in this version.", later: "Last send, Nov 8, 4:01 pm: nothing changed. 3 comments were kept as they were (pages 22, 52 and 81)." });
     expect(commentResult(cs[1], kept)).toBe("Kept as is");
     expect(commentResult(cs[0], made)).toBe("Applied");
+  });
+  it("says how many comments a version holds in total and in this version", () => {
+    const earlier: ReviewSend = { id: "earlier", createdAt: "2026-11-07T23:00:00Z", finishedAt: "2026-11-07T23:05:00Z", revision: 2, baseRevision: 1, status: "done" };
+    const cs = [comment(), comment({ id: "e1", batchId: "earlier" }), comment({ id: "e2", batchId: "earlier" })];
+    expect(versionStatus(version, [made, earlier], cs, names).line).toBe("Version 3, made Nov 8, 3:57 pm by Savar. 3 comments applied in total (1 in this version).");
   });
   it("groups prior comments by send and counts only open comments on badges", () => {
     const cs = [comment(), comment({ id: "p", status: "pending", batchId: null }), comment({ id: "f", status: "failed", batchId: "kept", error: "unknown" })];

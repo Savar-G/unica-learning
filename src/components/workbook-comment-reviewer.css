@@ -6,6 +6,9 @@
 .wbr-progress span { max-width:36ch; }
 @media(max-width:700px) { .wbr-progress { text-align:left; } }
 .wbr-message { padding:12px 22px; margin:0; background:var(--adm-warn); font-size:14px; }
+/* Information, not a warning: keep the yellow for failures. */
+.wbr-message.wbr-note { background:#eef3f8; color:var(--ink); }
+@media (prefers-color-scheme: dark) { .wbr-message.wbr-note { background:#1f2a36; } }
 .wbr-body { display:grid; grid-template-columns:100px minmax(0,1fr) 330px; min-height:680px; max-height:940px; }
 .wbr-thumbs { overflow:auto; padding:12px 8px; border-right:1px solid var(--line); }
 .wbr-thumbs button { display:block; width:100%; background:#fff; border:2px solid transparent; border-radius:6px; padding:6px; margin-bottom:12px; font-size:12px; cursor:pointer; }

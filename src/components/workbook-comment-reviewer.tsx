@@ -161,13 +161,13 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
           : "Checking saved progress..."}</span>}
       </div>
     </header>
-    {locked && <p className="wbr-message" role="note">This workbook is {detail.approved?.status}. It cannot change. You can read its comments.</p>}
+    {locked && <p className="wbr-message wbr-note" role="note">This workbook is {detail.approved?.status}. It cannot change. You can read its comments.</p>}
     {stalled && <p role="alert" className="wbr-message">The edit stopped. Try again to continue with the saved responses.</p>}
-    {working && <p className="wbr-message" role="status">{state} Your current workbook stays in place until the checked changes are ready.</p>}
+    {working && <p className="wbr-message wbr-note" role="status">{state} Your current workbook stays in place until the checked changes are ready.</p>}
     {active && progressErrors > 0 && <p className="wbr-message" role="alert">Progress is unavailable. Retrying shortly.{currentProgress ? " The last saved counts stay above." : " No saved count is available yet."}</p>}
-    {!active && layoutComments.length > 0 && <p className="wbr-message">{layoutComments.length} page-layout {layoutComments.length === 1 ? "comment is" : "comments are"} saved and open for the team. {layoutComments.length === 1 ? "It stays" : "They stay"} open until the pages are re-rendered.</p>}
-    {!active && !readOnly && status?.later && <p role="status" className="wbr-message">{status.later}</p>}
-    {notice && <p role="status" className="wbr-message">{notice}</p>}
+    {!active && layoutComments.length > 0 && <p className="wbr-message wbr-note">{layoutComments.length} page-layout {layoutComments.length === 1 ? "comment is" : "comments are"} saved and open for the team. {layoutComments.length === 1 ? "It stays" : "They stay"} open until the pages are re-rendered.</p>}
+    {!active && !readOnly && status?.later && <p role="status" className="wbr-message wbr-note">{status.later}</p>}
+    {notice && <p role="status" className="wbr-message wbr-note">{notice}</p>}
     <div className="wbr-body">
       <nav className="wbr-thumbs" aria-label="Workbook pages"><label><input type="checkbox" checked={changedOnly} onChange={e => { setChangedOnly(e.target.checked); if (e.target.checked && changedPageNumbers.length) setSelected(changedPageNumbers[0]); }} /> Changed in this version</label>{visiblePages.map((p) => {
         const count = pageCounts(detail.comments, p.number);
