@@ -10,6 +10,7 @@ import { WorkbookStatusChip } from "@/components/admin-workbook";
 import { ChildRunsTable, WorkerLine } from "@/components/admin-workbook-runs";
 import { adminClient } from "@/lib/supabase-auth";
 import { PrepareWorkbook } from "@/components/prepare-workbook";
+import { PrepareFromSnapshot } from "@/components/prepare-from-snapshot";
 import { BookInstructions, loadBookInstructions } from "./book-instructions";
 
 export default async function ChildPage({ params }: PageProps<"/admin/children/[id]">) {
@@ -27,6 +28,10 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
   const learning = fromRow(c);
   const mix = bookMix(learning);
   const instructions = await loadBookInstructions(admin, c, workbooks);
+  // #476: "Prepare from snapshot" shows for the child's book 1 once it is delivered.
+  const book1 = workbooks.find((w) => w.number === 1);
+  const delivered = book1 ? await admin.db.from("workbook_delivery_receipts").select("workbook_id").eq("workbook_id", book1.id).maybeSingle() : null;
+  if (delivered?.error) throw new Error(`Book 1 delivery: ${delivered.error.message}`);
   return <AdminFrame email={admin.email} section="children" title={c.first_name}>
     <RecordFacts facts={[["Grade and curriculum", gradeAndPlace(c.grade, c.province)], ["Parent", <Link key="parent" href={adminParentPath(c.parent_id)}>{family.parent.name}</Link>], ["Added (Pacific)", when(c.created_at)], ["Child id", c.id],
       // #303: the current profile from the latest test profile and every learning event.
@@ -55,6 +60,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
     <h3>Make the next workbook</h3>
     {!!requests?.data?.length && <p role="status">Paid Restart: prepare the next workbook from the current child profile. {requests.data.length} request pending. The request stays here until a new preparation run starts.</p>}
     <PrepareWorkbook childId={c.id} child={c.first_name} runner={runner} />
+    {delivered?.data && <PrepareFromSnapshot childId={c.id} />}
     {runner === "mac" && <p className="adm-note"><WorkerLine worker={worker} /></p>}
     <ChildRunsTable runs={runs} now={new Date()} worker={runner === "mac" ? worker : undefined} />
   </AdminFrame>;

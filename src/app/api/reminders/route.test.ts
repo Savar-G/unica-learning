@@ -29,6 +29,11 @@ const h = vi.hoisted(() => ({
   scanEnabled: false,
   scanRuns: 0,
   scanFails: false,
+  nextBookEnabled: false,
+  nextBookRuns: 0,
+  nextBookFails: false,
+  nextBookEndAt: 0,
+  order: [] as string[],
 }));
 
 vi.mock("@/lib/account-server", () => ({ linkOrigin: () => "https://unicalearning.com" }));
@@ -39,11 +44,23 @@ vi.mock("@/lib/workbook-scan-maintenance-server", () => ({
     transport: provider,
     run: async () => {
       h.scanRuns++;
+      h.order.push("scans");
       h.transports.add(provider);
       if (h.scanFails) throw new Error("private family diagnostic");
       return { selectedBooks: 1, clocks: {}, calendars: {}, reminders: { "delivery-off": 1 }, outOfTime: false, moreMayRemain: false };
     },
   }),
+}));
+vi.mock("@/lib/next-book-step-server", () => ({
+  createNextBookStepServer: (env: { NEXT_BOOK_PREPARE_ENABLED?: string }) => h.nextBookEnabled && env.NEXT_BOOK_PREPARE_ENABLED === "test-only" ? {
+    run: async (time: { endAt: number }) => {
+      h.nextBookRuns++;
+      h.nextBookEndAt = time.endAt;
+      h.order.push("next-book");
+      if (h.nextBookFails) throw new Error("private family diagnostic");
+      return { status: "ran", due: 1, prepared: 1, skipped: 0, errors: 0, outOfTime: false, outcomes: { waiting: 1 } };
+    },
+  } : null,
 }));
 vi.mock("@/lib/email-resend", () => ({
   TIME_LIMIT_MS: 15_000,
@@ -139,6 +156,11 @@ beforeEach(() => {
   h.scanEnabled = false;
   h.scanRuns = 0;
   h.scanFails = false;
+  h.nextBookEnabled = false;
+  h.nextBookRuns = 0;
+  h.nextBookFails = false;
+  h.nextBookEndAt = 0;
+  h.order = [];
 });
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
@@ -194,6 +216,29 @@ it("reports a stopped scan turn without replaying prior emails or exposing priva
   expect(JSON.stringify(result)).not.toContain("private family diagnostic");
   expect(h.scanRuns).toBe(1);
   expect(h.mail.delivered).toHaveLength(1);
+});
+
+it("runs the next-book step after the scans inside the run's 55 seconds, only when its switch is on, never on the dry path", async () => {
+  h.scanEnabled = true;
+  h.nextBookEnabled = true;
+  expect(await (await call()).json()).not.toHaveProperty("nextBook");
+  expect(h.nextBookRuns).toBe(0);
+  vi.stubEnv("NEXT_BOOK_PREPARE_ENABLED", "test-only");
+  expect(await (await call("?dry=1")).json()).not.toHaveProperty("nextBook");
+  expect(h.nextBookRuns).toBe(0);
+  const started = Date.now();
+  expect(await (await call()).json()).toMatchObject({ ok: true, scans: { selectedBooks: 1 }, nextBook: { status: "ran", outcomes: { waiting: 1 } } });
+  expect(h.order).toEqual(["scans", "scans", "next-book"]);
+  expect(h.nextBookEndAt).toBe(started + 55_000);
+});
+
+it("reports a stopped next-book step without hiding the other results or exposing private diagnostics", async () => {
+  h.nextBookEnabled = true;
+  h.nextBookFails = true;
+  vi.stubEnv("NEXT_BOOK_PREPARE_ENABLED", "test-only");
+  const result = await (await call()).json();
+  expect(result).toMatchObject({ ok: true, monthly: { sent: 1 }, nextBook: { error: "run_failed" } });
+  expect(JSON.stringify(result)).not.toContain("private family diagnostic");
 });
 
 it("the dry path counts the email, sends nothing and claims nothing", async () => {

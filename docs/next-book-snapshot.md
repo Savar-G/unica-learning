@@ -62,6 +62,50 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
   no new mark. A refresh that started before an approval cannot freeze after it.
 - Marks that arrive after approval are not used by that book. They stay for the profile and the book after next.
 
+## Who calls it
+
+Two callers run `prepareNextBook`. Both use one planner resolver, `nextBookPlanner()` (with `nextBookSelection()`, in
+`src/lib/next-book-planner.ts`). Both return `null` until the planner owner wires them. While either is `null`, neither
+caller reads or writes anything: no claim becomes a chain, no hold row is written, no run starts.
+
+**The automatic step.** One more step of the `/api/reminders` run (every 15 minutes), after the #475 scan maintenance,
+inside the same 55 seconds (`src/lib/next-book-step.ts`). One read builds the due list, oldest first by its anchor time,
+at most 20 items (`NEXT_BOOK_STEP_LIMIT`):
+
+- a trigger claim of a book 1 with no snapshot chain yet (anchor: the claim time);
+- a live chain that is not frozen, planned or admitted yet (anchor: `prepare_from`);
+- a #628 hold with no held snapshot row yet (anchor: the hold time).
+
+Each item is prepared in that order. No item starts with less than 8 seconds left. A waiting chain costs one cheap read
+and stops waiting by its freeze deadline (30 minutes), and a claim or a hold leaves the list on its first call, so the
+oldest items do not block later ones for long. A failed or cut read ends the step for that run with no writes; the next
+run tries again. An error on one item is counted, and the step goes on. The run's answer adds `nextBook`: counts by
+outcome (`waiting`, `held`, `queued`, `refused:<reason>`, ...), never a family's details.
+
+**The release switch `NEXT_BOOK_PREPARE_ENABLED`.** Unset or any other value: off, and the step does not run.
+
+- `test-only`: only the parents in `WORKBOOK_SCAN_TEST_PARENT_IDS` that are still marked in `test_accounts`. The due list
+  is read for those parents only. The mark is read again right before each item.
+- `families`: those, and real families whose child has an open plan (`childPlanAccess`), read again right before each item.
+
+A malformed parent list (not UUIDs, a repeat, more than 20) turns the step off in both modes.
+
+**The admin button "Prepare from snapshot".** On the admin child page, beside "Prepare next workbook", for the child's
+delivered book 1 (`src/components/prepare-from-snapshot.tsx`, route `POST /api/admin/children/<id>/next-book`,
+`src/lib/next-book-admin.ts`). Admins only. It refuses a family being deleted. It uses the book's claim if there is one,
+else it starts an `admin_prepare` chain. Pressing it again continues where the last press stopped. It answers one status
+line, with times in the family's time zone:
+
+| Answer | Line |
+|---|---|
+| waiting | Waiting for the last marks (until 7:40 p.m.). |
+| held, no accepted scan | On hold: no pages scanned. |
+| held, no final mark | No marked pages yet. |
+| unsupported source book | Only book 1 can be used for now. |
+| queued | Next book queued. |
+| refused, next book exists | This book already has a next book. |
+| no planner | The planner is not ready yet. |
+
 ## Where things are
 
 | Piece | File |
@@ -70,9 +114,12 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
 | Contract, consumer and the three calls | `src/lib/next-book-snapshot.ts` |
 | Memory store (tests) | `src/lib/next-book-snapshot-memory.ts` |
 | Supabase store | `src/lib/next-book-snapshot-store.ts` |
-| Server entry (no route, no cron) | `src/lib/next-book-snapshot-server.ts` |
+| Server entry | `src/lib/next-book-snapshot-server.ts` |
+| Planner resolver (null for now) | `src/lib/next-book-planner.ts` |
+| Automatic step, due readers, server wiring | `src/lib/next-book-step.ts`, `next-book-step-store.ts`, `next-book-step-memory.ts`, `next-book-step-server.ts` |
+| Admin button | `src/lib/next-book-admin.ts`, `next-book-admin-server.ts`, `src/app/api/admin/children/[id]/next-book/route.ts` |
 | Book 1 capture | `captureBook1Progress` in `src/lib/workbook-book1-preview.ts` |
-| Tests | `src/lib/next-book-snapshot-flow.test.ts`, `src/lib/next-book-snapshot.test.ts` |
+| Tests | `src/lib/next-book-snapshot-flow.test.ts`, `src/lib/next-book-snapshot.test.ts`, `src/lib/next-book-step.test.ts`, `src/lib/next-book-step-store.test.ts`, `src/lib/next-book-admin.test.ts` |
 
 The database functions are service-only:
 
@@ -88,6 +135,6 @@ The database functions are service-only:
 ## Not built yet
 
 - The worker does not read `plan_input` yet. The planner owner adds that for runs with a `snapshot_id`.
-- No real planner and no step selection are wired. The server entry takes both as parameters.
-- No route, cron or admin screen. Until the worker reads `plan_input`, nothing should call the server entry for a real family.
+- No real planner and no step selection are wired: `nextBookPlanner()` and `nextBookSelection()` return `null`, so both
+  callers stop before any write. Until the worker reads `plan_input`, keep the switch off or `test-only`.
 - The run is not routed to the Mac worker. A queued run stays on the default runner until a caller routes it.
