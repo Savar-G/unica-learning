@@ -23,6 +23,8 @@ export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   "operate",
   // A claim's compare step (claim.ts), only in the session package of a checked claim question.
   "claim-compare",
+  // A clock-time question's counts on a clock (clock-lines.ts, C3c).
+  "count-on",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */
@@ -43,6 +45,8 @@ export const isFractionQuestion = (pkg: OperationPackage) => FRACTION_KINDS.incl
 /** How the child's turns are read in this call: spoken fractions only in a fraction call (numbers.ts). */
 export const readOptionsFor = (pkg: OperationPackage | null): ReadOptions => ({
   fractions: pkg !== null && isFractionQuestion(pkg),
+  // A clock-time question reads times in their exact forms (clock-times.ts, C3c).
+  ...(pkg !== null && pkg.operation.kind === "time-add" ? { times: true } : {}),
   known: pkg === null ? [] : knownNumbers(pkg),
   carries: pkg === null ? [] : [...pkg.steps, ...(evaluateSteps(pkg) ?? [])].flatMap((st) => ("carryOut" in st && st.carryOut > 0 ? [st.carryOut] : [])),
 });

@@ -28,7 +28,7 @@ export interface Claim {
   /** The claim's words: true and false, or yes and no. The first is circled when the claim holds. */
   choices: ClaimChoices;
   /** "equal": the computed side is the printed number; "greater": it is more than the printed number. */
-  relation: "equal" | "greater";
+  relation: "equal" | "greater" | "less";
   /** The computed side, as an operation Maya teaches. */
   operation: Operation;
   /** What the operation makes. */
@@ -226,14 +226,16 @@ export function claimStep(claim: Pick<Claim, "relation" | "value" | "shown" | "h
 /**
  * The claim Maya works for the easier example: the same words and relation on the example's own result. Its printed
  * number is code's: for "equal" one more than the result (the claim does not hold), for "greater" one less (it holds),
+ * for "less" one more (it holds),
  * so the example never needs a word the child must find for their own question.
  */
 export function claimExample(claim: Claim, pkg: OperationPackage): Claim | null {
   const result = operationResult(pkg.easierExample.operation);
   if (result.type !== "number") return null;
   const value = result.value;
-  const shown = claim.relation === "equal" ? value + 1 : value - 1;
+  // "less" (other-topic claims, C3c): one more than the result, so the claim holds.
+  const shown = claim.relation === "greater" ? value - 1 : value + 1;
   if (shown < 0 || !Number.isSafeInteger(Math.round(shown * 1000))) return null;
-  const holds = claim.relation === "greater";
+  const holds = claim.relation !== "equal";
   return { ...claim, operation: pkg.easierExample.operation, value, shown: Number(shown.toFixed(3)), holds, word: holds ? claim.choices[0] : claim.choices[1], other: holds ? claim.choices[1] : claim.choices[0] };
 }

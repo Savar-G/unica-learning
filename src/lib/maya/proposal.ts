@@ -249,5 +249,7 @@ export const PROPOSAL_SCHEMA = {
 export function withoutNulls(raw: unknown): unknown {
   if (Array.isArray(raw)) return raw.map(withoutNulls);
   if (typeof raw !== "object" || raw === null) return raw;
-  return Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== null).map(([k, v]) => [k, k === "board" ? v : withoutNulls(v)]));
+  // A clock time keeps its null period: the 24-hour clock with no period is its value (clock-times.ts, C3c).
+  const time = (raw as { type?: unknown }).type === "time";
+  return Object.fromEntries(Object.entries(raw).filter(([k, v]) => v !== null || (time && k === "period")).map(([k, v]) => [k, k === "board" ? v : withoutNulls(v)]));
 }

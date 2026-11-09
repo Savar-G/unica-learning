@@ -516,8 +516,32 @@ export const PRACTICE_CASES: PracticeCase[] = [
     expected: "Say code's topic sentence (the marks go up by 10). Guide 2 × 10, then 60 + 20, then the compare with 80. Accept the circled word only in the child's own words. Never give the word.",
     dimensions: TEACHING,
     reasons: ["solved"],
-    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [6, 2, 1, 8, 9] }, { name: "after help", opens: "help", numbers: [10, 20, 80] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [3, 9, 12, 13] }, { name: "after help", opens: "help", numbers: [10, 20, 80] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
     fakeScript: ["I don't know how to start.", "okay", "2 times 10 is 20.", "60 plus 20 is 80.", "It's true.", "Because 2 times 10 is 20.", "I circled it."],
+  },
+  // C3c clock times (src/lib/maya/clock-lines.ts): time-add counted on to the next hour, then the minutes left.
+  {
+    id: "OTT1",
+    title: "Clock time: counts the minutes wrong at first",
+    fixture: "CLOCK2",
+    persona: { name: "Kofi", age: 9, question: "What time is 50 minutes after 4:25?", knows: "You can tell time and add minutes, but you forget that the hour changes at 60 minutes. At first you say 4:75.", behaviour: "Start by saying your answer is 4:75. Answer Maya's questions honestly, then follow her help and say the time." },
+    expected: "Do not accept 4:75. Say code's topic sentence (count on to 5:00 first). Guide the count to the next hour (35 minutes), then the 15 minutes left, and accept 5:15 only in the child's own words.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [75] }, { name: "after help", opens: "help", numbers: [35, 60, 15, 50, 25], values: [{ type: "time", hours: 5, minutes: 15, period: null }, { type: "time", hours: 5, minutes: 0, period: null }] }], firstNumbers: [75] },
+    fakeScript: ["I got 4:75.", "25 plus 35 is 60, so 35 minutes to 5:00.", "I got 5:15.", "Because 35 and 15 make 50.", "I wrote it."],
+  },
+  // C3c compare claims: an area claim, "greater" (src/lib/maya-teaching/topic-claim.ts).
+  {
+    id: "OTK1",
+    title: "Area claim: cannot start",
+    fixture: "AREA_TF",
+    persona: { name: "Rosa", age: 9, question: "True or false: 6 by 3 squares is bigger than 4 by 4 squares.", knows: "You know your multiplication facts, but you do not know that a rectangle of squares is its sides multiplied until Maya shows you.", behaviour: "Start by saying you do not know how to start. Follow Maya's help one step at a time, then say your word: true or false." },
+    expected: "Say code's topic sentence (4 by 4 squares is 16 squares). Guide 6 × 3, then the compare with 16. Accept the circled word only in the child's own words. Never give the word.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [2, 3, 4] }, { name: "after help", opens: "help", numbers: [16, 18] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    fakeScript: ["I don't know how to start.", "okay", "6 times 3 is 18.", "It's true.", "Because 18 is more than 16.", "I circled it."],
   },
   // Claim questions (A4, src/lib/maya/claim.ts): the answer is the circled word, which code reads.
   {
@@ -553,7 +577,6 @@ export const PRACTICE_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "after help", opens: "help", numbers: [13, 8, 5.83, 5.93, 3.45, 2.38] }] },
     fakeScript: ["It's true.", "5 plus 8 is 13.", "4 plus 3 plus 1 is 8.", "3 plus 2 is 5.", "5.83.", "It's false, because 5.83 is not 5.93.", "I added the columns: 5.83.", "I circled it."],
   },
-
 ];
 
 /** How many times each case runs (research, section 8: three recorded repetitions). */

@@ -14,7 +14,7 @@ import { countKind, deriveDieCount, dieOperation, exampleDie } from "./die-count
 import { derivePerimeter } from "./perimeter";
 import { teachingPackage } from "./index";
 import { deriveSymmetry, SYMMETRY_LINES } from "./symmetry";
-import { diePrinted, perimeterPrinted, scalePrinted, symmetryPrinted } from "./topic-samples";
+import { areaClaimPrinted, diePrinted, marblesPrinted, perimeterPrinted, scalePrinted, symmetryPrinted } from "./topic-samples";
 import { deriveTopicClaim } from "./topic-derivers";
 
 vi.mock("server-only", () => ({}));
@@ -256,6 +256,9 @@ describe("the honest close (lessons from review 7 and 10)", () => {
     ["scale claim", deriveTopicClaim(scalePrinted(10, 60, 2, true))!, -1, "e1.r1-ones"],
     // The perimeter (review of #741, P1b): its stuck step is the ones of the brackets' addition.
     ["perimeter 245 by 126", derivePerimeter(perimeterPrinted(245, 126))!, 2, "e1.ones"],
+    // C3c: the compare claims (marbles "less", area "greater"): A4's claim path too, so the example comes first (-1).
+    ["marbles claim", deriveTopicClaim(marblesPrinted(1, 3, 5))!, -1, "ones"],
+    ["area claim", deriveTopicClaim(areaClaimPrinted(6, 3, 4, 4))!, -1, "r1-ones"],
   ];
   it.each(cases)("%s: help-only turns reach the easier example, then an honest close with no answer, and the stuck step is recorded", async (_, pkg, maxHint, stuckStep) => {
     for (const grade of [3, 5]) {

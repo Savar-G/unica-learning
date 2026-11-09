@@ -238,6 +238,12 @@ describe("an invalid simulation never counts as a pass", () => {
         expect(c.validity.stages.filter(s => s.opens === "start").flatMap(s => s.values ?? [])).toContainEqual(right);
         continue;
       }
+      // A clock time (C3c): its validity stage holds it as a typed value, after help.
+      if (right.type === "time") {
+        expect(c.id.startsWith("OTT"), c.id).toBe(true);
+        expect(c.validity.stages.filter((s) => s.opens !== "start").flatMap((s) => s.values ?? [])).toContainEqual(right);
+        continue;
+      }
       expect(right.type, c.id).toBe("number");
       const value = (right as { value: number }).value;
       expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...(pkg.operation!.operands as number[])], c.id).not.toContain(value);

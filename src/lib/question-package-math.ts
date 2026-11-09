@@ -632,7 +632,7 @@ export function stepText(step: WorkedStep, operation: Operation): string {
       const { relation, value, shown, holds } = step;
       const said = `${operationText(operation)} = ${valueText({ type: "number", value })}.`;
       if (relation === "equal") return `${said} ${value} ${holds ? "is the same number as" : "is not"} ${shown}.`;
-      return `${said} ${value} is ${holds ? "" : "not "}greater than ${shown}.`;
+      return `${said} ${value} is ${holds ? "" : "not "}${relation === "less" ? "less" : "greater"} than ${shown}.`;
     }
     case "result": {
       if (step.value.type === "choice") return `The answer is ${step.value.value}.`;

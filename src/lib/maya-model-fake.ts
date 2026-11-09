@@ -43,8 +43,9 @@ export function ruleMayaModel(): MayaModel {
 function rulePropose(input: ModelInput): unknown {
   const text = input.childTurn ?? "";
   const answer = input.question?.answer ?? null;
-  // In a fraction call the child's spoken fractions are read, as the session reads them (D-204).
-  const read = readNumbers(text, { fractions: true, operands: true });
+  // In a fraction call the child's spoken fractions are read, as the session reads them (D-204); in a clock-time call
+  // (an answer written as a clock time, C3c) its times are read in their exact forms, as the session reads them.
+  const read = readNumbers(text, { fractions: true, operands: true, ...(/^\d{2}:\d{2}$/.test(answer ?? "") ? { times: true } : {}) });
   const last = read.values.at(-1);
   // The child's answer: the right one if they said it anywhere, else their last number.
   // A number in an explanation ("so I carried a ten") is not an answer: only a short turn or "I got ..." gives one.

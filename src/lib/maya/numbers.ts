@@ -5,6 +5,7 @@
 // "66 squared") is flagged, so the session confirms it instead of guessing. Maya's own claims are checked in claims.ts.
 // Pure TypeScript.
 import type { AnswerValue } from "@/lib/question-package";
+import { writtenTimes } from "./clock-times";
 
 // Maps, not objects: a word such as "constructor" must never reach an inherited property.
 const WORD_VALUES = new Map<string, number>([
@@ -67,7 +68,7 @@ export const startsNewNumber = (last: NumberWord | null, kind: NumberWord) =>
  * A token: a written number ("1,234", "0.85", ".85"), a word, a fraction bar, a minus sign, an operation or equals sign,
  * a sign that changes a value, or the end of a sentence or a turn (".", "!", "?", ";", a new line).
  */
-const TOKEN = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+|\/|-|[a-z]+|[+×*÷=%^\u00B2\u00B3\u00B9\u2070-\u2079]|[.!?;\n]|\u2064/g;
+const TOKEN = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+|\/|-|[a-z]+|[+×*÷=%^\u00B2\u00B3\u00B9\u2070-\u2079]|[.!?;\n]|\u2064|\u2065/g;
 const BOUNDARY = /^[.!?;\n]$/;
 /** An ordinal ending on a written number ("66th", "7 8ths"): the number is not an answer as said. */
 const ORDINAL = /\d(?:st|nd|rd|th)s?\b/i;
@@ -77,6 +78,8 @@ const ORDINAL = /\d(?:st|nd|rd|th)s?\b/i;
  */
 const MIXED = /(?<![\d.,/])(\d+) (\d+) ?\/ ?(\d+)(?!\d|\.\d|\s*\/)/g;
 const MIX_MARK = "\u2064";
+/** A clock time's colon, from writtenTimes in a clock-time call: "7:03" is the hour, this mark, and the minutes. */
+const CLOCK_MARK = "\u2065";
 /** An unsupported fraction expression. None of its number parts may be scored. */
 const UNREAD_MARK = "\u2063";
 
@@ -115,7 +118,7 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
   // First the numbers, with a fraction bar, a remainder mark or a mixed-number mark where one was said; then each "number
   // bar number" becomes a fraction, each "number mix number bar number" a mixed number and each "number R number" a
   // remainder answer.
-  const items: (number | "bar" | "rem" | "mix")[] = [];
+  const items: (number | "bar" | "rem" | "mix" | "clock")[] = [];
   /** For each number in items: it is the second number of an operation. */
   const operands = new Map<number, boolean>();
   /** The numbers in items a place word follows ("6 tens"). */
@@ -157,7 +160,7 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
     last = null;
     decimals = "";
   };
-  const mark = (m: "bar" | "rem" | "mix") => {
+  const mark = (m: "bar" | "rem" | "mix" | "clock") => {
     flush();
     items.push(m);
     afterNumber = false;
@@ -246,6 +249,10 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
       mark("mix");
       continue;
     }
+    if (token === CLOCK_MARK) {
+      mark("clock");
+      continue;
+    }
     if ((token === "r" || token === "remainder") && (afterNumber || last !== null)) {
       mark("rem");
       continue;
@@ -322,6 +329,9 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
     } else if (between === "rem" && whole(item) && whole(after) && item >= 0 && after >= 0) {
       values.push({ type: "remainder", quotient: item, remainder: after });
       i += 2;
+    } else if (between === "clock" && whole(item) && whole(after) && item >= 1 && item <= 12 && after >= 0 && after <= 59) {
+      values.push({ type: "time", hours: item, minutes: after, period: null });
+      i += 2;
     } else {
       values.push({ type: "number", value: item });
     }
@@ -348,10 +358,18 @@ export interface ReadOptions {
   carries?: number[];
   /** Numbers from the child's earlier turns and done steps: the only ones "I already said" may point back at. */
   saidBefore?: number[];
+  /**
+   * A clock-time call (time-add, C3c): times are read too, in their exact forms only (clock-times.ts): "6:53",
+   * "six fifty-three", "seven oh three", "seven o'clock". Any other form stays numbers.
+   */
+  times?: boolean;
 }
 
 /** The text as the readers take it: in a fraction call, with its spoken fractions written (writtenFractions). */
-const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text.replace(POINTING_ONE, "$1"), options).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
+const prepared = (text: string, options?: ReadOptions) => {
+  const timed = options?.times ? writtenTimes(text, CLOCK_MARK) : text;
+  return options?.fractions ? writtenFractions(timed.replace(POINTING_ONE, "$1"), options).replace(MIXED, `$1${MIX_MARK}$2/$3`) : timed;
+};
 /**
  * "that one" or "this one" at the end of a clause is the question, not a number ("I got 7/8 for that one."). In a fraction
  * call the stray "one" made the turn unreadable, so Maya asked for an answer the child had just given (first-ship practice,

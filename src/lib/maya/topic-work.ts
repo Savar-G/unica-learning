@@ -1,4 +1,4 @@
-// The child's own work beside a topic claim's word (C3b), for A4's allow-list `ownWork` (claim.ts): a scale or
+// The child's own work beside a topic claim's word (C3b and C3c), for A4's allow-list `ownWork` (claim.ts): a scale or
 // minute-hand claim is an evaluate ("60 + 2 × 10"), so its own work is one of its parts ("60 plus 20 is 80"), and a
 // child often gives two pieces of work joined by "and" ("6 times 3 is 18 and 18 is more than 16"). Both are allow-lists:
 // every piece must be own work by A4's own check, or the equation of one part of the evaluate, with that part's own

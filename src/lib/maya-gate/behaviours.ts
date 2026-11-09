@@ -10,6 +10,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import { tentative, context, bypasses, confirmationBypasses } from "./scope-cases";
 import { FIXTURES } from "./fixtures";
 import { ONE_STEP_BEHAVIOURS } from "./one-step-cases";
+import { C3C_REVIEW_BEHAVIOURS } from "./c3c-review-cases";
 import { C3B_REVIEW_BEHAVIOURS } from "./c3b-review-cases";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
@@ -24,6 +25,7 @@ const solvedEnd = (understanding: "evidence_observed" | "uncertain" = "uncertain
 const OPEN = "open" as const;
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
 const num = (value: number) => ({ type: "number" as const, value });
+const clock = (hours: number, minutes: number) => ({ type: "time" as const, hours, minutes, period: null });
 /** Exact approved variants for the required template, filled from the checked fixture or the child's fraction. */
 const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.filter((line) => line.key === key).flatMap((line) => line.texts);
 const fractionLines = packageLines(FIXTURES.D as OperationPackage);
@@ -475,6 +477,122 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I circled it.", { paper: "written" }),
     ],
     expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["redirect", "guide"] },
+  },
+  // C3c: clock times (time-add), counted on to the next hour and then the minutes left (clock-lines.ts); times read in
+  // their exact forms (clock-times.ts).
+  {
+    id: "OTT1", title: "Clock time in full sentences: '25 plus 35 is 60, so 35 minutes to 5:00.', then '15 more minutes is 5:15.'", fixture: "CLOCK2", status: "passing",
+    steps: [
+      child("25 plus 35 is 60, so 35 minutes to 5:00.", { start: "has_work", answers: [[35, "to-hour", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("15 more minutes is 5:15.", { answers: [[clock(5, 15), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer"] },
+  },
+  {
+    id: "OTT2", title: "Clock time in the child's own words at the opening ('It's 5:15, because ...'): accepted, not taught again (J06)", fixture: "CLOCK2", status: "passing",
+    steps: [
+      child("It's 5:15, because 35 minutes gets to 5:00 and 15 more is 5:15.", { start: "has_work", answers: [[clock(5, 15), "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "5:15" } }]),
+      child("Yes.", { answers: [[clock(5, 15), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, never: ["guide", "example_step", "redirect"] },
+  },
+  {
+    id: "OTT3", title: "Clock time, 'Why do I go to 5:00 first?': answered with code's topic sentence (J06), then solved", fixture: "CLOCK2", status: "passing",
+    steps: [
+      child("Why do I go to 5:00 first?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("Oh. It's 5:15.", { answers: [[clock(5, 15), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" }, acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(packageLines(FIXTURES.CLOCK2 as OperationPackage).question(), "question.framed")] }],
+    },
+  },
+  {
+    id: "OTT4", title: "Clock time at grade 3, 'I'm stuck.' after a hello-only opening: the first guide says the topic sentence", fixture: "CLOCK2", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("It's 5:15.", { answers: [[clock(5, 15), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(packageLines(FIXTURES.CLOCK2 as OperationPackage).question(), "question.framed")] }],
+    },
+  },
+  {
+    id: "OTT5", title: "Clock time said in words ('It's eight thirty-five.'): read as 8:35 and accepted", fixture: "CLOCK1", status: "passing",
+    steps: [
+      child("It's eight thirty-five.", { start: "has_work", answers: [[clock(8, 35), "result", "right"]] }, [{ act: "accept_answer" }]),
+      ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], counts: { confirmations: 0 } },
+  },
+  {
+    id: "OTT6", title: "Clock time, says 8:45: not accepted; guided, then 8:35", fixture: "CLOCK1", status: "passing",
+    steps: [
+      child("8:45.", { start: "has_work", answers: [[clock(8, 45), "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
+      child("0 plus 35 is 35, so 8:35.", { answers: [[clock(8, 35), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"], never: ["redirect"] },
+  },
+  // C3c: compare claims (marbles: "less"; area: "greater") through A4's claim session, with code's topic sentence.
+  {
+    id: "OTK1", title: "Marbles claim in full sentences: '3 plus 4 is 7.', then 'It's false.'", fixture: "MARBLES", status: "passing",
+    steps: [
+      child("3 plus 5 is 8.", { start: "has_work", answers: [[8, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's false.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer", "example_step"] },
+  },
+  {
+    id: "OTK2", title: "Marbles claim in the child's own words at the opening: accepted, not taught again (J06)", fixture: "MARBLES", status: "passing",
+    steps: [
+      child("It's false, because 3 plus 5 is 8 and 1 is less.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["guide", "example_step", "redirect"] },
+  },
+  {
+    id: "OTK3", title: "Marbles claim, 'Why do I add blue and green?': answered with code's topic sentence (J06), then solved", fixture: "MARBLES", status: "passing",
+    steps: [
+      child("Why do I add blue and green?", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem"] }]),
+      child("It's false, because 3 plus 5 is 8.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: {
+      outcome: { reason: "solved" }, acts: [OPEN, "clarify", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 1, lines: [variants(packageLines(claimView(FIXTURES.MARBLES as OperationPackage)).question(), "question.claim.framed")] }],
+    },
+  },
+  {
+    id: "OTK4", title: "Area claim at grade 3, 'I'm stuck.' after a hello-only opening: the topic sentence first, then '6 times 3 is 18.' and 'It's true.'", fixture: "AREA_TF", grade: 3, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      child("I'm stuck.", { start: "has_work" }, [{ act: "guide", level: 0, lines: ["question.problem"] }]),
+      child("6 times 3 is 18.", { answers: [[18, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
+      child("It's true.", undefined, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved" }, never: ["redirect", "give_answer"] },
+  },
+  {
+    id: "OTK5", title: "Area claim in the child's own words ('It's true, because 6 times 3 is 18 and 18 is more than 16.'): accepted (J06)", fixture: "AREA_TF", status: "passing",
+    steps: [
+      child("It's true, because 6 times 3 is 18 and 18 is more than 16.", { start: "has_work" }, [{ act: "accept_answer" }]),
+      child("Okay.", undefined, [{ act: "ask_write", lines: ["write.answer"] }]),
+      child("I circled it.", { paper: "written" }),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "accept_answer", "ask_write", "close"], never: ["guide", "redirect"] },
   },
   // Review of #741 (P1a): the compare step is heard by code, whatever step the model's reading names for it.
   {
@@ -2424,6 +2542,7 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   ...ONE_STEP_BEHAVIOURS,
+  ...C3C_REVIEW_BEHAVIOURS,
   ...C3B_REVIEW_BEHAVIOURS,
   // Evaluate questions (Wave A, A2): each part in the order of operations; the part's columns when the child is stuck.
   {

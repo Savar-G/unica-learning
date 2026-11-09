@@ -40,7 +40,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { teachingLimits } from "@/lib/maya-teaching/limits";
-import { topicClaim } from "@/lib/maya-teaching/topic-claim";
+import { partsClaim } from "@/lib/maya-teaching/topic-claim";
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
@@ -49,7 +49,8 @@ import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FE
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { claimWordsOnly, committedText, confirmWordsOnly, falseEquationResults, numberSentences, plainNumber, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
-import { frameOwed, topicFrame } from "./topic-frame";
+import { frameOwed, topicQuestion } from "./topic-frame";
+import { clockAnswers, clockValues } from "./clock-lines";
 import { closeParts, compareEquationSaid, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { claimActs, claimAnswers, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
@@ -92,6 +93,8 @@ export const TEACHABLE_KINDS: readonly OperationKind[] = [
   "add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply", "fraction-add", "fraction-subtract",
   // A multi-step expression in the order of operations, part by part (evaluate.ts).
   "evaluate",
+  // A clock-time question (clock-lines.ts, C3c): count on to the next hour, then the minutes left.
+  "time-add",
 ];
 
 export const MAIN_STATES = ["READY", "OPEN", "ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET", "CHECK", "WRITE_CLOSE", "CLOSE", "CONTENT_HOLD"] as const;
@@ -609,6 +612,9 @@ const number = (value: number): AnswerValue => ({ type: "number", value });
 /** The values that answer a worked step: the number the step makes (a column's total or the digit written). */
 function stepAnswers(step: WorkedStep): AnswerValue[] {
   switch (step.kind) {
+    // A clock-time question's count (clock-lines.ts): the minutes it counts, or the time it reaches.
+    case "count-on":
+      return clockAnswers(step);
     case "add-column":
       return [number(step.total), number(step.write)];
     case "subtract-column":
@@ -684,7 +690,9 @@ const isAnswerValue = (v: unknown): v is AnswerValue =>
   isObject(v) && ((v.type === "number" && Number.isFinite(v.value)) ||
     (v.type === "fraction" && Number.isSafeInteger(v.numerator) && isWholeAt(v.denominator, 1)) ||
     (v.type === "mixed" && isWholeAt(v.whole, 1) && isWholeAt(v.numerator, 0) && isWholeAt(v.denominator, 1)) ||
-    (v.type === "remainder" && isWholeAt(v.quotient, 0) && isWholeAt(v.remainder, 0)));
+    (v.type === "remainder" && isWholeAt(v.quotient, 0) && isWholeAt(v.remainder, 0)) ||
+    // A clock time of a clock-time question (clock-times.ts, C3c): the 24-hour clock with no period, as its package keeps it.
+    (v.type === "time" && isWholeAt(v.hours, 0) && (v.hours as number) <= 23 && isWholeAt(v.minutes, 0) && (v.minutes as number) <= 59 && v.period === null));
 const HINTS = [0, 1, 2, 3, 4];
 const SEVERITIES: Severity[] = ["concern", "immediate"];
 
@@ -732,7 +740,7 @@ function proposalProblem(p: unknown): string | null {
     for (const a of r.answers) {
       if (!isObject(a) || !isAnswerValue(a.value) || typeof a.step !== "string" || (a.verdict !== "right" && a.verdict !== "wrong") ||
         (a.problem !== undefined && a.problem !== "target" && a.problem !== "example")) {
-        return "each answer needs a number, fraction, mixed number or remainder value, a step and a verdict";
+        return "each answer needs a number, fraction, mixed number, remainder or clock-time value, a step and a verdict";
       }
     }
   }
@@ -836,7 +844,7 @@ function asksForHelp(text: string): boolean {
  * honest close after the top hint (lessons from review 7 and 10). A wrong answer is a miss, not a help request (D-199).
  */
 function topicHelpOnly(s: Session, reading: Reading, rightResult: boolean): boolean {
-  return !!s.package && !!topicFrame(s.package.text, s.package.operation) && s.solved === null && !rightResult && s.turn !== null &&
+  return !!s.package && topicQuestion(s.package.text, s.package.operation) && s.solved === null && !rightResult && s.turn !== null &&
     (reading.help !== undefined || asksForHelp(s.turn.text)) && !reading.answers?.length;
 }
 
@@ -1719,11 +1727,14 @@ function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValu
   // A child may add a column's digits before adding its incoming carry.
   // These intermediate sums come from checked columns, never from model text.
   for (const st of pkg.steps) if (st.kind === "add-column") own.add(st.digits.reduce((a, b) => a + b, 0));
+  // A clock-time count (clock-lines.ts, C3c): an hour's 60 minutes, and the times the count starts and stops at.
+  const clockOwn = clockValues(step);
+  for (const v of clockOwn) if (v.type === "number") own.add(v.value);
   return numberSentences(text, opts).every((sentence) => {
     // "1 ten", "6 ones": a place word after a number names its place, not another number.
     const r = readNumbers(sentence.replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine))\s+(?:tens?|ones?|hundreds?)\b/gi, "$1"), opts);
     if (!r.values.some((v) => saidAs(v, value))) return true;
-    return !r.unreadable && r.values.every((v, i) => r.notAnswer[i] || (v.type === "number" && own.has(v.value)) || ownFractions.some(known => saidAs(v, known)) || saidAs(v, value) || saidAs(v, pkg.answer.value));
+    return !r.unreadable && r.values.every((v, i) => r.notAnswer[i] || (v.type === "number" && own.has(v.value)) || ownFractions.some(known => saidAs(v, known)) || clockOwn.some((k) => saidAs(v, k)) || saidAs(v, value) || saidAs(v, pkg.answer.value));
   });
 }
 
@@ -1937,7 +1948,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || (at.kind === "claim-compare" && !!topicClaim(pkg))) && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || at.kind === "count-on" || (at.kind === "claim-compare" && partsClaim(pkg))) && !stepTurnHeard(s, at, a.value)) {
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
       // A plan to write the two-digit sum is no credit and no hearing problem: its regroup line comes next (regroupAfter).
       if (answerToo || carryPairs(pkg).some((x) => writesTotal(s.turn!.text, x.out))) continue;
@@ -2173,7 +2184,7 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
 }
 
 /**
- * A column step is heard only when the child's WHOLE turn is one template (wholeTurn), on the fallback and on a model's
+ * A column or clock step is heard only when the child's WHOLE turn is one template (wholeTurn), on the fallback and on a model's
  * reading alike, so the two cannot disagree: the value ("16", "It's 16", "I got 16"), a plain yes to Maya's own "Did you
  * say 16?", the step's own sum with every operand in any order ("9 and 7 make 16"), or a first-person written-digit or
  * carry claim ("I wrote 6 and carried 1"), which checkColumnClaims checks. A question mark, another sentence, another number, another speaker, a hedge or a negation fits
@@ -2183,16 +2194,16 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
  */
 function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolean {
   const pkg = s.package;
-  // A claim's result (claim.ts). An other-topic claim (C3b, topic-claim.ts) is heard from a whole turn after its earlier
-  // parts (compareTurnHeard, review of #741 P1a); any other claim through A4's own whole-turn templates, which may come
-  // before the columns, as a whole result.
+  // A claim's result (claim.ts). A scale, money or minute-hand claim (C3b, topic-claim.ts partsClaim) is heard from a
+  // whole turn after its earlier parts (compareTurnHeard, review of #741 P1a); any other claim, marbles and area
+  // included, through A4's own whole-turn templates, which may come before the columns, as a whole result.
   if (step.kind === "claim-compare") {
-    if (pkg && topicClaim(pkg)) return compareTurnHeard(s, step, value);
+    if (pkg && partsClaim(pkg)) return compareTurnHeard(s, step, value);
     return !!pkg && !!s.turn && saidAs(number(step.value), value) && claimStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, operation: pkg.operation, value: step.value,
       resultAsked: s.resultAsked ?? null, shown: s.ladder.step === step.id && s.ladder.hint >= 3 });
   }
   // A part of an evaluate question is a step too: its result is its total (evaluate.ts).
-  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "operate")) return false;
+  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "operate" && step.kind !== "count-on")) return false;
   // A turn code could not hear for sure is no step credit: it gets its confirm first.
   const body = s.turn.uncertain ? null : wholeTurn(s.turn.text);
   if (body === null) return false;
@@ -2200,6 +2211,17 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolea
   // of its columns is the first not done (currentPart).
   if (currentColumn(s)?.id !== step.id && workSteps(pkg).find((st) => !s.done.includes(st.id))?.id !== step.id) return false;
   const copy = s.ladder.step === step.id && s.ladder.hint >= 3;
+  if (step.kind === "count-on") {
+    if (copy) return false;
+    const bare = wholeValue(body.replace(/\s+minutes?$/, ""));
+    if (bare !== null) return saidAs(number(bare), value);
+    // A count to the hour can include the addition and the destination in one complete sentence.
+    const m = /^(.+?)\s*,?\s+so\s+(.+?)\s+minutes?\s+to\s+(\d{1,2}:\d{2})$/.exec(body);
+    const sum = m && wholeSum(m[1]);
+    return !!sum && step.id === "to-hour" && sum.sum === 60 && sum.operands.length === 2 &&
+      sum.operands.includes(step.from.minutes) && sum.operands.includes(step.minutes) &&
+      plainNumber(m![2]) === step.minutes && m![3] === `${step.to.hours}:${String(step.to.minutes).padStart(2, "0")}` && saidAs(number(step.minutes), value);
+  }
   // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16). A part's total is its result.
   const total = saidAs(number(step.kind === "operate" ? step.value : step.total), value);
   // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
@@ -2656,7 +2678,9 @@ function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
   // away. A number they did not say (a sounds-like, another transcript) still reveals it.
   const justSaid = p.act === "confirm" && s.turn ? valuesIn(s.turn.text, readOptionsFor(pkg)) : [];
   const reveals = (v: AnswerValue) => equivalent(v, answer) && !justSaid.some((c) => sameValue(c, v)) && (sameValue(v, answer) || !said.some((c) => sameValue(c, v)));
-  if (!ownNumber && texts.some((t) => valuesIn(t).some(reveals))) return true;
+  // A clock-time question's answer is a time: read the texts with its times (clock-times.ts, C3c).
+  const timed = pkg.operation.kind === "time-add" ? { times: true } : undefined;
+  if (!ownNumber && texts.some((t) => valuesIn(t, timed).some(reveals))) return true;
   const highest = answer.type === "number" ? PLACE_NAMES[String(Math.trunc(Math.abs(answer.value))).length - 1] : undefined;
   return (p.board ?? []).some((raw) => {
     const c = raw as Partial<Command>;
@@ -2933,9 +2957,9 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...(index === 0 && !s.exampleIntroduced ? l.exampleIntro() : []), ...(next ? l.exampleStep(next.id) : [])];
     }
     case "try_target": {
-      // Checked wrong work after the easier example ("It's false." for a true claim) gets a line that answers it first:
+      // Checked wrong work after the easier example ("It's true." for a false claim) gets a line that answers it first:
       // the claim's own question again, or "not yet" for any other question. Without one every try_target is refused,
-      // and a call with the model down had no safe line (re-review of #741, P1-2; as on #742).
+      // and a call with the model down had no safe line (reviews of #742 P1-a and #741 P1-2).
       const wrong = view.checked.some((c) => c.problem === "target" && c.answer.verdict === "wrong");
       const respond = !wrong ? [] : sessionClaim(pkg) ? l.help("result").filter((o) => o.line === "step.invite") : l.notYet("result");
       return [...respond, ...l.tryTarget(), ...l.question()];
@@ -2988,8 +3012,8 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
-      // An "other-topic" question left unsolved closes honestly (topic-frame.ts); a claim question whose word Maya may not
-      // give (claim.ts) closes honestly too: no answer, one next step.
+      // An "other-topic" question left unsolved, and a claim question whose word Maya may not give (claim.ts), close
+      // honestly: no answer, one next step.
       return solved ? l.closeSolved(solved, view.done.length > 0 || s.understanding === "evidence_observed")
         : l.closeHonest().length > 0 ? l.closeHonest() : sessionClaim(pkg) ? l.honestClose() : [];
     case "confirm": {

@@ -11,10 +11,10 @@
 // same. Pure TypeScript: no clock, network or randomness.
 import {
   equivalent,
-  operationText,
+  operationText as baseOperationText,
   sameValue,
   stepText,
-  valueText,
+  valueText as baseValueText,
   type AnswerValue,
   type FractionParts,
   type OperationPackage,
@@ -22,10 +22,16 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { simplestWords, teachSteps } from "./fractions";
-import { topicFrame } from "./topic-frame";
+import { topicFrame, topicQuestion } from "./topic-frame";
 import { evaluateFrame, partAt, withEvaluateExample } from "./evaluate";
 import { EVALUATE_TEMPLATES, partEquation, partHelp, partShow } from "./evaluate-lines";
 import { CLAIM_TEMPLATES, claimLines, claimShow, claimView } from "./claim";
+import { CLOCK_TEMPLATES, clockExpr, clockHelp, clockSaid, clockShow, clockWhere } from "./clock-lines";
+
+/** A value as Maya says it: a clock time as the book prints it ("7:03", clock-lines.ts), any other as code writes it. */
+const valueText = (v: AnswerValue) => clockSaid(v) ?? baseValueText(v);
+/** An operation as Maya says it: a clock-time question in the book's words ("50 minutes after 6:13"), any other as code writes it. */
+const operationText = (op: Parameters<typeof baseOperationText>[0]) => clockExpr(op) ?? baseOperationText(op);
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -506,6 +512,7 @@ export const TEMPLATES = {
   "held.next": ["Want to pick another question on this page?"],
   // Claim questions (A4, claim.ts): "True or false: 8 × 850 = 6800." and "Is 6 × 870 greater than 5226?".
   ...CLAIM_TEMPLATES,
+  ...CLOCK_TEMPLATES,
 } as const satisfies Record<string, readonly string[]>;
 export type TemplateKey = keyof typeof TEMPLATES;
 
@@ -557,6 +564,8 @@ function whereOf(step: WorkedStep): string {
       return `${step.left} ${step.op} ${step.right}`;
     case "claim-compare":
       return "the result";
+    case "count-on":
+      return clockWhere(step);
     default:
       return "this step";
   }
@@ -639,7 +648,7 @@ function fractionShow(step: WorkedStep): string | null {
 
 /** A worked step in words: a fraction step as fractionShow says it, any other as the shared step text. */
 const showOf = (step: WorkedStep, pkg: OperationPackage, problem: "target" | "example") =>
-  partShow(step) ?? fractionShow(step) ?? claimShow(step, operationText(problem === "target" ? pkg.operation : pkg.easierExample.operation), problem) ??
+  partShow(step) ?? fractionShow(step) ?? clockShow(step, problem === "target" ? pkg.operation : pkg.easierExample.operation) ?? claimShow(step, operationText(problem === "target" ? pkg.operation : pkg.easierExample.operation), problem) ??
   stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
 
 /** The top number of a long multiplication as its rows work it: without its point (2.5 × 1.3 works 25 × 13). */
@@ -656,6 +665,9 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
   if (part) return part;
   const slots = { step: step.id };
   const where = whereOf(step);
+  // A clock-time question's count-on step (clock-lines.ts): its own H1 to H3 after the invite.
+  const clock = clockHelp(pkg, step, offer);
+  if (clock) return [offer("step.invite", "step.invite", { where }, { slots, level: 0 }), ...clock];
   // A claim's compare step (claim.ts) has its own H0 to H2.
   const out: LineOffer[] = step.kind === "claim-compare" ? [] : [offer("step.invite", "step.invite", { where }, { slots, level: 0 })];
   const add = (line: LineId, key: TemplateKey, vars: Vars, level: 1 | 2, board?: string) =>
@@ -981,7 +993,7 @@ export function packageLines(given: OperationPackage) {
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr: asked }) : offer("close.together", "close.together", { expr: asked })],
     /** The honest close of an "other-topic" question left unsolved after the easier example: never the answer. */
-    closeHonest: (): LineOffer[] => (frame ? [offer("close.honest", "close.topic", {})] : []),
+    closeHonest: (): LineOffer[] => (topicQuestion(pkg.text, pkg.operation) ? [offer("close.honest", "close.topic", {})] : []),
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
     stepIds: steps.map((s) => s.id),

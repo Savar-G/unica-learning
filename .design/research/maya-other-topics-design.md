@@ -144,6 +144,36 @@ Left for the next round (17), with the reason:
 - Clock times (3): `time-add` with `count-on` steps; they need count-on lines and a strict reader for spoken times
   ("nine forty", "7:03").
 
+## C3c (third PR): clock times and two compare claims
+
+Branch `site/maya-other-topics-c`, from #741 at `24d14e5b`, merged with `origin/site/maya-wave-c` (`2c52c596`) and A4's
+fixed head (#737, `7751bcae`). Taught here (6 more): the 3 clock times, the 2 marbles claims and the 1 area true/false.
+
+- Clock times (`4.12-read-analog#3.2`, `#3.5`): `time-add`, counted on to the next hour and then the minutes left
+  (`src/lib/maya/clock-lines.ts`). A time is said as the book prints it ("7:03"); the package keeps the 24-hour clock
+  with no period. The child's times are read only in exact forms (`src/lib/maya/clock-times.ts`, `ReadOptions.times`):
+  "6:53", "06:53", "six fifty-three", "seven oh three", "seven o'clock". "seven three", "half past six", "7.03",
+  "703", "13:05" and "6:75" stay numbers. The topic sentence: "First count on to the next hour, 7:00. Then count the
+  minutes left." or "The hour stays 9. Count on the minutes." The scope check allows the count's own relations
+  ("13 plus 47 is 60", "50 minus 47 is 3"). The easier example has the same number of counts, a one-digit count and
+  none of the question's numbers (lesson 11).
+- Marbles (`4.17-predict-outcome#3.3`): A4's claim with a new "less" relation: "Is 5 + 5 less than 1? True or false?",
+  after the topic sentence "Red is more likely only if there are more red marbles than blue and green together."
+- Area true/false (`3.9-area-square-units#4.3`): A4's claim, "greater", with a true/false ask of its own: "Is 5 × 3
+  greater than 8? True or false?" (A4 asked every true/false claim as "Is 5 × 3 = 8 true or false?"). The topic sentence
+  gives the other area: "4 by 2 squares is 8 squares. Bigger means more squares."
+- Lesson 11 on #741's claims: the scale and minute-hand examples now use none of the question's numbers ("3 + 3 × 3"
+  for "90 + 2 × 2", "1 × 5 + 1" for "4 × 5 + 4").
+
+Still held (11), with what they need:
+- Same-denominator fractions (8): the work is the compare alone ("the denominators are the same, so compare the
+  numerators"). Maya's session needs an operation for every question it teaches (`teachableOf`), so this needs a
+  claim with no operation: a controller-level change to the session's rule, not a hook.
+- Area compare (2) and die compare (1): the answer is printed words in a box ("7 by 6", "even"), not a circled word.
+  A4's word reader reads only a choice region's two words. They need the reader to take the two words from code and
+  read them in exact forms, after Maya's own question only (lesson 5). The die compare also has no operation (code
+  counts each outcome), so it needs the same operation-free claim.
+
 ## The 34 questions
 
 | # | Id (draft 90559915) | Page.Q | Template | Topic | Smallest checked path | Depends on | State in this PR |

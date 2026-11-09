@@ -343,11 +343,12 @@ export type WorkedStep =
       /**
        * A printed claim checked against its computed side (Maya only, src/lib/maya/claim.ts; never a stored step of an
        * operation): the value the operation makes, the printed number it is compared with, the relation the claim states
-       * ("equal": the same number; "greater": more than the printed number), and whether the claim holds.
+       * ("equal": the same number; "greater": more than the printed number; "less": less than it, an other-topic claim
+       * of C3c), and whether the claim holds.
        */
       id: "claim";
       kind: "claim-compare";
-      relation: "equal" | "greater";
+      relation: "equal" | "greater" | "less";
       value: number;
       shown: number;
       holds: boolean;

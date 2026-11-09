@@ -25,7 +25,7 @@ import type { LineId, LineOffer, Slots } from "./lines";
 /** The claim as a session holds it: read again from the teaching package's steps and item. */
 export interface SessionClaim {
   choices: readonly [string, string];
-  relation: "equal" | "greater";
+  relation: "equal" | "greater" | "less";
   value: number;
   shown: number;
   holds: boolean;
@@ -98,8 +98,9 @@ export function claimView(pkg: OperationPackage): OperationPackage {
 
 /** The claim as Maya asks it: "Is 2 × 3 = 7 true or false?", "Is 2 × 3 greater than 5?", "Is 2 × 3 = 7 right?". */
 function claimSentence(c: Pick<SessionClaim, "choices" | "relation" | "shown">, expr: string): string {
-  if (c.choices[0] === "true") return `Is ${expr} = ${c.shown} true or false?`;
-  return c.relation === "greater" ? `Is ${expr} greater than ${c.shown}?` : `Is ${expr} = ${c.shown} right?`;
+  // A true/false claim of more or less (other-topic claims, C3c) asks the relation itself: "Is 5 × 3 greater than 8?".
+  if (c.choices[0] === "true") return c.relation === "equal" ? `Is ${expr} = ${c.shown} true or false?` : `Is ${expr} ${c.relation} than ${c.shown}? True or false?`;
+  return c.relation === "equal" ? `Is ${expr} = ${c.shown} right?` : `Is ${expr} ${c.relation} than ${c.shown}?`;
 }
 
 // ---------- Maya's lines ----------
@@ -187,11 +188,13 @@ export type MakeOffer = (line: LineId, key: ClaimTemplateKey, vars: Record<strin
 
 /** "6800", "9.22". */
 const num = (n: number) => String(n);
+const capital = (w: string) => w[0].toUpperCase() + w.slice(1);
 
 /** The claim's question, ending with its two words: a bare word after it answers the claim. */
 function askOf(c: SessionClaim, expr: string): string {
   const [a, b] = c.choices;
-  return c.choices[0] === "true" ? `Is ${expr} = ${num(c.shown)} ${a} or ${b}?` : `${claimSentence(c, expr)} Circle ${a} or ${b}.`;
+  if (c.choices[0] === "true") return c.relation === "equal" ? `Is ${expr} = ${num(c.shown)} ${a} or ${b}?` : `Is ${expr} ${c.relation} than ${num(c.shown)}? ${capital(a)} or ${b}?`;
+  return `${claimSentence(c, expr)} Circle ${a} or ${b}.`;
 }
 
 /**
@@ -209,7 +212,8 @@ function targetAsk(c: SessionClaim, expr: string): string {
 function compareOf(c: Pick<SessionClaim, "relation" | "value" | "shown">): string {
   const [v, s] = [num(c.value), num(c.shown)];
   if (c.relation === "equal") return c.value === c.shown ? `${v} and ${s} are the same number.` : `${v} is not ${s}.`;
-  return c.value > c.shown ? `${v} is greater than ${s}.` : c.value === c.shown ? `${v} is the same as ${s}, not greater.` : `${v} is less than ${s}.`;
+  const same = c.value === c.shown ? `${v} is the same as ${s}, not ${c.relation}.` : null;
+  return same ?? (c.value > c.shown ? `${v} is greater than ${s}.` : `${v} is less than ${s}.`);
 }
 
 /**
@@ -371,7 +375,7 @@ function ownWork(raw: string, work: ClaimWork | null): boolean {
   if (work === null) return false;
   if (numberIn(text) !== null) return true;
   if (claimStepHeard({ text, uncertain: false, operation: work.operation, value: work.value, resultAsked: null, shown: false })) return true;
-  // A topic claim (C3b; topic-work.ts): an evaluate's own part, or pieces of own work joined by "and".
+  // A topic claim (C3b, C3c; topic-work.ts): an evaluate's own part, or pieces of own work joined by "and".
   if (topicOwnWork(text, work.operation, (piece) => ownWork(piece, work))) return true;
   const n = (x: string) => numberIn(x);
   const same = (x: number | null, y: number) => x !== null && equivalent({ type: "number", value: x }, { type: "number", value: y });

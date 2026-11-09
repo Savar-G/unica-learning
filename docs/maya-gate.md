@@ -11,9 +11,10 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 
 | File | What it holds |
 |---|---|
-| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `EV_TWO`, `EV_STORY` and `EV_MISSING`: evaluate questions (Wave A, A2): 7 × 640 + 7 × 30, a story's 4 × 260 − 590, and 8 × ? = 7360 − 400 stored as (7360 − 400) ÷ 8. `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives. `DIE` and `SHAPES`: Wave C "other-topic" questions made by the session adapterivers in `src/lib/maya-teaching` from synthetic printed packages (a die count as 8 ÷ 2, lines of symmetry as 6 + 5), with code's topic sentence (`src/lib/maya/topic-frame.ts`). `SCALE`, `MONEY` and `MINUTE`: C3b's scale, money and minute-hand claims made by `deriveTopicClaim` (`src/lib/maya-teaching/topic-derivers.ts`). |
 | `src/lib/maya-gate/one-step-cases.ts` | Fixtures W5, W3 and W6: teaching packages the session adapter (`src/lib/maya-teaching`) makes from synthetic stored workbook packages, and their behaviours (W5a to W6c, with the J06 cases W5d, W6b and W6c), added to `FIXTURES` and `BEHAVIOURS`. |
+| `src/lib/maya-gate/c3c-review-cases.ts` | The review of #742 (C3c) on MARBLES and AREA_TF: a wrong word with the model down before and after the easier example (OTK6a, OTK6b, OTK7a, OTK7b), another person's or a copied ", so" answer with a model that proposes accept (OTK6c, OTK6d, OTK7c, OTK7d), and the other area's product in the child's words (OTK8), added to `BEHAVIOURS`. |
 | `src/lib/maya-gate/c3b-review-cases.ts` | The re-review of #741 (C3b) on SCALE, MINUTE and MONEY: another person's, a copied or a wrong ", so" answer with a model that proposes accept or a confirm (OTRS1a to OTRY4c), and a wrong word right after the easier example at grades 3, 4 and 5, with the model down, a model that shows the example, and a model that guides first (OTWS3d to OTWY5g). Added to `BEHAVIOURS`; `c3b-review-cases.test.ts` runs them on their own. |
+| `src/lib/maya-gate/fixtures.ts` | Fixtures A to F from the research, each a full question package built by the worked-steps code, with its wrong answers and easier example. Also `A_BAD_KEY`: fixture A with the key 56 while its steps make 66 (C36); `D_SIMPLEST`: fixture D with a question that asks for the simplest form (C38c); `G`: 3/4 = ?/12, equivalent fractions, a kind Maya does not teach yet (C36b, #407). `EV_TWO`, `EV_STORY` and `EV_MISSING`: evaluate questions (Wave A, A2): 7 × 640 + 7 × 30, a story's 4 × 260 − 590, and 8 × ? = 7360 − 400 stored as (7360 − 400) ÷ 8. `CLAIM_TF`, `CLAIM_GT`, `CLAIM_DEC`, `CLAIM_DIV`: claim questions (A4), the synthetic stored packages of `claim-fixtures.ts` with the operation `src/lib/maya-teaching/claim.ts` derives, through the session adapter. `MARBLES` and `AREA_TF`: compare claims (C3c) made by `deriveTopicClaim`. `CLOCK1` and `CLOCK2`: clock-time questions (C3c, time-add) made by `deriveClockTime` from synthetic printed packages. `DIE` and `SHAPES`: Wave C "other-topic" questions made by the derivers in `src/lib/maya-teaching` from synthetic printed packages (a die count as 8 ÷ 2, lines of symmetry as 6 + 5), with code's topic sentence (`src/lib/maya/topic-frame.ts`). `SCALE`, `MONEY` and `MINUTE`: C3b's scale, money and minute-hand claims made by `deriveTopicClaim` (`src/lib/maya-teaching/topic-derivers.ts`). |
 | `src/lib/maya-gate/behaviours.ts` | `BEHAVIOURS`: each scripted child, with what the scripted model reads and proposes, and what the run must show. `PENDING`: what cannot run yet, with the reason. |
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
@@ -192,6 +193,26 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | OTC4 | SCALE | passing | Grade 3, hello-only opening, "I'm stuck.": the first guide says the topic sentence, then solved | solved | |
 | OTC5 | MONEY | passing | Money claim (40 + 0.75 = 40.75 against $40.75) in the child's own words: accepted (J06) | solved, independent | |
 | OTC6 | MINUTE | passing | Minute-hand claim (7 × 5 + 3 = 38 against 38) in a full sentence: accepted (J06) | solved, independent | |
+| OTT1 | CLOCK2 | passing | C3c clock time (50 minutes after 4:25) in full sentences: the count to 5:00, then 5:15 | solved | |
+| OTT2 | CLOCK2 | passing | The time and its reason in the child's own words at the opening: confirmed once, accepted, not taught again (J06) | solved, independent | |
+| OTT3 | CLOCK2 | passing | "Why do I go to 5:00 first?": code's topic sentence with the question line (J06), then solved | solved | |
+| OTT4 | CLOCK2 | passing | Grade 3, hello-only opening, "I'm stuck.": the first guide says the topic sentence, then solved | solved | |
+| OTT5 | CLOCK1 | passing | "It's eight thirty-five." read as 8:35 (exact spoken form) and accepted, with no confirm | solved, independent | |
+| OTT6 | CLOCK1 | passing | Says 8:45: not accepted, guided, then "0 plus 35 is 35, so 8:35." | solved | |
+| OTK1 | MARBLES | passing | C3c marbles claim (3 + 5 = 8 against red 1, "less") in full sentences, then "It's false." | solved | |
+| OTK2 | MARBLES | passing | The word and its reason in the child's own words at the opening: accepted, not taught again (J06) | solved, independent | |
+| OTK3 | MARBLES | passing | "Why do I add blue and green?": code's topic sentence with the claim's question line (J06), then solved | solved | |
+| OTK4 | AREA_TF | passing | Grade 3, hello-only opening, "I'm stuck.": the topic sentence first (4 by 4 squares is 16), then "6 times 3 is 18." and "It's true." | solved | |
+| OTK5 | AREA_TF | passing | The word and its reason in the child's own words: accepted (J06) | solved, independent | |
+| OTK6a | MARBLES | passing | The model down, a wrong word right after the easier example: the claim's question again, then the honest close, never the answer (review of #742, P1-a) | child_stopped | |
+| OTK6b | MARBLES | passing | The model guides to the top hint, then is down, a wrong word before the easier example: help, then the example and the honest close (P1-a) | child_stopped | |
+| OTK6c | MARBLES | passing | "My mom said, so it's false." with a model that proposes accept: no answer (P1-b) | child_stopped | |
+| OTK6d | MARBLES | passing | "I copied it, so it's false." with a model that proposes accept: no answer (P1-b) | child_stopped | |
+| OTK7a | AREA_TF | passing | The model down, a wrong word right after the easier example: the claim's question again, then the honest close, never the answer (P1-a) | child_stopped | |
+| OTK7b | AREA_TF | passing | The model guides to the top hint, then is down, a wrong word before the easier example: help, then the example and the honest close (P1-a) | child_stopped | |
+| OTK7c | AREA_TF | passing | "My mom said, so it's true." with a model that proposes accept: no answer (P1-b) | child_stopped | |
+| OTK7d | AREA_TF | passing | "I copied it, so it's true." with a model that proposes accept: no answer (P1-b) | child_stopped | |
+| OTK8 | AREA_TF | passing | "4 times 4 is 16." (the other area, which the topic sentence names) stays on the question, then solved (P1-c) | solved | |
 | OTC7 | SCALE | passing | "60 plus 20 is 80." read by the model as part 2, not the compare: code hears the compare (review of #741, P1a), and Maya asks for the word, not 60 + 20 again (J06) | solved, independent | |
 | OTC8 | MINUTE | passing | "35 plus 3 is 38." read by the model as the ones of part 2: code hears the compare, and Maya asks for the word (J06) | solved, independent | |
 | OTC9 | SCALE | passing | A hedged "Maybe 80." that the model reads as the compare gets no credit (lesson 6); "60 plus 20 is 80." then does | solved | |
@@ -450,6 +471,11 @@ Fixtures W5, W3 and W6 (`src/lib/maya-gate/one-step-cases.ts`) are the teaching 
 | W6a | W6 | passing | 352418 + 41275: a 6-digit sum, column by column to the hundred thousands, with the question's six columns on the board; '3 hundred thousands' is a column, not 300 | solved | |
 
 ## Pending
+
+| Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
+|---|---|---|---|---|---|
+| OTCLOCKCOPY | CLOCK_REVIEW | passing | A clock count copied after H3 is not credited | child stopped | |
+| OTAREA8 | AREA_REVIEW | passing | The other area's 4 times 2 is in scope | child stopped | |
 
 `PENDING` is empty. The partial audio behaviours still state their proof limits above.
 
