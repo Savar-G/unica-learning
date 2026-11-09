@@ -36,15 +36,20 @@ import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 
+/** A review page's title, as a child reads it: "Remember these?" prints "Review" (Savar, 2026-11-09). */
+export const reviewTitle = (title: string) => title === "Remember these?" ? "Review" : title;
+/** A plan row's second line, the same way: "Remember these?" and "Remember these? and a challenge". */
+const reviewTopic = (topic: string) => topic.replace(/^Remember these\?/, "Review");
+
 /**
- * Teaching data does not select a print layout or change a printed method. The printed instruction follows the current
- * rules on a stored book too (its content stays as stored): see printedInstruction.
+ * Teaching data does not select a print layout or change a printed method. The printed instruction and title follow
+ * the current rules on a stored book too (its content stays as stored): see printedInstruction and reviewTitle.
  */
 function printedPage(page: DraftPage): DraftPage {
   const printed = { ...page, questions: page.questions.map(q => ({ ...q, package: printedWorkbookQuestion(q.package) })) };
   if (printed.content?.kind !== "day") return printed;
-  const subtitle = printedInstruction(printed) ?? printed.content.subtitle;
-  return subtitle === printed.content.subtitle ? printed : { ...printed, content: { ...printed.content, subtitle } };
+  const subtitle = printedInstruction(printed) ?? printed.content.subtitle, title = reviewTitle(printed.content.title);
+  return subtitle === printed.content.subtitle && title === printed.content.title ? printed : { ...printed, content: { ...printed.content, subtitle, title } };
 }
 
 /**
@@ -644,7 +649,7 @@ const CHIPS: Partial<Record<SlotName, Chip>> = {
   "mixed-set": { label: "Mixed set", cls: "c-mx", icon: ICONS.shuffle },
   "friday-5": { label: "Friday 5", cls: "c-mx", icon: ICONS.shuffle },
   challenge: { label: "Challenge", cls: "c-ch", icon: ICONS.bulb },
-  "remember-these": { label: "Remember these", cls: "c-rv" },
+  "remember-these": { label: "Review", cls: "c-rv" },
   "picture-stories": { label: "Stories", cls: "c-wp", icon: ICONS.book },
   "math-in-the-world": { label: "Math in the world", cls: "c-wp" },
   "show-what-you-know": { label: "Show what you know", cls: "c-rv", icon: ICONS.star },
@@ -1057,6 +1062,11 @@ interface Ctx {
   band: Band;
   q: (n: number) => DraftQuestion;
   six: boolean;
+  /**
+   * The page's one Review heading (Savar, 2026-11-09: "Remember these" reads "Review", and never twice on a page): false
+   * once a label or pill printed it, or from the start when the page title already says it ("Review", "Mixed review").
+   */
+  review: { open: boolean };
 }
 
 function blockHtml(b: Block, i: number, ctx: Ctx): string {
@@ -1072,7 +1082,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     return `<div class="${cls}" style="--rows:${gridRows(part.map((q) => q.number), cls === "list" ? 1 : 2, wide).length}">`;
   };
   const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => {
-    const at = b.reviewFrom !== undefined ? qs.findIndex((q) => q.number >= b.reviewFrom!) : -1;
+    // (With the page's Review heading already said, the block's review questions continue its grid.)
+    const at = b.reviewFrom !== undefined && ctx.review.open ? qs.findIndex((q) => q.number >= b.reviewFrom!) : -1;
+    if (at >= 0) ctx.review.open = false;
     if (at < 0) return `${grid(cls, qs)}${qs.map((q, k) => {
       const last = ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1;
       const html = render(q, k);
@@ -1080,8 +1092,8 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         && packageItem(q.package).format === "write-number" && questionWorkSpace(q.package) > 0;
       return html.replace(/^(<div class=")([^"]+)(")/, `$1$2${compact ? " compact-wide" : ""}$3${last ? ' style="grid-column:1/-1"' : ""}`);
     }).join("")}</div>`;
-    if (at === 0) return `<div class="lab" data-measure="review-${i}">Remember these</div>${grid(cls, qs)}${qs.map((q, k) => render(q, k).replace(/^(<div class="[^"]+")/, ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1 ? '$1 style="grid-column:1/-1"' : "$1")).join("")}</div>`;
-    return `${grid(cls, qs.slice(0, at))}${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Remember these</div>${grid(cls, qs.slice(at))}${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
+    if (at === 0) return `<div class="lab" data-measure="review-${i}">Review</div>${grid(cls, qs)}${qs.map((q, k) => render(q, k).replace(/^(<div class="[^"]+")/, ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1 ? '$1 style="grid-column:1/-1"' : "$1")).join("")}</div>`;
+    return `${grid(cls, qs.slice(0, at))}${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Review</div>${grid(cls, qs.slice(at))}${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
   };
   const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k], 80, b.figures?.[k]));
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));
@@ -1102,8 +1114,11 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "in-your-head":
       // (Savar, 2026-11-04: "In your head" said nothing; mental math says what to do.)
       return `<div class="panel p-hd"><div class="lab">${escape(b.label && !/^in your head$/i.test(b.label) ? b.label : "Mental math")}</div><div class="note-mm" data-measure="note-${i}">Work it out without writing it down.</div><div class="list" style="margin-top:10px">${qs.map((q) => lineItem(q, band)).join("")}</div></div>`;
-    case "remember-these":
-      return (firstOfPage ? "" : chip()) + items(parent ? "pcards" : "two");
+    case "remember-these": {
+      const pill = !firstOfPage && ctx.review.open;
+      if (pill) ctx.review.open = false;
+      return (pill ? chip() : "") + items(parent ? "pcards" : "two");
+    }
     case "try-first":
       return (prev === undefined ? chipHtml(NEW_IDEA, b.note) : "")
         + `<div class="outl"><div class="lab">Try this first</div>${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div>`;
@@ -1156,9 +1171,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label && !/^example$/i.test(b.label) ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>${b.explain ? `<span class="${/^Watch out:/.test(b.explain) ? "wo" : ""}">${escape(b.explain)}</span>` : ""}</div>`;
     case "finish-these":
       // (A block of review only prints "Remember these" alone, never under "Getting started" as the page's skill.)
-      return (allReview ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
+      return (allReview && ctx.review.open ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
     case "on-your-own": {
-      const head = prev === "finish-these" ? (allReview ? "" : `<div class="lab" data-measure="heading-${i}">On your own</div>`) : chipHtml(PRACTICE, b.note);
+      const head = prev === "finish-these" ? (allReview && ctx.review.open ? "" : `<div class="lab" data-measure="heading-${i}">On your own</div>`) : chipHtml(PRACTICE, b.note);
       // Column sums on the 8-page day; the 6-page practice page lists them, as in the sample (DESIGN.md 7.2).
       const columns = band.name === "mid" && !parent && !ctx.six && qs.length > 0 && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1 && !questionWorkSpace(q.package));
       return head + (columns ? list((q) => columnItem(q, band), "cols") : items(c.consistentLayout || ctx.six ? "two" : "list"));
@@ -1433,7 +1448,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     instructed: new Set(work ? workQuestionNumbers(page) : [])};
   const byNumber = new Map(page.questions.map((q) => [q.number, q]));
   const ctx: Ctx = {
-    page, c, band, six: c.pages <= 6 && band.name === "mid",
+    page, c, band, six: c.pages <= 6 && band.name === "mid", review: { open: !/\breview\b/i.test(c.title) },
     q: (n) => {
       const q = byNumber.get(n);
       if (!q) throw new Error(`page ${page.number}: a slot names question ${n}, which the page does not have`);
@@ -1518,7 +1533,7 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
   const timeText = (minutes: number, hasExtra: boolean) => `about ${roundedMinutes(minutes)} minutes${hasExtra ? ", plus Extra if there's time" : ""}`;
   const rows = c.rows.map((r) => {
     const time = times.get(r.day);
-    return `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(r.second)}</span></span></td>`
+    return `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(reviewTopic(r.second))}</span></span></td>`
     + `<td class="pp">${r.pages[0]}–${r.pages[1]}${time ? `<span class="plan-time" ${mark.slot(`required-time-${r.day}`)}>${roundedMinutes(time.requiredMinutes)} min</span>` : ""}</td><td class="dn"><i class="tb"></i></td></tr>`;
   }).join("");
   const how = [

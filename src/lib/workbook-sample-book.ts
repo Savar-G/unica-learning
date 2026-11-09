@@ -569,8 +569,8 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
       const a = dayTopic(day, "A");
       const b = dayTopic(day, "B");
       if (d.kind === "test") return { topic: "Level test", second: "Done alone, in one sitting" };
-      if (d.kind === "light") return { topic: "A light day", second: "Remember these? and a challenge" };
-      const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Remember these?");
+      if (d.kind === "light") return { topic: "A light day", second: "Review and a challenge" };
+      const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Review");
       return { topic: a ?? (d.kind === "mixed" ? "Mixed practice" : "Review"), second };
     },
     header(_day, page) {

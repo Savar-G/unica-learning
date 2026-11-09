@@ -7,6 +7,7 @@ import { sampleBook } from "@/lib/workbook-sample-book";
 import { bandOf, workbookTemplate } from "@/lib/workbook-template";
 import { generatedDayTime } from "@/lib/workbook-feedback-check";
 import { Window } from "happy-dom";
+import type { Block } from "@/lib/workbook-page";
 
 // The workbook templates (#310) through the renderer with the fake print engine: every page type of the sample books
 // has a layout and prints its number and QR code, the rendered book is one the store takes, and the template's fit
@@ -32,6 +33,36 @@ const parsedPage = (html: string) => {
 };
 
 describe("the workbook templates", () => {
+  // Savar's print review (2026-11-09): "Remember these" reads "Review", never twice on a page, and "Remember" once.
+  describe("Review and Remember, said once", () => {
+    const review = (title: string, blocks: (n: number[]) => Block[]) => {
+      const draft = book("U16"), p = first(draft, "practice");
+      if (p.content?.kind !== "day") throw new Error("not a day");
+      const n = p.questions.map(q => q.number);
+      const root = parsedPage(workbookTemplate().page({ ...p, content: { ...p.content, title, blocks: blocks(n) } }, { qr: "", qrUrl: "" }, draft)!);
+      const said = [...root.querySelectorAll('[data-measure^="review-"], .chip span')].map(x => x.textContent).filter(t => /review|remember/i.test(t ?? ""));
+      return { root, said, title: root.querySelector('[data-measure="slot-title"]')?.textContent };
+    };
+    it("prints a stored \"Remember these?\" title as \"Review\", with no Review label or pill under it", () => {
+      const r = review("Remember these?", n => [{ slot: "on-your-own", items: n.slice(0, 4), reviewFrom: n[2] }, { slot: "remember-these", items: n.slice(4) }]);
+      expect(r.title).toBe("Review");
+      expect(r.said).toEqual([]);
+      expect(r.root.textContent).not.toMatch(/remember these/i);
+    });
+    it("prints no Review label or pill on a Mixed review page", () => {
+      const r = review("Mixed review", n => [{ slot: "practice-row", items: n.slice(0, 4), reviewFrom: n[2] }, { slot: "remember-these", items: n.slice(4) }]);
+      expect(r.said).toEqual([]);
+    });
+    it("prints one Review heading on another page, the first one", () => {
+      const r = review("Place value up to 100,000", n => [{ slot: "on-your-own", items: n.slice(0, 4), reviewFrom: n[2] }, { slot: "remember-these", items: n.slice(4) }]);
+      expect(r.said).toEqual(["Review"]);
+      expect(r.root.querySelector('[data-measure^="review-"]')?.textContent).toBe("Review");
+      const pill = review("Place value up to 100,000", n => [{ slot: "on-your-own", items: n.slice(0, 4) }, { slot: "remember-these", items: n.slice(4) }]);
+      expect(pill.said).toEqual(["Review"]);
+      expect(pill.root.querySelector(".chip.c-rv")?.textContent).toBe("Review");
+    });
+  });
+
   it.each(["Which is greater?", "Which is greater: 8 × 7 or 6 × 6?", "WHICH IS GREATER?"])("prints no repeated choice label for %s", (question) => {
     const draft = book("U12");
     const p = first(draft, "practice");
@@ -89,7 +120,7 @@ describe("the workbook templates", () => {
     const group = root.querySelector('.optional-block[data-slot="on-your-own"]');
     expect(group).not.toBeNull();
     expect(group!.querySelectorAll('[data-measure^="chipbadge-extra-"]')).toHaveLength(1);
-    expect(group!.querySelector('[data-measure^="review-"]')?.textContent).toBe("Remember these");
+    expect(group!.querySelector('[data-measure^="review-"]')?.textContent).toBe("Review");
     const optional = content.blocks.find(b => b.extra)!.items;
     for (const q of p.questions) expect(root.querySelector(`[data-measure="question-${q.number}"]`)?.closest(".optional-block") === group).toBe(optional.includes(q.number));
     expect(root.querySelectorAll('.chiprow [data-measure^="chipbadge-extra-"], .hd [data-measure^="chipbadge-extra-"]')).toHaveLength(0);
