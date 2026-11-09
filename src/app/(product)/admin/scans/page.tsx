@@ -6,8 +6,8 @@ import { isUuid } from "@/lib/workbook-content";
 import { readScanHistoryNow } from "@/lib/scan-history-reader";
 import { readScanTeamQueue, teamMarkNeedsPhoto } from "@/lib/scan-team-marks";
 import { AdminTeamMark } from "@/components/admin-team-mark";
-import { familyMoment, type FamilyZone } from "@/lib/family-time";
-import { loadFamilyZone } from "@/lib/family-time-server";
+import { familyMoment } from "@/lib/family-time";
+import { loadFamilyZones } from "@/lib/family-time-server";
 import { readingIssueText, READING_ISSUES, type ReadingIssue } from "@/lib/scan-observation";
 import { AdminFrame, Table } from "@/components/admin";
 const usd = (micros: number) => `USD ${(micros / 1_000_000).toFixed(4)}`;
@@ -25,7 +25,7 @@ export default async function AdminScans({ searchParams }: { searchParams: Promi
   const versions = noPhoto.length ? await db.from("scan_marking_items").select("id,result_version,expected,original_event").in("id", noPhoto) : { data: [], error: null };
   if (versions.error) throw new Error("team_queue_versions");
   // "Waiting since" in each family's own time zone (the shared rule in src/lib/family-time.ts).
-  const zones = new Map<string, FamilyZone>(await Promise.all([...new Set(team.items.map((t) => t.parent))].map(async (p) => [p, await loadFamilyZone(db, p)] as const)));
+  const zones = await loadFamilyZones(db, team.items.map((t) => t.parent));
   const row = (item: string) => (versions.data ?? []).find((v) => v.id === item);
   const version = (item: string) => row(item)?.result_version ?? null;
   // One rule with admin_set_scan_mark: no buttons where the mark cannot be saved.

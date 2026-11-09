@@ -5,6 +5,7 @@ import { formatCalendarDate, formatInZone, localDay, PACIFIC_ZONE } from "@/lib/
 import type { Province } from "@/lib/assessment";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { canGetEmail, nextStartReminder, type StartKind } from "@/lib/reminder-schedule";
+import type { LogKind, LogStatus } from "@/lib/email-log-kinds";
 import type { DeliveryType } from "@/lib/resend-webhook";
 
 // Rows, as admin-store reads them
@@ -20,7 +21,7 @@ export interface RawCard {
   saved_in_stripe_only?: boolean;
 }
 export interface RawWaitlist { id: string; created_at: string; parent_id: string; child_id: string; province: Province }
-export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
+export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: LogKind; status: LogStatus | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
 /** A Stripe subscription of a saved card's customer. Times are ISO. `amount`: the price per unit, in cents. */
 export interface RawSubscription {
   id: string;
@@ -110,23 +111,31 @@ export function monthlyAmount(s: RawSubscription): number {
 
 // Emails
 
-export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe";
+/** Every email kind the admin shows: each kind of email log row, plus the two emails kept on the report row. */
+export type EmailKind = LogKind | "report" | "alert";
 export interface EmailKindInfo { kind: EmailKind; label: string; subject: string; to: string; trigger: string }
-/** Every email the site logs. The subjects follow reminder-email.ts and report-email.ts. */
-export const EMAIL_KINDS: readonly EmailKindInfo[] = [
-  { kind: "start", label: "Start reminder", subject: "{child}'s free math check is ready", to: "Parent", trigger: "Account made, no test started" },
-  { kind: "start_followup", label: "Last start reminder", subject: "A quick question about {child}'s math test", to: "Parent", trigger: "Day 3, still no test started" },
-  { kind: "continue", label: "Continue reminder", subject: "{child}'s math test is saved", to: "Parent", trigger: "Test started, not finished" },
-  { kind: "come_back", label: "Come back reminder", subject: "{child} can start the math test fresh", to: "Parent", trigger: "Test expired before the end" },
-  { kind: "report", label: "Report email", subject: "{child}'s math report is ready", to: "Parent", trigger: "Test finished, report built" },
-  { kind: "alert", label: "Report alert", subject: "Test finished: {child}, grade {grade}, working at ...", to: "You", trigger: "Test finished, report built" },
-  { kind: "unsubscribe", label: "Unsubscribe", subject: "No email: the parent turned reminders off", to: "-", trigger: "Parent clicked unsubscribe" },
-  { kind: "maya_daily", label: "Daily Maya email (retired)", subject: "{child} talked with Maya on ...", to: "Parent", trigger: "Replaced by the weekly Maya email" },
-  { kind: "maya_weekly", label: "Weekly Maya email", subject: "Weekly Maya email", to: "Parent", trigger: "Monday at 7 a.m. family time, after a week with calls" },
-  { kind: "maya_unsubscribe", label: "Maya unsubscribe", subject: "No email: the parent turned Maya emails off", to: "-", trigger: "Parent clicked unsubscribe in a Maya email" },
-  { kind: "monthly_summary", label: "Monthly summary email", subject: "{month} summary: {child}", to: "Parent", trigger: "The 1st of the month at 7 a.m. family time, when a summary is offered" },
-  { kind: "monthly_summary_unsubscribe", label: "Monthly summary unsubscribe", subject: "No email: the parent turned monthly summary emails off", to: "-", trigger: "Parent clicked unsubscribe in a monthly summary email" },
-];
+/**
+ * What the admin says about each kind, keyed by kind so a new kind in the email log fails the build until it has words
+ * here. The order of the keys is the order of the admin's lists. The subjects follow reminder-email.ts, report-email.ts
+ * and workbook-scan-reminder-email.ts.
+ */
+const EMAIL_KIND_INFO: { readonly [K in EmailKind]: Omit<EmailKindInfo, "kind"> } = {
+  start: { label: "Start reminder", subject: "{child}'s free math check is ready", to: "Parent", trigger: "Account made, no test started" },
+  start_followup: { label: "Last start reminder", subject: "A quick question about {child}'s math test", to: "Parent", trigger: "Day 3, still no test started" },
+  continue: { label: "Continue reminder", subject: "{child}'s math test is saved", to: "Parent", trigger: "Test started, not finished" },
+  come_back: { label: "Come back reminder", subject: "{child} can start the math test fresh", to: "Parent", trigger: "Test expired before the end" },
+  report: { label: "Report email", subject: "{child}'s math report is ready", to: "Parent", trigger: "Test finished, report built" },
+  alert: { label: "Report alert", subject: "Test finished: {child}, grade {grade}, working at ...", to: "You", trigger: "Test finished, report built" },
+  unsubscribe: { label: "Unsubscribe", subject: "No email: the parent turned reminders off", to: "-", trigger: "Parent clicked unsubscribe" },
+  maya_daily: { label: "Daily Maya email (retired)", subject: "{child} talked with Maya on ...", to: "Parent", trigger: "Replaced by the weekly Maya email" },
+  maya_weekly: { label: "Weekly Maya email", subject: "Weekly Maya email", to: "Parent", trigger: "Monday at 7 a.m. family time, after a week with calls" },
+  maya_unsubscribe: { label: "Maya unsubscribe", subject: "No email: the parent turned Maya emails off", to: "-", trigger: "Parent clicked unsubscribe in a Maya email" },
+  monthly_summary: { label: "Monthly summary email", subject: "{month} summary: {child}", to: "Parent", trigger: "The 1st of the month at 7 a.m. family time, when a summary is offered" },
+  monthly_summary_unsubscribe: { label: "Monthly summary unsubscribe", subject: "No email: the parent turned monthly summary emails off", to: "-", trigger: "Parent clicked unsubscribe in a monthly summary email" },
+  scan_inactivity: { label: "Scan reminder", subject: "Ready to scan your next page?", to: "Parent", trigger: "Workbook delivered, then 4 days with no pages scanned" },
+};
+/** Every email the site logs, in the admin's order. */
+export const EMAIL_KINDS: readonly EmailKindInfo[] = (Object.keys(EMAIL_KIND_INFO) as EmailKind[]).map((kind) => ({ kind, ...EMAIL_KIND_INFO[kind] }));
 /** An unsubscribe row: no email went. */
 export const isUnsubscribe = (kind: EmailKind) => kind === "unsubscribe" || kind === "maya_unsubscribe" || kind === "monthly_summary_unsubscribe";
 export const EMAIL_LABEL = Object.fromEntries(EMAIL_KINDS.map((k) => [k.kind, k.label])) as Record<EmailKind, string>;
@@ -148,8 +157,10 @@ export function deliveryLine(e: EmailEvent): { text: string; bad: boolean } | nu
 }
 /** "Clicked 2 times" for an email the parent clicked (D-105), else null. */
 export const clicksText = (e: EmailEvent) => (e.clicks ? `Clicked ${e.clicks.count === 1 ? "once" : `${e.clicks.count} times`}` : null);
-/** The emails whose clicks are counted: every one to the parent with a counted button (not the alert to Savar, not an unsubscribe, not the Maya recap, which has no button, not the monthly summary, whose links count no click). */
-export const clickable = (e: EmailEvent) => e.kind !== "alert" && e.kind !== "maya_daily" && e.kind !== "maya_weekly" && e.kind !== "monthly_summary" && !isUnsubscribe(e.kind);
+/** The kinds whose clicks are counted: every email to the parent with a counted button (not the alert to Savar, not an unsubscribe, not the Maya recap, which has no button, not the monthly summary or the scan reminder, whose links count no click). */
+export const countsClicks = (kind: EmailKind) => kind !== "alert" && kind !== "maya_daily" && kind !== "maya_weekly" && kind !== "monthly_summary" && kind !== "scan_inactivity" && !isUnsubscribe(kind);
+/** The emails whose clicks are counted. */
+export const clickable = (e: EmailEvent) => countsClicks(e.kind);
 /** The dot of an email in the lists: failed when it did not reach the parent. */
 export const emailDot = (e: EmailEvent) => (emailFailed(e) ? "failed" : e.status);
 
@@ -249,8 +260,7 @@ function sourceOf(source: Record<string, string> | null): string | null {
 }
 
 function subjectFor(kind: EmailKind, child: string | null, grade: number | null): string {
-  const info = EMAIL_KINDS.find((k) => k.kind === kind)!;
-  return info.subject.replace("{child}", child ?? "Your child").replace("{grade}", grade === null ? "?" : String(grade));
+  return EMAIL_KIND_INFO[kind].subject.replace("{child}", child ?? "Your child").replace("{grade}", grade === null ? "?" : String(grade));
 }
 
 const emailStatus = (sentAt: string | null, error: string | null): EmailEvent["status"] => (sentAt ? "sent" : error ? "failed" : "pending");
