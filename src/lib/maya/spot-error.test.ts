@@ -142,6 +142,21 @@ describe("spot the error in the controller", () => {
     expect(packageLines(pkg).exampleIntro().flatMap((o) => o.texts).join(" ")).not.toMatch(/answer given is (?:20|7000|350|35)\b/);
   });
 
+  it("does not use a printed ordinal for the example's answer given", () => {
+    const original = made(spotMissing(20, 350, 35)) as OperationPackage;
+    const before = view(original)!.easierExample.steps.find((x) => x.kind === "claim-compare");
+    expect(before?.kind).toBe("claim-compare");
+    if (before?.kind !== "claim-compare") throw new Error("missing example");
+    const printed = { ...original, text: `${original.text} ${before.shown}rd` };
+    const after = view(printed);
+    expect(after).not.toBeNull();
+    if (after) {
+      const comparison = after.easierExample.steps.find((x) => x.kind === "claim-compare");
+      expect(comparison?.kind).toBe("claim-compare");
+      if (comparison?.kind === "claim-compare") expect(comparison.shown).not.toBe(before.shown);
+    }
+  });
+
   it("carries the check of the answer given in every compare-step help line (lesson 2)", () => {
     const pv = packageLines(view(DIGIT) as OperationPackage).help("claim").filter((o) => o.line !== "chart.open");
     expect(pv.length).toBeGreaterThan(0);

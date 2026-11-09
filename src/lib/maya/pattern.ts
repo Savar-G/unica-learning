@@ -103,9 +103,9 @@ const formCounts = (p: Pattern) => [p.form === "pair" ? 7 : p.count];
 export function exampleGivesAway(question: Pattern, example: Pattern): boolean {
   const answer = partValues(question).at(-1)!;
   const hidden = new Set(partValues(question));
-  const own = new Set(printedNumbers(question));
+  const own = new Set((question.text.match(/\d+/g) ?? []).map(Number));
   const made = [...printedNumbers(example), ...partValues(example)];
-  if ([...made, ...formCounts(example)].some(n => hidden.has(n)) || made.some(n => own.has(n))) return true;
+  if ([...made, ...formCounts(example), ...(example.text.match(/\d+/g) ?? []).map(Number)].some(n => hidden.has(n)) || made.some(n => own.has(n))) return true;
   const small = partValues(example).at(-1)!;
   for (let k = 1; small * 10 ** k <= answer; k++) if (small * 10 ** k === answer) return true;
   return String(small).length < String(answer).length && String(answer).startsWith(String(small));

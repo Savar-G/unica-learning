@@ -2664,6 +2664,14 @@ function heardAnswers(session: Session): ChildAnswer[] {
       !stepAnswers(current).some((value) => equivalent(value, read.final!))) {
     found.push({ value: read.final, step: current.id, verdict: "wrong" });
   }
+  // Read a committed wrong final number after all work is complete, including when the model fails.
+  // Claim words are read separately by claimAnswers. Do not turn copied help or another speaker into a miss.
+  if (session.solved === null && currentStep(pkg, closeParts(pkg, session.done)) === "result" && !sessionClaim(pkg) &&
+      read.final && read.sure && !rightForQuestion(pkg, read.final) && committedTurn(session) &&
+      wholeTurn(session.turn.text) !== null && sentenceCount(session.turn.text) === 1 && !helpInWords(session.turn.text) &&
+      !hedgedTurn(session) && takenBack(session.turn.text, readOptionsIn(session)) === null && !copiesShown(session) && !copiesShownTry(session)) {
+    found.push({ value: read.final, step: "result", verdict: "wrong" });
+  }
   // A hedge ("I think it's 66") or a guess gets its own path (notClear, check.guess), not an accepted answer (#605).
   // "16 is 66." says one number is another: no answer code can credit.
   const body = wholeTurn(session.turn.text);

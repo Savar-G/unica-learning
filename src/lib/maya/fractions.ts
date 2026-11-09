@@ -31,8 +31,6 @@ export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   "claim-compare",
   // A clock-time question's counts on a clock (clock-lines.ts, C3c).
   "count-on",
-  // Missing numbers (missing-number.ts): the framing and zeros steps Maya says, and the try step the child does.
-  "missing-frame", "drop-zeros", "try-factor",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */

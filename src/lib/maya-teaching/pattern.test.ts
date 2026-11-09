@@ -13,7 +13,7 @@ import { createTextSession } from "@/lib/maya-text";
 
 vi.mock("server-only", () => ({}));
 const forms: PatternForm[] = ["missing3", "missing9", "term4", "plant3", "pair", "days8"];
-const make = (form: PatternForm) => printedPattern(form, 36, 9);
+const make = (form: PatternForm) => printedPattern(form, ...(form === "missing9" ? [35, 10] as const : [36, 9] as const));
 
 describe("closed pattern derivation", () => {
   it.each(forms)("derives %s without changing a printed field or the stored object", form => {
@@ -54,14 +54,14 @@ describe("closed pattern derivation", () => {
   });
 
   it("keeps the missing-step and term-count limits distinct, including a step of two", () => {
-    for (const [s, d] of [[4, 3], [50, 12], [26, 7], [36, 4]]) {
+    for (const [s, d] of [[50, 12], [26, 7], [36, 4]]) {
       const p = teachingPackage(printedPattern("missing3", s, d)) as OperationPackage;
       expect(heldReason(p), `${s},${d}`).toBeNull();
       expect(p.answer.value).toEqual({ type: "number", value: d });
     }
     // Lesson 12: an answer of 2 is the 3rd term's count of steps, which every same-form example writes ("÷ 2"), so it is held.
     // Start 1 with step 3 has no example that is smaller and shares none of its numbers.
-    for (const [s, d] of [[31, 2], [1, 3]]) expect(derivePattern(printedPattern("missing3", s, d)), `${s},${d}`).toBeNull();
+    for (const [s, d] of [[31, 2], [1, 3], [4, 3]]) expect(derivePattern(printedPattern("missing3", s, d)), `${s},${d}`).toBeNull();
     expect(operationProblem({ kind: "add", operands: [10000, 2000] })).not.toBeNull();
   });
 });
@@ -77,15 +77,20 @@ describe("the easier pattern never gives the question away (lessons 11 and 12)",
       const question = patternOf(p)!, example = patternOf(p.easierExample)!;
       expect(exampleGivesAway(question, example), `${s},${d}`).toBe(false);
       const parts = workedSteps(question.operation).flatMap(st => (st.kind === "operate" ? [st.value] : []));
-      // The ordinals ("3rd term") are the form's own words, printed in the question too.
-      const written = [...values(example), ...(example.text.replace(/\d+(?:st|nd|rd|th)\b/g, "").match(/\d+/g) ?? []).map(Number)];
+      const written = [...values(example), ...(example.text.match(/\d+/g) ?? []).map(Number)];
       // Never the answer or a part value of the question, whatever the role; never its own printed numbers as a value.
       for (const n of parts) expect(written, `${s},${d}: ${example.text}`).not.toContain(n);
-      for (const n of [question.start, question.missing ? question.start + question.count * question.step : question.step]) {
+      for (const n of (question.text.match(/\d+/g) ?? []).map(Number)) {
         expect([example.start, example.missing ? example.start + example.count * example.step : example.step, ...workedSteps(example.operation).flatMap(st => (st.kind === "operate" ? [st.value] : []))], `${s},${d}`).not.toContain(n);
       }
     }
-    expect(made).toBeGreaterThan(50);
+    expect(made).toBeGreaterThan(40);
+  });
+
+  it("rejects an example answer equal to a printed ordinal", () => {
+    const q = readPattern("A pattern starts at 2 and adds ? each time. The 3rd term is 10.")!;
+    const example = readPattern("A pattern starts at 1 and adds ? each time. The 3rd term is 7.")!;
+    expect(exampleGivesAway(q, example)).toBe(true);
   });
 
   it("refuses an example whose answer is the question's answer times a power of 10 or its first digits", () => {
@@ -96,7 +101,7 @@ describe("the easier pattern never gives the question away (lessons 11 and 12)",
 });
 
 describe("pattern teaching and scope", () => {
-  it.each(forms.flatMap(form => [[form, 36, 9], [form, 47, 12], [form, 50, 12]] as const))("keeps every new %s line within a grade 3 turn (start %i, step %i)", (form, start, step) => {
+  it.each(forms.flatMap(form => [[form, form === "missing9" ? 35 : 36, form === "missing9" ? 10 : 9], [form, 47, 12], [form, 50, 12]] as const))("keeps every new %s line within a grade 3 turn (start %i, step %i)", (form, start, step) => {
     const p = teachingPackage(printedPattern(form, start, step)) as OperationPackage, l = packageLines(p);
     expect(speechWords(workbookOpening(p)!)).toBeLessThanOrEqual(25);
     // The opening never reads the method out (the expression is the way to the answer).
