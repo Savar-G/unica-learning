@@ -13,6 +13,7 @@ import { filterTests, mainOnly, questionNumbers, type AdminFilters, type AnswerR
 import type { TestContextRecord } from "@/lib/admin-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
+import type { LogKind, LogStatus } from "@/lib/email-log-kinds";
 import { signWork } from "@/lib/work-store";
 import { PLAN_KEY_MS } from "@/lib/card-reconcile";
 import { findSavedCard } from "@/lib/saved-card";
@@ -894,8 +895,8 @@ export interface EmailRow {
   parent_id: string;
   child_id: string | null;
   assessment_id: string | null;
-  kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe" | "monthly_summary" | "monthly_summary_unsubscribe";
-  status: "claimed" | "sent" | "failed" | null;
+  kind: LogKind;
+  status: LogStatus | null;
   attempts: number;
   sent_at: string | null;
   error: string | null;
