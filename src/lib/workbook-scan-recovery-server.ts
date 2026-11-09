@@ -3,11 +3,11 @@ import { adminClient } from "@/lib/supabase-auth";
 import { isUuid } from "@/lib/workbook-content";
 import { recoverWorkbookScanClocks } from "@/lib/workbook-scan-clock";
 import { workbookScanClockRequestsForBooks, workbookScanClockStore, workbookScanClockVersion } from "@/lib/workbook-scan-clock-store";
-import { scanMaintenanceRelease } from "@/lib/workbook-scan-maintenance-server";
+import { scanMaintenanceRelease, scanProgressAccess } from "@/lib/workbook-scan-access";
 
 /**
  * Call only after an authorized delivery operation. Its SQL hook already saved a durable clock request.
- * This short test-only turn rechecks the delivered book's owner and processes only its own saved requests.
+ * This short turn rechecks the delivered book's owner and processes only its own saved requests.
  * The gate is the same as scheduled recovery. Scheduled recovery owns larger or changed request sets.
  * It sends no email and queues no book. A clock failure must not turn a committed delivery into a refused response.
  */
@@ -22,14 +22,11 @@ export async function refreshWorkbookScanClock(workbookId: string): Promise<void
   try {
     const db = adminClient(AbortSignal.timeout(4_000));
     if (!db) return;
-    const { data: book, error } = await db.from("workbooks").select("id,parent_id,status").eq("id", workbookId).maybeSingle();
+    const { data: book, error } = await db.from("workbooks").select("id,parent_id,child_id,status").eq("id", workbookId).maybeSingle();
     if (error) throw new Error("scan_recovery_book_read");
-    if (!book || book.id !== workbookId || book.status !== "shipped" || !release.parents.includes(book.parent_id)) return;
-    async function allowed() {
-      const test = await db!.from("test_accounts").select("parent_id").eq("parent_id", book!.parent_id).maybeSingle();
-      if (test.error) throw new Error("scan_recovery_test_gate_read");
-      return test.data?.parent_id === book!.parent_id;
-    }
+    if (!book || book.id !== workbookId || book.status !== "shipped") return;
+    const access = scanProgressAccess(db, release);
+    async function allowed() { return access.allowed(book!.parent_id, book!.child_id); }
     if (!await allowed()) return;
     const clocks = workbookScanClockStore(db);
     const result = await recoverWorkbookScanClocks({

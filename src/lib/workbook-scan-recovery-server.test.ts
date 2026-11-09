@@ -11,7 +11,7 @@ vi.mock("@/lib/supabase-auth", () => ({ adminClient: (signal?: AbortSignal) => {
 } }));
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const book = id(1), parent = id(2);
-function setup({ test = true, foreign = false, removedAt = Infinity, fail = "", conflict = false } = {}) {
+function setup({ test = true, foreign = false, removedAt = Infinity, fail = "", conflict = false, plan = "" } = {}) {
   const calls: { name: string; body: Record<string, unknown>; query: URLSearchParams }[] = [];
   let gates = 0;
   h.db = createClient<Database>("https://recovery.example.invalid", "synthetic-key", {
@@ -24,7 +24,8 @@ function setup({ test = true, foreign = false, removedAt = Infinity, fail = "", 
         time_zone: "America/Edmonton", zone_override: false };
       let data: unknown, count: number | undefined;
       switch (name) {
-        case "workbooks": data = [{ id: book, parent_id: parent, status: "shipped" }]; break;
+        case "workbooks": data = [{ id: book, parent_id: parent, child_id: id(3), status: "shipped" }]; break;
+        case "child_plan_states": data = plan ? [{ kind: plan, next_charge_at: null, ends_at: null, monthly_cents: 1000, ending_free: false }] : []; break;
         case "test_accounts": gates++; data = test && gates < removedAt ? [{ parent_id: parent }] : []; break;
         case "reconcile_workbook_scan_progress": data = (body.p_books as string[]).map(workbookId => ({ workbookId, result: { status: "waiting" } })); break;
         case "workbook_scan_clock_requests": data = [pending]; count = 1; break;
@@ -70,6 +71,21 @@ describe("gated delivery clock recovery after the response", () => {
     await refreshWorkbookScanClock(book);
     expect(h.signals).toEqual([]);
     expect(f.calls).toEqual([]);
+  });
+
+  it("recovers a real family only with an open child plan", async () => {
+    const f = setup({ test: false, plan: "paying" });
+    vi.stubEnv("WORKBOOK_SCAN_PROGRESS_ENABLED", "families");
+    vi.stubEnv("WORKBOOK_SCAN_TEST_PARENT_IDS", id(90));
+    await refreshWorkbookScanClock(book);
+    expect(f.calls.some(c => c.name === "record_workbook_scan_delivery_calendar")).toBe(true);
+  });
+  it("does not recover a real family with a closed child plan", async () => {
+    const f = setup({ test: false, plan: "paused" });
+    vi.stubEnv("WORKBOOK_SCAN_PROGRESS_ENABLED", "families");
+    vi.stubEnv("WORKBOOK_SCAN_TEST_PARENT_IDS", id(90));
+    await refreshWorkbookScanClock(book);
+    expect(f.calls.some(c => /reconcile_|record_/.test(c.name))).toBe(false);
   });
 
   it("does not mutate a delivered book whose owner is outside the configured test list", async () => {
