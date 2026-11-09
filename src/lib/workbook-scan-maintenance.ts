@@ -8,7 +8,7 @@ import type { ScanRecoveryBook, ScanRecoveryKind, ScanReminderDue } from "@/lib/
 export interface ScanMaintenanceDependencies {
   books(kind: ScanRecoveryKind, limit: number): Promise<readonly ScanRecoveryBook[]>;
   /** The server release gate. Recheck it before each phase; no browser Boolean enters this seam. */
-  allowed(parentId: string): Promise<boolean>;
+  allowed(parentId: string, childId?: string): Promise<boolean>;
   clocks: ScanClockStore;
   progress: ScanProgressStore;
   calendars: ScanInactivityCalendarStore;
@@ -54,7 +54,7 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
     const accepted: ScanRecoveryBook[] = [];
     for (const row of rows) {
       if (expired()) break;
-      if (await deps.allowed(row.parentId) && !expired()) {
+      if (await deps.allowed(row.parentId, row.childId) && !expired()) {
         accepted.push(row); selected.add(row.workbookId);
       }
     }
@@ -65,7 +65,8 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
   if (expired()) return stop();
   const unseeded = await permitted(await read("unseeded"));
   if (expired()) return stop();
-  const due = await permitted(await read("due"));
+  const due = (await permitted(await read("due"))).filter(row => !unseeded.some(book => book.workbookId === row.workbookId))
+    .slice(0, Math.max(0, limit - unseeded.length));
   if (expired()) return stop();
   const clockBooks = [...new Set([...unseeded, ...due].map(r => r.workbookId))].sort();
   if (clockBooks.length) {
@@ -77,7 +78,10 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
       reconcile: async ids => {
         if (fatalClockError) throw clockError;
         if (ids.some(id => !allowedBooks.has(id))) throw new Error("scan_maintenance_clock_scope");
-        await deps.clocks.reconcile(ids);
+        for (const id of ids) {
+          const row = [...unseeded, ...due].find(book => book.workbookId === id);
+          if (row && !expired() && await deps.allowed(row.parentId, row.childId) && !expired()) await deps.clocks.reconcile([id]);
+        }
       },
       requests: async bound => {
         if (fatalClockError) throw clockError;
@@ -91,7 +95,7 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
         if (fatalClockError) throw clockError;
         try {
           const row = [...unseeded, ...due].find(r => r.workbookId === request.workbookId);
-          if (!row || expired() || !await deps.allowed(row.parentId) || expired()) return "unavailable";
+          if (!row || expired() || !await deps.allowed(row.parentId, row.childId) || expired()) return "unavailable";
           return await deps.clocks.record(request, calendar);
         } catch (error) {
           // The reusable clock core records uncertain writes without throwing. This scheduler must also stop
@@ -115,16 +119,21 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
   const inactivity = await permitted(await read("inactivity"));
   for (const row of inactivity) {
     if (expired()) return stop();
-    if (!await deps.allowed(row.parentId)) continue;
+    if (!await deps.allowed(row.parentId, row.childId)) continue;
     if (expired()) return stop();
-    const status = await proposeWorkbookScanInactivity(deps.calendars, deps.progress, row.workbookId, clockVersion);
+    const status = await proposeWorkbookScanInactivity({ ...deps.calendars, propose: async (identity, dueAt, version) => {
+      if (identity.parentId !== row.parentId || identity.childId !== row.childId || expired()
+        || !await deps.allowed(row.parentId, row.childId) || expired()) return "unavailable";
+      return deps.calendars.propose(identity, dueAt, version);
+    } }, deps.progress, row.workbookId, clockVersion);
     result.calendars.push({ workbookId: row.workbookId, status });
   }
   if (expired()) return stop();
   const reminders = await permitted(await read("reminder-due"));
   for (const parentId of [...new Set(reminders.map(r => r.parentId))]) {
     if (expired()) return stop();
-    if (!await deps.allowed(parentId)) continue;
+    const row = reminders.find(book => book.parentId === parentId)!;
+    if (!await deps.allowed(parentId, row.childId)) continue;
     const current = await deps.due(parentId);
     if (expired()) return stop();
     if (current.status !== "ready" || current.episodeIds.length === 0) {
@@ -133,7 +142,7 @@ export async function runWorkbookScanMaintenance(deps: ScanMaintenanceDependenci
     }
     // Send the complete current set, including siblings outside this turn's reminder-book selection.
     if (!deps.send) { result.reminders.push({ parentId, status: "delivery-off" }); continue; }
-    if (!await deps.allowed(parentId)) continue;
+    if (!await deps.allowed(parentId, row.childId)) continue;
     if (expired()) return stop();
     const outcome = await deps.send(parentId, current.episodeIds, signal);
     result.reminders.push({ parentId, status: outcome.status });

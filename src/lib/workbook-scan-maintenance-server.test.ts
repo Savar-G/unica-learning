@@ -7,9 +7,9 @@ vi.mock("server-only", () => ({}));
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const env = { WORKBOOK_SCAN_PROGRESS_ENABLED: "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: "test-only", WORKBOOK_SCAN_TEST_PARENT_IDS: id(1) };
 function setup({ delivery = true, test = true, revokeBeforeAdmission = false, providerUnknown = false, failingRead = false,
-  deliveryCount = 1, linksGate = "", clockPending = false, failGateAt = Infinity } = {}) {
+  deliveryCount = 1, linksGate = "", clockPending = false, failGateAt = Infinity, families = false, plan = "paying", skipped = 0, closePlanAt = Infinity } = {}) {
   const calls: { name: string; body: Record<string, unknown>; query: URLSearchParams }[] = [], deliveries: string[] = [], copies: Record<string, unknown>[] = [];
-  let state = "reserved", hash = "", revoked = false, gateReads = 0, failNextGate = false;
+  let state = "reserved", hash = "", revoked = false, gateReads = 0, planReads = 0, failNextGate = false;
   const db = createClient<Database>("https://maintenance.example.invalid", "synthetic-key", {
     auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: async (input, init) => {
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
@@ -21,9 +21,21 @@ function setup({ delivery = true, test = true, revokeBeforeAdmission = false, pr
           if (failingRead) return new Response(JSON.stringify({ code: "unavailable", message: "private details" }), { status: 400 });
           data = [{ workbook_id: id(7), parent_id: id(1), child_id: id(2), number: 1, audit_id: 23 }]; count = deliveryCount;
           break;
+        case "list_workbook_scan_recovery_books": {
+          const rows = [...Array.from({ length: skipped }, (_, i) => ({ workbook_id: id(i + 1), parent_id: id(i + 21), child_id: id(2), number: 1, delivery_audit_id: i + 1 })),
+            { workbook_id: id(7), parent_id: id(20), child_id: id(2), number: 1, delivery_audit_id: 23 }];
+          data = body.p_kind === "unseeded" || body.p_kind === "inactivity" || body.p_kind === "reminder-due"
+            ? rows.filter(row => !body.p_after || row.workbook_id > body.p_after).slice(0, body.p_limit) : [];
+          break;
+        }
+        case "child_plan_states": {
+          const kind = url.searchParams.get("parent_id") === `eq.${id(20)}` && ++planReads < closePlanAt ? plan : "paused";
+          data = kind ? [{ kind, next_charge_at: null, ends_at: null, monthly_cents: 1000, ending_free: false }] : [];
+          break;
+        }
         case "test_accounts":
           if (++gateReads === failGateAt || failNextGate) return new Response(JSON.stringify({ code: "read_failure", message: "private details" }), { status: 400 });
-          data = test && !revoked ? [{ parent_id: id(1) }] : []; break;
+          data = test && !revoked && !families ? [{ parent_id: id(1) }] : []; break;
         case "reconcile_workbook_scan_progress": data = (body.p_books as string[]).map(workbookId => ({ workbookId, result: { status: "waiting" } })); break;
         case "workbook_scan_clock_requests":
           data = clockPending ? [{ workbook_id: id(7), delivery_audit_id: 23, delivered_at: "2026-11-01T12:00:00Z", time_zone: "UTC", zone_override: true }] : [];
@@ -59,7 +71,7 @@ function setup({ delivery = true, test = true, revokeBeforeAdmission = false, pr
     return providerUnknown ? { status: "unknown" as const, error: "synthetic lost reply" }
       : { status: "sent" as const, emailId: "synthetic-provider-1" };
   } };
-  const server = createWorkbookScanMaintenanceServer(db, { env: { ...env, WORKBOOK_SCAN_REMINDERS_ENABLED: delivery ? "test-only" : "off" },
+  const server = createWorkbookScanMaintenanceServer(db, { env: { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: families ? "families" : "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: delivery ? "test-only" : "off" },
     origin: "https://unicalearning.com", provider, gapMs: 0 });
   if (!server) throw new Error("missing configured server");
   return { db, provider, server, calls, deliveries, copies, run: () => server.run({ now: () => 0, endAt: 100 }) };
@@ -71,6 +83,35 @@ describe("scan maintenance server release and integration", () => {
     { ...env, WORKBOOK_SCAN_TEST_PARENT_IDS: Array.from({ length: 21 }, (_, i) => id(i + 1)).join(",") },
     { ...env, WORKBOOK_SCAN_REMINDERS_ENABLED: "on" }])("keeps absent or invalid release configuration off: %j", input => {
     expect(scanMaintenanceRelease(input)).toBeNull();
+  });
+
+  it("processes an open real family without admitting a reminder email", async () => {
+    const f = setup({ families: true, clockPending: true });
+    const result = await f.run();
+    expect(result.clocks).toEqual({ waiting: 1 });
+    expect(f.calls.find(c => c.name === "record_workbook_scan_delivery_calendar")?.body).toMatchObject({
+      p_book: id(7), p_backstop: "2026-11-22T12:00:00.000Z",
+    });
+    expect(f.calls.some(c => c.name === "claim_workbook_scan_reminder" || c.name === "admit_workbook_scan_reminder")).toBe(false);
+    expect(f.deliveries).toEqual([]);
+  });
+  it("pages past five closed plans and reaches the next admitted book", async () => {
+    const f = setup({ families: true, clockPending: true, skipped: 5 });
+    await f.run();
+    const pages = f.calls.filter(c => c.name === "list_workbook_scan_recovery_books" && c.body.p_kind === "unseeded");
+    expect(pages.map(c => c.body.p_after)).toEqual([null, id(5)]);
+    expect(f.calls.some(c => c.name === "record_workbook_scan_delivery_calendar")).toBe(true);
+  });
+  it("rechecks a real plan after selection before the reconciliation write", async () => {
+    const f = setup({ families: true, clockPending: true, closePlanAt: 3 });
+    await f.run();
+    expect(f.calls.some(c => c.name === "reconcile_workbook_scan_progress" || c.name === "record_workbook_scan_delivery_calendar")).toBe(false);
+  });
+  it.each(["paused", ""])("does not write for a closed or missing real plan %j", async plan => {
+    const f = setup({ families: true, plan });
+    await f.run();
+    expect(f.calls.some(c => c.name === "reconcile_workbook_scan_progress" || c.name === "record_workbook_scan_delivery_calendar")).toBe(false);
+    expect(f.deliveries).toEqual([]);
   });
 
   it("does no database work when the default factory is off", () => {

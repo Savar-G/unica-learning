@@ -5,28 +5,15 @@ import { SUPPORT_EMAIL } from "@/lib/contact";
 import type { MailTransport } from "@/lib/email-delivery";
 import { newToken } from "@/lib/sign-in-link";
 import { isUuid } from "@/lib/workbook-content";
+import { scanMaintenanceRelease, scanProgressAccess, type ScanMaintenanceEnvironment } from "@/lib/workbook-scan-access";
+export { scanMaintenanceRelease } from "@/lib/workbook-scan-access";
 import { workbookScanClockRequestsForBooks, workbookScanClockStore, workbookScanClockVersion } from "@/lib/workbook-scan-clock-store";
 import { runWorkbookScanMaintenance } from "@/lib/workbook-scan-maintenance";
 import { workbookScanProgressStore } from "@/lib/workbook-scan-progress-store";
 import { workbookScanReminderEmail } from "@/lib/workbook-scan-reminder-email";
 import { createWorkbookScanReminderSender } from "@/lib/workbook-scan-reminder-send";
 import { readWorkbookScanReminderDue, workbookScanInactivityStore,
-  workbookScanReminderSendStore } from "@/lib/workbook-scan-reminder-store";
-
-export interface ScanMaintenanceEnvironment {
-  WORKBOOK_SCAN_PROGRESS_ENABLED?: string;
-  WORKBOOK_SCAN_REMINDERS_ENABLED?: string;
-  WORKBOOK_SCAN_TEST_PARENT_IDS?: string;
-}
-
-/** There is deliberately no real-family mode in this release. Invalid configuration means off. */
-export function scanMaintenanceRelease(env: ScanMaintenanceEnvironment): { parents: readonly string[]; delivery: boolean } | null {
-  if (env.WORKBOOK_SCAN_PROGRESS_ENABLED !== "test-only") return null;
-  const parents = (env.WORKBOOK_SCAN_TEST_PARENT_IDS ?? "").split(",").map(s => s.trim());
-  if (!parents.length || parents.length > 20 || parents.some(id => !isUuid(id)) || new Set(parents).size !== parents.length
-    || ![undefined, "off", "test-only"].includes(env.WORKBOOK_SCAN_REMINDERS_ENABLED)) return null;
-  return { parents, delivery: env.WORKBOOK_SCAN_REMINDERS_ENABLED === "test-only" };
-}
+  workbookScanReminderSendStore, listWorkbookScanRecoveryBooks } from "@/lib/workbook-scan-reminder-store";
 
 /** Create once per cron invocation and use transport for every existing email in that invocation too. */
 export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>, options: {
@@ -35,6 +22,7 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
   const release = scanMaintenanceRelease(options.env);
   if (!release) return null;
   let permissionReadFailed = false;
+  const access = scanProgressAccess(db, release);
   async function testDeliveries(limit: number) {
     // This test-only sweep selects its allowed parents before the bound. Reusing a global due selector could
     // repeatedly return excluded real families and never reach a test book. SQL still decides all eligibility.
@@ -51,37 +39,47 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
     return data.map(r => ({ workbookId: r.workbook_id, parentId: r.parent_id, childId: r.child_id,
       number: r.number, deliveryAuditId: r.audit_id }));
   }
-  async function allowed(parent: string): Promise<boolean> {
+  async function testParent(parent: string): Promise<boolean> {
     if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
-    if (!release!.parents.includes(parent)) return false;
-    try {
-      const { data, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
-      if (error) throw error;
-      return data?.parent_id === parent;
-    } catch {
-      permissionReadFailed = true;
-      throw new Error("scan_maintenance_test_gate_read");
-    }
+    try { return await access.testParent(parent); } catch (error) { permissionReadFailed = true; throw error; }
   }
-  const store = workbookScanReminderSendStore(db, { beforeAdmit: handle => allowed(handle.parentId) });
+  async function allowed(parent: string, child?: string): Promise<boolean> {
+    if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
+    try { return !!child && await access.allowed(parent, child); } catch (error) { permissionReadFailed = true; throw error; }
+  }
+  const store = workbookScanReminderSendStore(db, { beforeAdmit: handle => testParent(handle.parentId) });
   const sender = createWorkbookScanReminderSender({ gapMs: options.gapMs, transport: options.provider,
     store });
   return {
     transport: sender.transport,
     async run(time: { now(): number; endAt: number }) {
       if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
-      let selectedBooks: string[] = [];
+      const selectedBooks: string[] = [];
+      const clockStore = workbookScanClockStore(db);
       const result = await runWorkbookScanMaintenance({
-        books: async (_kind, limit) => {
-          const rows = await testDeliveries(limit);
-          selectedBooks = rows.map(row => row.workbookId);
-          return rows;
+        books: async (kind, limit) => {
+          if (release.mode === "test-only") return testDeliveries(limit);
+          const selected = [];
+          let after: string | null = null;
+          do {
+            if (options.signal?.aborted || time.now() >= time.endAt) throw new Error("scan_maintenance_selection_timeout");
+            const rows = await listWorkbookScanRecoveryBooks(db, kind, limit, after);
+            for (const row of rows) {
+              if (kind === "reminder-due" ? await testParent(row.parentId) : await allowed(row.parentId, row.childId)) selected.push(row);
+              if (selected.length === limit) return selected;
+            }
+            after = rows.length === limit ? rows[rows.length - 1].workbookId : null;
+          } while (after);
+          return selected;
         }, allowed,
-        clocks: { ...workbookScanClockStore(db), requests: limit => workbookScanClockRequestsForBooks(db, selectedBooks, limit) },
+        clocks: { ...clockStore, reconcile: async ids => {
+          await clockStore.reconcile(ids);
+          selectedBooks.push(...ids);
+        }, requests: limit => workbookScanClockRequestsForBooks(db, selectedBooks, limit) },
         progress: workbookScanProgressStore(db), calendars: workbookScanInactivityStore(db),
         due: parent => readWorkbookScanReminderDue(db, parent),
         ...(release.delivery ? { send: async (parent: string, episodeIds: readonly string[], signal?: AbortSignal) => {
-          if (!await allowed(parent)) return { status: "not_sent" as const, reason: "release-off", released: false };
+          if (!await testParent(parent)) return { status: "not_sent" as const, reason: "release-off", released: false };
           const { data, error } = await db.from("parents").select("id,email").eq("id", parent).is("deletion_requested_at", null).maybeSingle();
           if (error) throw new Error("scan_maintenance_recipient_read");
           if (!data || data.id !== parent || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {

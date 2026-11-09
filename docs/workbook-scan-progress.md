@@ -10,16 +10,16 @@ Four local calendar days without qualifying work form an inactivity episode. The
 
 ## Current server release
 
-Both gates default off. This candidate contains no real-family mode. No switch is changed by deployment.
+Both gates default off. Deployment does not change either switch.
 
-- WORKBOOK_SCAN_PROGRESS_ENABLED must equal test-only.
-- WORKBOOK_SCAN_TEST_PARENT_IDS must contain1to20distinct UUIDs separated by commas.
-- WORKBOOK_SCAN_REMINDERS_ENABLED is off or unset by default. Its only enabled value is test-only. Invalid values disable the factory.
-- An included parent must retain its test_accounts marker. The server rechecks it before phases and after all asynchronous handle reads, directly before its SQL admission call. A failed permission read stops the invocation. A later change cannot recall an already committed provider admission.
+- WORKBOOK_SCAN_PROGRESS_ENABLED accepts only `test-only` or `families`. Every other value turns the application gate off.
+- WORKBOOK_SCAN_TEST_PARENT_IDS must contain 1 to 20 distinct UUIDs separated by commas. Each listed test parent must retain its test_accounts marker.
+- In `families` mode, the application sweep, delivery recovery callback and parent progress endpoint also admit a real family when that child's shared plan gate is open. Missing, closed or unreadable plans are refused. The application checks access again before each write and after the parent read.
+- WORKBOOK_SCAN_REMINDERS_ENABLED accepts only `off`, unset or `test-only`. A reminder email requires a listed parent with a current test_accounts marker, including in `families` mode. A real family's inactivity episode can be recorded, but the application does not admit an email for that family.
 
-The test-only sweep selects configured parent deliveries before its bound, so unrelated real-family rows cannot occupy its queue. It requires an exact complete set of at most5deliveries. Clock requests are selected for those books before their bound. Old or recorded test-book requests still pass through SQL's current-identity write guard. A missing count, truncated answer or set above the bound stops the turn. It never becomes zero progress. Reduce the explicit QA scope or extend the reviewed paging path before a larger test sweep.
+The Day 7 claim is a database trigger. It runs for every admitted receipt, regardless of the progress environment mode. The progress mode gates application maintenance and reads. Scan admission has its own access rules.
 
-The post-delivery recovery callback uses the same release and live test-owner checks. It reads only the delivered book's requests and rechecks permission before its writes. It never drains the global request queue. A callback registration or recovery failure cannot change a committed confirmation response.
+The test-only sweep selects the configured parents before its bound and requires a complete set of at most 5 deliveries. In families mode, each maintenance phase reads the relevant recovery queue in workbook ID order. It pages past closed plans and processes at most 5 admitted books per phase. A book remains in clock recovery until its current delivery calendar is recorded. A due book leaves the queue after a claim or hold. A later cron run processes the remaining books. A failed read or an expired selection stops the turn; neither is treated as zero progress. The delivery recovery callback uses the same access gate and reads only the delivered book's requests. It sends no email.
 
 The existing /api/reminders cron invokes this work after its existing email phases and before55seconds from its start. The maintenance database client has a55-second abort. The dry path invokes no maintenance write. The existing global cron authentication and email-configuration prerequisite remain. Receipts and delivery requests remain durable while scheduled recovery is unavailable. No new cron job or configuration value is installed by this code.
 
