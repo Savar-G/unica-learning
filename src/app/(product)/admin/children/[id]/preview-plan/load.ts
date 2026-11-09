@@ -11,6 +11,7 @@ import { adminReportReader } from "@/lib/report-loading-server";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { planNextWorkbook } from "@/lib/workbook-placement";
 import { previewWorkbook } from "@/lib/workbook-why";
+import { readWorkbookInstructions } from "@/lib/workbook-instructions-store";
 import { staleLearnerProfile, WORKBOOK_LEARNER_DERIVED_VERSION } from "@/lib/workbook-profile-freshness";
 
 // Only read operations. Use the admin's session, never a service-role client or a profile rebuild that saves.
@@ -22,12 +23,13 @@ export async function loadPreviewPlan(admin: AdminSession, id: string) {
   const key = child.province === "BC" ? "bc" : null;
   const curriculum = key ? curriculumFor(key) : null;
   if (!curriculum || !isGrade(child.grade)) return { child, preview: { ok: false as const, reason: "A workbook curriculum is not available for this child." } };
-  const [tests, books, events, previous] = await Promise.all([
+  const [tests, books, events, previous, instructions] = await Promise.all([
     admin.db.rpc("admin_assessments").select("id, completed_at, device").eq("child_id", id).eq("status", "completed")
       .eq("placement->>scoredAgainst", "BC").order("completed_at", { ascending: false }).order("id").limit(1).maybeSingle(),
     getChildWorkbooks(admin, id),
     learningEventStore(admin.db).range(id, { from: "0001-01-01T00:00:00Z", to: "9999-12-31T23:59:59Z" }),
     admin.db.from("child_profiles").select("profile").eq("child_id", id).maybeSingle(),
+    readWorkbookInstructions(admin.db, id),
   ]);
   if (tests.error) throw new Error("Could not read the completed test.");
   if (previous.error) throw new Error("Could not read the saved profile notes.");
@@ -62,7 +64,7 @@ export async function loadPreviewPlan(admin: AdminSession, id: string) {
     if (!profile || staleLearnerProfile(profile.schemaVersion, profile)) return { child, preview: { ok: false as const, reason: "The test profile could not be built from the assessment. Check the child's profile before making the book." } };
     assessment = { assessmentId: test.id, completedAt: test.completed_at, buildId: null, profile };
   }
-  const preview = previewWorkbook({ curriculum, grade: child.grade, workbooks: books, report, device: tests.data?.device ?? null, previous: storedChildProfile(previous.data?.profile),
+  const preview = previewWorkbook({ curriculum, grade: child.grade, workbooks: books, report, instructions: instructions?.instructions ?? null, device: tests.data?.device ?? null, previous: storedChildProfile(previous.data?.profile),
     facts: { grade: child.grade, learning: answers, assessment, events } }, planNextWorkbook);
   if (rebuilt && preview.ok) preview.why.warnings.push("This preview rebuilt older test facts without AI. A real run can add new AI notes after it rebuilds those facts.");
   return { child, preview };

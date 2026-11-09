@@ -52,7 +52,7 @@ describe("lines Savar approved on 2026-11-08 (#698 fix round)", () => {
   });
 
   it("held.cannot.0: the short wording, exactly", () => {
-    const rows = table("### New held line (D-304)");
+    const rows = table("### New held line (D-312)");
     expect(rows.map((r) => unticked(r[0]))).toEqual(["held.cannot.0"]);
     expect(TEMPLATES["held.cannot"]).toEqual([rows[0][2]]);
     expect(TEMPLATES["held.cannot"]).toEqual(["Sorry, I can't teach this question yet."]);

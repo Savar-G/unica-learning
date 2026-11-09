@@ -27,7 +27,7 @@ export interface TraceRefusal {
  * delivered turn that served each one, or the reason it was dropped. Version 6 adds controller safety output on
  * terminal events. Version 7 adds scope refusal reasons and times. Version 8 (#527) adds controller held output: on a
  * question Maya cannot teach, code's exact held lines at the start, with no model; in version 8 that is the text before
- * D-304 (`PRE_D304_HELD`). Version 9 (D-304) holds the held lines that say plainly Maya cannot teach the question yet
+ * D-312 (`PRE_D312_HELD`). Version 9 (D-312) holds the held lines that say plainly Maya cannot teach the question yet
  * (hello, can't teach, another question); a version 9 trace with the old text is refused. `checkTrace` reads all nine
  * versions.
  */
@@ -35,10 +35,10 @@ export const TRACE_VERSION = 10;
 /** The trace versions `checkTrace` reads. */
 export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 /**
- * The held turn as version 8 traces stored it, before D-304 (line sets 11 to 13). Frozen here: stored admin test
+ * The held turn as version 8 traces stored it, before D-312 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
  */
-export const PRE_D304_HELD = "Hi, I'm Maya, an AI. Want to pick another question on this page?";
+export const PRE_D312_HELD = "Hi, I'm Maya, an AI. Want to pick another question on this page?";
 export const TRACE_KIND = "maya-trace";
 
 export const OBLIGATION_KINDS = ["start_pending", "safety_due", "opening_due", "repair_due", "child_turn_pending", "content_problem"] as const;
@@ -423,8 +423,8 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
       if (attempts[0]?.source === "controller") {
         const o = x.output as { act?: unknown; say?: unknown; board?: unknown } | null;
         // Code's own words with no model: safety guidance, or the held lines on a question Maya cannot teach (#527):
-        // the text before D-304 in version 8 and earlier, the D-304 text from version 9.
-        const held = version <= 8 ? PRE_D304_HELD : heldSentences(true).join(" ");
+        // the text before D-312 in version 8 and earlier, the D-312 text from version 9.
+        const held = version <= 8 ? PRE_D312_HELD : heldSentences(true).join(" ");
         const exact = o?.act === "safety" ? Object.values(SAFETY_GUIDANCE) as string[] : o?.act === "close" ? [held] : [];
         need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0, path, "controller output is exact safety guidance or the exact held lines only");
       }

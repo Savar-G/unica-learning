@@ -1,6 +1,6 @@
 # Pause and paid Restart
 
-The dashboard stays off for real families. The existing test and admin access rule applies to both new routes. The parent must apply `20261105234500_plan_controls.sql`, generate database types, run the full checks, check the browser and obtain an independent review before release.
+Pause and paid Restart are live for every family with a plan. No release switch holds them back. The Plan page (`/account/plan`) shows Pause on a `paying` or `free_month` plan and Restart on an `ended` plan to each family that reaches its plan's controls (`src/components/parent-plan-view.tsx`). The routes check the same rule (`planManagementAccess` in `src/lib/plan-control-request.ts`): the dashboard's switch, a child with an open plan, or any plan history. Migration `plan_controls` (`20261105234500_plan_controls.sql`) is applied in production as version 20261106010709. The provider checks below are still open while the controls are live.
 
 ## Supported states
 
@@ -53,7 +53,7 @@ Stripe test-mode acceptance on 6 November 2026 found that the original paid Paus
 
 The actual application functions then passed test-clock checks for first-trial extension, paid Pause at renewal, full payment and a new anchor on resume, failed resume remaining paused, release before Cancel, schedule cancellation during deletion, and immediate paid Restart with retry and decline. The trial check found no paid invoice at the old end and one full CAD 79.99 invoice at the new end. Paid Pause created no renewal charge during the pause and one full CAD 79.99 invoice at resume, with no proration. Test invoices do not move funds. This does not prove a real reminder email, production restricted-key permissions or the production webhook configuration. See the provider evidence added with the repair.
 
-The parent must use Stripe test mode and a test clock to verify the first-trial extension, the next-renewal invoice, the full resume invoice, failed payment on resume, release before Cancel, schedule cancellation during deletion, and the restricted key's permissions. Check that no credit, refund, new trial email or earlier charge occurs. Keep the dashboard off until these checks pass.
+The parent must use Stripe test mode and a test clock to verify the first-trial extension, the next-renewal invoice, the full resume invoice, failed payment on resume, release before Cancel, schedule cancellation during deletion, and the restricted key's permissions. Check that no credit, refund, new trial email or earlier charge occurs. The controls are already live, so these checks are not a release gate now. A failure is a defect to fix in the live controls.
 
 Primary contracts read on 2026-11-05:
 

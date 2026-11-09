@@ -14,7 +14,7 @@ function detail(stalled = false): RunDetail {
     run: { id: "run", parentId: "parent", childId: "child", number: 1, status: "done", step: null, attempts: 1, maxAttempts: 2,
       donePages: 12, totalPages: 12, createdAt: at, heartbeatAt: at, startedAt: at, finishedAt: at, error: null, errors: [],
       draftId: "draft", draftKey: "draft", resumes: 0, startedBy: { id: "admin", email: "synthetic@example.invalid" }, runner: "mac" },
-    child: null, oldFormat: null, images: {}, audit: [], solves: [], aiCalls: summarizeAiCalls([]), approved: null,
+    child: null, oldFormat: null, images: {}, edits: [], versions: [], adminNames: {}, audit: [], solves: [], aiCalls: summarizeAiCalls([]), approved: null,
     draft: { revision: 1, rendering: null, problems: [], workbook: { id: "draft", childId: "child", number: 1, levels: [16],
       profileBuild: null, model: "synthetic", pages: Array.from({ length: 12 }, (_, n) => ({ number: n + 1, type: "practice", day: 1,
         dayLabel: "Day 1", pageOfDay: n + 1, qrToken: `synthetic-${n}`, fit: { status: "fits" }, attempts: 1, questions: [] })),
@@ -40,7 +40,7 @@ describe("mounted workbook comment progress", () => {
   it("shows saved page outcomes while polling only the small edit endpoint", async () => {
     const fetch = vi.fn(async () => Response.json(progress())); vi.stubGlobal("fetch", fetch); await mount();
     await advance(1_000);
-    expect(container.textContent).toContain("4 of 12 pages checked. 1 ready. 3 need attention.");
+    expect(container.textContent).toContain("Making version 2: page 5 of 12...");
     expect(fetch).toHaveBeenCalledExactlyOnceWith("/api/admin/workbooks/runs/run/edit", expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }));
     expect(h.router.refresh).not.toHaveBeenCalled(); await advance(5_000);
     expect(fetch).toHaveBeenCalledTimes(2); expect(h.router.refresh).not.toHaveBeenCalled();
@@ -98,7 +98,7 @@ describe("mounted comment routing", () => {
     const source = detail();source.editBatch = null;source.comments = [{ ...source.comments[0], status: "pending", route: "layout" }];
     const fetch = vi.fn(async () => Response.json({ status: "layout-review", reason: "This request still needs reviewed layout changes." }));vi.stubGlobal("fetch", fetch);
     await mount(source);
-    expect(container.textContent).toContain("Layout requests stay open in the review path below.");
+    expect(container.textContent).toContain("1 page-layout comment is saved and open for the team. It stays open until the pages are re-rendered.");
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.startsWith("Send all comments"))!.click());
     expect(container.textContent).toContain("This request still needs reviewed layout changes.");
     expect(container.textContent).toContain("Awaiting layout review");

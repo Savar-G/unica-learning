@@ -2693,6 +2693,7 @@ export type Database = {
           parent_id: string
           payment_method_id: string
           purpose: string
+          read_tried_at: string | null
           start_key: string
           started_at: string
           state: string
@@ -2725,6 +2726,7 @@ export type Database = {
           parent_id: string
           payment_method_id: string
           purpose?: string
+          read_tried_at?: string | null
           start_key: string
           started_at?: string
           state?: string
@@ -2757,6 +2759,7 @@ export type Database = {
           parent_id?: string
           payment_method_id?: string
           purpose?: string
+          read_tried_at?: string | null
           start_key?: string
           started_at?: string
           state?: string
@@ -4947,6 +4950,51 @@ export type Database = {
           },
         ]
       }
+      workbook_instructions: {
+        Row: {
+          child_id: string
+          instructions: Json
+          parent_id: string
+          schema_version: number
+          updated_at: string
+          updated_by: string | null
+          updated_by_email: string | null
+        }
+        Insert: {
+          child_id: string
+          instructions: Json
+          parent_id: string
+          schema_version?: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string | null
+        }
+        Update: {
+          child_id?: string
+          instructions?: Json
+          parent_id?: string
+          schema_version?: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_instructions_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_instructions_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_pages: {
         Row: {
           created_at: string
@@ -6890,6 +6938,13 @@ export type Database = {
         Returns: undefined
       }
       admin_team_ids: { Args: never; Returns: string[] }
+      admin_team_names: {
+        Args: never
+        Returns: {
+          name: string
+          user_id: string
+        }[]
+      }
       admin_template_stats: {
         Args: {
           curriculum?: string
@@ -7572,6 +7627,16 @@ export type Database = {
           parent_id: string
         }[]
       }
+      due_plan_start_reads: {
+        Args: { p_limit?: number }
+        Returns: {
+          child_id: string
+          customer: string
+          event_at: string
+          kind: string
+          parent_id: string
+        }[]
+      }
       email_copy_child_scope: {
         Args: { l: Database["public"]["Tables"]["email_log"]["Row"] }
         Returns: string[]
@@ -7878,6 +7943,10 @@ export type Database = {
           p_token: string
         }
         Returns: boolean
+      }
+      note_plan_start_read_tried: {
+        Args: { p_child: string }
+        Returns: undefined
       }
       parent_explanation_command: {
         Args: {

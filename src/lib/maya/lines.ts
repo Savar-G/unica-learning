@@ -34,7 +34,7 @@ import { simplestWords, teachSteps } from "./fractions";
  * step.order; check.not_yet never praises wrong work.
  * Version 11 (#605): a held question invites another question on the page, without an inability claim.
  * Version 13: answer-only clarification and checked regroup explanations from full practice.
- * Version 14 (D-304, Savar 2026-11-08: "We should just be straightforward"): a held question says plainly that Maya
+ * Version 14 (D-312, Savar 2026-11-08: "We should just be straightforward"): a held question says plainly that Maya
  * cannot teach it yet (held.cannot), then invites another question on the page.
  */
 export const LINES_VERSION = 14;
@@ -492,7 +492,7 @@ export const TEMPLATES = {
     "Oops, I said that wrong. Let me fix it.", "Sorry, I made a mistake there. Here it is again.", "Wait, I mixed that up. Let me say it again.",
     "Oops, my mistake. Let me try again.", "Sorry, that came out wrong. Here's the right way.",
   ],
-  // A held question (D-304, Savar 2026-11-08): say plainly that Maya cannot teach it yet, then offer another question
+  // A held question (D-312, Savar 2026-11-08): say plainly that Maya cannot teach it yet, then offer another question
   // on the page. Code adds the AI disclosure only before the first hello. No alternate question is invented or promised.
   "held.hello": ["Hi, I'm Maya, an AI."],
   "held.cannot": ["Sorry, I can't teach this question yet."],
@@ -997,7 +997,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
 }
 
 /**
- * Maya's whole turn on a question she cannot teach yet (#527, D-304): hello and that she is an AI when she has not said
+ * Maya's whole turn on a question she cannot teach yet (#527, D-312): hello and that she is an AI when she has not said
  * hello yet, then plainly that she cannot teach this question yet, then an invitation to pick another question on the
  * page. A hold found during the call, after the hello, says the last two only. Needs no package.
  */

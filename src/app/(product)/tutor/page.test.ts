@@ -65,3 +65,24 @@ it("returns to awaiting delivery if the receipt is retracted during the content 
   state.receipt.mockResolvedValueOnce(receipt).mockResolvedValue(null);
   expect(await html()).toContain("after we confirm delivery"); expect(state.sign).not.toHaveBeenCalled();
 });
+it.each([
+  ["never had a plan", { usage: null, note: null, planClosed: false }, "Chat and calls with Maya start soon.", "60 messages a day"],
+  ["ended", { usage: null, note: "Chat with Maya is closed because your family's plan has ended. Ask a grown-up.", planClosed: true }, "Chat with Maya is closed because your family's plan has ended. Ask a grown-up.", "Closed"],
+  ["payment failed", { usage: null, note: "Chat with Maya is paused because the last payment did not go through. Ask a grown-up.", planClosed: true }, "Chat with Maya is paused because the last payment did not go through. Ask a grown-up.", "Closed"],
+])("tells the child about chat for a family whose plan state is %s, on the delivered page and while awaiting delivery", async (_, chat, line, label) => {
+  state.chat.mockResolvedValue(chat);
+  for (const receipt of [undefined, null]) {
+    if (receipt === null) state.receipt.mockResolvedValue(null);
+    const body = (await html()).replace(/&#x27;/g, "'");
+    expect(body).toContain(line);
+    expect(body).toContain(`<dd>${label}</dd>`);
+    if (chat.planClosed) expect(body).not.toContain("start soon");
+    expect(body).not.toContain("Grade 3 and up");
+  }
+});
+it("an open plan shows the chat, with no closed line and no start-soon line", async () => {
+  const body = await html();
+  expect(body).toContain("<dd>60 left today</dd>");
+  expect(body).not.toMatch(/Chat with Maya is (closed|paused)/);
+  expect(body).not.toContain("start soon");
+});

@@ -60,6 +60,8 @@ type DeskProps = {
   /** Why chat is off until a parent agrees to the notice (#529), in place of "start soon". */
   noticeLine?: string | null;
   chatNote?: string | null;
+  /** The family's plan stopped: chatNote is the closed-plan line, and the header says chat is closed. */
+  chatPlanClosed?: boolean;
 } & (
   | { problem: string; books?: undefined }
   | {
@@ -158,7 +160,7 @@ export function Desk(props: DeskProps) {
           <Avatar size={48} />
           <div className="desk-who"><h1>Maya</h1>{where && <p>{where}</p>}</div>
           <dl className="desk-limits" aria-label="Help from Maya">
-            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null)}</dd></div>
+            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null, props.chatPlanClosed === true)}</dd></div>
           </dl>
         </header>
 
