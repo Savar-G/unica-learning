@@ -34,6 +34,7 @@ import { titleProblem } from "@/lib/workbook-titles";
 import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
 import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
+import { curriculumFor } from "@/lib/workbook-curriculum";
 
 /** Teaching data does not select a print layout or change a printed method. */
 function printedPage(page: DraftPage): DraftPage {
@@ -1469,14 +1470,22 @@ const missingHtml = (b: Block) => (b.missing ?? []).map((m) =>
 
 const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i></i><i class="o"></i><i></i><i class="g"></i><i></i><i></i></div>`;
 
+/**
+ * The level's plain name from the curriculum data ("Big numbers and multiplication facts" for U16), printed on the cover
+ * after "Level U16" (Savar, 2026-11-09). A cover stores no curriculum key: BC is the only curriculum, so a stored book
+ * gets the name at its next layout redraw.
+ */
+export const coverLevelName = (level: number): string | null => curriculumFor("bc")?.level(`U${level}`)?.title ?? null;
+
 function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "cover" }>, book: WorkbookDraft): string {
   const name = coverName(c.child);
+  const levelName = coverLevelName(c.level);
   const label = c.madeFrom === "assessment" ? `Made from ${name}'s assessment` : `Made from ${name}'s last workbook`;
   const plan = book.pages.find(p => p.content?.kind === "how-plan")?.content;
   const topics = plan?.kind === "how-plan" ? [...new Set(plan.rows.map(row => row.topic))].slice(0, 3) : [];
   const path = topics.length ? `<section class="card cover-plan"><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}><i></i><span>${escape(topic)}</span></li>`).join("")}</ul></section>` : "";
   return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
-    + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(name)} · Level U${c.level}</div>`
+    + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(name)} · Level U${c.level}${levelName ? ` · ${escape(levelName)}` : ""}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
     + `<div class="card made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence.replaceAll(c.child, name))}</p></div>${path}`
     + `</div>${footer(page, parts, c.id)}</div>`;
