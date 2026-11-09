@@ -30,6 +30,8 @@ export const DELIVERY_WORDS: Record<DeliveryState, string> = {
 /**
  * The report email (public.reports, src/lib/report-row-ledger.ts). emailed_at is the claim time, not the send time:
  * only the email id proves the email went (bug B13). Refused clears emailed_at; unknown keeps it and sets the error.
+ * A claim does not clear an old error, so a run that claims a refused email again reads as unknown until its answer
+ * comes (at most a few minutes): the row cannot tell that run from an unknown send.
  */
 export function reportEmailState(r: { emailed_at: string | null; email_id: string | null; email_error: string | null }): DeliveryState {
   if (r.email_id) return "sent";
@@ -48,7 +50,8 @@ export function reportAlertState(r: { alerted_at: string | null; alert_error: st
 
 /**
  * A row of public.email_log (the reminders, the weekly Maya email and the monthly summary): unknown is a claim that
- * kept its error, and failed is a refusal. A row with no status (an unsubscribe) is no email.
+ * kept its error, and failed is a refusal. A row with no status (an unsubscribe) is no email. A row a stopped run left
+ * claimed with no error reads as claimed: the log keeps no claim time to tell it from a send in progress.
  */
 export function logDeliveryState(status: LogStatus | null, error: string | null): DeliveryState {
   const state: Record<LogStatus, DeliveryState> = { claimed: error ? "unknown" : "claimed", sent: "sent", failed: "refused" };

@@ -4,6 +4,7 @@ import { isUuid } from "@/lib/assessment-store";
 import { dashboardRows, getParent, requireAdmin, testAccountState } from "@/lib/admin-store";
 import { ADMIN_PATH, when } from "@/lib/admin-view";
 import { STAGE_ACTION, at, buildFamilies, nextReminderText, paymentText, since } from "@/lib/admin-dashboard";
+import { DELIVERY_WORDS } from "@/lib/delivery-state";
 import { AdminFrame } from "@/components/admin";
 import { StageChip } from "@/components/admin-dashboard-parts";
 import { FamilyRecords, RecordFacts } from "@/components/admin-records";
@@ -34,7 +35,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
       ["Stage", f ? <span key="stage"><StageChip stage={f.stage} /> <span className="adm-sub">{since(f.stageAt, now)}, since {at(f.stageAt)}</span></span> : "-"],
       ["Next", f ? STAGE_ACTION[f.stage] : "-"],
       ["Payment", f ? paymentText(f) : "-"],
-      ["Last email", f?.lastEmail ? `${f.lastEmail.subject} (${f.lastEmail.status}, ${at(f.lastEmail.at)})` : "None"],
+      ["Last email", f?.lastEmail ? `${f.lastEmail.subject} (${DELIVERY_WORDS[f.lastEmail.state]}, ${at(f.lastEmail.at)})` : "None"],
       ["Reminders", f?.unsubscribed ? "Off: the parent unsubscribed" : "On"],
       ["Next email", f?.nextReminders.length ? f.nextReminders.map((r) => nextReminderText(r, now)).join("; ") : "None planned"],
       ["Source", Object.entries(p.source).map(([k, v]) => `${k}: ${v}`).join(", ") || "-"], ["Parent id", p.id],

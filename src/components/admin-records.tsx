@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { CardSetupRow, ChildRow, EmailRow, ParentDetail, ParentRow, WaitlistRow } from "@/lib/admin-store";
 import { EMAIL_LABEL } from "@/lib/admin-dashboard";
+import { DELIVERY_WORDS, logDeliveryState } from "@/lib/delivery-state";
 import { stripeCustomerUrl } from "@/lib/stripe";
 import { adminParentPath, adminReportPath, adminTestPath, adminWorkbookPath, when, type AnswerLine } from "@/lib/admin-view";
 import { DELIVERY_RECEIPT_TEXT } from "@/lib/plan-start-errors";
@@ -22,11 +23,9 @@ export function ChildrenTable({ rows }: { rows: ChildRow[] }) {
   </Table>;
 }
 
-const EMAIL_STATUS: Record<string, string> = { sent: "Sent", failed: "Failed", claimed: "Sending" };
-
 export function EmailTable({ emails }: { emails: EmailRow[] }) {
   return <Table label="Emails" head={["Created (Pacific)", "Parent", "Child", "Email", "Status", "Attempts", "Sent (Pacific)", "Test", "Error"]} empty="No reminder emails or unsubscribes.">
-    {emails.map((e) => <tr key={e.id}><td className="adm-nowrap">{when(e.created_at)}</td><td><Link href={adminParentPath(e.parent_id)}>{e.parent?.name ?? e.parent_id}</Link></td><td>{e.child?.first_name ?? "-"}</td><td>{EMAIL_LABEL[e.kind]}</td><td>{e.status ? (EMAIL_STATUS[e.status] ?? e.status) : "Reminders off"}</td><td>{e.attempts}</td><td className="adm-nowrap">{when(e.sent_at)}</td><td>{e.assessment_id ? <Link href={adminTestPath(e.assessment_id)}>Test</Link> : "-"}</td><td>{e.error ?? "-"}</td></tr>)}
+    {emails.map((e) => <tr key={e.id}><td className="adm-nowrap">{when(e.created_at)}</td><td><Link href={adminParentPath(e.parent_id)}>{e.parent?.name ?? e.parent_id}</Link></td><td>{e.child?.first_name ?? "-"}</td><td>{EMAIL_LABEL[e.kind]}</td><td>{e.status ? DELIVERY_WORDS[logDeliveryState(e.status, e.error)] : "Reminders off"}</td><td>{e.attempts}</td><td className="adm-nowrap">{when(e.sent_at)}</td><td>{e.assessment_id ? <Link href={adminTestPath(e.assessment_id)}>Test</Link> : "-"}</td><td>{e.error ?? "-"}</td></tr>)}
   </Table>;
 }
 
