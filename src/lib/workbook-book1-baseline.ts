@@ -21,7 +21,7 @@ import { isUuid } from "./workbook-content";
 import { curriculumFor, curriculumVersion } from "./workbook-curriculum";
 import type { CurriculumSkill, CurriculumStep } from "./workbook-curriculum/types";
 import type { RunFrame, RunPlanningCapture } from "./workbook-job";
-import { planNextWorkbook } from "./workbook-placement";
+import { planNextWorkbook, prepareNextWorkbookInput } from "./workbook-placement";
 import type { PlanInput, StepRef } from "./workbook-plan";
 import { isPrintedRevision, isSha256 } from "./workbook-print-contract";
 import { canonical, sourceHash } from "./workbook-progress-hash";
@@ -256,7 +256,7 @@ export type Book2PlanningResult = { ok: true; input: PlanInput } | { ok: false; 
  * The next book's planning input, from the frozen Book 1 placement facts and the bound book, through the one public
  * planner (planNextWorkbook). The baseline's own PlanInput is never changed. No spaced review is added here (#473).
  */
-export function book2Planning(b: Book1Baseline): Book2PlanningResult {
+export function book2Planning(b: Book1Baseline, options: { prepareOnly?: boolean } = {}): Book2PlanningResult {
   try {
     const placement = structuredClone(b.planning.placement);
     const curriculum = curriculumFor(placement.curriculum.key);
@@ -268,9 +268,16 @@ export function book2Planning(b: Book1Baseline): Book2PlanningResult {
     // The frozen Book 1 profile, read by today's reader. Never the child's current profile.
     const profile = frozenProfile === null ? null : storedChildProfile(frozenProfile);
     if (frozenProfile !== null && !profile) return { ok: false, reason: "profile-unreadable" };
-    const planned = planNextWorkbook({ ...facts, profile, curriculum, workbooks: [...workbooks, { number, levels: [...b.binding.levels] }], number: number + 1 },
-      input => { captured.push(input); });
-    if (!planned.ok || captured.length !== 1) return { ok: false, reason: "next-planner-refused" };
+    const placementInput = { ...facts, profile, curriculum, workbooks: [...workbooks, { number, levels: [...b.binding.levels] }], number: number + 1 };
+    if (options.prepareOnly) {
+      const prepared = prepareNextWorkbookInput(placementInput);
+      if (!prepared.ok) return { ok: false, reason: "next-planner-refused" };
+      captured.push(prepared.input);
+    } else {
+      const planned = planNextWorkbook(placementInput, input => { captured.push(input); });
+      if (!planned.ok) return { ok: false, reason: "next-planner-refused" };
+    }
+    if (captured.length !== 1) return { ok: false, reason: "next-planner-refused" };
     const input = stored(captured[0]);
     if (input.workbook.number !== b.number + 1 || Object.hasOwn(input, "progress") || Object.hasOwn(input, "previewDecisions")) return { ok: false, reason: "invalid-planning" };
     return { ok: true, input };

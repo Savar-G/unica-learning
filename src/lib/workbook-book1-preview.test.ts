@@ -79,6 +79,7 @@ describe("Book 1 baseline capture", () => {
   it("computes book 2 from the frozen Book 1 inputs without changing the original PlanInput", () => {
     const before = structuredClone(baseline.planning.input);
     const next = book2Planning(baseline);
+    expect(book2Planning(baseline, { prepareOnly: true })).toEqual(next);
     expect(next.ok).toBe(true);
     if (!next.ok) return;
     expect(next.input.workbook).toEqual({ number: 2, inLevel: 1 });

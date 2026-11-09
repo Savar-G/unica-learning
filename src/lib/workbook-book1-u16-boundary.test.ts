@@ -15,6 +15,9 @@ describe("synthetic U16 Book 1 evidence boundary", () => {
     expect(baseline.initialIssues).toContainEqual({ kind: "initial-issue", selection });
     const items = printedItems(book).filter(e => e.mastery.eligible && e.day <= 7 && e.teaching?.itemStep?.skill === selection.skill && e.teaching.itemStep.step === selection.step);
     expect(items.length).toBeGreaterThan(0);
+    const scheduled = job.frame.plan.days.flatMap(d => d.pages.flatMap(p => p.parts.flatMap(part => part.reviews ?? [])));
+    expect(scheduled.filter(r => r.skill === selection.skill && r.step === selection.step)).toHaveLength(0);
+    expect(job.frame.plan.reviewsAfter.filter(r => r.skill === selection.skill && r.step === selection.step)).toHaveLength(0);
     items.forEach(item => mark(book, item, "right"));
     const sources = frozenOf(book, record);
     expect(JSON.stringify(sources)).not.toContain("Leah");
