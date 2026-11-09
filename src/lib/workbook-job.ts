@@ -204,6 +204,8 @@ export interface WorkbookRunStore {
   solves(runId: string): Promise<Map<string, SolveVerdict>>;
   /** The run's plan, as its first job call stored it (R379-8-2); null before. */
   frame(runId: string): Promise<RunFrame | null>;
+  /** Whether any page, counted attempt, call or solve check exists, including old solve checks without a call key. */
+  hasStoredWork(runId: string): Promise<boolean>;
   /** Stores the run's plan, with a heartbeat, only while `lease` holds the run (false: nothing stored); the first stays. */
   saveFrame(runId: string, lease: string, frame: RunFrame): Promise<boolean>;
   /** Stores a finished day page (the first stored wins), with a heartbeat. */
@@ -645,12 +647,13 @@ const generateInput = (run: WorkbookRun, frame: RunFrame, name: string): Generat
  * The run's plan (R379-8-2): the one its first job call stored; else (this is the first call) the child's inputs read
  * now, planned and stored under the lease (the first stored stays, and is the one used). Refused when a later call finds
  * what the plan was made from changed: the curriculum, the planned book, the models or the deployed code. A run with
- * pages or attempts but no stored plan was started before plans were stored: refused too (it cannot be resumed safely).
+ * stored work but no plan was started before plans were stored: refused (it cannot be resumed safely). A resumed run
+ * with no stored work can still make its first plan.
  */
 async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient; solver: Solver }, lease: string, name: string, inputs: ChildInputs): Promise<RunFrame> {
   let frame = await deps.runs.frame(run.id);
   if (!frame) {
-    if (run.resumes > 0 || (await deps.runs.pages(run.id)).length > 0 || (await deps.runs.attempts(run.id)).size > 0) {
+    if (await deps.runs.hasStoredWork(run.id)) {
       throw new Refusal("This run has no stored plan, so it cannot resume safely. Start a new run.");
     }
     const key = CURRICULUM_KEYS[inputs.province];

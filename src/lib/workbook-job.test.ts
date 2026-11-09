@@ -303,14 +303,16 @@ describe("the time limit", () => {
 });
 
 describe("stale runs", () => {
-  it("keeps one active run per child: busy while it works, taken up again once it has no progress for the stale time", async () => {
+  it("resumes a never claimed Mac run after a second start", async () => {
     const s = setup();
     const first = await started(s);
+    s.runs.runs.get(first)!.runner = "mac";
     expect(await startWorkbookRun(s.runs, CHILD, ADMIN)).toEqual({ status: "busy", runId: first });
-    s.tick(STALE_SECONDS + 1);
+    s.tick(121);
     expect(await startWorkbookRun(s.runs, CHILD, ADMIN)).toEqual({ status: "stalled", runId: first });
-    expect(await runWorkbookJob(first, s.deps, { resume: true })).toBe("failed");
-    expect((await s.runs.run(first))!.error).toBe("This run has no stored plan, so it cannot resume safely. Start a new run.");
+    expect(await runWorkbookJob(first, { ...s.deps, runner: "mac" }, { resume: true })).toBe("done");
+    expect(await s.runs.run(first)).toMatchObject({ status: "done", resumes: 1 });
+    expect(await s.runs.frame(first)).not.toBeNull();
   });
 
   it("never lets a call whose run was taken up by another write over the newer call's work", async () => {
@@ -715,6 +717,24 @@ describe("a run's plan, made once and stored (R379-8-2), and its solve checks ke
     s.runs.frameStore.delete(id);
     expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
     expect((await s.runs.run(id))!.error).toBe("This run has no stored plan, so it cannot resume safely. Start a new run.");
+  });
+
+  it.each(["page", "attempt", "call", "solve"] as const)("refuses a run with only a stored %s and no plan", async (kept) => {
+    const s = setup();
+    const id = await stoppedAt(s, 2);
+    s.runs.frameStore.delete(id);
+    if (kept !== "page") s.runs.pageStore.delete(id);
+    if (kept !== "attempt") s.runs.attemptStore.delete(id);
+    if (kept !== "call") s.runs.callStore.delete(id);
+    if (kept !== "solve") s.runs.solveStore.delete(id);
+    if (kept === "solve") {
+      const solves = s.runs.solveStore.get(id)!;
+      expect(solves.length).toBeGreaterThan(0);
+      for (const solve of solves) delete solve.callKey;
+    }
+    expect(await s.runs.hasStoredWork(id)).toBe(true);
+    expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
+    expect((await s.runs.run(id))!.error).toContain("no stored plan");
   });
 
   it("fails closed when a stored page or call does not fit the stored plan's pages and slots", async () => {

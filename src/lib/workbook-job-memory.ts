@@ -166,6 +166,10 @@ export function memoryRunStore(o: {
       const f = frames.get(id);
       return f ? json(f) : null;
     },
+    async hasStoredWork(id) {
+      return (pages.get(id)?.size ?? 0) > 0 || (attempts.get(id)?.size ?? 0) > 0 ||
+        (calls.get(id)?.size ?? 0) > 0 || (solves.get(id)?.length ?? 0) > 0;
+    },
     async saveFrame(id, lease, frame) {
       const r = holding(id, lease);
       if (!r) return false;

@@ -108,6 +108,15 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       const row = must(await admin.from("workbook_run_frames").select("frame").eq("run_id", id).maybeSingle(), "plan load");
       return row?.frame ?? null;
     },
+    async hasStoredWork(id) {
+      const results = await Promise.all([
+        admin.from("workbook_run_pages").select("run_id").eq("run_id", id).limit(1),
+        admin.from("workbook_run_attempts").select("run_id").eq("run_id", id).limit(1),
+        admin.from("workbook_run_calls").select("run_id").eq("run_id", id).limit(1),
+        admin.from("workbook_run_solves").select("run_id").eq("run_id", id).limit(1),
+      ]);
+      return results.map((result) => must(result, "stored work load") ?? []).some((rows) => rows.length > 0);
+    },
     async saveFrame(id, lease, frame) {
       return must(await admin.rpc("save_workbook_run_frame", { p_run: id, p_lease: lease, p_frame: toJson(frame) }), "plan save") === true;
     },
