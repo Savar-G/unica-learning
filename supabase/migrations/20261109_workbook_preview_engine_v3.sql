@@ -1,7 +1,8 @@
 -- Keeps the existing family and child deletion fences, live Admin authorization, ownership, delivered-book and
 -- printed-revision checks, request identity and hash checks, cutoff and retry checks, marking revision fence,
 -- frozen book and delivery checks, and Book 1 baseline and correction ledger checks.
--- Version 3 adds a multi-skill outcome. Versions 1 and 2 retain their existing validation.
+-- Draft only: version 3 saves are refused until the multi-skill implementation is reviewed.
+-- Versions 1 and 2 retain their existing validation.
 alter table public.workbook_plan_previews drop constraint workbook_plan_previews_engine_check;
 alter table public.workbook_plan_previews add constraint workbook_plan_previews_engine_check check (engine in (
   'workbook-preview-sources/1;progress/1;history/1;plan-preview/1',
@@ -41,6 +42,7 @@ begin
   doc:=p_payload::jsonb; req:=doc->'request';
   v3:=doc->>'version'='3';
   v2:=doc->>'version'='2' or v3;
+  if v3 then return jsonb_build_object('status','unavailable'); end if;
   if coalesce((case when v2 then doc->>'engine' is distinct from (case when v3 then 'workbook-preview-sources/3;progress/1;history/1;plan-preview/1;book1-baseline/1' else 'workbook-preview-sources/2;progress/1;history/1;plan-preview/1;book1-baseline/1' end)
         or (v3 and (jsonb_typeof(doc->'outcome'->'decisions') is distinct from 'array' or jsonb_typeof(doc->'outcome'->'consumedVersions') is distinct from 'array'))
         or doc->'frozen'->>'version' is distinct from '2' or coalesce(jsonb_typeof(doc->'frozen'->'book1'),'missing') not in ('object','null')
