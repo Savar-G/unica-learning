@@ -10,6 +10,8 @@ export async function POST(request: Request) {
   const given = Buffer.from(request.headers.get("authorization") ?? "");
   const expected = Buffer.from(`Bearer ${secret}`);
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return new Response("Unauthorized", { status: 401 });
+  // ?dry=1 writes nothing, as /api/reminders?dry=1 did for this sweep before it moved here.
+  if (new URL(request.url).searchParams.get("dry") === "1") return Response.json({ ok: true, dry: true });
   const startedAt = Date.now();
   const signal = AbortSignal.timeout(55_000);
   const db = adminClient(signal);

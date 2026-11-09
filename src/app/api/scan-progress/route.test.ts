@@ -26,4 +26,14 @@ describe("scan progress cron", () => {
     expect(run).toHaveBeenCalledOnce();
     expect(send).not.toHaveBeenCalled();
   });
+  it("writes nothing on a dry run", async () => {
+    vi.stubEnv("CRON_SECRET", "secret");
+    createSweep.mockReturnValue({ run });
+    const response = await POST(new Request("https://example.test/api/scan-progress?dry=1", { method: "POST", headers: { authorization: "Bearer secret" } }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, dry: true });
+    expect(admin).not.toHaveBeenCalled();
+    expect(createSweep).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
 });
