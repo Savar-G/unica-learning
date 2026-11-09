@@ -1318,7 +1318,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     roles = board;
   }
   const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult;
-  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, spoken, forcedOpening !== null)) {
+  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, spoken)) {
     return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
   }
   const bad = pb.board ? boardProblem(s, pb.board, role, spoken, done) : null;
@@ -2651,7 +2651,7 @@ function end(s: Session, cause: Reason, effects: Effect[], cancel: boolean) {
 }
 
 /** Check filled line values, free words, and visible board values before releasing the answer. */
-function revealsAnswer(s: Session, p: Proposal, spoken: Spoken, forcedOpening: boolean): boolean {
+function revealsAnswer(s: Session, p: Proposal, spoken: Spoken): boolean {
   const pkg = s.package!;
   const answer = pkg.answer.value;
   // An equal form the child said (14/16 for 7/8, #407) gives nothing away when Maya says it back; the answer's own
@@ -2665,7 +2665,7 @@ function revealsAnswer(s: Session, p: Proposal, spoken: Spoken, forcedOpening: b
   const withoutExpression = (text: string) => text.split(expression).join("");
   const filled = spoken.chosen.flatMap((offer) => Object.values(offer.filled ?? {}).map(String));
   const codeLines = new Set(spoken.chosen.flatMap((offer) => offer.texts));
-  const other = forcedOpening ? [] : spoken.segments.filter((segment) => segment.kind === "warm" || segment.kind === "talk" || !codeLines.has(segment.text)).map((segment) => segment.text);
+  const other = spoken.segments.filter((segment) => segment.kind === "warm" || segment.kind === "talk" || !codeLines.has(segment.text)).map((segment) => segment.text);
   const board = boardVisible(p.board ?? []).map(([, value]) => value);
   if ([...filled, ...other, ...board].some((text) => valuesIn(withoutExpression(text), readOptionsFor(pkg)).some(reveals))) return true;
   const highest = answer.type === "number" ? PLACE_NAMES[String(Math.trunc(Math.abs(answer.value))).length - 1] : undefined;
@@ -2899,7 +2899,13 @@ function heardIn(s: Session): [AnswerValue[], [AnswerValue, AnswerValue][]] {
  */
 function offersFor(s: Session, act: Act, view: View): LineOffer[] {
   const offers = rawOffersFor(s, act, view);
-  const available = (s.noBoard ? offers.map(spokenOffer) : offers).filter((o) => o.texts.length > 0);
+  const available = (s.noBoard ? offers.map(spokenOffer) : offers).filter((o) => o.texts.length > 0).filter((o) => {
+    if (o.line !== "step.show" || !s.package) return true;
+    const shownStep = s.package.steps.find((step) => step.id === o.slots.step);
+    if (shownStep && stepAnswers(shownStep).some((value) => equivalent(value, s.package!.answer.value))) return false;
+    return ![...o.texts, ...(o.board ? [o.board] : [])].some((text) =>
+      valuesIn(text, readOptionsFor(s.package)).some((value) => equivalent(value, s.package!.answer.value)));
+  });
   // The shorter setting needs to exclude the 26-word subtraction variants. Ordinary turns still receive
   // the final assembly check; avoid recounting every available wording at the 45-word setting.
   if (turnWordLimit(s) === 45) return available;

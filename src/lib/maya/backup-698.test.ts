@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { createSession, step, fallbacks, valuesIn, PROPOSAL_SCHEMA, type SessionEvent, type Proposal } from '@/lib/maya';
+import { createSession, step, fallbacks, valuesIn, lineOffers, drawOffers, PROPOSAL_SCHEMA, type SessionEvent, type Proposal } from '@/lib/maya';
 import { FIXTURES } from '@/lib/maya-gate/fixtures';
 const n=(value:number)=>({type:'number',value});
 
@@ -102,6 +102,26 @@ it('requires both honest close lines in the closing minute after work', () => {
  expect(r.prop({act:'close',parts:[{line:'close.stuck'},{line:'close.together'}]}).refusal).toBeNull();
 });
 
+it.each([
+ ['add',3,0,1,0], ['subtract',2,1,1,1], ['multiply',6,1,2,1],
+ ['add',0,1,0,0], ['multiply',9,4,2,2], ['add',7,7,2,2],
+] as const)('does not offer a final-answer show for %s %i %i', async (kind,a,b,x,y) => {
+ const { workedSteps, checkQuestionPackage } = await import('@/lib/question-package');
+ const operation={kind,operands:[a,b] as [number,number]};
+ const easier={kind,operands:[x,y] as [number,number]};
+ const calculate=(k:string,u:number,v:number)=> k==='add'?u+v:k==='subtract'?u-v:u*v;
+ const answer=calculate(kind,a,b); const easyAnswer=calculate(kind,x,y);
+ const pkg={...FIXTURES.A,text:`${a} ? ${b}`,operation,steps:workedSteps(operation),answer:{value:n(answer) as {type:'number';value:number},accepted:[],unit:null},wrongAnswers:[{value:n(answer+2) as {type:'number';value:number},cause:'O3',description:'Wrong result',step:null}],easierExample:{text:`${x} ? ${y}`,operation:easier,answer:n(easyAnswer) as {type:'number';value:number},steps:workedSteps(easier)}};
+ expect(checkQuestionPackage(pkg),JSON.stringify(checkQuestionPackage(pkg))).toMatchObject({ok:true});
+ const r=rig(pkg); const id=pkg.steps[0].id; r.child('Show me.');
+ expect(lineOffers(r.s).guide?.some(o=>o.line==='step.show' && o.slots.step===id) ?? false).toBe(false);
+ expect(drawOffers(r.s).guide?.some(o=>o.id==='line.step.show') ?? false).toBe(false);
+ for (const draw of [undefined,[{offer:'line.step.show'}]]) {
+   expect(r.prop({act:'guide',step:id,level:3,parts:[{line:'step.show',slots:{step:id}}],reading:{help:'show'},...(draw?{draw}:{})}).refusal).not.toBeNull();
+ }
+ const out=r.fb(); expect(out.act).not.toBe('DEAD');
+ expect(out.proposal?.parts.some(p=>'line' in p && p.line==='step.show')).toBe(false);
+});
 it('accepts the honest close for answer one in the closing minute', async () => {
  const { workedSteps } = await import('@/lib/question-package');
  const operation={kind:'subtract' as const,operands:[2,1] as [number,number]};
@@ -110,4 +130,10 @@ it('accepts the honest close for answer one in the closing minute', async () => 
  const r=rig(pkg,2); r.send({type:'tick',at:542000}); r.child('I am stuck.');
  const out=r.fb(); expect(out.act).toBe('close'); expect(out.proposal?.parts.map(p=>'line' in p && p.line)).toEqual(['close.stuck']);
  expect(r.s.outcome?.reason).not.toBe('technical_issue');
+});
+
+it('still offers the non-final ones show for 27 + 39', () => {
+ const r=rig(); r.child('Show me.');
+ expect(lineOffers(r.s).guide?.some(o=>o.line==='step.show' && o.slots.step==='ones')).toBe(true);
+ r.show('ones');
 });
