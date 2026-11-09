@@ -10,19 +10,21 @@ import { FamilyRecords, RecordFacts } from "@/components/admin-records";
 import { DeleteFamily } from "@/components/delete-family";
 import { TestAccount } from "@/components/test-account";
 import { ChatFamily } from "@/components/chat-family";
+import { PlanCancelRecovery } from "@/components/plan-cancel-recovery";
+import { openFamilyCancels } from "@/lib/plan-cancel-admin-server";
 import { chatFamilyState } from "@/lib/admin-maya-chat";
 
 export default async function ParentPage({ params }: PageProps<"/admin/parents/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
-  // the family's stage and payment, the same way the dashboard works them out (D-099). All three reads run at once,
+  // the family's stage and payment, the same way the dashboard works them out (D-099). The related reads run at once,
   // but the family decides first: an unknown family is a 404 even when another read failed.
   if (!isUuid(id)) notFound();
-  const others = Promise.all([dashboardRows(admin), testAccountState(admin, id), chatFamilyState(admin, id)]);
+  const others = Promise.all([dashboardRows(admin), testAccountState(admin, id), chatFamilyState(admin, id), openFamilyCancels(admin, id)]);
   others.catch(() => {});
   const family = await getParent(admin, id);
   if (!family) notFound();
-  const [rows, test, chat] = await others;
+  const [rows, test, chat, cancels] = await others;
   const p = family.parent;
   const f = buildFamilies(rows).find((x) => x.id === p.id);
   const now = new Date().toISOString();
@@ -41,6 +43,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
     <TestAccount parentId={p.id} marked={test.marked} admin={test.admin} />
     <ChatFamily parentId={p.id} listed={chat.listed} rehearsal={chat.rehearsal} test={chat.test} />
     <FamilyRecords family={family} />
+    <PlanCancelRecovery parentId={p.id} operations={cancels} />
     <DeleteFamily parentId={p.id} email={p.email} />
   </AdminFrame>;
 }

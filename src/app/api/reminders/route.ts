@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
+import { sweepOpenCancelsNow } from "@/lib/plan-cancel-recovery-server";
 import { dueCardCount, duePlanReadCount, sweepCardsNow } from "@/lib/card-sweep-server";
 import { emailConfigProblem, pacedTransport } from "@/lib/email-delivery";
 import { resendTransport } from "@/lib/email-resend";
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
   const origin = linkOrigin(request);
   let sweep: Promise<unknown> | null = null;
   let cards: Promise<unknown> | null = null;
+  let cancels: Promise<unknown> | null = null;
   try {
     if (new URL(request.url).searchParams.get("dry") === "1") {
       const maya = dueWeeklyEmails(await mayaWeeklyStore(admin).load(now), now).length;
@@ -93,6 +95,7 @@ export async function POST(request: Request) {
       },
     );
     cards = sweepCardsNow({ origin, startedAt: now, transport });
+    cancels = sweepOpenCancelsNow({ origin, startedAt: now, transport });
     const result = await runReminders(store, now, {
       newToken,
       message: (reminder, token, state) => reminderMessage(reminder, token, state, origin),
@@ -125,13 +128,14 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
-    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards,
+    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards, cancels: await cancels,
       ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
     // The sweep finishes before the answer, so the function is not stopped in the middle of a call's end.
     await sweep;
     await cards;
+    await cancels;
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }

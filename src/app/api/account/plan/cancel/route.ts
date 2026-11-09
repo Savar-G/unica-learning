@@ -3,6 +3,9 @@ import { isUuid } from "@/lib/assessment-store";
 import { cancelFamilyPlan, planCancelledAlert } from "@/lib/parent-plan-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 
+// Keep the request shorter than the ten-minute recovery age.
+export const maxDuration = 60;
+
 const fail = (error: string, status: number) => Response.json({ ok: false, error }, { status });
 
 // The parent's "Cancel plan" button. JSON and the site's origin only: a form on another site cannot send it with the
