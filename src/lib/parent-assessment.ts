@@ -1,3 +1,5 @@
+import { PLANS } from "@/lib/site";
+import { familyPlanWords as w, familyWindowWords, type FamilyPlanOffer } from "@/lib/family-plan-words";
 import type { StartState } from "@/lib/assessment";
 import type { ChildStage } from "@/lib/child-stage";
 import type { ChildView } from "@/lib/parent-view";
@@ -57,12 +59,12 @@ export interface FreeMonthWords {
 
 // "Nothing is charged today." and "your first workbook arrives at your home" are the words of the Stripe page
 // (cardTerms in src/lib/stripe.ts); a test holds them together.
-export const freeMonthWords = (name: string): FreeMonthWords => ({
-  title: `Start ${name}'s plan`,
-  button: "Start plan",
+export const freeMonthWords = (name: string, offer: FamilyPlanOffer | null = { monthly: PLANS.one.price, window: "new" }): FreeMonthWords => ({
+  title: w.reportHeading(name),
+  button: w.reportButton,
   note: "You add your card and shipping address on a secure payment page. Nothing is charged today.",
-  bar: "Nothing is charged today. Your family has one free month of 30 days from the first child's plan start, after workbook delivery. A child who starts during that window is free until it ends. A child who starts after that window is charged when their plan starts.",
-  notSaved: "Your card is not saved yet, and nothing was charged. Start the plan when you are ready.",
+  bar: `Nothing is charged today. ${familyWindowWords(offer)}`,
+  notSaved: `Your card is not saved yet, and nothing was charged. ${w.whenReady}`,
 });
 
 export interface Step {
@@ -71,10 +73,10 @@ export interface Step {
 }
 
 /** What happens after the button, beside the report. */
-export const whatHappensNext = (name: string): Step[] => [
+export const whatHappensNext = (name: string, offer: FamilyPlanOffer | null = { monthly: PLANS.one.price, window: "new" }): Step[] => [
   { title: "We make Workbook 1", detail: `From this report, for ${name} only.` },
   { title: "We mail it to your home", detail: "Delivery within Canada is included." },
-  { title: "The plan starts when it arrives", detail: "Your family has one free month of 30 days from the first child's plan start, after workbook delivery." },
+  { title: w.arrivalHeading, detail: familyWindowWords(offer) },
 ];
 
 /** The words of the page before the report. The button itself is StartTest's or SendLink's, by the start state. */

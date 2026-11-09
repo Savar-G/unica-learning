@@ -7,7 +7,7 @@ if (process.env.PD559_SOCKET !== '/tmp/pd559-postgres' || process.env.PD559_DATA
 const connect = async () => { const c = new Client({ host: process.env.PD559_SOCKET, port: 55559, database: process.env.PD559_DATABASE, user: process.env.USER }); await c.connect(); await c.query("set statement_timeout='5s'"); return c; };
 (async () => {
   const db = await connect();
-  if (!process.argv.includes('--baseline') && !process.argv.includes('--installed')) for (const name of ['20261109032547_family_plan_pricing.sql','20261109040516_family_plan_legacy_shape.sql','20261109041204_family_plan_history_admission.sql','20261109042134_family_plan_legacy_window.sql']) await db.query(readFileSync('supabase/migrations/'+name, 'utf8'));
+  if (!process.argv.includes('--baseline') && !process.argv.includes('--installed')) for (const name of ['20261109032547_family_plan_pricing.sql','20261109040516_family_plan_legacy_shape.sql','20261109041204_family_plan_history_admission.sql','20261109042134_family_plan_legacy_window.sql','20261109054254_family_plan_legacy_initial_stop.sql','20261109054614_family_plan_legacy_settlement.sql','20261109054621_family_plan_preserve_deleted_history.sql','20261109055004_family_plan_offer.sql']) await db.query(readFileSync('supabase/migrations/'+name, 'utf8'));
   const admission = process.argv.includes('--baseline') ? 'admit_plan_start_terms' : 'admit_family_plan_start';
   const rpc = async (name, args, c = db) => (await c.query(`select public.${name}(${args.map((_, i) => '$' + (i + 1)).join(',')}) value`, args)).rows[0].value;
   const admit = (card, generation = 1, purpose = 'initial', price = 7999, c = db) => rpc(admission, [card, generation, randomUUID(), 'pm', purpose, price, ''], c);

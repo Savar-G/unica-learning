@@ -36,6 +36,7 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
   return {
     id: "r-1",
     childName: name,
+    planOffer: { monthly: 79.99, window: "new" },
     province,
     completedAt: "2026-10-10T19:30:00Z",
     questions: 36,
@@ -256,10 +257,10 @@ describe("the date and the closing line", () => {
 describe("the next step", () => {
   it("BC families add a card, and see the math price and when the charge starts", () => {
     const step = nextStep(view(knowsUpTo(4)));
-    expect(step).toMatchObject({ kind: "card", title: "Start Maya's books" });
-    expect(step.text).toContain("Math is CAD 79.99 a month");
+    expect(step).toMatchObject({ kind: "card", title: "Start Maya's plan" });
+    expect(step.text).toContain("CAD 79.99 a month.");
     expect(step.text).not.toContain("reading");
-    expect(step.text).toContain("Your family has one free month of 30 days from the first child's plan start, after workbook delivery.");
+    expect(step.text).toContain("Your family gets one free month. It starts when your first workbook arrives.");
   });
   it("offers the first month free in place of the money-back guarantee (D-139)", () => {
     expect(nextStep(view(knowsUpTo(4))).text).not.toMatch(/money-back/);
@@ -272,7 +273,7 @@ describe("the next step", () => {
   });
   it("BC families get the one plan, math at CAD 79.99, the price of the site's plan", () => {
     expect(nextStep(view(knowsUpTo(4))).plans).toEqual([
-      { plan: "one", subject: "Math", price: 79.99, label: "Math, CAD 79.99 a month" },
+      { plan: "one", subject: "Math", price: 79.99, label: "CAD 79.99 a month." },
     ]);
   });
   it("waitlist families get no plans to choose", () => {

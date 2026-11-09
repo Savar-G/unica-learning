@@ -4,7 +4,7 @@ The dashboard stays off for real families. The existing test and admin access ru
 
 ## Family admission (D-306)
 
-The first child whose plan starts pays CAD 79.99 each month. Every other child pays CAD 59.99 each month. There is no child limit. The first owner stays the first owner after cancellation or child deletion. A sibling price never rises. Admission takes the lower of that rate, the current plan price, the saved agreed price, and the child's earlier admitted price.
+The first child whose plan starts pays CAD 79.99 each month. Every other child pays CAD 59.99 each month. Pricing has no child maximum. The account cap remains 8 children, as decided by the chief of staff. The first owner stays the first owner after cancellation or child deletion. A sibling price never rises. Admission takes the lower of that rate, the current plan price, the saved agreed price, and the child's earlier admitted price.
 
 The family has one shared 30-day window from its first initial plan admission. A sibling admitted within it receives only its remaining time. Stripe gets the absolute `trial_end`. A sibling admitted after it pays immediately, with `error_if_incomplete` and no trial fields. A Restart always pays immediately, including within the original window. For example, Kai starts November 10 and a sibling starts November 20. Both trials end December 10. Kai then pays CAD 79.99 and the sibling pays CAD 59.99.
 
@@ -18,13 +18,30 @@ Pause still moves only the selected child's dates. It never changes `family_plan
 
 The current CAD 79.99 and CAD 59.99 monthly prices are created on first use on `unica_math`. The server finds them with `unica_math_cad_monthly_7999` and `unica_math_cad_monthly_5999`. It verifies the product, amount, currency and licensed monthly recurrence. An older lower agreed offer uses its existing inline amount. Price lookup or create failure leaves the admission reserved.
 
-The old admission entry point retains main's original one-child price, timestamp and response fields. Its sibling stop is deliberate and fails closed. PR B uses the separate `admit_family_plan_start` and `family_plan_start_terms` names. Only that opt-in path imports legacy history. Main's one-child initial start and Restart passed a six-case rolled-back live comparison against the original functions. See `docs/family-plan-pricing-live-compatibility.md` for the replaced-function list, exact results and the existing pending/sent email state.
+The old admission entry point retains main's original one-child price, timestamp and response fields. Its stop applies only to a new sibling initial start, after the original validation and replay checks. PR B uses the separate `admit_family_plan_start` and `family_plan_start_terms` names. Only that opt-in path imports legacy history. Main's one-child initial start, Restart and first-child Restart in a two-child family passed a nine-case rolled-back live comparison against the original functions. See `docs/family-plan-pricing-live-compatibility.md` for the replaced-function list, exact results and the existing pending/sent email state.
 
-The checkout, report and card-saved welcome describe the one shared window. The report action says Start plan. These new customer words await Savar in the PR body. The start email reads the frozen amount and first charge date from the start record. Its immediate-payment form does not claim free time or a seven-day reminder. The plan page and Account tab continue to use the child's provider or stored plan amount and date. The admin card shows the current stored plan amount and its start's first charge date. A trial pause uses the child's updated charge date.
+The checkout, report and card-saved welcome describe the one shared window. The report reads `family_plan_offer` for the owned child before a card exists. It passes the real amount and current window to both the choice and saved-card views. An unreadable or uncertain offer shows no price choice. The report action says Start plan. Savar approved all 22 texts on 2026-11-09: "Approve with ur 2 changes". D-312 records the two changes. The start email reads the frozen amount and first charge date from the start record. Its immediate-payment form does not claim free time or a seven-day reminder. The plan page and Account tab continue to use the child's provider or stored plan amount and date. The admin card shows the current stored plan amount and its start's first charge date. A trial pause uses the child's updated charge date.
 
 Migrations `20261109032547_family_plan_pricing.sql`, `20261109040516_family_plan_legacy_shape.sql`, `20261109041204_family_plan_history_admission.sql` and `20261109042134_family_plan_legacy_window.sql` were applied to `cdjobwsyzndtltzfpyqa`. The migration and a synthetic admission probe passed inside a rolled-back transaction first. The same synthetic probe passed after application and was rolled back. Official database types were generated with `npm run db:types`. No Stripe request was made by that SQL probe.
 
 Local regression commands use a disposable socket database only. Initialize the existing `plan_controls.cjs` fixture on socket `/tmp/pd559-postgres`, port 55559, database `pd559_family_pricing`. Add the fixture's missing `card_setups.price` and `child_plan_states` columns before applying this migration. Then run `PD559_SOCKET=/tmp/pd559-postgres PD559_DATABASE=pd559_family_pricing node supabase/tests/family_plan_pricing.cjs`. Use `--installed` on later runs. The baseline control uses `--baseline` before the migration. It fails because all three children receive 7999 cents.
+
+## Review round 1
+
+Four additional migrations were applied with Supabase MCP:
+
+- `20261109054254_family_plan_legacy_initial_stop`: restored main's first-child Restart before the other repairs. The extended comparison failed before this repair and passed all nine cases after it.
+- `20261109054614_family_plan_legacy_settlement`: settles only reservations matched by parent, child and start key. Confirmed starts confirm the window and price; refusals release them. A filtered backfill handles existing final starts. An update trigger handles later results. The PR B import repeats this reconciliation.
+- `20261109054621_family_plan_preserve_deleted_history`: a new before-delete child trigger imports the plan history before the child cascade removes card, start and provider rows. The existing public deletion functions keep their checks and results. Family deletion still removes the pricing records.
+- `20261109055004_family_plan_offer`: a new service-only read supplies the real price and shared-window state before a card exists. Main does not call it.
+
+Each migration was confirmed with `list_migrations` and a rolled-back live probe. The deletion test uses `check_child_deletion`, `claim_child_deletion` and `complete_child_deletion`. It verifies the original first owner and window after the card and start rows disappear. The next child receives 5999 cents without a trial. It also verifies family cascade removal.
+
+The settlement probe tests confirmed and refused starts both before and after reservation creation. The migration backfill passes separate confirmed and refused cases. A different-key control stays unconfirmed and unreleased.
+
+`supabase/tests/family_plan_public.mjs` calls the public `startPlan` against the disposable PostgreSQL admission functions and a simulated Stripe SDK transport. All three regressions failed before the SQL repairs and passed after them. They prove the immediate sibling amount and absence of trial fields after legacy child deletion, plus confirmed and refused reservation recovery. They make no Stripe request.
+
+`src/lib/family-plan-words.test.ts` pins all 22 texts exactly. Replacing the two approved changes with the old text fails the tests. A changed `ADDITIONAL_CHILD_PRICE` control proves that line 18 reads the constant. A 12-child `startPlan` case proves that pricing does not depend on the account cap.
 
 ## Supported states
 

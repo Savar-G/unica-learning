@@ -10,8 +10,8 @@ import { planPrice } from "@/lib/subscription-plan";
 vi.mock("server-only", () => ({}));
 const START = new Date("2026-11-10T18:00:00Z");
 const END = "2026-12-10T18:00:00.000Z";
-function fixture() {
-  const children: MemoryBillingChild[] = [1, 2, 3].map(n => ({ parentId: "family", childId: `child-${n}`, firstName: `Child ${n}`, card: { id: `card-${n}`, customer: `cus_${n}`, saved: true } }));
+function fixture(count = 3) {
+  const children: MemoryBillingChild[] = Array.from({ length: count }, (_, i) => i + 1).map(n => ({ parentId: "family", childId: `child-${n}`, firstName: `Child ${n}`, card: { id: `card-${n}`, customer: `cus_${n}`, saved: true } }));
   const billing = memoryBilling({ children });
   const writes: URLSearchParams[] = [], priceWrites: URLSearchParams[] = [];
   const plans: Record<string, Record<string, unknown>[]> = {};
@@ -51,8 +51,8 @@ function fixture() {
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(START); });
 afterEach(() => vi.useRealTimers());
 describe("family pricing through startPlan", () => {
-  it.each([2, 3])("starts %i children with one full price and one shared window", async count => {
-    const f = fixture();
+  it.each([2, 3, 12])("starts %i children with one full price and one shared window", async count => {
+    const f = fixture(count);
     for (let n = 1; n <= count; n++) expect(await f.start(n)).toMatchObject({ ok: true, firstChargeAt: END });
     expect(f.amounts()).toEqual([7999, ...Array(count - 1).fill(5999)]);
     expect(f.writes.map(b => b.get("trial_end"))).toEqual(Array(count).fill(String(Date.parse(END) / 1000)));

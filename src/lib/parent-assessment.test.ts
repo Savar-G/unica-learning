@@ -89,15 +89,15 @@ describe("the free month's words", () => {
     expect(terms.startsWith("Nothing is charged today.")).toBe(true);
     expect(words.note).toContain("Nothing is charged today.");
     expect(words.bar).toContain("Nothing is charged today.");
-    const sharedWindow = "Your family has one free month of 30 days from the first child's plan start, after workbook delivery.";
+    const sharedWindow = "Your family gets one free month. It starts when your first workbook arrives.";
     expect(terms).toContain(sharedWindow);
     expect(words.bar).toContain(sharedWindow);
-    expect(whatHappensNext("Leah").map((s) => s.detail)).toContain(sharedWindow);
+    expect(whatHappensNext("Leah").some((s) => s.detail.includes(sharedWindow))).toBe(true);
     expect(words.bar).toContain("A child who starts after that window is charged when their plan starts.");
   });
 
   it("gives the same price as the Stripe page, in the report's own sentence", () => {
-    const text = nextStep(sampleReportView()).text;
+    const text = nextStep({ ...sampleReportView(), planOffer: { monthly: PLANS.one.price, window: "new" } }).text;
     expect(terms).toContain(`CAD ${PLANS.one.price.toFixed(2)}`);
     expect(text).toContain(`CAD ${PLANS.one.price.toFixed(2)} a month`);
   });

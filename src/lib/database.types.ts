@@ -2412,6 +2412,160 @@ export type Database = {
           },
         ]
       }
+      next_book_snapshots: {
+        Row: {
+          actor_email: string | null
+          actor_id: string | null
+          child_id: string
+          consumed_ledger: Json | null
+          created_at: string
+          delivery_audit_id: number | null
+          draft_id: string | null
+          frozen_at: string | null
+          held_at: string | null
+          held_for_later: Json | null
+          held_reason: string | null
+          history_fence: Json | null
+          id: string
+          number: number
+          parent_id: string
+          pending_items: Json | null
+          plan_hash: string | null
+          plan_input: Json | null
+          planner_consumed: Json | null
+          planner_held: Json | null
+          prepare_from: string
+          printed_revision: string
+          progress_history: Json | null
+          progress_snapshot: Json | null
+          receipt_ids: string[]
+          revision: number
+          run_id: string | null
+          scope: Json | null
+          snapshot_hash: string | null
+          sources: Json | null
+          trigger_at: string
+          trigger_id: string | null
+          trigger_reason: string
+          workbook_id: string
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_id?: string | null
+          child_id: string
+          consumed_ledger?: Json | null
+          created_at?: string
+          delivery_audit_id?: number | null
+          draft_id?: string | null
+          frozen_at?: string | null
+          held_at?: string | null
+          held_for_later?: Json | null
+          held_reason?: string | null
+          history_fence?: Json | null
+          id?: string
+          number: number
+          parent_id: string
+          pending_items?: Json | null
+          plan_hash?: string | null
+          plan_input?: Json | null
+          planner_consumed?: Json | null
+          planner_held?: Json | null
+          prepare_from: string
+          printed_revision: string
+          progress_history?: Json | null
+          progress_snapshot?: Json | null
+          receipt_ids: string[]
+          revision: number
+          run_id?: string | null
+          scope?: Json | null
+          snapshot_hash?: string | null
+          sources?: Json | null
+          trigger_at: string
+          trigger_id?: string | null
+          trigger_reason: string
+          workbook_id: string
+        }
+        Update: {
+          actor_email?: string | null
+          actor_id?: string | null
+          child_id?: string
+          consumed_ledger?: Json | null
+          created_at?: string
+          delivery_audit_id?: number | null
+          draft_id?: string | null
+          frozen_at?: string | null
+          held_at?: string | null
+          held_for_later?: Json | null
+          held_reason?: string | null
+          history_fence?: Json | null
+          id?: string
+          number?: number
+          parent_id?: string
+          pending_items?: Json | null
+          plan_hash?: string | null
+          plan_input?: Json | null
+          planner_consumed?: Json | null
+          planner_held?: Json | null
+          prepare_from?: string
+          printed_revision?: string
+          progress_history?: Json | null
+          progress_snapshot?: Json | null
+          receipt_ids?: string[]
+          revision?: number
+          run_id?: string | null
+          scope?: Json | null
+          snapshot_hash?: string | null
+          sources?: Json | null
+          trigger_at?: string
+          trigger_id?: string | null
+          trigger_reason?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "next_book_snapshots_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "next_book_snapshots_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "next_book_snapshots_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "next_book_snapshots_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "next_book_snapshots_trigger_id_fkey"
+            columns: ["trigger_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_scan_trigger_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "next_book_snapshots_workbook_id_parent_id_child_id_number_fkey"
+            columns: ["workbook_id", "parent_id", "child_id", "number"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "parent_id", "child_id", "number"]
+          },
+        ]
+      }
       parent_explanation_dispatches: {
         Row: {
           child_id: string
@@ -5685,6 +5839,7 @@ export type Database = {
           parent_id: string
           resumes: number
           runner: string
+          snapshot_id: string | null
           started_at: string | null
           started_by: string | null
           started_by_email: string | null
@@ -5712,6 +5867,7 @@ export type Database = {
           parent_id: string
           resumes?: number
           runner?: string
+          snapshot_id?: string | null
           started_at?: string | null
           started_by?: string | null
           started_by_email?: string | null
@@ -5739,6 +5895,7 @@ export type Database = {
           parent_id?: string
           resumes?: number
           runner?: string
+          snapshot_id?: string | null
           started_at?: string | null
           started_by?: string | null
           started_by_email?: string | null
@@ -5767,6 +5924,13 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_runs_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "next_book_snapshots"
             referencedColumns: ["id"]
           },
         ]
@@ -6819,6 +6983,14 @@ export type Database = {
         }[]
       }
       _maya_zone_at: { Args: { p_at: string; p_zone: string }; Returns: string }
+      _next_book_draft_locked: {
+        Args: { p_child: string; p_draft: string; p_parent: string }
+        Returns: string
+      }
+      _next_book_source_problem: {
+        Args: { p_book: string; p_revision: string }
+        Returns: string
+      }
       _workbook_scan_day7: { Args: { p_book: string }; Returns: string[] }
       _workbook_scan_family_clock_context: {
         Args: { p_parent: string }
@@ -7141,6 +7313,16 @@ export type Database = {
           p_payment_method: string
           p_purpose: string
           p_revision?: string
+        }
+        Returns: Json
+      }
+      admit_next_book_run: {
+        Args: {
+          p_by: string
+          p_email: string
+          p_max_attempts: number
+          p_snapshot: string
+          p_stale_seconds: number
         }
         Returns: Json
       }
@@ -7512,6 +7694,15 @@ export type Database = {
         Args: { p_max: number; p_parent: string; p_window_seconds: number }
         Returns: boolean
       }
+      claim_next_book_snapshot: {
+        Args: {
+          p_actor: string
+          p_book: string
+          p_email: string
+          p_trigger: string
+        }
+        Returns: Json
+      }
       claim_pin_attempt: {
         Args: {
           p_lock_seconds: number
@@ -7765,6 +7956,10 @@ export type Database = {
         }[]
       }
       family_last_activity: { Args: { p: string }; Returns: string }
+      family_plan_offer: {
+        Args: { p_agreed_cents: number; p_child: string; p_parent: string }
+        Returns: Json
+      }
       family_plan_price: {
         Args: { p_agreed_cents: number; p_card: string; p_parent: string }
         Returns: number
@@ -7949,6 +8144,10 @@ export type Database = {
               used_before: number
             }[]
           }
+      hold_next_book_snapshot: {
+        Args: { p_book: string; p_delivery_audit: number }
+        Returns: Json
+      }
       identify_scan_photo: {
         Args: {
           p_height: number
@@ -8186,6 +8385,10 @@ export type Database = {
       read_workbook_scan_reminder_due: {
         Args: { p_parent: string }
         Returns: Json
+      }
+      reconcile_family_plan_reservations: {
+        Args: { p_parent: string }
+        Returns: undefined
       }
       reconcile_scan_cleanup: { Args: { p_id: string }; Returns: boolean }
       reconcile_workbook_scan_progress: {
@@ -8446,6 +8649,15 @@ export type Database = {
             }
             Returns: boolean
           }
+      retake_next_book_snapshot: {
+        Args: {
+          p_actor: string
+          p_draft: string
+          p_email: string
+          p_snapshot: string
+        }
+        Returns: Json
+      }
       retry_workbook_run: {
         Args: { p_error: string; p_lease: string; p_run: string }
         Returns: boolean
@@ -8547,6 +8759,20 @@ export type Database = {
           p_parent: string
         }
         Returns: string
+      }
+      save_next_book_plan: {
+        Args: {
+          p_consumed: Json
+          p_held: Json
+          p_plan_hash: string
+          p_plan_input: Json
+          p_snapshot: string
+        }
+        Returns: Json
+      }
+      save_next_book_snapshot: {
+        Args: { p_data: Json; p_hash: string; p_id: string }
+        Returns: Json
       }
       save_workbook_comment: {
         Args: {

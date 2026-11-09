@@ -1,4 +1,5 @@
 import "server-only";
+import { familyPlanWords as w } from "@/lib/family-plan-words";
 import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { gradeName } from "@/lib/assessment/grades";
@@ -53,7 +54,7 @@ export interface CardSetup {
 
 /** What the parent agrees to on Stripe's page. Stripe requires the amount, timing and how to cancel. */
 export const cardTerms = (price: number) =>
-  `Nothing is charged today. Your family has one free month of 30 days from the first child's plan start, after workbook delivery. A child who starts during that window is free until it ends. A child who starts after that window is charged when their plan starts. We charge no more than CAD ${cad(price)} each month until you cancel. We apply the sibling price if it is lower. Cancel in your account before a child's first charge and you pay nothing for that child.`;
+  `Nothing is charged today. ${w.freeMonth} ${w.insideWindow} ${w.afterWindow} ${w.ceiling(price)} ${w.siblingPrice} ${w.cancel}`;
 
 /**
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.

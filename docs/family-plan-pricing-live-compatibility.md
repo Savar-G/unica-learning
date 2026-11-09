@@ -61,7 +61,7 @@ It does not show the raw SQL error. Public-interface tests reproduce both steps.
 
 > This child is a sibling. Their price (CAD 59.99) can start once the sibling update ships.
 
-This new message is under Needs Savar in the PR body.
+This message is one of the 22 texts Savar approved on 2026-11-09.
 
 ## Pending coarse email state after a successful send
 
@@ -70,3 +70,19 @@ The live comparison reproduces `email_state=pending` with `email_send_status=sen
 The send ledger prevents a second claim once its status is sent. The probe checks that the second claim returns false. A later sweep gets the existing sent claim and calls `note_plan_start_email`, which changes the coarse state to sent. The probe checks that final read too. Pending alone does not mean that the email was not sent. A stalled sweep can leave the coarse state pending and the row due, but it does not admit a duplicate send.
 
 PR B changes the email's amount, date and words. It does not change these claim or send-completion functions. It does not add an unrelated email-state repair.
+
+## Review round 1 correction
+
+`20261109054254_family_plan_legacy_initial_stop` narrows the accepted stop to a new sibling initial start after the original validation and replay checks. It was applied before the other review repairs. The expanded probe first failed with `family_plan_upgrade_required` for the first child's Restart in a two-child family. All nine exact comparisons passed after the migration, and again after the settlement and deletion repairs. The three added cases use saved amounts 7999, 4900 and 9900 cents. The older 9900-cent offer still admits 7999 cents. Every Restart has no trial.
+
+`20261109054614_family_plan_legacy_settlement` adds exact-key reservation settlement and a filtered repair of existing stuck records. Its new trigger changes only PR B metadata when a legacy start becomes final. The legacy `finish_plan_start` body and answer remain unchanged. Four live rollback cases cover started and refused outcomes, each with a reservation created before or after finalization. A separate two-case probe tests the migration's filtered backfill. A different-key reservation remains held.
+
+`20261109054621_family_plan_preserve_deleted_history` adds a before-delete child trigger. It imports the known first-child fact and original shared window before child cascades remove legacy card, start and provider rows. The real public child-deletion functions passed a rolled-back test. The next child received 5999 cents without a trial after the first child and its card/start rows were removed. Family deletion still removed the retained pricing records. No existing child-deletion function was replaced.
+
+`20261109055004_family_plan_offer` adds a new service-only read for PR B's report. It does not replace a deployed function. Its rollback probe covers a first offer without a card, pending first start, open and ended sibling windows, lower old offers, child deletion and cross-family isolation.
+
+All four migrations were applied through Supabase MCP and confirmed with `list_migrations`. The official database types were regenerated. The probes used synthetic rows in rolled-back transactions. No Stripe request or email was sent.
+
+Final Mac checks for review round 1: 170 tests passed across 11 touched files, with two workers. Both selected Admin preview checks passed, including the earlier account/loading timeout. Lint passed for all 22 changed TypeScript files. The one final build passed through `gate-slot.sh`. The local browser check passed six simulated choice/saved-card states. The temporary page and server were removed, and the browser tab was closed.
+
+Before the chief of staff restricted checks, a full run passed 561 files and 19,575 tests, skipped one test and failed the Admin preview plan-button assertion. The simulated input now includes family terms, and that assertion passes. The full suite was not repeated under the new rule. GitHub CI must check the complete tree after a later authorized push.

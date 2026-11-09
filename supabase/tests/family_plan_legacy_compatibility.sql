@@ -1,7 +1,7 @@
--- origin/main 724f38b488d3a9ce36d2136b8bf1ea4050d2b2f0; single child and older offer matrix.
+-- origin/main 724f38b488d3a9ce36d2136b8bf1ea4050d2b2f0; initial, Restart, first-child Restart and older offers.
 -- The caller wraps this file in BEGIN / ROLLBACK. Each baseline and actual case also rolls back.
 -- Helper for the rolled-back live compatibility comparison. No Stripe request or email is sent.
-create function pg_temp.capture_legacy_start(p uuid,c uuid,k uuid,saved_cents integer,amount integer,purpose text) returns jsonb
+create function pg_temp.capture_legacy_start(p uuid,c uuid,k uuid,saved_cents integer,amount integer,purpose text,p_sibling boolean default false) returns jsonb
 language plpgsql as $$
 declare g integer:=case when purpose='restart' then 2 else 1 end; a jsonb; during_start jsonb; after_start jsonb; account_row jsonb; email_row jsonb; claim boolean; token uuid:=k; first_charge timestamptz; customer text:='cus_probe_'||k::text;
 begin
@@ -15,6 +15,14 @@ begin
       values(k,1,p,k::text||'-old','pm_probe','started',now()-interval '60 days',now()-interval '60 days','sub_old','initial',amount);
     insert into public.child_card_updates(child_id,parent_id) values(c,p);
     insert into public.child_plan_controls(child_id,parent_id,cancelled,revision) values(c,p,true,k);
+  end if;
+  if p_sibling then
+    insert into public.children(id,parent_id,first_name,grade,province)
+      values(md5(c::text||'-sibling')::uuid,p,'Synthetic sibling',3,'BC');
+    insert into public.card_setups(id,parent_id,child_id,plan,price,workbook_welcome_enabled)
+      values(md5(k::text||'-sibling')::uuid,p,md5(c::text||'-sibling')::uuid,'one',79.99,false);
+    insert into public.plan_starts(card_setup_id,generation,parent_id,start_key,payment_method_id,state,started_at,finished_at,subscription_id,purpose,monthly_cents)
+      values(md5(k::text||'-sibling')::uuid,1,p,k::text||'-sibling','pm_probe','started',now()-interval '40 days',now()-interval '40 days','sub_sibling','initial',7999);
   end if;
   a:=public.admit_plan_start_terms(k,g,k::text||'-new','pm_probe',purpose,amount,case when purpose='restart' then k::text else '' end);
   if (a->>'monthly_cents')::integer<>amount then raise exception 'legacy price mismatch'; end if;
@@ -100,31 +108,32 @@ begin
     email_state = case when p_state = 'started' and p_email and deleting is null then 'pending' else 'none' end
     where p.card_setup_id = p_card and p.generation = p_generation and p.state = 'open';
   return found;
-end $$;$old3$]; command text; p uuid; c uuid; k uuid; saved integer; amount integer; purpose text;
+end $$;$old3$]; command text; p uuid; c uuid; k uuid; saved integer; amount integer; purpose text; scenario text;
 begin
   foreach saved in array array[7999,4900,9900] loop
     amount:=least(saved,7999);
-    foreach purpose in array array['initial','restart'] loop
+    foreach scenario in array array['initial','restart','first_restart_two_children'] loop
+      purpose:=case when scenario='initial' then 'initial' else 'restart' end;
       p:=gen_random_uuid(); c:=gen_random_uuid(); k:=gen_random_uuid(); baseline:=null; actual:=null;
       begin
         foreach command in array commands loop execute command; end loop;
-        baseline:=pg_temp.capture_legacy_start(p,c,k,saved,amount,purpose);
+        baseline:=pg_temp.capture_legacy_start(p,c,k,saved,amount,purpose,scenario='first_restart_two_children');
         raise exception using errcode='P0003',message='rollback baseline';
       exception when sqlstate 'P0003' then null;
       end;
       begin
-        actual:=pg_temp.capture_legacy_start(p,c,k,saved,amount,purpose);
+        actual:=pg_temp.capture_legacy_start(p,c,k,saved,amount,purpose,scenario='first_restart_two_children');
         raise exception using errcode='P0003',message='rollback actual';
       exception when sqlstate 'P0003' then null;
       end;
       if baseline is null or actual is null then raise exception 'missing comparison result'; end if;
       if baseline is distinct from actual then
-        raise exception 'LEGACY_ONE_CHILD_MISMATCH saved=% purpose=%',saved,purpose
+        raise exception 'LEGACY_ONE_CHILD_MISMATCH saved=% purpose=%',saved,scenario
           using detail='baseline='||left(baseline::text,900)||' actual='||left(actual::text,900);
       end if;
-      insert into legacy_compatibility_results values(purpose||' saved='||saved,amount,(actual->>'trial_seconds')::numeric,true,
+      insert into legacy_compatibility_results values(scenario||' saved='||saved,amount,(actual->>'trial_seconds')::numeric,true,
         actual->'email_after_send'->>'email_state'='pending' and actual->'email_after_send'->>'email_send_status'='sent');
     end loop;
   end loop;
 end $probe$;
-select jsonb_build_object('marker','LEGACY_ONE_CHILD_COMPATIBILITY_OK','origin_main','724f38b488d3a9ce36d2136b8bf1ea4050d2b2f0','cases',(select jsonb_agg(to_jsonb(r) order by scenario) from legacy_compatibility_results r)) as proof;
+select jsonb_build_object('marker','LEGACY_NINE_CASE_COMPATIBILITY_OK','origin_main','724f38b488d3a9ce36d2136b8bf1ea4050d2b2f0','cases',(select jsonb_agg(to_jsonb(r) order by scenario) from legacy_compatibility_results r)) as proof;

@@ -19,9 +19,11 @@ const state = vi.hoisted(() => ({
   dashboard: null as ParentDashboard | null,
   report: null as { view: ReturnType<typeof import("@/lib/sample-children").sampleReportView>; childId: string } | null,
   retake: null as Awaited<ReturnType<typeof import("@/lib/test-attempt-server").parentRetakeState>>,
+  offer: { monthly: 79.99, window: "new" } as import("@/lib/family-plan-words").FamilyPlanOffer | null,
   saved: false,
   joined: false,
 }));
+vi.mock("@/lib/family-plan-offer-server", () => ({ loadFamilyPlanOffer: async () => state.offer }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => state.dashboard }));
 vi.mock("@/lib/report-loading", () => ({ loadReportView: async () => state.report }));
 vi.mock("@/lib/report-loading-server", () => ({ parentReportReader: () => ({}) }));
@@ -52,6 +54,7 @@ beforeEach(() => {
   state.dashboard = null;
   state.report = { view: { ...sampleReportView(), id: ID }, childId: CHILD };
   state.retake = null;
+  state.offer = { monthly: 79.99, window: "new" };
   state.saved = false;
   state.joined = false;
 });
@@ -63,8 +66,8 @@ describe("a family the switch does not open to", () => {
     const out = await open();
     await expect(out).toMatchFileSnapshot("./report-bc.golden.html");
     expect(out).not.toContain("pd-");
-    expect(out).toContain("Math, CAD 79.99 a month");
-    expect(out).not.toContain("Start plan");
+    expect(out).toContain("CAD 79.99 a month.");
+    expect(out).toContain("Start Leah&#x27;s plan");
   });
 
   it("gets today's report from the email's plan link, with a saved card, byte for byte", async () => {
@@ -249,4 +252,14 @@ describe("a family the switch opens to", () => {
     state.report = null;
     await expect(open()).rejects.toThrow("NOT FOUND");
   });
+});
+
+it.each([false, true])("renders current late sibling terms with saved card=%s", async saved => {
+  state.offer = { monthly: 59.99, window: "ended" };
+  state.saved = saved;
+  const out = await open();
+  expect(out).toContain("CAD 59.99 a month.");
+  expect(out).toContain("A child who starts after that window is charged when their plan starts.");
+  expect(out).not.toContain("79.99");
+  expect(out).not.toContain("Your first month is free");
 });

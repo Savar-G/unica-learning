@@ -1,3 +1,4 @@
+import { loadFamilyPlanOffer } from "@/lib/family-plan-offer-server";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
@@ -46,7 +47,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   // (strengths, struggles, the workbook 1 preview) reaches the page.
   const report = await loadReportView(parentReportReader(db, { admin: adminClient(), parentId: parent }), id);
   if (!report) notFound();
-  const { view, childId } = report;
+  const { childId } = report;
+  const view = { ...report.view, planOffer: report.view.model.callToAction === "card" ? await loadFamilyPlanOffer(parent, childId) : null };
 
   // The dashboard (#551, #552), for the families its switch opens to; everyone else gets the page below, as it was.
   const shown = (await parentDashboard())?.children.find((c) => c.id === childId) ?? null;

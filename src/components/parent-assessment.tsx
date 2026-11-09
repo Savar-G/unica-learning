@@ -70,11 +70,11 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
         <aside className="pd-split-rail" aria-label="Next step">
           {action && (
             <div className="rpt" id={NEXT_STEP_ANCHOR}>
-              {nextActions ?? <ReportNextActions reportId={view.id} step={nextStep(view)} childName={name} province={view.province} src={next.src} asked={next.asked} start={next.start} words={card ? freeMonthWords(name) : undefined} pinned />}
+              {nextActions ?? <ReportNextActions reportId={view.id} step={nextStep(view)} childName={name} province={view.province} src={next.src} asked={next.asked} start={next.start} words={card ? freeMonthWords(name, view.planOffer) : undefined} pinned />}
             </div>
           )}
           <div className="pd-rail-more">
-            {card && <div className="pd-after"><p className="pd-k">What happens next</p><Steps steps={whatHappensNext(name)} /></div>}
+            {card && <div className="pd-after"><p className="pd-k">What happens next</p><Steps steps={whatHappensNext(name, view.planOffer)} /></div>}
             {!child.readOnly && <div className="pd-after"><LearnLink path={learningPath(child.id)} answered={learning !== null} name={name} forWorkbook={card} /></div>}
             {(tests.length > 0 || startable) && (
               <div className="pd-after">

@@ -185,7 +185,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
     }
     case "report": {
       const base = baseReport();
-      const view = { ...base, id: "sample-report", childName: child.firstName, province: child.stage === "report_ready_waitlist" ? "ON" as const : "BC" as const,
+      const view = { ...base, planOffer: { monthly: PLANS.one.price, window: "new" as const }, id: "sample-report", childName: child.firstName, province: child.stage === "report_ready_waitlist" ? "ON" as const : "BC" as const,
         completedAt: "2026-11-04T20:00:00Z", timeZone: zone, findings: child.stage === "report_ready_waitlist" ? null : base.findings, model: { ...base.model, ...(state === "unreliable" ? { reliability: { veryFast: 18, answers: 20 } } : {}), callToAction: child.stage === "report_ready_waitlist" ? "waitlist" as const : "card" as const } };
       const start = { saved: state === "saved" ? "one" as const : null, joined: state === "joined", cancelled: state === "cancelled" };
       const card: CardState = ["checking", "unknown", "error", "later", "saved"].includes(state) ? state as CardState : "choose";

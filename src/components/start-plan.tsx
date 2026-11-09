@@ -1,11 +1,13 @@
 "use client";
 
+import { familyPlanWords as w } from "@/lib/family-plan-words";
+
 import { localDay, PACIFIC_ZONE } from "@/lib/family-time";
 
 import { useState } from "react";
 
 const ERRORS: Record<string, string> = {
-  family_plan_upgrade_required: "This child is a sibling. Their price (CAD 59.99) can start once the sibling update ships.",
+  family_plan_upgrade_required: w.siblingStop,
   already: "This family already has a plan in Stripe. Open it in Stripe to check.",
   no_card: "No saved card was found for this family.",
   not_delivered: "Confirm that the first workbook has arrived at the family's home before starting the free month.",
@@ -26,7 +28,7 @@ export function StartPlan({ cardId, child }: { cardId: string; child: string }) 
   const [unconfirmed, setUnconfirmed] = useState(false);
   const [error, setError] = useState("");
   async function start() {
-    if (busy || !window.confirm(`Has ${child}'s first workbook arrived at their home? Confirm only after delivery. The family's existing free window applies. If it has ended, Stripe charges the monthly price now.`)) return;
+    if (busy || !window.confirm(`${w.adminConfirm(child)} Confirm only after delivery. ${w.existingWindow} ${w.immediateCharge}`)) return;
     setBusy(true);
     setError("");
     try {
@@ -41,11 +43,11 @@ export function StartPlan({ cardId, child }: { cardId: string; child: string }) 
     finally { setBusy(false); }
   }
   if (done) return <>
-    <span className="adm-note">Started. {done.monthly !== null && <>CAD {done.monthly.toFixed(2)} a month. </>}First charge {localDay(done.at, PACIFIC_ZONE)}</span>
-    {unconfirmed && <p role="alert" className="adm-note">We could not confirm the plan start email. If it was refused, we try again every 15 minutes. Reload this page later and check Workbook emails on this card. If it still did not go, send the parent its text by hand.</p>}
+    <span className="adm-note">Started. {done.monthly !== null && <>{w.monthly(done.monthly)} </>}First charge {localDay(done.at, PACIFIC_ZONE)}</span>
+    {unconfirmed && <p role="alert" className="adm-note">{w.emailUnconfirmed} If it was refused, we try again every 15 minutes. Reload this page later and check Workbook emails on this card. If it still did not go, send the parent its text by hand.</p>}
   </>;
   return <>
-    <button type="button" className="btn adm-btn" onClick={start} disabled={busy}>{busy ? "Starting..." : "Workbook delivered: start plan"}</button>
+    <button type="button" className="btn adm-btn" onClick={start} disabled={busy}>{busy ? "Starting..." : w.adminAction}</button>
     {error && <p role="alert" className="adm-note">{error}</p>}
   </>;
 }
