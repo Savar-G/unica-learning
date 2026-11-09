@@ -1,11 +1,11 @@
 import "server-only";
+import { scanPhotoIsActive } from "@/lib/scan-photo-active";
 import { SCAN_BUCKET, SCAN_HEADERS, scanJson, type scanSession } from "@/lib/scan-photo-server";
 
 type Session = Pick<Awaited<ReturnType<typeof scanSession>>, "db" | "admin" | "parent" | "active">;
 type PhotoRow = { id: string; parent_id: string; state: string; created_at: string; expires_at: string } | null;
 
-const active = (p: PhotoRow) => p && ["saved", "pending"].includes(p.state) && Date.parse(p.expires_at) > Date.now()
-  && (p.state === "saved" || Date.parse(p.created_at) > Date.now() - 86_400_000);
+const active = (p: PhotoRow) => p && scanPhotoIsActive(p, Date.now());
 
 const readPhoto = (session: Session, id: string) =>
   session.db.from("scan_photos").select("id,parent_id,state,created_at,expires_at").eq("id", id).maybeSingle();

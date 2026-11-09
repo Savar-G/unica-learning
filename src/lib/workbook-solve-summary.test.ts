@@ -96,3 +96,10 @@ describe("plainModel", () => {
     expect(plainModel("openai/gpt-5-mini")).toBe("GPT-5 Mini");
   });
 });
+
+describe("plainModel hides settings", () => {
+  it("names a subscription model plainly, without reasoning or auth", () => {
+    expect(plainModel("codex/gpt-6.1-sol;reasoning=high;auth=chatgpt")).toBe("GPT-6.1 Sol (subscription)");
+    expect(plainModel("anthropic/claude-sonnet-5.5;reasoning=high")).toBe("Claude Sonnet 5.5");
+  });
+});

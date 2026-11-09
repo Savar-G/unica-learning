@@ -118,22 +118,25 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
   }
   if (token !== expected) return { ok: false as const, error: "stale" };
   if (context.blocked && !recovering) return { ok: false as const, error: "pending" };
+  // The hold's id is the card setup's id, as in the admin start route, so a later press also clears a hold left by a request that
+  // died before its cleanup. The hold covers the reads before admission. From admission on, the open plan_starts record refuses
+  // the family's deletion until matching-key recovery or a team check closes it, so every exit lets go of the hold.
   if (await holdPlanStart(db, parent, card) === "fenced") return { ok: false as const, error: "pending" };
-  const startedAt = Date.now();
-  const result = await startPlan(client, { cardSetup: card, customer: data.stripe_customer_id, price, deliveryConfirmed: false, purpose: "restart", restartRevision: revision }, undefined, rows);
-  // Before anything else that can throw: the plan is running, so access reopens now, with no webhook wait.
-  const access = result.ok ? await openRestartedPlan(db, client, { customer: data.stripe_customer_id, cardSetup: card, generation: result.generation, startedAt }) : null;
-  // Unknown provider outcomes retain both the start record and its route hold.
-  // A confirmed refusal can release the hold only after the durable record is closed.
-  if ((result.ok || (result.error !== "unconfirmed" && result.error !== "needs_team"))
-    && (await rows.cardRow(card))?.planStart?.state !== "open") await endCardOperation(db, card);
-  return result.ok ? { ok: true as const, state: "started" as const, price: result.monthlyPrice ?? price, access: access ?? "pending" } : result;
+  try {
+    const startedAt = Date.now();
+    const result = await startPlan(client, { cardSetup: card, customer: data.stripe_customer_id, price, deliveryConfirmed: false, purpose: "restart", restartRevision: revision }, undefined, rows);
+    // Before anything else that can throw: the plan is running, so access reopens now, with no webhook wait.
+    const access = result.ok ? await openRestartedPlan(db, client, { customer: data.stripe_customer_id, cardSetup: card, generation: result.generation, startedAt }) : null;
+    return result.ok ? { ok: true as const, state: "started" as const, price: result.monthlyPrice ?? price, access: access ?? "pending" } : result;
+  } finally {
+    await endCardOperation(db, card);
+  }
 }
 
 /**
- * As the admin start route does. The plan has started, so a failed write must not read as a failed restart. After a failed write the webhook is
- * the only fallback: the re-read does not take `ended` rows, and the card sweep writes plan state only when it closes an open start itself.
- * With that webhook lost too, an `ended` row stays closed on a paying plan (#713). A family with no row is filled on its next Account tab load.
+ * As the admin start route does. The plan has started, so a failed write must not read as a failed restart. After a failed write, the webhook
+ * or the daily re-read tries again: the re-read takes a child whose newest plan start is `started` while its row is missing,
+ * `not_started` or `ended` (#713, PLAN_START_READ_KINDS in src/lib/plan-state.ts), a few per run, for as long as Stripe answers.
  */
 async function openRestartedPlan(db: SupabaseClient<Database>, client: NonNullable<ReturnType<typeof stripe>>, start: Parameters<typeof applyPlanStart>[0]): Promise<"open" | "pending"> {
   try {
@@ -151,23 +154,42 @@ export async function childPauseMailing(db: SupabaseClient<Database>, parent: st
   return num(data);
 }
 
-/** Confirmed pause dates remain visible while the provider's renewal boundary has not moved yet. */
+/** The stored plan and the pause quote write the same instant in different forms (`+00:00` and `.000Z`). */
+const sameInstant = (a: string | null, b: string) => a !== null && Number.isFinite(Date.parse(a)) && Date.parse(a) === Date.parse(b);
+
+/**
+ * Confirmed pause dates remain visible while the provider's renewal boundary has not moved yet. After an applied Cancel, while
+ * the stored plan has not caught up, the plan reads as ending: a free month at its trial end, which a free-month pause moved in
+ * Stripe, and a paid plan at its period end, which a paid pause did not move, because Cancel releases the pause schedule first.
+ */
 export async function adjustedPlan(db: SupabaseClient<Database>, parent: string, card: string, plan: ParentPlan): Promise<ParentPlan> {
   if (plan.kind !== "paying" && plan.kind !== "free_month") return plan;
   const context = await planControlContext(db, parent, card);
-  if (!context || context.blocked || context.cancelled) return { kind: "unknown" };
+  if (!context || context.blocked) return { kind: "unknown" };
+  const pauses = array(context.pauses).map(record).filter(p => p.state === "applied").map(p => ({ retired: p.retired === true, quote: readQuote(p.quote) }));
+  if (context.cancelled) {
+    if (plan.kind === "free_month") {
+      let endsOn = plan.firstCharge;
+      for (const { quote } of pauses) if (quote.kind === "trial" && sameInstant(endsOn, quote.previousCharge)) endsOn = quote.chargeAt;
+      return { kind: "ending", endsOn, free: true };
+    }
+    const nextCharge = plan.nextCharge;
+    const paused = pauses.find(({ quote }) => quote.kind === "paid" && sameInstant(nextCharge, quote.chargeAt));
+    if (!paused) return { kind: "ending", endsOn: nextCharge, free: false };
+    // A pause that has not begun was released by the Cancel, so the plan ends where it would have renewed. A pause that has begun
+    // may have resumed with a later period end the stored plan does not know yet: no date is shown rather than a wrong one.
+    return Date.parse(paused.quote.previousCharge) > Date.now() ? { kind: "ending", endsOn: paused.quote.previousCharge, free: false } : { kind: "unknown" };
+  }
   if (plan.kind === "paying" && !plan.firstCharge) {
     const start = await db.from("plan_starts").select("first_charge_at").eq("parent_id", parent).eq("card_setup_id", card)
       .eq("state", "started").order("generation", { ascending: false }).limit(1).maybeSingle();
     if (start.error) throw new Error("Plan first charge unavailable");
     if (start.data?.first_charge_at) plan = { ...plan, firstCharge: start.data.first_charge_at };
   }
-  for (const raw of array(context.pauses)) {
-    const pause = record(raw);
-    if (pause.state !== "applied" || pause.retired === true) continue;
-    const quote = readQuote(pause.quote);
-    if (plan.kind === "paying" && plan.nextCharge === quote.previousCharge) plan = { ...plan, nextCharge: quote.chargeAt };
-    if (plan.kind === "free_month" && plan.firstCharge === quote.previousCharge) plan = { ...plan, firstCharge: quote.chargeAt };
+  for (const { retired, quote } of pauses) {
+    if (retired) continue;
+    if (plan.kind === "paying" && sameInstant(plan.nextCharge, quote.previousCharge)) plan = { ...plan, nextCharge: quote.chargeAt };
+    if (plan.kind === "free_month" && sameInstant(plan.firstCharge, quote.previousCharge)) plan = { ...plan, firstCharge: quote.chargeAt };
   }
   return plan;
 }

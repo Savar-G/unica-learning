@@ -4,7 +4,7 @@ vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { parentPlan, type ParentPlan } from "@/lib/parent-plan";
-import { childPlanAccess, familyClosedPlan, familyHasPlanHistory, familyOpenPlanChildren, familyPlanAccess, planAccessRule } from "./plan-access";
+import { childPlanAccess, childPlanRead, familyClosedPlan, familyHasPlanHistory, familyOpenPlanChildren, familyPlanAccess, planAccessRule } from "./plan-access";
 
 const NOW = Date.parse("2026-11-07T12:00:00Z");
 const clock = { now: () => NOW };
@@ -116,6 +116,15 @@ describe("childPlanAccess", () => {
     expect(await childPlanAccess(input, { db: throwingDb, ...clock })).toEqual(closed);
     expect(await childPlanAccess(input, { db: null, ...clock })).toEqual(closed);
     expect(await childPlanAccess(input)).toEqual(closed);
+  });
+
+  it("childPlanRead gives the same answer, with the stored resume date only for a paused plan", async () => {
+    const readFull = (rows: Row[], fail: string[] = []) => childPlanRead(input, { db: fakeDb({ child_plan_states: rows }, fail), ...clock });
+    expect(await readFull([stateRow("p1", "c1", "paused", { next_charge_at: later })])).toEqual({ access: { open: false, reason: "paused" }, resumesOn: later });
+    expect(await readFull([stateRow("p1", "c1", "paused")])).toEqual({ access: { open: false, reason: "paused" }, resumesOn: null });
+    expect(await readFull([stateRow("p1", "c1", "free_month")])).toEqual({ access: { open: true, reason: "open" }, resumesOn: null });
+    expect(await readFull([stateRow("p1", "c2", "paused", { next_charge_at: later })])).toEqual({ access: { open: false, reason: "no_plan" }, resumesOn: null });
+    expect(await readFull([], ["child_plan_states"])).toEqual({ access: { open: false, reason: "read_failed" }, resumesOn: null });
   });
 });
 

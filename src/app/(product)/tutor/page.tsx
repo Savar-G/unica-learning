@@ -62,7 +62,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
 
   // Without a parent's agreement (#529), the desk shows chat as off and says who can turn it on.
   const noticeDue = child ? await mayaNoticeDue(parent, child.grade, child.id) : false;
-  const chat = child && !noticeDue ? await deskChat(db, parent, child, timeZone) : { usage: null, note: null };
+  const chat = child && !noticeDue ? await deskChat(db, parent, child, timeZone) : { usage: null, note: null, planClosed: false };
 
   if (!child || !view || view.status !== "ready") {
     return (
@@ -71,6 +71,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
         childId={lock.childId}
         chatUsage={chat.usage}
         chatNote={chat.note}
+        chatPlanClosed={chat.planClosed}
         noticeLine={noticeDue ? MAYA_NOTICE_DESK_LINE : null}
         problem={view?.status === "awaiting-delivery" ? "Your workbook pages will open here after we confirm delivery." : view ? `There is no workbook here yet. When ${name ? `${name}'s` : "your"} workbook arrives, its pages show here.`
           : "Your workbook cannot be shown right now. Try again in a moment."}
@@ -93,6 +94,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
       childId={lock.childId}
       chatUsage={chat.usage}
       chatNote={chat.note}
+      chatPlanClosed={chat.planClosed}
       noticeLine={noticeDue ? MAYA_NOTICE_DESK_LINE : null}
       notice={view.notice === "not-this-child" ? `That workbook is not on ${name}'s desk, so ${name}'s newest workbook is open.` : null}
       books={view.workbooks.map((w) => book(w, timeZone))}

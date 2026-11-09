@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { activities, buildDashboard, buildFamilies, clicksText, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
+import { LOG_KINDS } from "@/lib/email-log-kinds";
+import { EMAIL_KINDS, activities, buildDashboard, buildFamilies, clickable, clicksText, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
 
 // 2026-10-12 19:00 Pacific (PDT, UTC-7)
 const NOW = new Date("2026-10-13T02:00:00Z");
@@ -401,5 +402,28 @@ describe("email clicks", () => {
   it("counts the clicked emails of each kind in the summary", () => {
     const summary = Object.fromEntries(buildDashboard(d, "7d", NOW).emailSummary.map((k) => [k.kind, k]));
     expect([summary.start.clicked, summary.start_followup.clicked, summary.report.clicked]).toEqual([1, 0, 1]);
+  });
+});
+
+describe("every email log kind (B1)", () => {
+  it("has admin words for each kind the email log allows, in the admin's order", () => {
+    expect(EMAIL_KINDS.map((k) => k.kind)).toEqual([
+      "start", "start_followup", "continue", "come_back", "report", "alert", "unsubscribe", "maya_daily", "maya_weekly",
+      "maya_unsubscribe", "monthly_summary", "monthly_summary_unsubscribe", "scan_inactivity",
+    ]);
+    for (const kind of LOG_KINDS) expect(EMAIL_KINDS.some((k) => k.kind === kind)).toBe(true);
+  });
+
+  it.each(LOG_KINDS)("builds the dashboard with a %s row", (kind) => {
+    const r = rows({ parents: [parent("a", ago(10))], children: [child("k1", "a")], emails: [{ ...email("e", "a", kind, ago(1)), child_id: kind === "scan_inactivity" ? null : "k1" }] });
+    const d = buildDashboard(r, "all", NOW);
+    expect(d.emails).toHaveLength(1);
+    expect(d.emailSummary.find((k) => k.kind === kind)?.sent).toBe(1);
+  });
+
+  it("names the scan reminder by its subject, and counts no click for it", () => {
+    const [f] = buildFamilies(rows({ parents: [parent("a", ago(10))], emails: [{ ...email("e", "a", "scan_inactivity", ago(1)), child_id: null }] }));
+    expect(f.emails[0].subject).toBe("Ready to scan your next page?");
+    expect(clickable(f.emails[0])).toBe(false);
   });
 });
