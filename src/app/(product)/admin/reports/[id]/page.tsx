@@ -14,7 +14,7 @@ export default async function AdminReportPage({ params }: PageProps<"/admin/repo
   const report = await loadReportView(adminReportReader(admin), (await params).id);
   if (!report) notFound();
   return <AdminFrame email={admin.email} section="tests" title="Report">
-    <p className="adm-report-note">Read-only report. <Link href={adminTestPath(report.assessmentId)}>Open the test, flags and all shown work</Link>.</p>
+    <p className="adm-report-note">Read-only report. <Link href={adminTestPath(report.assessmentId)}>Open the test, flags and all shown work</Link>. <Link href={`/admin/reports/${report.view.id}/deck`}>Open the results deck</Link>.</p>
     <ReportCard view={report.view} readOnly />
   </AdminFrame>;
 }

@@ -1,3 +1,4 @@
+import { samplePageIndexes } from "@/lib/results-deck";
 import { commentFromRow, editFromRow } from "@/lib/workbook-edit-store";
 import { vancouverTime } from "@/lib/workbook-review-display";
 import type { ReviewComment, WorkbookEdit, EditCheckpoint } from "@/lib/workbook-edit";
@@ -666,6 +667,21 @@ export async function draftPdfUrl(a: AdminSession, runId: string): Promise<strin
   const revision = await a.db.from("workbook_draft_revisions").select("revision, rendering, render_problems").eq("draft_id", run.draft_id).order("revision", { ascending: false }).limit(1).maybeSingle()
     .then((r) => must<{ revision: number; rendering: DraftRendering | null; render_problems: RenderProblem[] } | null>(r, "draft revision"));
   return signPdf(a, revision?.rendering?.pdfPath);
+}
+
+/** Up to three real pages of a child's newest prepared workbook, as fresh signed URLs, for the results call deck. Empty when none is prepared. */
+export async function draftSamplePages(a: AdminSession, childId: string): Promise<string[]> {
+  if (!isUuid(childId)) return [];
+  const [run] = must<{ draft_id: string | null }[]>(await a.db.from("workbook_runs").select("draft_id").eq("child_id", childId).not("draft_id", "is", null).order("created_at", { ascending: false }).limit(1), "workbook run");
+  if (!run?.draft_id) return [];
+  const revision = await a.db.from("workbook_draft_revisions").select("rendering").eq("draft_id", run.draft_id).order("revision", { ascending: false }).limit(1).maybeSingle()
+    .then((r) => must<{ rendering: DraftRendering | null } | null>(r, "draft revision"));
+  const pages = (revision?.rendering?.pages ?? []).filter((p) => !p.proof);
+  const paths = samplePageIndexes(pages.length).map((i) => pages[i].image.path);
+  if (!paths.length) return [];
+  const signed = await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS);
+  if (signed.error) return [];
+  return (signed.data ?? []).flatMap((item) => (item.signedUrl && !item.error ? [item.signedUrl] : []));
 }
 
 // Workbook runs and drafts (#312)
