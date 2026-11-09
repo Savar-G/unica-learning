@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { sendEmailOnce, sendEmailOnceInTime, type DeliveryOutcome, type EmailMessage, type MailTransport, type ReleasableLedger, type SendLedger, type TimedDeliveryOutcome } from "@/lib/email-delivery";
+import { planReminderDue } from "@/lib/plan-reminder";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { findSavedCard, recordSavedCard, type SavedCards, type StripeAnswer } from "@/lib/saved-card";
 import { savedCards } from "@/lib/saved-card-server";
@@ -145,7 +146,7 @@ export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { card
   const price = terms.data?.monthly_cents == null ? p.price : terms.data.monthly_cents / 100;
   const chargeAt = terms.data?.first_charge_at ?? p.firstChargeAt;
   const free = !terms.data?.family_terms || !!terms.data.trial_end;
-  const reminder = !terms.data?.family_terms || !!terms.data.trial_end && Date.parse(terms.data.trial_end) - Date.now() >= 7 * 86400000;
+  const reminder = !terms.data?.family_terms || !!terms.data.trial_end && planReminderDue(Date.now(), Date.parse(terms.data.trial_end));
   const firstCharge = formatInZone(chargeAt, zone, { year: "numeric", month: "long", day: "numeric" });
   const marks = await markingOpen(marking, db, card.parent_id, card.child_id);
   let explains = false;

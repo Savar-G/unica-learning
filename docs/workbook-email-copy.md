@@ -115,9 +115,9 @@ Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2
 unicalearning.com
 You received this email about your Unica Learning program.
 
-The five-day guidance below (step 1 and the "Why 5 days?" paragraph) was approved by Savar on 2026-11-09 (variation B). It is in every variant of the plan-start email: the sibling plan email ("Welcome to Unica Learning: Alex's plan"), and the email with step 3 "Marks come later" while marking is closed.
-
 ## Free month start, Grade 3 and above
+
+The five-day guidance below (step 1 and the "Why 5 days?" paragraph) was approved by Savar on 2026-11-09 (variation B). It is in every variant of the plan-start email: the sibling plan email ("Welcome to Unica Learning: Alex's plan"), and the email with step 3 "Marks come later" while marking is closed.
 
 Subject: Welcome to Unica Learning: how Alex's free month works
 

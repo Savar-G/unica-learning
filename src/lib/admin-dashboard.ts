@@ -8,6 +8,7 @@ import type { AssessmentStatus } from "@/lib/test-api";
 import { canGetEmail, nextStartReminder, type StartKind } from "@/lib/reminder-schedule";
 import type { LogKind, LogStatus } from "@/lib/email-log-kinds";
 import type { DeliveryType } from "@/lib/resend-webhook";
+import { PLAN_REMINDER_ADMIN } from "@/lib/plan-reminder";
 
 // Rows, as admin-store reads them
 
@@ -90,7 +91,7 @@ export const STAGE_ACTION: Record<Stage, string> = {
   finished: "Report sent. Waiting for the parent to choose a plan.",
   card_started: "The parent left the payment page. Consider a personal email.",
   card_saved: `After you confirm the first workbook has arrived at the family's home, press "${familyPlanWords.adminAction}" under Cards and waitlist.`,
-  trial: "In the free first month. Stripe emails the parent a reminder 7 days before the first charge on day 30.",
+  trial: `In the free first month. ${PLAN_REMINDER_ADMIN}.`,
   paying: "Nothing to do.",
   cancelled: "The Stripe subscription ended. Consider asking the parent why.",
   waitlist: "Not BC. Waiting for their curriculum.",
