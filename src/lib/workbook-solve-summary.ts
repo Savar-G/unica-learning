@@ -107,6 +107,14 @@ export function solveCostLine(costs: (number | null)[]): string | null {
  */
 export function plainModel(id: string, fake = "Scripted AI"): string {
   if (id === "fake") return fake;
+  // Settings after ";" (reasoning, auth) are not for admins; a subscription login says so in plain words.
+  const [base, ...settings] = id.split(";");
+  const subscription = settings.some((x) => /^auth=/.test(x.trim()));
+  const plain = plainModelName(base);
+  return subscription ? `${plain} (subscription)` : plain;
+}
+
+function plainModelName(id: string): string {
   const name = id.split("/").at(-1) ?? id;
   const words = name.split(/[-_]/).filter(Boolean);
   if (words.length === 0) return id;

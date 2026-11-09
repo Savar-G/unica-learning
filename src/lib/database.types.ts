@@ -6938,6 +6938,13 @@ export type Database = {
         Returns: undefined
       }
       admin_team_ids: { Args: never; Returns: string[] }
+      admin_team_names: {
+        Args: never
+        Returns: {
+          name: string
+          user_id: string
+        }[]
+      }
       admin_template_stats: {
         Args: {
           curriculum?: string
