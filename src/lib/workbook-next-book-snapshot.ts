@@ -9,6 +9,7 @@ import { readFrozenWorkbookProgressHistory, readFrozenWorkbookReviewHistory, typ
 import { validateCatalog, type FrozenWorkbookSourcesV2, type WorkbookPreviewRequest } from "./workbook-progress-source";
 import { previewMultipleWorkbookSkills, type WorkbookPlanPreviewInput } from "./workbook-progress-plan";
 import { reviewInputsFromMarks, sourceReviewDay, type PrintedReviewEvidence, type PrintedReviewQuestion, type ReviewHeld } from "./workbook-review-from-marks";
+import type { CurriculumCompatSource } from "./workbook-curriculum/compat";
 import type { CurriculumKey } from "./workbook-curriculum/types";
 import type { RunFrame } from "./workbook-job";
 import { planWorkbook, type PlanInput, type SpacedReview, type StepRef, type WorkbookPlan } from "./workbook-plan";
@@ -45,8 +46,12 @@ export function nextBookIssuedSkills(sources: FrozenWorkbookSourcesV2): string[]
   return [...new Set(baseline.initialIssues.map(i => i.selection.skill))].sort();
 }
 
-/** Plan Book 2 from one complete frozen capture. No current profile, store, clock or provider is read. */
-export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSourcesV2; snapshot: NextBookSnapshot }): NextBookSnapshotResult {
+/**
+ * Plan Book 2 from one complete frozen capture. No current profile, store, clock or provider is read. Today's curriculum
+ * must keep the structure Book 1 was planned on (book2Planning); `options.curricula` is the test seam for it.
+ */
+export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSourcesV2; snapshot: NextBookSnapshot },
+  options: { curricula?: CurriculumCompatSource } = {}): NextBookSnapshotResult {
   const refuse = (reason: string): NextBookSnapshotResult => ({ ok: false, reason });
   try {
     const { sources, snapshot } = structuredClone(input);
@@ -66,7 +71,9 @@ export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSources
     const skills = nextBookIssuedSkills(sources) ?? [];
     if (!Array.isArray(snapshot.issuedSkills) || new Set(snapshot.issuedSkills).size !== snapshot.issuedSkills.length
       || !isDeepStrictEqual([...snapshot.issuedSkills].sort(), skills)) return refuse("A printed skill is missing from the snapshot.");
-    const next = book2Planning(baseline, { prepareOnly: true });
+    const next = book2Planning(baseline, { prepareOnly: true, curricula: options.curricula });
+    if (!next.ok && next.reason === "curriculum-history-missing") return refuse("The curriculum Book 1 was planned on is not in the curriculum history.");
+    if (!next.ok && next.reason === "curriculum-incompatible") return refuse(`The curriculum changed since Book 1 was planned: ${next.difference ?? "its structure differs"}.`);
     if (!next.ok) return refuse("The Book 1 starting plan is unavailable.");
     const frame = book.frames.find(x => x.run_id === baseline.runId)?.frame as unknown as RunFrame;
     if (!frame?.plan?.days || frame.plan.level !== next.input.level.number) return refuse("The printed plan is unavailable.");

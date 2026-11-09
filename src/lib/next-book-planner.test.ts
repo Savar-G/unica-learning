@@ -213,18 +213,21 @@ describe("the next-book planner wiring", () => {
       .toEqual({ ok: false, reason: BOOK1_RECORD_UNAVAILABLE });
   }, 120_000);
 
-  // Falsifier: a Book 1 record made on an older curriculum plans on today's, or its refusal loses the frozen chain.
-  it("a Book 1 record made on an older curriculum: the planner refuses, the chain stays frozen with no plan and no run, and plans once it is accepted", async () => {
+  // Falsifier: a Book 1 record made on an older curriculum that the curriculum archive does not hold plans on today's,
+  // or its refusal loses the frozen chain.
+  it("a Book 1 record made on an older curriculum not in the archive: the planner refuses, the chain stays frozen with no plan and no run, and plans once it is accepted", async () => {
     const recorded = baseline.planning.placement.curriculum.version;
     expect(baseline.curriculum.version).toBe(recorded);
     try {
       cv.newer = "f".repeat(64);
-      // What the refusal compares: today's digest of the curriculum data against the digest the Book 1 record keeps.
-      expect(book2Planning(baseline, { prepareOnly: true })).toEqual({ ok: false, reason: "curriculum-version-changed" });
+      // What the refusal compares: today's digest differs from the one the Book 1 record keeps, and the archive has no
+      // structure for that one, so compatibility cannot be shown.
+      expect(book2Planning(baseline, { prepareOnly: true })).toEqual({ ok: false, reason: "curriculum-history-missing" });
+      expect(book2Planning(baseline, { prepareOnly: true, exactCurriculum: true })).toEqual({ ok: false, reason: "curriculum-version-changed" });
       const w = world();
       const outcome = await prepareNextBook(w.claim(), w.deps(), CUTOFF);
       // planNextBookFromSnapshot reports book2Planning's refusal in its own words.
-      expect(outcome).toEqual({ status: "refused", reason: "planner-The Book 1 starting plan is unavailable.", snapshotId: w.row().id });
+      expect(outcome).toEqual({ status: "refused", reason: "planner-The curriculum Book 1 was planned on is not in the curriculum history.", snapshotId: w.row().id });
       expect(w.row().frozen).not.toBeNull();
       expect(w.row().plan).toBeNull();
       expect(w.m.state.runs).toEqual([]);
