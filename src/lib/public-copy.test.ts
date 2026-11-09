@@ -26,6 +26,19 @@ describe("the FAQ describes the online math assessment", () => {
     expect(a).toMatch(/own progress report/);
   });
 
+  it("describes Maya chat and its limits on the public FAQ and summaries", () => {
+    const how = answer(/How does the AI Teaching Assistant work/);
+    expect(how).toMatch(/Grade 3 and up/);
+    expect(how).toMatch(/type to Maya/);
+    expect(how).toMatch(/cannot teach a question yet/);
+    expect(how).toMatch(/60 messages a day/);
+    expect(how).toMatch(/Weekly limits/);
+    for (const text of [how, answer(/screen time/), llmsTxt(), pricingMarkdown(), PARENT_NOTE]) {
+      expect(text).toMatch(/Grade 3 and up/);
+      expect(text).not.toMatch(/voice call|talk with the Teaching Assistant/i);
+    }
+  });
+
   it("answers the AI accuracy question beside the Teaching Assistant explanation", () => {
     const how = FAQ.findIndex((item) => /How does the AI Teaching Assistant work\?/.test(item.question));
     const accuracy = FAQ.findIndex((item) => /What if the AI Teaching Assistant gets something wrong\?/.test(item.question));
