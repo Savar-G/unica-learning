@@ -72,7 +72,7 @@ export function GuidanceDemo() {
           </li>
         ))}
       </ol>
-      <p className="gd-cap">Shown without sound. The captions show what Maya and Emma say.</p>
+      <p className="gd-cap">This demo shows a planned voice call. Voice calls are not available yet; Maya is available by typed chat.</p>
     </div>
   );
 }

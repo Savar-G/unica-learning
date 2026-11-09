@@ -47,9 +47,9 @@ const STEPS: { n: string; title: string; text: ReactNode; vis: ReactNode; label:
   {
     n: "04",
     title: "Stuck? The Teaching Assistant helps",
-    text: "Your child starts a call. The Teaching Assistant opens their exact question on a shared board and talks it through, one step at a time.",
+    text: "Children in Grade 3 and up can type to the Teaching Assistant about a workbook question. Maya gives hints and can show an easier example on a shared board. Daily and weekly limits apply.",
     vis: <TeachingDemo />,
-    label: "The shared board on a call: the Teaching Assistant works through 300 minus 128 one step at a time, then Leah writes the last digit.",
+    label: "Illustration of a shared board: the Teaching Assistant works through 300 minus 128, then Leah writes the last digit.",
   },
   {
     n: "05",

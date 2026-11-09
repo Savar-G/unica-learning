@@ -8,7 +8,7 @@ export const PARENT_NOT_YOURS: [string, string][] = [
   ["Mark every page", "We mark the pages you scan."],
   ["Find the right level", "The free assessment places them."],
   ["Plan what comes next", "The next book is built from their work."],
-  ["Remember how to teach it", "The Unica Teaching Assistant explains it on a voice call, or scan a problem to see every step."],
+  ["Remember how to teach it", "Children in Grade 3 and up can chat with the Unica Teaching Assistant within daily and weekly limits. You can also scan a problem to see every step."],
 ];
 
 // What the parent still does.
@@ -17,4 +17,4 @@ export const PARENT_YOURS: string[] = [
   "Scan the finished pages with your phone, on our website.",
 ];
 
-export const PARENT_NOTE = "If they get stuck, hand them your phone. The Unica Teaching Assistant talks them through the question. You do not need to know the answer.";
+export const PARENT_NOTE = "If they get stuck, children in Grade 3 and up can type to the Unica Teaching Assistant for help. Daily and weekly limits apply.";
