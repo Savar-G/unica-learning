@@ -171,6 +171,6 @@ export function ProductionBoard({ books, now, stage = null, showOlder = false, w
       {g.older + g.olderTests > 0 && <p className="adm-pd-more"><Link href={stageHref(stage, true)}>{g.older > 0 ? `Show older (${g.older})` : "Show older"}</Link></p>}
     </section>)}
     {stage && shown.length === 0 && <p className="adm-pd-empty">No books at this stage right now. <Link href={stageHref(null)}>Show all</Link></p>}
-    {incomplete && <p className="adm-note" role="status">Some books could not be loaded. Showing the first {books.length}.</p>}
+    {incomplete && <p className="adm-note" role="status">Some books could not be loaded. Showing the first {books.filter((b) => !b.test).length}.</p>}
   </div>;
 }
