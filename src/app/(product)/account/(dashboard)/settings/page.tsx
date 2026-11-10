@@ -4,7 +4,7 @@ import { BillingSection } from "@/components/account-billing-section";
 import { ParentAccountSettings } from "@/components/parent-account-settings";
 import { familyProvince, familyZone } from "@/lib/family-time";
 import { pageMetadata } from "@/lib/metadata";
-import { PlanClosedNote, planClosedFamily } from "@/components/plan-closed-note";
+import { PlanClosedNote, closedNoteFor } from "@/components/plan-closed-note";
 import { planManagementAccess } from "@/lib/parent-dashboard-access";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
 import { childDetails } from "@/components/account-child-details";
@@ -31,8 +31,8 @@ export default async function AccountSettings({ searchParams }: PageProps<"/acco
   ]);
   const zone = familyZone({ timeZone: family?.time_zone ?? null, postal: family?.postal ?? null, province: familyProvince(kids ?? []) });
   // A paying family whose dashboard read failed also comes here: only a closed family reads the note.
-  const closed = dashboard ? null : await planClosedFamily(parent);
-  return <ParentAccountSettings note={closed ? <PlanClosedNote closed={closed} on="account" /> : undefined} card={card} hasCard={!!cards?.some(c => c.card_saved_at)} province={kids?.at(-1)?.province ?? "BC"}
+  const note = await closedNoteFor(parent, !!dashboard), closed = note?.closed ?? null;
+  return <ParentAccountSettings note={note ? <PlanClosedNote closed={note.closed} dashboardOpen={note.dashboardOpen} on="account" /> : undefined} card={card} hasCard={!!cards?.some(c => c.card_saved_at)} province={kids?.at(-1)?.province ?? "BC"}
     details={await childDetails(db)}
     billing={<Suspense fallback={<p role="status">Loading billing...</p>}><BillingSection parent={parent} zone={zone} closed={closed} /></Suspense>} />;
 }
