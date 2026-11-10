@@ -26,14 +26,14 @@ const QUEUE_READ = 100;
 export async function loadHomeExtras(query: Record<string, string | string[] | undefined>, demo: boolean): Promise<HomeExtras | null> {
   if (demo) return null;
   const admin = await requireAdmin();
-  const view = await loadTestFamilies(admin, query);
+  const view = await loadTestFamilies(admin);
   const now = new Date();
   const [books, queue] = await Promise.all([
     listProduction(admin, view.hidden, now)
       .then((data) => buildBooks({ ...data, tests: { show: view.show, isTest: view.isTest } }, now))
       .catch((e) => (console.error("[admin] home production read failed", e instanceof Error ? e.message : e), null)),
-    readScanTeamQueue(admin.db, QUEUE_READ)
-      .then((q) => ({ items: q.items.map((i): WaitingAnswer => ({ parent: i.parent, child: i.child, childName: i.childName, book: i.book, issue: i.issue, since: i.since, testFamily: i.testFamily })), total: q.total }))
+    readScanTeamQueue(admin.db, QUEUE_READ, { withTests: false })
+      .then((q) => ({ items: q.items.map((i): WaitingAnswer => ({ parent: i.parent, child: i.child, childName: i.childName, book: i.book, issue: i.issue, since: i.since, testFamily: i.testFamily })), total: q.realTotal }))
       .catch((e) => (console.error("[admin] home marking read failed", e instanceof Error ? e.message : e), null)),
   ]);
   return { books, queue, isTest: (p) => view.isTest(p), runner: workbookRunner(), now };
