@@ -19,7 +19,10 @@ const mayaNotice = vi.hoisted(() => ({ due: false, books: [] as { id: string; ch
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async (child: string) => mayaNotice.books.filter((b) => b.childId === child) }) }));
 vi.mock("@/lib/maya-notice-server", () => ({ mayaNoticeDueForFamily: async () => mayaNotice.due }));
 const planNote = vi.hoisted(() => ({ closed: null as null | { reason: string; child: string | null } }));
-vi.mock("@/components/plan-closed-note", () => ({ planClosedFamily: async () => planNote.closed, PlanClosedNote: ({ on }: { on: string }) => `Your plan is closed, on ${on}` }));
+vi.mock("@/components/plan-closed-note", () => ({
+  closedNoteFor: async (_parent: string, dashboard: boolean) => (planNote.closed ? { closed: planNote.closed, dashboardOpen: dashboard } : null),
+  PlanClosedNote: ({ on, dashboardOpen }: { on: string; dashboardOpen?: boolean }) => `Your plan is closed, on ${on}${dashboardOpen ? ", dashboard open" : ""}`,
+}));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
@@ -208,6 +211,18 @@ describe("a family the switch opens to", () => {
     return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve(query) })));
   };
   beforeEach(() => { family.olderChild = true; });
+
+  // #709: with the switch on, a stopped plan keeps this home; it still says why, in both of its views.
+  it("tells a stopped family why, with the dashboard open, on the test-start view and the overview", async () => {
+    try {
+      planNote.closed = { reason: "payment_failed", child: "Asha" };
+      expect(await open()).toContain("Your plan is closed, on home, dashboard open");
+      dashboard.value = { children: [{ ...view("c1", "Asha"), opensOn: "overview" }], remembered: null, pinSet: true, timeZoneSaved: true };
+      expect(renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })))).toContain("Your plan is closed, on home, dashboard open");
+      planNote.closed = null;
+      expect(await open()).not.toContain("Your plan is closed");
+    } finally { planNote.closed = null; dashboard.value = null; }
+  });
 
   // #529: the notice card is for a family with Maya open, no agreement and a desk to open.
   it("shows the Maya notice card only when it is due and a child has a workbook, in both homes", async () => {
