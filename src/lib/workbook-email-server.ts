@@ -190,10 +190,16 @@ export async function planStartEmailClaim(db: SupabaseClient<Database>, cardId: 
  * otherwise send to its made-up address. The row stays queued, untouched. An admin's explicit send (sendWorkbookNotice) is not affected.
  */
 async function testFamilies(db: SupabaseClient<Database>): Promise<string[]> {
-  const { data, error } = await db.from("test_accounts").select("parent_id");
-  if (error) throw Error("store_failed");
-  return (data ?? []).map((r) => r.parent_id);
+  // Page by page: Supabase returns at most 1,000 rows to one request, and a cut list would email a test family.
+  const out: string[] = [];
+  for (let from = 0; ; from += TEST_PAGE) {
+    const { data, error } = await db.from("test_accounts").select("parent_id").order("parent_id").range(from, from + TEST_PAGE - 1);
+    if (error) throw Error("store_failed");
+    out.push(...(data ?? []).map((r) => r.parent_id));
+    if ((data?.length ?? 0) < TEST_PAGE) return out;
+  }
 }
+const TEST_PAGE = 1000;
 
 async function isTestFamily(db: SupabaseClient<Database>, parentId: string): Promise<boolean> {
   const { data, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parentId).maybeSingle();
@@ -206,6 +212,7 @@ export async function sendQueuedWorkbookWelcome(db: SupabaseClient<Database>, ca
   const { data, error } = await db.from("workbook_emails").select("id, parent_id").eq("card_setup_id", cardId).eq("kind", "welcome")
     .in("status", ["pending", "failed"]).lt("attempts", 3).maybeSingle();
   if (error) throw Error("store_failed");
+  // The card-saved step (next-step-server) calls this directly, without the cron queue's filter, so it checks again here.
   if (!data || await isTestFamily(db, data.parent_id)) return null;
   return sendWorkbookNotice(db, { cardId, kind: "welcome", workbookNumber: 0, delivery: null }, transport);
 }
@@ -236,8 +243,10 @@ export async function runWorkbookWelcomes(db: SupabaseClient<Database>, { transp
   const cards = suppliedCards ?? (s ? savedCards(db, s) : null);
   let checked = 0;
   if (cards) {
-    const candidates = await db.from("card_setups").select("id, stripe_customer_id, parent:parents!inner(deletion_requested_at)").eq("workbook_welcome_enabled", true)
-      .is("card_saved_at", null).not("stripe_customer_id", "is", null).is("parent.deletion_requested_at", null)
+    const scan = db.from("card_setups").select("id, stripe_customer_id, parent:parents!inner(deletion_requested_at)").eq("workbook_welcome_enabled", true)
+      .is("card_saved_at", null).not("stripe_customer_id", "is", null).is("parent.deletion_requested_at", null);
+    // (Test families' cards are not checked either, so they cannot take this run's two Stripe reads.)
+    const candidates = await (tests.length ? scan.not("parent_id", "in", `(${tests.join(",")})`) : scan)
       .order("workbook_email_checked_at", { nullsFirst: true }).order("id").limit(2);
     if (candidates.error) throw Error("store_failed");
     for (const row of candidates.data ?? []) {

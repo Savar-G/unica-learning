@@ -161,6 +161,13 @@ function testFamilyQueue() {
         return json(marked.filter((p) => !only || only === `eq.${p}`).map((parent_id) => ({ parent_id })));
       }
       const card = (id: string | null) => entries.find((e) => `eq.${e.card}` === id);
+      const left = /^not\.in\.\((.*)\)$/.exec(u.searchParams.get("parent_id") ?? "");
+      if (u.pathname.endsWith("/card_setups") && method === "PATCH") return json(null);
+      if (u.pathname.endsWith("/card_setups") && u.searchParams.has("workbook_welcome_enabled")) {
+        // Cards whose Checkout tab closed: one on the test family, one on the real family.
+        const unsaved = [{ id: "test-unsaved", parent: "test-parent" }, { id: "real-unsaved", parent: "real-parent" }];
+        return json(unsaved.filter((c) => !left || !left[1].split(",").includes(c.parent)).map((c) => ({ id: c.id, stripe_customer_id: `cus_${c.id}` })));
+      }
       if (u.pathname.endsWith("/card_setups")) {
         const e = card(u.searchParams.get("id"));
         return json([{ parent_id: e?.parent ?? "real-parent", child_id: "child", card_saved_at: "2026-11-01T00:00:00Z" }]);
@@ -175,7 +182,6 @@ function testFamilyQueue() {
       if (u.pathname.endsWith("/workbook_emails")) {
         if (method === "PATCH") { entries.find((e) => `eq.${e.card}` === u.searchParams.get("id"))!.sent = true; return json(null); }
         let due = entries.filter((e) => !e.sent);
-        const left = /^not\.in\.\((.*)\)$/.exec(u.searchParams.get("parent_id") ?? "");
         if (left) due = due.filter((e) => !left[1].split(",").includes(e.parent));
         if (u.searchParams.has("card_setup_id")) due = due.filter((e) => `eq.${e.card}` === u.searchParams.get("card_setup_id"));
         if (method === "HEAD") return new Response(null, { status: 200, headers: { "content-range": `0-0/${due.length}` } });
@@ -200,6 +206,14 @@ describe("welcomes for test families (#804)", () => {
       expect(f.claims).toEqual(["real-card"]);
       expect(f.messages).toHaveLength(1);
     } finally { vi.unstubAllEnvs(); }
+  });
+  it("checks no test family's card with Stripe, so its cards cannot take the run's two reads", async () => {
+    const f = testFamilyQueue();
+    const find = vi.fn(async () => null);
+    const cards: SavedCards = { store: { load: async () => null, choose: async () => { throw Error("Not used"); }, record: vi.fn() }, provider: { find, keepPlan: async () => {} } };
+    expect(await runWorkbookWelcomes(f.db, { transport: f.transport, cards })).toMatchObject({ checked: 1 });
+    expect(find).toHaveBeenCalledOnce();
+    expect(find.mock.calls[0]).toEqual(expect.arrayContaining([expect.objectContaining({ id: "real-unsaved" })]));
   });
   it("the card-saved path claims nothing for a test family", async () => {
     const f = testFamilyQueue();
