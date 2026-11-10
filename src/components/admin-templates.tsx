@@ -1,12 +1,15 @@
-// The admin table per question template (#199): every template by BC grade, with the times shown, the percent correct,
-// the median time and the wrong answers chosen. A server component with no JavaScript; the filters are a GET form.
+// The admin table per question template (#199; restyled for D-313, D-315): the totals as tiles, then every template
+// grouped by BC grade, with a small percent-correct bar, the times shown, the median time and the wrong answers chosen
+// most. A server component with no JavaScript; the filters are a GET form.
 import Link from "next/link";
 import { STRAND_NAMES, gradeLabel, type Level } from "@/lib/assessment";
 import { ADMIN_TEMPLATES_PATH, type TemplateFilters, type TemplateLine, type TemplateTable, type WrongLine } from "@/lib/admin-templates";
 import { GRADES, PROVINCES, duration } from "@/lib/admin-view";
 import { CURRICULA } from "@/lib/signup";
 import { Table } from "@/components/admin";
+import { PercentBar, SectionHead, Tiles } from "@/components/admin-blocks";
 import "./admin-templates.css";
+import "./admin-pages.css";
 
 const gradeName = (level: Level) => (level === 0 ? "Kindergarten" : `Grade ${level}`);
 
@@ -73,15 +76,15 @@ export function WrongList({ wrong, more }: { wrong: readonly WrongLine[]; more?:
 
 function Rows({ lines, filters, demo, label }: { lines: TemplateLine[]; filters: TemplateFilters; demo: boolean; label: string }) {
   return (
-    <Table label={label} head={["Template", "Strand", "BC standard", "Shown", "Answered", "Correct", "Median time", "Wrong answers chosen"]} empty="No templates.">
+    <Table label={label} head={["Template", "Correct", "Shown", "Median time", "Wrong answers chosen most"]} empty="No templates.">
       {lines.map((l) => (
         <tr key={l.id} className={l.shown === 0 ? "is-unseen" : undefined}>
-          <td><Link className="adm-mono" href={`${l.href}${templateQuery(filters, demo)}`}>{l.id}</Link></td>
-          <td>{l.strand ? STRAND_NAMES[l.strand] : "-"}</td>
-          <td>{l.standard && l.standardHref ? <Link href={demoHref(l.standardHref, demo)}>{l.standard}</Link> : "-"}</td>
-          <td className="adm-num">{l.shown}</td>
-          <td className="adm-num">{l.answered}</td>
-          <td className="adm-num">{l.percentCorrect === null ? "-" : `${l.percentCorrect}%`}</td>
+          <td>
+            <Link className="adm-mono" href={`${l.href}${templateQuery(filters, demo)}`}>{l.id}</Link>
+            <span className="adm-sub">{l.strand ? STRAND_NAMES[l.strand] : "Not in the bank"}{l.standard && l.standardHref && <> · <Link href={demoHref(l.standardHref, demo)}>{l.standard}</Link></>}</span>
+          </td>
+          <td><PercentBar percent={l.percentCorrect} label={l.percentCorrect === null ? "Never answered" : `${l.percentCorrect}% correct of ${l.answered} answered`} /></td>
+          <td className="adm-nowrap">{l.shown}<span className="adm-sub">{l.answered} answered</span></td>
           <td className="adm-num adm-nowrap">{l.medianMs === null ? "-" : duration(l.medianMs)}</td>
           <td className="adm-wide"><WrongList wrong={l.wrong} more={l.moreWrong} /></td>
         </tr>
@@ -90,28 +93,40 @@ function Rows({ lines, filters, demo, label }: { lines: TemplateLine[]; filters:
   );
 }
 
+/** One grade's numbers for its section head: templates shown at least once, and the percent correct of all its answers. */
+function gradeLine(lines: TemplateLine[]): string {
+  const seen = lines.filter((l) => l.shown > 0).length;
+  const answered = lines.reduce((n, l) => n + l.answered, 0);
+  const correct = lines.reduce((n, l) => n + (l.percentCorrect === null ? 0 : (l.percentCorrect / 100) * l.answered), 0);
+  return `${seen} of ${lines.length} shown at least once.${answered > 0 ? ` About ${Math.round((100 * correct) / answered)}% of ${answered} answers correct.` : " No answers yet."}`;
+}
+
 export function TemplateTableView({ table, filters, demo }: { table: TemplateTable; filters: TemplateFilters; demo: boolean }) {
   const lines = table.grades.flatMap((g) => g.lines);
   const seen = lines.filter((l) => l.shown > 0).length;
+  const unseen = lines.length - seen;
   return (
     <div className="adm-templates">
       <TemplateFilterForm action={ADMIN_TEMPLATES_PATH} filters={filters} demo={demo} />
+      <Tiles label="Templates" tiles={[
+        { key: "answers", label: "Answers counted", value: table.answers.toLocaleString("en-CA"), sub: filters.withTests ? "With the test families" : "Real families only" },
+        { key: "seen", label: "Templates shown", value: `${seen} of ${lines.length}`, sub: "Shown to a child at least once" },
+        { key: "unseen", label: "Never shown", value: unseen, sub: unseen ? "Still listed, so gaps show" : "Every template was shown", tone: null },
+      ]} />
       <CountedNote filters={filters} />
-      <p className="adm-note">{table.answers} answers. {seen} of {lines.length} templates shown at least once. Each template is under its BC grade.</p>
-      <nav className="adm-row" aria-label="Grades">
+      <nav className="ap-jump" aria-label="Grades">
         {table.grades.map((g) => <a key={g.level} href={`#grade-${g.level}`}>{gradeName(g.level)}</a>)}
         {table.retired.length > 0 && <a href="#retired">Not in the bank</a>}
       </nav>
       {table.grades.map((g) => (
-        <section key={g.level} aria-labelledby={`grade-${g.level}`}>
-          <h2 id={`grade-${g.level}`}>{gradeName(g.level)}</h2>
+        <section key={g.level} className="ap-grade" aria-labelledby={`grade-${g.level}`}>
+          <SectionHead id={`grade-${g.level}`} title={gradeName(g.level)} count={`${g.lines.length} templates`} line={gradeLine(g.lines)} />
           <Rows lines={g.lines} filters={filters} demo={demo} label={`${gradeName(g.level)} templates`} />
         </section>
       ))}
       {table.retired.length > 0 && (
-        <section aria-labelledby="retired">
-          <h2 id="retired">Not in the bank</h2>
-          <p className="adm-note">Answers to templates that are no longer in the question bank.</p>
+        <section className="ap-grade" aria-labelledby="retired">
+          <SectionHead id="retired" title="Not in the bank" count={`${table.retired.length} templates`} line="Answers to templates that are no longer in the question bank." />
           <Rows lines={table.retired} filters={filters} demo={demo} label="Templates not in the bank" />
         </section>
       )}
