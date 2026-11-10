@@ -10,6 +10,18 @@ export const SCAN_BUCKET = "scan-photos";
 export const scanPath = (parent: string, id: string) => `${parent}/${id}/photo.jpg`;
 export const SCAN_HEADERS = { "Cache-Control": "private, no-store, max-age=0", "Vary": "Cookie", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" };
 
+/**
+ * The signed-in parent, or null, without ending the request (scanSession answers notFound). Only for a route that must
+ * tell the photo's owner something before scanSession runs (#710: a closed plan); every other read still goes through scanSession.
+ */
+export async function signedInParent(): Promise<{ parent: string; admin: SupabaseClient<Database> } | null> {
+  const db = await sessionClient();
+  const [{ data, error }, claims] = await Promise.all([db.auth.getUser(), db.auth.getClaims()]);
+  const admin = adminClient();
+  if (error || !data.user || !admin || claims.error || claims.data?.claims.sub !== data.user.id) return null;
+  return { parent: data.user.id, admin };
+}
+
 export async function scanSession() {
   const db = await sessionClient();
   // getUser checks Auth on every request, including after sign-out/revocation.

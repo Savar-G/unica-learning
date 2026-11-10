@@ -9,7 +9,7 @@ vi.mock("@/lib/parent-problem-explanation", () => ({ explainParentProblem: vi.fn
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { explainParentProblem } from "@/lib/parent-problem-explanation";
-import { explanationPlanOpen, parentProblemExplanation } from "@/lib/parent-problem-explanation-server";
+import { explanationPlanClosed, explanationPlanOpen, parentProblemExplanation } from "@/lib/parent-problem-explanation-server";
 
 type Row = Record<string, unknown>;
 const fake = (tables: Record<string, Row[]>, fail = "") => ({
@@ -68,4 +68,12 @@ it("fails closed when a read fails", async () => {
   const photos = { scan_photos: [photo("open-photo", "open")], child_plan_states: [plan("open", "paying")] };
   expect(await explanationPlanOpen(fake(photos, "scan_photos"), "p1", "open-photo")).toBe(false);
   expect(await explanationPlanOpen(fake(photos, "child_plan_states"), "p1", "open-photo")).toBe(false);
+});
+
+// #710: only the photo's owner hears that its child's plan is closed.
+it("a closed plan is told only for this family's own photo of that child", async () => {
+  expect(await explanationPlanClosed(db, "p1", "sibling-photo")).toBe(true);
+  expect(await explanationPlanClosed(db, "p1", "open-photo")).toBe(false);
+  expect(await explanationPlanClosed(db, "p1", "other-family")).toBe(false);
+  expect(await explanationPlanClosed(db, "p1", "no-photo")).toBe(false);
 });
