@@ -189,7 +189,7 @@ export async function runComparisonPhoto(options: {
       await journal.save(currentKey!, { state: deferredAttempt(attempt) && !journalFailed && !budgetFailed ? "deferred" : attempt.usage.costMicros === null ? "unknown" : "settled", attempt, response: responseEvidence, ...(responseEvidence ?? {}) });
     },
     extract: async (_ref, _token, value) => { observations = value; return true; },
-    apply: async () => true, finish: async () => true, pause: async () => {}, publish: async () => {}, effective: async () => [],
+    apply: async () => true, finish: async () => true, pause: async () => {}, publish: async () => 0, effective: async () => [],
   };
   let status: string;
   try {

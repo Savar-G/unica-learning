@@ -210,3 +210,20 @@ it.each([false, true])("keeps an expired-photo parent change and its recovery ha
   expect(state.commands).toEqual(["change", "outbox"]); expect(profile.calls).toBe(1);
   expect(state.queries.some((q) => /test_accounts|admin_users|storage/.test(q.pathname))).toBe(false);
 });
+
+// #706: an admitted photo with no marking client tells the caller, so a recovery run can stop.
+it("tells the caller when an admitted photo has no marking client", async () => {
+  state.test = true;
+  const onNoClient = vi.fn();
+  expect(await processScanMarking(db, parent, "missing-photo", { SCAN_MARKING_ENABLED: "test-only" }, undefined, { onNoClient })).toBe("terminal");
+  expect(onNoClient).toHaveBeenCalledOnce();
+});
+
+// #706: a closed-plan photo in families mode publishes its committed marks; with nothing in the outbox it rebuilds no profile.
+it("rebuilds no profile for a closed-plan photo whose outbox is empty", async () => {
+  state.photo = true;
+  const closed = async () => ({ open: false, reason: "ended" as const });
+  expect(await processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never)).toBe("off");
+  expect(state.commands).toEqual(["outbox"]);
+  expect(profile.calls).toBe(0);
+});

@@ -188,7 +188,8 @@ it("families mode recovers sent photos only for a child whose plan is running", 
 it("a closed plan still publishes marks already committed for the photo, with no new marking", async () => {
   expect(await processScanMarking(db, parent, stoppedPhoto, families, gate)).toBe("off");
   expect(state.commands).toEqual(["outbox"]);
-  expect(profile.calls).toBe(1);
+  // (Nothing waited in the outbox, so nothing was published and no profile is rebuilt, #706.)
+  expect(profile.calls).toBe(0);
 });
 
 it("a closed plan publishes nothing for a photo that is not this family's", async () => {
@@ -213,7 +214,8 @@ it("recovery moves past refused photos in the same run, so they do not hold up o
 it("recovery goes on after a photo it works on (#726)", async () => {
   state.test = true;
   state.recovered = [[{ parent, photo: missingPhoto }], [{ parent, photo: runningPhoto }]];
-  const result = await recoverScanMarking(db, families, gate);
+  // (With a marking client: without one the run stops at the first admitted photo, #706.)
+  const result = await recoverScanMarking(db, { ...families, SCAN_MARKING_OPENROUTER_API_KEY: "synthetic-key" }, gate);
   expect(result.results).toHaveLength(2);
   expect(result.results).not.toContain("error");
 });
@@ -226,7 +228,7 @@ it("in one run a closed plan gets no AI call and its committed marks publish, an
   expect(result.results).toHaveLength(2);
   expect(result.results).not.toContain("error");
   expect(asked).toEqual([{ parentId: parent, childId: stopped }, { parentId: parent, childId: running }]);
-  // The closed plan's photo: only the publication of committed marks ("outbox") and one profile rebuild.
+  // The closed plan's photo: only the publication of committed marks ("outbox"), and a rebuild only when something was published.
   expect(state.commands[0]).toBe("outbox");
   expect(state.queries.some((q) => q.includes("/storage/"))).toBe(false);
 });
@@ -236,7 +238,9 @@ it("recovery publishes each closed-plan photo's marks but rebuilds the child's p
   const result = await recoverScanMarking(db, families, gate);
   expect(result.results).toEqual(["off", "off"]);
   expect(state.commands).toEqual(["outbox", "outbox"]);
-  expect(profile.calls).toBe(1);
+  // (Both outboxes were empty: no rebuild, #706. One rebuild per child after the run's photos is pinned in
+  // scan-marking-recovery.test.ts, "rebuilds each child's profile once".)
+  expect(profile.calls).toBe(0);
 });
 
 it("recovery stops when the list comes back to a photo it already had", async () => {
