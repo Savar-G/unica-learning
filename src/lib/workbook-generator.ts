@@ -2930,14 +2930,17 @@ function standIn(input: GenerateInput, w: PageWork, s: Slot, i: number): BuiltQu
 
 /**
  * A stand-in for a panel's worked example that the writer builds itself (no code contract), when its page is measured
- * before writing (#746): a sum in the level's numbers that code works in the most steps a panel prints (three, then
- * the answer), under a story as long as a writer's. Planning then keeps the room the writer's own example takes, as
- * standIn does for a writer's slot. Only for measuring: it is never a task and never prints.
+ * before writing (#746): the small sum the writer is asked for, which code works in the most steps a panel prints
+ * (three, then the answer), under a story as long as a writer's. Planning then keeps the room the writer's own example
+ * takes, as standIn does for a writer's slot. Only for measuring: it is never a task and never prints.
+ * (Not larger: a bigger stand-in left the fake U10 book's page 64 at 81% full when the writer's "54 + 3" printed. A
+ * longer example than this is still caught by the final fit check, which stays strict.)
  */
 function exampleStandIn(input: GenerateInput, w: PageWork, p: Panel): QuestionPackage | null {
   const max = skillRange(input.curriculum, input.plan.level, p.skill).max;
-  // (Regrouping in every column, so the method has all its steps; up to U6 the longest count on, ten numbers.)
-  const [a, b] = max >= 1000 ? [476, 358] : max >= 100 ? [47, 38] : [10, 10];
+  // (A two-digit and a one-digit number: three steps, as the #744 review's "34 + 4". Below 100, U6 and down, the
+  // longest count on: ten numbers.)
+  const [a, b] = max >= 100 ? [76, 8] : [10, 10];
   const op = { kind: "add", operands: [itemNumber(a), itemNumber(b)], expression: null, unit: null, denominator: null, values: [] };
   const raw = {
     slot: p.id, skill: p.skill, difficulty: 2, text: `Mia has ${a} shells. She finds ${b} more on the beach. How many shells does Mia have now?`, format: "write-number",
@@ -3714,11 +3717,11 @@ export async function prepareWorkbookCapacity(input: GenerateInput, fitCheck: Fi
   const problem = await fitWorkBudget(input, fitCheck, work);
   if (problem) throw new Error(problem);
   // (Each panel's measured attempt goes with its page, as its slots' contracts do, #746.)
-  const kept = (w: PageWork) => {
+  const withPanelAttempts = (w: PageWork) => {
     const attempts = w.panels.filter((p) => p.attempt !== undefined).map((p) => [p.id, p.attempt!] as const);
     return attempts.length ? { ...w.page, panelAttempts: Object.fromEntries(attempts) } : w.page;
   };
-  return { ...input.plan, extraPractice: work.filter(w=>w.page.extraPractice).map(kept), days: input.plan.days.map(d=>({ ...d, pages:d.pages.map(p=>kept(work.find(w=>w.day===d.day && w.page.number===p.number)!)) })) };
+  return { ...input.plan, extraPractice: work.filter(w=>w.page.extraPractice).map(withPanelAttempts), days: input.plan.days.map(d=>({ ...d, pages:d.pages.map(p=>withPanelAttempts(work.find(w=>w.day===d.day && w.page.number===p.number)!)) })) };
 }
 
 /**

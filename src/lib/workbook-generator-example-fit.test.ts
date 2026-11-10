@@ -55,7 +55,8 @@ it.each([2, 3])("U10 book %i: no writer-built worked example prints taller than 
   if (generated.status !== "stored") return;
   const taller = generated.draft.pages.flatMap((p) => [...panelLines(p)].flatMap(([i, printed]) => {
     const planned = measured.get(p.number)?.get(i);
-    return planned !== undefined && printed > planned ? [{ page: p.number, block: i, printed, planned }] : [];
+    // (A panel planning never measured fails too: its room was never kept.)
+    return planned === undefined || printed > planned ? [{ page: p.number, block: i, printed, planned: planned ?? null }] : [];
   }));
   expect(taller).toEqual([]);
 }, 120_000);
