@@ -77,3 +77,8 @@ it("a closed plan is told only for this family's own photo of that child", async
   expect(await explanationPlanClosed(db, "p1", "other-family")).toBe(false);
   expect(await explanationPlanClosed(db, "p1", "no-photo")).toBe(false);
 });
+it("a child with no plan row reads as closed; a failed plan read says nothing", async () => {
+  const tables = { scan_photos: [photo("no-plan-photo", "no-plan")], child_plan_states: [] };
+  expect(await explanationPlanClosed(fake(tables), "p1", "no-plan-photo")).toBe(true);
+  expect(await explanationPlanClosed(fake(tables, "child_plan_states"), "p1", "no-plan-photo")).toBe(false);
+});
