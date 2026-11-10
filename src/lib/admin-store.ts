@@ -984,6 +984,25 @@ export async function listProduction(a: AdminSession, tests: { ids: readonly str
   };
 }
 
+/**
+ * One family's Production stage inputs, for the family and child pages: the same sources and rules as listProduction,
+ * read for this parent only (a few small requests). A detail page: a test family is read like any other.
+ */
+export async function familyProduction(a: AdminSession, parentId: string, now = new Date()): Promise<Omit<ProductionInput, "tests">> {
+  if (!isUuid(parentId)) return { runs: [], workbooks: [], cards: [], plans: [], deliveries: [] };
+  const base = await readProductionSet(a, { only: [parentId] });
+  const light = buildBooks({ ...base, runs: base.runs.map((run) => ({ run })), deliveries: [], tests: { show: true, isTest: () => false } }, now);
+  const current = new Set(light.flatMap((b) => (b.run ? [b.run.run.id] : [])));
+  const shipped = base.workbooks.filter((w) => w.status === "shipped").map((w) => w.id);
+  const [rows, delivered] = await Promise.all([runRows(a, base.runs.filter((r) => current.has(r.id))), deliveredTimes(a.db, shipped)]);
+  const rich = new Map(rows.map((r) => [r.run.id, r]));
+  return {
+    runs: base.runs.map((run) => rich.get(run.id) ?? { run }),
+    workbooks: base.workbooks, cards: base.cards, plans: base.plans,
+    deliveries: [...delivered].map(([workbookId, deliveredAt]) => ({ workbookId, deliveredAt })),
+  };
+}
+
 /** A child's runs, newest first, with their check results. */
 export async function getChildRuns(a: AdminSession, childId: string): Promise<RunListRow[]> {
   if (!isUuid(childId)) return [];

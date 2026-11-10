@@ -18,11 +18,17 @@ export default async function ChildrenPage({ searchParams }: PageProps<"/admin/c
   const offset = listOffset(query, LIST_MAX);
   const view = await loadTestFamilies(admin);
   const { rows, more } = await listChildren(admin, filters, offset, view.hidden);
-  return <AdminFrame email={admin.email} title="Children" lead="Every child, newest first, with their tests." testNote={view.show}
-    actions={<Link className="btn ghost adm-btn" href="/admin/parents" prefetch={false}>Families board</Link>}>
+  return <AdminFrame email={admin.email} title="Every child" lead="Every child, newest first, with their family and tests." testNote={view.show}
+    actions={<Link className="btn ghost adm-btn" href="/admin/parents" prefetch={false}>Families</Link>}>
     <FilterForm action="/admin/children" filters={filters} fields={["grade", "province"]} />
-    <Table label="Children" head={["Child", "Grade and curriculum", "Parent", "Tests", "Completed", "Last test (Pacific)"]} empty="No children match.">
-      {rows.map((c) => <tr key={c.id}><td><Link href={childPath(c.id)}>{c.first_name}</Link><TestTag test={view.show && view.isTest(c.parent_id)} /></td><td>{gradeAndPlace(c.grade, c.province)}</td><td><Link href={adminParentPath(c.parent_id)}>{c.parent?.name ?? "Family"}</Link></td><td>{c.tests.total}</td><td>{c.tests.completed}</td><td className="adm-nowrap">{when(c.tests.lastAt)}</td></tr>)}
+    <Table label="Children" head={["Child", "Family", "Tests", "Last test (Pacific)", "Added (Pacific)"]} empty="No children match.">
+      {rows.map((c) => <tr key={c.id}>
+        <td><Link href={childPath(c.id)} prefetch={false}><b>{c.first_name}</b></Link><TestTag test={view.show && view.isTest(c.parent_id)} /><span className="adm-sub">{gradeAndPlace(c.grade, c.province)}</span></td>
+        <td><Link href={adminParentPath(c.parent_id)} prefetch={false}>{c.parent?.name ?? "Family"}</Link>{c.parent?.email && <span className="adm-sub">{c.parent.email}</span>}</td>
+        <td className="adm-num">{c.tests.total === 0 ? "None" : `${c.tests.completed} of ${c.tests.total} finished`}</td>
+        <td className="adm-nowrap">{when(c.tests.lastAt)}</td>
+        <td className="adm-nowrap">{when(c.created_at)}</td>
+      </tr>)}
     </Table><More more={more} max={LIST_MAX} offset={offset} action="/admin/children" filters={filters} />
   </AdminFrame>;
 }

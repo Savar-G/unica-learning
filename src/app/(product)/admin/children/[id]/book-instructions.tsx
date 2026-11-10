@@ -29,7 +29,7 @@ export function BookInstructions({ child, note, data }: {
   data: Awaited<ReturnType<typeof loadBookInstructions>>;
 }) {
   return <>
-    <h2 id="book-instructions-title">Book instructions</h2>
+    <h3 id="book-instructions-title">Book instructions</h3>
     <p>Set these after a results call with the family. They apply to every next workbook until you change or clear them. Each run keeps the set it was made with and shows which ones applied.</p>
     <p className="adm-note">{data.stored ? `Saved by ${data.stored.updatedBy ?? "an admin"} on ${when(data.stored.updatedAt)} (Pacific).` : "No instructions saved: the next workbook uses the automatic plan."}</p>
     {!data.levels ? <p role="status">A workbook curriculum is not available for this child.</p> : <>
