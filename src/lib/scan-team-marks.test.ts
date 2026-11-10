@@ -9,12 +9,14 @@ vi.mock("@/lib/scan-marking-server", () => ({ publishMarkChange: async (_db: unk
 
 const ITEM = "33333333-3333-4333-8333-333333333333", P = "11111111-1111-4111-8111-111111111111", C = "22222222-2222-4222-8222-222222222222";
 const state = { rpc: [] as { name: string; body: Record<string, unknown> }[], answer: null as unknown, status: 200 };
+// `answer`: the body every call gets, or a function of the call's body.
 const client = (label: string) => createClient<Database>("https://team.example.test", label, { auth: { persistSession: false, autoRefreshToken: false },
   global: { fetch: async (input, init) => {
     const url = new URL(String(input)), name = url.pathname.split("/rpc/")[1];
     if (!name || label !== "admin-session") throw Error(`Unexpected request with ${label}: ${url.pathname}`);
-    state.rpc.push({ name, body: JSON.parse(String(init?.body)) });
-    return Response.json(state.answer, { status: state.status });
+    const body = JSON.parse(String(init?.body));
+    state.rpc.push({ name, body });
+    return Response.json(typeof state.answer === "function" ? state.answer(body) : state.answer, { status: state.status });
   } } });
 const adminDb = client("admin-session"), serviceDb = client("service-key");
 beforeEach(() => { Object.assign(state, { rpc: [], answer: null, status: 200 }); Object.assign(after, { calls: [], pending: false }); });
@@ -49,17 +51,31 @@ it("a refused item, a store error (not an admin) or a strange answer saves nothi
 it("reads the team list with nullable reading, reason and photo, and its totals", async () => {
   const row = { item_id: ITEM, parent_id: P, child_id: C, child_name: "Iris", workbook_id: "w", book: 1, page_number: 9, question_number: 2,
     photo_id: null, issue: null, read_text: null, waiting_since: "2026-11-07T12:00:00Z", test_family: true, total: 140, real_total: 139 };
-  state.answer = [row, { ...row, item_id: "44444444-4444-4444-8444-444444444444", photo_id: "p", issue: "answer-form", read_text: "42", test_family: false }];
+  const real = { ...row, item_id: "44444444-4444-4444-8444-444444444444", photo_id: "p", issue: "answer-form", read_text: "42", test_family: false };
+  state.answer = (body: { p_with_tests: boolean }) => body.p_with_tests ? [row, real] : [{ ...real, total: 139 }];
   const q = await readScanTeamQueue(adminDb, 2, { withTests: true });
-  expect(state.rpc[0]).toEqual({ name: "admin_scan_team_queue_v2", body: { p_limit: 2, p_with_tests: true } });
+  expect(state.rpc.map((c) => c.body)).toEqual([{ p_limit: 2, p_with_tests: false }, { p_limit: 2, p_with_tests: true }]);
   expect(q.total).toBe(140);
   expect(q.realTotal).toBe(139);
-  expect(q.items[0]).toEqual({ item: ITEM, parent: P, child: C, childName: "Iris", book: 1, page: 9, question: 2, photo: null, issue: null, read: null, since: "2026-11-07T12:00:00Z", testFamily: true });
-  expect(q.items[1]).toMatchObject({ photo: "p", issue: "answer-form", read: "42", testFamily: false });
+  // The real answers come first, then the test ones fill the list.
+  expect(q.items[0]).toMatchObject({ photo: "p", issue: "answer-form", read: "42", testFamily: false });
+  expect(q.items[1]).toEqual({ item: ITEM, parent: P, child: C, childName: "Iris", book: 1, page: 9, question: 2, photo: null, issue: null, read: null, since: "2026-11-07T12:00:00Z", testFamily: true });
   state.answer = [];
   expect(await readScanTeamQueue(adminDb)).toEqual({ items: [], total: 0, realTotal: 0 });
   state.answer = [{ ...row, question_number: "2" }];
   await expect(readScanTeamQueue(adminDb)).rejects.toThrow("team_queue_shape");
+});
+it("keeps a real answer on the list while the switch is on, even behind many older test answers", async () => {
+  const row = { item_id: ITEM, parent_id: P, child_id: C, child_name: "Iris", workbook_id: "w", book: 1, page_number: 9, question_number: 2,
+    photo_id: null, issue: null, read_text: "8", waiting_since: "2026-11-01T12:00:00Z", test_family: true, total: 3, real_total: 1 };
+  const realId = "55555555-5555-4555-8555-555555555555";
+  // With tests, the oldest two (test) answers fill the limit of 2; the real one is third.
+  state.answer = (body: { p_with_tests: boolean }) => body.p_with_tests
+    ? [row, { ...row, item_id: "66666666-6666-4666-8666-666666666666" }]
+    : [{ ...row, item_id: realId, test_family: false, waiting_since: "2026-11-07T12:00:00Z", total: 1, real_total: 1 }];
+  const q = await readScanTeamQueue(adminDb, 2, { withTests: true });
+  expect(q.items.map((i) => i.item)).toEqual([realId, ITEM]);
+  expect(q).toMatchObject({ total: 3, realTotal: 1 });
 });
 it("leaves test and team families out in the database, before the limit, while the switch is off", async () => {
   const row = { item_id: ITEM, parent_id: P, child_id: C, child_name: "Iris", workbook_id: "w", book: 1, page_number: 9, question_number: 2,

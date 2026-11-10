@@ -50,9 +50,18 @@ const text = (v: unknown) => (typeof v === "string" ? v : null);
  * The items waiting for our team, oldest first. `withTests`: the "Show test families" switch (D-313). Off, the test and
  * team families are left out in the database, before the limit, so test answers never push a real one off the list.
  * `total`: the rows the list could hold (it can be more than the list). `realTotal`: the real families' answers only,
- * whatever the switch says: the one number the page and the sidebar badge show.
+ * whatever the switch says: the one number the page and the sidebar badge show. On, the real families' answers come
+ * first (oldest first), then the test families' answers fill the rest of the list, so test answers never push a real one
+ * off it either.
  */
 export async function readScanTeamQueue(adminDb: SupabaseClient<Database>, limit = 100, { withTests = false } = {}): Promise<{ items: TeamQueueItem[]; total: number; realTotal: number }> {
+  if (!withTests) return readQueueOnce(adminDb, limit, false);
+  const [real, all] = await Promise.all([readQueueOnce(adminDb, limit, false), readQueueOnce(adminDb, limit, true)]);
+  const items = [...real.items, ...all.items.filter((i) => i.testFamily)].slice(0, limit);
+  return { items, total: all.total, realTotal: real.realTotal };
+}
+
+async function readQueueOnce(adminDb: SupabaseClient<Database>, limit: number, withTests: boolean): Promise<{ items: TeamQueueItem[]; total: number; realTotal: number }> {
   const r = await adminDb.rpc("admin_scan_team_queue_v2", { p_limit: limit, p_with_tests: withTests });
   if (r.error || !Array.isArray(r.data)) throw new Error("team_queue_store");
   // Generated return types say not null; the issue, reading and photo can be null, so each value is checked here.
