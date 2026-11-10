@@ -6,9 +6,7 @@ import { planNextWorkbook } from "./workbook-placement";
 // #759: a page with no room for its rows' gap holds one review question fewer, never one of its own step (the U16 fake
 // sample's page 54 gave up two "Find the pattern rule" questions and kept its review). A fit check that refuses a
 // Practice 2 page above 6 questions forces the drops.
-// Known failure, kept as a record for the capacity fix (#759): the drops today go to own-step questions. Remove `.fails`
-// when a squeezed page keeps every own-step question.
-it.fails("a Practice 2 page that must give up questions keeps every question on its own step", async () => {
+it("a Practice 2 page that must give up questions keeps every question on its own step", async () => {
   const curriculum = curriculumFor("bc")!;
   const placed = planNextWorkbook({ curriculum, grade: 5, profile: null, number: 1, workbooks: [] });
   if (!placed.ok) throw new Error(placed.reason);
@@ -36,7 +34,12 @@ it.fails("a Practice 2 page that must give up questions keeps every question on 
     return n !== undefined && page.questions.length >= n ? { ok: false, problems: [{ question: null, reason: "the content does not fit its space" }] } : { ok: true };
   } };
   const before = own(roomyPlan);
-  const after = own(await prepareWorkbookCapacity({ ...base, plan: workbookCapacityPlan(curriculum, placed.plan) }, tight));
+  const tightPlan = await prepareWorkbookCapacity({ ...base, plan: workbookCapacityPlan(curriculum, placed.plan) }, tight);
+  const after = own(tightPlan);
+  for (const { day, p } of practice2(tightPlan)) {
+    const limit = held.get(`${day}:${p.number}`);
+    if (limit !== undefined) expect(Object.keys(p.itemContracts ?? {}).length).toBeLessThan(limit);
+  }
   const lost = [...before].flatMap(([page, n]) => ((after.get(page) ?? 0) < n ? [`${page}: ${n} own-step questions, then ${after.get(page)}`] : []));
   expect(lost).toEqual([]);
 }, 120_000);
