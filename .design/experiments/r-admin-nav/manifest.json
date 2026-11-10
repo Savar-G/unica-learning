@@ -1,0 +1,67 @@
+{
+  "round": "r-admin-nav",
+  "route": "design focused",
+  "job_kind": "redesign",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "decision": "How should Home and Workbooks > Production organize the team's daily jobs (new customers, workbook production, new signups, marking)?",
+  "primary_axis": "organizing model of Home and Production: by job (task list), by metric (overview), or by pipeline (board)",
+  "decided_before_round": [
+    "Sidebar with folders: Home; Families (Families, Tests, Feedback); Workbooks (Production, Plans and delivery, Marking); Maya (Calls); Marketing (Flyers, Emails); Quality (Templates, Skill map, AI reviews); Team tools (Parent app preview, Export)",
+    "Maya board removed; Maya chat access moves onto each family's page; Ads page later",
+    "One 'Show test families' switch, off by default, for every page",
+    "Plain copy: no ticket numbers, no developer notes, raw data in a closed section"
+  ],
+  "invariants": [
+    "shared.css and shared.js: the same sidebar, folders, badges, test switch, sample data and routing",
+    "warm look tokens from src/ds/styles/warm.css (Geist, Geist Mono labels, orange square marker, soft cards, 6-8 px corners)",
+    "desktop 1440 x 900 and phone 390 x 844",
+    "made-up families only"
+  ],
+  "evidence": "Savar can say in 5 seconds: who became a customer, which workbook needs him, how many signups came in, and how many answers wait for marking; and he can act on each in one click.",
+  "options": [
+    {
+      "id": "A",
+      "artifact": "a-today.html",
+      "bet": "Task list: Home is 'Today', the four jobs in Savar's order, each with the rows that need action and the action button",
+      "benefit": "Fastest from opening the page to acting",
+      "cost": "Trends and totals are secondary",
+      "risk": "On a quiet day the page looks empty; numbers hide below"
+    },
+    {
+      "id": "B",
+      "artifact": "b-pulse.html",
+      "bet": "Overview: Home is four large graphic modules (customers, production, signups, marking), each a chart plus its top items",
+      "benefit": "Health of the business at a glance; most graphic",
+      "cost": "Actions are one click deeper",
+      "risk": "Charts with small numbers (2 customers) can look thin or noisy"
+    },
+    {
+      "id": "C",
+      "artifact": "c-board.html",
+      "bet": "Pipeline: Home is a journey board of families by stage; Production is a board of books by stage",
+      "benefit": "Each family's and book's place is visible in one picture",
+      "cost": "Wide boards need horizontal scroll on small screens",
+      "risk": "Does not scale past about 30 families per column"
+    }
+  ],
+  "status": "selected: B with A actions and C family board (D-315)",
+  "screenshots": {
+    "a": [
+      "a-home.jpg",
+      "a-prod.jpg",
+      "a-phone.jpg"
+    ],
+    "b": [
+      "b-home.jpg",
+      "b-prod.jpg",
+      "b-phone.jpg"
+    ],
+    "c": [
+      "c-home.jpg",
+      "c-prod.jpg",
+      "c-phone.jpg"
+    ]
+  },
+  "selected": "b-pulse.html"
+}

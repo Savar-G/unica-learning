@@ -146,6 +146,18 @@ The email is one 600 px column in the same order as the page (D-305): greeting, 
 
 On Page results, put Explain this problem beside each eligible wrong answer. Keep the result beside that question. Show the stored correct answer, up to four short steps, and one way the parent can say them to the child. Use the existing scan controls and semantic tokens. Show loading, retry, limit, changed-mark and unavailable states with accessible announcements. Render all AI output as text. A corrected right mark hides the control. The first successful explanation is reused only for the same current question and mark context. The Desk has no explanation control. D236 and D249 still restrict family release. The state matrix is in `.design/experiments/r675/contract.md`. Browser evidence remains with root.
 
+## Admin area (D-313, D-315)
+
+The admin (`/admin`) is for the team, but it uses the warm look with the same care as the site. Picked prototype: `.design/experiments/r-admin-nav/b-pulse.html`.
+
+- **Frame:** a collapsible left sidebar and the page on the right. The sidebar holds the brand, "Find a family or child", the folders and, at the bottom, "Show test families" and the signed-in email. Folders: Home; Families (Families, Tests, Feedback); Workbooks (Production, Plans and delivery, Marking); Maya (Calls); Marketing (Flyers, Emails); Quality (Templates, Skill map, AI reviews); Team tools (Parent app preview, Export). Items show a count badge only when something waits (orange when it needs the team). Closed, the sidebar is an icon rail; on a phone it is a drawer behind a menu button. Detail pages highlight their folder item.
+- **Test families:** one switch, off by default, for every admin page. Off: test and team families are left out of every list and number. On: they show with a dashed "test" tag and stay out of every number.
+- **Home:** four graphic panels in the team's order: new customers, workbook production, signups, marking. Each panel has one visual (dot chart, stage tracker, funnel and daily bars, ring), its top items, its one-click actions and "See all". A "Since yesterday" timeline closes the page.
+- **Production:** a stage tracker (No workbook yet, Being made, Ready to review, Approved, Printed, Shipped, Delivered) that filters the page, then groups: Needs you, In progress, Out the door, Done. Check results are plain words; earlier failed or stopped tries sit in a closed line.
+- **Families:** a board of families by stage (Signed up, Taking the test, Report sent, Card saved, Customer) with a waitlist lane; a family opens its page. Maya chat access is set on the family's page.
+- **Page pattern:** a mono eyebrow, a light H1, one line that says what the page is for, actions on the right. One spacing scale (4, 8, 12, 16, 24, 32, 48 px). Cards: 1 px line, 8 px corners. Tables only where people compare rows.
+- **Copy:** plain words. No ticket or decision numbers, file paths, environment names, hashes or machine names. Raw data (JSON, ids) sits in a closed "Technical details" section.
+
 ## Responsive and accessibility
 
 - Mobile first (375 px), then tablet and desktop (1440 px).
