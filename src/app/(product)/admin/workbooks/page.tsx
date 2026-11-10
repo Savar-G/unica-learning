@@ -22,10 +22,10 @@ export default async function WorkbooksPage({ searchParams }: PageProps<"/admin/
   // D-200: runs are made on the workbook computer unless WORKBOOK_RUNNER is "server".
   const runner = workbookRunner();
   const now = new Date();
-  const [data, worker] = await Promise.all([listProduction(admin, view.hidden, now), runner === "mac" ? getWorkbookWorker(admin) : null]);
+  const [data, worker] = await Promise.all([listProduction(admin, view, now), runner === "mac" ? getWorkbookWorker(admin) : null]);
   const books = buildBooks({ ...data, tests: { show: view.show, isTest: view.isTest } }, now);
   return <AdminFrame email={admin.email} title="Production" lead="Every workbook, from the first draft to the family's door." testNote={view.show}
     actions={runner === "mac" ? <WorkerLine worker={worker} /> : undefined}>
-    <ProductionBoard books={books} now={now} stage={stage} showOlder={query.older === "1"} worker={runner === "mac" ? worker : undefined} runner={runner} more={data.more} />
+    <ProductionBoard books={books} now={now} stage={stage} showOlder={query.older === "1"} worker={runner === "mac" ? worker : undefined} runner={runner} incomplete={data.incomplete} />
   </AdminFrame>;
 }

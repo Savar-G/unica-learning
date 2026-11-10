@@ -150,11 +150,11 @@ function Tracker({ books, stage }: { books: Book[]; stage: Stage | null }) {
  * The Production board. `stage`: show only this stage (?stage=). `showOlder`: Done shows every delivered book
  * (?older=1). `runner`: where a prepared workbook is made, for the prepare button's words.
  */
-export function ProductionBoard({ books, now, stage = null, showOlder = false, worker, runner, more = false }: {
-  books: Book[]; now: Date; stage?: Stage | null; showOlder?: boolean; worker?: WorkerStatus | null; runner: "mac" | "server"; more?: boolean;
+export function ProductionBoard({ books, now, stage = null, showOlder = false, worker, runner, incomplete = false }: {
+  books: Book[]; now: Date; stage?: Stage | null; showOlder?: boolean; worker?: WorkerStatus | null; runner: "mac" | "server"; incomplete?: boolean;
 }) {
   const groups = groupBooks(books, now, { stage, showOlder: showOlder || stage === "delivered" });
-  const shown = stage ? groups.filter((g) => g.books.length > 0 || g.older > 0) : groups;
+  const shown = stage ? groups.filter((g) => g.books.length > 0 || g.older + g.olderTests > 0) : groups;
   const making = groups.some((g) => g.books.some((b) => b.stage === "making"));
   return <div className="adm-pd">
     {making && <RunRefresh seconds={REFRESH_SECONDS} />}
@@ -167,10 +167,10 @@ export function ProductionBoard({ books, now, stage = null, showOlder = false, w
       </div>
       {g.books.length
         ? <div className="adm-pd-cards">{g.books.map((b) => <BookCard key={b.childId} book={b} now={now} worker={worker} runner={runner} />)}</div>
-        : <p className="adm-pd-empty">{g.older > 0 ? "No books delivered in the last 30 days." : "Nothing here right now."}</p>}
-      {g.older > 0 && <p className="adm-pd-more"><Link href={stageHref(stage, true)}>Show older ({g.older})</Link></p>}
+        : <p className="adm-pd-empty">{g.older + g.olderTests > 0 ? "No books delivered in the last 30 days." : "Nothing here right now."}</p>}
+      {g.older + g.olderTests > 0 && <p className="adm-pd-more"><Link href={stageHref(stage, true)}>{g.older > 0 ? `Show older (${g.older})` : "Show older"}</Link></p>}
     </section>)}
     {stage && shown.length === 0 && <p className="adm-pd-empty">No books at this stage right now. <Link href={stageHref(null)}>Show all</Link></p>}
-    {more && <p className="adm-note">Only the newest 500 runs, workbooks and cards are read. Older ones are left out.</p>}
+    {incomplete && <p className="adm-note" role="status">Some books could not be loaded. Showing the first {books.length}.</p>}
   </div>;
 }

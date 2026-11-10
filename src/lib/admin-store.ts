@@ -39,7 +39,7 @@ import { workerOnline } from "@/lib/workbook-worker";
 import type { RenderProblem } from "@/lib/workbook-render";
 import { familyProvince, familyZone, type FamilyZone } from "@/lib/family-time";
 import { firstDelivery, type DeliveryReceipt } from "@/lib/workbook-delivery";
-import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
+import { deliveredTimes, workbookDeliveryStore } from "@/lib/workbook-delivery-store";
 import { notIn } from "@/lib/admin-test-families";
 import { buildBooks, STARTED_PLAN_KINDS, type ProductionInput } from "@/lib/admin-production";
 
@@ -742,22 +742,30 @@ export interface RunListRow {
   activity?: RunActivity;
 }
 
-/** The saved work of a running run: only the times, never a page's content. A run has at most a few hundred pages. */
+/** Ids per call of a function that takes an array (sent in the request body): within PostgREST's row cap. */
+const BATCH = LIST_MAX;
+
+/**
+ * The saved work of running runs: only the times, never a page's content (a run has at most a few hundred pages).
+ * One request per BATCH runs (admin_run_activity), whatever the number of runs.
+ */
+async function runActivities(a: AdminSession, runIds: readonly string[]): Promise<Map<string, RunActivity>> {
+  const ids = [...new Set(runIds)];
+  const out = new Map<string, RunActivity>();
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const rows = must<{ run_id: string; page_times: string[]; last_call_at: string | null; last_solve_at: string | null; plan_at: string | null; resumed_at: string | null }[]>(
+      await a.db.rpc("admin_run_activity", { p_runs: ids.slice(i, i + BATCH) }), "workbook run activity");
+    for (const r of rows) {
+      const pageTimes = r.page_times ?? [];
+      const lastWorkAt = [pageTimes.at(-1), r.last_call_at, r.last_solve_at].filter((t): t is string => !!t).sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1) ?? null;
+      out.set(r.run_id, { pageTimes, lastWorkAt, writingStartedAt: r.plan_at ?? null, resumedAt: r.resumed_at ?? null });
+    }
+  }
+  return out;
+}
+
 async function runActivity(a: AdminSession, runId: string): Promise<RunActivity> {
-  const newest = (table: "workbook_run_calls" | "workbook_run_solves") => a.db.from(table).select("created_at").eq("run_id", runId).order("created_at", { ascending: false }).limit(1)
-    .then((r) => must<{ created_at: string }[]>(r, table));
-  const [pages, calls, solves, frame, resumed] = await Promise.all([
-    a.db.from("workbook_run_pages").select("created_at").eq("run_id", runId).order("created_at").range(0, 999).then((r) => must<{ created_at: string }[]>(r, "workbook run pages")),
-    newest("workbook_run_calls"),
-    newest("workbook_run_solves"),
-    a.db.from("workbook_run_frames").select("created_at").eq("run_id", runId).limit(1)
-      .then((r) => must<{ created_at: string }[]>(r, "workbook run plan time")),
-    a.db.from("workbook_audit").select("at").eq("run_id", runId).eq("action", "run-resumed").order("at", { ascending: false }).limit(1)
-      .then((r) => must<{ at: string }[]>(r, "workbook run resume time")),
-  ]);
-  const pageTimes = pages.map((p) => p.created_at);
-  const lastWorkAt = [pageTimes.at(-1), calls[0]?.created_at, solves[0]?.created_at].filter((t): t is string => !!t).sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1) ?? null;
-  return { pageTimes, lastWorkAt, writingStartedAt: frame[0]?.created_at ?? null, resumedAt: resumed[0]?.at ?? null };
+  return (await runActivities(a, [runId])).get(runId) ?? { pageTimes: [], lastWorkAt: null, writingStartedAt: null, resumedAt: null };
 }
 
 const DRAFT_COUNT_COLUMNS = "id, schema_version, pages, questions, failed, not_checked, failed_pages, cover:draft->pages->0->content";
@@ -770,25 +778,50 @@ type DraftCountRow = { id: string; schema_version: number; pages: number; questi
 const oldDraft = (version: number, cover: unknown) => !READABLE_DRAFT_VERSIONS.includes(version) || cover === null || cover === undefined;
 const countsOf = (d: DraftCountRow): DraftCounts => ({ pages: d.pages, questions: d.questions, failed: d.failed, notChecked: d.not_checked, failedPages: d.failed_pages });
 
+/** Stored check counts as the list reads them, or null when they are of another shape. */
+function storedCounts(x: unknown): DraftCounts | null {
+  const c = x as Partial<Record<keyof DraftCounts, unknown>> | null;
+  if (!c || typeof c !== "object") return null;
+  const keys: (keyof DraftCounts)[] = ["pages", "questions", "failed", "notChecked", "failedPages"];
+  return keys.every((k) => typeof c[k] === "number") ? { pages: c.pages as number, questions: c.questions as number, failed: c.failed as number, notChecked: c.notChecked as number, failedPages: c.failedPages as number } : null;
+}
+
+/** The pages of stored render problems (each problem names its page). */
+const problemPages = (x: unknown): number[] => (Array.isArray(x) ? x.flatMap((p) => (typeof (p as RenderProblem | null)?.page === "number" ? [(p as RenderProblem).page] : [])) : []);
+
+/**
+ * Each draft's latest revision: its check counts and the pages that did not render, never the whole content. One
+ * request per BATCH drafts (admin_latest_draft_revisions), whatever the number of drafts.
+ */
+async function latestRevisions(a: AdminSession, draftIds: readonly string[]): Promise<Map<string, { counts: DraftCounts | null; pages: number[] }>> {
+  const ids = [...new Set(draftIds)];
+  const out = new Map<string, { counts: DraftCounts | null; pages: number[] }>();
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const rows = must<{ draft_id: string; counts: unknown; render_problems: unknown }[]>(
+      await a.db.rpc("admin_latest_draft_revisions", { p_drafts: ids.slice(i, i + BATCH) }), "draft revisions");
+    for (const r of rows) out.set(r.draft_id, { counts: storedCounts(r.counts), pages: problemPages(r.render_problems) });
+  }
+  return out;
+}
+
+/**
+ * The runs with their drafts' check results and, for a running run, its saved work. A constant number of requests for
+ * any number of runs (up to 100 drafts, 500 revisions and 500 running runs per request): the drafts' counts, the latest
+ * revisions, and the running runs' activity.
+ */
 async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow[]> {
   const drafts = runs.flatMap((r) => (r.draftId ? [r.draftId] : []));
-  const [counts, revisions] = await Promise.all([
+  const [counts, revisions, activities] = await Promise.all([
     byIds<DraftCountRow>(drafts, "workbook drafts", (chunk) => a.db.from("workbook_drafts").select(DRAFT_COUNT_COLUMNS).in("id", chunk)),
-    // One bounded latest-revision read per draft. Do not fetch complete workbook content for a list.
-    Promise.all(drafts.map(id => a.db.from("workbook_draft_revisions")
-      .select("draft_id, counts:content->counts, render_problems").eq("draft_id", id)
-      .order("revision", { ascending: false }).limit(1)
-      .then(r => must<{ draft_id: string; counts: DraftCounts | null; render_problems: RenderProblem[] }[]>(r, "draft revisions"))))
-      .then(parts => parts.flat().map(r => ({ id: r.draft_id, counts: r.counts, render_problems: r.render_problems }))),
+    latestRevisions(a, drafts),
+    runActivities(a, runs.filter((r) => r.status === "running").map((r) => r.id)),
   ]);
   const byDraft = index(counts);
-  const problems = index(revisions);
-  const activities = new Map(await Promise.all(runs.filter((r) => r.status === "running").map(async (r) => [r.id, await runActivity(a, r.id)] as const)));
   return runs.map((run) => {
     const d = run.draftId ? byDraft.get(run.draftId) : undefined;
-    const p = run.draftId ? problems.get(run.draftId) : undefined;
+    const p = run.draftId ? revisions.get(run.draftId) : undefined;
     return {
-      run, counts: p?.counts ?? (d ? countsOf(d) : null), notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null,
+      run, counts: p?.counts ?? (d ? countsOf(d) : null), notRendered: p ? new Set(p.pages).size : null,
       oldFormat: !!d && oldDraft(d.schema_version, d.cover), activity: activities.get(run.id),
     };
   });
@@ -841,74 +874,113 @@ export interface ProductionBase {
   workbooks: WorkbookSummary[];
   cards: { childId: string; parentId: string; savedAt: string }[];
   plans: { childId: string; parentId: string; kind: string }[];
-  /** A read stopped at LIST_MAX rows. */
-  more: boolean;
+  /**
+   * A source held more than PRODUCTION_MAX rows: the children from the cut on (by child id) are left out whole, since
+   * their rows may be incomplete. Every child that is in the result has all of its rows.
+   */
+  incomplete: boolean;
+}
+
+/** Rows per Production source before the read stops: far above the children on the journey today. */
+export const PRODUCTION_MAX = 2000;
+
+/**
+ * Up to PRODUCTION_MAX rows of one source, in child id order, page by page. `cut`: the child id where the read stopped
+ * (that child and every later one may have rows that were not read), or null when every row was read.
+ */
+async function byChild<T extends { child_id: string }>(read: (from: number, to: number) => PromiseLike<T[]>): Promise<{ rows: T[]; cut: string | null }> {
+  const rows: T[] = [];
+  for (let from = 0; from < PRODUCTION_MAX; from += LIST_MAX) {
+    const part = await read(from, from + LIST_MAX - 1);
+    rows.push(...part);
+    if (part.length < LIST_MAX) return { rows, cut: null };
+  }
+  return { rows, cut: rows.at(-1)?.child_id ?? null };
 }
 
 /**
- * The Production stages' inputs: the newest runs and stored workbooks, the saved cards and the started plans. `hide`:
- * the parent ids left out. The page and the sidebar's Production badge read the same rows, so they agree.
+ * One set of families' Production rows: `only` the test families, or every family but `out` (the real ones). Each
+ * source is read whole for each child: the runs and stored books from admin_production_runs and admin_production_books
+ * (only the rows the stage rules read), every saved card and every started plan. When a source is cut, the children
+ * from the cut on are left out of every source.
  */
-export async function readProductionBase(a: AdminSession, hide: readonly string[] = []): Promise<ProductionBase> {
-  const out = notIn(hide);
-  let runQuery = a.db.from("workbook_runs").select(RUN_COLUMNS);
-  let bookQuery = a.db.from("workbooks").select(BOOK_COLUMNS);
-  let cardQuery = a.db.rpc("admin_card_setups").select("child_id, parent_id, card_saved_at").not("card_saved_at", "is", null);
-  let planQuery = a.db.from("child_plan_states").select("child_id, parent_id, kind").in("kind", [...STARTED_PLAN_KINDS]);
-  if (out) {
-    runQuery = runQuery.not("parent_id", "in", out);
-    bookQuery = bookQuery.not("parent_id", "in", out);
-    cardQuery = cardQuery.not("parent_id", "in", out);
-    planQuery = planQuery.not("parent_id", "in", out);
-  }
-  const [runs, books, cards, plans] = await Promise.all([
-    runQuery.order("created_at", { ascending: false }).range(0, LIST_MAX).then((r) => must<Parameters<typeof runFromRow>[0][]>(r, "workbook runs")),
-    bookQuery.order("created_at", { ascending: false }).range(0, LIST_MAX).then((r) => must<BookRow[]>(r, "workbooks")),
-    cardQuery.order("card_saved_at", { ascending: false }).range(0, LIST_MAX).then((r) => must<{ child_id: string; parent_id: string; card_saved_at: string | null }[]>(r, "saved cards")),
-    planQuery.order("child_id").range(0, LIST_MAX).then((r) => must<{ child_id: string; parent_id: string; kind: string }[]>(r, "plan states")),
+async function readProductionSet(a: AdminSession, f: { out?: string | null; only?: string[] }): Promise<Omit<ProductionBase, "incomplete"> & { cut: boolean }> {
+  type CardRow = { child_id: string; parent_id: string; card_saved_at: string | null };
+  type PlanRow = { child_id: string; parent_id: string; kind: string };
+  type RunRow = Parameters<typeof runFromRow>[0];
+  const runs = () => a.db.rpc("admin_production_runs").select(RUN_COLUMNS);
+  const books = () => a.db.rpc("admin_production_books").select(BOOK_COLUMNS);
+  const cards = () => a.db.rpc("admin_card_setups").select("child_id, parent_id, card_saved_at").not("card_saved_at", "is", null);
+  const plans = () => a.db.from("child_plan_states").select("child_id, parent_id, kind").in("kind", [...STARTED_PLAN_KINDS]);
+  // The same family filter on each source.
+  const scope = <Q extends { not: (c: "parent_id", op: "in", v: string) => Q; in: (c: "parent_id", v: string[]) => Q }>(q: Q): Q =>
+    f.only ? q.in("parent_id", f.only) : f.out ? q.not("parent_id", "in", f.out) : q;
+  const [r, b, c, p] = await Promise.all([
+    byChild((from, to) => scope(runs()).order("child_id").order("id").range(from, to).then((x) => must<RunRow[]>(x, "workbook runs"))),
+    byChild((from, to) => scope(books()).order("child_id").order("id").range(from, to).then((x) => must<BookRow[]>(x, "workbooks"))),
+    byChild((from, to) => scope(cards()).order("child_id").order("id").range(from, to).then((x) => must<CardRow[]>(x, "saved cards"))),
+    byChild((from, to) => scope(plans()).order("child_id").range(from, to).then((x) => must<PlanRow[]>(x, "plan states"))),
   ]);
+  const cuts = [r.cut, b.cut, c.cut, p.cut].filter((x): x is string => !!x).sort();
+  const cut = cuts[0] ?? null;
+  const whole = <T extends { child_id: string }>(rows: T[]) => (cut ? rows.filter((x) => x.child_id < cut) : rows);
   return {
-    runs: runs.slice(0, LIST_MAX).map(runFromRow),
-    workbooks: books.slice(0, LIST_MAX).map(bookSummary),
-    cards: cards.slice(0, LIST_MAX).flatMap((c) => (c.card_saved_at ? [{ childId: c.child_id, parentId: c.parent_id, savedAt: c.card_saved_at }] : [])),
-    plans: plans.slice(0, LIST_MAX).map((p) => ({ childId: p.child_id, parentId: p.parent_id, kind: p.kind })),
-    more: [runs, books, cards, plans].some((rows) => rows.length > LIST_MAX),
+    runs: whole(r.rows).map(runFromRow),
+    workbooks: whole(b.rows).map(bookSummary),
+    cards: whole(c.rows).flatMap((x) => (x.card_saved_at ? [{ childId: x.child_id, parentId: x.parent_id, savedAt: x.card_saved_at }] : [])),
+    plans: whole(p.rows).map((x) => ({ childId: x.child_id, parentId: x.parent_id, kind: x.kind })),
+    cut: !!cut,
   };
 }
 
-/** When each of these workbooks was delivered, for those with a delivery receipt. */
-async function deliveryTimes(a: AdminSession, ids: readonly string[]): Promise<{ workbook_id: string; delivered_at: string }[]> {
-  const out: { workbook_id: string; delivered_at: string }[] = [];
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    out.push(...must<{ workbook_id: string; delivered_at: string }[]>(
-      await a.db.from("workbook_delivery_receipts").select("workbook_id, delivered_at").in("workbook_id", ids.slice(i, i + CHUNK)), "delivery receipts"));
-  }
-  return out;
+/**
+ * The Production stages' inputs: for every child on the journey, the runs and stored workbooks the stage rules read,
+ * the saved cards and the started plans, complete per child. `testIds`: the test and team families. The real families
+ * are one read (the sidebar badge reads only this one, so it agrees with the page's numbers); with `withTests`, the
+ * test families are a second read, so test rows can never push a real child out.
+ */
+export async function readProductionBase(a: AdminSession, testIds: readonly string[], o: { withTests?: boolean } = {}): Promise<ProductionBase> {
+  const tests = testIds.filter(isUuid);
+  const [real, test] = await Promise.all([
+    readProductionSet(a, { out: notIn(tests) }),
+    o.withTests && tests.length ? readProductionSet(a, { only: tests }) : null,
+  ]);
+  return {
+    runs: [...real.runs, ...(test?.runs ?? [])],
+    workbooks: [...real.workbooks, ...(test?.workbooks ?? [])],
+    cards: [...real.cards, ...(test?.cards ?? [])],
+    plans: [...real.plans, ...(test?.plans ?? [])],
+    incomplete: real.cut || !!test?.cut,
+  };
 }
 
-/** The Production page's data: the stages' inputs, the check results and progress of each current run, names and deliveries. */
-export async function listProduction(a: AdminSession, hide: readonly string[] = [], now = new Date()): Promise<Omit<ProductionInput, "tests"> & { more: boolean }> {
-  const base = await readProductionBase(a, hide);
+/**
+ * The Production page's data: the stages' inputs (readProductionBase), names, delivery times, and the check results
+ * and progress of each current run (being made, or a draft waiting): a constant number of requests, whatever the number
+ * of runs. `tests`: the "Show test families" switch and the test family ids.
+ */
+export async function listProduction(a: AdminSession, tests: { ids: readonly string[]; show: boolean }, now = new Date()): Promise<Omit<ProductionInput, "tests"> & { incomplete: boolean }> {
+  const base = await readProductionBase(a, tests.ids, { withTests: tests.show });
   // Only the current runs (being made, or a draft waiting) need their draft's checks and saved work: a light page to refresh.
   const light = buildBooks({ ...base, runs: base.runs.map((run) => ({ run })), deliveries: [], tests: { show: true, isTest: () => false } }, now);
   const current = new Set(light.flatMap((b) => (b.run ? [b.run.run.id] : [])));
   const childIds = new Set(light.map((b) => b.childId));
   const parentIds = new Set(light.map((b) => b.parentId));
   const shipped = base.workbooks.filter((w) => w.status === "shipped").map((w) => w.id);
-  const [rows, children, parents, receipts] = await Promise.all([
+  const [rows, children, parents, delivered] = await Promise.all([
     runRows(a, base.runs.filter((r) => current.has(r.id))),
     childrenById(a, childIds),
     parentsById(a, parentIds),
-    deliveryTimes(a, shipped),
+    deliveredTimes(a.db, shipped),
   ]);
   const rich = new Map(rows.map((r) => [r.run.id, r]));
   return {
     runs: base.runs.map((run) => rich.get(run.id) ?? { run }),
     workbooks: base.workbooks, cards: base.cards, plans: base.plans,
-    deliveries: receipts.map((r) => ({ workbookId: r.workbook_id, deliveredAt: r.delivered_at })),
+    deliveries: [...delivered].map(([workbookId, deliveredAt]) => ({ workbookId, deliveredAt })),
     children: children.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name })),
     parents: parents.map((p) => ({ id: p.id, name: p.name })),
-    more: base.more,
+    incomplete: base.incomplete,
   };
 }
 

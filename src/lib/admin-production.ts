@@ -19,8 +19,9 @@
 // Earlier tries: the child's other runs for the current book number or a later one: failed or stopped runs, and
 // finished drafts that were replaced (not stored). Runs of earlier books are that book's history and are not listed.
 //
-// Numbers: test and team families never count in a stage count or a group count. They show (tagged) only while the
-// "Show test families" switch is on; while it is off, they are left out.
+// Numbers: test and team families never count in a stage count or a group count, nor in Done's 30-day cut and its
+// "Show older" count. They show (tagged) only while the "Show test families" switch is on; while it is off, they are
+// left out.
 import type { DraftCounts } from "@/lib/admin-store";
 import type { WorkbookSummary } from "@/lib/workbook-content";
 import { STALE_SECONDS, type WorkbookRun } from "@/lib/workbook-job";
@@ -233,8 +234,10 @@ export interface Group {
   /** Real families' books in the group (test families never count). */
   count: number;
   books: Book[];
-  /** Done only: books older than 30 days that are not shown. */
+  /** Done only: real families' books older than 30 days that are not shown (test books never count). */
   older: number;
+  /** Done only: test families' books older than 30 days that are not shown (the switch is on). */
+  olderTests: number;
 }
 
 /**
@@ -251,13 +254,18 @@ export function groupBooks(books: readonly Book[], now: Date, o: { stage?: Stage
       || (g.key === "you" ? time(a).localeCompare(time(b)) : time(b).localeCompare(time(a))) || a.child.localeCompare(b.child);
     let shown = all.filter((b) => !o.stage || b.stage === o.stage).sort(order);
     let older = 0;
-    if (g.key === "done" && !o.showOlder && all.length > DONE_SHORT) {
+    let olderTests = 0;
+    // Only real books decide whether Done is cut, and only they are counted: showing test families never hides a
+    // real book that shows with the switch off.
+    const real = all.filter((b) => !b.test).length;
+    if (g.key === "done" && !o.showOlder && real > DONE_SHORT) {
       const since = now.getTime() - DONE_DAYS * 86_400_000;
-      const recent = shown.filter((b) => b.at && Date.parse(b.at) >= since);
-      older = shown.length - recent.length;
-      shown = recent;
+      const hidden = shown.filter((b) => !(b.at && Date.parse(b.at) >= since));
+      older = hidden.filter((b) => !b.test).length;
+      olderTests = hidden.length - older;
+      shown = shown.filter((b) => !hidden.includes(b));
     }
-    return { key: g.key, title: g.title, hint: g.hint, count: all.filter((b) => !b.test).length, books: shown, older };
+    return { key: g.key, title: g.title, hint: g.hint, count: real, books: shown, older, olderTests };
   });
 }
 
