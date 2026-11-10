@@ -2539,6 +2539,16 @@ function layOut(input: GenerateInput) {
     // then leave it (#482 review at db3b1a0: an example answered a later question; the full U4 book: the questions had
     // used every task of a small step before its examples were chosen).
     for (const w of work) for (const panel of w.panels) {
+      // A measured plan keeps the attempt its capacity pass chose (#746: page 64 was measured with a code example and then
+      // written by the writer, whose example was two lines longer).
+      const saved = w.page.panelAttempts?.[panel.id];
+      if (saved !== undefined) {
+        panel.attempt = saved;
+        const c = contractFor(input, w, panelSlot(w, panel), saved);
+        const pkg = c ? contractPackage(input, w, c) : null;
+        if (pkg) used.set(taskIdentity(pkg), 2);
+        continue;
+      }
       for (let attempt = 0; attempt < 64; attempt++) {
         const c = contractFor(input, w, panelSlot(w, panel), attempt);
         const pkg = c ? contractPackage(input, w, c) : null;
@@ -2918,6 +2928,26 @@ function standIn(input: GenerateInput, w: PageWork, s: Slot, i: number): BuiltQu
   return b;
 }
 
+/**
+ * A stand-in for a panel's worked example that the writer builds itself (no code contract), when its page is measured
+ * before writing (#746): a sum in the level's numbers that code works in the most steps a panel prints (three, then
+ * the answer), under a story as long as a writer's. Planning then keeps the room the writer's own example takes, as
+ * standIn does for a writer's slot. Only for measuring: it is never a task and never prints.
+ */
+function exampleStandIn(input: GenerateInput, w: PageWork, p: Panel): QuestionPackage | null {
+  const max = skillRange(input.curriculum, input.plan.level, p.skill).max;
+  // (Regrouping in every column, so the method has all its steps; up to U6 the longest count on, ten numbers.)
+  const [a, b] = max >= 1000 ? [476, 358] : max >= 100 ? [47, 38] : [10, 10];
+  const op = { kind: "add", operands: [itemNumber(a), itemNumber(b)], expression: null, unit: null, denominator: null, values: [] };
+  const raw = {
+    slot: p.id, skill: p.skill, difficulty: 2, text: `Mia has ${a} shells. She finds ${b} more on the beach. How many shells does Mia have now?`, format: "write-number",
+    figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null, name: null, thing: null,
+    operation: op, easier: null, wrongAnswers: [{ value: itemNumber(a + b + 1), cause: "careless", description: "A slip.", step: null }], shownWrong: null,
+  };
+  const built = buildQuestion(raw, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill], preserveText: true });
+  return built.package ? withoutSam(built.package, null) : null;
+}
+
 /** A contract's code-built package as the page plans it, for its task identity and printed form (cached). */
 const contractPackages = new WeakMap<ItemPlan, QuestionPackage | null>();
 function contractPackage(input: GenerateInput, w: PageWork, c: ItemPlan): QuestionPackage | null {
@@ -2992,7 +3022,7 @@ function budgetPage(input: GenerateInput, w: PageWork): DraftPage {
     if (built.package && s.place !== "spot-the-error") built.package = withoutSam(built.package, s.planned?.name ?? null);
     return generated(w, i, built, 1);
   });
-  const examples = w.panels.map(p => { const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0); const pkg = c ? contractPackage(input, w, c) : null; return pkg ? withoutSam(pkg, null) : null; });
+  const examples = w.panels.map(p => { const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0); const pkg = c ? contractPackage(input, w, c) : null; return pkg ? withoutSam(pkg, null) : c ? null : exampleStandIn(input, w, p); });
   return fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples));
 }
 
@@ -3192,7 +3222,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         const examples = w.panels.map(p => {
           const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0);
           const pkg = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill] }).package : null;
-          return pkg ? withoutSam(pkg, null) : null;
+          // (A panel the writer builds is measured with its stand-in, #746.)
+          return pkg ? withoutSam(pkg, null) : c ? null : exampleStandIn(input, w, p);
         });
         // (Room only: a layout problem is the template's, reported when the page is written.)
         const budgetPage = fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples));
@@ -3682,7 +3713,12 @@ export async function prepareWorkbookCapacity(input: GenerateInput, fitCheck: Fi
   const { work } = layOut(input);
   const problem = await fitWorkBudget(input, fitCheck, work);
   if (problem) throw new Error(problem);
-  return { ...input.plan, extraPractice: work.filter(w=>w.page.extraPractice).map(w=>w.page), days: input.plan.days.map(d=>({ ...d, pages:d.pages.map(p=>work.find(w=>w.day===d.day && w.page.number===p.number)!.page) })) };
+  // (Each panel's measured attempt goes with its page, as its slots' contracts do, #746.)
+  const kept = (w: PageWork) => {
+    const attempts = w.panels.filter((p) => p.attempt !== undefined).map((p) => [p.id, p.attempt!] as const);
+    return attempts.length ? { ...w.page, panelAttempts: Object.fromEntries(attempts) } : w.page;
+  };
+  return { ...input.plan, extraPractice: work.filter(w=>w.page.extraPractice).map(kept), days: input.plan.days.map(d=>({ ...d, pages:d.pages.map(p=>kept(work.find(w=>w.day===d.day && w.page.number===p.number)!)) })) };
 }
 
 /**
