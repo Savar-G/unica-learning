@@ -4,7 +4,8 @@ import { getChild, getChildRuns, getChildWorkbooks, getWorkbookWorker, requireAd
 import { workbookRunner } from "@/lib/workbook-ai";
 import { adminChildProfilePath, adminParentPath, adminWorkbookPath, when } from "@/lib/admin-view";
 import { answerFacts, bookMix, fromRow, interestLabel, LEARNING_STYLES } from "@/lib/learning-style";
-import { AdminFrame, Table, TestsTable, gradeAndPlace } from "@/components/admin";
+import { Table, TestsTable, gradeAndPlace } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { RecordFacts } from "@/components/admin-records";
 import { WorkbookStatusChip } from "@/components/admin-workbook";
 import { ChildRunsTable, WorkerLine } from "@/components/admin-workbook-runs";
@@ -20,7 +21,7 @@ import { BookInstructions, loadBookInstructions } from "./book-instructions";
 export default async function ChildPage({ params }: PageProps<"/admin/children/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
-  // D-200: runs are made on Savar's Mac unless WORKBOOK_RUNNER is "server"; the worker's status shows beside the button.
+  // D-200: runs are made on the workbook computer unless WORKBOOK_RUNNER is "server"; its status shows beside the button.
   const runner = workbookRunner();
   const [record, workbooks, runs, worker] = await Promise.all([getChild(admin, id), getChildWorkbooks(admin, id), getChildRuns(admin, id), runner === "mac" ? getWorkbookWorker(admin) : null]);
   if (!record) notFound();
@@ -45,8 +46,8 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
   });
   const shipped = workbooks.filter(w => w.status === "shipped");
   const scanViews = await Promise.all(shipped.map(w => loadAdminScanProgress(admin, { parentId: c.parent_id, childId: c.id, workbookId: w.id })));
-  return <AdminFrame email={admin.email} section="children" title={c.first_name}>
-    <RecordFacts facts={[["Grade and curriculum", gradeAndPlace(c.grade, c.province)], ["Parent", <Link key="parent" href={adminParentPath(c.parent_id)}>{family.parent.name}</Link>], ["Added (Pacific)", when(c.created_at)], ["Child id", c.id],
+  return <AdminFrame email={admin.email} title={c.first_name}>
+    <RecordFacts facts={[["Grade and curriculum", gradeAndPlace(c.grade, c.province)], ["Parent", <Link key="parent" href={adminParentPath(c.parent_id)}>{family.parent.name}</Link>], ["Added (Pacific)", when(c.created_at)],
       // #303: the current profile from the latest test profile and every learning event.
       ["Profile", <Link key="profile" href={adminChildProfilePath(c.id)}>Open the child&apos;s profile</Link>]]} />
     <h2>How {c.first_name} learns</h2>
@@ -78,5 +79,9 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
     {nextBook !== "hidden" && <PrepareFromSnapshot childId={c.id} state={nextBook} />}
     {runner === "mac" && <p className="adm-note"><WorkerLine worker={worker} /></p>}
     <ChildRunsTable runs={runs} now={new Date()} worker={runner === "mac" ? worker : undefined} />
+    <details className="adm-tech">
+      <summary>Technical details</summary>
+      <RecordFacts facts={[["Child id", <span key="id" className="adm-mono">{c.id}</span>], ["Parent id", <span key="parent" className="adm-mono">{c.parent_id}</span>]]} />
+    </details>
   </AdminFrame>;
 }

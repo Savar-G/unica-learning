@@ -50,7 +50,8 @@ export function historyCosts(records: readonly HistoryRecord[], pages: readonly 
 }
 export interface HistoryStore { read(filter: HistoryFilter): Promise<{ pages: HistoryRecord[]; budget: HistoryBudget | null } | null> }
 /** Parent and Admin use this exact reader. Keyset cursors advance even through nonmatching status pages. */
-export async function readScanHistory(store: HistoryStore, filter: HistoryFilter, now: number, limit = 25) {
+/** `skipChildren`: children whose pages are left out of the list and of its costs (the admin's test families). */
+export async function readScanHistory(store: HistoryStore, filter: HistoryFilter, now: number, limit = 25, skipChildren: ReadonlySet<string> = new Set()) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("history_limit");
   const records: HistoryRecord[] = [], pages: HistoryPage[] = [];
   let after = filter.after, budget: HistoryBudget | null = null, more = false;
@@ -62,7 +63,7 @@ export async function readScanHistory(store: HistoryStore, filter: HistoryFilter
     for (const r of batch.pages) {
       if (after && r.id <= after) throw new Error("history_cursor");
       after = r.id;
-      if ((filter.child && r.childId !== filter.child) || (filter.workbook && r.workbookId !== filter.workbook)) continue;
+      if ((filter.child && r.childId !== filter.child) || (filter.workbook && r.workbookId !== filter.workbook) || skipChildren.has(r.childId)) continue;
       const p = historyPage(r, now);
       if (filter.status === "review" && p.status !== "review") continue;
       if (filter.status === "failed" && !p.failedJob) continue;

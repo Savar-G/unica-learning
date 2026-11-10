@@ -8,7 +8,7 @@ All current email texts, including the free-month variants for children below Gr
 
 On the admin workbook screen, the email controls appear below **Print and ship** after the workbook is marked printed. The family, child, saved card and workbook number come from that stored workbook. **Workbook ready** is unavailable after it is marked shipped. A child without a confirmed saved card has no email controls.
 
-In **Admin > Cards and waitlist**, open **Workbook emails** on the child's saved card. The same controls appear on the family and child records, with a workbook number field for these manual sends.
+In **Admin > Plans and delivery**, open **Workbook emails** on the child's saved card. The same controls appear on the family and child records, with a workbook number field for these manual sends.
 
 1. For an earlier signup, select **Preview welcome email**. Review the recipient and text. Select **Send welcome email**.
 2. When the printed workbook is ready, select **Workbook ready**. Review the recipient and text. Select **Send workbook ready email**.

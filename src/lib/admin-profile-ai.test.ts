@@ -12,6 +12,8 @@ import { writeProfileAi } from "@/lib/learner-profile-ai";
 // name, with the id of the model that wrote it, and the child's first name in place of "{name}". Rendered as the page
 // renders it, from a stored profile.
 vi.mock("server-only", () => ({}));
+// The frame reads the request (the test families switch, the sidebar counts); this test checks the page inside it.
+vi.mock("@/components/admin-frame", () => ({ AdminFrame: ({ children }: { children: unknown }) => children }));
 
 const MODEL = "openai/gpt-5.5-mini";
 
@@ -54,7 +56,7 @@ describe("the admin profile page's AI parts", () => {
     const { ai: parts } = await writeProfileAi(ai, profile);
     const html = page({ ...profile, ai: parts });
 
-    const written = html.slice(html.indexOf("Written by AI"), html.indexOf("Stored JSON"));
+    const written = html.slice(html.indexOf("Written by AI"), html.indexOf("Technical details"));
     for (const label of ["Likely cause of each struggle", "How to help with each struggle", "Workbook 1 plan"]) expect(written).toContain(label);
     // No next challenge was kept, so that part is not shown.
     expect(written).not.toContain("Next challenge");
@@ -77,7 +79,7 @@ describe("the admin profile page of a profile stored before D-121", () => {
     const old = { ...profile, wordsOrNumbers: { finding: "gap", skills: [{ id: "4.5-multiply-1-digit", finding: "words-harder", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }] } };
     const html = page(old as LearnerProfile);
     expect(html).toContain("3. Struggles");
-    expect(html).toContain("Stored JSON");
+    expect(html).toContain("Technical details");
     for (const gone of ["Words or numbers", "wordsOrNumbers", "Word problems harder", "4.5-multiply-1-digit"]) expect(html).not.toContain(gone);
   });
 });

@@ -10,7 +10,8 @@ import { adminProfilePath, adminTestPath, duration, when } from "@/lib/admin-vie
 import { storedChildProfile, type ChildLearnerProfile, type ChildProfileFinding, type ChildStandard } from "@/lib/child-profile";
 import { feelingLabel, goalLabel, interestLabel, styleLabel, weeklyTimeLabel } from "@/lib/learning-style";
 import { STATUS_LABEL } from "@/lib/report-view";
-import { AdminFrame, Chip, Table, gradeAndPlace } from "@/components/admin";
+import { Chip, Table, gradeAndPlace } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { RecordFacts, childPath } from "@/components/admin-records";
 
 const STANDARD_TEXT = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s.text]));
@@ -26,7 +27,7 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
   const numbers = new Map(events.map((e, i) => [e.id, i + 1]));
   // The events the stored build counted: an event stored after it shows as not in this build.
   const counted = new Set(profile?.standards.flatMap((s) => s.evidence.events) ?? []);
-  return <AdminFrame email={email} section="children" title={`${c.first_name}'s profile`}>
+  return <AdminFrame email={email} title={`${c.first_name}'s profile`}>
     <RecordFacts facts={[
       ["Child", <Link key="child" href={childPath(c.id)}>{c.first_name}</Link>], ["Grade and curriculum", gradeAndPlace(c.grade, c.province)],
       ["Built (Pacific)", when(stored?.built_at ?? null)], ["First built (Pacific)", when(stored?.created_at ?? null)],
@@ -36,8 +37,8 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
     ]} />
     {!stored ? <p className="adm-note">No profile is stored for this child. It is built after a finished test&apos;s report and after the parent changes the learning card.</p>
       : !profile ? <>
-        <p className="adm-note">This profile was built at schema version {stored.schema_version}, which this page does not read. The next build replaces it.</p>
-        <pre className="adm-typed">{JSON.stringify(stored.profile, null, 2)}</pre>
+        <p className="adm-note">This profile was built in an older format, which this page does not read. The next build replaces it.</p>
+        <details className="adm-tech"><summary>Technical details</summary><p>Schema version {stored.schema_version}.</p><pre>{JSON.stringify(stored.profile, null, 2)}</pre></details>
       </>
       : <ProfileFacts profile={profile} numbers={numbers} />}
 
@@ -65,10 +66,7 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
       })}
     </Table>
 
-    {profile && <>
-      <h2>Stored JSON</h2>
-      <details><summary>Schema version {stored!.schema_version}, revision {stored!.revision}</summary><pre className="adm-typed">{JSON.stringify(profile, null, 2)}</pre></details>
-    </>}
+    {profile && <details className="adm-tech"><summary>Technical details</summary><p>The stored profile, schema version {stored!.schema_version}, revision {stored!.revision}.</p><pre>{JSON.stringify(profile, null, 2)}</pre></details>}
   </AdminFrame>;
 }
 

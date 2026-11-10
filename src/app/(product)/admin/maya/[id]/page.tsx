@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { AdminFrame } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { MayaCall } from "@/components/admin-maya";
 import { requireAdmin } from "@/lib/admin-store";
 import { ADMIN_PATH } from "@/lib/admin-view";
@@ -17,7 +17,7 @@ export default async function MayaCallPage({ params }: PageProps<"/admin/maya/[i
   if (!call) notFound();
   const scope = await childScopeSummary(admin, call.view.childId);
   return (
-    <AdminFrame email={admin.email} section="maya" title={null} wide>
+    <AdminFrame email={admin.email} title={null} wide>
       <div className="adm-main">
         <p className="adm-sub">Workbook scope refusals for this child: {scope.count} across calls and chats.</p>
         <MayaCall initial={call.view} board={boardPlayback(call.view.batches)} childName={call.childName} />

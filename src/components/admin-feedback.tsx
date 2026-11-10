@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Table } from "@/components/admin";
+import { Table, TestTag } from "@/components/admin";
 import { adminParentPath, when } from "@/lib/admin-view";
 import { FEEDBACK_PRODUCTS, feedbackProduct, type FeedbackProduct, type FeedbackRow } from "@/lib/feedback";
 
-export function AdminFeedbackList({ rows, product, page = 1, more = false }: { rows: FeedbackRow[]; product: FeedbackProduct | null; page?: number; more?: boolean }) {
+/** `isTest`: tag a test family's row (only while "Show test families" is on). */
+export function AdminFeedbackList({ rows, product, page = 1, more = false, isTest }: { rows: FeedbackRow[]; product: FeedbackProduct | null; page?: number; more?: boolean; isTest?: (parentId: string) => boolean }) {
   const href = (p: number) => `/admin/feedback?${new URLSearchParams({ ...(product ? { product } : {}), page: String(p) })}`;
   return <>
     <form action="/admin/feedback" method="get" className="adm-filters">
@@ -17,7 +18,7 @@ export function AdminFeedbackList({ rows, product, page = 1, more = false }: { r
     <Table label="Parent feedback" head={["Time (Pacific)", "Family", "Product", "Feedback", "Page", "Status"]} empty="No feedback found.">
       {rows.map(row => <tr key={row.id}>
         <td>{when(row.created_at)}</td>
-        <td><Link href={adminParentPath(row.parent_id)}>View family</Link></td>
+        <td><Link href={adminParentPath(row.parent_id)}>View family</Link><TestTag test={isTest?.(row.parent_id)} /></td>
         <td>{FEEDBACK_PRODUCTS.find(p => p.value === feedbackProduct(row.product))?.label ?? row.product}</td>
         <td style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", minWidth: "16rem", maxWidth: "38rem" }}>{row.text}</td>
         <td>{row.source}</td><td>{row.status}</td>

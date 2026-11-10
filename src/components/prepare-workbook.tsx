@@ -14,7 +14,7 @@ export function PrepareWorkbook({ childId, child, runner = "server" }: { childId
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function start() {
-    const where = runner === "mac" ? "It is made on Savar's Mac, on the Claude subscription (the paid API only if the subscription cannot)." : "It is made on the server with the paid API.";
+    const where = runner === "mac" ? "It is made on the workbook computer, on the Claude subscription. The paid API is used only when the subscription cannot make it." : "It is made on the server with the paid API.";
     if (busy || !window.confirm(`Prepare ${child}'s next workbook? The AI writes every page, so it takes a while. ${where}`)) return;
     setBusy(true);
     setError("");

@@ -7,7 +7,8 @@ import { ProgressPanel } from "@/components/admin-progress";
 import { adminParentPath, adminProfilePath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, questionNumbers, shownWithoutAnswer, when } from "@/lib/admin-view";
 import { contextFacts } from "@/lib/admin-view";
 import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
-import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
+import { Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/admin-records";
 import { QuestionSkills } from "@/components/admin-question-skills";
 import { StrokeReplay } from "@/components/stroke-replay";
@@ -26,7 +27,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
   const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review || a.questionId in strokes);
   const quick = facts ? factLines(facts.test, facts.answers) : [];
   const progress = progressSnapshot(new Map([[t.id, detailProgress(detail)]]), new Date());
-  return <AdminFrame email={admin.email} section="tests" title={`${t.child?.first_name ?? "Child"}'s test`}>
+  return <AdminFrame email={admin.email} title={`${t.child?.first_name ?? "Child"}'s test`}>
     <RecordFacts facts={[
       ["Parent", <Link key="parent" href={adminParentPath(t.parent_id)}>{t.parent?.name ?? "Family"}</Link>],
       ["Child", <Link key="child" href={childPath(t.child_id)}>{t.child?.first_name ?? "Child"}</Link>],
@@ -35,7 +36,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       ["Resume until (Pacific)", when(t.resume_until)], ["Working level", t.placement ? levelText(t.placement.workingLevel) : "-"], ["Route", t.route ?? "-"],
       ["Unknown answers", detail.answers.filter(a => a.response === UNKNOWN_RESPONSE).length],
       ["Assessment format", t.stored.adaptive ? "Six-question blocks" : "Stages"],
-      ["Did anyone help?", helpAnswerText(t.help)], ["Seed", t.seed], ["Test id", t.id],
+      ["Did anyone help?", helpAnswerText(t.help)],
       ["Learner profile", t.status === "completed" ? <Link key="profile" href={adminProfilePath(t.id)}>Open the profile</Link> : "-"],
     ]} />
     <h2>Where the child is</h2>
@@ -50,7 +51,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
     <h2>Report and delivery</h2>
     {report ? <><p><Link href={adminReportPath(report.id)}>Open the report</Link></p><RecordFacts facts={[["Created (Pacific)", when(report.created_at)], ["Questions", report.questions], ["Minutes", report.minutes], ["Parent email", DELIVERY_WORDS[reportEmailState(report)]], ["Parent email claimed (Pacific)", when(report.emailed_at)], ["Parent email error", report.email_error], ["Alert", DELIVERY_WORDS[reportAlertState(report)]], ["Alert (Pacific)", when(report.alerted_at)], ["Alert error", report.alert_error]]} /></> : <p className="adm-note">No report has been stored.</p>}
     <h2>Answers and times</h2>
-    <p className="adm-note">Thinking time is measured in the browser. Time on the server runs from when the server sent the question to when the answer arrived (#184). Changes, read aloud and away: what the child did before Next. A dash: not recorded (a test from before #184).</p>
+    <p className="adm-note">Thinking time is measured in the browser. Time on the server runs from when the server sent the question to when the answer arrived. Changes, read aloud and away: what the child did before Next. A dash: not recorded (an older test).</p>
     <Table label="Answers" head={["#", t.stored.adaptive ? "Block" : "Stage", "Level / strand", "Template / BC", "Question", "Right answer", "Child answer", "Result", "Thinking time", "Time on the server", "Changes", "Read aloud", "Away", "Mistake"]} empty="No answers yet.">
       {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td><a href={`#question-${a.number}`}>{a.number}</a></td><td>{a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td><span className="adm-mono">{a.templateId ?? "-"}</span><span className="adm-sub">BC {a.standard ?? "-"}</span></td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}{a.leftOut && <span className="adm-sub">Left out: rushed</span>}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td className="adm-nowrap">{a.timeline.serverMs === null ? "-" : duration(a.timeline.serverMs)}</td><td className="adm-num">{changeCount(a)}</td><td className="adm-num">{readAloudCount(a)}</td><td className="adm-nowrap">{awayCount(a)}</td><td>{a.misconception ?? "-"}</td></tr>)}
     </Table>
@@ -80,5 +81,9 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       {quick.map((f) => <tr key={f.number}><td>{f.number}</td><td>{f.fact}</td><td>{f.rightAnswer}</td><td>{f.skipped ? "Skipped" : f.response}</td><td>{f.correct ? "Right" : "Wrong"}</td><td>{duration(f.atMs)}</td><td>{duration(f.serverMs)}</td><td>{f.browserMs === null ? "-" : duration(f.browserMs)}</td></tr>)}
     </Table>
     <h2>Emails and unsubscribes</h2><EmailTable emails={detail.emails} />
+    <details className="adm-tech">
+      <summary>Technical details</summary>
+      <RecordFacts facts={[["Test id", <span key="id" className="adm-mono">{t.id}</span>], ["Question draw number", t.seed], ["Parent id", <span key="parent" className="adm-mono">{t.parent_id}</span>], ["Child id", <span key="child" className="adm-mono">{t.child_id}</span>]]} />
+    </details>
   </AdminFrame>;
 }

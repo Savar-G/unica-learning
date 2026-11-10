@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AdminFrame } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { EmailLog } from "@/components/admin-activity";
 import { Notes, href } from "@/components/admin-dashboard-parts";
 import { FamilyDrawer } from "@/components/admin-family";
@@ -26,7 +26,7 @@ export default async function EmailsPage({ searchParams }: PageProps<"/admin/ema
     </nav>
   );
   return (
-    <AdminFrame email={who} section="emails" title={null} wide>
+    <AdminFrame email={who} title={null} wide>
       <div className="dash-page">
         <Notes ctx={ctx} d={d} />
         <EmailLog d={d} ctx={ctx} filter={filter} nav={nav} />

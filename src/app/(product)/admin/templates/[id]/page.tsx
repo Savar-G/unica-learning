@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminFrame, Table } from "@/components/admin";
+import { Table } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { CountedNote, TemplateFilterForm, WrongList, demoHref, templateQuery } from "@/components/admin-templates";
 import { RecordFacts } from "@/components/admin-records";
 import { BANKS, BC_SKILL_MAP, MISCONCEPTIONS, STRAND_NAMES, fillTemplate, type MisconceptionId } from "@/lib/assessment";
 import { requireAdmin, templateStats } from "@/lib/admin-store";
+import { showTestFamilies } from "@/lib/admin-test-families-server";
 import {
   ADMIN_TEMPLATES_PATH,
   adminTemplatePath,
@@ -24,9 +26,10 @@ const SAMPLE_SEEDS = [1, 2, 3];
 export default async function TemplatePage({ params, searchParams }: PageProps<"/admin/templates/[id]">) {
   const id = decodeURIComponent((await params).id);
   const query = await searchParams;
-  const filters = parseTemplateFilters(query);
   const demo = query.demo === "1" && process.env.NODE_ENV === "development";
   const admin = demo ? null : await requireAdmin();
+  // The "Show test families" switch (D-313) decides whether test families count here.
+  const filters = { ...parseTemplateFilters(query), withTests: await showTestFamilies(query) };
   const stats = admin ? await templateStats(admin, filters, id) : countAnswers(demoAnswers(), filters).filter((s) => s.template_id === id);
   const bands = Object.entries(BANKS).filter(([, bank]) => bank.some((t) => t.id === id)).map(([band]) => band);
   const template = Object.values(BANKS).flat().find((t) => t.id === id);
@@ -41,7 +44,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   const otherLevels = template ? Object.entries(template.grades).filter(([p]) => p !== "BC").map(([p, l]) => `${p} ${levelText(l)}`).join(", ") : "";
 
   return (
-    <AdminFrame email={admin?.email ?? "demo data"} section="templates" title={<>Template <span className="adm-mono">{id}</span></>}>
+    <AdminFrame email={admin?.email ?? "demo data"} title={<>Template <span className="adm-mono">{id}</span></>} testNote={filters.withTests && "Test families are showing, and on this page they are counted in the numbers."}>
       <p><Link href={`${ADMIN_TEMPLATES_PATH}${templateQuery(filters, demo)}`}>All templates</Link></p>
       {template ? (
         <RecordFacts facts={[

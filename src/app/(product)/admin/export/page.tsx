@@ -1,7 +1,8 @@
-import { AdminFrame } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { ExportView } from "@/components/admin-export";
 import { ADMIN_EXPORT_PATH } from "@/lib/admin-export";
 import { requireAdmin } from "@/lib/admin-store";
+import { showTestFamilies } from "@/lib/admin-test-families-server";
 import { pageMetadata } from "@/lib/metadata";
 
 export const metadata = pageMetadata({ path: ADMIN_EXPORT_PATH, title: "Admin: export", description: "Admin area.", index: false });
@@ -12,9 +13,10 @@ export default async function ExportPage({ searchParams }: PageProps<"/admin/exp
   const query = await searchParams;
   const demo = query.demo === "1" && process.env.NODE_ENV === "development";
   const email = demo ? "demo data" : (await requireAdmin()).email;
+  const withTests = await showTestFamilies(query);
   return (
-    <AdminFrame email={email} section="export" title="Export">
-      <ExportView withTests={query.tests === "1"} demo={demo} />
+    <AdminFrame email={email} title="Export" lead="Download the test data as CSV or JSON." testNote={withTests && "Test families are showing, and the files below include them."}>
+      <ExportView withTests={withTests} demo={demo} />
     </AdminFrame>
   );
 }

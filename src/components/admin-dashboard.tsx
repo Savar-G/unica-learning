@@ -21,7 +21,7 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
     <div className="dash-page">
       <div className="dash-top">
         <div>
-          <h1>Dashboard</h1>
+          <h1>Home</h1>
           <p className="dash-muted">Numbers for {period}, in Pacific time. Updated {at(d.now).replace(/\.$/, "")}. <Link href={`${ADMIN_PATH}/activity`}>See the activity log</Link></p>
         </div>
         <RangeTabs ctx={ctx} range={d.range} />

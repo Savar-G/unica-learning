@@ -11,8 +11,8 @@ const num = (v: unknown): number => { if (typeof v !== "number" || !Number.isFin
 const nullable = (v: unknown) => v === null ? null : str(v);
 export type HistoryScope = { parent: string } | { admin: string };
 /** The live server reader owns the clock. Pure projections receive a fixed time. */
-export function readScanHistoryNow(db: SupabaseClient<Database>, scope: HistoryScope, filter: HistoryFilter) {
-  return readScanHistory(scanHistoryStore(db, scope), filter, Date.now());
+export function readScanHistoryNow(db: SupabaseClient<Database>, scope: HistoryScope, filter: HistoryFilter, skipChildren?: ReadonlySet<string>) {
+  return readScanHistory(scanHistoryStore(db, scope), filter, Date.now(), 25, skipChildren);
 }
 /** Same authorized RPC and persisted-mark validation as the lean S4 reader. No image/model imports. */
 export function scanHistoryStore(db: SupabaseClient<Database>, scope: HistoryScope): HistoryStore {

@@ -1,4 +1,4 @@
-import { AdminFrame } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { SkillMapView } from "@/components/admin-skill-map";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { requireAdmin } from "@/lib/admin-store";
@@ -13,7 +13,7 @@ export default async function SkillMapPage({ searchParams }: PageProps<"/admin/s
   const demo = (await searchParams).demo === "1" && process.env.NODE_ENV === "development";
   const email = demo ? "local preview" : (await requireAdmin()).email;
   return (
-    <AdminFrame email={email} section="skill-map" title="BC skill map">
+    <AdminFrame email={email} title="BC skill map" lead="The BC curriculum, skill by skill.">
       <SkillMapView map={BC_SKILL_MAP} />
     </AdminFrame>
   );

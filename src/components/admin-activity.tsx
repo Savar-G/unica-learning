@@ -242,6 +242,8 @@ function Delivered({ e }: { e: EmailEvent }) {
 /** Every logged email, newest first; also the Emails tab. `nav`: shown under the title. */
 export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filter: EmailKind | "failed" | null; nav?: ReactNode }) {
   const rows = d.emails.filter((e) => !filter || (filter === "failed" ? emailFailed(e) : e.kind === filter));
+  // listed only while "Show test families" is on: tag them
+  const testIds = new Set(d.families.filter((f) => f.test).map((f) => f.id));
   const info = filter && filter !== "failed" ? EMAIL_KINDS.find((k) => k.kind === filter) : null;
   return (
     <>
@@ -256,7 +258,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
               <tr key={e.id}>
                 <td className="dash-nowrap">{at(e.at)}<span className="dash-sub">{ago(e.at, d.now)}</span></td>
                 <td>{EMAIL_LABEL[e.kind]}</td>
-                <td><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link></td>
+                <td><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link><TestMark test={testIds.has(e.familyId)} /></td>
                 <td className="dash-muted">{isUnsubscribe(e.kind) ? "-" : <Link href={adminEmailPath(e.id, ctx.demo)}>{e.subject}</Link>}</td>
                 <td>{e.status === "failed" ? <span className="dash-bad-text">Failed after {e.attempts} {e.attempts === 1 ? "try" : "tries"}: {e.error ?? "unknown error"}</span> : e.status === "pending" ? DELIVERY_WORDS[e.state] : e.kind === "unsubscribe" ? "Reminders off" : e.kind === "maya_unsubscribe" ? "Maya emails off" : <Delivered e={e} />}</td>
                 <td className="dash-nowrap">{!clickable(e) || e.status !== "sent" ? "-" : e.clicks ? <>{clicksText(e)}<span className="dash-sub">first {at(e.clicks.first)}</span></> : <span className="dash-muted">Not yet</span>}</td>

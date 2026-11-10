@@ -13,6 +13,8 @@ import { summarizeAiCalls } from "@/lib/workbook-ai";
 // Navigation feedback is outside this server component's check and cost labels.
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => undefined, push: () => undefined }), usePathname: () => "/admin/workbooks", useSearchParams: () => new URLSearchParams() }));
+// The frame reads the request (the test families switch, the sidebar counts); these tests check the page inside it.
+vi.mock("@/components/admin-frame", () => ({ AdminFrame: ({ children }: { children: unknown }) => children }));
 
 // FIXTURE_START: copied into a temporary local route for the browser check.
 export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checked"): RunDetail {
@@ -195,13 +197,13 @@ describe("admin workbook run progress", () => {
     }
   });
 
-  it("says a queued run waits for the Mac, and whether the Mac is online", () => {
+  it("says a queued run waits for the workbook computer, and whether it is online", () => {
     const queued = running({ status: "queued", step: null, donePages: null, totalPages: null, heartbeatAt: null });
     const seen = { id: "w", seenAt: ago(5), startedAt: ago(100), build: null, runId: null, primaryAi: "subscription" as const };
-    expect(onChildPage(queued, { ...seen, online: true })).toContain("Waiting for the Mac. The workbook worker is online.");
-    expect(onChildPage(queued, { ...seen, online: false })).toContain("Waiting for the Mac. It is offline, last seen");
-    expect(onChildPage(queued)).toContain("Waiting for the Mac.");
-    expect(onRunPage(queued)).toContain("The workbook worker has never run.");
+    expect(onChildPage(queued, { ...seen, online: true })).toContain("Waiting for the workbook computer. It is online.");
+    expect(onChildPage(queued, { ...seen, online: false })).toContain("Waiting for the workbook computer. It is offline, last seen");
+    expect(onChildPage(queued)).toContain("Waiting for the workbook computer.");
+    expect(onRunPage(queued)).toContain("The workbook computer has never run.");
   });
 
   it.each([null, "another-run"])("makes no start-time promise with worker run %s on any page", (runId) => {
@@ -210,7 +212,7 @@ describe("admin workbook run progress", () => {
     const list = visible(renderToStaticMarkup(createElement(AdminWorkbookList, { email: "admin@example.com", runs: [{ run, counts: null, notRendered: null, oldFormat: false }], now, worker, more: false, workbooks: [], childNames: new Map(), filter: "all" })));
     for (const text of [onRunPage(run, worker), onChildPage(run, worker), list]) {
       expect(text).not.toMatch(/starts in a few seconds|starts this run in a few seconds/);
-      expect(text).toContain(runId ? "It is making another workbook" : "The workbook worker is online");
+      expect(text).toContain(runId ? "It is making another workbook" : "workbook computer. It is online");
       expect(text).toContain("Stop this run");
     }
   });
@@ -235,7 +237,7 @@ describe("admin workbook run progress", () => {
       expect(text).not.toContain("This run stopped");
       expect(text).toContain("Stop this run");
     }
-    for (const text of [onChildPage(queued), onRunPage(queued)]) expect(text).toContain("Waiting for the Mac");
+    for (const text of [onChildPage(queued), onRunPage(queued)]) expect(text).toContain("Waiting for the workbook computer");
     for (const text of [onChildPage(running({ status: "stale" })), onRunPage(running({ status: "stale" }))]) expect(text).toContain("Stopped");
   });
 

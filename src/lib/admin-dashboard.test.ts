@@ -227,12 +227,18 @@ describe("team and test families", () => {
     expect(d.days).toHaveLength(14);
   });
 
-  it("counts them when asked, and marks them", () => {
+  it("lists and marks them when asked, and still leaves them out of every number", () => {
     const d = buildDashboard(r, "all", NOW, { withTests: true });
+    const real = buildDashboard(r, "all", NOW);
     expect(d.families).toHaveLength(3);
-    expect(d.kpis.find((k) => k.key === "finished")?.value).toBe(2);
     expect(d.families.filter((f) => f.test).map((f) => f.id).sort()).toEqual(["t", "team"]);
-    expect(d.days[0]).toBe(dayKey(ago(40)));
+    expect(d.kpis.map((k) => [k.key, k.value])).toEqual(real.kpis.map((k) => [k.key, k.value]));
+    expect(d.kpis.find((k) => k.key === "finished")?.value).toBe(1);
+    expect(d.funnel).toEqual(real.funnel);
+    expect(d.stageCounts).toEqual(real.stageCounts);
+    expect(d.days).toEqual(real.days);
+    expect(d.days[0]).not.toBe(dayKey(ago(40)));
+    expect(d.tests).toEqual({ count: 2, shown: true });
   });
 });
 
@@ -446,7 +452,7 @@ describe("every email log kind (B1)", () => {
 });
 
 it("names the admin's start button by its real text in the card saved step", () => {
-  expect(STAGE_ACTION.card_saved).toContain(`press "${familyPlanWords.adminAction}" under Cards and waitlist`);
+  expect(STAGE_ACTION.card_saved).toContain(`press "${familyPlanWords.adminAction}" under Plans and delivery`);
   expect(familyPlanWords.adminAction).toBe("Workbook delivered: start plan");
   expect(STAGE_ACTION.card_saved).not.toContain("start free month");
 });

@@ -1,4 +1,4 @@
-import { AdminFrame } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { ActivityView } from "@/components/admin-activity";
 import { FamilyDrawer } from "@/components/admin-family";
 import { loadDashboard } from "@/lib/admin-dashboard-load";
@@ -14,7 +14,7 @@ export default async function AdminActivity({ searchParams }: PageProps<"/admin/
   const { who, d, progress, query, demo } = await loadDashboard(await searchParams);
   const ctx = { path: PATH, query, demo };
   return (
-    <AdminFrame email={who} section="activity" title={null} wide>
+    <AdminFrame email={who} title={null} wide>
       <ActivityView d={d} ctx={ctx} />
       {query.family && <FamilyDrawer ctx={ctx} d={d} id={query.family} progress={progress} />}
     </AdminFrame>

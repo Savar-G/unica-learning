@@ -57,3 +57,13 @@ export async function setChatFamily(a: AdminSession, parentId: string, change: C
   if (data === "ok" || data === "not_test_family" || data === "not_listed" || data === "taken") return data;
   throw new Error("[admin] chat family: invalid result");
 }
+
+/**
+ * The chat switch in plain words, for the family page and the chat list. `MAYA_CHAT_ENABLED`: "on" opens chat to
+ * families on the list; "off" is the emergency stop (only test families keep chat); unset leaves only open plans.
+ */
+export function chatSwitchText(value: string | undefined = process.env.MAYA_CHAT_ENABLED): string {
+  if (value === "on") return "Maya chat is on for families on the list and for every child with an open plan.";
+  if (value === "off") return "Maya chat is off for everyone. Only test families can still use it.";
+  return "Maya chat is on only for children with an open plan. Families on the list do not get it yet.";
+}

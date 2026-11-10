@@ -5,6 +5,7 @@ import { demoRows } from "@/lib/admin-demo";
 import { dashboardRows, requireAdmin, type AdminSession } from "@/lib/admin-store";
 import { FLYER_CODES, flyerRows, flyerVerdict, type FlyerCode, type FlyerRow, type Verdict } from "@/lib/flyers";
 import { adminClient } from "@/lib/supabase-auth";
+import { showTestFamilies } from "@/lib/admin-test-families-server";
 
 // What the admin flyers page (/admin/flyers) reads: the scans and delivered counts of the two flyers, and the signups
 // that carry their tags. Admins only (requireAdmin); the tables are read through the admin's own session. ?demo=1 shows
@@ -52,7 +53,8 @@ async function flyerTables(a: AdminSession) {
 export async function loadFlyers(raw: Record<string, string | string[] | undefined>): Promise<FlyerPage> {
   await connection();
   const query = Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" && v ? [[k, v]] : [])));
-  const withTests = query.tests === "1";
+  // the "Show test families" switch (D-313): this page is only numbers, so it decides whether test families count
+  const withTests = await showTestFamilies(query);
   const now = new Date();
   const finish = (who: string, demo: boolean, tables: Awaited<ReturnType<typeof flyerTables>>, rows: Awaited<ReturnType<typeof dashboardRows>>): FlyerPage => {
     const empty = { delivered: {}, scans: {}, lastScan: { a: null, b: null } };

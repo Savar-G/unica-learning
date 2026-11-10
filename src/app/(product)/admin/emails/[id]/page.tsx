@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { AdminFrame } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { EmailView } from "@/components/admin-email";
 import { FamilyDrawer } from "@/components/admin-family";
 import { loadDashboard } from "@/lib/admin-dashboard-load";
@@ -21,7 +21,7 @@ export default async function EmailPage({ params, searchParams }: PageProps<"/ad
   const path = adminEmailPath(id);
   const ctx = { path, query, demo };
   return (
-    <AdminFrame email={who} section="emails" title={null} wide>
+    <AdminFrame email={who} title={null} wide>
       <div className="dash-page">
         <EmailView e={e} copy={copy} ctx={ctx} back={`${ADMIN_PATH}/emails${demo ? "?demo=1" : ""}`} now={d.now} />
       </div>
