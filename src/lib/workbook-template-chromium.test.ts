@@ -312,3 +312,45 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     expect([data[0], data[1], data[2]]).toEqual([0xb4, 0x23, 0x18]);
   }, 120_000);
 });
+
+// #759 (Savar's review of the first customer's book 1, page 22): a Practice 2 page with Solve it two ways printed its
+// question rows 4 px apart when the capacity pass filled it. Rows keep at least MIN_ROW_GAP between them; a page that
+// cannot holds a question fewer.
+const MIN_ROW_GAP = 8;
+describe.skipIf(!chromium)("Practice 2 row gaps (#759)", () => {
+  /** Page 22's shape: the generator's consistent layout, filled to its maximum (no extra gap), 8 practice questions. */
+  function filledPractice2(draft: WorkbookDraft): DraftPage {
+    const page = structuredClone(draft.pages.find(p => p.type === "practice-2" && p.content?.kind === "day" && p.content.blocks.some(b => b.slot === "solve-it-two-ways"))!);
+    if (page.content?.kind !== "day") throw new Error("not a day page");
+    Object.assign(page.content, { consistentLayout: true, fillingComplete: true, atMaximum: true, extraGap: 0 });
+    const row = page.content.blocks.find(b => b.slot === "practice-row")!;
+    const after = page.content.blocks.filter(b => b !== row).flatMap(b => b.items);
+    const own = row.items.map(n => page.questions.find(q => q.number === n)!);
+    const all = [...own, ...own].map((q, i) => ({ ...structuredClone(q), number: i + 1 }));
+    const rest = after.map((n, i) => ({ ...structuredClone(page.questions.find(q => q.number === n)!), number: all.length + i + 1 }));
+    for (const b of page.content.blocks) b.items = b === row ? all.map(q => q.number) : b.items.map(n => rest[after.indexOf(n)].number);
+    page.questions = [...all, ...rest];
+    return page;
+  }
+  it.each(["U16"])("keeps at least 8 px between question rows beside Solve it two ways in %s", async level => {
+    const draft = book(level, 1);
+    const pages = [filledPractice2(draft)];
+    let measured: MeasuredElement[] = [];
+    await renderWorkbook({ draft: { ...draft, pages }, parentId: PARENT, template: { ...template, page: (p, parts) => template.page(p, parts, draft) },
+      engine: { print: async job => { const out = await engine.print(job); measured = out.measured; return out; } } });
+    const tight: string[] = [];
+    pages.forEach((page, sheet) => {
+      if (page.content?.kind !== "day") return;
+      const rowBlock = page.content.blocks.find(b => b.slot === "practice-row");
+      const qs = (rowBlock?.items ?? []).map(n => measured.find(m => m.sheet === sheet && m.name === `question-${n}`)).filter((m): m is MeasuredElement => !!m).sort((a, b) => a.y - b.y);
+      // Rows: questions whose tops sit within 2 px share a row.
+      const rows: MeasuredElement[][] = [];
+      for (const q of qs) { const last = rows.at(-1); if (last && Math.abs(last[0].y - q.y) <= 2) last.push(q); else rows.push([q]); }
+      for (let i = 1; i < rows.length; i++) {
+        const gap = Math.min(...rows[i].map(m => m.y)) - Math.max(...rows[i - 1].map(m => m.y + m.height));
+        if (gap < MIN_ROW_GAP - 0.5) tight.push(`page ${page.number}: ${gap.toFixed(1)} px above row ${i + 1}`);
+      }
+    });
+    expect(tight).toEqual([]);
+  }, 60_000);
+});
