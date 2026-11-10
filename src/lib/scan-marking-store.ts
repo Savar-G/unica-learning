@@ -80,12 +80,15 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
     async pause(ref, token, status) { await command("pause", ref.parent, ref.photo, token, { status }); },
     async finish(ref, token) { return await command("finish", ref.parent, ref.photo, token) === true; },
     async publish(parent, child) {
+      let published = 0;
       for (const row of await reader.rows(parent, child, "outbox")) {
         if (!row.mark.originalEvent) continue;
         const appended = await events.append(row.mark.originalEvent);
         if (!appended.ok) throw new Error("marking_publication");
         if (await command("ack", parent, null, null, { child, item: row.id, event: appended.event.id }) !== true) throw new Error("marking_publication_ack");
+        published++;
       }
+      return published;
     },
     effective: reader.effective,
   };
