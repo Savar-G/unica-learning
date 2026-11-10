@@ -24,7 +24,7 @@ const messages = {
   already: "This child already has a plan in Stripe. Open it in Stripe to check.",
   no_card: "No saved card was found for this child.",
   not_delivered: "Confirm that the first workbook has arrived at the family's home before starting the free month.",
-  delivery_receipt_required: "Open this child's workbook 1 and confirm its delivery. Then return here to start the free month.",
+  delivery_receipt_required: "Open this child's workbook 1 and confirm its delivery. Then return here to start the plan.",
   delivery_confirmation_required: "The delivery confirmation was not sent correctly. Reload this page and confirm delivery again.",
   invalid: "The start request could not be read. Reload this page and try again.",
   unconfirmed: "We could not confirm that Stripe started this plan. Do not start another one. Reload this page in 15 minutes, or check the family in Stripe.",
@@ -148,4 +148,28 @@ it.each(["open", "ended"] as const)("a sibling whose family has a free window (%
 });
 it.each(["unknown", null] as const)("an unknown window (%s) keeps the approved window sentences", async (familyWindow) => {
   expect(await confirmText(familyWindow)).toContain("The family's existing free window applies.");
+});
+
+// #810: another 4xx with no JSON (the platform's rate limit) is refused before Stripe too, not a lost response.
+it("a 429 with no JSON says nothing reached Stripe", async () => {
+  fetcher.mockResolvedValue(new Response("Too Many Requests", { status: 429 }));
+  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await clickStart();
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(START_REFUSED);
+});
+
+// #810 item 2: two children of one family, both with receipts. After child A starts, child B's confirm must not say "no
+// window yet": the window was read once with the page, so B's button keeps the window sentences until a reload.
+it("after one start on the page, a sibling's confirm keeps the window sentences", async () => {
+  fetcher.mockResolvedValue(Response.json({ ok: true, firstChargeAt: "2026-12-10T00:00:00Z", access: "open", confirmation: "sent", monthlyPrice: 59.99 }));
+  await act(async () => root.render(createElement("div", null,
+    createElement(StartPlan, { cardId: "card-a", child: "Asha", familyWindow: "new" }),
+    createElement(StartPlan, { cardId: "card-b", child: "Ben", familyWindow: "new" }))));
+  const confirm = vi.fn(() => true); vi.stubGlobal("confirm", confirm);
+  await act(async () => container.querySelectorAll("button")[0].click());
+  fetcher.mockResolvedValue(Response.json({ ok: false, error: "family_plan_upgrade_required" }, { status: 409 }));
+  const ben = [...container.querySelectorAll("button")].find((b) => b.textContent === "Workbook delivered: start plan")!;
+  await act(async () => ben.click());
+  expect(confirm.mock.calls[0][0]).not.toContain("existing free window");
+  expect(confirm.mock.calls[1][0]).toContain("The family's existing free window applies.");
 });

@@ -4,7 +4,7 @@ import { familyPlanWords as w } from "@/lib/family-plan-words";
 
 import { localDay, PACIFIC_ZONE } from "@/lib/family-time";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DELIVERY_RECEIPT_TEXT, type StartPlanError } from "@/lib/plan-start-errors";
 import type { FamilyPlanOffer } from "@/lib/family-plan-words";
 
@@ -58,12 +58,25 @@ export const START_LOST = "The response was lost. Open the family in Stripe to c
  * `familyWindow` is the family's free window before this start. The approved window sentences show only when the family
  * may already have one: "new" (no window yet, so this is the first child) shows none, and an unknown window keeps them.
  */
+/**
+ * A start on this page changes the family's window, and the page read each window once (#810: a sibling's confirm then
+ * said nothing of the window until a reload). After any start, the other buttons treat their window as unknown, which
+ * keeps the window sentences: the cautious words, since the route still decides the price.
+ */
+const STARTED_EVENT = "unica:admin-plan-started";
+
 export function StartPlan({ cardId, child, familyWindow = null }: { cardId: string; child: string; familyWindow?: FamilyPlanOffer["window"] | null }) {
+  const [windowStale, setWindowStale] = useState(false);
+  useEffect(() => {
+    const stale = () => setWindowStale(true);
+    window.addEventListener(STARTED_EVENT, stale);
+    return () => window.removeEventListener(STARTED_EVENT, stale);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<StartedAnswer | null>(null);
   const [error, setError] = useState("");
   async function start() {
-    const windowWords = familyWindow === "new" ? "" : ` ${w.existingWindow} ${w.immediateCharge}`;
+    const windowWords = familyWindow === "new" && !windowStale ? "" : ` ${w.existingWindow} ${w.immediateCharge}`;
     if (busy || !window.confirm(`${w.adminConfirm(child)} Confirm only after delivery.${windowWords}`)) return;
     setBusy(true);
     setError("");
@@ -77,7 +90,7 @@ export function StartPlan({ cardId, child, familyWindow = null }: { cardId: stri
       if (res.status === 403) { setError(START_REFUSED); return; }
       const result = await res.json().catch(() => null);
       if (!result || typeof result !== "object") { setError(res.status >= 400 && res.status < 500 ? START_REFUSED : START_LOST); return; }
-      if (result.ok) { setDone({ firstChargeAt: result.firstChargeAt, access: result.access === "open" ? "open" : "pending", confirmation: String(result.confirmation), monthlyPrice: result.monthlyPrice ?? null }); return; }
+      if (result.ok) { window.dispatchEvent(new Event(STARTED_EVENT)); setDone({ firstChargeAt: result.firstChargeAt, access: result.access === "open" ? "open" : "pending", confirmation: String(result.confirmation), monthlyPrice: result.monthlyPrice ?? null }); return; }
       setError(Object.hasOwn(ERRORS, result.error) ? ERRORS[result.error as StartPlanError] : ERRORS.failed);
     } catch { setError(START_LOST); }
     finally { setBusy(false); }

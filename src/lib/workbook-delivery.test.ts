@@ -45,6 +45,9 @@ describe("delivery time and billing prerequisites through public interfaces", ()
     for (const change of [{ number: 2 }, { status: "printed" }, { parentId: "other" }, { childId: "other" }]) {
       expect(await firstDelivery(store, [{ ...book, ...change }], receipt.parentId, receipt.childId)).toBeNull();
     }
+    // (#810: a sibling's receipt on this child's book opens nothing.)
+    store.receipt = vi.fn().mockResolvedValue({ ...receipt, childId: "sibling" });
+    expect(await firstDelivery(store, [book], receipt.parentId, receipt.childId)).toBeNull();
     store.receipt = vi.fn().mockResolvedValue({ ...receipt, number: 2 });
     expect(await firstDelivery(store, [book], receipt.parentId, receipt.childId)).toBeNull();
     store.receipt = vi.fn().mockResolvedValue(null);
