@@ -12,6 +12,15 @@ import { explainParentProblem, type ExplanationRef } from "@/lib/parent-problem-
  * admission (src/lib/scan-marking-access.ts). A plan does not open a sibling's photo, and it grants no marking: with no marks on the
  * page the feature refuses, and with the price row disabled it makes no AI call.
  */
+/** True only when the photo is this parent's and its child's plan is closed (#710). An unknown or another family's photo, or a failed photo or plan read, is false. */
+export async function explanationPlanClosed(db: SupabaseClient<Database>, parent: string, photo: string): Promise<boolean> {
+  const { data, error } = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
+  if (error || !data) return false;
+  const access = await childPlanAccess({ parentId: parent, childId: data.child_id }, { db });
+  // (A failed plan read says nothing true about the plan: the route keeps its usual answer.)
+  return !access.open && access.reason !== "read_failed";
+}
+
 export async function explanationPlanOpen(db: SupabaseClient<Database>, parent: string, photo: string): Promise<boolean> {
   const { data, error } = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
   if (error || !data) return false;

@@ -10,8 +10,9 @@ import { isUuid, type PageImage, type QuestionBox, type WorkbookPage, type Workb
 //
 // Desk mode is a convenience on the parent's device, not a security boundary against the parent's own session (spec
 // #295). It is a cookie (DESK_COOKIE) that names the parent and the child. While it is set and that parent is signed in,
-// the proxy (src/proxy.ts) sends every account page back to the desk and refuses the account APIs (deskGate). The PIN
-// check (/api/desk/leave) or a PIN reset after the account password (/api/desk/forgot-pin) clears it.
+// the proxy (src/proxy.ts) sends every account page back to the desk and refuses the account APIs (deskAccess and
+// DESK_GATE below). The PIN check (/api/desk/leave) or a PIN reset after the account password (/api/desk/forgot-pin)
+// clears it.
 //
 // A page's QR code holds `<site>/tutor/p/<token>`. The token opens the desk at that page for the signed-in parent of the
 // workbook's family, and is refused for anyone else (openPageToken).
@@ -33,29 +34,60 @@ export interface DeskLock {
 
 export const lockCookie = (parentId: string, childId: string) => `${parentId}.${childId}`;
 
+/** The names in a desk cookie, or null. Only the cookie's form: whether it opens the desk is `deskAccess`. */
 export function readLock(value: string | undefined): DeskLock | null {
   const [parentId, childId, ...rest] = (value ?? "").split(".");
   return isUuid(parentId) && isUuid(childId) && rest.length === 0 ? { parentId, childId } : null;
 }
 
 /**
- * What the proxy does with a request while a desk may be open. `pass`: let it through. `to-desk`: send the page back to
- * the desk. `refuse`: answer an API call with an error. Only a desk opened by the parent who is signed in counts.
- * `sessionKnown` false: the session could not be read (an Auth error), so the gate stays closed to account pages and
- * APIs, and lets only sign-in through (a signed-out device must be able to sign in again).
+ * The desk on this device, as one request sees it. Every check of "is the desk open" starts here.
+ * - `closed`: no desk cookie, or one that does not read.
+ * - `open`: the desk is open for the parent who is signed in. Only this state holds the account.
+ * - `latent`: a desk cookie of another parent, or nobody signed in. It opens nothing; it waits until its own parent signs
+ *   in again (a shared device).
+ * - `session_unknown`: a desk cookie, and the session could not be read (an Auth error, not a signed-out visitor). It
+ *   holds the account, but lets sign-in through, because a signed-out device must be able to sign in again.
  */
-export function deskGate(pathname: string, cookie: string | undefined, sessionParent: string | null, sessionKnown = true): "pass" | "to-desk" | "refuse" {
+export const DESK_ACCESS_STATES = ["closed", "open", "latent", "session_unknown"] as const;
+export type DeskAccessState = (typeof DESK_ACCESS_STATES)[number];
+export type DeskAccess = { state: "closed" } | { state: Exclude<DeskAccessState, "closed">; lock: DeskLock };
+
+export function deskAccess(cookie: string | undefined, sessionParent: string | null, sessionKnown = true): DeskAccess {
   const lock = readLock(cookie);
-  if (!lock) return "pass";
+  if (!lock) return { state: "closed" };
+  if (!sessionKnown) return { state: "session_unknown", lock };
+  return { state: sessionParent !== null && lock.parentId === sessionParent ? "open" : "latent", lock };
+}
+
+/** Which part of the site a path is, for the desk: the desk itself, sign-in, an API, or a page. */
+export type DeskArea = "desk" | "sign_in" | "api" | "page";
+
+export function deskArea(pathname: string): DeskArea {
   const under = (base: string) => pathname === base || pathname.startsWith(`${base}/`);
-  if (!sessionKnown) {
-    if (under("/sign-in") || under("/start")) return "pass";
-  } else if (!sessionParent || lock.parentId !== sessionParent) {
-    return "pass";
-  }
-  if (under(DESK_HOME) || under("/api/desk") || under("/auth")) return "pass";
-  if (under("/api")) return "refuse";
-  return "to-desk";
+  if (under(DESK_HOME) || under("/api/desk") || under("/auth")) return "desk";
+  if (under("/sign-in") || under("/start")) return "sign_in";
+  if (under("/api")) return "api";
+  return "page";
+}
+
+/**
+ * What the proxy does with a request while a desk may be open. `pass`: let it through. `to-desk`: send the page back to
+ * the desk. `refuse`: answer an API call with an error.
+ */
+export type DeskGate = "pass" | "to-desk" | "refuse";
+
+/** The whole rule, one row per state of the desk: a new state fails the build until it has a row. */
+export const DESK_GATE: { readonly [S in DeskAccessState]: { readonly [A in DeskArea]: DeskGate } } = {
+  closed: { desk: "pass", sign_in: "pass", api: "pass", page: "pass" },
+  latent: { desk: "pass", sign_in: "pass", api: "pass", page: "pass" },
+  open: { desk: "pass", sign_in: "to-desk", api: "refuse", page: "to-desk" },
+  session_unknown: { desk: "pass", sign_in: "pass", api: "refuse", page: "to-desk" },
+};
+
+/** The gate for one request: `DESK_GATE` for this desk and this path. */
+export function deskGate(pathname: string, cookie: string | undefined, sessionParent: string | null, sessionKnown = true): DeskGate {
+  return DESK_GATE[deskAccess(cookie, sessionParent, sessionKnown).state][deskArea(pathname)];
 }
 
 /** A question that the board writes in columns: two whole numbers and the operation between them. */

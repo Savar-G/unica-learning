@@ -332,6 +332,8 @@ export async function renderWorkbook(o: {
     if (overflows(measured.get("sheet"))) fail(null, "the content does not fit the page");
     for (const m of measured.values()) {
       if (m.name.startsWith("slot-") && overflows(m)) fail(null, `the ${m.name.slice(5)} does not fit its space`, m.name.slice(5));
+      // #801: a cover topic the plan card clips prints no text, though nothing overflows its own box.
+      else if (/^slot-cover-topic-\d+$/.test(m.name) && (!m.visible || !m.textPrinted)) fail(null, `the ${m.name.slice(5)} is not printed`, m.name.slice(5));
     }
     const number = measured.get("page-number");
     if (number?.text !== String(page.number) || !number.visible || !number.textPrinted || !insidePage(number)) fail(null, "the page number is not printed");

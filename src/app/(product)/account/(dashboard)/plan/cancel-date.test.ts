@@ -14,6 +14,8 @@ vi.mock("@/lib/plan-controls-server", () => ({ familyPendingControls: async () =
 vi.mock("@/lib/parent-plan-server", () => ({ familyPlans: async () => f.plans }));
 vi.mock("@/lib/supabase-auth", () => ({
   parentId: async () => "p1",
+  // (The closed-plan note's marked-family read, #709: no database, so not marked.)
+  adminClient: () => null,
   sessionClient: async () => ({
     from: () => ({
       select: () => {

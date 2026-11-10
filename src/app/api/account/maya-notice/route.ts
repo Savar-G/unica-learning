@@ -1,19 +1,20 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { DESK_COOKIE, readLock } from "@/lib/desk";
+import { DESK_COOKIE, deskAccess } from "@/lib/desk";
 import { sameOrigin } from "@/lib/desk-server";
 import { serverMayaNotice } from "@/lib/maya-notice-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isUuid } from "@/lib/workbook-content";
 
 // A parent agrees to the Maya notice (#529): a form POST from /account/maya-notice. Who agreed comes from the session,
-// never from the form. A device with an open desk is refused here as well as in the proxy, because a child must not agree.
+// never from the form. A device with this parent's desk open is refused here as well as in the proxy, because a child must
+// not agree. Another parent's desk cookie opens nothing, as in the proxy (deskAccess).
 export async function POST(request: Request) {
   const to = (path: string) => NextResponse.redirect(new URL(path, request.url), 303);
   if (!sameOrigin(request)) return new Response("Forbidden", { status: 403 });
   const parent = await parentId(await sessionClient());
   if (!parent) return to("/sign-in");
-  if (readLock((await cookies()).get(DESK_COOKIE)?.value)) return NextResponse.json({ ok: false, error: "desk_open" }, { status: 423 });
+  if (deskAccess((await cookies()).get(DESK_COOKIE)?.value, parent).state === "open") return NextResponse.json({ ok: false, error: "desk_open" }, { status: 423 });
   const form = await request.formData().catch(() => null);
   // Where the parent was going stays in the address, so "Open the desk" comes next. The open route checks each value.
   const back = new URLSearchParams();

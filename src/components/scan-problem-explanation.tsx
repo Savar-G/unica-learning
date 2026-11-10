@@ -1,15 +1,16 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { explanationOutput, type ExplanationResult } from "@/lib/parent-problem-explanation-contract";
 import { useScanContext } from "@/lib/use-scan-context";
 
-export type ExplanationState = "idle" | "loading" | "busy" | "ready" | "retry" | "cap" | "stale" | "unavailable";
+export type ExplanationState = "idle" | "loading" | "busy" | "ready" | "retry" | "cap" | "stale" | "unavailable" | "closed";
 export function ScanProblemExplanationView({ state, result, number, onExplain }: {
   state: ExplanationState; result?: Extract<ExplanationResult, { status: "ready" }>; number: number; onExplain?: () => void;
 }) {
   const id = useId(), pending = state === "loading";
   return <div className="scan-explanation" aria-busy={pending}>
-    <button type="button" className="scan-link" onClick={onExplain} disabled={pending || state === "stale" || state === "unavailable"}
+    <button type="button" className="scan-link" onClick={onExplain} disabled={pending || state === "stale" || state === "unavailable" || state === "closed"}
       aria-controls={`${id}-answer`} aria-describedby={`${id}-status`} aria-expanded={state === "ready"}>
       {state === "ready" ? "Show explanation again" : state === "retry" || state === "busy" ? "Try explanation again" : "Explain this problem"}
       <span className="sr-only"> for question {number}</span>
@@ -18,7 +19,10 @@ export function ScanProblemExplanationView({ state, result, number, onExplain }:
       {state === "loading" ? "Preparing the explanation..." : state === "busy" ? "This explanation is being prepared. Try again shortly."
         : state === "retry" || state === "cap" ? "We could not prepare the explanation. Please try again later."
           : state === "stale" ? "This mark changed. Refresh the page results."
-            : state === "unavailable" ? "An explanation is not available for this question." : state === "ready" ? "The explanation is ready." : ""}
+            : state === "unavailable" ? "An explanation is not available for this question."
+              // (#710: the child's plan closed while this tab stayed open.)
+              : state === "closed" ? <>Explanations are not available while the plan is closed. See your <Link href="/account/plan">plan page</Link>.</>
+                : state === "ready" ? "The explanation is ready." : ""}
     </p>
     <div id={`${id}-answer`}>
       {state === "ready" && result && <div className="scan-mark-review" aria-label={`Explanation for question ${number}`}>
@@ -46,6 +50,7 @@ export function ScanProblemExplanation({ parent, photo, itemId, version, number 
       const data: unknown = await response.json();
       if (!current() || controller.signal.aborted) return;
       if (!data || typeof data !== "object" || !("status" in data)) throw new Error("explanation_response");
+      if (data.status === "plan_closed") { setState("closed"); return; }
       if (response.status === 409 || response.status === 404 || data.status === "refused") { setState("stale"); return; }
       if (!response.ok) throw new Error("explanation_response");
       if (data.status === "ready" && "explanation" in data && "correctAnswer" in data && typeof data.correctAnswer === "string"
