@@ -1161,7 +1161,10 @@ export function dayPageContent(o: {
         const ex = taught ? (own ? exampleOf(own, plan.level) : null) : panel();
         // (Its question first when the worked line does not say it: "Count on. What are the next two numbers?" over
         // "6, [7], [8]".)
-        const asked = taught && own && ex?.lines.length && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
+        // (Never for a relation: its worked lines open with its question in code's own words, "Is 240 close to 30 or
+        // 300?", and Kai's U10 book 2 printed both, #811.)
+        const relation = !!own?.item?.checks.some((c) => c.kind === "relation");
+        const asked = taught && own && ex?.lines.length && !relation && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
         const lines = ex?.lines.length ? [...asked, ...ex.lines] : taught?.lines ?? [];
         return { slot: s.slot, items: [], label: ex?.lines.length ? ex.label : taught ? "How it works" : undefined, note: "Read the example, then try it.", lines, ...(taught?.remember ? { explain: `Watch out: ${taught.remember}` } : {}) };
       }

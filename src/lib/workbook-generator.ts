@@ -2952,6 +2952,43 @@ function exampleStandIn(input: GenerateInput, w: PageWork, p: Panel): QuestionPa
   return built.package ? withoutSam(built.package, null) : null;
 }
 
+/**
+ * A panel's example that no question and no other example of the book asks (#811), in place of a repeated one: a
+ * code-built example of the panel's skill first; else, for a whole-number +, - or × the writer built (Kai's estimation
+ * pages have no code example at any attempt), the same sum with its first number moved on, to a number of as many
+ * digits, so the method keeps its steps and the room measured for it. Code writes its words (D-231). Null when there is none.
+ */
+function unusedPanelExample(input: GenerateInput, w: PageWork, panel: Panel, repeated: QuestionPackage, taken: ReadonlySet<string>): QuestionPackage | null {
+  const usable = (pkg: QuestionPackage | null): pkg is QuestionPackage => !!pkg && workableExample(pkg) && !taken.has(taskIdentity(pkg)) && !levelRange(pkg, input) && !dayProblem(input, pkg, w.day, panel.place);
+  for (let attempt = 0; attempt < PANEL_ATTEMPTS; attempt++) {
+    const c = contractFor(input, w, panelSlot(w, panel), attempt);
+    const pkg = c ? contractPackage(input, w, c) : null;
+    if (!usable(pkg)) continue;
+    // (The page prints the example of this attempt from now on, as the capacity pass's panels do.)
+    panel.attempt = attempt;
+    return withoutSam(pkg, null);
+  }
+  const op = repeated.operation;
+  const sign = op ? SUM_SIGNS[op.kind] : undefined;
+  if (!op || !sign || typeof op.operands[0] !== "number" || typeof op.operands[1] !== "number") return null;
+  const [a, b] = op.operands as [number, number];
+  const result = (n: number) => (op.kind === "add" ? n + b : op.kind === "subtract" ? n - b : n * b);
+  const operation = (x: number, y: number) => ({ kind: op.kind, operands: [itemNumber(x), itemNumber(y)], expression: null, unit: null, denominator: null, values: [] });
+  for (let first = a + 1; String(first).length === String(a).length; first++) {
+    const built = buildQuestion({
+      slot: panel.id, skill: panel.skill, difficulty: 2, text: `${first} ${sign} ${b} = ?`, format: "write-number", figure: null, numbers: [], places: null, direction: null,
+      sequence: null, pattern: null, relation: null, figureShows: null, name: null, thing: null, operation: operation(first, b),
+      easier: { text: `2 ${sign} 1 = ?`, operation: operation(2, 1) },
+      wrongAnswers: [{ value: itemNumber(result(first) + 1), cause: "careless", description: "A slip.", step: null }], shownWrong: null,
+    }, { id: repeated.id, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [panel.skill], signs: skillSigns(input.curriculum, input.plan.level, panel.skill) });
+    if (built.check.status !== "failed" && usable(built.package)) return withoutSam(built.package, null);
+  }
+  return null;
+}
+/** The attempts a panel's example may take (as the layout's first choice of them). */
+const PANEL_ATTEMPTS = 64;
+const SUM_SIGNS: Partial<Record<string, string>> = { add: "+", subtract: "−", multiply: "×" };
+
 /** A contract's code-built package as the page plans it, for its task identity and printed form (cached). */
 const contractPackages = new WeakMap<ItemPlan, QuestionPackage | null>();
 function contractPackage(input: GenerateInput, w: PageWork, c: ItemPlan): QuestionPackage | null {
@@ -3932,6 +3969,27 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     const reviewed = await checkWholeBook(pages, async (page, issues) => {
       const w = byNumber.get(page.number);
       if (!w) return null;
+      // #811: a worked example an earlier page already shows (Kai's U10 book 2: page 77's repeated page 64's, which the
+      // writer built both times) takes a code-built example of its panel's skill that no question and no other example
+      // asks, instead of failing the book. A panel with none to give keeps its example, and the book check reports it.
+      let examples = page.panelExamples ?? [];
+      const swapped = new Set<number>();
+      if (issues.some((i) => i.kind === "repeat" && /^the worked example repeats/.test(i.reason))) {
+        const keysOf = (ps: GeneratedPage[]) => ps.flatMap((p) => (p.panelExamples ?? []).flatMap((e) => (e ? [taskIdentity(e)] : [])));
+        const earlier = new Set(keysOf(pages.filter((p) => p.number < page.number)));
+        const taken = new Set([...keysOf(pages), ...repairKeys,
+          ...pages.flatMap((p) => p.questions.flatMap((q) => (q.package && q.place !== "warm-up" ? [taskIdentity(q.package)] : [])))]);
+        examples = examples.map((e, k) => {
+          const panel = w.panels[k];
+          if (!e || !panel || !earlier.has(taskIdentity(e))) return e;
+          const fresh = unusedPanelExample(input, w, panel, e, taken);
+          if (!fresh) return e;
+          taken.add(taskIdentity(fresh));
+          repairKeys.add(taskIdentity(fresh));
+          swapped.add(k);
+          return fresh;
+        });
+      }
       const keyOf=(pkg:QuestionPackage)=>taskIdentity(pkg);
       const current=[...page.questions];
       const questions = page.questions.map((q,index) => {
@@ -3984,19 +4042,20 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         }
         return q;
       });
-      const finalQuestions = await repairFinalRows(input, w, work, questions, page.panelExamples ?? [], deps.fit, book);
-      const content = contentOf(input, w, finalQuestions, page.panelExamples ?? []);
+      const finalQuestions = await repairFinalRows(input, w, work, questions, examples, deps.fit, book);
+      const content = contentOf(input, w, finalQuestions, examples);
       // Older checkpoints keep the checked teaching blocks, even if their
-      // separate example packages predate panelExamples.
+      // separate example packages predate panelExamples. (Not a panel whose example was just swapped: it prints the new one.)
+      const swappedPlaces = new Set([...swapped].map((k) => w.page.compactPanel && w.panels[k].place === "watch-one" ? "reminder" : w.panels[k].place));
       if (content?.kind === "day" && page.content?.kind === "day") {
-        const old = page.content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot));
-        for (const block of content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot))) {
+        const old = page.content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot) && !swappedPlaces.has(b.slot));
+        for (const block of content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot) && !swappedPlaces.has(b.slot))) {
           const index = old.findIndex(b=>b.slot===block.slot);
           if (index>=0) Object.assign(block,structuredClone(old.splice(index,1)[0]));
         }
       }
       const fit = await deps.fit.fits(fitPage(w, page.qrToken, finalQuestions, content), book);
-      return { ...page, questions: finalQuestions, ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
+      return { ...page, questions: finalQuestions, ...(swapped.size ? { panelExamples: examples } : {}), ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
     });
     quality = reviewed.quality;
     // G1: the personal book checks read the printed book: the warm-up's fact families (item 4) and the interest share
