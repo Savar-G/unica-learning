@@ -19,7 +19,8 @@ export interface BoardGroup { key: BoardKey; label: string; stages: readonly Sta
 export const BOARD_COLUMNS: readonly (BoardGroup & { key: BoardColumnKey })[] = [
   { key: "signed", label: "Signed up", stages: ["account"], tone: "muted", empty: "No one is waiting to start the test" },
   { key: "testing", label: "Taking the test", stages: ["started"], tone: "info", empty: "No one is taking the test" },
-  { key: "report", label: "Report sent", stages: ["finished", "card_started"], tone: "info", empty: "No reports waiting for a card" },
+  // The dashboard's finished stage is a completed test (assessments.completed_at), not a sent report.
+  { key: "report", label: "Finished the test", stages: ["finished", "card_started"], tone: "info", empty: "No finished tests waiting for a card" },
   { key: "card", label: "Card saved", stages: ["card_saved"], tone: "sun", empty: "No saved cards waiting" },
   { key: "customer", label: "Customer", stages: ["trial", "paying"], tone: "ok", empty: "No customers yet" },
 ];
@@ -159,7 +160,7 @@ export interface BoardCard {
   kids: string;
   since: string;
   status: string;
-  /** The family's own stage when it is not its column's first ("Payment page" under Report sent, "Paying" under Customer). */
+  /** The family's own stage when it is not its column's first ("Payment page" under Finished the test, "Paying" under Customer). */
   stageLabel: string | null;
   isNew: boolean;
   /** "2:31 p.m.": when the child was last seen in an open test, or null. */

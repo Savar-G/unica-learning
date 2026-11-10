@@ -34,7 +34,7 @@ describe("board columns", () => {
   it("puts every stage in exactly one column or lane, in funnel order", () => {
     const groups = [...BOARD_COLUMNS, ...BOARD_LANES];
     for (const s of ALL_STAGES) expect(groups.filter((g) => g.stages.includes(s)).map((g) => g.key)).toEqual([groupOf(s)]);
-    expect(BOARD_COLUMNS.map((c) => c.label)).toEqual(["Signed up", "Taking the test", "Report sent", "Card saved", "Customer"]);
+    expect(BOARD_COLUMNS.map((c) => c.label)).toEqual(["Signed up", "Taking the test", "Finished the test", "Card saved", "Customer"]);
     expect(BOARD_LANES.map((c) => c.key)).toEqual(["waitlist", "cancelled"]);
     expect(ALL_STAGES.map(groupOf)).toEqual(["signed", "testing", "report", "report", "card", "customer", "customer", "cancelled", "waitlist"]);
   });
@@ -143,7 +143,7 @@ describe("words", () => {
 
 describe("addresses", () => {
   it("reads a column, a lane or a single stage as the list filter", () => {
-    expect(pickStageFilter("report")).toMatchObject({ label: "Report sent", stages: ["finished", "card_started"] });
+    expect(pickStageFilter("report")).toMatchObject({ label: "Finished the test", stages: ["finished", "card_started"] });
     expect(pickStageFilter("cancelled")).toMatchObject({ stages: ["cancelled"] });
     expect(pickStageFilter("card_started")).toMatchObject({ key: "card_started", stages: ["card_started"] });
     expect(pickStageFilter("nope")).toBeNull();
