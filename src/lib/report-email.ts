@@ -244,7 +244,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(reliability ? [`${reliability.title}\n${reliability.text}\n${reliability.offer}`] : []),
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
     ...(comparison ? [`${comparison.title}\n${comparison.text}\n${comparison.note}`] : []),
-    ...(BOOKING_URL ? [`${call.title}\n${call.text}\n${call.button}: ${BOOKING_URL}`] : []),
+    ...(offer && BOOKING_URL ? [`${call.title}\n${call.text}\n${call.button}: ${BOOKING_URL}`] : []),
     ...(whereText ? [whereText] : []),
     ...(bookText ? [bookText] : offer ? [`How we help: ${help.title}\n${help.text}`] : []),
     ...(step && stepUrl ? [`${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`] : []),
@@ -338,7 +338,7 @@ ${p(esc(reliability.text), "margin:0 0 6px;font-size:15px")}
 ${p(esc(reliability.offer), "margin:0;font-size:15px")}
 </td></tr></table>
 </td></tr>` : ""}
-${BOOKING_URL ? `<tr><td style="padding:30px 20px 0">
+${offer && BOOKING_URL ? `<tr><td style="padding:30px 20px 0">
 ${heading(esc(call.title))}
 ${p(esc(call.text), "margin:0 0 20px;font-size:15px")}
 ${button(BOOKING_URL, call.button)}

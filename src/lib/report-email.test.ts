@@ -156,7 +156,7 @@ describe("the report email to the parent", () => {
     for (const province of ["BC", "ON"] as const) {
       const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province }), parentName: "Priya", url: URL, offer: false });
       for (const body of [quiet.text, quiet.html]) {
-        expect(body).not.toMatch(/Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=|How we help|first book|books keep|The books/);
+        expect(body).not.toMatch(/Book your results call|first workbook|calendly\.com|Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=|How we help|first book|books keep|The books/);
         expect(body).toContain("You unsubscribed from reminders and emails about our plans, so this email has only the report.");
       }
       expect(quiet.html).toMatch(new RegExp(`<a href="${URL.replace(/[?.]/g, "\\$&")}"[^>]*>See Maya&#39;s full report</a>`));
@@ -168,7 +168,7 @@ describe("the report email to the parent", () => {
     const bc = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
     const call = "A free 15-minute video call with Savar or Cedric, Unica's founders.";
     expect(bc.text).toContain(call);
-    expect(bc.text).toContain("first workbook will cover and why, and answer any questions you have.");
+    for (const body of [bc.text, bc.html]) expect(body).toContain("first workbook will cover and why, and answer any questions you have.");
     expect(bc.text.match(/Book your results call/g)).toHaveLength(1);
     expect(bc.html.match(/Book your results call/g)).toHaveLength(1);
     expect(bc.text.indexOf(call)).toBeLessThan(bc.text.indexOf("By area"));
