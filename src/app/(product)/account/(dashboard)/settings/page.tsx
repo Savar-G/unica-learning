@@ -30,7 +30,7 @@ export default async function AccountSettings({ searchParams }: PageProps<"/acco
     db.from("card_setups").select("card_saved_at"),
   ]);
   const zone = familyZone({ timeZone: family?.time_zone ?? null, postal: family?.postal ?? null, province: familyProvince(kids ?? []) });
-  // A paying family whose dashboard read failed also comes here: only a closed family reads the note.
+  // Only a stopped family reads the note, whatever opens the dashboard (#709); a marked family reads none.
   const note = await closedNoteFor(parent, !!dashboard), closed = note?.closed ?? null;
   return <ParentAccountSettings note={note ? <PlanClosedNote closed={note.closed} dashboardOpen={note.dashboardOpen} on="account" /> : undefined} card={card} hasCard={!!cards?.some(c => c.card_saved_at)} province={kids?.at(-1)?.province ?? "BC"}
     details={await childDetails(db)}

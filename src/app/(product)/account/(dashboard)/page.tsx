@@ -85,7 +85,8 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   if (dashboard) {
     const overview = await dashboardOverview(dashboard, addressed);
     const facts = { dashboard, overview, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, lateFor, current, chats, notes, scansEnabled, noticeDue };
-    return <ParentDashboardHome {...facts} addressChild={addressed} alerts={{ password: password === "1", pin: pin === "1", deskError: desk === "error", existing: existing === "1" }} parentEmail={parent.email} />;
+    return <ParentDashboardHome {...facts} addressChild={addressed} alerts={{ password: password === "1", pin: pin === "1", deskError: desk === "error", existing: existing === "1" }} parentEmail={parent.email}
+      note={planClosed ? <PlanClosedNote closed={planClosed.closed} dashboardOpen={planClosed.dashboardOpen} on="home" /> : undefined} />;
   }
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>

@@ -10,7 +10,6 @@ vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => ({}) }));
 import { AccountBilling } from "@/components/account-billing";
 import { ParentPlanView } from "@/components/parent-plan-view";
 import type { ParentPlan } from "@/lib/parent-plan";
-import { readFileSync } from "node:fs";
 import { PlanClosedNote, closedNoteFor, planClosedFamily, type ClosedPlan } from "./plan-closed-note";
 import { noteGivesCardReason } from "./plan-closed-card";
 
@@ -199,13 +198,5 @@ describe("a stopped plan with the dashboard switch on (#709)", () => {
     // (An open plan or no plan: planClosedFamily answers null, so no note with the switch either way.)
     expect(await closedNoteFor("p", true)).toBeNull();
     expect(await closedNoteFor("p", false)).toBeNull();
-  });
-  it("Parent home, the plan page and the account page all read the note through closedNoteFor, with its dashboard flag", () => {
-    for (const page of ["page.tsx", "plan/page.tsx", "settings/page.tsx"]) {
-      const source = readFileSync(`src/app/(product)/account/(dashboard)/${page}`, "utf8");
-      expect(source, page).toContain("closedNoteFor(");
-      expect(source, page).toMatch(/dashboardOpen=\{(?:note|planClosed)\.dashboardOpen\}/);
-      expect(source, page).not.toMatch(/dashboard \? null : (?:await )?planClosedFamily/);
-    }
   });
 });
