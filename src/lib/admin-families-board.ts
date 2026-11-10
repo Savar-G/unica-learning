@@ -71,11 +71,16 @@ export function initials(name: string): string {
   return s || "?";
 }
 
-/** "Mira, Grade 3", or "Ethan, Gr 2 · Chloe, K" for more than one child. */
+/** How many children a card names before "and N more". */
+const KIDS_SHOWN = 3;
+
+/** "Mira, Grade 3", or "Ethan, Gr 2 · Chloe, K" for more than one child; past 3 children, "and 29 more". */
 export function kidsLine(f: Family): string {
   if (f.children.length === 0) return "No child yet";
   if (f.children.length === 1) return `${f.children[0].name}, ${gradeLabel(f.children[0].grade)}`;
-  return f.children.map((c) => `${c.name}, ${c.grade === 0 ? "K" : `Gr ${c.grade}`}`).join(" · ");
+  const shown = f.children.slice(0, KIDS_SHOWN).map((c) => `${c.name}, ${c.grade === 0 ? "K" : `Gr ${c.grade}`}`).join(" · ");
+  const rest = f.children.length - KIDS_SHOWN;
+  return rest > 0 ? `${shown} and ${rest} more` : shown;
 }
 
 /** How long the family has been in its stage: "since 9:15 a.m." on the same Pacific day, else "4 days" or "20 h". */

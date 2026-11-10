@@ -132,6 +132,8 @@ describe("words", () => {
     expect(initials("  ")).toBe("?");
     const two = familyOf(rows({ parents: [parent("a", ago(1))], children: [child("k1", "a", 2), { ...child("k2", "a", 0), first_name: "Chloe" }] }), "a");
     expect(kidsLine(two)).toBe("Kid k1, Gr 2 · Chloe, K");
+    const five = familyOf(rows({ parents: [parent("a", ago(1))], children: ["k1", "k2", "k3", "k4", "k5"].map((k) => child(k, "a", 1)) }), "a");
+    expect(kidsLine(five)).toBe("Kid k1, Gr 1 · Kid k2, Gr 1 · Kid k3, Gr 1 and 2 more");
     expect(kidsLine(familyOf(rows({ parents: [parent("a", ago(1))], children: [child("k1", "a", 3)] }), "a"))).toBe("Kid k1, Grade 3");
   });
 });
