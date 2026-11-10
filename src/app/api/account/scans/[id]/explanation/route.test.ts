@@ -56,3 +56,20 @@ it("sign-out, Desk mode and an unknown or another family's photo keep their answ
   expect((await POST(request(), context)).status).toBe(404);
   expect(seams.run).not.toHaveBeenCalled();
 });
+
+it("another parent's desk cookie does not block an open-plan explanation", async () => {
+  seams.cookie = `33333333-3333-4333-8333-333333333333.${photo}`;
+  expect((await POST(request(), context)).status).toBe(200);
+  expect(seams.run).toHaveBeenCalledOnce();
+});
+
+it("a closed-plan response respects only the signed-in parent's desk cookie", async () => {
+  seams.planClosed = true; seams.released = false;
+  seams.cookie = `${parent}.${photo}`;
+  expect((await POST(request(), context)).status).toBe(423);
+  seams.cookie = `33333333-3333-4333-8333-333333333333.${photo}`;
+  const result = await POST(request(), context);
+  expect(result.status).toBe(403);
+  expect(await result.json()).toEqual({ status: "plan_closed" });
+  expect(seams.run).not.toHaveBeenCalled();
+});
