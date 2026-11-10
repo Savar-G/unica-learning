@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { DESK_COOKIE, deskGate } from "@/lib/desk";
+import { DESK_COOKIE, deskAccess } from "@/lib/desk";
 import { isUuid } from "@/lib/workbook-content";
 import { scanSession, scanJson, signedInParent } from "@/lib/scan-photo-server";
 import { markingAccess } from "@/lib/scan-marking-server";
@@ -15,13 +15,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // keeps it), only past the Desk gate, and before any AI call.
   if (isUuid(id)) {
     const who = await signedInParent();
-    if (who && deskGate(new URL(request.url).pathname, (await cookies()).get(DESK_COOKIE)?.value, who.parent) === "pass"
+    if (who && deskAccess((await cookies()).get(DESK_COOKIE)?.value, who.parent).state !== "open"
       && await explanationPlanClosed(who.admin, who.parent, id) && !await markingAccess(who.admin, who.parent, process.env, { photo: id })) {
       return scanJson({ status: "plan_closed" }, 403);
     }
   }
   const session = await scanSession();
-  if (deskGate(new URL(request.url).pathname, (await cookies()).get(DESK_COOKIE)?.value, session.parent) !== "pass") return scanJson({ status: "refused" }, 423);
+  if (deskAccess((await cookies()).get(DESK_COOKIE)?.value, session.parent).state === "open") return scanJson({ status: "refused" }, 423);
   if (!isUuid(id) || !(await markingAccess(session.admin, session.parent, process.env, { photo: id }) || await explanationPlanOpen(session.admin, session.parent, id)) || !await session.active()) return scanJson({ status: "refused" }, 404);
   const text = await request.text();
   if (text.length > 1024) return scanJson({ status: "refused" }, 400);

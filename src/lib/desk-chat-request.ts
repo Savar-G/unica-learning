@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { DESK_COOKIE, readLock } from "@/lib/desk";
+import { DESK_COOKIE, deskAccess } from "@/lib/desk";
 import { parentId, sessionClient, adminClient } from "@/lib/supabase-auth";
 import { familyZone } from "@/lib/family-time";
 import { loadFamilyProvince } from "@/lib/family-time-server";
@@ -17,8 +17,9 @@ export async function deskChatContext(request: Request, options: { sameSite?: bo
   if (!fromSite) return { ok: false, error: "forbidden", status: 403 };
   const session = await sessionClient(), parent = await parentId(session);
   if (!parent) return { ok: false, error: "signed_out", status: 401 };
-  const lock = readLock((await cookies()).get(DESK_COOKIE)?.value);
-  if (!lock || lock.parentId !== parent) return { ok: false, error: "forbidden", status: 403 };
+  const access = deskAccess((await cookies()).get(DESK_COOKIE)?.value, parent);
+  if (access.state !== "open") return { ok: false, error: "forbidden", status: 403 };
+  const { lock } = access;
   const [{ data: child }, { data: family }, province] = await Promise.all([
     session.from("children").select("first_name, grade").eq("id", lock.childId).eq("parent_id", parent).maybeSingle(),
     session.from("parents").select("time_zone, postal").eq("id", parent).maybeSingle(), loadFamilyProvince(session, parent),
