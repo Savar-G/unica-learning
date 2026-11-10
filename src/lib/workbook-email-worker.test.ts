@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import type { EmailMessage } from "@/lib/email-delivery";
 import type { CardEvidence, SavedCards } from "@/lib/saved-card";
-import { runWorkbookWelcomes } from "@/lib/workbook-email-server";
+import { runWorkbookWelcomes, sendQueuedWorkbookWelcome } from "@/lib/workbook-email-server";
 
 vi.mock("server-only", () => ({}));
 
@@ -25,6 +25,7 @@ function fixture(find: () => Promise<CardEvidence | null>) {
       const method = init?.method ?? "GET";
       const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
       if (method !== "GET" && method !== "HEAD") mutations.push(url.pathname);
+      if (url.pathname.endsWith("/test_accounts")) return json([]);
       if (method === "HEAD") return new Response(null, { status: 200, headers: { "content-range": `0-0/${queued ? 1 : 0}` } });
       if (url.pathname.endsWith("/card_setups")) {
         if (method === "PATCH") return json(null);
@@ -93,6 +94,7 @@ function deletionQueue(race: boolean) {
     global: { fetch: async (input, init) => {
       const u = new URL(String(input)), method = init?.method ?? "GET";
       const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
+      if (u.pathname.endsWith("/test_accounts")) return json([]);
       if (u.pathname.endsWith("/card_setups")) return json([{ parent_id: "parent", child_id: "child", card_saved_at: "2026-11-01T00:00:00Z" }]);
       if (u.pathname.endsWith("/parents")) return json([{ name: "Parent", email: "parent@example.com" }]);
       if (u.pathname.endsWith("/children")) return json([{ first_name: "Child" }]);
@@ -138,5 +140,71 @@ describe("welcome queue progress during family deletion", () => {
       expect(await runWorkbookWelcomes(f.db, { transport: f.transport })).toMatchObject({ sent: 1 });
       expect(f.messages).toHaveLength(1);
     } finally { vi.unstubAllEnvs(); log.mockRestore(); }
+  });
+});
+
+/** Two queued welcomes: one for a family marked in public.test_accounts (#804), one for a real family. */
+function testFamilyQueue() {
+  const entries = [
+    { card: "test-card", parent: "test-parent", sent: false },
+    { card: "real-card", parent: "real-parent", sent: false },
+  ];
+  const claims: string[] = [], messages: EmailMessage[] = [];
+  const db = createClient<Database>("https://fixture.invalid", "sb_secret_synthetic", {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: async (input, init) => {
+      const u = new URL(String(input)), method = init?.method ?? "GET";
+      const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
+      const marked = ["test-parent"];
+      if (u.pathname.endsWith("/test_accounts")) {
+        const only = u.searchParams.get("parent_id");
+        return json(marked.filter((p) => !only || only === `eq.${p}`).map((parent_id) => ({ parent_id })));
+      }
+      const card = (id: string | null) => entries.find((e) => `eq.${e.card}` === id);
+      if (u.pathname.endsWith("/card_setups")) {
+        const e = card(u.searchParams.get("id"));
+        return json([{ parent_id: e?.parent ?? "real-parent", child_id: "child", card_saved_at: "2026-11-01T00:00:00Z" }]);
+      }
+      if (u.pathname.endsWith("/parents")) return json([{ name: "Parent", email: "parent@example.com" }]);
+      if (u.pathname.endsWith("/children")) return json([{ first_name: "Child" }]);
+      if (u.pathname.endsWith("/rpc/claim_workbook_email")) {
+        const p = JSON.parse(String(init?.body));
+        claims.push(p.p_card_setup_id);
+        return json([{ id: p.p_card_setup_id, claim_token: p.p_token }]);
+      }
+      if (u.pathname.endsWith("/workbook_emails")) {
+        if (method === "PATCH") { entries.find((e) => `eq.${e.card}` === u.searchParams.get("id"))!.sent = true; return json(null); }
+        let due = entries.filter((e) => !e.sent);
+        const left = /^not\.in\.\((.*)\)$/.exec(u.searchParams.get("parent_id") ?? "");
+        if (left) due = due.filter((e) => !left[1].split(",").includes(e.parent));
+        if (u.searchParams.has("card_setup_id")) due = due.filter((e) => `eq.${e.card}` === u.searchParams.get("card_setup_id"));
+        if (method === "HEAD") return new Response(null, { status: 200, headers: { "content-range": `0-0/${due.length}` } });
+        if (u.searchParams.has("limit")) due = due.slice(0, Number(u.searchParams.get("limit")));
+        return json(due.map((e) => ({ id: e.card, card_setup_id: e.card, parent_id: e.parent })));
+      }
+      throw Error("Unexpected request");
+    } },
+  });
+  const transport = { async send(m: EmailMessage) { messages.push(m); return { status: "sent" as const, emailId: "re_real" }; } };
+  return { db, claims, messages, transport };
+}
+
+describe("welcomes for test families (#804)", () => {
+  it("a test family gets no welcome and no claim, while a real family still gets one", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "");
+    try {
+      const f = testFamilyQueue();
+      expect(await runWorkbookWelcomes(f.db, { transport: f.transport, dry: true })).toMatchObject({ pending: 1 });
+      expect(await runWorkbookWelcomes(f.db, { transport: f.transport })).toMatchObject({ pending: 1, sent: 1 });
+      expect(await runWorkbookWelcomes(f.db, { transport: f.transport })).toMatchObject({ pending: 0, sent: 0 });
+      expect(f.claims).toEqual(["real-card"]);
+      expect(f.messages).toHaveLength(1);
+    } finally { vi.unstubAllEnvs(); }
+  });
+  it("the card-saved path claims nothing for a test family", async () => {
+    const f = testFamilyQueue();
+    expect(await sendQueuedWorkbookWelcome(f.db, "test-card", f.transport)).toBeNull();
+    expect(await sendQueuedWorkbookWelcome(f.db, "real-card", f.transport)).toMatchObject({ status: "sent" });
+    expect(f.claims).toEqual(["real-card"]);
   });
 });
