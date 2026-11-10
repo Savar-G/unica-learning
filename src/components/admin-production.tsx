@@ -29,7 +29,7 @@ const stageHref = (stage: Stage | null, older = false) => {
   return s ? `${ADMIN_WORKBOOKS_PATH}?${s}` : ADMIN_WORKBOOKS_PATH;
 };
 
-function Face({ book, large = false }: { book: Book; large?: boolean }) {
+export function Face({ book, large = false }: { book: Book; large?: boolean }) {
   return <span className={`adm-pd-face${large ? " is-lg" : ""}${book.test ? " is-test" : ""}`} style={{ background: faceColor(book.parentId, book.test) }} aria-hidden="true">
     {book.child.charAt(0).toUpperCase() || "?"}
   </span>;
@@ -77,8 +77,8 @@ function Detail({ book, now, worker }: { book: Book; now: Date; worker?: WorkerS
   }
 }
 
-/** The card's one action, at the place where it is done. */
-function Action({ book, runner }: { book: Book; runner: "mac" | "server" }): ReactNode {
+/** The card's one action, at the place where it is done. Home's production panel shows the same action. */
+export function BookAction({ book, runner }: { book: Book; runner: "mac" | "server" }): ReactNode {
   const go = (href: string, text: string, primary: boolean) => <Link className={`btn adm-btn${primary ? "" : " ghost"}`} href={href} prefetch={false}>{text}</Link>;
   const w = book.workbook;
   switch (book.stage) {
@@ -115,35 +115,43 @@ function BookCard({ book, now, worker, runner }: { book: Book; now: Date; worker
         <Link href={adminWorkbookRunPath(t.runId)}>{t.number !== book.number ? `Book ${t.number}, ` : ""}{shortWhen(t.at, now)}</Link>: {t.text}
       </li>)}</ul>
     </details>}
-    <div className="adm-pd-foot">{when && <span className="adm-pd-when">{when}</span>}<span className="adm-pd-act"><Action book={book} runner={runner} /></span></div>
+    <div className="adm-pd-foot">{when && <span className="adm-pd-when">{when}</span>}<span className="adm-pd-act"><BookAction book={book} runner={runner} /></span></div>
   </article>;
 }
 
 /** The stage tracker: each stage with its count and faces; each one a link that shows only its books. */
 function Tracker({ books, stage }: { books: Book[]; stage: Stage | null }) {
-  const stages = stageCounts(books);
-  const total = stages.reduce((n, s) => n + s.count, 0);
+  const total = stageCounts(books).reduce((n, s) => n + s.count, 0);
   return <section className="adm-pd-lead" aria-labelledby="pd-stages">
     <div className="adm-pd-lead-head">
       <h2 className="eyebrow" id="pd-stages">{pl(total, "book", "books")} by stage</h2>
       <span className="adm-pd-hint">Pick a stage to show only its books.</span>
       {stage && <Link className="adm-pd-clear" href={stageHref(null)}>Show all</Link>}
     </div>
-    <ol className="adm-pd-stages">
-      {stages.map((s) => {
-        const on = stage === s.stage;
-        const cls = ["adm-pd-stage", s.count ? "" : "is-zero", s.needsYou ? "is-you" : "", s.stage === "delivered" && s.count ? "is-done" : "", on ? "is-on" : ""].filter(Boolean).join(" ");
-        return <li key={s.stage} className={cls}>
-          <Link href={stageHref(on ? null : s.stage)} aria-current={on ? "true" : undefined}
-            aria-label={`${STAGE_TEXT[s.stage]}: ${pl(s.count, "book", "books")}${s.needsYou ? ", needs you" : ""}. ${on ? "Show all stages." : "Show only these."}`}>
-            <span className="adm-pd-node">{s.count}</span>
-            <span className="adm-pd-stage-text"><b>{STAGE_TEXT[s.stage]}</b>{s.needsYou && <span className="adm-pd-you">Needs you</span>}</span>
-            <span className="adm-pd-faces">{s.faces.map((b) => <Face key={b.childId} book={b} />)}</span>
-          </Link>
-        </li>;
-      })}
-    </ol>
+    <StageTrack books={books} stage={stage} />
   </section>;
+}
+
+/**
+ * The tracker's stages, each a link to Production showing only that stage. Vertical in a narrow box, a row of seven
+ * in a wide one. Home shows it too, in its production panel. `stage`: the stage the page shows now.
+ */
+export function StageTrack({ books, stage = null }: { books: readonly Book[]; stage?: Stage | null }) {
+  const stages = stageCounts(books);
+  return <ol className="adm-pd-stages">
+    {stages.map((s) => {
+      const on = stage === s.stage;
+      const cls = ["adm-pd-stage", s.count ? "" : "is-zero", s.needsYou ? "is-you" : "", s.stage === "delivered" && s.count ? "is-done" : "", on ? "is-on" : ""].filter(Boolean).join(" ");
+      return <li key={s.stage} className={cls}>
+        <Link href={stageHref(on ? null : s.stage)} aria-current={on ? "true" : undefined}
+          aria-label={`${STAGE_TEXT[s.stage]}: ${pl(s.count, "book", "books")}${s.needsYou ? ", needs you" : ""}. ${on ? "Show all stages." : "Show only these."}`}>
+          <span className="adm-pd-node">{s.count}</span>
+          <span className="adm-pd-stage-text"><b>{STAGE_TEXT[s.stage]}</b>{s.needsYou && <span className="adm-pd-you">Needs you</span>}</span>
+          <span className="adm-pd-faces">{s.faces.map((b) => <Face key={b.childId} book={b} />)}</span>
+        </Link>
+      </li>;
+    })}
+  </ol>;
 }
 
 /**
