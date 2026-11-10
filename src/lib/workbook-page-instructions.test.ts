@@ -98,6 +98,15 @@ describe("truthful printed U16 instructions",()=>{
   }
  });
  // (The review of 42bd5a6d: at U8 and U9 the warm-up sentence and "Circle yes or no." ran to 733 px of 688.)
+ it("joins the warm-up sentences only on a warm-up page; a stored instruction elsewhere prints as written", () => {
+  const qs=[question(1,"5 + 4 = ?",[box])];
+  const p=page(qs);p.content.level=15;p.content.consistentLayout=false;p.content.subtitle="Do every question. Write in boxes.";
+  p.content.blocks=[{slot:"on-your-own",items:[1]}];
+  expect(printedInstruction(p)).toBe("Do every question. Write in boxes.");
+  // (A stored warm-up says "Write in boxes." with the retired counting words; the warm-up sentence is added at print.)
+  p.content.blocks=[{slot:"warm-up",items:[1]}];p.content.subtitle="Write in boxes. Do as many as you can.";
+  expect(printedInstruction(p)).toBe("A warm-up on things you learned before. Answer every question in its box.");
+ });
  it.each([8,9,16])("names no choice on a U%s warm-up page: each choice question prints its own cue",level=>{
   const said={...circle,choices:["yes","no"],answer:"yes"};
   const qs=[question(1,"5 + 4 = ?",[box]),question(2,"Is 7 + 6 = 13?",[said],"circle"),question(3,"Is it right?",[{...said,mark:"tick"},{...box,id:"fix"}],"spot-the-error"),question(4,"Is 9 + 9 = 19? Circle yes or no.",[said],"circle")];

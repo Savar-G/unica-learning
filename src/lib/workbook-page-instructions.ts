@@ -86,7 +86,8 @@ export const mergeWarmUp = (text: string) => text
 /** The first-delivery U16 template's instruction, from the page's answer regions. Stored questions and content stay unchanged. */
 export function workbookPageInstruction(page: InstructionPage): string | null {
   if (page.content?.kind !== "day" || page.content.level !== 16 || !page.content.consistentLayout) return null;
-  return mergeWarmUp([warmUp(page) ? WARM_UP_INSTRUCTION : null, answerInstruction(page.questions, !warmUp(page))].filter(Boolean).join(" "));
+  const text = [warmUp(page) ? WARM_UP_INSTRUCTION : null, answerInstruction(page.questions, !warmUp(page))].filter(Boolean).join(" ");
+  return warmUp(page) ? mergeWarmUp(text) : text;
 }
 
 /**
@@ -103,5 +104,7 @@ export function printedInstruction(page: InstructionPage): string | null {
   for (const said of [...SAID_ELSEWHERE, ...(warmUp(page) ? RETIRED_WARM_UP : [])]) text = text.replaceAll(said, " ");
   text = text.replace(/\s+/g, " ").trim();
   if (warmUp(page) && !text.includes(WARM_UP_INSTRUCTION)) text = `${WARM_UP_INSTRUCTION} ${text}`.trim();
-  return mergeWarmUp(text || answerInstruction(page.questions));
+  const printed = text || answerInstruction(page.questions);
+  // (Only a warm-up page joins the sentences: a stored "Do every question. Write in boxes." elsewhere stays as written.)
+  return warmUp(page) ? mergeWarmUp(printed) : printed;
 }
