@@ -3932,6 +3932,57 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     const reviewed = await checkWholeBook(pages, async (page, issues) => {
       const w = byNumber.get(page.number);
       if (!w) return null;
+      // #811: a worked example an earlier page already shows (Kai's U10 book 2: page 77's repeated page 64's, which the
+      // writer built both times) takes a code-built example of its panel's skill that no question and no other example
+      // asks, instead of failing the book. A panel with none to give keeps its example, and the book check reports it.
+      let examples = page.panelExamples ?? [];
+      const swapped = new Set<number>();
+      if (issues.some((i) => i.kind === "repeat" && /^the worked example repeats/.test(i.reason))) {
+        const keysOf = (ps: GeneratedPage[]) => ps.flatMap((p) => (p.panelExamples ?? []).flatMap((e) => (e ? [taskIdentity(e)] : [])));
+        const earlier = new Set(keysOf(pages.filter((p) => p.number < page.number)));
+        const taken = new Set([...keysOf(pages), ...repairKeys,
+          ...pages.flatMap((p) => p.questions.flatMap((q) => (q.package && q.place !== "warm-up" ? [taskIdentity(q.package)] : [])))]);
+        examples = examples.map((e, k) => {
+          const panel = w.panels[k];
+          if (!e || !panel || !earlier.has(taskIdentity(e))) return e;
+          for (let attempt = 0; attempt < 64; attempt++) {
+            const c = contractFor(input, w, panelSlot(w, panel), attempt);
+            const pkg = c ? contractPackage(input, w, c) : null;
+            if (!pkg || !workableExample(pkg) || taken.has(taskIdentity(pkg)) || levelRange(pkg, input) || dayProblem(input, pkg, w.day, panel.place)) continue;
+            panel.attempt = attempt;
+            taken.add(taskIdentity(pkg));
+            repairKeys.add(taskIdentity(pkg));
+            swapped.add(k);
+            return withoutSam(pkg, null);
+          }
+          // (Most panels the writer builds have no code example at any attempt: Kai's estimation pages. Then code keeps
+          // the example's sum and moves its first number on until the book asks it nowhere; code writes its words.)
+          const op = e.operation;
+          const sign = op && ({ add: "+", subtract: "−", multiply: "×" } as Record<string, string>)[op.kind];
+          if (op && sign && typeof op.operands[0] === "number" && typeof op.operands[1] === "number") {
+            const [a, b] = op.operands as [number, number];
+            for (let step = 1; step <= 40; step++) {
+              const n = a + step;
+              const raw = {
+                slot: panel.id, skill: panel.skill, difficulty: 2, text: `${n} ${sign} ${b} = ?`, format: "write-number", figure: null, numbers: [], places: null, direction: null,
+                sequence: null, pattern: null, relation: null, figureShows: null, name: null, thing: null,
+                operation: { kind: op.kind, operands: [itemNumber(n), itemNumber(b)], expression: null, unit: null, denominator: null, values: [] },
+                easier: { text: `2 ${sign} 1 = ?`, operation: { kind: op.kind, operands: [itemNumber(2), itemNumber(1)], expression: null, unit: null, denominator: null, values: [] } },
+                wrongAnswers: [{ value: itemNumber((op.kind === "add" ? n + b : op.kind === "subtract" ? n - b : n * b) + 1), cause: "careless", description: "A slip.", step: null }], shownWrong: null,
+              };
+              const built = buildQuestion(raw, { id: e.id, workbookId: input.workbookId, page: page.number, question: 1, level: input.plan.level, skills: [panel.skill],
+                signs: skillSigns(input.curriculum, input.plan.level, panel.skill) });
+              const pkg = built.package;
+              if (built.check.status === "failed" || !pkg || !workableExample(pkg) || taken.has(taskIdentity(pkg)) || levelRange(pkg, input) || dayProblem(input, pkg, w.day, panel.place)) continue;
+              taken.add(taskIdentity(pkg));
+              repairKeys.add(taskIdentity(pkg));
+              swapped.add(k);
+              return withoutSam(pkg, null);
+            }
+          }
+          return e;
+        });
+      }
       const keyOf=(pkg:QuestionPackage)=>taskIdentity(pkg);
       const current=[...page.questions];
       const questions = page.questions.map((q,index) => {
@@ -3984,11 +4035,11 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         }
         return q;
       });
-      const finalQuestions = await repairFinalRows(input, w, work, questions, page.panelExamples ?? [], deps.fit, book);
-      const content = contentOf(input, w, finalQuestions, page.panelExamples ?? []);
+      const finalQuestions = await repairFinalRows(input, w, work, questions, examples, deps.fit, book);
+      const content = contentOf(input, w, finalQuestions, examples);
       // Older checkpoints keep the checked teaching blocks, even if their
-      // separate example packages predate panelExamples.
-      if (content?.kind === "day" && page.content?.kind === "day") {
+      // separate example packages predate panelExamples. (Not on a page whose example was just swapped: it prints the new one.)
+      if (!swapped.size && content?.kind === "day" && page.content?.kind === "day") {
         const old = page.content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot));
         for (const block of content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot))) {
           const index = old.findIndex(b=>b.slot===block.slot);
@@ -3996,7 +4047,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         }
       }
       const fit = await deps.fit.fits(fitPage(w, page.qrToken, finalQuestions, content), book);
-      return { ...page, questions: finalQuestions, ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
+      return { ...page, questions: finalQuestions, ...(swapped.size ? { panelExamples: examples } : {}), ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
     });
     quality = reviewed.quality;
     // G1: the personal book checks read the printed book: the warm-up's fact families (item 4) and the interest share
