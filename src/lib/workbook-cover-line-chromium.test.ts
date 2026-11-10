@@ -66,6 +66,21 @@ describe.skipIf(!chromium)("personal cover print fit", () => {
     expect(fit.ok).toBe(false);
     expect(fit.ok ? [] : fit.problems).toContainEqual(expect.objectContaining({ reason: expect.stringMatching(/made-from/) }));
 
+    // #801: a plan card that clips its topics fails too (the Sol review of #800: with this style every cover-topic slot
+    // printed no text, and the fit check still answered ok).
+    // (The card lists the topics of the book's plan page, so the book needs one; the fixture book holds covers only.)
+    const result0 = planNextWorkbook({ curriculum: BC, grade: 4, profile: fixtures[0].profile, workbooks: [], number: 1 });
+    if (!result0.ok) throw new Error(result0.reason);
+    const howPlan = { number: 2, dayLabel: null, type: "how-plan" as const, qrToken: "b1-how-plan-fixture", questions: [],
+      content: bookPageContent({ curriculum: BC, plan: result0.plan, child: fixtures[0].initials, workbook: 1, type: "how-plan", number: 2 }) };
+    const planBook: WorkbookDraft = { ...draft, pages: [draft.pages[0], howPlan] };
+    expect(template.page(draft.pages[0], { qr: "", qrUrl: "" }, planBook)).toContain("cover-plan");
+    const planClipped = { ...template, css: `${template.css}\n.cv .cover-plan{max-height:60px;overflow:hidden}` };
+    // (The whole book: the fit check prints a page alone, so its cover has no plan page and no card.)
+    const planRender = await renderWorkbook({ draft: planBook, parentId: PARENT, template: planClipped, engine });
+    expect(planRender.status).toBe("failed");
+    expect(planRender.status === "failed" ? planRender.problems : []).toContainEqual(expect.objectContaining({ page: 1, reason: expect.stringMatching(/cover-plan|cover-topic/) }));
+
     // Local review artifacts are optional. The gate needs no output directory.
     const out = process.env.B1_COVER_EVIDENCE;
     if (out && result.status === "rendered") {
