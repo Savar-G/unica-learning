@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/admin-store";
 import { adminTestPath } from "@/lib/admin-view";
 import { loadReportView } from "@/lib/report-loading";
 import { adminReportReader } from "@/lib/report-loading-server";
-import { AdminFrame } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { ReportCard } from "@/components/report";
 
 // A stored report as the parent's report page shows it, read with the admin's session through the report-loading
@@ -13,7 +13,7 @@ export default async function AdminReportPage({ params }: PageProps<"/admin/repo
   const admin = await requireAdmin();
   const report = await loadReportView(adminReportReader(admin), (await params).id);
   if (!report) notFound();
-  return <AdminFrame email={admin.email} section="tests" title="Report">
+  return <AdminFrame email={admin.email} title="Report">
     <p className="adm-report-note">Read-only report. <Link href={adminTestPath(report.assessmentId)}>Open the test, flags and all shown work</Link>. <Link href={`/admin/reports/${report.view.id}/deck`}>Open the results deck</Link>.</p>
     <ReportCard view={report.view} readOnly />
   </AdminFrame>;

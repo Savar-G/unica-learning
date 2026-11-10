@@ -212,7 +212,7 @@ class Store implements MarkingStore {
     job.until = 0;
   }
   async finish(ref: MarkingRef, token: string) { if (!this.live(ref, token)) return false; this.jobs.get(ref.photo)!.done = true; return true; }
-  async publish() { if (this.frozen || this.deleted) return; for (const m of this.items.values()) if (m.originalEvent && !m.eventId) { m.eventId = `event-${this.events.length}`; this.events.push({ ...m.originalEvent, id: m.eventId }); } }
+  async publish() { let published = 0; if (this.frozen || this.deleted) return published; for (const m of this.items.values()) if (m.originalEvent && !m.eventId) { m.eventId = `event-${this.events.length}`; this.events.push({ ...m.originalEvent, id: m.eventId }); published++; } return published; }
   async effective(parent: string, child: string) { return this.deleted || parent !== P || child !== C ? [] : structuredClone([...this.items.values()]); }
   teamQueue() { return [...this.items.values()].filter(waitsForTeam); }
   teamMark(key: string, version: number, result: "right" | "wrong" | "blank") {

@@ -35,12 +35,18 @@ Whichever path comes first wins. The others get the same chain and the same run 
      The planner may use only these;
    - **pending** items: in the sample but not final yet (`pending`), or never scanned (`missing`). They stay pending.
      They never count as blank or wrong;
-   - **held for later**: results outside the days in scope, after the cutoff, or for other skills.
+   - **held for later**: results outside the days in scope or after the cutoff.
+   The capture (`src/lib/next-book-capture.ts`) picks no skill: the ledger holds the marks of every skill and step the
+   printed Book 1 issued, on the days in scope, because the planner binds all of them. An item whose first mark is after the cutoff stays out of
+   the history and the ledger (its state at the cutoff is not proved), as the planner holds it "after cutoff". Its rows
+   stay in the frozen sources, and a refresh reads it as a new mark.
 3. **Scope.** A Day 7 snapshot uses current-book Days 1 to 7 only. Days 8 to 10, even if scanned early, are held
    for later. A backstop or admin snapshot uses every accepted day.
 4. **Plan.** The planner gets the frozen snapshot and history. It answers with the plan input, the plan, its hash,
    what it **consumed** and what it **held**. If it names anything outside the ledger, or at another version, the
    plan is refused. The plan is saved once. The same plan again is a retry; a different one is refused.
+   If the planner refuses, its sentence is the chain's answer (`planner-<sentence>`). The chain stays frozen, with no
+   plan and no run, and stays due, so the next step run asks the planner again.
 5. **Queue one run.** The run is started through the ordinary run start (one active run per child). It is linked to
    the snapshot (`workbook_runs.snapshot_id`). If another run for the child is active, the answer is `planned`, and
    the next call admits the run. The run is always book 2: admission holds the child and its later drafts while it
@@ -64,9 +70,56 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
 
 ## Who calls it
 
-Two callers run `prepareNextBook`. Both use one planner resolver, `nextBookPlanner()` (with `nextBookSelection()`, in
-`src/lib/next-book-planner.ts`). Both return `null` until the planner owner wires them. While either is `null`, neither
-caller reads or writes anything: no claim becomes a chain, no hold row is written, no run starts.
+Two callers run `prepareNextBook`. Both use one planner resolver, `nextBookPlanner()` in `src/lib/next-book-planner.ts`.
+With no planner (`null`), neither caller reads or writes anything: no claim becomes a chain, no hold row is written, no
+run starts.
+
+**Test families only, for now.** The worker still plans a run with `planNextWorkbook` and does not read the saved
+`plan_input`, so a book 2 run would not use the marks. Until it does, `NEXT_BOOK_REAL_FAMILIES` (`src/lib/next-book-planner.ts`)
+is `false`, and both callers prepare only families in `public.test_accounts`, whatever `NEXT_BOOK_PREPARE_ENABLED` says:
+
+- the admin button refuses any other family before any write, with "Only test families can get the next book for now.";
+- the automatic step admits a family only when it is listed in `WORKBOOK_SCAN_TEST_PARENT_IDS` and still marked as a
+  test; with `families`, it does not admit real families with an open plan.
+
+The admission checks it again: both callers pass `testOnly` (`p_test_only` of `admit_next_book_run`), which refuses
+with `test-families-only` unless the family is still in `public.test_accounts`. It locks that test row `FOR SHARE`
+(migration `20261109195323_next_book_admit_row_lock.sql`), so a removal of the mark, by any path, waits for the
+admission, and a removal that came first leaves no row to admit. A family unmarked while its plan runs gets no run. The admin page then shows "Only test families can get the next book for now."
+
+Set it to `true` in the change that makes the worker read `plan_input`.
+
+## The planner
+
+`nextBookPlanner()` wraps the planner owner's `planNextBookFromSnapshot` (`src/lib/workbook-next-book-snapshot.ts`).
+For one frozen revision it passes:
+
+- `sources`: the row's frozen `FrozenWorkbookSourcesV2`;
+- `snapshot`: `id` the row id, `workbookId` the source book 1, `cutoff` the freeze time in epoch milliseconds,
+  `scope` (below), and `issuedSkills`.
+
+`issuedSkills` is `nextBookIssuedSkills(sources)`. It is a pure function of the frozen sources, which the row keeps, so
+it is computed from them each time the chain plans, not stored at admission. When it is `null` (no valid Book 1 record),
+the answer is "The Book 1 starting record is unavailable." and nothing is saved.
+
+| Chain | `scope` |
+|---|---|
+| Revision 1 from a Day 7 claim (`day7_scanned`) | `day7` |
+| Revision 1 from the backstop claim (`delivery_backstop`) | `backstop` |
+| Revision 1 from the admin's "Prepare from snapshot" with no claim (`admin_prepare`) | `backstop` |
+| Revision 2 or later (the D-308 refresh) | `later-book` |
+
+The admin chain maps to `backstop` because the capture froze it over every accepted day, as for the backstop, and
+`later-book` is the planner's pre-approval refresh (`docs/workbook-preview-marks.md`). A frozen scope that does not match
+is refused ("The snapshot scope does not match its capture.").
+
+The answer is stored as the planner gives it: `planHash`, `planningInput`, the plan, `held` (a printed review with no
+question has a `null` key), and `consumed` with `version` (the planner's `effectiveVersion`), `firstVersion` and
+`correctionIds`. `consumed` is checked against the ledger by key and version, in code and in `save_next_book_plan`.
+
+The planner refuses a Book 1 record made on another curriculum digest (`curriculum-version-changed` in
+`src/lib/workbook-book1-baseline.ts`; the planner's sentence is "The Book 1 starting plan is unavailable."). That chain
+stays frozen and due until the planner accepts it.
 
 **The automatic step.** Its own cron route, `POST /api/next-book-prepare` (`src/app/api/next-book-prepare/route.ts`).
 Supabase `pg_cron` posts to it every 15 minutes (job `next-book-prepare`, migration `20261109173906_next_book_prepare_cron.sql`), with the
@@ -88,7 +141,7 @@ A waiting chain costs one cheap read and stops waiting by its freeze deadline (3
 the list on its first call, so the oldest items do not block later ones for long.
 
 One deadline covers the whole step: its time less one second. Every candidate read, access read and item races it
-under one signal (#773). At the deadline the signal aborts: the database requests stop, a planner or selection answer
+under one signal (#773). At the deadline the signal aborts: the database requests stop, a planner answer
 that comes later is refused, and the step answers with what it did, never after its end. The step's client never
 retries (`adminClient(signal, { retry: false })`): the SDK would otherwise retry a timed-out read after 1, 2 and 4
 seconds, past the deadline. Every write the item already made is one atomic, re-entrant step, so the next run continues it.
@@ -122,6 +175,7 @@ line, with times in the family's time zone:
 | queued | Next book queued. |
 | refused, next book exists | This book already has a next book. |
 | no planner | The planner is not ready yet. |
+| not a test family (until the worker reads `plan_input`) | Only test families can get the next book for now. |
 
 ## Where things are
 
@@ -132,12 +186,12 @@ line, with times in the family's time zone:
 | Memory store (tests) | `src/lib/next-book-snapshot-memory.ts` |
 | Supabase store | `src/lib/next-book-snapshot-store.ts` |
 | Server entry | `src/lib/next-book-snapshot-server.ts` |
-| Planner resolver (null for now) | `src/lib/next-book-planner.ts` |
+| Planner adapter | `src/lib/next-book-planner.ts` |
 | Automatic step, due readers, server wiring | `src/lib/next-book-step.ts`, `next-book-step-store.ts`, `next-book-step-memory.ts`, `next-book-step-server.ts` |
 | Cron route and its job | `src/app/api/next-book-prepare/route.ts`, `supabase/migrations/20261109173906_next_book_prepare_cron.sql` |
 | Admin button | `src/lib/next-book-admin.ts`, `next-book-admin-server.ts`, `next-book-button.ts`, `src/app/api/admin/children/[id]/next-book/route.ts` |
-| Book 1 capture | `captureBook1Progress` in `src/lib/workbook-book1-preview.ts` |
-| Tests | `src/lib/next-book-snapshot-flow.test.ts`, `src/lib/next-book-snapshot.test.ts`, `src/lib/next-book-step.test.ts`, `src/lib/next-book-step-store.test.ts`, `src/lib/next-book-admin.test.ts`, `src/lib/next-book-button.test.ts` |
+| Book 1 capture | `src/lib/next-book-capture.ts` |
+| Tests | `src/lib/next-book-snapshot-flow.test.ts`, `src/lib/next-book-snapshot.test.ts`, `src/lib/next-book-step.test.ts`, `src/lib/next-book-step-store.test.ts`, `src/lib/next-book-admin.test.ts`, `src/lib/next-book-button.test.ts`, `src/lib/next-book-planner.test.ts` (the real planner) |
 
 The database functions are service-only:
 
@@ -146,13 +200,13 @@ The database functions are service-only:
 | `claim_next_book_snapshot` | Revision 1 for a claim, or for the admin action. Returns the one chain. |
 | `hold_next_book_snapshot` | Records the #628 held chain. A live chain wins over it. |
 | `save_next_book_snapshot` | Freezes once. A later call gets the first freeze back. |
-| `save_next_book_plan` | Saves the plan once. Refuses `consumed` outside the ledger. |
+| `save_next_book_plan` | Saves the plan once. Refuses `consumed` outside the ledger. Takes the real planner's entry shapes (migration `20261109190616_next_book_plan_shape.sql`). |
 | `retake_next_book_snapshot` | Writes revision n+1 for the draft. Refused after approval or a source change. |
-| `admit_next_book_run` | Starts one run per chain through `start_workbook_run`. |
+| `admit_next_book_run` | Starts one run per chain through `start_workbook_run`. With `p_test_only` (migration `20261109192936_next_book_admit_test_only.sql`), only for a test family. |
 
 ## Not built yet
 
 - The worker does not read `plan_input` yet. The planner owner adds that for runs with a `snapshot_id`.
-- No real planner and no step selection are wired: `nextBookPlanner()` and `nextBookSelection()` return `null`, so both
-  callers stop before any write. Until the worker reads `plan_input`, keep the switch off or `test-only`.
+- The real planner is wired. Until the worker reads `plan_input`, both callers prepare test families only
+  (`NEXT_BOOK_REAL_FAMILIES` is `false`).
 - The run is not routed to the Mac worker. A queued run stays on the default runner until a caller routes it.

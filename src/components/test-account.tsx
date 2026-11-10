@@ -8,7 +8,7 @@ export function TestAccount({ parentId, marked, admin }: { parentId: string; mar
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  if (admin) return <p className="adm-note">This is an admin&rsquo;s own family. The dashboard leaves it out of its numbers.</p>;
+  if (admin) return <p className="adm-note">This is an admin&rsquo;s own family. No number counts it, and lists show it only while Show test families is on.</p>;
   async function toggle() {
     if (busy) return;
     setBusy(true);
@@ -25,7 +25,7 @@ export function TestAccount({ parentId, marked, admin }: { parentId: string; mar
   }
   return (
     <div className="adm-row">
-      <span className="adm-note">{marked ? "Marked as a test family: the dashboard leaves it out of its numbers." : "A real family: the dashboard counts it."}</span>
+      <span className="adm-note">{marked ? "Marked as a test family: no number counts it, and lists show it only while Show test families is on." : "A real family: every number counts it."}</span>
       <button type="button" className="btn adm-btn" onClick={toggle} disabled={busy}>{busy ? "Saving..." : marked ? "Count this family" : "Mark as a test family"}</button>
       {error && <span role="alert" className="adm-note">{error}</span>}
     </div>

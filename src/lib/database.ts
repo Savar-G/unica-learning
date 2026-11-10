@@ -8,6 +8,7 @@ import type { KnownPlan } from "@/lib/parent-plan";
 import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
 import type { ScanCalibrationResult } from "@/lib/scan-crops";
+import type { ScanBlockedReason, ScanCalibrationState, ScanJobState, ScanPhotoState } from "@/lib/scan-states";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
@@ -62,7 +63,9 @@ type ColumnTypes = KnownColumns<{
   reports: { model: ReportModel };
   skill_state_history: { state: SkillState; reason: SkillStateReason; evidence_source: SkillEvidence };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
-  scan_calibrations: { state: "running" | "ready" | "refused"; result: ScanCalibrationResult | null };
+  scan_calibrations: { state: ScanCalibrationState; result: ScanCalibrationResult | null };
+  scan_photos: { state: ScanPhotoState };
+  scan_marking_jobs: { state: ScanJobState; blocked_reason: ScanBlockedReason | null };
   workbooks: { status: WorkbookStatus; print_manifest: ScanManifest | null };
   workbook_pages: { print_contract: PagePrintContract | null };
   workbook_questions: { regions: PrintedRegion[] | null; teaching: TeachingContext | null };

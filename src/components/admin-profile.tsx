@@ -23,7 +23,8 @@ import type { ProfileDetail } from "@/lib/admin-store";
 import { adminTestPath, duration, flagText, helpAnswerText, levelText, when } from "@/lib/admin-view";
 import { feelingLabel, goalLabel, interestLabel, styleLabel, weeklyTimeLabel } from "@/lib/learning-style";
 import { STATUS_LABEL } from "@/lib/report-view";
-import { AdminFrame, Chip, Table, gradeAndPlace } from "@/components/admin";
+import { Chip, Table, gradeAndPlace } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { RecordFacts, childPath } from "@/components/admin-records";
 
 const CERTAINTY: Record<Certainty, string> = { clear: "Clear", "early-sign": "Early sign" };
@@ -47,7 +48,7 @@ export function AdminProfile({ email, detail }: { email: string; detail: Profile
   const { test: t, stored } = detail;
   const profile = stored ? storedProfile(stored.profile) : null;
   const name = t.child?.first_name ?? "Child";
-  return <AdminFrame email={email} section="tests" title={`${name}'s learner profile`}>
+  return <AdminFrame email={email} title={`${name}'s learner profile`}>
     <RecordFacts facts={[
       ["Child", <Link key="child" href={childPath(t.child_id)}>{name}</Link>], ["Test", <Link key="test" href={adminTestPath(t.id)}>Open the test</Link>],
       ["Grade and curriculum", gradeAndPlace(t.grade, t.province)], ["Completed (Pacific)", when(t.completed_at)],
@@ -55,8 +56,8 @@ export function AdminProfile({ email, detail }: { email: string; detail: Profile
     ]} />
     {!stored ? <p className="adm-note">No profile is stored for this test. The report job builds it when a test scored against BC finishes.</p>
       : !profile ? <>
-        <p className="adm-note">This profile was built at schema version {stored.schema_version}, which this page does not read. The next build of the test replaces it.</p>
-        <pre className="adm-typed">{JSON.stringify(stored.profile, null, 2)}</pre>
+        <p className="adm-note">This profile was built in an older format, which this page does not read. The next build of the test replaces it.</p>
+        <details className="adm-tech"><summary>Technical details</summary><p>Schema version {stored.schema_version}.</p><pre>{JSON.stringify(stored.profile, null, 2)}</pre></details>
       </>
       : <ProfileFacts profile={profile} numbers={detail.numbers} name={name} />}
   </AdminFrame>;
@@ -131,8 +132,7 @@ function ProfileFacts({ profile, numbers, name }: { profile: LearnerProfile; num
     <h2>Written by AI</h2>
     <ProfileAiParts ai={profile.ai ?? {}} struggles={profile.struggles.map((s) => s.code)} name={name} />
 
-    <h2>Stored JSON</h2>
-    <details><summary>Schema version {profile.schemaVersion}</summary><pre className="adm-typed">{JSON.stringify(profile, null, 2)}</pre></details>
+    <details className="adm-tech"><summary>Technical details</summary><p>The stored profile, schema version {profile.schemaVersion}.</p><pre>{JSON.stringify(profile, null, 2)}</pre></details>
   </>;
 }
 

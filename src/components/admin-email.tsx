@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { EmailFrame } from "@/components/admin-email-frame";
 import { familyHref, type Ctx } from "@/components/admin-dashboard-parts";
+import { DELIVERY_WORDS } from "@/lib/delivery-state";
 import { DELIVERY_TEXT, EMAIL_LABEL, at, ago, clickable, clicksText, deliveryProblem, type Delivery, type EmailCopyView, type EmailEvent } from "@/lib/admin-dashboard";
 
 /** What a delivery event means for the parent, in plain words (D-104). */
@@ -26,9 +27,9 @@ function splitAddress(from: string): { name: string; address: string | null } {
 function resultText(e: EmailEvent, copy: EmailCopyView | null): { text: string; bad: boolean } {
   if (e.status === "failed") return { text: `Not sent: Resend refused it after ${e.attempts} ${e.attempts === 1 ? "try" : "tries"}. ${e.error ?? ""}`.trim(), bad: true };
   if (e.status === "pending") {
-    return copy?.outcome === "unknown"
-      ? { text: `Delivery unknown: Resend did not answer, so the email may have gone. It is not sent again. ${e.error ?? ""}`.trim(), bad: true }
-      : { text: "Waiting to send.", bad: false };
+    return e.state === "unknown" || copy?.outcome === "unknown"
+      ? { text: `${DELIVERY_WORDS.unknown}. ${e.error ?? ""}`.trim(), bad: true }
+      : { text: `${DELIVERY_WORDS[e.state === "claimed" ? "claimed" : "unsent"]}.`, bad: false };
   }
   // After the send: Resend's newest delivery event (D-104).
   const last = copy?.events.at(-1) ?? e.delivery;

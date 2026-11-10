@@ -183,6 +183,18 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
     if (!free) expect(text).not.toContain("reminder 7 days");
   });
 
+  it.each([[7 * 86400000 - 1, false], [7 * 86400000, true]])("includes the reminder promise at a remaining time of %i ms: %s", async (remaining, expected) => {
+    const now = Date.parse("2026-11-10T18:00:00Z");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const f = planFixture();
+      const end = new Date(now + Number(remaining)).toISOString();
+      Object.assign(f.records.get(1)!, { family_terms: true, monthly_cents: 5999, first_charge_at: end, trial_end: end });
+      expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
+      expect(f.messages[0].text.includes("reminder 7 days")).toBe(expected);
+    } finally { clock.mockRestore(); }
+  });
+
   it.each([2, 3])("uses the saved card child's stored grade and keeps the exact instructions in its claim (%i)", async (grade) => {
     const f = planFixture(grade);
     expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");

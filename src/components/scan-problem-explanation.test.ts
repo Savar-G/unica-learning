@@ -62,3 +62,14 @@ it("a replacement child starts with its own lower mark version after a saved cor
   const [url, init] = fetch.mock.calls[1] as unknown as [string, RequestInit]; expect(url).toContain("sibling-photo/explanation"); expect(JSON.parse(String(init.body)).version).toBe(1);
   expect(host.textContent).not.toContain("old child reading");
 });
+
+// #710: the route answers plan_closed when the child's plan closed while this tab stayed open.
+it("says the plan is closed and points to the plan page, with no retry", async () => {
+  const fetch = vi.fn(async () => Response.json({ status: "plan_closed" }, { status: 403 })); vi.stubGlobal("fetch", fetch);
+  await render(); await press();
+  expect(host.textContent).toContain("Explanations are not available while the plan is closed. See your plan page.");
+  expect(host.querySelector('a[href="/account/plan"]')?.textContent).toBe("plan page");
+  expect(host.textContent).not.toMatch(/try again|mark changed/i);
+  const b = [...host.querySelectorAll("button")].find(b => b.textContent?.includes("Explain"))!;
+  expect(b.disabled).toBe(true);
+});

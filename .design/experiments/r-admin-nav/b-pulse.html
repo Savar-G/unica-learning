@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin · Pulse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;450;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+/* Option B "Pulse": Home is a bento of four graphic modules in job order; Production leads with the pipeline. */
+.date { margin-bottom: var(--s3); }
+.bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--s4); }
+.mod { container-type: inline-size; position: relative; display: flex; flex-direction: column; gap: var(--s5); min-width: 0; padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+.m-cust { grid-column: span 7; overflow: hidden; background: var(--soft); }
+.m-prod { grid-column: span 5; }
+.m-sign { grid-column: span 7; }
+.m-mark { grid-column: span 5; }
+.m-cust::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--g1) 30%, transparent), transparent 55%),
+              radial-gradient(90% 80% at 100% 0%, color-mix(in srgb, var(--g2) 22%, transparent), transparent 60%),
+              radial-gradient(80% 70% at 100% 100%, color-mix(in srgb, var(--g4) 22%, transparent), transparent 60%); }
+.m-cust::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .07; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.m-cust > * { position: relative; z-index: 1; }
+.mod-head { display: flex; align-items: center; gap: var(--s3); }
+.mod-head h2 { margin: 0; text-transform: uppercase; letter-spacing: .05em; font-size: 11.5px; font-weight: 400; }
+.see { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 var(--s2); margin-right: calc(-1 * var(--s2)); border-radius: 6px; font-size: 13.5px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.see:hover { background: var(--card); color: var(--ink); }
+.see::after { content: "→"; }
+.hero { display: flex; align-items: flex-end; gap: var(--s4); flex-wrap: wrap; }
+.big { font: 300 64px/.9 var(--sans); letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
+.big-sm { font-size: 48px; }
+.big-label { display: grid; gap: var(--s1); padding-bottom: 2px; }
+.big-label b { font-weight: 450; }
+.side-stat { margin-left: auto; text-align: right; display: grid; gap: 2px; font-size: 13.5px; }
+.side-stat strong { font: 300 28px/1 var(--sans); letter-spacing: -0.03em; }
+
+/* unit strips: one dot per event, one column per day */
+.strip { display: grid; gap: var(--s2); }
+.cols { display: grid; grid-template-columns: repeat(14, 1fr); align-items: end; height: 72px; border-bottom: 1px solid var(--line); }
+.col { position: relative; display: flex; flex-direction: column-reverse; align-items: center; gap: 4px; height: 100%; padding: 6px 0; }
+.col.wk { background: color-mix(in srgb, var(--leaf) 7%, transparent); }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: var(--leaf); box-shadow: 0 0 0 2px #fff; }
+.dot.zero { width: 4px; height: 4px; background: #d4d4d8; box-shadow: none; margin-top: auto; }
+.bar { width: min(14px, 70%); border-radius: 4px 4px 2px 2px; background: color-mix(in srgb, var(--sky) 55%, #fff); }
+.col.wk .bar { background: var(--sky); }
+.col.sky.wk { background: color-mix(in srgb, var(--sky) 7%, transparent); }
+.bar-v { font: 500 11px/1 var(--mono); color: var(--ink-2); }
+.axis { display: grid; grid-template-columns: repeat(14, 1fr); font: 400 10.5px/1 var(--mono); color: var(--ink-3); }
+.axis span { white-space: nowrap; }
+.axis span:last-child { text-align: right; }
+.axis .wkl { grid-column: 13 / span 2; text-align: right; color: var(--ink-2); }
+
+/* people rows */
+.rows { list-style: none; margin: 0; padding: 0; display: grid; }
+.row { display: flex; align-items: center; gap: var(--s3); min-height: 48px; padding: var(--s2) 0; border-top: 1px solid var(--line-soft); }
+.row:first-child { border-top: 0; }
+.row .who2 { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.row .who2 b { font-weight: 500; }
+.row .who2 span { font-size: 13.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row time { font: 400 12px/1.2 var(--mono); color: var(--ink-3); white-space: nowrap; }
+.m-cust .row { border-color: color-mix(in srgb, var(--ink) 8%, transparent); }
+.avatar { box-shadow: 0 0 0 2px #fff; }
+.avatar.lg { width: 36px; height: 36px; font-size: 14px; }
+.avatar.is-test { outline: 1px dashed #b9b9c0; outline-offset: 1px; }
+
+/* pipeline: one component, vertical in narrow spaces, horizontal when wide */
+.pipe { container-type: inline-size; }
+.stages { list-style: none; margin: 0; padding: 0; position: relative; display: grid; gap: 0; }
+.stages::before { content: ""; position: absolute; left: 19px; top: 20px; bottom: 20px; width: 2px; background: var(--line); }
+.stg > a, .stg > button { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: var(--s3); width: 100%; min-height: 48px; padding: var(--s1) 0; border: 0; border-radius: 6px; background: transparent; text-align: left; text-decoration: none; color: inherit; cursor: pointer; }
+.stg > a:hover .node, .stg > button:hover .node { box-shadow: 0 0 0 4px var(--card); }
+.node { position: relative; z-index: 1; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: #fff; font: 450 16px/1 var(--sans); font-variant-numeric: tabular-nums; transition: box-shadow .15s; }
+.stg.zero .node { color: var(--ink-3); background: var(--soft); font-weight: 400; }
+.stg.you .node { border-color: var(--accent); background: var(--accent-soft); color: #b23d14; font-weight: 500; }
+.stg.done .node { border-color: color-mix(in srgb, var(--leaf) 60%, #fff); background: var(--ok); color: #135c3d; }
+.stg-text { display: grid; gap: 2px; min-width: 0; }
+.stg-text b { font-weight: 450; font-size: 14.5px; }
+.stg.zero .stg-text b { color: var(--ink-3); font-weight: 400; }
+.you-tag { font: 500 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .05em; color: #b23d14; }
+.faces { display: flex; }
+.faces .avatar + .avatar { margin-left: -6px; }
+.stg > button[aria-pressed="true"] { background: var(--card); }
+@container (min-width: 760px) {
+  .stages { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .stages::before { left: calc(100% / 14); right: calc(100% / 14); top: 36px; bottom: auto; width: auto; height: 2px; }
+  .stg > a, .stg > button { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: var(--s2); padding: var(--s4) var(--s1); height: 100%; align-content: start; }
+  .node { width: 44px; height: 44px; font-size: 18px; }
+  .stg-text { justify-items: center; }
+  .faces { min-height: 28px; }
+}
+.run { display: grid; gap: var(--s2); padding: var(--s3) var(--s4); border-radius: 6px; background: var(--soft); border: 1px solid var(--line-soft); }
+.run-top { display: flex; align-items: center; gap: var(--s2); font-size: 14px; }
+.run-top .faint { margin-left: auto; font: 400 12px/1 var(--mono); }
+.meter { height: 8px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--g1), var(--g2)); }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--g2); box-shadow: 0 0 0 0 color-mix(in srgb, var(--g2) 60%, transparent); animation: ping 1.6s infinite; flex: none; }
+@keyframes ping { to { box-shadow: 0 0 0 8px transparent; } }
+
+/* signups */
+.sign-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5); align-items: start; }
+@container (max-width: 560px) { .sign-grid { grid-template-columns: 1fr; } .big { font-size: 52px; } }
+.funnel { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.fun { display: grid; gap: 4px; }
+.fun-top { display: flex; align-items: baseline; gap: var(--s2); font-size: 13.5px; }
+.fun-top b { font-weight: 450; }
+.fun-top .num { margin-left: auto; font-weight: 500; }
+.fun-top .faint { font: 400 11.5px/1 var(--mono); }
+.fun-bar { height: 22px; border-radius: 4px; background: var(--card); overflow: hidden; }
+.fun-bar i { display: block; height: 100%; border-radius: 4px; }
+.sub { margin: 0 0 var(--s2); font: 400 11px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+
+/* marking */
+.mark-grid { display: grid; grid-template-columns: auto 1fr; gap: var(--s5); align-items: center; }
+.ring { position: relative; width: 132px; height: 132px; }
+.ring svg { display: block; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-in { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 2px; }
+.ring-in strong { font: 300 34px/1 var(--sans); letter-spacing: -0.03em; }
+.ring-in span { font: 400 11px/1.2 var(--mono); color: var(--ink-3); }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
+.legend li { display: flex; align-items: center; gap: var(--s2); }
+.sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.queue { display: grid; gap: var(--s3); padding: var(--s4); border-radius: 6px; background: var(--accent-soft); }
+.queue-top { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.queue-top strong { font: 300 36px/1 var(--sans); letter-spacing: -0.03em; }
+.queue-top .btn { margin-left: auto; }
+.stack { display: flex; height: 8px; border-radius: 999px; overflow: hidden; gap: 2px; }
+.stack i { display: block; height: 100%; }
+@container (max-width: 400px) { .mark-grid { grid-template-columns: 1fr; justify-items: start; } }
+
+/* today timeline */
+.today { margin-top: var(--s4); }
+.tl { list-style: none; margin: 0; padding: 0; position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.tl::before { content: ""; position: absolute; left: 0; right: 0; top: 23px; height: 1px; background: var(--line); }
+.tl li { position: relative; display: grid; gap: 4px; padding: 0 var(--s3) 0 0; font-size: 13.5px; }
+.tl time { font: 400 11.5px/1 var(--mono); color: var(--ink-3); height: 16px; }
+.tl .k { width: 12px; height: 12px; border-radius: 50%; margin: 1px 0 var(--s2); box-shadow: 0 0 0 3px #fff; }
+.tl b { font-weight: 500; }
+.tl span { color: var(--ink-2); }
+.tl a { text-decoration: none; }
+.tl a:hover b { text-decoration: underline; }
+
+/* production page */
+.lead { padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r); background: var(--soft); margin-bottom: var(--s6); }
+.lead-head { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s2); }
+.lead-head h2 { margin: 0; font-size: 11.5px; font-weight: 400; text-transform: uppercase; letter-spacing: .05em; }
+.lead-head .clear { margin-left: auto; }
+.lead .stages::before { background: color-mix(in srgb, var(--ink) 12%, transparent); }
+.sect { margin-top: var(--s6); }
+.sect:first-of-type { margin-top: 0; }
+.sect-head { display: flex; align-items: baseline; gap: var(--s3); margin-bottom: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+.sect-head h2 { margin: 0; font: 400 20px/1.2 var(--sans); letter-spacing: -0.02em; }
+.sect-head p { margin: 0; font-size: 13.5px; color: var(--ink-3); }
+.sect-head .num { font: 400 12px/1 var(--mono); color: var(--ink-3); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--s4); }
+.bk { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+.bk.you { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: inset 3px 0 0 var(--accent); }
+.bk.is-test { background: var(--soft); border-style: dashed; }
+.bk-top { display: flex; align-items: center; gap: var(--s3); }
+.bk-top .who2 { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.bk-top .who2 b { font-weight: 500; }
+.bk-top .who2 span { font-size: 13px; color: var(--ink-2); }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
+.checks li { display: flex; align-items: flex-start; gap: var(--s2); }
+.checks svg { width: 16px; height: 16px; flex: none; margin-top: 2px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.checks .ok svg { stroke: var(--leaf); }
+.checks .warn svg { stroke: #c98a00; }
+.bk-foot { display: flex; align-items: center; gap: var(--s3); margin-top: auto; padding-top: var(--s3); border-top: 1px solid var(--line-soft); font-size: 13px; }
+.bk-foot .btn { margin-left: auto; }
+.tries { font-size: 13px; color: var(--ink-3); }
+.tries summary { cursor: pointer; min-height: 24px; }
+.tries ul { margin: var(--s2) 0 0; padding-left: var(--s4); display: grid; gap: 4px; color: var(--ink-2); }
+.empty { padding: var(--s4); border: 1px dashed var(--line); border-radius: var(--r); color: var(--ink-3); font-size: 13.5px; }
+[hidden] { display: none !important; }
+
+@media (max-width: 1100px) { .m-cust, .m-prod, .m-sign, .m-mark { grid-column: 1 / -1; } }
+@media (max-width: 860px) {
+  .tl { grid-template-columns: 1fr; gap: var(--s3); padding-left: var(--s5); }
+  .tl::before { left: 5px; right: auto; top: 6px; bottom: 6px; width: 1px; height: auto; }
+  .tl li { padding: 0; }
+  .tl .k { position: absolute; left: calc(-1 * var(--s5)); top: 2px; margin: 0; }
+  .content .btn.sm, .content .btn { min-height: 40px; }
+  .see { min-height: 40px; }
+  .side-stat { margin-left: 0; text-align: left; }
+  .cards { grid-template-columns: 1fr; }
+  .mod, .lead { padding: var(--s4); }
+}
+</style>
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+(function () {
+  // ---------- helpers ----------
+  const pl = (n, one, many) => `${n} ${n === 1 ? one : (many || one + "s")}`;
+  const rank = (s) => { // later events rank higher; sample data uses "Today", "Yesterday" or "Nov 3"
+    if (/^Today/.test(s)) return 2000; if (/^Yesterday/.test(s)) return 1999;
+    const m = /^(Oct|Nov) (\d+)/.exec(s || ""); return m ? (m[1] === "Nov" ? 1000 : 0) + Number(m[2]) : 0;
+  };
+  const real = (xs) => xs.filter((x) => !x.test); // test families never count in a number
+  const KIND = { customer: "var(--leaf)", book: "var(--g2)", test: "var(--sky)", signup: "var(--sun)", marking: "var(--ink-3)" };
+  const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+  const WARN = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v4.5M12 16h.01"/></svg>';
+  const THIS_WEEK = 2; // Monday Nov 9 and today, Tuesday Nov 10
+
+  function avatar(ctx, name, famId, size) {
+    const f = ctx.family(famId) || {};
+    return `<span class="avatar ${size || ""} ${f.test ? "is-test" : ""}" style="background:${ctx.esc(f.color || "#eee")}" aria-hidden="true">${ctx.esc(String(name).charAt(0))}</span>`;
+  }
+  const testChip = (x) => (x.test ? ' <span class="chip test">test</span>' : "");
+  function delta(v, prev) {
+    const d = v - prev;
+    if (d > 0) return `<span class="chip ok num">Up ${d} on last week</span>`;
+    if (d < 0) return `<span class="chip bad num">Down ${-d} on last week</span>`;
+    return `<span class="chip muted">Same as last week</span>`;
+  }
+  const kpi = (ctx, k) => ctx.KPIS.find((x) => x.key === k);
+
+  // 14-day chart in HTML, so labels stay readable at every width. kind "dots": one dot per event; "bars": labeled bars.
+  function dayChart(ctx, vals, kind, label) {
+    const max = Math.max(1, ...vals);
+    const cols = vals.map((v, i) => {
+      const wk = i >= vals.length - THIS_WEEK;
+      let inner;
+      if (kind === "dots") inner = v ? Array.from({ length: v }, () => '<span class="dot"></span>').join("") : '<span class="dot zero"></span>';
+      else inner = v ? `<span class="bar" style="height:${Math.round((v / max) * 70)}%"></span><span class="bar-v">${v}</span>` : '<span class="dot zero"></span>';
+      return `<div class="col ${kind === "bars" ? "sky" : ""} ${wk ? "wk" : ""}">${inner}</div>`;
+    }).join("");
+    return `<div class="strip"><div class="cols" role="img" aria-label="${ctx.esc(label)}">${cols}</div>
+      <div class="axis" aria-hidden="true"><span>${ctx.esc(ctx.DAYS[0])}</span><span style="grid-column:7 / span 3">${ctx.esc(ctx.DAYS[7])}</span><span class="wkl">This week</span></div></div>`;
+  }
+
+  // ---------- pipeline (Home and Production share it) ----------
+  function stageList(ctx) {
+    return [{ key: "none", label: "No workbook yet" }, ...ctx.BOOK_STEPS];
+  }
+  const NEEDS_YOU = ["none", "review"];
+  function pipeline(ctx, mode) {
+    const books = real(ctx.all.BOOKS);
+    const items = stageList(ctx).map((s) => {
+      const here = books.filter((b) => b.state === s.key);
+      const you = NEEDS_YOU.includes(s.key) && here.length;
+      const cls = ["stg", here.length ? "" : "zero", you ? "you" : "", s.key === "delivered" && here.length ? "done" : ""].join(" ");
+      const faces = here.slice(0, 4).map((b) => avatar(ctx, b.child, b.family)).join("");
+      const inner = `<span class="node num">${here.length}</span>
+        <span class="stg-text"><b>${ctx.esc(s.label)}</b>${you ? '<span class="you-tag">Needs you</span>' : ""}</span>
+        <span class="faces">${faces}</span>`;
+      const aria = `${s.label}: ${pl(here.length, "book")}${you ? ", needs you" : ""}`;
+      return mode === "filter"
+        ? `<li class="${cls}"><button type="button" data-stage="${s.key}" aria-pressed="false" aria-label="${ctx.esc(aria)}. Show only these.">${inner}</button></li>`
+        : `<li class="${cls}"><a href="#/production" aria-label="${ctx.esc(aria)}">${inner}</a></li>`;
+    }).join("");
+    return `<div class="pipe"><ol class="stages">${items}</ol></div>`;
+  }
+  function runBar(ctx, b, bare) {
+    return `<div class="run">
+      <div class="run-top"><span class="pulse" aria-hidden="true"></span><b>${bare ? `${b.progress}% done` : `${ctx.esc(b.child)} · Book ${b.n}`}</b><span class="faint">${ctx.esc(b.eta || "")}</span></div>
+      <div class="meter" role="progressbar" aria-label="${ctx.esc(b.child)}, Book ${b.n}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${b.progress}"><i style="width:${b.progress}%"></i></div>
+      <span class="faint" style="font-size:13px">${ctx.esc(b.detail)}</span></div>`;
+  }
+
+  // ---------- Home ----------
+  function renderHome(ctx) {
+    const { esc } = ctx;
+    const fams = real(ctx.all.FAMILIES);
+    const cust = kpi(ctx, "customers"), signs = kpi(ctx, "signups"), active = kpi(ctx, "active");
+    const cards14 = ctx.SERIES.cards.reduce((a, b) => a + b, 0);
+
+    // 1. New customers
+    const newest = ctx.families.filter((f) => f.stage === "card" || f.stage === "paying")
+      .sort((a, b) => rank(b.stageAt) - rank(a.stageAt)).slice(0, 3);
+    const custRows = newest.map((f) => `<li class="row">${avatar(ctx, f.parent, f.id, "lg")}
+      <span class="who2"><b>${esc(f.parent)}${testChip(f)}</b><span>${esc(f.kids.map((k) => k.name).join(", "))} · ${esc(f.note)}</span></span>
+      <time>${esc(f.stageAt.replace(",", ""))}</time></li>`).join("");
+    const m1 = `<section class="mod m-cust" aria-labelledby="h-cust">
+      <div class="mod-head"><h2 class="eyebrow" id="h-cust">New customers</h2><a class="see" href="#/families">See all</a></div>
+      <div class="hero">
+        <span class="big num">${cust.value}</span>
+        <span class="big-label"><b>${esc(cust.period)}</b>${delta(cust.value, cust.prev)}</span>
+        <span class="side-stat"><strong class="num">${active.value}</strong><span class="muted">active plans</span></span>
+      </div>
+      <div><p class="sub">Cards saved, last 14 days</p>${dayChart(ctx, ctx.SERIES.cards, "dots", `Cards saved each day for 14 days: ${cards14} in all, ${cust.value} this week.`)}</div>
+      <ul class="rows">${custRows}</ul>
+    </section>`;
+
+    // 2. Workbook production
+    const running = ctx.books.find((b) => b.state === "making");
+    const needYou = real(ctx.all.BOOKS).filter((b) => NEEDS_YOU.includes(b.state)).length;
+    const m2 = `<section class="mod m-prod" aria-labelledby="h-prod">
+      <div class="mod-head"><h2 class="eyebrow" id="h-prod">Workbook production</h2><a class="see" href="#/production">See all</a></div>
+      <p class="muted" style="margin:0"><b style="font-weight:500;color:var(--ink)">${pl(needYou, "book needs", "books need")} you.</b> Review a draft or start a first workbook.</p>
+      ${pipeline(ctx, "link")}
+      ${running ? runBar(ctx, running) : ""}
+    </section>`;
+
+    // 3. Signups: funnel from where each family got to, plus 14 days of signups
+    const at = (keys) => fams.filter((f) => keys.includes(f.stage)).length;
+    const steps = [
+      { label: "Signed up", n: fams.length, c: "var(--sun)" },
+      { label: "Started the test", n: at(["testing", "tested", "card", "paying", "waitlist"]), c: "color-mix(in srgb, var(--sky) 55%, #fff)" },
+      { label: "Report sent", n: at(["tested", "card", "paying", "waitlist"]), c: "var(--sky)" },
+      { label: "Card saved", n: at(["card", "paying"]), c: "var(--leaf)" },
+    ];
+    const funnel = steps.map((s, i) => `<li class="fun"><span class="fun-top"><b>${s.label}</b>${i ? `<span class="faint">${Math.round((s.n / steps[0].n) * 100)}%</span>` : ""}<span class="num">${s.n}</span></span>
+      <span class="fun-bar"><i style="width:${(s.n / steps[0].n) * 100}%;background:${s.c}"></i></span></li>`).join("");
+    const signs14 = ctx.SERIES.signups.reduce((a, b) => a + b, 0);
+    const m3 = `<section class="mod m-sign" aria-labelledby="h-sign">
+      <div class="mod-head"><h2 class="eyebrow" id="h-sign">Signups</h2><a class="see" href="#/families">See all</a></div>
+      <div class="sign-grid">
+        <div style="display:grid;gap:var(--s5)">
+          <div class="hero"><span class="big big-sm num">${signs.value}</span><span class="big-label"><b>${esc(signs.period)}</b>${delta(signs.value, signs.prev)}</span></div>
+          ${dayChart(ctx, ctx.SERIES.signups, "bars", `Signups each day for 14 days: ${signs14} in all, ${ctx.SERIES.signups.at(-1)} today.`)}
+        </div>
+        <div><p class="sub">Where all ${steps[0].n} families got to</p>
+          <ol class="funnel" role="img" aria-label="${esc(steps.map((s) => `${s.label} ${s.n}`).join(", "))}">${funnel}</ol></div>
+      </div>
+    </section>`;
+
+    // 4. Marking
+    const q = real(ctx.all.MARKING);
+    const oldest = q.slice().sort((a, b) => b.sinceMin - a.sinceMin)[0];
+    const M = ctx.MARKED, C = 2 * Math.PI * 52;
+    const before = (M.pages - M.today) / M.of, today = M.today / M.of;
+    const reasons = {}; q.forEach((m) => { reasons[m.reason] = (reasons[m.reason] || 0) + 1; });
+    const rTone = ["var(--tang)", "var(--sun)", "var(--sky)"];
+    const rList = Object.entries(reasons);
+    const m4 = `<section class="mod m-mark" aria-labelledby="h-mark">
+      <div class="mod-head"><h2 class="eyebrow" id="h-mark">Marking</h2><a class="see" href="#/marking">See all</a></div>
+      <div class="mark-grid">
+        <div class="ring" role="img" aria-label="${esc(M.child)}, Book 1: ${M.pages} of ${M.of} pages marked, ${M.today} of them since yesterday.">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="var(--line-soft)" stroke-width="12"/>
+            <circle cx="60" cy="60" r="52" fill="none" stroke="color-mix(in srgb, var(--leaf) 45%, #fff)" stroke-width="12" stroke-dasharray="${before * C} ${C}"/>
+            <circle cx="60" cy="60" r="52" fill="none" stroke="var(--leaf)" stroke-width="12" stroke-dasharray="${today * C} ${C}" stroke-dashoffset="${-before * C}"/>
+          </svg>
+          <span class="ring-in"><strong class="num">${M.pages}</strong><span>of ${M.of} pages</span></span>
+        </div>
+        <ul class="legend">
+          <li><b style="font-weight:500">${esc(M.child)} · Book 1</b></li>
+          <li><span class="sw" style="background:var(--leaf)"></span>${M.today} marked since yesterday</li>
+          <li><span class="sw" style="background:color-mix(in srgb, var(--leaf) 45%, #fff)"></span>${M.pages - M.today} marked before</li>
+          <li><span class="sw" style="background:var(--line-soft)"></span>${M.of - M.pages} not sent yet</li>
+        </ul>
+      </div>
+      <div class="queue">
+        <div class="queue-top"><strong class="num">${q.length}</strong><span><b style="font-weight:500">${q.length === 1 ? "answer waits" : "answers wait"} for us</b><br><span class="muted">${oldest ? `Oldest ${esc(oldest.since)}` : "None waiting"}</span></span>
+          ${q.length ? '<a class="btn sm" href="#/marking">Mark answers</a>' : ""}</div>
+        ${q.length ? `<div class="stack" role="img" aria-label="${esc(rList.map(([r, n]) => `${n}: ${r}`).join(", "))}">${rList.map(([, n], i) => `<i style="flex:${n};background:${rTone[i % 3]}"></i>`).join("")}</div>
+        <ul class="legend">${rList.map(([r, n], i) => `<li><span class="sw" style="background:${rTone[i % 3]}"></span><span class="num">${n}</span><span class="muted">${esc(r)}</span></li>`).join("")}</ul>` : ""}
+      </div>
+    </section>`;
+
+    // Activity, oldest left to newest right
+    const tl = ctx.ACTIVITY.slice().reverse().map((a) => `<li><time>${esc(a.at)}</time><span class="k" style="background:${KIND[a.kind] || "var(--ink-3)"}" aria-hidden="true"></span>
+      <a href="#/families"><b>${esc(a.who)}</b> <span>${esc(a.what)}</span></a><span class="faint" style="font-size:12.5px">${esc(a.detail)}</span></li>`).join("");
+
+    return `${ctx.testbar}
+      <header class="page-head"><div><div class="eyebrow date">Tuesday 10 November</div><h1>Home</h1><p>How the business is doing today, in the order you check it.</p></div></header>
+      <div class="bento">${m1}${m2}${m3}${m4}</div>
+      <section class="mod today" aria-labelledby="h-today"><div class="mod-head"><h2 class="eyebrow" id="h-today">Since yesterday</h2></div><ol class="tl">${tl}</ol></section>`;
+  }
+
+  // ---------- Workbooks › Production ----------
+  function checkList(b) {
+    const c = b.checks; if (!c) return "";
+    const out = [];
+    if (c.fix) out.push(["warn", `${pl(c.fix, "question")} to fix`]);
+    if (c.fit) out.push(["warn", `${pl(c.fit, "page does", "pages do")} not fit`]);
+    if (c.missing) out.push(["warn", `${pl(c.missing, "page is", "pages are")} missing questions`]);
+    if (c.byHand) out.push(["warn", `${pl(c.byHand, "question")} to check by hand`]);
+    out.push(c.mathOk === c.mathAll ? ["ok", `Math check passed for all ${c.mathAll} questions`] : ["ok", `Math check passed for ${c.mathOk} of ${c.mathAll} questions`]);
+    return `<ul class="checks">${out.map(([t, s]) => `<li class="${t}">${t === "ok" ? CHECK : WARN}<span>${s}</span></li>`).join("")}</ul>`;
+  }
+  const ACTION = {
+    none: (b) => ["Prepare workbook", `Book ${b.n} for ${b.child} is queued.`],
+    review: (b) => ["Review draft", `Opening the draft of ${b.child}'s Book ${b.n}.`],
+    approved: () => ["Mark printed", "Marked as printed."],
+    printed: () => ["Mark shipped", "Marked as shipped."],
+    shipped: (b) => ["Mark delivered", `Delivered. ${b.child}'s free month starts today.`],
+  };
+  function bookCard(ctx, b) {
+    const { esc } = ctx;
+    const f = ctx.family(b.family) || {};
+    const step = stageList(ctx).find((s) => s.key === b.state);
+    const you = NEEDS_YOU.includes(b.state);
+    const act = ACTION[b.state]?.(b);
+    const tries = b.history?.length ? `<details class="tries"><summary>${pl(b.history.length, "earlier try", "earlier tries")}</summary><ul>${b.history.map((h) => `<li>${esc(h.when)}: ${esc(h.why)}</li>`).join("")}</ul></details>` : "";
+    const when = b.made ? `Made ${esc(b.made)}` : "";
+    return `<article class="bk ${you ? "you" : ""} ${b.test ? "is-test" : ""}" data-stage="${b.state}">
+      <div class="bk-top">${avatar(ctx, b.child, b.family, "lg")}<span class="who2"><b>${esc(b.child)} · Book ${b.n}${testChip(b)}</b><span>${esc(f.parent || "")}</span></span>
+        <span class="chip ${you ? "warn" : b.state === "delivered" ? "ok" : b.state === "making" ? "info" : "muted"}">${esc(step.label)}</span></div>
+      ${b.state === "making" ? runBar(ctx, b, true) : `<span class="muted" style="font-size:13.5px">${esc(b.detail)}</span>`}
+      ${checkList(b)}
+      ${tries}
+      <div class="bk-foot"><span class="faint">${when}</span>${act ? `<button class="btn sm ${you ? "" : "ghost"}" type="button" data-toast="${esc(act[1])}">${act[0]}</button>` : `<a class="btn sm ghost" href="#/families">Open family</a>`}</div>
+    </article>`;
+  }
+  const GROUPS = [
+    { key: "you", title: "Needs you", hint: "Review a draft or start a first workbook.", states: ["review", "none"] },
+    { key: "making", title: "In progress", hint: "The AI is writing these now.", states: ["making"] },
+    { key: "out", title: "Out the door", hint: "Approved, printed or on the way.", states: ["approved", "printed", "shipped"] },
+    { key: "done", title: "Done", hint: "At the family's home.", states: ["delivered"] },
+  ];
+  function renderWorkbooks(ctx) {
+    const sections = GROUPS.map((g) => {
+      const bs = ctx.books.filter((b) => g.states.includes(b.state)).sort((a, b) => g.states.indexOf(a.state) - g.states.indexOf(b.state) || (a.test ? 1 : 0) - (b.test ? 1 : 0));
+      const n = real(bs).length;
+      return `<section class="sect" data-group="${g.key}" aria-labelledby="g-${g.key}">
+        <div class="sect-head"><h2 id="g-${g.key}">${g.title}</h2><span class="num">${n}</span><p>${g.hint}</p></div>
+        ${bs.length ? `<div class="cards">${bs.map((b) => bookCard(ctx, b)).join("")}</div>` : `<p class="empty">Nothing here right now.</p>`}
+      </section>`;
+    }).join("");
+    const total = real(ctx.all.BOOKS).length;
+    return `${ctx.testbar}
+      <header class="page-head"><div><h1>Production</h1><p>Every workbook, from the first draft to the family's door.</p></div></header>
+      <section class="lead" aria-labelledby="h-pipe">
+        <div class="lead-head"><h2 class="eyebrow" id="h-pipe">${pl(total, "book")} by stage</h2><span class="faint" style="font-size:13px">Pick a stage to show only its books.</span>
+          <button class="btn sm ghost clear" type="button" data-clear hidden>Show all</button></div>
+        ${pipeline(ctx, "filter")}
+      </section>
+      ${sections}
+      <p class="empty" data-none hidden>No books at this stage right now.</p>`;
+  }
+
+  // Stage filter on Production: listeners live on the new DOM, so they do not stack up across renders.
+  function after(main) {
+    const lead = main.querySelector(".lead");
+    if (!lead) return;
+    const clear = lead.querySelector("[data-clear]");
+    const apply = (key) => {
+      lead.querySelectorAll("[data-stage]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.stage === key)));
+      main.querySelectorAll(".bk").forEach((c) => { c.hidden = !!key && c.dataset.stage !== key; });
+      main.querySelectorAll(".sect").forEach((s) => { const cards = s.querySelectorAll(".bk"); s.hidden = !!key && (!cards.length || [...cards].every((c) => c.hidden)); });
+      clear.hidden = !key;
+      main.querySelector("[data-none]").hidden = !key || [...main.querySelectorAll(".sect")].some((s) => !s.hidden);
+    };
+    lead.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-stage]");
+      if (b) apply(b.getAttribute("aria-pressed") === "true" ? null : b.dataset.stage);
+      if (e.target.closest("[data-clear]")) apply(null);
+    });
+  }
+
+  window.OPTION = { renderHome, renderWorkbooks, after };
+})();
+</script>
+</body>
+</html>

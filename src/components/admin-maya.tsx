@@ -72,7 +72,7 @@ const ERROR_TEXT: Record<string, string> = {
   not_test_family: "Only test families can have test calls.",
   model_unavailable: "The AI is not available right now.",
   week_used: "This child's Maya time for this week is used up.",
-  paused: "Maya's spending ledger cannot be read, so she starts no new work.",
+  paused: "Maya's spending record cannot be read, so she starts no new work.",
   unavailable: "The server is missing its database key.",
   voice_unavailable: "Voice calls are not set up on this server yet.",
   voice_call: "Maya's voice helper is running this call. Hang up from the call first.",
@@ -182,7 +182,8 @@ function CallPages({ older, newer }: { older?: string | null; newer?: string | n
   </nav>;
 }
 
-export function MayaCallList({ calls, older, newer }: { calls: CallListRow[]; older?: string | null; newer?: string | null }) {
+/** `testParents`: the test families, whose calls are tagged (only while "Show test families" is on). */
+export function MayaCallList({ calls, older, newer, testParents = [] }: { calls: CallListRow[]; older?: string | null; newer?: string | null; testParents?: string[] }) {
   return (
     <>
     <CallPages older={older} newer={newer} />
@@ -199,7 +200,7 @@ export function MayaCallList({ calls, older, newer }: { calls: CallListRow[]; ol
                 <Link href={`${ADMIN_PATH}/maya/${c.id}`}>{when(c.createdAt)}</Link>
                 {(() => { const t = safetyText(c.flag, c.safetySeverity, c.safetyFlag); return t && <span className="adm-chip is-bad mc-list-flag">{t}</span>; })()}
               </td>
-              <td data-label="Child and question">{c.childName ?? "Child"}<span className="adm-sub">{c.questionText}</span></td>
+              <td data-label="Child and question">{c.childName ?? "Child"}{c.parentId && testParents.includes(c.parentId) && <> <span className="adm-chip is-test">test</span></>}<span className="adm-sub">{c.questionText}</span></td>
               <td data-label="How">{c.kind === "chat" ? "Chat" : c.mode === "voice" ? "Spoken" : "Typed"}</td>
               <td data-label="Outcome and help">
                 {c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}

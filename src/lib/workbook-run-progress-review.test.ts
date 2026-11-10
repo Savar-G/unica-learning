@@ -52,14 +52,19 @@ describe("saved-work and resume review corrections", () => {
 
 it("the public admin lists load the stored resume and writing boundaries", async () => {
   const requested: URL[] = [], r = run({ resumes: 1, donePages: 63 });
-  const db = createClient<Database>("https://example.com", "test", { global: { fetch: async (input) => {
+  const asked: string[][] = [];
+  const db = createClient<Database>("https://example.com", "test", { global: { fetch: async (input, init) => {
     const url = new URL(String(input)); requested.push(url);
     const table = url.pathname.split("/").at(-1);
     let rows: unknown[] = [];
     if (table === "workbook_runs") rows = [{ id: r.id, parent_id: r.parentId, child_id: r.childId, status: "running", step: "write", created_at: r.createdAt, started_at: r.startedAt, heartbeat_at: r.heartbeatAt, attempts: 1, max_attempts: 2, resumes: 1, done_pages: 63, total_pages: 80, errors: [], runner: "mac", draft_id: null }];
-    if (table === "workbook_run_frames") rows = [{ created_at: ago(700) }];
-    if (table === "workbook_audit" && url.searchParams.get("action") === "eq.run-resumed") rows = [{ at: ago(125) }];
-    if (table === "workbook_run_pages") rows = [...Array.from({ length: 60 }, (_, i) => ({ created_at: ago(245 - i) })), ...[65, 35, 5].map((s) => ({ created_at: ago(s) }))];
+    // admin_run_activity: the plan's time, the newest run-resumed audit time and the page times, per run.
+    if (table === "admin_run_activity") {
+      const ids = (JSON.parse(String(init?.body)) as { p_runs: string[] }).p_runs;
+      asked.push(ids);
+      rows = ids.map((run_id) => ({ run_id, plan_at: ago(700), resumed_at: ago(125), last_call_at: null, last_solve_at: null,
+        page_times: [...Array.from({ length: 60 }, (_, i) => ago(245 - i)), ...[65, 35, 5].map((s) => ago(s))] }));
+    }
     return Response.json(rows);
   } } });
   const session: AdminSession = { db, userId: "admin", email: "admin@example.com" };
@@ -67,11 +72,7 @@ it("the public admin lists load the stored resume and writing boundaries", async
     expect(rows[0].activity).toMatchObject({ resumedAt: ago(125), writingStartedAt: ago(700) });
     expect(runProgress(rows[0].run, rows[0].activity, now).timeLeft).toBe("Working out the time left.");
   }
-  const audit = requested.filter((u) => u.pathname.endsWith("/workbook_audit"));
-  expect(audit.length).toBe(2);
-  for (const url of audit) {
-    expect(url.searchParams.get("run_id")).toBe(`eq.${r.id}`);
-    expect(url.searchParams.get("order")).toBe("at.desc");
-    expect(url.searchParams.get("limit")).toBe("1");
-  }
+  // One activity request per list, for the running run only.
+  expect(asked).toEqual([[r.id], [r.id]]);
+  expect(requested.filter((u) => /workbook_(audit|run_pages|run_frames|run_calls|run_solves)$/.test(u.pathname))).toHaveLength(0);
 });

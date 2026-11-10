@@ -22,7 +22,6 @@ export function templateQuery(f: TemplateFilters, demo: boolean): string {
   const q = new URLSearchParams();
   if (f.grade !== null) q.set("grade", String(f.grade));
   if (f.province) q.set("province", f.province);
-  if (f.withTests) q.set("tests", "1");
   if (demo) q.set("demo", "1");
   const s = q.toString();
   return s ? `?${s}` : "";
@@ -44,7 +43,6 @@ export function TemplateFilterForm({ action, filters, demo }: { action: string; 
           {PROVINCES.map((p) => <option key={p} value={p}>{CURRICULA[p]}</option>)}
         </select>
       </label>
-      <label className="adm-check"><input type="checkbox" name="tests" value="1" defaultChecked={filters.withTests} /> Count team and test families</label>
       <button type="submit" className="btn adm-btn">Apply</button>
       <Link href={demoHref(action, demo)} className="adm-clear">Clear</Link>
     </form>
@@ -53,7 +51,7 @@ export function TemplateFilterForm({ action, filters, demo }: { action: string; 
 
 /** What the numbers count, in one line. */
 export function CountedNote({ filters }: { filters: TemplateFilters }) {
-  const who = filters.withTests ? "every family, with the team and test families" : "real families only: the team and test families are left out";
+  const who = filters.withTests ? "every family, with the test families (Show test families is on)" : "real families only: the test families are left out";
   const which = [filters.grade !== null ? `school grade ${gradeLabel(filters.grade)}` : null, filters.province ? CURRICULA[filters.province] : null].filter(Boolean).join(", ");
   return <p className="adm-note">Counts {who}{which ? `; ${which}` : ""}. Shown includes served questions without an answer. Correct and median time use answered questions only. Time: the thinking time the browser measured. Older answers count as shown when no serve record exists.</p>;
 }

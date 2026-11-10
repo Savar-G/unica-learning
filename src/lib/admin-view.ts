@@ -1,4 +1,4 @@
-import { UNKNOWN_RESPONSE } from "@/lib/assessment";
+import { ATTEMPT_STATUSES, UNKNOWN_RESPONSE } from "@/lib/assessment";
 // The admin area (#77) in plain data: the list filters, the test's answers beside its questions, and the words for the
 // flags. Pure: no network, database or clock, so the pages (src/app/(product)/admin) only fetch and show. Server and admin only:
 // it handles correct answers, which a parent's browser must never get.
@@ -53,7 +53,7 @@ export const adminReportPath = (id: string) => `${ADMIN_PATH}/reports/${id}`;
 /** One logged email, as the parent got it (D-103). `id`: its id in the email list. */
 export const adminEmailPath = (id: string, demo = false) => `${ADMIN_PATH}/emails/${encodeURIComponent(id)}${demo ? "?demo=1" : ""}`;
 
-export const STATUSES: readonly AssessmentStatus[] = ["in_progress", "completed", "expired"];
+export const STATUSES: readonly AssessmentStatus[] = ATTEMPT_STATUSES;
 export const STATUS_TEXT: Record<AssessmentStatus, string> = { in_progress: "In progress", completed: "Completed", expired: "Expired" };
 
 /** A level K-8 in a table cell: "K" or the grade number. */

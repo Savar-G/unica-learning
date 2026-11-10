@@ -9,8 +9,8 @@ import { INSTRUCTED_WORK_BOOK, INSTRUCTED_WORK_CHALLENGE, INSTRUCTED_WORK_WORDS 
 
 // Savar's book 1 review (2026-11-08): a U16 page whose instruction already says "Show your work for questions 1-3." printed
 // "SHOW YOUR WORK" again in each of those questions' work spaces ("takes up space to show work"), and a Challenge card
-// shaded its work space too ("make just the question coloured and the space below it white space"). Real Chromium,
-// where one is found.
+// shaded its work space too ("make just the question coloured and the space below it white space"). Since 2026-11-09 the
+// page says it on its own work line, at every level. Real Chromium, where one is found.
 
 const chromium = await findChromium();
 const parentId = "11111111-1111-4111-8111-111111111111";
@@ -21,11 +21,13 @@ describe("the work label of a question the page's instruction names", () => {
     const book = { ...INSTRUCTED_WORK_BOOK, pages: [INSTRUCTED_WORK_WORDS, INSTRUCTED_WORK_CHALLENGE] };
     for (const page of book.pages) {
       const html = template.page(page, { qr: "", qrUrl: "" }, book)!;
-      expect(html).toContain("Show your work for questions 1-3.");
+      expect(html).toContain("Show your work under questions 1, 2 and 3.");
       expect(html).not.toMatch(/<span class="lab">Show your work<\/span>/);
-      // Below U16 the page keeps its general instruction, so each work space keeps its own label.
+      // Below U16 the page prints the same work line, so no work space says it again.
       const u9: DraftPage = { ...page, content: { ...(page.content as DayContent), level: 9 } };
-      expect(template.page(u9, { qr: "", qrUrl: "" }, { ...book, levels: [9], pages: [u9] })).toMatch(/<span class="lab">Show your work<\/span>/);
+      const early = template.page(u9, { qr: "", qrUrl: "" }, { ...book, levels: [9], pages: [u9] })!;
+      expect(early).toContain("Show your work under questions 1, 2 and 3.");
+      expect(early).not.toMatch(/<span class="lab">Show your work<\/span>/);
     }
   });
 });

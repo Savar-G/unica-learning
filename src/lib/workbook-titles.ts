@@ -2,7 +2,8 @@
 // one card's tool ("Show and read a number to 10 on a ten-frame in stories" named the ten-frame while 2 of its 6 cards
 // used one). Code writes every title from the page plan and the curriculum: the AI never does.
 //
-// - A page of one review kind keeps that kind's name ("Warm-up", "Remember these?", "Challenge", "Level U3 test").
+// - A page of one review kind keeps that kind's name ("Warm-up", "Review", "Challenge", "Level U3 test"). The review
+//   kind's page was "Remember these?" until Savar's 2026-11-09 review; the template prints a stored one as "Review".
 // - A page of stories is "Number stories to 10" (to the largest number its skills reach) up to U12, "Word problems"
 //   from U13 or when its skills have no number range.
 // - A page with one skill takes that skill's short title (SKILL_TITLES). A page mixing skills of one BC unit takes
@@ -33,7 +34,7 @@ const STRAND_TITLES: Readonly<Record<string, string>> = {
 
 /** Parts that hold review, tests and fixed pages: a page of only one of them takes its name. */
 const REVIEW_TITLES: Partial<Record<PartKind, string>> = {
-  "warm-up": "Warm-up", "remember-these": "Remember these?", "already-know-it": "Already know it?", "friday-5": "Friday 5",
+  "warm-up": "Warm-up", "remember-these": "Review", "already-know-it": "Already know it?", "friday-5": "Friday 5",
   challenge: "Challenge", "show-what-you-know": "Show what you know", "math-in-the-world": "Math in the world",
   "unit-check": "Quick check", "mini-test": "Mini-test", "fix-it": "Fix it",
 };

@@ -68,25 +68,27 @@ Value is UX x DX x AX. Risk is what a mistake would cost (money, live children's
 
 ## Bug candidates (for the Chief of Staff before any fix)
 
+Status updated on 2026-11-09 from current main and, where it says so, the live database.
+
 "Verified" means checked again by hand and, where it applies, against the live database on 2026-11-08 (read-only). None is live harm today; most are latent because the first real customer has not reached that state.
 
 | ID | Bug | Status | Live now | Owner |
 |---|---|---|---|---|
-| B1 | `/admin` throws on the first `scan_inactivity` email row: `subjectFor` does `EMAIL_KINDS.find(...)!.subject` and that kind has no entry (`admin-dashboard.ts:252`, kind allowed by migration `20261107073840`). | verified | 0 rows of that kind | none (admin) |
+| B1 | `/admin` throws on the first `scan_inactivity` email row: `subjectFor` does `EMAIL_KINDS.find(...)!.subject` and that kind has no entry (`admin-dashboard.ts:252`, kind allowed by migration `20261107073840`). | fixed by #777 | 0 rows of that kind | none (admin) |
 | B2 | A test that ends with too little evidence never closes: `finishOnce` refuses it (`test-attempt.ts:1121`), it never expires, and it holds the one-open-test slot. The parent screen promises a report. | verified (code) | 0 such tests | none |
 | B3 | Reminders use `answered >= total` for adaptive tests (`reminder-store.ts:188`), not the core rule, so they can skip or misword reminders. | inventory only | - | none |
-| B4 | A finished test with no report row shows "test running" for ever; the report job runs only from the finish route's `after()`, with no retry. | inventory only | 0 such tests | Parent Dashboard |
-| B5 | A scan marking job that used its attempts is set to `finished` with items still pending (`20261106_scan_marking_sheet_check.sql:150`); nothing picks it up again, and the parent sees "Not marked yet" for ever. | verified (SQL) | 0 jobs | AI Marking |
-| B6 | A Cancel that fails leaves an open `plan_control_operations` row and a card hold with no recovery path; it blocks Pause, Restart, workbook runs, deletion and retention. | inventory only | 0 rows | Billing |
-| B7 | Plan pause and plan-control refusals (errcode 55000) show as "the family is being deleted" in 5 store places (`workbook-job-store.ts:55,136`, `workbook-ship-store.ts:53,66`, `workbook-draft-store.ts:28`). | verified (code) | - | Generator, Billing |
-| B8 | A second "Prepare next workbook" on a queued run that no one took for 2 minutes flips it to `running` and the next resume fails with "no stored plan" (`20261106120000_workbook_start_resume_lock.sql:19`, `workbook-job.ts:653`). | verified (code path) | - | Generator |
-| B9 | The Maya notice route checks the desk with `readLock`, not `deskGate`, so a stale desk cookie of another parent gives a raw 423 (`api/account/maya-notice/route.ts:16`). | verified (code) | - | Maya |
-| B10 | The admin "Start free month" button shows "Stripe could not start the plan" for 5 other refusals, and it still shows after the plan started (`start-plan.tsx`, `admin-records.tsx:38`). | inventory only | - | Billing |
+| B4 | A finished test with no report row shows "test running" for ever; the report job runs only from the finish route's `after()`, with no retry. | open; the fix is PR #817 (report retry, Dashboard lead); its migration report_retries is applied live | 0 such tests | Parent Dashboard |
+| B5 | A scan marking job that used its attempts is set to `finished` with items still pending (`20261106_scan_marking_sheet_check.sql:150`); nothing picks it up again, and the parent sees "Not marked yet" for ever. | fixed by #779 (migration scan_marking_attempts_to_team); checked on the live function 2026-11-09 | 0 jobs | AI Marking |
+| B6 | A Cancel that fails leaves an open `plan_control_operations` row and a card hold with no recovery path; it blocks Pause, Restart, workbook runs, deletion and retention. | fixed by PR #799 (issue #772, migration plan_cancel_recovery): an alert to the team after 10 minutes, then an admin closes the cancel; not automatic | 0 rows | Billing |
+| B7 | Plan pause and plan-control refusals (errcode 55000) show as "the family is being deleted" in 5 store places (`workbook-job-store.ts:55,136`, `workbook-ship-store.ts:53,66`, `workbook-draft-store.ts:28`). | fixed by #790 (workbook-plan-refusal.ts) in all 5 store places; next-book-snapshot-store.ts still shows every plan-fence message as "try again" (item 10) | - | Generator, Billing |
+| B8 | A second "Prepare next workbook" on a queued run that no one took for 2 minutes flips it to `running` and the next resume fails with "no stored plan" (`20261106120000_workbook_start_resume_lock.sql:19`, `workbook-job.ts:653`). | fixed by f4cedefd: runFrame asks hasStoredWork, so a run with no stored work plans again; checked 2026-11-09 | - | Generator |
+| B9 | The Maya notice route checks the desk with `readLock`, not `deskGate`, so a stale desk cookie of another parent gives a raw 423 (`api/account/maya-notice/route.ts:16`). The open route had the same gap: another parent's cookie skipped the Maya notice. | fixed by item 4 (`deskAccess`) | - | Maya |
+| B10 | The admin "Start free month" button shows "Stripe could not start the plan" for 5 other refusals, and it still shows after the plan started (`start-plan.tsx`, `admin-records.tsx:38`). | fixed by #790 and #807: start-plan.tsx has words for every refusal, and after a start the card shows "Plan started." with no button | - | Billing |
 | B11 | `feedback.status` has no writer (grant is select only), so the admin always sees `new`. | verified (grants) | all rows `new` | Platform |
-| B12 | The admin Maya call page says "Saved to child's record: Not yet" with "Try saving again" for ever for calls that write no event by design (`admin-maya.tsx:559`). | inventory only | - | Maya |
-| B13 | The admin shows a report email as "sent" from `emailed_at`, which is the claim time, so an unknown send reads as sent (`admin-dashboard.ts:256`). | inventory only | - | Platform |
-| B14 | "Photo is active" uses 23.5 hours in SQL and `scan-crops-store.ts`, but 24 hours in `scan-stack-server.ts` and `scanView`. | inventory only | - | AI Marking |
-| B15 | The admin run page derives "Stopped" from the clock and does not refresh when the Mac takes the run back; the line "The run stops if this reaches 6 minutes" is not true. | inventory only | - | Generator |
+| B12 | The admin Maya call page says "Saved to child's record: Not yet" with "Try saving again" for ever for calls that write no event by design (`admin-maya.tsx:559`). | open (issue #766, item 8) | - | Maya |
+| B13 | The admin shows a report email as "sent" from `emailed_at`, which is the claim time, so an unknown send reads as sent (`admin-dashboard.ts:256`). | fixed by #814 | - | Platform |
+| B14 | "Photo is active" uses 23.5 hours in SQL and `scan-crops-store.ts`, but 24 hours in `scan-stack-server.ts` and `scanView`. | fixed: #779 made the TS side one 23.5 h rule, and migration scan_photo_save_window (item 7) made change_scan_photo save use scan_photo_is_active | - | AI Marking |
+| B15 | The admin run page derives "Stopped" from the clock and does not refresh when the Mac takes the run back; the line "The run stops if this reaches 6 minutes" is not true. | mostly fixed by f4cedefd (refresh on run status, "No progress for 6 minutes", the old line removed); runState still comes from the clock, and the page hides the progress once the clock says stopped (item 9) | - | Generator |
 
 ## Inventory
 
@@ -177,7 +179,7 @@ Scores: U = user experience value, D = developer experience value, A = agent exp
 
 | ID | Machine | Storage | States | Rules live in | DB guard | Main gap | U | D | A |
 |---|---|---|---|---|---|---|---|---|---|
-| DK1 | Desk lock | cookie unica_desk (device) | none, open, latent, unreadable, restored page | desk.ts deskGate; copied or re-derived in ~12 files | none (cookie only) | Notice POST answers 423 for another parent's cookie | 2 | 3 | 3 |
+| DK1 | Desk lock | cookie unica_desk (device) | closed, open, latent, session_unknown (`DESK_ACCESS_STATES`); restored page | desk.ts `deskAccess` and the `DESK_GATE` table (item 4); the tutor pages still read the cookie's names with `readLock` | none (cookie only) | Fixed by item 4: the notice and open routes read `deskAccess` | 2 | 3 | 3 |
 | DK2 | Proxy request gate | derived (proxy.ts) | pass, to-desk, refuse; deletion none, queued, unknown | proxy.ts inline + desk.ts + family-delete.ts | n/a (reads) | Wrong 503 or 410 on a read blip | 2 | 2 | 1 |
 | DK3 | Desk page view | derived | no-workbook, awaiting-delivery, ready, null | desk.ts + tutor/page.tsx | RLS via parent session | Shipped book with no pages says "no workbook yet" | 1 | 1 | 1 |
 | DK4 | Parent PIN leave check | parent_pins.failed_attempts, locked_until | no PIN, open, tries 1-4, locked | parent-pin.ts + SQL claim_pin_attempt + memory twin | row-lock claim + checks | Child can use 5 tries and lock the parent out; app clock | 2 | 2 | 2 |
@@ -208,10 +210,10 @@ Scores: U = user experience value, D = developer experience value, A = agent exp
 | ID | Machine | Storage | States | Rules live in | DB guard | Main gap | U | D | A |
 |---|---|---|---|---|---|---|---|---|---|
 | SU1 | Signup form with email code | React state in AccountSignup | form, code, code-proved retry, honeypot code | account.tsx (1108 lines); code-error mapping copy-pasted 2 times | none (server checks proof) | "unconfirmed" and "send_failed" show the generic error | 2 | 2 | 2 |
-| SU2 | Family admission (finish + create_family) | Auth user, parents, children | created, exists, busy, unavailable, failed | finish/route.ts + SQL create_family + account.tsx | advisory lock + checks in one transaction | Two tabs: password write before the lock overwrites the winner's | 1 | 1 | 1 |
+| SU2 | Family admission (finish + create_family) | Auth user, parents, children | created, exists, busy, unavailable, failed | finish/route.ts + SQL create_family + account.tsx | advisory lock + checks in one transaction | Two tabs: password write before the lock overwrote the winner's (fixed in item 12 by the finish claim, #815) | 1 | 1 | 1 |
 | SU3 | Sign-in and first sign-in | Supabase Auth session | password, code, enter; no_match, too_many, unavailable | account.tsx + 4 other files (5) | Supabase Auth only | - | 1 | 1 | 1 |
 | SU4 | Password reset | Supabase Auth recovery token | idle, busy, sent, wait, bad | account.tsx + auth/confirm route + auth-email.ts | Supabase Auth only | No test found | 1 | 1 | 1 |
-| SU5 | Phone-to-laptop sign-in link | sign_in_links.used_at, expires_at | valid, used, expired, unknown (+ failed from a query flag) | sign-in-link.ts + 4 other files (5) | unique hash + one-statement CAS | Link is burned before sign-in works; hourly cap is count-then-insert | 2 | 2 | 1 |
+| SU5 | Phone-to-laptop sign-in link | sign_in_links.used_at, expires_at | valid, used, expired, unknown (+ failed from a query flag) | sign-in-link.ts + 4 other files (5) | unique hash + one-statement CAS | Link is burned before sign-in works; hourly cap was count-then-insert (locked by `issue_sign_in_link`, item 12) | 2 | 2 | 1 |
 | SU6 | Child stage and Parent home switch | derived | ended, active, first_book_coming, test_running, report_ready_bc, report_ready_waitlist, no_test | child-stage.ts (1 pure file); access predicate in 4+ files; 7 env switches | none | Any dashboard load error silently gives the old Parent home | 2 | 2 | 2 |
 | SU7 | Admin funnel stage | derived (buildFamilies) | account, started, finished, card_started, card_saved, trial, paying, cancelled, waitlist | admin-dashboard.ts (reads live Stripe) | none | Admin "paying" and parent "active" can disagree | 1 | 2 | 2 |
 | SU8 | Legacy booking signup | signups.status, booking_state | reserved, waitlist; pending, ready, not_started | SQL triggers + signup.ts | triggers refuse other changes | Live public route that nobody calls still creates Stripe customers | 1 | 1 | 1 |

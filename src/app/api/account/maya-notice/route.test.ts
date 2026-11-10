@@ -53,6 +53,14 @@ describe("POST /api/account/maya-notice", () => {
     expect(store.rows()).toEqual([]);
   });
 
+  it("lets the parent agree with another parent's desk cookie on a shared device, as the proxy does (B9)", async () => {
+    state.cookie = lockCookie(FORGED, CHILD);
+    const res = await post({ version: MAYA_NOTICE_VERSION });
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toContain("saved=1");
+    expect(store.rows()).toMatchObject([{ parentId: PARENT, acceptedBy: PARENT }]);
+  });
+
   it("refuses another site and a signed-out visitor", async () => {
     expect((await post({ version: MAYA_NOTICE_VERSION }, "https://other.example")).status).toBe(403);
     state.parent = null;

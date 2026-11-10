@@ -10,6 +10,8 @@ export interface AdminNextBookFamily {
   parentId: string;
   /** The family asked to be deleted: nothing is written for it. */
   deleting: boolean;
+  /** public.test_accounts marks the family as a test. */
+  testFamily: boolean;
   /** The child's book 1, when it has a delivery receipt. */
   deliveredBook1: string | null;
   zone: FamilyZone;
@@ -19,6 +21,8 @@ export interface AdminNextBookDeps {
   /** nextBookPlanner() in production; tests pass a fake. */
   planner: NextBookPlanner | null;
   prepare(planner: NextBookPlanner): PrepareCall | null;
+  /** May a real family be prepared? NEXT_BOOK_REAL_FAMILIES in production: false until the worker reads plan_input. */
+  realFamilies: boolean;
   /** The child's family, or null for an unknown child. */
   family(childId: string): Promise<AdminNextBookFamily | null>;
   now(): number;
@@ -26,9 +30,10 @@ export interface AdminNextBookDeps {
 
 export type AdminNextBookAnswer =
   | { ok: true; line: string }
-  | { ok: false; error: "not-found" | "family-deleting" | "no-delivered-book" | "planner-not-ready" | "refused" | "unavailable"; line: string };
+  | { ok: false; error: "not-found" | "family-deleting" | "test-families-only" | "no-delivered-book" | "planner-not-ready" | "refused" | "unavailable"; line: string };
 
 export const PLANNER_NOT_READY = "The planner is not ready yet.";
+export const TEST_FAMILIES_ONLY = "Only test families can get the next book for now.";
 const TRY_AGAIN = "It could not be prepared. Try again later.";
 
 /** The status line for one answer of prepareNextBook. */
@@ -42,6 +47,8 @@ export function nextBookLine(outcome: PrepareOutcome, zone: FamilyZone): string 
     case "refused":
       switch (outcome.reason) {
         case "next-book-exists": return "This book already has a next book.";
+        // The family stopped being a test family while its next book was prepared.
+        case "test-families-only": return TEST_FAMILIES_ONLY;
         case "no-accepted-scans": return "On hold: no pages scanned.";
         case "missing-delivery": return "Book 1 has not been delivered yet.";
         case "family-unavailable": return "This family is being deleted.";
@@ -61,6 +68,8 @@ export async function prepareFromSnapshot(admin: SnapshotActor | null, childId: 
     const family = await deps.family(childId);
     if (!family) return { ok: false, error: "not-found", line: "Not found." };
     if (family.deleting) return { ok: false, error: "family-deleting", line: "This family is being deleted." };
+    // Before any write: the next book's run does not use the marks yet, so a real family gets nothing.
+    if (!family.testFamily && !deps.realFamilies) return { ok: false, error: "test-families-only", line: TEST_FAMILIES_ONLY };
     if (!family.deliveredBook1) return { ok: false, error: "no-delivered-book", line: "Book 1 has not been delivered yet." };
     const outcome = await prepare({ kind: "admin", workbookId: family.deliveredBook1, actor: admin }, deps.now());
     if (outcome.status === "refused" && outcome.reason === "admin-required") return { ok: false, error: "not-found", line: "Not found." };

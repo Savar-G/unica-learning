@@ -12,7 +12,7 @@ export function RunOnServer({ runId }: { runId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function run() {
-    if (busy || !window.confirm("Run this workbook on the server with the paid API? It costs API money. The Mac will not take it after that.")) return;
+    if (busy || !window.confirm("Run this workbook on the server with the paid API? It costs API money. The workbook computer will not take it after that.")) return;
     setBusy(true);
     setError("");
     try {

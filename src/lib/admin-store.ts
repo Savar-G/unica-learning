@@ -5,6 +5,7 @@ import type { ReviewComment, WorkbookEdit, EditCheckpoint } from "@/lib/workbook
 import "server-only";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { givenQuestions, type FactsTest, type HelpAnswer, type Placement, type Province, type Route, type Stage3Route, type StoredTest } from "@/lib/assessment";
@@ -28,6 +29,8 @@ import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
 import type { RunActivity } from "@/lib/workbook-run-progress";
 import { workbookStore } from "@/lib/workbook-store";
+import { loadFamilyPlanOffer } from "@/lib/family-plan-offer-server";
+import type { FamilyPlanOffer } from "@/lib/family-plan-words";
 import type { WorkbookEmailRecord, WorkbookEmailStatus } from "@/lib/workbook-email";
 import { READABLE_DRAFT_VERSIONS, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { readPaged, type DraftRendering, type RunSolve, type WorkbookRun } from "@/lib/workbook-job";
@@ -36,8 +39,10 @@ import { summarizeAiCalls, type AiCallSummary } from "@/lib/workbook-ai";
 import { workerOnline } from "@/lib/workbook-worker";
 import type { RenderProblem } from "@/lib/workbook-render";
 import { familyProvince, familyZone, type FamilyZone } from "@/lib/family-time";
-import type { DeliveryReceipt } from "@/lib/workbook-delivery";
-import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
+import { firstDelivery, type DeliveryReceipt } from "@/lib/workbook-delivery";
+import { deliveredTimes, workbookDeliveryStore } from "@/lib/workbook-delivery-store";
+import { notIn } from "@/lib/admin-test-families";
+import { buildBooks, STARTED_PLAN_KINDS, type ProductionInput } from "@/lib/admin-production";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -71,11 +76,17 @@ export async function adminSession(signal?: AbortSignal): Promise<AdminSession |
   return isAdmin === true ? { db, userId: data.user.id, email: data.user.email ?? "" } : null;
 }
 
+/**
+ * The admin of this page render, checked once per request: the page's own requireAdmin and the frame's sidebar badges
+ * share one check. Null for everyone who is not an admin.
+ */
+export const renderAdmin = cache(() => adminSession());
+
 /** For admin pages: the admin, or the site's 404 for everyone else (a parent, a visitor, a forged cookie). */
 export async function requireAdmin(): Promise<AdminSession> {
   // Admin pages read cookies, so they render per request.
   await connection();
-  const admin = await adminSession();
+  const admin = await renderAdmin();
   if (!admin) notFound();
   return admin;
 }
@@ -228,10 +239,13 @@ async function withPeople(a: AdminSession, tests: TestQueryRow[]): Promise<TestR
 
 /**
  * The newest tests that pass the filters. Grade, province and status filter in the database; help likely and low AI
- * confidence filter each database page before pagination (the assessment core decides help likely).
+ * confidence filter each database page before pagination (the assessment core decides help likely). `hide`: the parent
+ * ids left out (the test families, while "Show test families" is off).
  */
-export async function listTests(a: AdminSession, f: AdminFilters, offset = 0): Promise<Page<TestRow>> {
+export async function listTests(a: AdminSession, f: AdminFilters, offset = 0, hide: readonly string[] = []): Promise<Page<TestRow>> {
   let q = a.db.rpc("admin_assessments").select(TEST_COLUMNS);
+  const out = notIn(hide);
+  if (out) q = q.not("parent_id", "in", out);
   if (f.status) q = q.eq("status", f.status);
   if (f.grade !== null) q = q.eq("grade", f.grade);
   if (f.province) q = q.eq("province", f.province);
@@ -266,7 +280,7 @@ export interface TestDetail {
   /** The answers in test order. D-145: not those to the removed extra round's questions (#190, fromRemovedRound). */
   answers: AnswerRecord[];
   reviews: ReviewRecord[];
-  report: { id: string; created_at: string; questions: number; minutes: number; emailed_at: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null } | null;
+  report: { id: string; created_at: string; questions: number; minutes: number; emailed_at: string | null; email_id: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null } | null;
   facts: { started_at: string; test: FactsTest; answers: FactAnswerRecord[] } | null;
   /** When the server first served each question (#184). D-145: not the removed extra round's questions. */
   shows: ShownRecord[];
@@ -296,7 +310,7 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
   const related = Promise.all([
     answersRead,
     a.db.from("work_reviews").select(REVIEW_COLUMNS).eq("assessment_id", id).then((r) => mainOnly(must<ReviewRecord[]>(r, "reviews"))),
-    a.db.rpc("admin_reports").select("id, created_at, questions, minutes, emailed_at, email_error, alerted_at, alert_error").eq("assessment_id", id)
+    a.db.rpc("admin_reports").select("id, created_at, questions, minutes, emailed_at, email_id, email_error, alerted_at, alert_error").eq("assessment_id", id)
       .maybeSingle().then((r) => must<TestDetail["report"]>(r, "report")),
     a.db.from("assessment_facts").select("started_at, test").eq("assessment_id", id).maybeSingle()
       .then((r) => must<{ started_at: string; test: FactsTest } | null>(r, "facts")),
@@ -451,12 +465,21 @@ export interface CardSetupRow {
   card_saved_at: string | null;
   planMonthly?: number | null;
   planFirstCharge?: string | null;
+  /** True when a price read failed and no stored price was found: the saved amount is then only a ceiling. */
+  planPriceUnread?: boolean;
   workbookEmails?: WorkbookEmailRecord[];
   workbookEmailsReadAt?: number;
   /** Any completed start prevents another initial free month. Null or absent means the evidence is unknown. */
   planStarted?: boolean | null;
   /** A plan start that needs the team: open, with Stripe's key past its life (#554). */
   stuckPlanStart?: number | null;
+  /**
+   * Read only for a card that can start: the child's workbook 1 (its id, or null when there is none) and whether it has the
+   * delivery receipt the start route requires. Null or absent means the read failed or did not run, so no start button shows.
+   */
+  firstWorkbook?: { id: string | null; delivered: boolean } | null;
+  /** The family's free window before this start, read only for a card with a delivery receipt. Null means unknown. */
+  familyWindow?: FamilyPlanOffer["window"] | null;
 }
 
 async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promise<CardSetupRow[]> {
@@ -465,13 +488,14 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
     .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
     .in("card_setup_id", cards.map((c) => c.id)).order("created_at").order("id"), "workbook emails").catch(() => null);
   const priceStarts = await allRows(a.db.from("plan_starts").select("card_setup_id,generation,state,monthly_cents,first_charge_at")
-    .in("card_setup_id", cards.map(c => c.id)).in("state", ["open", "started"]).order("card_setup_id").order("generation"), "plan price terms").catch(() => []);
+    .in("card_setup_id", cards.map(c => c.id)).in("state", ["open", "started"]).order("card_setup_id").order("generation"), "plan price terms").catch(() => null);
   const priceStates = await allRows(a.db.from("child_plan_states").select("child_id,kind,monthly_cents,next_charge_at")
-    .in("child_id", cards.map(c => c.child_id)).order("child_id"), "plan price states").catch(() => []);
+    .in("child_id", cards.map(c => c.child_id)).order("child_id"), "plan price states").catch(() => null);
   cards = cards.map(card => {
-    const start = priceStarts.filter(s => s.card_setup_id === card.id).at(-1), state = priceStates.find(s => s.child_id === card.child_id);
+    const start = priceStarts?.filter(s => s.card_setup_id === card.id).at(-1), state = priceStates?.find(s => s.child_id === card.child_id);
     const cents = start?.state === "open" ? start.monthly_cents : state?.monthly_cents ?? start?.monthly_cents;
-    return { ...card, planMonthly: cents == null ? null : cents / 100,
+    // A failed read is not a missing price: only then is the saved amount shown as a ceiling.
+    return { ...card, planMonthly: cents == null ? null : cents / 100, planPriceUnread: cents == null && (priceStarts === null || priceStates === null),
       planFirstCharge: start?.state === "open" ? null : state?.kind === "free_month" ? state.next_charge_at : start?.first_charge_at ?? null };
   });
   const workbookEmailsReadAt = Date.now();
@@ -491,7 +515,7 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
   const startedKinds = new Set(["free_month", "paying", "payment_failed", "paused", "ending", "ended"]);
   const readsKnown = emails !== null && starts !== null && plans !== null && planEmails !== null;
   const stuck = new Map((starts ?? []).filter((s) => s.state === "open" && workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
-  return cards.map((c) => {
+  return withStartChecks(a, cards.map((c) => {
     const plan = plans?.find((p) => p.child_id === c.child_id && p.parent_id === c.parent_id);
     // Started: a completed start, a sent legacy confirmation, or a stored running or ended plan. Never started: no such
     // evidence and either no stored plan row (a first card whose parent never opened the Account tab, #790 re-review) or a
@@ -503,7 +527,32 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
       workbookEmailsReadAt: emails && planEmails ? workbookEmailsReadAt : undefined,
       planStarted, stuckPlanStart: stuck.get(c.id) ?? null,
     };
-  });
+  }));
+}
+
+/**
+ * The checks behind the start button, for each card that can start: the child's workbook 1 with its delivery receipt, read as
+ * the start route reads it (firstDelivery), and, once delivered, the family's free window, so the confirm names a window only
+ * when the family may have one. The route still checks the receipt.
+ */
+async function withStartChecks(a: AdminSession, cards: CardSetupRow[]): Promise<CardSetupRow[]> {
+  const open = cards.filter((c) => c.planStarted === false && c.card_saved_at && c.stripe_customer_id);
+  if (!open.length) return cards;
+  const books = await byIds<{ id: string; parent_id: string; child_id: string; number: number; status: string }>(open.map((c) => c.child_id), "first workbooks",
+    (chunk) => a.db.from("workbooks").select("id, parent_id, child_id, number, status").in("child_id", chunk).eq("number", 1)).catch(() => null);
+  const receipts = workbookDeliveryStore(a.db);
+  type Checks = Pick<CardSetupRow, "firstWorkbook" | "familyWindow">;
+  const checks = new Map(await Promise.all(open.map(async (c): Promise<[string, Checks]> => {
+    if (!books) return [c.id, { firstWorkbook: null }];
+    const mine = books.filter((b) => b.child_id === c.child_id && b.parent_id === c.parent_id)
+      .map((b) => ({ id: b.id, parentId: b.parent_id, childId: b.child_id, number: b.number, status: b.status }));
+    const id = (mine.find((b) => b.status === "shipped") ?? mine[0])?.id ?? null;
+    const delivered = await firstDelivery(receipts, mine, c.parent_id, c.child_id).then((r) => !!r, () => null);
+    if (delivered === null) return [c.id, { firstWorkbook: null }];
+    const familyWindow = delivered ? (await loadFamilyPlanOffer(c.parent_id, c.child_id))?.window ?? null : null;
+    return [c.id, { firstWorkbook: { id, delivered }, familyWindow }];
+  })));
+  return cards.map((c) => ({ ...c, ...checks.get(c.id) }));
 }
 
 export interface WaitlistRow {
@@ -549,8 +598,11 @@ export interface ChildListRow extends ChildRow {
   tests: { total: number; completed: number; lastAt: string | null };
 }
 
-export async function listChildren(a: AdminSession, f: Pick<AdminFilters, "grade" | "province">, offset = 0): Promise<Page<ChildListRow>> {
+/** `hide`: the parent ids left out (the test families, while "Show test families" is off). */
+export async function listChildren(a: AdminSession, f: Pick<AdminFilters, "grade" | "province">, offset = 0, hide: readonly string[] = []): Promise<Page<ChildListRow>> {
   let q = a.db.rpc("admin_children").select(CHILD_COLUMNS);
+  const out = notIn(hide);
+  if (out) q = q.not("parent_id", "in", out);
   if (f.grade !== null) q = q.eq("grade", f.grade);
   if (f.province) q = q.eq("province", f.province);
   const { rows, more } = page(must<ChildRow[]>(await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX), "children"));
@@ -706,22 +758,30 @@ export interface RunListRow {
   activity?: RunActivity;
 }
 
-/** The saved work of a running run: only the times, never a page's content. A run has at most a few hundred pages. */
+/** Ids per call of a function that takes an array (sent in the request body): within PostgREST's row cap. */
+const BATCH = LIST_MAX;
+
+/**
+ * The saved work of running runs: only the times, never a page's content (a run has at most a few hundred pages).
+ * One request per BATCH runs (admin_run_activity), whatever the number of runs.
+ */
+async function runActivities(a: AdminSession, runIds: readonly string[]): Promise<Map<string, RunActivity>> {
+  const ids = [...new Set(runIds)];
+  const out = new Map<string, RunActivity>();
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const rows = must<{ run_id: string; page_times: string[]; last_call_at: string | null; last_solve_at: string | null; plan_at: string | null; resumed_at: string | null }[]>(
+      await a.db.rpc("admin_run_activity", { p_runs: ids.slice(i, i + BATCH) }), "workbook run activity");
+    for (const r of rows) {
+      const pageTimes = r.page_times ?? [];
+      const lastWorkAt = [pageTimes.at(-1), r.last_call_at, r.last_solve_at].filter((t): t is string => !!t).sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1) ?? null;
+      out.set(r.run_id, { pageTimes, lastWorkAt, writingStartedAt: r.plan_at ?? null, resumedAt: r.resumed_at ?? null });
+    }
+  }
+  return out;
+}
+
 async function runActivity(a: AdminSession, runId: string): Promise<RunActivity> {
-  const newest = (table: "workbook_run_calls" | "workbook_run_solves") => a.db.from(table).select("created_at").eq("run_id", runId).order("created_at", { ascending: false }).limit(1)
-    .then((r) => must<{ created_at: string }[]>(r, table));
-  const [pages, calls, solves, frame, resumed] = await Promise.all([
-    a.db.from("workbook_run_pages").select("created_at").eq("run_id", runId).order("created_at").range(0, 999).then((r) => must<{ created_at: string }[]>(r, "workbook run pages")),
-    newest("workbook_run_calls"),
-    newest("workbook_run_solves"),
-    a.db.from("workbook_run_frames").select("created_at").eq("run_id", runId).limit(1)
-      .then((r) => must<{ created_at: string }[]>(r, "workbook run plan time")),
-    a.db.from("workbook_audit").select("at").eq("run_id", runId).eq("action", "run-resumed").order("at", { ascending: false }).limit(1)
-      .then((r) => must<{ at: string }[]>(r, "workbook run resume time")),
-  ]);
-  const pageTimes = pages.map((p) => p.created_at);
-  const lastWorkAt = [pageTimes.at(-1), calls[0]?.created_at, solves[0]?.created_at].filter((t): t is string => !!t).sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1) ?? null;
-  return { pageTimes, lastWorkAt, writingStartedAt: frame[0]?.created_at ?? null, resumedAt: resumed[0]?.at ?? null };
+  return (await runActivities(a, [runId])).get(runId) ?? { pageTimes: [], lastWorkAt: null, writingStartedAt: null, resumedAt: null };
 }
 
 const DRAFT_COUNT_COLUMNS = "id, schema_version, pages, questions, failed, not_checked, failed_pages, cover:draft->pages->0->content";
@@ -734,44 +794,83 @@ type DraftCountRow = { id: string; schema_version: number; pages: number; questi
 const oldDraft = (version: number, cover: unknown) => !READABLE_DRAFT_VERSIONS.includes(version) || cover === null || cover === undefined;
 const countsOf = (d: DraftCountRow): DraftCounts => ({ pages: d.pages, questions: d.questions, failed: d.failed, notChecked: d.not_checked, failedPages: d.failed_pages });
 
+/** Stored check counts as the list reads them, or null when they are of another shape. */
+function storedCounts(x: unknown): DraftCounts | null {
+  const c = x as Partial<Record<keyof DraftCounts, unknown>> | null;
+  if (!c || typeof c !== "object") return null;
+  const keys: (keyof DraftCounts)[] = ["pages", "questions", "failed", "notChecked", "failedPages"];
+  return keys.every((k) => typeof c[k] === "number") ? { pages: c.pages as number, questions: c.questions as number, failed: c.failed as number, notChecked: c.notChecked as number, failedPages: c.failedPages as number } : null;
+}
+
+/** The pages of stored render problems (each problem names its page). */
+const problemPages = (x: unknown): number[] => (Array.isArray(x) ? x.flatMap((p) => (typeof (p as RenderProblem | null)?.page === "number" ? [(p as RenderProblem).page] : [])) : []);
+
+/**
+ * Each draft's latest revision: its check counts and the pages that did not render, never the whole content. One
+ * request per BATCH drafts (admin_latest_draft_revisions), whatever the number of drafts.
+ */
+async function latestRevisions(a: AdminSession, draftIds: readonly string[]): Promise<Map<string, { counts: DraftCounts | null; pages: number[] }>> {
+  const ids = [...new Set(draftIds)];
+  const out = new Map<string, { counts: DraftCounts | null; pages: number[] }>();
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const rows = must<{ draft_id: string; counts: unknown; render_problems: unknown }[]>(
+      await a.db.rpc("admin_latest_draft_revisions", { p_drafts: ids.slice(i, i + BATCH) }), "draft revisions");
+    for (const r of rows) out.set(r.draft_id, { counts: storedCounts(r.counts), pages: problemPages(r.render_problems) });
+  }
+  return out;
+}
+
+/**
+ * The runs with their drafts' check results and, for a running run, its saved work. A constant number of requests for
+ * any number of runs (up to 100 drafts, 500 revisions and 500 running runs per request): the drafts' counts, the latest
+ * revisions, and the running runs' activity.
+ */
 async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow[]> {
   const drafts = runs.flatMap((r) => (r.draftId ? [r.draftId] : []));
-  const [counts, revisions] = await Promise.all([
+  const [counts, revisions, activities] = await Promise.all([
     byIds<DraftCountRow>(drafts, "workbook drafts", (chunk) => a.db.from("workbook_drafts").select(DRAFT_COUNT_COLUMNS).in("id", chunk)),
-    // One bounded latest-revision read per draft. Do not fetch complete workbook content for a list.
-    Promise.all(drafts.map(id => a.db.from("workbook_draft_revisions")
-      .select("draft_id, counts:content->counts, render_problems").eq("draft_id", id)
-      .order("revision", { ascending: false }).limit(1)
-      .then(r => must<{ draft_id: string; counts: DraftCounts | null; render_problems: RenderProblem[] }[]>(r, "draft revisions"))))
-      .then(parts => parts.flat().map(r => ({ id: r.draft_id, counts: r.counts, render_problems: r.render_problems }))),
+    latestRevisions(a, drafts),
+    runActivities(a, runs.filter((r) => r.status === "running").map((r) => r.id)),
   ]);
   const byDraft = index(counts);
-  const problems = index(revisions);
-  const activities = new Map(await Promise.all(runs.filter((r) => r.status === "running").map(async (r) => [r.id, await runActivity(a, r.id)] as const)));
   return runs.map((run) => {
     const d = run.draftId ? byDraft.get(run.draftId) : undefined;
-    const p = run.draftId ? problems.get(run.draftId) : undefined;
+    const p = run.draftId ? revisions.get(run.draftId) : undefined;
     return {
-      run, counts: p?.counts ?? (d ? countsOf(d) : null), notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null,
+      run, counts: p?.counts ?? (d ? countsOf(d) : null), notRendered: p ? new Set(p.pages).size : null,
       oldFormat: !!d && oldDraft(d.schema_version, d.cover), activity: activities.get(run.id),
     };
   });
 }
 
-/** Everything in the Workbooks list: the newest runs, the stored workbooks, and their children. */
-export async function listWorkbookArea(a: AdminSession): Promise<{ runs: Page<RunListRow>; workbooks: WorkbookSummary[]; children: Map<string, ChildRow>; deliveredIds: string[] }> {
+const BOOK_COLUMNS = "id, parent_id, child_id, number, levels, status, pdf_path, profile_build, created_at, approved_at, printed_at, shipped_at";
+type BookRow = { id: string; parent_id: string; child_id: string; number: number; levels: number[]; status: WorkbookSummary["status"]; pdf_path: string | null; profile_build: string | null; created_at: string; approved_at: string | null; printed_at: string | null; shipped_at: string | null };
+const bookSummary = (w: BookRow): WorkbookSummary => ({
+  id: w.id, parentId: w.parent_id, childId: w.child_id, number: w.number, levels: w.levels, status: w.status, pdfPath: w.pdf_path,
+  profileBuild: w.profile_build, createdAt: w.created_at, approvedAt: w.approved_at, printedAt: w.printed_at, shippedAt: w.shipped_at,
+});
+
+/**
+ * Everything in the Workbooks list: the newest runs, the stored workbooks, and their children. `hide`: the parent ids
+ * left out (the test families, while "Show test families" is off).
+ */
+export async function listWorkbookArea(a: AdminSession, hide: readonly string[] = []): Promise<{ runs: Page<RunListRow>; workbooks: WorkbookSummary[]; children: Map<string, ChildRow>; deliveredIds: string[] }> {
+  const out = notIn(hide);
+  let runQuery = a.db.from("workbook_runs").select(RUN_COLUMNS);
+  let bookQuery = a.db.from("workbooks").select(BOOK_COLUMNS);
+  if (out) {
+    runQuery = runQuery.not("parent_id", "in", out);
+    bookQuery = bookQuery.not("parent_id", "in", out);
+  }
   const [runs, books] = await Promise.all([
-    a.db.from("workbook_runs").select(RUN_COLUMNS).order("created_at", { ascending: false }).range(0, LIST_MAX)
+    runQuery.order("created_at", { ascending: false }).range(0, LIST_MAX)
       .then((r) => must<Parameters<typeof runFromRow>[0][]>(r, "workbook runs")),
-    a.db.from("workbooks").select("id, parent_id, child_id, number, levels, status, pdf_path, profile_build, created_at, approved_at, printed_at, shipped_at")
+    bookQuery
       .order("created_at", { ascending: false }).range(0, LIST_MAX)
-      .then((r) => must<{ id: string; parent_id: string; child_id: string; number: number; levels: number[]; status: WorkbookSummary["status"]; pdf_path: string | null; profile_build: string | null; created_at: string; approved_at: string | null; printed_at: string | null; shipped_at: string | null }[]>(r, "workbooks")),
+      .then((r) => must<BookRow[]>(r, "workbooks")),
   ]);
   const cut = page(runs.map(runFromRow));
-  const workbooks: WorkbookSummary[] = books.slice(0, LIST_MAX).map((w) => ({
-    id: w.id, parentId: w.parent_id, childId: w.child_id, number: w.number, levels: w.levels, status: w.status, pdfPath: w.pdf_path,
-    profileBuild: w.profile_build, createdAt: w.created_at, approvedAt: w.approved_at, printedAt: w.printed_at, shippedAt: w.shipped_at,
-  }));
+  const workbooks: WorkbookSummary[] = books.slice(0, LIST_MAX).map(bookSummary);
   const [rows, children] = await Promise.all([
     runRows(a, cut.rows),
     childrenById(a, [...cut.rows.map((r) => r.childId), ...workbooks.map((w) => w.childId)]),
@@ -783,6 +882,122 @@ export async function listWorkbookArea(a: AdminSession): Promise<{ runs: Page<Ru
     deliveredIds.push(...result.data.map((r) => r.workbook_id));
   }
   return { runs: { rows, more: cut.more || books.length > LIST_MAX }, workbooks, children: index(children), deliveredIds };
+}
+
+/** What the Production stages are made from (src/lib/admin-production.ts): light reads only, no draft content. */
+export interface ProductionBase {
+  runs: WorkbookRun[];
+  workbooks: WorkbookSummary[];
+  cards: { childId: string; parentId: string; savedAt: string }[];
+  plans: { childId: string; parentId: string; kind: string }[];
+  /**
+   * A source held more than PRODUCTION_MAX rows: the children from the cut on (by child id) are left out whole, since
+   * their rows may be incomplete. Every child that is in the result has all of its rows.
+   */
+  incomplete: boolean;
+}
+
+/** Rows per Production source before the read stops: far above the children on the journey today. */
+export const PRODUCTION_MAX = 2000;
+
+/**
+ * Up to PRODUCTION_MAX rows of one source, in child id order, page by page. `cut`: the child id where the read stopped
+ * (that child and every later one may have rows that were not read), or null when every row was read.
+ */
+async function byChild<T extends { child_id: string }>(read: (from: number, to: number) => PromiseLike<T[]>): Promise<{ rows: T[]; cut: string | null }> {
+  const rows: T[] = [];
+  for (let from = 0; from < PRODUCTION_MAX; from += LIST_MAX) {
+    const part = await read(from, from + LIST_MAX - 1);
+    rows.push(...part);
+    if (part.length < LIST_MAX) return { rows, cut: null };
+  }
+  return { rows, cut: rows.at(-1)?.child_id ?? null };
+}
+
+/**
+ * One set of families' Production rows: `only` the test families, or every family but `out` (the real ones). Each
+ * source is read whole for each child: the runs and stored books from admin_production_runs and admin_production_books
+ * (only the rows the stage rules read), every saved card and every started plan. When a source is cut, the children
+ * from the cut on are left out of every source.
+ */
+async function readProductionSet(a: AdminSession, f: { out?: string | null; only?: string[] }): Promise<Omit<ProductionBase, "incomplete"> & { cut: boolean }> {
+  type CardRow = { id: string; child_id: string; parent_id: string; card_saved_at: string | null };
+  type PlanRow = { child_id: string; parent_id: string; kind: string };
+  type RunRow = Parameters<typeof runFromRow>[0];
+  const runs = () => a.db.rpc("admin_production_runs").select(RUN_COLUMNS);
+  const books = () => a.db.rpc("admin_production_books").select(BOOK_COLUMNS);
+  const cards = () => a.db.rpc("admin_card_setups").select("id, child_id, parent_id, card_saved_at").not("card_saved_at", "is", null);
+  const plans = () => a.db.from("child_plan_states").select("child_id, parent_id, kind").in("kind", [...STARTED_PLAN_KINDS]);
+  // The same family filter on each source.
+  const scope = <Q extends { not: (c: "parent_id", op: "in", v: string) => Q; in: (c: "parent_id", v: string[]) => Q }>(q: Q): Q =>
+    f.only ? q.in("parent_id", f.only) : f.out ? q.not("parent_id", "in", f.out) : q;
+  const [r, b, c, p] = await Promise.all([
+    byChild((from, to) => scope(runs()).order("child_id").order("id").range(from, to).then((x) => must<RunRow[]>(x, "workbook runs"))),
+    byChild((from, to) => scope(books()).order("child_id").order("id").range(from, to).then((x) => must<BookRow[]>(x, "workbooks"))),
+    byChild((from, to) => scope(cards()).order("child_id").order("id").range(from, to).then((x) => must<CardRow[]>(x, "saved cards"))),
+    byChild((from, to) => scope(plans()).order("child_id").range(from, to).then((x) => must<PlanRow[]>(x, "plan states"))),
+  ]);
+  const cuts = [r.cut, b.cut, c.cut, p.cut].filter((x): x is string => !!x).sort();
+  const cut = cuts[0] ?? null;
+  const whole = <T extends { child_id: string }>(rows: T[]) => (cut ? rows.filter((x) => x.child_id < cut) : rows);
+  return {
+    runs: whole(r.rows).map(runFromRow),
+    workbooks: whole(b.rows).map(bookSummary),
+    cards: whole(c.rows).flatMap((x) => (x.card_saved_at ? [{ childId: x.child_id, parentId: x.parent_id, savedAt: x.card_saved_at }] : [])),
+    plans: whole(p.rows).map((x) => ({ childId: x.child_id, parentId: x.parent_id, kind: x.kind })),
+    cut: !!cut,
+  };
+}
+
+/**
+ * The Production stages' inputs: for every child on the journey, the runs and stored workbooks the stage rules read,
+ * the saved cards and the started plans, complete per child. `testIds`: the test and team families. The real families
+ * are one read (the sidebar badge reads only this one, so it agrees with the page's numbers); with `withTests`, the
+ * test families are a second read, so test rows can never push a real child out.
+ */
+export async function readProductionBase(a: AdminSession, testIds: readonly string[], o: { withTests?: boolean } = {}): Promise<ProductionBase> {
+  const tests = testIds.filter(isUuid);
+  const [real, test] = await Promise.all([
+    readProductionSet(a, { out: notIn(tests) }),
+    o.withTests && tests.length ? readProductionSet(a, { only: tests }) : null,
+  ]);
+  return {
+    runs: [...real.runs, ...(test?.runs ?? [])],
+    workbooks: [...real.workbooks, ...(test?.workbooks ?? [])],
+    cards: [...real.cards, ...(test?.cards ?? [])],
+    plans: [...real.plans, ...(test?.plans ?? [])],
+    incomplete: real.cut || !!test?.cut,
+  };
+}
+
+/**
+ * The Production page's data: the stages' inputs (readProductionBase), names, delivery times, and the check results
+ * and progress of each current run (being made, or a draft waiting): a constant number of requests, whatever the number
+ * of runs. `tests`: the "Show test families" switch and the test family ids.
+ */
+export async function listProduction(a: AdminSession, tests: { ids: readonly string[]; show: boolean }, now = new Date()): Promise<Omit<ProductionInput, "tests"> & { incomplete: boolean }> {
+  const base = await readProductionBase(a, tests.ids, { withTests: tests.show });
+  // Only the current runs (being made, or a draft waiting) need their draft's checks and saved work: a light page to refresh.
+  const light = buildBooks({ ...base, runs: base.runs.map((run) => ({ run })), deliveries: [], tests: { show: true, isTest: () => false } }, now);
+  const current = new Set(light.flatMap((b) => (b.run ? [b.run.run.id] : [])));
+  const childIds = new Set(light.map((b) => b.childId));
+  const parentIds = new Set(light.map((b) => b.parentId));
+  const shipped = base.workbooks.filter((w) => w.status === "shipped").map((w) => w.id);
+  const [rows, children, parents, delivered] = await Promise.all([
+    runRows(a, base.runs.filter((r) => current.has(r.id))),
+    childrenById(a, childIds),
+    parentsById(a, parentIds),
+    deliveredTimes(a.db, shipped),
+  ]);
+  const rich = new Map(rows.map((r) => [r.run.id, r]));
+  return {
+    runs: base.runs.map((run) => rich.get(run.id) ?? { run }),
+    workbooks: base.workbooks, cards: base.cards, plans: base.plans,
+    deliveries: [...delivered].map(([workbookId, deliveredAt]) => ({ workbookId, deliveredAt })),
+    children: children.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name })),
+    parents: parents.map((p) => ({ id: p.id, name: p.name })),
+    incomplete: base.incomplete,
+  };
 }
 
 /** A child's runs, newest first, with their check results. */
@@ -911,18 +1126,24 @@ export async function getWorkbookWorker(a: AdminSession, now = new Date()): Prom
 export interface ReviewListRow extends ReviewRecord {
   created_at: string;
   assessment_id: string;
-  test: { grade: number; province: Province; child: ChildRow | null } | null;
+  test: { grade: number; province: Province; parentId: string; child: ChildRow | null } | null;
 }
 
-/** The newest AI reviews of shown work (#68); `lowOnly`: only those the report did not show a comment for. */
-export async function listReviews(a: AdminSession, { lowOnly }: { lowOnly: boolean }, offset = 0): Promise<Page<ReviewListRow>> {
+/**
+ * The newest AI reviews of shown work (#68); `lowOnly`: only those the report did not show a comment for. `hide`: the
+ * parent ids left out (the test families, while "Show test families" is off). Each review keeps its family's parent
+ * id, so they are left out in the query, before the page's offset and limit: a page is never short of real reviews.
+ */
+export async function listReviews(a: AdminSession, { lowOnly }: { lowOnly: boolean }, offset = 0, hide: readonly string[] = []): Promise<Page<ReviewListRow>> {
   let q = a.db.from("work_reviews").select(`created_at, assessment_id, ${REVIEW_COLUMNS}`);
   if (lowOnly) q = q.eq("confidence", "low");
+  const out = notIn(hide);
+  if (out) q = q.not("parent_id", "in", out);
   const { rows, more } = page(must<(ReviewRecord & { created_at: string; assessment_id: string })[]>(await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX), "reviews"));
-  const tests = await byIds<{ id: string; grade: number; province: Province; child_id: string }>(rows.map((r) => r.assessment_id), "tests", (chunk) =>
-    a.db.rpc("admin_assessments").select("id, grade, province, child_id").in("id", chunk));
+  const tests = await byIds<{ id: string; grade: number; province: Province; child_id: string; parent_id: string }>(rows.map((r) => r.assessment_id), "tests", (chunk) =>
+    a.db.rpc("admin_assessments").select("id, grade, province, child_id, parent_id").in("id", chunk));
   const child = index(await childrenById(a, tests.map((t) => t.child_id)));
-  const test = new Map(tests.map((t) => [t.id, { grade: t.grade, province: t.province, child: child.get(t.child_id) ?? null }]));
+  const test = new Map(tests.map((t) => [t.id, { grade: t.grade, province: t.province, parentId: t.parent_id, child: child.get(t.child_id) ?? null }]));
   return { more, rows: rows.map((r) => ({ ...r, test: test.get(r.assessment_id) ?? null })) };
 }
 
@@ -933,11 +1154,21 @@ export interface NextSteps {
   waitlist: Page<WaitlistRow & { child: ChildRow | null; parent: ParentRow | null }>;
 }
 
-/** Card setups and waitlist joins from the report (#66), newest first. Read only: Stripe is the record of saved cards. */
-export async function listNextSteps(a: AdminSession, offset = 0): Promise<NextSteps> {
+/**
+ * Card setups and waitlist joins from the report (#66), newest first. Read only: Stripe is the record of saved cards.
+ * `hide`: the parent ids left out (the test families, while "Show test families" is off).
+ */
+export async function listNextSteps(a: AdminSession, offset = 0, hide: readonly string[] = []): Promise<NextSteps> {
+  const out = notIn(hide);
+  let cardQuery = a.db.rpc("admin_card_setups").select("*");
+  let waitQuery = a.db.rpc("admin_waitlist_joins").select("*");
+  if (out) {
+    cardQuery = cardQuery.not("parent_id", "in", out);
+    waitQuery = waitQuery.not("parent_id", "in", out);
+  }
   const [cards, waitlist] = await Promise.all([
-    a.db.rpc("admin_card_setups").select("*").order("updated_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX).then((r) => page(must<CardSetupRow[]>(r, "card setups"))),
-    a.db.rpc("admin_waitlist_joins").select("*").order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX).then((r) => page(must<WaitlistRow[]>(r, "waitlist"))),
+    cardQuery.order("updated_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX).then((r) => page(must<CardSetupRow[]>(r, "card setups"))),
+    waitQuery.order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX).then((r) => page(must<WaitlistRow[]>(r, "waitlist"))),
   ]);
   const all = [...cards.rows, ...waitlist.rows];
   const [children, parents, emailCards] = await Promise.all([
@@ -1068,7 +1299,7 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
     allRows<RawParent>(a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("id"), "parents"),
     allRows<RawChild>(a.db.rpc("admin_children").select(CHILD_COLUMNS).order("id"), "children"),
     allRows<Omit<RawTest, "answered"> & { answers: { count: number }[] }>(a.db.rpc("admin_assessments").select("id, created_at, status, parent_id, child_id, grade, province, started_at, completed_at, last_answer_at, answers(count)").order("id"), "tests"),
-    allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_error, alerted_at, alert_error, email_clicks, email_first_clicked_at").order("id"), "reports"),
+    allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_id, email_error, alerted_at, alert_error, email_clicks, email_first_clicked_at").order("id"), "reports"),
     // the cards come back once Stripe has filled in the saved cards the site never recorded
     cardRows.then(async (rows) => (await confirmCardsInStripe(rows), rows)),
     allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),
