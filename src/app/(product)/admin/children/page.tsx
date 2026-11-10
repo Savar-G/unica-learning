@@ -18,7 +18,8 @@ export default async function ChildrenPage({ searchParams }: PageProps<"/admin/c
   const offset = listOffset(query, LIST_MAX);
   const view = await loadTestFamilies(admin);
   const { rows, more } = await listChildren(admin, filters, offset, view.hidden);
-  return <AdminFrame email={admin.email} title="Children" lead="Every child, newest first, with their tests." testNote={view.show}>
+  return <AdminFrame email={admin.email} title="Children" lead="Every child, newest first, with their tests." testNote={view.show}
+    actions={<Link className="btn ghost adm-btn" href="/admin/parents" prefetch={false}>Families board</Link>}>
     <FilterForm action="/admin/children" filters={filters} fields={["grade", "province"]} />
     <Table label="Children" head={["Child", "Grade and curriculum", "Parent", "Tests", "Completed", "Last test (Pacific)"]} empty="No children match.">
       {rows.map((c) => <tr key={c.id}><td><Link href={childPath(c.id)}>{c.first_name}</Link><TestTag test={view.show && view.isTest(c.parent_id)} /></td><td>{gradeAndPlace(c.grade, c.province)}</td><td><Link href={adminParentPath(c.parent_id)}>{c.parent?.name ?? "Family"}</Link></td><td>{c.tests.total}</td><td>{c.tests.completed}</td><td className="adm-nowrap">{when(c.tests.lastAt)}</td></tr>)}
