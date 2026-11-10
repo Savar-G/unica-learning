@@ -37,12 +37,27 @@ export function CardsTable({ cards, isTest }: { cards: (CardSetupRow & People)[]
     {cards.map((c) => {
       const stripe = c.stripe_customer_id ? stripeCustomerUrl(c.stripe_customer_id) : null;
       return <tr key={c.id}><td className="adm-nowrap">{when(c.updated_at)}</td><td><Link href={adminParentPath(c.parent_id)}>{c.parent?.name ?? "Family"}</Link><TestTag test={isTest?.(c.parent_id)} /></td><td><Link href={childPath(c.child_id)}>{c.child?.first_name ?? "Child"}</Link></td><td>{c.plan === "one" ? "Math" : "Math and reading"}</td><td>{c.planPriceUnread ? `up to CAD ${c.price} (price not read)` : `CAD ${c.planMonthly ?? c.price}`}{c.planFirstCharge && <p className="adm-note">First charge {when(c.planFirstCharge)}</p>}</td><td>{c.card_saved_at ? when(c.card_saved_at) : <Chip tone="warn">Not saved</Chip>}</td><td>{stripe ? <a href={stripe} target="_blank" rel="noopener noreferrer">Open in Stripe</a> : "-"}</td><td>{c.report_id ? <Link href={adminReportPath(c.report_id)}>Report</Link> : "-"}</td><td>
-        {c.planStarted === true ? <span className="adm-note">Plan started.</span> : c.planStarted !== false ? <span className="adm-note">Check the plan in Stripe before starting a free month.</span> : null}
-        {c.stuckPlanStart ? <PlanStartStuck cardId={c.id} child={c.child?.first_name ?? "this child"} generation={c.stuckPlanStart} allowInitialStart={c.planStarted === false && !!c.firstWorkbook?.delivered} familyWindow={c.familyWindow} />
-          : c.planStarted === false ? c.card_saved_at && c.stripe_customer_id ? <StartGate card={c} /> : "-" : null}
-      </td><td>{c.card_saved_at && c.parent && c.child ? c.workbookEmails ? <WorkbookEmails cardId={c.id} parentName={c.parent.name} parentEmail={c.parent.email} childName={c.child.first_name} records={c.workbookEmails ?? []} observedAt={c.workbookEmailsReadAt ?? 0} /> : <span className="adm-note">Workbook email history is unavailable. Reload this page.</span> : "-"}</td></tr>;
+        <PlanStartNote card={c} />
+        <PlanStartAction card={c} />
+      </td><td><CardEmails card={c} /></td></tr>;
     })}
   </Table>;
+}
+
+/** What the card's plan evidence says before any start: started, or unknown (check Stripe). Nothing when no start completed. */
+export function PlanStartNote({ card: c }: { card: CardSetupRow }) {
+  return c.planStarted === true ? <span className="adm-note">Plan started.</span> : c.planStarted !== false ? <span className="adm-note">Check the plan in Stripe before starting a free month.</span> : null;
+}
+
+/** The card's plan start control: the stuck start's recovery, else the start (or why it cannot start yet). Plans and delivery shows it too. */
+export function PlanStartAction({ card: c }: { card: CardSetupRow & People }) {
+  return c.stuckPlanStart ? <PlanStartStuck cardId={c.id} child={c.child?.first_name ?? "this child"} generation={c.stuckPlanStart} allowInitialStart={c.planStarted === false && !!c.firstWorkbook?.delivered} familyWindow={c.familyWindow} />
+    : c.planStarted === false ? c.card_saved_at && c.stripe_customer_id ? <StartGate card={c} /> : "-" : null;
+}
+
+/** The card's workbook emails: preview, send and history. Plans and delivery shows it too. */
+export function CardEmails({ card: c }: { card: CardSetupRow & People }) {
+  return c.card_saved_at && c.parent && c.child ? c.workbookEmails ? <WorkbookEmails cardId={c.id} parentName={c.parent.name} parentEmail={c.parent.email} childName={c.child.first_name} records={c.workbookEmails ?? []} observedAt={c.workbookEmailsReadAt ?? 0} /> : <span className="adm-note">Workbook email history is unavailable. Reload this page.</span> : "-";
 }
 
 /**

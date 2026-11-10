@@ -472,6 +472,8 @@ export interface CardSetupRow {
   planStarted?: boolean | null;
   /** A plan start that needs the team: open, with Stripe's key past its life (#554). */
   stuckPlanStart?: number | null;
+  /** The child's stored plan kind (child_plan_states.kind) for this family, or null when none is stored. Absent when the read failed. */
+  planKind?: string | null;
   /**
    * Read only for a card that can start: the child's workbook 1 (its id, or null when there is none) and whether it has the
    * delivery receipt the start route requires. Null or absent means the read failed or did not run, so no start button shows.
@@ -524,7 +526,7 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
     return {
       ...c, workbookEmails: emails && planEmails ? [...emails, ...planEmailRecords].filter((e) => e.card_setup_id === c.id) : undefined,
       workbookEmailsReadAt: emails && planEmails ? workbookEmailsReadAt : undefined,
-      planStarted, stuckPlanStart: stuck.get(c.id) ?? null,
+      planStarted, stuckPlanStart: stuck.get(c.id) ?? null, planKind: plans ? plan?.kind ?? null : undefined,
     };
   }));
 }
