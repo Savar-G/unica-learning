@@ -185,25 +185,72 @@ export function customerLine(f: Family, books: readonly Book[] | null): string {
     approved: "Workbook approved, ready to print.",
     printed: "Workbook printed, ready to ship.",
     shipped: "Workbook shipped, delivery not confirmed yet.",
-    delivered: first.planStarted ? "Workbook delivered." : "Workbook delivered. The free month can start.",
+    delivered: "Workbook delivered.",
   };
   return `Card saved. ${words[first.stage]}`;
 }
 
-export type CustomerAction = { kind: "prepare"; book: Book } | { kind: "prepare-many"; count: number } | { kind: "start" } | null;
+/**
+ * What a customer row says when a child's Book 1 is delivered and no plan ever started. Home does not decide whether a
+ * plan can start, or on what terms (that is Plans and delivery's check, with the family's free window): it only points
+ * there, and promises nothing about billing.
+ */
+export const CHECK_PLAN = "Check the plan on Plans and delivery.";
+
+export type CustomerAction = { kind: "prepare"; book: Book } | { kind: "prepare-many"; count: number } | { kind: "check-plan" } | null;
+
+/** A book whose child may be waiting for a plan: Book 1 delivered, a saved card, and no current plan in Production's read. */
+const waitsForPlan = (b: Book) => b.stage === "delivered" && b.number === 1 && !!b.cardSavedAt && !b.planStarted;
+
+/** The children whose plan records Home reads (readNeverStarted in admin-home-load.ts), from Production's books. */
+export function planCandidates(books: readonly Book[]): { childId: string; parentId: string }[] {
+  return books.filter(waitsForPlan).map((b) => ({ childId: b.childId, parentId: b.parentId }));
+}
+
+/** A child's plan records, as Plans and delivery reads them (withWorkbookEmails in admin-store.ts). */
+export interface PlanEvidence {
+  cards: { id: string; childId: string; parentId: string }[];
+  starts: { cardSetupId: string; state: string }[];
+  /** Children with a sent plan start confirmation of the old kind (workbook_emails). */
+  sentEmails: string[];
+  states: { childId: string; parentId: string; kind: string }[];
+}
+
+const STARTED_KINDS: readonly string[] = ["free_month", "paying", "payment_failed", "paused", "ending", "ended"];
+
+/**
+ * The candidates whose plan never started, by Plans and delivery's own rule: started is a completed start, a sent old
+ * confirmation, or a stored running or ended plan; never started is none of these and either no stored plan row or a
+ * stored not_started of the same parent. Anything else is unknown, and an unknown child is left out.
+ */
+export function neverStartedChildren(candidates: readonly { childId: string; parentId: string }[], ev: PlanEvidence): Set<string> {
+  const out = new Set<string>();
+  for (const c of candidates) {
+    const cards = new Set(ev.cards.filter((x) => x.childId === c.childId && x.parentId === c.parentId).map((x) => x.id));
+    const rows = ev.states.filter((x) => x.childId === c.childId);
+    const mine = rows.find((x) => x.parentId === c.parentId);
+    const started = ev.starts.some((s) => cards.has(s.cardSetupId) && (s.state === "started" || s.state === "other"))
+      || ev.sentEmails.includes(c.childId) || rows.some((x) => STARTED_KINDS.includes(x.kind));
+    if (!started && (rows.length === 0 || mine?.kind === "not_started")) out.add(c.childId);
+  }
+  return out;
+}
 
 /**
  * The one action a customer row carries, when one is due: prepare the workbook of a child with none (Production's
- * "No workbook yet"), or, once a child's workbook is delivered and that child has no plan, start the free month (done
- * under Plans and delivery, by the existing rule: the plan starts after the first workbook's delivery is confirmed).
+ * "No workbook yet"), or, once a child's Book 1 is delivered and no plan ever started for that child, a link to Plans
+ * and delivery (CHECK_PLAN), which holds the plan start and its checks. `incomplete`: Production's read stopped before
+ * every child, so no Prepare is offered from it. `neverStarted`: the children proven never started (planCandidates,
+ * neverStartedChildren); null when that read failed, and then there is no link.
  */
-export function customerAction(f: Family, books: readonly Book[] | null): CustomerAction {
+export function customerAction(f: Family, books: readonly Book[] | null, o: { incomplete?: boolean; neverStarted?: ReadonlySet<string> | null } = {}): CustomerAction {
   if (!books) return null;
   const mine = books.filter((b) => b.parentId === f.id);
   const none = mine.filter((b) => b.stage === "none");
-  if (none.length === 1) return { kind: "prepare", book: none[0] };
-  if (none.length > 1) return { kind: "prepare-many", count: none.length };
-  if (mine.some((b) => b.stage === "delivered" && !b.planStarted && b.cardSavedAt)) return { kind: "start" };
+  if (!o.incomplete && none.length === 1) return { kind: "prepare", book: none[0] };
+  if (!o.incomplete && none.length > 1) return { kind: "prepare-many", count: none.length };
+  const never = o.neverStarted;
+  if (never && mine.some((b) => waitsForPlan(b) && never.has(b.childId))) return { kind: "check-plan" };
   return null;
 }
 
@@ -212,7 +259,8 @@ export function customerAction(f: Family, books: readonly Book[] | null): Custom
 const FUNNEL_STEPS: readonly { stage: FunnelStage; label: string }[] = [
   { stage: "account", label: "Signed up" },
   { stage: "started", label: "Started the test" },
-  { stage: "finished", label: "Report sent" },
+  // The dashboard's finished stage is a completed test (assessments.completed_at), not a sent report.
+  { stage: "finished", label: "Finished the test" },
   { stage: "card_saved", label: "Card saved" },
 ];
 /** The dashboard's Needs you lists that name a family who may need a nudge, with the words the panel uses. */
@@ -261,14 +309,24 @@ export interface ProductionPanel {
   /** All real books on the journey. */
   total: number;
   line: { bold: string; rest: string };
-  /** A book being made (real ones first, the newest first), and how many others are being made. */
+  /**
+   * A book being made: the newest real one, else a test one (tagged; only while test families show). `otherRunning`:
+   * how many other real books are being made; a test book is never counted.
+   */
   running: Book | null;
   otherRunning: number;
   /** The first book of Production's Needs you group: drafts first, then the longest waiting. */
   next: Book | null;
+  /** Whether Home may offer "Prepare workbook": not when Production's read stopped before every child. */
+  offerPrepare: boolean;
+  /** Production's own note when its read stopped before every child, else null. */
+  note: string | null;
 }
 
-export function productionPanel(books: readonly Book[], now: Date): ProductionPanel {
+/** Production's words when its read stopped before every child (the ProductionBoard note). */
+export const incompleteNote = (shown: number) => `Some books could not be loaded. Showing the first ${shown}.`;
+
+export function productionPanel(books: readonly Book[], now: Date, o: { incomplete?: boolean } = {}): ProductionPanel {
   const real = books.filter((b) => !b.test);
   const review = real.filter((b) => b.stage === "review").length;
   const none = real.filter((b) => b.stage === "none").length;
@@ -281,8 +339,13 @@ export function productionPanel(books: readonly Book[], now: Date): ProductionPa
       : { bold: "Nothing needs you right now.", rest: "Every book is moving." };
   const making = books.filter((b) => b.stage === "making")
     .sort((a, b) => Number(a.test) - Number(b.test) || (b.at ?? "").localeCompare(a.at ?? ""));
+  const running = making[0] ?? null;
+  const realMaking = making.filter((b) => !b.test).length;
   const next = groupBooks(books, now).find((g) => g.key === "you")?.books[0] ?? null;
-  return { needYou, review, none, total: real.length, line, running: making[0] ?? null, otherRunning: Math.max(0, making.length - 1), next };
+  return {
+    needYou, review, none, total: real.length, line, running, otherRunning: Math.max(0, realMaking - (running && !running.test ? 1 : 0)), next,
+    offerPrepare: !o.incomplete, note: o.incomplete ? incompleteNote(books.length) : null,
+  };
 }
 
 /** The running book's progress line, from Production's own view of a book being made. */
@@ -300,9 +363,13 @@ export const waitReason = (issue: string | null) =>
   issue && (READING_ISSUES as readonly string[]).includes(issue) ? readingIssueText(issue as ReadingIssue) : "Waiting for a person to mark it.";
 
 export interface MarkingPanel {
-  /** Real families' answers waiting for the team. `more`: the read stopped at its limit, so there may be more. */
+  /** Real families' answers waiting for the team: the queue reader's real total, not the rows read. */
   count: number;
-  more: boolean;
+  /**
+   * The reasons and books are of the oldest `sample` answers when the read stopped before the whole queue (null when it
+   * holds every waiting answer): the panel labels them "Of the oldest N".
+   */
+  sample: number | null;
   /** When the oldest real answer started waiting. */
   oldest: string | null;
   /** The reasons, the most common first. */
@@ -311,7 +378,8 @@ export interface MarkingPanel {
   books: { childId: string; label: string; n: number }[];
 }
 
-export function markingPanel(items: readonly WaitingAnswer[], total: number, isTest: (parentId: string) => boolean): MarkingPanel {
+/** `realTotal`: the queue reader's count of every real answer waiting (readScanTeamQueue). */
+export function markingPanel(items: readonly WaitingAnswer[], realTotal: number, isTest: (parentId: string) => boolean): MarkingPanel {
   const real = items.filter((i) => !i.testFamily && !isTest(i.parent));
   const tally = <K extends string>(keys: K[]) => {
     const m = new Map<K, number>();
@@ -319,9 +387,10 @@ export function markingPanel(items: readonly WaitingAnswer[], total: number, isT
     return [...m].sort((a, b) => b[1] - a[1]);
   };
   const names = new Map(real.map((i) => [`${i.child}:${i.book}`, { childId: i.child, label: `${i.childName || "A child"} · Book ${i.book}` }]));
+  const count = Math.max(realTotal, real.length);
   return {
-    count: real.length,
-    more: total > items.length,
+    count,
+    sample: count > real.length ? real.length : null,
     oldest: real.map((i) => i.since).sort()[0] ?? null,
     reasons: tally(real.map((i) => waitReason(i.issue))).map(([text, n]) => ({ text, n })),
     books: tally(real.map((i) => `${i.child}:${i.book}`)).slice(0, 3).map(([k, n]) => ({ ...names.get(k)!, n })),

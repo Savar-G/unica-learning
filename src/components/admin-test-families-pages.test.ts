@@ -6,7 +6,7 @@ import * as store from "@/lib/admin-store";
 import * as auth from "@/lib/supabase-auth";
 import { buildDashboard, type Dashboard, type DashboardRows } from "@/lib/admin-dashboard";
 import { ActivityView } from "@/components/admin-activity";
-import { DashboardView } from "@/components/admin-dashboard";
+import { HomeView } from "@/components/admin-home";
 import { FamilyDrawer } from "@/components/admin-family";
 import { loadAdminBadges } from "@/lib/admin-badges";
 import { showTestFamilies } from "@/lib/admin-test-families-server";
@@ -154,10 +154,12 @@ describe("Home, Activity and Emails count real families only (finding 2)", () =>
     expect(activity).toMatch(/<dt>Families<\/dt><dd><b>1<\/b>/);
     expect(text(activity)).toContain("All families 1");
     expect(text(activity)).toContain("All emails 1");
-    const home = renderToStaticMarkup(createElement(DashboardView, { d, ctx: ctx("/admin"), progress: { now: at, tests: {} } }));
-    expect(text(home)).toContain("1 sent at any time");
-    expect(text(home)).toContain("All 1");
-    expect(home).toContain("Test family");
+    const home = renderToStaticMarkup(createElement(HomeView, { d, ctx: ctx("/admin"), extras: null }));
+    expect(text(home)).toContain("1 family signed up today");
+    expect(text(home)).toContain("Where the 1 family who signed up today got to");
+    // The timeline lists the test family, tagged; the real family is there too.
+    expect(text(home)).toContain("Test family test");
+    expect(home).toContain("Real family");
     const log = text(renderToStaticMarkup(createElement(ActivityView, { d, ctx: ctx("/admin/activity", { view: "emails" }) })));
     expect(log).toContain("All emails 1");
     state.dash = { who: "admin@example.invalid", d, progress: { now: at, tests: {} }, query: {}, demo: false };

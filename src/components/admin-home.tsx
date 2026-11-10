@@ -12,8 +12,8 @@ import { BookAction, StageTrack } from "@/components/admin-production";
 import { PrepareWorkbook } from "@/components/prepare-workbook";
 import { dayLabel, since, type Dashboard, type Family } from "@/lib/admin-dashboard";
 import {
-  PERIOD, changeText, customerAction, customerLine, customersPanel, homeDate, markingPanel, productionPanel, runningView,
-  signupsPanel, sinceYesterday, whenShort, type BarColumn, type DayColumn, type DotColumn,
+  CHECK_PLAN, PERIOD, changeText, customerAction, customerLine, customersPanel, homeDate, markingPanel, productionPanel, runningView,
+  signupsPanel, sinceYesterday, whenShort, type BarColumn, type CustomerAction, type DayColumn, type DotColumn,
 } from "@/lib/admin-home";
 import type { HomeExtras } from "@/lib/admin-home-load";
 import { STAGE_TEXT, faceColor, type Book } from "@/lib/admin-production";
@@ -116,18 +116,18 @@ function Names({ ctx, families, max = 3 }: { ctx: Ctx; families: Family[]; max?:
 
 // 1. New customers
 
-function CustomerAct({ f, books, runner }: { f: Family; books: Book[] | null; runner: "mac" | "server" }): ReactNode {
-  const act = customerAction(f, books);
+function CustomerAct({ act, runner }: { act: CustomerAction; runner: "mac" | "server" }): ReactNode {
   if (!act) return null;
   if (act.kind === "prepare") return <PrepareWorkbook childId={act.book.childId} child={act.book.child} runner={runner} label="Prepare workbook" />;
   if (act.kind === "prepare-many") return <Link className="btn adm-btn" href={`${ADMIN_WORKBOOKS_PATH}?stage=none`} prefetch={false}>Prepare {act.count} workbooks</Link>;
-  return <Link className="btn ghost adm-btn" href={PLANS} prefetch={false}>Start free month</Link>;
+  return <Link className="btn ghost adm-btn" href={PLANS} prefetch={false}>Plans and delivery</Link>;
 }
 
 function Customers({ d, ctx, extras }: { d: Dashboard; ctx: Ctx; extras: HomeExtras | null }) {
   const c = customersPanel(d);
   const week = c.days.filter((x) => x.thisWeek).reduce((n, x) => n + x.n, 0);
   const books = extras?.books ?? null;
+  const actionOf = (f: Family): CustomerAction => (ctx.demo ? null : customerAction(f, books, { incomplete: extras?.incomplete, neverStarted: extras?.neverStarted }));
   return <section className="hm-panel hm-cust" aria-labelledby="hm-cust">
     <PanelHead id="hm-cust" title="New customers" href={FAMILIES} see="See all families" />
     <div className="hm-hero">
@@ -141,17 +141,20 @@ function Customers({ d, ctx, extras }: { d: Dashboard; ctx: Ctx; extras: HomeExt
     </div>
     {c.newest.length > 0
       ? <ul className="hm-rows" aria-label="Newest customers">
-        {c.newest.map((f) => <li key={f.id} className="hm-row">
-          <FamilyFace f={f} />
-          <span className="hm-who">
-            <span><Link className="hm-name" href={familyHref(ctx, f.id)}>{f.name}</Link><TestTag test={f.test} /></span>
-            <span className="hm-row-line">{f.children.map((k) => k.name).join(", ") || "No child yet"} · {customerLine(f, books)}</span>
-          </span>
-          <span className="hm-row-end">
-            <time dateTime={f.reached.card_saved}>{whenShort(f.reached.card_saved, d.now)}</time>
-            {!ctx.demo && <CustomerAct f={f} books={books} runner={extras?.runner ?? "mac"} />}
-          </span>
-        </li>)}
+        {c.newest.map((f) => {
+          const act = actionOf(f);
+          return <li key={f.id} className="hm-row">
+            <FamilyFace f={f} />
+            <span className="hm-who">
+              <span><Link className="hm-name" href={familyHref(ctx, f.id)}>{f.name}</Link><TestTag test={f.test} /></span>
+              <span className="hm-row-line">{f.children.map((k) => k.name).join(", ") || "No child yet"} · {customerLine(f, books)}{act?.kind === "check-plan" ? ` ${CHECK_PLAN}` : ""}</span>
+            </span>
+            <span className="hm-row-end">
+              <time dateTime={f.reached.card_saved}>{whenShort(f.reached.card_saved, d.now)}</time>
+              <CustomerAct act={act} runner={extras?.runner ?? "mac"} />
+            </span>
+          </li>;
+        })}
       </ul>
       : <p className="hm-empty">No customers yet. A family shows here when it saves a card.</p>}
     {c.failing.length > 0 && <p className="hm-alert"><b>{c.failing.length === 1 ? "A payment is failing" : `${c.failing.length} payments are failing`}:</b> <Names ctx={ctx} families={c.failing} />. The last charge did not go through.</p>}
@@ -165,7 +168,7 @@ function Production({ extras, demo }: { extras: HomeExtras | null; demo: boolean
   if (!extras?.books) return <section className="hm-panel hm-prod" aria-labelledby="hm-prod">{head}
     <p className="hm-empty">{demo ? "Not shown with demo data." : "Production could not be read just now. Reload the page, or open Production."}</p></section>;
   const books = extras.books;
-  const p = productionPanel(books, extras.now);
+  const p = productionPanel(books, extras.now, { incomplete: extras.incomplete });
   return <section className="hm-panel hm-prod" aria-labelledby="hm-prod">
     {head}
     <p className="hm-line"><b>{p.line.bold}</b> {p.line.rest}</p>
@@ -173,8 +176,11 @@ function Production({ extras, demo }: { extras: HomeExtras | null; demo: boolean
     {p.running && <Running book={p.running} others={p.otherRunning} now={extras.now} />}
     {p.next && <div className="hm-next">
       <span className="hm-next-text"><span className="hm-sub">Next</span><b>{p.next.child} · Book {p.next.number}</b><TestTag test={p.next.test} /> <span className="hm-muted">{STAGE_TEXT[p.next.stage]}</span></span>
-      <span className="hm-next-act"><BookAction book={p.next} runner={extras.runner} /></span>
+      <span className="hm-next-act">{p.next.stage === "none" && !p.offerPrepare
+        ? <Link className="btn ghost adm-btn" href={ADMIN_WORKBOOKS_PATH} prefetch={false}>Open Production</Link>
+        : <BookAction book={p.next} runner={extras.runner} />}</span>
     </div>}
+    {p.note && <p className="adm-note" role="status">{p.note}</p>}
   </section>;
 }
 
@@ -239,7 +245,7 @@ function Marking({ extras, demo, now }: { extras: HomeExtras | null; demo: boole
   if (!extras?.queue) return <section className="hm-panel hm-mark" aria-labelledby="hm-mark">{head}
     <p className="hm-empty">{demo ? "Not shown with demo data." : "The answers waiting for us could not be read just now. Reload the page, or open Marking."}</p></section>;
   const m = markingPanel(extras.queue.items, extras.queue.total, extras.isTest);
-  if (m.count === 0 && !m.more) return <section className="hm-panel hm-mark" aria-labelledby="hm-mark">{head}
+  if (m.count === 0) return <section className="hm-panel hm-mark" aria-labelledby="hm-mark">{head}
     <div className="hm-calm">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
       <p><b>No answers wait for us.</b> When the AI is not sure of an answer on a scanned page, it waits here for a person to mark it.</p>
@@ -250,15 +256,16 @@ function Marking({ extras, demo, now }: { extras: HomeExtras | null; demo: boole
     {head}
     <div className="hm-queue">
       <div className="hm-queue-top">
-        <strong className="hm-qn">{m.count}{m.more ? "+" : ""}</strong>
-        <span className="hm-queue-text"><b>{m.count === 1 && !m.more ? "answer waits" : "answers wait"} for us</b>{m.oldest && <span className="hm-muted">Oldest waiting {since(m.oldest, now)}</span>}</span>
+        <strong className="hm-qn">{m.count}</strong>
+        <span className="hm-queue-text"><b>{m.count === 1 ? "answer waits" : "answers wait"} for us</b>{m.oldest && <span className="hm-muted">Oldest waiting {since(m.oldest, now)}</span>}</span>
         <Link className="btn adm-btn" href={MARKING} prefetch={false}>Mark answers</Link>
       </div>
+      {m.sample !== null && (m.reasons.length > 0 || m.books.length > 0) && <p className="hm-sub">Of the oldest {m.sample}</p>}
       {m.reasons.length > 0 && <>
-        <div className="hm-stackbar" role="img" aria-label={`Why they wait: ${label}`}>{m.reasons.map((r, i) => <i key={r.text} className={`is-${i % 4}`} style={{ flex: r.n }} />)}</div>
+        <div className="hm-stackbar" role="img" aria-label={`Why they wait${m.sample !== null ? ` (of the oldest ${m.sample})` : ""}: ${label}`}>{m.reasons.map((r, i) => <i key={r.text} className={`is-${i % 4}`} style={{ flex: r.n }} />)}</div>
         <ul className="hm-legend">{m.reasons.map((r, i) => <li key={r.text}><span className={`hm-sw is-${i % 4}`} aria-hidden="true" /><span className="hm-legend-n">{r.n}</span><span>{r.text.replace(/\.$/, "")}</span></li>)}</ul>
       </>}
-      {m.books.length > 0 && <p className="hm-from">From {m.books.map((b) => `${b.label} (${b.n})`).join(", ")}{m.more ? ", and more" : ""}.</p>}
+      {m.books.length > 0 && <p className="hm-from">From {m.books.map((b) => `${b.label} (${b.n})`).join(", ")}{m.sample !== null ? ", and more" : ""}.</p>}
     </div>
   </section>;
 }

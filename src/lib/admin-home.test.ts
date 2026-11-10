@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildDashboard, type DashboardRows, type RangeKey, type RawSubscription } from "@/lib/admin-dashboard";
 import {
-  DOT_CAP, NUDGES, PAYMENT_FAILING, barColumns, changeText, customerAction, customerLine, customersPanel, dotColumns, homeDate,
-  lastDays, markingPanel, perDay, productionPanel, signupsPanel, sinceYesterday, spanOf, thisWeekDays, waitReason, whenShort,
-  type WaitingAnswer,
+  CHECK_PLAN, DOT_CAP, NUDGES, PAYMENT_FAILING, barColumns, changeText, customerAction, customerLine, customersPanel, dotColumns, homeDate,
+  incompleteNote, lastDays, markingPanel, neverStartedChildren, perDay, planCandidates, productionPanel, signupsPanel, sinceYesterday, spanOf,
+  thisWeekDays, waitReason, whenShort, type PlanEvidence, type WaitingAnswer,
 } from "@/lib/admin-home";
 import type { Book } from "@/lib/admin-production";
 
@@ -144,10 +144,65 @@ describe("new customers", () => {
     const one = book({ parentId: "b", childId: "kb" });
     expect(customerAction(f("b"), [one])).toEqual({ kind: "prepare", book: one });
     expect(customerAction(f("a"), [book({ parentId: "a", childId: "ka" }), book({ parentId: "a", childId: "ka2" })])).toEqual({ kind: "prepare-many", count: 2 });
-    expect(customerAction(f("b"), [book({ parentId: "b", childId: "kb", stage: "delivered", cardSavedAt: ago(1) })])).toEqual({ kind: "start" });
-    expect(customerAction(f("b"), [book({ parentId: "b", childId: "kb", stage: "delivered", cardSavedAt: ago(1), planStarted: true })])).toBeNull();
-    expect(customerAction(f("b"), [book({ parentId: "b", childId: "kb", stage: "shipped", cardSavedAt: ago(1) })])).toBeNull();
+    expect(customerAction(f("b"), [book({ parentId: "b", childId: "kb", stage: "shipped", cardSavedAt: ago(1) })], { neverStarted: new Set(["kb"]) })).toBeNull();
     expect(customerAction(f("b"), null)).toBeNull();
+  });
+
+  it("offers no Prepare when Production's read stopped before every child (review #837 finding 2)", () => {
+    const d = dash(base);
+    const b = d.families.find((x) => x.id === "b")!;
+    expect(customerAction(b, [book({ parentId: "b", childId: "kb" })], { incomplete: true })).toBeNull();
+    expect(customerAction(d.families.find((x) => x.id === "a")!, [book({ parentId: "a", childId: "ka" }), book({ parentId: "a", childId: "ka2" })], { incomplete: true })).toBeNull();
+  });
+});
+
+describe("the plan link (review #837 finding 1)", () => {
+  const d = dash(rows({ parents: [parent("b", ago(20), "Daniel Okafor")], children: [child("kb", "b", "Theo")], cards: [card("b", ago(1), "kb")] }));
+  const b = d.families.find((x) => x.id === "b")!;
+  const delivered = (o: Partial<Book> = {}) => book({ parentId: "b", childId: "kb", stage: "delivered", cardSavedAt: ago(5), ...o });
+  const none: PlanEvidence = { cards: [{ id: "card-kb", childId: "kb", parentId: "b" }], starts: [], sentEmails: [], states: [] };
+
+  it("points to Plans and delivery only when Book 1 is delivered and no plan ever started, with no billing promise", () => {
+    const never = neverStartedChildren(planCandidates([delivered()]), none);
+    expect([...never]).toEqual(["kb"]);
+    expect(customerAction(b, [delivered()], { neverStarted: never })).toEqual({ kind: "check-plan" });
+    expect(CHECK_PLAN).toBe("Check the plan on Plans and delivery.");
+    expect(CHECK_PLAN).not.toMatch(/free|month|charge|pay|start/i);
+    expect(customerLine(b, [delivered()])).toBe("Card saved. Workbook delivered.");
+  });
+
+  it("gives no link after a prior start: a completed start, an old confirmation, or a stored running or ended plan", () => {
+    const candidates = planCandidates([delivered()]);
+    for (const ev of [
+      { ...none, starts: [{ cardSetupId: "card-kb", state: "started" }] },
+      { ...none, starts: [{ cardSetupId: "card-kb", state: "other" }] },
+      { ...none, sentEmails: ["kb"] },
+      { ...none, states: [{ childId: "kb", parentId: "b", kind: "ended" }] },
+      { ...none, states: [{ childId: "kb", parentId: "b", kind: "paused" }] },
+    ]) {
+      const never = neverStartedChildren(candidates, ev);
+      expect(never.size).toBe(0);
+      expect(customerAction(b, [delivered()], { neverStarted: never })).toBeNull();
+    }
+    // Production's current plan: not a candidate at all.
+    expect(planCandidates([delivered({ planStarted: true })])).toEqual([]);
+  });
+
+  it("counts a refused start or a stored not_started as never started, and an unknown record as not proven", () => {
+    const candidates = planCandidates([delivered()]);
+    expect(neverStartedChildren(candidates, { ...none, starts: [{ cardSetupId: "card-kb", state: "refused" }] }).has("kb")).toBe(true);
+    expect(neverStartedChildren(candidates, { ...none, states: [{ childId: "kb", parentId: "b", kind: "not_started" }] }).has("kb")).toBe(true);
+    // A stored row of another parent is unknown: no link.
+    expect(neverStartedChildren(candidates, { ...none, states: [{ childId: "kb", parentId: "x", kind: "not_started" }] }).has("kb")).toBe(false);
+    // A failed read: no link.
+    expect(customerAction(b, [delivered()], { neverStarted: null })).toBeNull();
+  });
+
+  it("gives no link for a later book, or before Book 1 is delivered", () => {
+    expect(planCandidates([delivered({ number: 2 })])).toEqual([]);
+    expect(customerAction(b, [delivered({ number: 2 })], { neverStarted: new Set(["kb"]) })).toBeNull();
+    expect(planCandidates([delivered({ stage: "shipped" })])).toEqual([]);
+    expect(planCandidates([delivered({ cardSavedAt: undefined })])).toEqual([]);
   });
 });
 
@@ -169,8 +224,17 @@ describe("signups", () => {
 
   it("shows the funnel as shares of those who signed up", () => {
     expect(signupsPanel(dash(base)).funnel.map((f) => [f.label, f.n, f.pct])).toEqual([
-      ["Signed up", 4, 100], ["Started the test", 3, 75], ["Report sent", 2, 50], ["Card saved", 1, 25],
+      ["Signed up", 4, 100], ["Started the test", 3, 75], ["Finished the test", 2, 50], ["Card saved", 1, 25],
     ]);
+  });
+
+  it("calls a completed test with no report sent \"Finished the test\" (review #837 finding 5)", () => {
+    // a and c completed their tests; no report exists for either.
+    const d = dash(base);
+    expect(d.funnel.find((f) => f.stage === "finished")?.inRange).toBe(2);
+    const step = signupsPanel(d).funnel.find((f) => f.stage === "finished")!;
+    expect(step).toMatchObject({ label: "Finished the test", n: 2 });
+    expect(signupsPanel(d).funnel.map((f) => f.label)).not.toContain("Report sent");
   });
 
   it("names who may need a nudge, from the dashboard's Needs you lists", () => {
@@ -204,14 +268,29 @@ describe("workbook production", () => {
     expect(productionPanel([book({ parentId: "t", childId: "1", stage: "none", test: true })], NOW).needYou).toBe(0);
   });
 
-  it("shows a real running book before a test one, and counts the others", () => {
+  it("shows a real running book before a test one, and counts only the other real ones (review #837 finding 4)", () => {
     const p = productionPanel([
       book({ parentId: "t", childId: "1", stage: "making", test: true, at: ago(0, 1) }),
       book({ parentId: "a", childId: "2", stage: "making", at: ago(0, 3) }),
       book({ parentId: "b", childId: "3", stage: "making", at: ago(0, 2) }),
     ], NOW);
     expect(p.running?.childId).toBe("3");
-    expect(p.otherRunning).toBe(2);
+    expect(p.otherRunning).toBe(1);
+    const one = productionPanel([book({ parentId: "t", childId: "1", stage: "making", test: true }), book({ parentId: "a", childId: "2", stage: "making" })], NOW);
+    expect([one.running?.childId, one.otherRunning]).toEqual(["2", 0]);
+  });
+
+  it("shows a test running book, tagged, only when no real one runs, and counts no other", () => {
+    const p = productionPanel([book({ parentId: "t", childId: "1", stage: "making", test: true }), book({ parentId: "u", childId: "2", stage: "making", test: true })], NOW);
+    expect(p.running?.test).toBe(true);
+    expect(p.otherRunning).toBe(0);
+  });
+
+  it("gives Production's note and no Prepare when its read stopped before every child", () => {
+    const books = [book({ parentId: "b", childId: "2", stage: "none" })];
+    expect(productionPanel(books, NOW, { incomplete: true })).toMatchObject({ offerPrepare: false, note: incompleteNote(1) });
+    expect(incompleteNote(1)).toBe("Some books could not be loaded. Showing the first 1.");
+    expect(productionPanel(books, NOW)).toMatchObject({ offerPrepare: true, note: null });
   });
 });
 
@@ -225,16 +304,23 @@ describe("marking", () => {
       item({ issue: "unreadable", child: "c2", childName: "Theo" }),
       item({ issue: "blurry", parent: "t", testFamily: true, since: ago(3) }),
       item({ issue: "blurry", parent: "u", since: ago(4) }),
-    ], 5, (p) => p === "u");
+    ], 3, (p) => p === "u");
     expect(m.count).toBe(3);
-    expect(m.more).toBe(false);
+    expect(m.sample).toBeNull();
     expect(m.oldest).toBe(ago(0, 5));
     expect(m.reasons).toEqual([{ text: waitReason("unreadable"), n: 2 }, { text: waitReason("blurry"), n: 1 }]);
     expect(m.books).toEqual([{ childId: "c1", label: "Mira · Book 1", n: 2 }, { childId: "c2", label: "Theo · Book 1", n: 1 }]);
   });
 
-  it("says when the read stopped at its limit, and words an unknown reason plainly", () => {
-    expect(markingPanel([item({})], 140, () => false).more).toBe(true);
+  it("shows the real total of 140 and labels the breakdown as of the oldest 100 (review #837 finding 6)", () => {
+    const items = Array.from({ length: 100 }, (_, i) => item({ child: `c${i % 4}`, issue: i % 2 ? "blurry" : null, since: ago(0, 100 - i) }));
+    const m = markingPanel(items, 140, () => false);
+    expect(m.count).toBe(140);
+    expect(m.sample).toBe(100);
+    expect(m.reasons.reduce((n, r) => n + r.n, 0)).toBe(100);
+  });
+
+  it("words an unknown reason plainly", () => {
     expect(waitReason(null)).toBe("Waiting for a person to mark it.");
     expect(waitReason("blurry")).toBe("The photo is blurry here.");
   });
