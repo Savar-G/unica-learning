@@ -48,7 +48,7 @@ export default async function MayaCallsPage({ searchParams }: PageProps<"/admin/
       <Tiles label={`Calls in the last ${WEEK_DAYS} days`} tiles={[
         { key: "calls", label: "Calls this week", value: `${week.calls}${more}`, sub: `Last ${WEEK_DAYS} days, real families` },
         { key: "minutes", label: "Call minutes", value: `${week.minutes}${more}`, sub: "Saved call time, last 7 days" },
-        { key: "flagged", label: "Flagged calls", value: week.flagged, sub: week.flagged ? "With a safety flag, last 7 days" : "No safety flag in 7 days", tone: week.flagged ? "bad" : null },
+        { key: "flagged", label: "Flagged calls", value: `${week.flagged}${more}`, sub: stats.capped ? "Counted from the newest calls only. Open the list to check every flag." : week.flagged ? "With a safety flag, last 7 days" : "No safety flag in 7 days", tone: week.flagged ? "bad" : null },
       ]} />
 
       <SectionHead id="mc-list" title="Every call" line={<>Safety calls come first, the most urgent first. Calls within each group are newest first. Test calls do not use the child&apos;s minutes.{!view.show && " Test calls are calls of test families, so they are hidden. Turn on Show test families, at the bottom of the menu, to see them."}</>} />

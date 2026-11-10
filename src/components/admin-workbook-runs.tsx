@@ -437,7 +437,7 @@ const ICON_WARN = <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy
 const many = (n: number, one: string, more: string) => `${n} ${n === 1 ? one : more}`;
 
 /** A draft page as a thumbnail: its image (or why there is none), its title and its check marks. */
-function DraftThumb({ page, detail }: { page: GeneratedPage; detail: NonNullable<RunDetail["draft"]> & { images: Record<string, string> } }) {
+function DraftThumb({ page, detail, href = `#page-${page.number}` }: { page: GeneratedPage; detail: NonNullable<RunDetail["draft"]> & { images: Record<string, string> }; href?: string }) {
   const image = detail.rendering?.pages.find((p) => p.number === page.number);
   const problems = detail.problems.filter((p) => p.page === page.number);
   const i = pageIssues(page, problems);
@@ -453,7 +453,7 @@ function DraftThumb({ page, detail }: { page: GeneratedPage; detail: NonNullable
   return <li className={`bk-thumb${i.bad ? " is-bad" : i.warn ? " is-warn" : ""}`}>
     {image ? <DraftPageImage page={page} image={image} url={detail.images[image.image.path]} />
       : <div className="adm-wb-missing" role="note"><b>{noLayout ? "No page layout" : "Not drawn"}</b></div>}
-    <a className="bk-thumb-cap" href={`#page-${page.number}`}>
+    <a className="bk-thumb-cap" href={href}>
       <b>Page {page.number}</b>
       <span>{[page.dayLabel, typeText(page.type)].filter(Boolean).join(" · ")}</span>
     </a>
@@ -550,7 +550,9 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { em
         <section className="bk-pages" aria-labelledby="bk-pages-h">
           <div className="bk-section-head"><h2 id="bk-pages-h">Pages</h2><span className="bk-count">{pages.length}</span>
             <p>{attention.length ? `${many(attention.length, "page needs", "pages need")} attention.` : "Every page passed its checks."} A page opens its question data below.</p></div>
-          <ul className="bk-thumbs">{pages.map((p) => <DraftThumb key={p.number} page={p} detail={{ ...draft, images: detail.images }} />)}</ul>
+          <ul className="bk-thumbs">{pages.map((p) => <DraftThumb key={p.number} page={p} detail={{ ...draft, images: detail.images }}
+            // With only the attention pages shown below, a passed page opens its section on the full run page.
+            href={shown.includes(p) ? undefined : `${adminWorkbookRunPath(run.id)}#page-${p.number}`} />)}</ul>
         </section>
         <WorkbookCommentReviewer detail={detail} history={history} />
         <Fold title="Question data and check details" hint={only ? `Only the ${attention.length} pages that need attention` : `Every page: ${many(questions.length, "question", "questions")} with answers, steps, skills and checks`}>

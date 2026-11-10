@@ -70,7 +70,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
       <SectionHead id="ap-mail-log" title={filter === "failed" ? "Failed emails" : info ? info.label : "All emails"} count={pl(d.real.emails.filter(match).length, "email", "emails")}
         line={info ? <>Subject: &ldquo;{info.subject}&rdquo;. Goes to: {info.to.toLowerCase()}. Sends when: {info.trigger.toLowerCase()}.</> : "Newest first. Open an email to see it the way the parent got it."} />
       {nav}
-      {rows.length === 0 ? <Empty>{filter === "failed" ? "No email failed. Every email reached the parent's mail server." : "No emails here."}</Empty> : (
+      {rows.length === 0 ? <Empty>{filter === "failed" ? "No failed emails are recorded." : "No emails here."}</Empty> : (
         <div className="adm-scroll" role="region" aria-label="Emails" tabIndex={0}>
           <table className="adm-table ap-mail-table">
             <thead><tr><th scope="col">Sent (Pacific)</th><th scope="col">Email</th><th scope="col">Family</th><th scope="col">Result</th></tr></thead>
