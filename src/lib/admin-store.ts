@@ -41,6 +41,7 @@ import { familyProvince, familyZone, type FamilyZone } from "@/lib/family-time";
 import { firstDelivery, type DeliveryReceipt } from "@/lib/workbook-delivery";
 import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
 import { notIn } from "@/lib/admin-test-families";
+import { buildBooks, STARTED_PLAN_KINDS, type ProductionInput } from "@/lib/admin-production";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -793,6 +794,13 @@ async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow
   });
 }
 
+const BOOK_COLUMNS = "id, parent_id, child_id, number, levels, status, pdf_path, profile_build, created_at, approved_at, printed_at, shipped_at";
+type BookRow = { id: string; parent_id: string; child_id: string; number: number; levels: number[]; status: WorkbookSummary["status"]; pdf_path: string | null; profile_build: string | null; created_at: string; approved_at: string | null; printed_at: string | null; shipped_at: string | null };
+const bookSummary = (w: BookRow): WorkbookSummary => ({
+  id: w.id, parentId: w.parent_id, childId: w.child_id, number: w.number, levels: w.levels, status: w.status, pdfPath: w.pdf_path,
+  profileBuild: w.profile_build, createdAt: w.created_at, approvedAt: w.approved_at, printedAt: w.printed_at, shippedAt: w.shipped_at,
+});
+
 /**
  * Everything in the Workbooks list: the newest runs, the stored workbooks, and their children. `hide`: the parent ids
  * left out (the test families, while "Show test families" is off).
@@ -800,7 +808,7 @@ async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow
 export async function listWorkbookArea(a: AdminSession, hide: readonly string[] = []): Promise<{ runs: Page<RunListRow>; workbooks: WorkbookSummary[]; children: Map<string, ChildRow>; deliveredIds: string[] }> {
   const out = notIn(hide);
   let runQuery = a.db.from("workbook_runs").select(RUN_COLUMNS);
-  let bookQuery = a.db.from("workbooks").select("id, parent_id, child_id, number, levels, status, pdf_path, profile_build, created_at, approved_at, printed_at, shipped_at");
+  let bookQuery = a.db.from("workbooks").select(BOOK_COLUMNS);
   if (out) {
     runQuery = runQuery.not("parent_id", "in", out);
     bookQuery = bookQuery.not("parent_id", "in", out);
@@ -810,13 +818,10 @@ export async function listWorkbookArea(a: AdminSession, hide: readonly string[] 
       .then((r) => must<Parameters<typeof runFromRow>[0][]>(r, "workbook runs")),
     bookQuery
       .order("created_at", { ascending: false }).range(0, LIST_MAX)
-      .then((r) => must<{ id: string; parent_id: string; child_id: string; number: number; levels: number[]; status: WorkbookSummary["status"]; pdf_path: string | null; profile_build: string | null; created_at: string; approved_at: string | null; printed_at: string | null; shipped_at: string | null }[]>(r, "workbooks")),
+      .then((r) => must<BookRow[]>(r, "workbooks")),
   ]);
   const cut = page(runs.map(runFromRow));
-  const workbooks: WorkbookSummary[] = books.slice(0, LIST_MAX).map((w) => ({
-    id: w.id, parentId: w.parent_id, childId: w.child_id, number: w.number, levels: w.levels, status: w.status, pdfPath: w.pdf_path,
-    profileBuild: w.profile_build, createdAt: w.created_at, approvedAt: w.approved_at, printedAt: w.printed_at, shippedAt: w.shipped_at,
-  }));
+  const workbooks: WorkbookSummary[] = books.slice(0, LIST_MAX).map(bookSummary);
   const [rows, children] = await Promise.all([
     runRows(a, cut.rows),
     childrenById(a, [...cut.rows.map((r) => r.childId), ...workbooks.map((w) => w.childId)]),
@@ -828,6 +833,83 @@ export async function listWorkbookArea(a: AdminSession, hide: readonly string[] 
     deliveredIds.push(...result.data.map((r) => r.workbook_id));
   }
   return { runs: { rows, more: cut.more || books.length > LIST_MAX }, workbooks, children: index(children), deliveredIds };
+}
+
+/** What the Production stages are made from (src/lib/admin-production.ts): light reads only, no draft content. */
+export interface ProductionBase {
+  runs: WorkbookRun[];
+  workbooks: WorkbookSummary[];
+  cards: { childId: string; parentId: string; savedAt: string }[];
+  plans: { childId: string; parentId: string; kind: string }[];
+  /** A read stopped at LIST_MAX rows. */
+  more: boolean;
+}
+
+/**
+ * The Production stages' inputs: the newest runs and stored workbooks, the saved cards and the started plans. `hide`:
+ * the parent ids left out. The page and the sidebar's Production badge read the same rows, so they agree.
+ */
+export async function readProductionBase(a: AdminSession, hide: readonly string[] = []): Promise<ProductionBase> {
+  const out = notIn(hide);
+  let runQuery = a.db.from("workbook_runs").select(RUN_COLUMNS);
+  let bookQuery = a.db.from("workbooks").select(BOOK_COLUMNS);
+  let cardQuery = a.db.rpc("admin_card_setups").select("child_id, parent_id, card_saved_at").not("card_saved_at", "is", null);
+  let planQuery = a.db.from("child_plan_states").select("child_id, parent_id, kind").in("kind", [...STARTED_PLAN_KINDS]);
+  if (out) {
+    runQuery = runQuery.not("parent_id", "in", out);
+    bookQuery = bookQuery.not("parent_id", "in", out);
+    cardQuery = cardQuery.not("parent_id", "in", out);
+    planQuery = planQuery.not("parent_id", "in", out);
+  }
+  const [runs, books, cards, plans] = await Promise.all([
+    runQuery.order("created_at", { ascending: false }).range(0, LIST_MAX).then((r) => must<Parameters<typeof runFromRow>[0][]>(r, "workbook runs")),
+    bookQuery.order("created_at", { ascending: false }).range(0, LIST_MAX).then((r) => must<BookRow[]>(r, "workbooks")),
+    cardQuery.order("card_saved_at", { ascending: false }).range(0, LIST_MAX).then((r) => must<{ child_id: string; parent_id: string; card_saved_at: string | null }[]>(r, "saved cards")),
+    planQuery.order("child_id").range(0, LIST_MAX).then((r) => must<{ child_id: string; parent_id: string; kind: string }[]>(r, "plan states")),
+  ]);
+  return {
+    runs: runs.slice(0, LIST_MAX).map(runFromRow),
+    workbooks: books.slice(0, LIST_MAX).map(bookSummary),
+    cards: cards.slice(0, LIST_MAX).flatMap((c) => (c.card_saved_at ? [{ childId: c.child_id, parentId: c.parent_id, savedAt: c.card_saved_at }] : [])),
+    plans: plans.slice(0, LIST_MAX).map((p) => ({ childId: p.child_id, parentId: p.parent_id, kind: p.kind })),
+    more: [runs, books, cards, plans].some((rows) => rows.length > LIST_MAX),
+  };
+}
+
+/** When each of these workbooks was delivered, for those with a delivery receipt. */
+async function deliveryTimes(a: AdminSession, ids: readonly string[]): Promise<{ workbook_id: string; delivered_at: string }[]> {
+  const out: { workbook_id: string; delivered_at: string }[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    out.push(...must<{ workbook_id: string; delivered_at: string }[]>(
+      await a.db.from("workbook_delivery_receipts").select("workbook_id, delivered_at").in("workbook_id", ids.slice(i, i + CHUNK)), "delivery receipts"));
+  }
+  return out;
+}
+
+/** The Production page's data: the stages' inputs, the check results and progress of each current run, names and deliveries. */
+export async function listProduction(a: AdminSession, hide: readonly string[] = [], now = new Date()): Promise<Omit<ProductionInput, "tests"> & { more: boolean }> {
+  const base = await readProductionBase(a, hide);
+  // Only the current runs (being made, or a draft waiting) need their draft's checks and saved work: a light page to refresh.
+  const light = buildBooks({ ...base, runs: base.runs.map((run) => ({ run })), deliveries: [], tests: { show: true, isTest: () => false } }, now);
+  const current = new Set(light.flatMap((b) => (b.run ? [b.run.run.id] : [])));
+  const childIds = new Set(light.map((b) => b.childId));
+  const parentIds = new Set(light.map((b) => b.parentId));
+  const shipped = base.workbooks.filter((w) => w.status === "shipped").map((w) => w.id);
+  const [rows, children, parents, receipts] = await Promise.all([
+    runRows(a, base.runs.filter((r) => current.has(r.id))),
+    childrenById(a, childIds),
+    parentsById(a, parentIds),
+    deliveryTimes(a, shipped),
+  ]);
+  const rich = new Map(rows.map((r) => [r.run.id, r]));
+  return {
+    runs: base.runs.map((run) => rich.get(run.id) ?? { run }),
+    workbooks: base.workbooks, cards: base.cards, plans: base.plans,
+    deliveries: receipts.map((r) => ({ workbookId: r.workbook_id, deliveredAt: r.delivered_at })),
+    children: children.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name })),
+    parents: parents.map((p) => ({ id: p.id, name: p.name })),
+    more: base.more,
+  };
 }
 
 /** A child's runs, newest first, with their check results. */
