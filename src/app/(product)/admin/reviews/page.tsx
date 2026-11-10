@@ -14,7 +14,7 @@ export default async function ReviewsPage({ searchParams }: PageProps<"/admin/re
   const query = await searchParams;
   const filters = parseFilters(query);
   const offset = listOffset(query, LIST_MAX);
-  const view = await loadTestFamilies(admin, query);
+  const view = await loadTestFamilies(admin);
   const { rows, more } = await listReviews(admin, { lowOnly: filters.lowAi }, offset, view.hidden);
   return <AdminFrame email={admin.email} title="AI reviews" lead="How the AI marked shown work, and how sure it was." testNote={view.show}>
     <FilterForm action="/admin/reviews" filters={filters} fields={["lowAi"]} />

@@ -440,10 +440,15 @@ export interface Dashboard {
   now: string;
   range: RangeKey;
   days: string[];
-  /** Most recent activity first. */
+  /** The listed families (with the test families while "Show test families" is on), most recent activity first. */
   families: Family[];
   activity: Activity[];
   emails: EmailEvent[];
+  /**
+   * The same three lists for the real families only. Every count a page shows (tabs, pills, totals, charts) is taken
+   * from these, never from the listed ones above: test families are listed, never counted (D-313).
+   */
+  real: { families: Family[]; activity: Activity[]; emails: EmailEvent[] };
   kpis: Kpi[];
   series: DayCounts[];
   /** Families that reached each funnel stage: ever, and among those who signed up in the range. */
@@ -455,8 +460,8 @@ export interface Dashboard {
   stripeMode: "live" | "test" | null;
   /** Saved cards that only Stripe knew about (see confirmCardsInStripe in admin-store). */
   cardsFoundInStripe: number;
-  /** Team and test families: how many there are, and whether they are listed (never counted). */
-  tests: { count: number; shown: boolean };
+  /** Team and test families: how many there are, whether they are listed (never counted), and their parent ids. */
+  tests: { count: number; shown: boolean; ids: string[] };
 }
 
 type Pick = (f: Family) => (string | null | undefined)[];
@@ -557,7 +562,8 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
 
   return {
     now: now.toISOString(), range, days, families, activity: activities(families), emails, kpis, series, funnel, stageCounts, emailSummary, needs,
-    stripeNote: rows.stripeNote, stripeMode: rows.stripeMode, cardsFoundInStripe: rows.cards.filter((c) => c.saved_in_stripe_only && counted.some((f) => f.id === c.parent_id)).length, tests: { count: everyone.filter((f) => f.test).length, shown: withTests },
+    real: { families: counted, activity: activities(counted), emails: countedEmails },
+    stripeNote: rows.stripeNote, stripeMode: rows.stripeMode, cardsFoundInStripe: rows.cards.filter((c) => c.saved_in_stripe_only && counted.some((f) => f.id === c.parent_id)).length, tests: { count: everyone.filter((f) => f.test).length, shown: withTests, ids: everyone.filter((f) => f.test).map((f) => f.id) },
   };
 }
 

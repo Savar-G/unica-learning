@@ -12,6 +12,8 @@ import { ProgressCell } from "@/components/admin-progress";
 /** Families per page of the table; the stage pills and search narrow it. */
 const ROWS_MAX = 200;
 
+// Every number here counts the real families only (d.real, and the model's own counts); the families table and the
+// latest emails can also list the test families, tagged.
 export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; progress: ProgressSnapshot }) {
   const stage = ALL_STAGES.find((s) => s === ctx.query.stage) ?? null;
   const q = (ctx.query.q ?? "").trim().toLowerCase();
@@ -75,7 +77,7 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
         </form>
       }>
         <nav className="dash-pills" aria-label="Stage">
-          <Link href={href(ctx, { stage: null })} aria-current={!stage ? "true" : undefined}>All <span>{d.families.length}</span></Link>
+          <Link href={href(ctx, { stage: null })} aria-current={!stage ? "true" : undefined}>All <span>{d.real.families.length}</span></Link>
           {ALL_STAGES.map((s) => (
             <Link key={s} href={href(ctx, { stage: s })} aria-current={stage === s ? "true" : undefined}>{STAGE_SHORT[s]} <span>{d.stageCounts[s]}</span></Link>
           ))}
@@ -105,10 +107,10 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
           </table>
           {rows.length === 0 && <p className="dash-empty">No families match.</p>}
         </div>
-        {rows.length > ROWS_MAX && <p className="dash-foot">Showing the {ROWS_MAX} most recently active of {rows.length}. Use a stage or the search to narrow the list.</p>}
+        {rows.length > ROWS_MAX && <p className="dash-foot">Showing the {ROWS_MAX} most recently active only. Use a stage or the search to narrow the list.</p>}
       </Card>
 
-      <Card title="Emails" aside={<span className="dash-muted">{d.emails.filter((e) => e.status === "sent" && !isUnsubscribe(e.kind)).length} sent at any time</span>}>
+      <Card title="Emails" aside={<span className="dash-muted">{d.real.emails.filter((e) => e.status === "sent" && !isUnsubscribe(e.kind)).length} sent at any time</span>}>
         <div className="dash-scroll">
           <table className="dash-table">
             <thead><tr><th scope="col">Email</th><th scope="col">Subject</th><th scope="col">Goes to</th><th scope="col">Sends when</th><th scope="col" className="dash-num">Sent, {d.range === "all" ? "all time" : RANGES[d.range].label.toLowerCase()}</th><th scope="col" className="dash-num">Sent, all time</th><th scope="col" className="dash-num">Failed</th><th scope="col" className="dash-num">Clicked</th><th scope="col">Last sent</th></tr></thead>
@@ -131,7 +133,7 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
             <li key={e.id}>
               <span className={`dash-dot is-${emailDot(e)}`} />
               <div>
-                <b>{EMAIL_LABEL[e.kind]}</b> {e.kind === "alert" ? "about" : isUnsubscribe(e.kind) ? "by" : "to"} <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link>
+                <b>{EMAIL_LABEL[e.kind]}</b> {e.kind === "alert" ? "about" : isUnsubscribe(e.kind) ? "by" : "to"} <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link><TestMark test={d.tests.ids.includes(e.familyId)} />
                 <span className="dash-sub">{e.status === "failed" ? `Failed: ${e.error ?? "unknown error"}` : e.status === "pending" ? DELIVERY_WORDS[e.state] : e.kind === "unsubscribe" ? "Reminders turned off" : e.kind === "maya_unsubscribe" ? "Maya emails turned off" : e.kind === "monthly_summary_unsubscribe" ? "Monthly summary emails turned off" : deliveryLine(e)?.bad ? deliveryLine(e)!.text : e.subject} · {at(e.at)}</span>
               </div>
             </li>

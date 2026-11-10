@@ -14,7 +14,7 @@ export const metadata = pageMetadata({ path: `${ADMIN_PATH}/emails`, title: "Adm
 // (loadDashboard runs requireAdmin). Test families count here too, so an admin can open the emails of their own tests.
 export default async function EmailPage({ params, searchParams }: PageProps<"/admin/emails/[id]">) {
   const id = decodeURIComponent((await params).id);
-  const { who, d, progress, query, demo } = await loadDashboard({ ...(await searchParams), tests: "1" });
+  const { who, d, progress, query, demo } = await loadDashboard(await searchParams, { withTests: true });
   const e = d.emails.find((x) => x.id === id);
   if (!e || e.kind === "unsubscribe" || e.kind === "maya_unsubscribe") notFound();
   const copy = demo ? demoEmailCopy(e, d.families.find((f) => f.id === e.familyId)) : await getEmailCopy(await requireAdmin(), id);

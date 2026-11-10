@@ -223,7 +223,8 @@ describe("team and test families", () => {
     expect(d.families.map((f) => f.id)).toEqual(["a"]);
     expect(d.kpis.find((k) => k.key === "finished")?.value).toBe(1);
     expect(d.activity.every((a) => a.familyId === "a")).toBe(true);
-    expect(d.tests).toEqual({ count: 2, shown: false });
+    expect({ ...d.tests, ids: [...d.tests.ids].sort() }).toEqual({ count: 2, shown: false, ids: ["t", "team"] });
+    expect(d.real.families.map((f) => f.id)).toEqual(["a"]);
     expect(d.days).toHaveLength(14);
   });
 
@@ -238,7 +239,11 @@ describe("team and test families", () => {
     expect(d.stageCounts).toEqual(real.stageCounts);
     expect(d.days).toEqual(real.days);
     expect(d.days[0]).not.toBe(dayKey(ago(40)));
-    expect(d.tests).toEqual({ count: 2, shown: true });
+    expect({ ...d.tests, ids: [...d.tests.ids].sort() }).toEqual({ count: 2, shown: true, ids: ["t", "team"] });
+    // the lists hold the test families; the real lists that every count reads do not
+    expect(d.real.families.map((f) => f.id)).toEqual(real.families.map((f) => f.id));
+    expect(d.real.emails).toEqual(real.emails);
+    expect(d.real.activity).toEqual(real.activity);
   });
 });
 

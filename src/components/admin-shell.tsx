@@ -97,7 +97,13 @@ function TestsSwitch({ on }: { on: boolean }) {
           const next = e.currentTarget.checked;
           setChecked(next);
           document.cookie = testsCookie(next, location.protocol === "https:");
-          start(() => router.refresh());
+          // Only the cookie decides now. An old ?tests=1 in the address is dropped, so the address never looks like it
+          // says otherwise; a replace renders the page again, as a refresh does.
+          const url = new URL(location.href);
+          if (url.searchParams.has("tests")) {
+            url.searchParams.delete("tests");
+            start(() => router.replace(`${url.pathname}${url.search}${url.hash}`));
+          } else start(() => router.refresh());
         }}
       />
       <span className="adm-label">Show test families</span>

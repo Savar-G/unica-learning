@@ -29,7 +29,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   const demo = query.demo === "1" && process.env.NODE_ENV === "development";
   const admin = demo ? null : await requireAdmin();
   // The "Show test families" switch (D-313) decides whether test families count here.
-  const filters = { ...parseTemplateFilters(query), withTests: await showTestFamilies(query) };
+  const filters = { ...parseTemplateFilters(query), withTests: await showTestFamilies() };
   const stats = admin ? await templateStats(admin, filters, id) : countAnswers(demoAnswers(), filters).filter((s) => s.template_id === id);
   const bands = Object.entries(BANKS).filter(([, bank]) => bank.some((t) => t.id === id)).map(([band]) => band);
   const template = Object.values(BANKS).flat().find((t) => t.id === id);

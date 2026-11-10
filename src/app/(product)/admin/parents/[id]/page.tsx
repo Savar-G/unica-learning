@@ -31,8 +31,6 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
   const p = family.parent;
   const f = buildFamilies(rows).find((x) => x.id === p.id);
   const now = new Date().toISOString();
-  // A test family opens on Home and in the activity log only with ?tests=1, which shows test families there.
-  const tests = test.marked || test.admin ? "&tests=1" : "";
   return <AdminFrame email={admin.email} title={p.name}>
     <RecordFacts facts={[
       ["Email", <a key="email" href={`mailto:${p.email}`}>{p.email}</a>], ["Postal code", p.postal ?? "-"], ["Joined (Pacific)", when(p.created_at)],
@@ -44,7 +42,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
       ["Next email", f?.nextReminders.length ? f.nextReminders.map((r) => nextReminderText(r, now)).join("; ") : "None planned"],
       ["Source", Object.entries(p.source).map(([k, v]) => `${k}: ${v}`).join(", ") || "-"],
     ]} />
-    <p className="adm-row"><Link href={`${ADMIN_PATH}?family=${p.id}${tests}`}>Open on Home</Link><Link href={`${ADMIN_PATH}/activity?family=${p.id}${tests}`}>Open in the activity log</Link></p>
+    <p className="adm-row"><Link href={`${ADMIN_PATH}?family=${p.id}`}>Open on Home</Link><Link href={`${ADMIN_PATH}/activity?family=${p.id}`}>Open in the activity log</Link></p>
     <TestAccount parentId={p.id} marked={test.marked} admin={test.admin} />
     <section className="adm-card" aria-labelledby="maya-chat">
       <h2 id="maya-chat">Maya chat</h2>

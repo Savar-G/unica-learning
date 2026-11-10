@@ -13,7 +13,7 @@ export default async function ExportPage({ searchParams }: PageProps<"/admin/exp
   const query = await searchParams;
   const demo = query.demo === "1" && process.env.NODE_ENV === "development";
   const email = demo ? "demo data" : (await requireAdmin()).email;
-  const withTests = await showTestFamilies(query);
+  const withTests = await showTestFamilies();
   return (
     <AdminFrame email={email} title="Export" lead="Download the test data as CSV or JSON." testNote={withTests && "Test families are showing, and the files below include them."}>
       <ExportView withTests={withTests} demo={demo} />

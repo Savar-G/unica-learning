@@ -17,7 +17,7 @@ export default async function MayaCallsPage({ searchParams }: PageProps<"/admin/
   const query = await searchParams;
   const { cursor, workbook, page, question } = query;
   const detail = typeof workbook === "string" ? await getWorkbook(admin, workbook) : null;
-  const view = await loadTestFamilies(admin, query);
+  const view = await loadTestFamilies(admin);
   const [children, calls] = await Promise.all([demoChildren(admin), listCalls(admin, 50, typeof cursor === "string" ? cursor : undefined, view.hidden)]);
   return (
     <AdminFrame email={admin.email} title="Calls" lead="Maya's calls with children, and test calls." testNote={view.show}>

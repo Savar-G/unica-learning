@@ -15,7 +15,7 @@ export default async function WorkbooksPage({ searchParams }: PageProps<"/admin/
   const query = await searchParams;
   const status = query.status;
   const filter: ListFilter = typeof status === "string" && (LIST_FILTERS as readonly string[]).includes(status) ? (status as ListFilter) : "all";
-  const view = await loadTestFamilies(admin, query);
+  const view = await loadTestFamilies(admin);
   const [{ runs, workbooks, children, deliveredIds }, worker] = await Promise.all([listWorkbookArea(admin, view.hidden), getWorkbookWorker(admin)]);
   return <AdminWorkbookList email={admin.email} runs={runs.rows} more={runs.more} workbooks={workbooks} deliveredIds={deliveredIds} childNames={children} filter={filter} now={new Date()} worker={worker}
     tests={{ show: view.show, isTest: view.isTest }} />;

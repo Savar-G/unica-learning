@@ -67,7 +67,8 @@ function parseView(raw: string | undefined): View {
 export function ActivityView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
   const raw = ctx.query.view ?? "activity";
   const view = parseView(raw);
-  const failed = d.emails.filter((e) => emailFailed(e) && e.kind !== "alert").length;
+  // Every count here is of the real families (d.real); the lists can also hold the test families, tagged.
+  const failed = d.real.emails.filter((e) => emailFailed(e) && e.kind !== "alert").length;
   const needs = new Set(d.needs.flatMap((n) => n.families.map((f) => f.id))).size;
   const rail = (key: string, label: string, n: number | null, tone?: "warn" | "bad") => (
     <Link className="dash-rail-link" href={href(ctx, { view: key === "activity" ? null : key, group: null })} aria-current={key === raw ? "true" : undefined}>
@@ -81,11 +82,11 @@ export function ActivityView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
         {rail("activity", "Activity", null)}
         {rail("needs", "Needs you", needs, "warn")}
         <p className="dash-kicker">Families by stage</p>
-        {rail("families", "All families", d.families.length)}
+        {rail("families", "All families", d.real.families.length)}
         {ALL_STAGES.map((s) => <Fragment key={s}>{rail(`stage:${s}`, STAGE_SHORT[s], d.stageCounts[s])}</Fragment>)}
         <p className="dash-kicker">Emails</p>
-        {rail("emails", "All emails", d.emails.length)}
-        {EMAIL_KINDS.map((k) => <Fragment key={k.kind}>{rail(`emails:${k.kind}`, k.label, d.emails.filter((e) => e.kind === k.kind).length)}</Fragment>)}
+        {rail("emails", "All emails", d.real.emails.length)}
+        {EMAIL_KINDS.map((k) => <Fragment key={k.kind}>{rail(`emails:${k.kind}`, k.label, d.real.emails.filter((e) => e.kind === k.kind).length)}</Fragment>)}
         {rail("emails:failed", "Failed", failed, "bad")}
       </nav>
 
@@ -110,11 +111,11 @@ function Today({ d }: { d: Dashboard }) {
   const count = (day: string) => {
     const on = (iso: string | null | undefined) => !!iso && dayKey(iso) === day;
     return {
-      accounts: d.families.filter((f) => on(f.createdAt)).length,
-      started: d.families.reduce((n, f) => n + f.tests.filter((t) => on(t.startedAt)).length, 0),
-      finished: d.families.reduce((n, f) => n + f.tests.filter((t) => on(t.completedAt)).length, 0),
-      cards: d.families.filter((f) => on(f.reached.card_saved)).length,
-      emails: d.emails.filter((e) => e.status === "sent" && e.kind !== "alert" && !isUnsubscribe(e.kind) && on(e.at)).length,
+      accounts: d.real.families.filter((f) => on(f.createdAt)).length,
+      started: d.real.families.reduce((n, f) => n + f.tests.filter((t) => on(t.startedAt)).length, 0),
+      finished: d.real.families.reduce((n, f) => n + f.tests.filter((t) => on(t.completedAt)).length, 0),
+      cards: d.real.families.filter((f) => on(f.reached.card_saved)).length,
+      emails: d.real.emails.filter((e) => e.status === "sent" && e.kind !== "alert" && !isUnsubscribe(e.kind) && on(e.at)).length,
     };
   };
   const t = count(today);
@@ -136,7 +137,7 @@ function Today({ d }: { d: Dashboard }) {
       <DailyBars series={last14.map((day) => ({ day, ...count(day) }))} keys={["accounts", "finished"]} height={170} width={300} />
       <h2>All time</h2>
       <dl className="dash-vs is-plain">
-        <div><dt>Families</dt><dd><b>{d.families.length}</b></dd></div>
+        <div><dt>Families</dt><dd><b>{d.real.families.length}</b></dd></div>
         <div><dt>Finished a test</dt><dd><b>{ever("finished")}</b></dd></div>
         <div><dt>Card saved</dt><dd><b>{ever("card_saved")}</b></dd></div>
         <div><dt>Paying</dt><dd><b>{ever("paying")}</b></dd></div>
@@ -148,8 +149,13 @@ function Today({ d }: { d: Dashboard }) {
 function ActivityLog({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
   const group = (Object.keys(GROUPS) as Group[]).find((g) => g === ctx.query.group) ?? "all";
   const days = new Set(d.days);
-  const inRange = d.activity.filter((a) => shown(a) && (d.range === "all" || days.has(dayKey(a.at))));
+  const inSpan = (a: Activity) => shown(a) && (d.range === "all" || days.has(dayKey(a.at)));
+  const inRange = d.activity.filter(inSpan);
   const items = inRange.filter((a) => inGroup(a, group));
+  // the counts: the real families' events only
+  const realInRange = d.real.activity.filter(inSpan);
+  const real = new Set(d.real.families.map((f) => f.id));
+  const realCount = (list: Activity[]) => list.filter((a) => real.has(a.familyId)).length;
   const byDay = new Map<string, Activity[]>();
   for (const a of items.slice(0, LOG_MAX)) byDay.set(dayKey(a.at), [...(byDay.get(dayKey(a.at)) ?? []), a]);
   const today = dayKey(new Date(d.now));
@@ -158,13 +164,13 @@ function ActivityLog({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
       <div className="dash-top"><h1>Activity</h1><RangeTabs ctx={ctx} range={d.range} /></div>
       <nav className="dash-pills" aria-label="Kind of event">
         {(Object.keys(GROUPS) as Group[]).map((g) => (
-          <Link key={g} href={href(ctx, { group: g === "all" ? null : g })} aria-current={g === group ? "true" : undefined}>{GROUPS[g]} <span>{inRange.filter((a) => inGroup(a, g)).length}</span></Link>
+          <Link key={g} href={href(ctx, { group: g === "all" ? null : g })} aria-current={g === group ? "true" : undefined}>{GROUPS[g]} <span>{realInRange.filter((a) => inGroup(a, g)).length}</span></Link>
         ))}
       </nav>
       {byDay.size === 0 && <p className="dash-empty">Nothing happened {d.range === "today" ? "today" : `in the last ${RANGES[d.range].label.toLowerCase()}`}.</p>}
       {[...byDay].map(([day, list]) => (
         <section key={day} className="dash-day">
-          <h2>{day === today ? "Today" : day === shiftDay(today, -1) ? "Yesterday" : dayLabel(day)} <span className="dash-muted">{list.length} event{list.length === 1 ? "" : "s"}</span></h2>
+          <h2>{day === today ? "Today" : day === shiftDay(today, -1) ? "Yesterday" : dayLabel(day)} <span className="dash-muted">{realCount(list)} event{realCount(list) === 1 ? "" : "s"}</span></h2>
           <ul className="dash-feed">
             {list.map((a, i) => (
               <li key={`${a.kind}-${a.familyId}-${a.at}-${i}`} className={`is-${a.kind}${a.email?.status === "failed" ? " is-failed" : ""}`}>
@@ -180,7 +186,7 @@ function ActivityLog({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
           </ul>
         </section>
       ))}
-      {items.length > LOG_MAX && <p className="dash-foot">Showing the newest {LOG_MAX} of {items.length} events. Choose a shorter range to see the rest.</p>}
+      {items.length > LOG_MAX && <p className="dash-foot">Showing only the newest events. Choose a shorter range to see the rest.</p>}
     </>
   );
 }
@@ -210,7 +216,7 @@ function StageList({ d, ctx, stage }: { d: Dashboard; ctx: Ctx; stage: Stage | n
   const families = stage ? d.families.filter((f) => f.stage === stage).sort((a, b) => a.stageAt.localeCompare(b.stageAt)) : d.families;
   return (
     <>
-      <div className="dash-top"><h1>{stage ? STAGE_TEXT[stage] : "All families"} <span className="dash-muted">{families.length}</span></h1></div>
+      <div className="dash-top"><h1>{stage ? STAGE_TEXT[stage] : "All families"} <span className="dash-muted">{families.filter((f) => !f.test).length}</span></h1></div>
       <p className="dash-lead">{stage ? `${STAGE_ACTION[stage]} Longest waiting first.` : "Most recently active first."}</p>
       <FamilyRows d={d} ctx={ctx} families={families} />
     </>
@@ -241,13 +247,14 @@ function Delivered({ e }: { e: EmailEvent }) {
 
 /** Every logged email, newest first; also the Emails tab. `nav`: shown under the title. */
 export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filter: EmailKind | "failed" | null; nav?: ReactNode }) {
-  const rows = d.emails.filter((e) => !filter || (filter === "failed" ? emailFailed(e) : e.kind === filter));
-  // listed only while "Show test families" is on: tag them
-  const testIds = new Set(d.families.filter((f) => f.test).map((f) => f.id));
+  const match = (e: EmailEvent) => !filter || (filter === "failed" ? emailFailed(e) : e.kind === filter);
+  const rows = d.emails.filter(match);
+  // listed only while "Show test families" is on: tag them, and count only the real families' emails
+  const testIds = new Set(d.tests.ids);
   const info = filter && filter !== "failed" ? EMAIL_KINDS.find((k) => k.kind === filter) : null;
   return (
     <>
-      <div className="dash-top"><h1>{filter === "failed" ? "Failed emails" : info ? info.label : "All emails"} <span className="dash-muted">{rows.length}</span></h1></div>
+      <div className="dash-top"><h1>{filter === "failed" ? "Failed emails" : info ? info.label : "All emails"} <span className="dash-muted">{d.real.emails.filter(match).length}</span></h1></div>
       {nav}
       {info && <p className="dash-lead">Subject: &ldquo;{info.subject}&rdquo;. Goes to: {info.to.toLowerCase()}. Sends when: {info.trigger.toLowerCase()}.</p>}
       <div className="dash-scroll dash-card">
@@ -268,7 +275,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
         </table>
         {rows.length === 0 && <p className="dash-empty">No emails here.</p>}
       </div>
-      {rows.length > LOG_MAX && <p className="dash-foot">Showing the newest {LOG_MAX} of {rows.length}.</p>}
+      {rows.length > LOG_MAX && <p className="dash-foot">Showing the newest {LOG_MAX} emails only.</p>}
       <p className="dash-foot">Not logged by the site: sign-in codes, sign-in links and password emails.</p>
     </>
   );

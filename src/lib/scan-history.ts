@@ -50,8 +50,13 @@ export function historyCosts(records: readonly HistoryRecord[], pages: readonly 
 }
 export interface HistoryStore { read(filter: HistoryFilter): Promise<{ pages: HistoryRecord[]; budget: HistoryBudget | null } | null> }
 /** Parent and Admin use this exact reader. Keyset cursors advance even through nonmatching status pages. */
-/** `skipChildren`: children whose pages are left out of the list and of its costs (the admin's test families). */
-export async function readScanHistory(store: HistoryStore, filter: HistoryFilter, now: number, limit = 25, skipChildren: ReadonlySet<string> = new Set()) {
+/**
+ * `skipChildren`: children whose pages are left out of the list and of its counts and costs (the admin's test families,
+ * while "Show test families" is off). `uncounted`: children whose pages stay on the list but out of its counts and costs
+ * (the admin's test families while the switch is on: listed, never counted).
+ */
+export async function readScanHistory(store: HistoryStore, filter: HistoryFilter, now: number, limit = 25, skipChildren: ReadonlySet<string> = new Set(),
+  uncounted: ReadonlySet<string> = new Set()) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("history_limit");
   const records: HistoryRecord[] = [], pages: HistoryPage[] = [];
   let after = filter.after, budget: HistoryBudget | null = null, more = false;
@@ -73,6 +78,7 @@ export async function readScanHistory(store: HistoryStore, filter: HistoryFilter
     if (more) break;
   }
   // Do not consume the first matching row of the next page.
-  return { pages, counts: Object.fromEntries(Object.keys(HISTORY_LABELS).map((s) => [s, pages.filter((p) => p.status === s).length])),
-    costs: historyCosts(records, pages), budget, after: more ? pages.at(-1)!.id : null };
+  const countedRecords = records.filter((r) => !uncounted.has(r.childId)), countedPages = pages.filter((p) => !uncounted.has(p.childId));
+  return { pages, counted: countedPages.length, counts: Object.fromEntries(Object.keys(HISTORY_LABELS).map((s) => [s, countedPages.filter((p) => p.status === s).length])),
+    costs: historyCosts(countedRecords, countedPages), budget, after: more ? pages.at(-1)!.id : null };
 }

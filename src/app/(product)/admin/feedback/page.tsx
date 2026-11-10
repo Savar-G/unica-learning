@@ -15,7 +15,7 @@ export default async function FeedbackAdminPage({ searchParams }: PageProps<"/ad
   const product = feedbackProduct(query.product);
   const rawPage = typeof query.page === "string" && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
   const page = Math.max(1, rawPage);
-  const view = await loadTestFamilies(admin, query);
+  const view = await loadTestFamilies(admin);
   const { rows, more } = await listFeedback(admin.db, product, page, view.hidden);
   return <AdminFrame email={admin.email} title="Feedback" lead="What parents wrote to us." testNote={view.show}>
     <AdminFeedbackList rows={rows} product={product} page={page} more={more} isTest={view.show ? view.isTest : undefined} />

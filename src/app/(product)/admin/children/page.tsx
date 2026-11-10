@@ -16,7 +16,7 @@ export default async function ChildrenPage({ searchParams }: PageProps<"/admin/c
   const query = await searchParams;
   const filters = parseFilters(query);
   const offset = listOffset(query, LIST_MAX);
-  const view = await loadTestFamilies(admin, query);
+  const view = await loadTestFamilies(admin);
   const { rows, more } = await listChildren(admin, filters, offset, view.hidden);
   return <AdminFrame email={admin.email} title="Children" lead="Every child, newest first, with their tests." testNote={view.show}>
     <FilterForm action="/admin/children" filters={filters} fields={["grade", "province"]} />

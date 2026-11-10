@@ -17,10 +17,11 @@ export default async function EmailsPage({ searchParams }: PageProps<"/admin/ema
   const { who, d, progress, query, demo } = await loadDashboard(await searchParams);
   const ctx = { path: PATH, query, demo };
   const filter: EmailKind | "failed" | null = query.kind === "failed" ? "failed" : (EMAIL_KINDS.find((k) => k.kind === query.kind)?.kind ?? null);
-  const count = (k: EmailKind | "failed") => d.emails.filter((e) => (k === "failed" ? emailFailed(e) : e.kind === k)).length;
+  // The counts: the real families' emails only (the list can also show the test families' emails, tagged).
+  const count = (k: EmailKind | "failed") => d.real.emails.filter((e) => (k === "failed" ? emailFailed(e) : e.kind === k)).length;
   const nav = (
     <nav className="dash-pills" aria-label="Kind of email">
-      <Link href={href(ctx, { kind: null })} aria-current={!filter ? "true" : undefined}>All <span>{d.emails.length}</span></Link>
+      <Link href={href(ctx, { kind: null })} aria-current={!filter ? "true" : undefined}>All <span>{d.real.emails.length}</span></Link>
       {EMAIL_KINDS.map((k) => <Link key={k.kind} href={href(ctx, { kind: k.kind })} aria-current={filter === k.kind ? "true" : undefined}>{k.label} <span>{count(k.kind)}</span></Link>)}
       <Link href={href(ctx, { kind: "failed" })} aria-current={filter === "failed" ? "true" : undefined}>Failed <span>{count("failed")}</span></Link>
     </nav>

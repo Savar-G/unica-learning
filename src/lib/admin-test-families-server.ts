@@ -7,19 +7,17 @@ import { ADMIN_TESTS_COOKIE, testFamilies, testsShown, type TestFamilies } from 
 // The server side of the "Show test families" switch (D-313): the switch's cookie, and the test family ids with the
 // admin's own session.
 
-type Query = Record<string, string | string[] | undefined>;
-
-/** Whether the admin turned the switch on (or the address carries ?tests=1). */
-export async function showTestFamilies(query?: Query): Promise<boolean> {
-  return testsShown((await cookies()).get(ADMIN_TESTS_COOKIE)?.value, query);
+/** Whether the admin turned the switch on. Only the cookie decides, so the frame and the page always agree. */
+export async function showTestFamilies(): Promise<boolean> {
+  return testsShown((await cookies()).get(ADMIN_TESTS_COOKIE)?.value);
 }
 
 /** One read of the test family ids per request: the frame's badges and the page share it. */
 export const testIdsFor = cache((a: AdminSession) => testAccountIds(a));
 
 /** The switch and the test family ids, for a list page. */
-export async function loadTestFamilies(a: AdminSession, query?: Query): Promise<TestFamilies> {
-  const [show, ids] = await Promise.all([showTestFamilies(query), testIdsFor(a)]);
+export async function loadTestFamilies(a: AdminSession): Promise<TestFamilies> {
+  const [show, ids] = await Promise.all([showTestFamilies(), testIdsFor(a)]);
   return testFamilies(ids, show);
 }
 

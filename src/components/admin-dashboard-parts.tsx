@@ -56,7 +56,7 @@ export function Notes({ ctx, d }: { ctx: Ctx; d: Dashboard }) {
   return <>
     {ctx.demo && <p className="dash-note">Demo data: made-up families, not your database. Local development only.</p>}
     {d.stripeNote ? <p className="dash-note">{d.stripeNote}</p> : d.stripeMode && <p className="dash-foot dash-tests">Payments: read from Stripe ({d.stripeMode} mode) just now.{d.cardsFoundInStripe > 0 ? ` ${d.cardsFoundInStripe} saved card${d.cardsFoundInStripe === 1 ? " was" : "s were"} found in Stripe that the site had not recorded; they are counted.` : ""}{d.stripeMode === "test" && !ctx.demo ? " Test mode shows test payments only, not real ones." : ""}</p>}
-    {/* the "Show test families" switch (or a family page's ?tests=1 link): they are listed and tagged, never counted */}
+    {/* the "Show test families" switch: they are listed and tagged, never counted */}
     {d.tests.shown && d.tests.count > 0 && <p className="adm-testbar" role="note"><span className="adm-chip is-test">test</span>{TESTS_SHOWING_NOTE}</p>}
   </>;
 }

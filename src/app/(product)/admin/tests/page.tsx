@@ -16,13 +16,15 @@ export default async function AdminTests({ searchParams }: PageProps<"/admin/tes
   const query = await searchParams;
   const filters = parseFilters(query);
   const offset = listOffset(query, LIST_MAX);
-  const view = await loadTestFamilies(admin, query);
+  const view = await loadTestFamilies(admin);
   const { rows, more } = await listTests(admin, filters, offset, view.hidden);
+  // The count: the real families' tests on this page only (test families are listed while the switch is on, never counted).
+  const real = rows.filter((r) => !view.isTest(r.parent_id)).length;
   return (
     <AdminFrame email={admin.email} title="Tests" lead="Every assessment, newest first, with its result and flags." testNote={view.show}>
       <FilterForm action={ADMIN_TESTS_PATH} filters={filters} fields={["status", "grade", "province", "help", "lowAi"]} />
       <p className="adm-note">
-        {rows.length} test{rows.length === 1 ? "" : "s"}. Help likely: the child said someone helped, or {HELP_FAST_RIGHT_MIN} or more right answers
+        {real} test{real === 1 ? "" : "s"}{view.show ? ", not counting test families" : ""}. Help likely: the child said someone helped, or {HELP_FAST_RIGHT_MIN} or more right answers
         came in under {TOO_FAST_MS / 1000} seconds, or a long pause came before a run of right answers.
       </p>
       <TestsTable tests={rows} isTest={view.show ? view.isTest : undefined} />

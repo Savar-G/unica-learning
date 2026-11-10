@@ -19,21 +19,23 @@ export const metadata = pageMetadata({ path: "/admin/scans", title: "Admin: mark
 const usd = (micros: number) => `USD ${(micros / 1_000_000).toFixed(4)}`;
 
 // Marking (D-313; it was "Scan pages"): the answers from scanned pages that wait for our team, then every scanned page.
-// Test families follow the "Show test families" switch: off, their answers and pages are left out of the lists and the
-// costs. The costs and the month's budget sit in a closed "Technical details" section.
-export default async function AdminScans({ searchParams }: { searchParams: Promise<{ child?: string; workbook?: string; status?: string; after?: string; tests?: string }> }) {
+// Test families follow the "Show test families" switch: off, their answers and pages are left out of the lists (the
+// waiting answers in the database, before its limit); on, they are listed and tagged. Every number and cost on the page
+// counts the real families only. The costs and the month's budget sit in a closed "Technical details" section.
+export default async function AdminScans({ searchParams }: { searchParams: Promise<{ child?: string; workbook?: string; status?: string; after?: string }> }) {
   const admin = await requireAdmin(), q = await searchParams, db = adminClient();
   for (const value of [q.child, q.workbook, q.after]) if (value && !isUuid(value)) notFound();
   if (!db || (q.status && !["all", "review", "failed"].includes(q.status))) notFound();
-  const view = await loadTestFamilies(admin, q);
+  const view = await loadTestFamilies(admin);
   const testChildren = await childrenOf(admin, view.ids);
+  // Off: test pages leave the list. On: they stay on it, out of every count and cost.
   const result = await readScanHistoryNow(db, { admin: admin.userId }, { child: q.child || undefined, workbook: q.workbook || undefined, after: q.after || undefined, status: q.status as "all" | "review" | "failed" | undefined },
-    view.show ? undefined : testChildren);
+    view.show ? undefined : testChildren, view.show ? testChildren : undefined);
   if (!result) notFound();
   const c = result.costs, b = result.budget;
   // #715: answers the AI was unsure of wait here for our team. No screen asks the parent to judge them.
-  const team = await readScanTeamQueue(admin.db);
-  const items = team.items.filter((t) => view.show || !(t.testFamily || view.isTest(t.parent)));
+  const team = await readScanTeamQueue(admin.db, 100, { withTests: view.show });
+  const items = team.items;
   const isTestItem = (t: (typeof items)[number]) => view.show && (t.testFamily || view.isTest(t.parent));
   // A waiting answer with no photo is still marked here, at the version its own row holds.
   const noPhoto = items.filter((t) => !t.photo).map((t) => t.item);
@@ -50,13 +52,13 @@ export default async function AdminScans({ searchParams }: { searchParams: Promi
     return !!r && teamMarkNeedsPhoto({ eligible, hasEvent: r.original_event !== null, photo: null });
   };
   const reason = (issue: string | null) => issue && READING_ISSUES.includes(issue as ReadingIssue) ? readingIssueText(issue as ReadingIssue) : "Waiting for a person to mark it.";
-  // The read holds the oldest answers; past them the count is at least what it shows.
-  const more = team.total > team.items.length;
-  const waiting = items.length === 0 && !more ? "No answers are waiting for our team."
-    : `${items.length}${more ? " or more" : ""} ${items.length === 1 && !more ? "answer is" : "answers are"} waiting for our team to mark, oldest first.`;
+  // The read holds the oldest answers. The count is the database's own count of the real families' answers.
+  const more = team.total > team.items.length, real = team.realTotal;
+  const waiting = real === 0 ? (items.length ? "No answers from real families are waiting for our team." : "No answers are waiting for our team.")
+    : `${real} ${real === 1 ? "answer is" : "answers are"} waiting for our team to mark, oldest first.`;
   return <AdminFrame email={admin.email} title="Marking" lead="Answers from scanned pages that our team must check, and every scanned page." testNote={view.show}>
     <h2>Waiting for our team</h2>
-    <p>{waiting}{more && ` The oldest ${team.items.length} are read here.`}</p>
+    <p>{waiting}{more && " Only the oldest are listed here."}</p>
     {items.length > 0 && <Table label="Answers waiting for our team" head={["Child", "Workbook / page / question", "What the AI read", "Why it is waiting", "Waiting since", "Open"]} empty="None.">
       {items.map((t) => <tr key={t.item}><td>{t.childName}<TestTag test={isTestItem(t)} /></td><td>Workbook {t.book} · page {t.page} · question {t.question}</td>
         <td>{t.read === null ? "Not read" : t.read === "" ? "Empty" : t.read}</td><td>{reason(t.issue)}</td><td>{familyMoment(t.since, zones.get(t.parent)!)}</td>
@@ -72,7 +74,7 @@ export default async function AdminScans({ searchParams }: { searchParams: Promi
       <button type="submit" className="btn adm-btn">Apply</button>
       <Link href="/admin/scans" className="adm-clear">Clear</Link>
     </form>
-    <p>{result.pages.length} {result.pages.length === 1 ? "page" : "pages"} shown. {result.counts.review} with answers our team is checking.</p>
+    <p>{result.counted} {result.counted === 1 ? "page" : "pages"} shown{view.show ? ", not counting test families" : ""}. {result.counts.review} with answers our team is checking.</p>
     <Table label="Scanned pages" head={["Child", "Workbook / day / page", "State", "Results"]} empty="No matching pages.">
       {result.pages.map((p) => <tr key={p.id}><td>{p.childName}<TestTag test={view.show && testChildren.has(p.childId)} /></td><td>Workbook {p.book} · {p.day} · {p.pageNumber}</td><td>{p.label}{p.failedJob && " · Could not mark"}</td><td>{p.photo ? <Link href={`/admin/scans/${p.photo}`}>Open the marked page</Link> : "Never scanned"}</td></tr>)}
     </Table>

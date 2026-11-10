@@ -19,13 +19,14 @@ export interface DashboardLoad {
   demo: boolean;
 }
 
-export async function loadDashboard(raw: Record<string, string | string[] | undefined>): Promise<DashboardLoad> {
+/** `withTests`: list the test families whatever the switch says; only for a detail page (one email), never a list. */
+export async function loadDashboard(raw: Record<string, string | string[] | undefined>, { withTests }: { withTests?: boolean } = {}): Promise<DashboardLoad> {
   await connection();
   const query = Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" && v ? [[k, v]] : []))) as Record<string, string>;
   const demo = query.demo === "1" && process.env.NODE_ENV === "development";
   const now = new Date();
-  // "Show test families" (or ?tests=1 from a family's page) lists the team and test families too; no number counts them
-  const options = { withTests: await showTestFamilies(query) };
+  // "Show test families" lists the team and test families too; no number counts them
+  const options = { withTests: withTests ?? (await showTestFamilies()) };
   if (demo) {
     const rows = demoRows(now);
     return { who: "demo data", d: buildDashboard(rows, pickRange(query.range), now, options), progress: demoProgress(rows, now), query, demo };

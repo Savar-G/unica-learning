@@ -25,11 +25,13 @@ export default async function ParentsPage({ searchParams }: PageProps<"/admin/pa
     .filter((f) => !words || `${f.name} ${f.email} ${kidsText(f)}`.toLowerCase().includes(words))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const rows = all.slice(offset, offset + LIST_MAX);
+  // The search count: the real families only (test families are listed while the switch is on, never counted).
+  const matches = all.filter((f) => !f.test).length;
   return <AdminFrame email={who} title="Families" lead="Every parent and their children, newest first, with the stage each family reached." testNote={d.tests.shown}
     actions={<Link className="btn ghost adm-btn" href="/admin/children" prefetch={false}>Every child</Link>}>
     {query.deleted === "1" && <p role="status">Family deleted.</p>}
     {q && <p className="adm-row" role="status">
-      <span>{all.length === 0 ? `No family matches "${q}".` : `${all.length} ${all.length === 1 ? "family matches" : "families match"} "${q}".`}</span>
+      <span>{all.length === 0 ? `No family matches "${q}".` : matches === 0 ? `Only test families match "${q}".` : `${matches} ${matches === 1 ? "family matches" : "families match"} "${q}".`}</span>
       <Link href={PATH} prefetch={false}>Show every family</Link>
     </p>}
     <Table label="Families" head={["Joined (Pacific)", "Parent", "Email", "Postal code", "Children", "Tests", "Completed", "Stage", "Last activity"]} empty={q ? "No family matches." : "No families."}>

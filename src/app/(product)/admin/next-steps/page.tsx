@@ -18,9 +18,10 @@ export default async function NextStepsPage({ searchParams }: PageProps<"/admin/
   const admin = await requireAdmin();
   const query = await searchParams;
   const offset = listOffset(query, LIST_MAX);
-  const view = await loadTestFamilies(admin, query);
-  const [{ cards, waitlist }, holds] = await Promise.all([listNextSteps(admin, offset, view.hidden), loadAdminScanHolds(admin)]);
-  const held = holds.rows.filter((h) => view.show || !h.testFamily);
+  const view = await loadTestFamilies(admin);
+  // Both reads leave the hidden test families out in the database, before their limits.
+  const [{ cards, waitlist }, holds] = await Promise.all([listNextSteps(admin, offset, view.hidden), loadAdminScanHolds(admin, view)]);
+  const held = holds.rows;
   const isTest = view.show ? view.isTest : undefined;
   return <AdminFrame email={admin.email} title="Plans and delivery" lead="Saved cards, free months, books on hold and the waitlist." testNote={view.show}>
     <p className="adm-note">For the shipping address, use &quot;Open in Stripe&quot; on the child&apos;s card setup and check Shipping details on the customer. If no shipping address is saved, ask the parent for it before mailing the workbook. A billing address is not a confirmed shipping address.</p>
@@ -28,7 +29,7 @@ export default async function NextStepsPage({ searchParams }: PageProps<"/admin/
     <h2>Books on hold</h2>
     {holds.unavailable && <p role="status">Some books on hold could not be read. Check again.</p>}
     {!held.length && !holds.unavailable && <p>No books on hold.</p>}
-    {held.map(hold => <section key={hold.workbookId}><Link href={`/admin/children/${hold.childId}`}>Open child and workbook {hold.number}</Link><TestTag test={hold.testFamily} /><ScanHold number={hold.number} /></section>)}
+    {held.map(hold => <section key={hold.workbookId}><Link href={`/admin/children/${hold.childId}`}>Open child and workbook {hold.number}</Link><TestTag test={view.show && hold.testFamily} /><ScanHold number={hold.number} /></section>)}
     {holds.more && <p>More books may be on hold. Only the newest are shown here. Open each child to check the rest.</p>}
     <h2>Card setups</h2><CardsTable cards={cards.rows} isTest={isTest} />
     <h2>Waitlist</h2><WaitlistTable waitlist={waitlist.rows} isTest={isTest} />

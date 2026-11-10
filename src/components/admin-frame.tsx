@@ -11,7 +11,7 @@ import { showTestFamilies } from "@/lib/admin-test-families-server";
  * The admin frame (D-313, D-315): the sidebar (admin-shell.tsx) and the page. `title`: the page's light h1 inside the
  * standard width, with the folder as a mono eyebrow, `lead` (one line on what the page is for) and `actions` on the right;
  * null when the page lays out its own head (the dashboard, the activity log and the emails, which also set `wide`).
- * `testNote`: the page is a list that shows test families right now (the "Show test families" switch, or ?tests=1); a
+ * `testNote`: the page is a list that shows test families right now (the "Show test families" switch); a
  * slim note says so at the top (true for the usual words, or the page's own words). Pass the page's own view.show.
  */
 export async function AdminFrame({ email, title, lead, actions, children, wide = false, testNote }: {

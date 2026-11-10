@@ -8,15 +8,15 @@ const TEAM = "22222222-2222-4222-8222-222222222222";
 const REAL = "33333333-3333-4333-8333-333333333333";
 
 describe("the switch", () => {
-  it("is off unless the cookie is 1 or the address asks with ?tests=1", () => {
+  it("is off unless the cookie is 1; the address never decides, so the sidebar and the page agree", () => {
     expect(testsShown(undefined)).toBe(false);
     expect(testsShown("")).toBe(false);
     expect(testsShown("0")).toBe(false);
     expect(testsShown("true")).toBe(false);
     expect(testsShown("1")).toBe(true);
-    expect(testsShown(undefined, { tests: "1" })).toBe(true);
-    expect(testsShown(undefined, { tests: "yes" })).toBe(false);
-    expect(testsShown(undefined, { tests: ["1"] })).toBe(false);
+    // an old ?tests=1 link or bookmark: ignored (vitest does not typecheck, so the old second argument still reaches it)
+    const old = testsShown as (cookie: string | undefined, query?: Record<string, string>) => boolean;
+    expect(old(undefined, { tests: "1" })).toBe(false);
   });
 
   it("writes a cookie for the admin pages only, and removes it when turned off", () => {

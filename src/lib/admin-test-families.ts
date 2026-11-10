@@ -11,14 +11,12 @@ export const ADMIN_TESTS_COOKIE = "unica_admin_tests";
 /** The line at the top of a list page while the switch is on. */
 export const TESTS_SHOWING_NOTE = "Test families are showing. They are tagged test and are left out of every number.";
 
-type Query = Record<string, string | string[] | undefined>;
-
 /**
- * Whether test families show: the switch's cookie is "1", or the address carries ?tests=1 (the links on a family's
- * page, which open a test family in the dashboard, and older bookmarks).
+ * Whether test families show: only the switch's cookie, "1". The address never decides (an old ?tests=1 is ignored), so
+ * the sidebar's switch and every page always agree.
  */
-export function testsShown(cookie: string | null | undefined, query?: Query): boolean {
-  return cookie === "1" || query?.tests === "1";
+export function testsShown(cookie: string | null | undefined): boolean {
+  return cookie === "1";
 }
 
 /** The cookie text the switch writes: a year when on, removed when off. Path /admin, so no other page gets it. */

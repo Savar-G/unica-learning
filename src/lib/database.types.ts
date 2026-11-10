@@ -7278,6 +7278,26 @@ export type Database = {
           workbook_id: string
         }[]
       }
+      admin_scan_team_queue_v2: {
+        Args: { p_limit?: number; p_with_tests?: boolean }
+        Returns: {
+          book: number
+          child_id: string
+          child_name: string
+          issue: string
+          item_id: string
+          page_number: number
+          parent_id: string
+          photo_id: string
+          question_number: number
+          read_text: string
+          real_total: number
+          test_family: boolean
+          total: number
+          waiting_since: string
+          workbook_id: string
+        }[]
+      }
       admin_set_maya_chat_family: {
         Args: { p_change: string; p_enabled: boolean; p_parent: string }
         Returns: string

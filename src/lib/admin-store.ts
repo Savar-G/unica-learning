@@ -961,19 +961,20 @@ export interface ReviewListRow extends ReviewRecord {
 
 /**
  * The newest AI reviews of shown work (#68); `lowOnly`: only those the report did not show a comment for. `hide`: the
- * parent ids left out (the test families, while "Show test families" is off); a review has no parent of its own, so
- * they are left out of each page after its tests are read, and a page can hold fewer rows.
+ * parent ids left out (the test families, while "Show test families" is off). Each review keeps its family's parent
+ * id, so they are left out in the query, before the page's offset and limit: a page is never short of real reviews.
  */
 export async function listReviews(a: AdminSession, { lowOnly }: { lowOnly: boolean }, offset = 0, hide: readonly string[] = []): Promise<Page<ReviewListRow>> {
   let q = a.db.from("work_reviews").select(`created_at, assessment_id, ${REVIEW_COLUMNS}`);
   if (lowOnly) q = q.eq("confidence", "low");
+  const out = notIn(hide);
+  if (out) q = q.not("parent_id", "in", out);
   const { rows, more } = page(must<(ReviewRecord & { created_at: string; assessment_id: string })[]>(await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX), "reviews"));
   const tests = await byIds<{ id: string; grade: number; province: Province; child_id: string; parent_id: string }>(rows.map((r) => r.assessment_id), "tests", (chunk) =>
     a.db.rpc("admin_assessments").select("id, grade, province, child_id, parent_id").in("id", chunk));
   const child = index(await childrenById(a, tests.map((t) => t.child_id)));
   const test = new Map(tests.map((t) => [t.id, { grade: t.grade, province: t.province, parentId: t.parent_id, child: child.get(t.child_id) ?? null }]));
-  const left = new Set(hide);
-  return { more, rows: rows.map((r) => ({ ...r, test: test.get(r.assessment_id) ?? null })).filter((r) => !left.has(r.test?.parentId ?? "")) };
+  return { more, rows: rows.map((r) => ({ ...r, test: test.get(r.assessment_id) ?? null })) };
 }
 
 // Next steps and emails

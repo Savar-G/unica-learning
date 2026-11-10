@@ -54,7 +54,7 @@ export async function loadFlyers(raw: Record<string, string | string[] | undefin
   await connection();
   const query = Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" && v ? [[k, v]] : [])));
   // the "Show test families" switch (D-313): this page is only numbers, so it decides whether test families count
-  const withTests = await showTestFamilies(query);
+  const withTests = await showTestFamilies();
   const now = new Date();
   const finish = (who: string, demo: boolean, tables: Awaited<ReturnType<typeof flyerTables>>, rows: Awaited<ReturnType<typeof dashboardRows>>): FlyerPage => {
     const empty = { delivered: {}, scans: {}, lastScan: { a: null, b: null } };

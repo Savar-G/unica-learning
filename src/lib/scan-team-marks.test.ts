@@ -46,19 +46,35 @@ it("a refused item, a store error (not an admin) or a strange answer saves nothi
   await expect(setScanTeamMark(adminDb, serviceDb, { item: ITEM, version: 2, result: "right" })).rejects.toThrow("team_mark_shape");
   expect(after.calls).toEqual([]);
 });
-it("reads the team list with nullable reading, reason and photo, and its total", async () => {
+it("reads the team list with nullable reading, reason and photo, and its totals", async () => {
   const row = { item_id: ITEM, parent_id: P, child_id: C, child_name: "Iris", workbook_id: "w", book: 1, page_number: 9, question_number: 2,
-    photo_id: null, issue: null, read_text: null, waiting_since: "2026-11-07T12:00:00Z", test_family: true, total: 140 };
+    photo_id: null, issue: null, read_text: null, waiting_since: "2026-11-07T12:00:00Z", test_family: true, total: 140, real_total: 139 };
   state.answer = [row, { ...row, item_id: "44444444-4444-4444-8444-444444444444", photo_id: "p", issue: "answer-form", read_text: "42", test_family: false }];
-  const q = await readScanTeamQueue(adminDb, 2);
-  expect(state.rpc[0]).toEqual({ name: "admin_scan_team_queue", body: { p_limit: 2 } });
+  const q = await readScanTeamQueue(adminDb, 2, { withTests: true });
+  expect(state.rpc[0]).toEqual({ name: "admin_scan_team_queue_v2", body: { p_limit: 2, p_with_tests: true } });
   expect(q.total).toBe(140);
+  expect(q.realTotal).toBe(139);
   expect(q.items[0]).toEqual({ item: ITEM, parent: P, child: C, childName: "Iris", book: 1, page: 9, question: 2, photo: null, issue: null, read: null, since: "2026-11-07T12:00:00Z", testFamily: true });
   expect(q.items[1]).toMatchObject({ photo: "p", issue: "answer-form", read: "42", testFamily: false });
   state.answer = [];
-  expect(await readScanTeamQueue(adminDb)).toEqual({ items: [], total: 0 });
+  expect(await readScanTeamQueue(adminDb)).toEqual({ items: [], total: 0, realTotal: 0 });
   state.answer = [{ ...row, question_number: "2" }];
   await expect(readScanTeamQueue(adminDb)).rejects.toThrow("team_queue_shape");
+});
+it("leaves test and team families out in the database, before the limit, while the switch is off", async () => {
+  const row = { item_id: ITEM, parent_id: P, child_id: C, child_name: "Iris", workbook_id: "w", book: 1, page_number: 9, question_number: 2,
+    photo_id: null, issue: null, read_text: "8", waiting_since: "2026-11-07T12:00:00Z", test_family: false, total: 1, real_total: 1 };
+  state.answer = [row];
+  const q = await readScanTeamQueue(adminDb, 100);
+  // The switch off is the default: the function filters before its limit, so the one real answer is on the list.
+  expect(state.rpc[0]).toEqual({ name: "admin_scan_team_queue_v2", body: { p_limit: 100, p_with_tests: false } });
+  expect(q).toMatchObject({ total: 1, realTotal: 1 });
+  expect(q.items.map((i) => i.item)).toEqual([ITEM]);
+  // A test row, or a total that does not match the real count, cannot come back with the switch off.
+  state.answer = [{ ...row, total: 2 }];
+  await expect(readScanTeamQueue(adminDb, 100)).rejects.toThrow("team_queue_shape");
+  state.answer = [{ ...row, test_family: true, real_total: 0 }];
+  await expect(readScanTeamQueue(adminDb, 100)).rejects.toThrow("team_queue_shape");
 });
 it("one rule for 'can be marked': only an answer that counts toward progress, with no event and no photo, needs a photo (P3)", () => {
   expect(teamMarkNeedsPhoto({ eligible: true, hasEvent: false, photo: null })).toBe(true);
