@@ -905,12 +905,12 @@ async function byChild<T extends { child_id: string }>(read: (from: number, to: 
  * from the cut on are left out of every source.
  */
 async function readProductionSet(a: AdminSession, f: { out?: string | null; only?: string[] }): Promise<Omit<ProductionBase, "incomplete"> & { cut: boolean }> {
-  type CardRow = { child_id: string; parent_id: string; card_saved_at: string | null };
+  type CardRow = { id: string; child_id: string; parent_id: string; card_saved_at: string | null };
   type PlanRow = { child_id: string; parent_id: string; kind: string };
   type RunRow = Parameters<typeof runFromRow>[0];
   const runs = () => a.db.rpc("admin_production_runs").select(RUN_COLUMNS);
   const books = () => a.db.rpc("admin_production_books").select(BOOK_COLUMNS);
-  const cards = () => a.db.rpc("admin_card_setups").select("child_id, parent_id, card_saved_at").not("card_saved_at", "is", null);
+  const cards = () => a.db.rpc("admin_card_setups").select("id, child_id, parent_id, card_saved_at").not("card_saved_at", "is", null);
   const plans = () => a.db.from("child_plan_states").select("child_id, parent_id, kind").in("kind", [...STARTED_PLAN_KINDS]);
   // The same family filter on each source.
   const scope = <Q extends { not: (c: "parent_id", op: "in", v: string) => Q; in: (c: "parent_id", v: string[]) => Q }>(q: Q): Q =>
