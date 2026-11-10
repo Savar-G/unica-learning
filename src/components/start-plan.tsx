@@ -53,18 +53,18 @@ export const START_REFUSED = "The start request was refused before it reached St
 export const START_LOST = "The response was lost. Open the family in Stripe to check before trying again.";
 
 /**
- * D-139: "Workbook delivered: start plan" on a saved card. One confirm, then the subscription with the free trial starts
- * in Stripe and the parent gets the confirmation email. Shows the first charge date, or why it did not start.
- * `familyWindow` is the family's free window before this start. The approved window sentences show only when the family
- * may already have one: "new" (no window yet, so this is the first child) shows none, and an unknown window keeps them.
- */
-/**
  * A start on this page changes the family's window, and the page read each window once (#810: a sibling's confirm then
  * said nothing of the window until a reload). After any start, the other buttons treat their window as unknown, which
  * keeps the window sentences: the cautious words, since the route still decides the price.
  */
 const STARTED_EVENT = "unica:admin-plan-started";
 
+/**
+ * D-139: "Workbook delivered: start plan" on a saved card. One confirm, then the subscription with the free trial starts
+ * in Stripe and the parent gets the confirmation email. Shows the first charge date, or why it did not start.
+ * `familyWindow` is the family's free window before this start. The approved window sentences show only when the family
+ * may already have one: "new" (no window yet, so this is the first child) shows none, and an unknown window keeps them.
+ */
 export function StartPlan({ cardId, child, familyWindow = null }: { cardId: string; child: string; familyWindow?: FamilyPlanOffer["window"] | null }) {
   const [windowStale, setWindowStale] = useState(false);
   useEffect(() => {

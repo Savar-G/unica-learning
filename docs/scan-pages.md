@@ -20,7 +20,7 @@ To reverse this restriction, remove `SCAN_MARKING_TEST_PARENT_IDS` from the serv
 
 ### Families mode
 
-`SCAN_MARKING_ENABLED=families` opens marking to a real family for one child when that child's plan is running. Marking opens when an admin presses "Start free month" and closes with the plan. `markingAccess` (`src/lib/scan-marking-access.ts`) decides on every request:
+`SCAN_MARKING_ENABLED=families` opens marking to a real family for one child when that child's plan is running. Marking opens when an admin presses "Workbook delivered: start plan" and closes with the plan. `markingAccess` (`src/lib/scan-marking-access.ts`) decides on every request:
 
 1. Test families and admins keep the `test-only` rule, including `SCAN_MARKING_TEST_PARENT_IDS` when it is present. The list limits only this path; a malformed list closes marking for everyone.
 2. Any other family needs the child, read with the signed-in parent's id: the page names it (the workbooks page, history, progress, the stack and Send; the child is read on `id` and `parent_id`), or the photo belongs to it (results, marking, corrections, explanations, direct marking and recovery; the photo is read with the signed-in parent's id, so another family's photo has no child). With no child, marking stays closed.
