@@ -4,19 +4,25 @@ import { MARKING_MODEL, type MarkingClientFactory } from "@/lib/scan-marking";
 import models from "../../data/scan-marking-models.json";
 import evaluationModels from "../../data/scan-marking-evaluation-models.json";
 
-/** Whether marking can call a model at all: a key and a pinned model, as markingAiClient's factory needs (#706). */
-export function markingClientReady(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
-  const model = env.SCAN_MARKING_MODEL?.trim() || MARKING_MODEL;
-  return !!env.SCAN_MARKING_OPENROUTER_API_KEY?.trim() && models.some((m) => m.model === model);
+type MarkingEnv = Readonly<Record<string, string | undefined>>;
+/** The pinned model marking would call (the route's, else SCAN_MARKING_MODEL or the default), or null when it is not pinned. */
+function pinnedMarkingModel(env: MarkingEnv, route?: { model: string }) {
+  const model = route?.model ?? (env.SCAN_MARKING_MODEL?.trim() || MARKING_MODEL);
+  return [...models, ...(route ? evaluationModels : [])].find((m) => m.model === model) ?? null;
+}
+
+/** Whether marking can call a model at all: a key and a pinned model, the same checks markingAiClient's factory makes (#706). */
+export function markingClientReady(env: MarkingEnv = process.env): boolean {
+  return !!env.SCAN_MARKING_OPENROUTER_API_KEY?.trim() && !!pinnedMarkingModel(env);
 }
 
 export function markingAiClient(env: Readonly<Record<string, string | undefined>> = process.env, fetch?: typeof globalThis.fetch, route?: { model: string; provider: OpenRouterProvider; maxRetries?: number }): MarkingClientFactory {
   return (beforeAttempt) => {
     const apiKey = env.SCAN_MARKING_OPENROUTER_API_KEY?.trim();
     if (!apiKey) return null;
-    const model = route?.model ?? (env.SCAN_MARKING_MODEL?.trim() || MARKING_MODEL);
-    const pinned = [...models, ...(route ? evaluationModels : [])].find(m => m.model === model);
+    const pinned = pinnedMarkingModel(env, route);
     if (!pinned) return null;
+    const model = pinned.model;
     const provider = route?.provider ?? { only: [pinned.endpoint], order: [pinned.endpoint], allow_fallbacks: false as const, require_parameters: true as const,
       ignore: [`${pinned.endpoint}/flex`, `${pinned.endpoint}/priority`],
     };
