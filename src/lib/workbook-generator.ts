@@ -2933,8 +2933,9 @@ function standIn(input: GenerateInput, w: PageWork, s: Slot, i: number): BuiltQu
  * before writing (#746): the small sum the writer is asked for, which code works in the most steps a panel prints
  * (three, then the answer), under a story as long as a writer's. Planning then keeps the room the writer's own example
  * takes, as standIn does for a writer's slot. Only for measuring: it is never a task and never prints.
- * (Not larger: a bigger stand-in left the fake U10 book's page 64 at 81% full when the writer's "54 + 3" printed. A
- * longer example than this is still caught by the final fit check, which stays strict.)
+ * (Not larger: a bigger stand-in left the fake U10 book's page 64 at 81% full when the writer's "54 + 3" printed. The
+ * words are code's, about 70 characters, shorter than the stand-in's; the writer picks only the numbers, in the skill's
+ * range, and a panel prints at most three steps. A longer one is still caught by the final fit check, which stays strict.)
  */
 function exampleStandIn(input: GenerateInput, w: PageWork, p: Panel): QuestionPackage | null {
   const max = skillRange(input.curriculum, input.plan.level, p.skill).max;
