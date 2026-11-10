@@ -18,7 +18,10 @@ export async function signedInParent(): Promise<{ parent: string; admin: Supabas
   const db = await sessionClient();
   const [{ data, error }, claims] = await Promise.all([db.auth.getUser(), db.auth.getClaims()]);
   const admin = adminClient();
-  if (error || !data.user || !admin || claims.error || claims.data?.claims.sub !== data.user.id) return null;
+  const sessionId = claims.data?.claims.session_id;
+  if (error || !data.user || !admin || claims.error || claims.data?.claims.sub !== data.user.id || typeof sessionId !== "string") return null;
+  const active = await admin.rpc("scan_session_active", { p_user: data.user.id, p_session: sessionId });
+  if (active.error || active.data !== true) return null;
   return { parent: data.user.id, admin };
 }
 
