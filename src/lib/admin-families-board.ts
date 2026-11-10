@@ -49,6 +49,16 @@ export function isNewFamily(f: Family, now: number): boolean {
   return !f.test && f.cards.some((c) => !c.foundInStripe && c.savedAt !== null && Date.parse(c.savedAt) >= from && Date.parse(c.savedAt) <= now);
 }
 
+/**
+ * When the family's child was last seen in an open test, if within LIVE_MS of the page's load: the card says "In the test
+ * at 2:31 p.m.", a time and not "now", so a page left open never claims a test that has since ended.
+ */
+export function liveAt(f: Family, progress: ProgressSnapshot): string | null {
+  if (!isLive(f, progress)) return null;
+  const seen = f.tests.map((t) => progress.tests[t.id]).filter((p) => !!p && p.open).map((p) => p!.lastActivityAt).sort().at(-1)!;
+  return formatInZone(seen, PACIFIC_ZONE, { hour: "numeric", minute: "2-digit" });
+}
+
 /** Whether a child of the family is in a test right now: a test still open that the server saw within LIVE_MS. */
 export function isLive(f: Family, progress: ProgressSnapshot): boolean {
   const now = Date.parse(progress.now);
@@ -152,7 +162,8 @@ export interface BoardCard {
   /** The family's own stage when it is not its column's first ("Payment page" under Report sent, "Paying" under Customer). */
   stageLabel: string | null;
   isNew: boolean;
-  live: boolean;
+  /** "2:31 p.m.": when the child was last seen in an open test, or null. */
+  live: string | null;
   test: boolean;
   /** Why the team should look: the dashboard's Needs you titles. Empty when nothing waits. */
   needs: string[];
@@ -179,7 +190,7 @@ export function boardCard(f: Family, ctx: { needs: Map<string, string[]>; progre
     id: f.id, name: f.name, initials: initials(f.name), hue: hueOf(f.id), kids: kidsLine(f),
     since: timeInStage(f, ctx.now), status: statusLine(f, ctx.progress, ctx.now),
     stageLabel: group.stages[0] !== f.stage ? STAGE_SHORT[f.stage] : null,
-    isNew: isNewFamily(f, Date.parse(ctx.now)), live: isLive(f, ctx.progress), test: f.test,
+    isNew: isNewFamily(f, Date.parse(ctx.now)), live: liveAt(f, ctx.progress), test: f.test,
     needs: f.test ? [] : (ctx.needs.get(f.id) ?? []),
   };
 }

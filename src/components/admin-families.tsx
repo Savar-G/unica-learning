@@ -47,7 +47,7 @@ function Card({ c }: { c: BoardCard }) {
         <span className="fam-since">{c.since}</span>
         {c.stageLabel && <span className="fam-stage">{c.stageLabel}</span>}
         {c.isNew && <span className="fam-tag is-new" title="Saved a card in the last 7 days">New</span>}
-        {c.live && <span className="fam-tag is-live" title="A child is taking the test right now"><span className="fam-pulse" aria-hidden="true" />Live</span>}
+        {c.live && <span className="fam-tag is-live" title="A child was taking the test when this page loaded"><span className="fam-pulse" aria-hidden="true" />In the test at {c.live}</span>}
         {c.test && <span className="adm-chip is-test" title="A test or team family: left out of every number">test</span>}
       </div>
     </li>
@@ -64,7 +64,7 @@ function Count({ g }: { g: BoardGroupView }) {
 
 function ShowAll({ g, path, query }: { g: BoardGroupView; path: string; query: Query }) {
   if (g.total <= g.cards.length) return null;
-  return <Link className="fam-all" href={familiesHref(path, query, { view: "list", stage: g.key, page: null })} prefetch={false}>Show all {g.total}</Link>;
+  return <Link className="fam-all" href={familiesHref(path, query, { view: "list", stage: g.key, page: null })} prefetch={false}>Show all {g.count}{g.tests > 0 ? ` and ${g.tests} test` : ""}</Link>;
 }
 
 /** The board: a column per stage group, then the waitlist and cancelled lanes. */

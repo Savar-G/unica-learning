@@ -25,8 +25,9 @@ export default async function ParentsPage({ searchParams }: PageProps<"/admin/pa
   const board = buildBoard(found, { needs: needsByFamily(d), progress, now: d.now });
 
   const stage = view === "list" ? pickStageFilter(query.stage) : null;
-  const offset = listOffset(query, LIST_MAX);
   const listed = found.filter((f) => !stage || stage.stages.includes(f.stage)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // A page past the end (an old link, or fewer families after the switch changed) shows the last page instead.
+  const offset = Math.min(listOffset(query, LIST_MAX), Math.max(0, Math.floor((listed.length - 1) / LIST_MAX) * LIST_MAX));
   const rows = listed.slice(offset, offset + LIST_MAX);
   const page = Math.floor(offset / LIST_MAX) + 1;
   const pager = listed.length > LIST_MAX && <nav className="adm-row" aria-label="List pages">

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ALL_STAGES, buildDashboard, type DashboardRows, type RawSubscription } from "@/lib/admin-dashboard";
 import {
-  BOARD_COLUMNS, BOARD_LANES, buildBoard, familiesHref, groupOf, initials, isLive, isNewFamily, kidsLine, needsByFamily,
+  BOARD_COLUMNS, BOARD_LANES, buildBoard, familiesHref, groupOf, initials, isLive, isNewFamily, liveAt, kidsLine, needsByFamily,
   pickStageFilter, statusLine, timeInStage,
 } from "@/lib/admin-families-board";
 import type { ProgressSnapshot, TestProgress } from "@/lib/admin-progress";
@@ -96,6 +96,9 @@ describe("live and status", () => {
     expect(isLive(f, progressOf("ta", { lastActivityAt: new Date(NOW.getTime() - 5 * 60_000).toISOString() }))).toBe(false);
     expect(isLive(f, progressOf("ta", { open: false }))).toBe(false);
     expect(isLive(f, noProgress)).toBe(false);
+    // The card names a time, not "now": 1 minute before 7:00 p.m. Pacific.
+    expect(liveAt(f, progressOf("ta", { lastActivityAt: new Date(NOW.getTime() - 60_000).toISOString() }))).toMatch(/^6:59\sp\.m\.$/);
+    expect(liveAt(f, progressOf("ta", { open: false }))).toBeNull();
   });
 
   it("says how far the test got, or that it expired", () => {
