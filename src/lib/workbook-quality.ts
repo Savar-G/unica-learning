@@ -1,9 +1,9 @@
-import { workbookPageInstruction } from "@/lib/workbook-page-instructions";
+import { printedInstruction, workbookWorkLine } from "@/lib/workbook-page-instructions";
 import { mixedTemplateSign, stepTemplateOf } from "./workbook-step-items";
 import { checkQuestionPackage } from "./question-package";
 import { bcStepProgressions } from "./workbook-curriculum";
 import { reviewMasteryStep } from "./workbook-review-level";
-import { questionWorkSpace, WORK_INSTRUCTION } from "./workbook-work-space";
+import { questionWorkSpace } from "./workbook-work-space";
 import { pageFullness, pageSpace, fullnessProblem, pagePlan } from "./workbook-template";
 import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
@@ -87,7 +87,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       questions: p.questions.map(q => ({ ...q, package: q.package ? printedWorkbookQuestion(q.package) : null })),
       ...(p.panelExamples ? { panelExamples: p.panelExamples.map(q => q ? printedWorkbookQuestion(q) : null) } : {}),
     };
-    const subtitle = workbookPageInstruction(printed);
+    const subtitle = printedInstruction(printed);
     return subtitle !== null && printed.content?.kind === "day"
       ? { ...printed, content: { ...printed.content, subtitle } } : printed;
   });
@@ -132,7 +132,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       if (holes.length) issues.push({ page: p.number, kind: "coverage", reason: `the question grid has an empty cell beside question ${holes[0]}` });
       if (p.type === "warm-up" && (c.blocks.some(b => b.slot === "in-your-head" || /mental math|in your head/i.test(b.label ?? "")) || p.questions.some(q => q.place === "in-your-head"))) issues.push({ page: p.number, kind: "coverage", reason: "a warm-up prints a redundant mental-math block" });
       const work = p.questions.some(q => q.package && (questionWorkSpace(q.package, q.place) > 0 || q.package.item?.regions.some(r => r.kind === "work")));
-      if (work && !c.subtitle.includes(workbookPageInstruction(p) ?? WORK_INSTRUCTION)) issues.push({ page: p.number, kind: "coverage", reason: "the page with work space lacks its work instruction" });
+      if (work && !workbookWorkLine(p)) issues.push({ page: p.number, kind: "coverage", reason: "the page with work space lacks its work line" });
       for (const q of p.questions) {
         if (!q.package || q.place === "warm-up" || q.place === "in-your-head") continue;
         const printed = stepTemplateOf(q.package);

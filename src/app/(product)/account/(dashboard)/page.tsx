@@ -11,6 +11,7 @@ import { parentStartStates } from "@/lib/test-attempt-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { reportPath } from "@/lib/report-view";
+import { reportLateNow } from "@/lib/report-late";
 import { fromRow, LEARNING_COLUMNS, learningPath } from "@/lib/learning-style";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { workbookStore } from "@/lib/workbook-store";
@@ -67,6 +68,8 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const testReport = new Map((reports ?? []).map((r) => [`${r.child_id}@${Date.parse(r.assessment?.completed_at ?? "")}`, reportPath(r.id)]));
   const newestReport = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
   const reportFor = (id: string, state: StartState) => (state.kind === "wait" ? testReport.get(`${id}@${state.completedAt}`) : newestReport.get(id));
+  // #771: with no report an hour after the test, the line under the button says it is late.
+  const lateFor = (id: string, state: StartState) => reportLateNow(state, reportFor(id, state));
   const phone = isPhone(await headers());
   const { sent, password, existing, pin, desk } = query;
 
@@ -81,7 +84,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   // Everyone else gets today's Parent home below.
   if (dashboard) {
     const overview = await dashboardOverview(dashboard, addressed);
-    const facts = { dashboard, overview, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, current, chats, notes, scansEnabled, noticeDue };
+    const facts = { dashboard, overview, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, lateFor, current, chats, notes, scansEnabled, noticeDue };
     return <ParentDashboardHome {...facts} addressChild={addressed} alerts={{ password: password === "1", pin: pin === "1", deskError: desk === "error", existing: existing === "1" }} parentEmail={parent.email} />;
   }
   return (
@@ -115,7 +118,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
             {/* Inside the 30 days after a test there is nothing to open on the laptop: the phone shows the date too (#72). */}
             {phone && stateFor(states, c.id).kind !== "wait"
               ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} />
-              : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} when={startWhen(stateFor(states, c.id), timeZone)} report={reportFor(c.id, stateFor(states, c.id))} />}
+              : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} when={startWhen(stateFor(states, c.id), timeZone)} report={reportFor(c.id, stateFor(states, c.id))} late={lateFor(c.id, stateFor(states, c.id))} />}
             {current.has(c.id) && <DeskRow childId={c.id} name={c.first_name} workbook={current.get(c.id)!} pinSet={pinSet} />}
             {chats.has(c.id) && <MayaChatRow name={c.first_name} chat={chats.get(c.id)!} />}
             {notes.has(c.id) && <NoteCard note={notes.get(c.id)!} name={c.first_name} zone={timeZone} latest />}

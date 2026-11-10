@@ -96,12 +96,14 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
   );
 }
 
-export function ParentTestStart({ childId, name, state, when, report, phone, sent, parentEmail, alerts, learning, children }: {
+export function ParentTestStart({ childId, name, state, when, report, late = false, phone, sent, parentEmail, alerts, learning, children }: {
   childId: string;
   name: string;
   state: StartState;
   when: string;
   report?: string;
+  /** #771: the report of the test just done is late. */
+  late?: boolean;
   phone: boolean;
   sent: boolean;
   parentEmail: string;
@@ -135,7 +137,7 @@ export function ParentTestStart({ childId, name, state, when, report, phone, sen
               <div className="pd-test-go">
                 {usesLink
                   ? <SendLink key={childId} childId={childId} name={name} sent={sent} />
-                  : <StartTest childId={childId} name={name} state={state} when={when} report={report} />}
+                  : <StartTest childId={childId} name={name} state={state} when={when} report={report} late={late} />}
               </div>
             </div>
           </div>

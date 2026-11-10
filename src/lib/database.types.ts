@@ -8706,6 +8706,14 @@ export type Database = {
           out_attempts: number
         }[]
       }
+      report_retry_may_email: {
+        Args: {
+          p_assessment: string
+          p_email_age_s: number
+          p_min_age_s: number
+        }
+        Returns: boolean
+      }
       report_retry_need: {
         Args: {
           p_assessment: string

@@ -169,12 +169,36 @@ it("gives a family the switch does not open to today's Parent home, byte for byt
   family.card = true;
   family.olderChild = true;
   scanning.enabled = true;
-  const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ password: "1", pin: "1", existing: "1" }) })));
+  // Half an hour after Asha's test: her report is not late yet (#771).
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-10-19T04:59:00Z") });
+  let out: string;
+  try {
+    out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ password: "1", pin: "1", existing: "1" }) })));
+  } finally {
+    vi.useRealTimers();
+  }
   await expect(out).toMatchFileSnapshot("./parent-home.golden.html");
   expect(out).not.toContain("pd-");
   // #560: the Overview is never read or shown for this family.
   expect(overview.reads).toBe(0);
   expect(out).not.toContain("po-");
+});
+
+// #771: with no report an hour after the test, the line under the child says it is late, and asks the parent to write.
+it("says the report is late on today's Parent home an hour after the test, with no report", async () => {
+  const render = async (at: string) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.parse(at) });
+    try {
+      return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+  const onTime = await render("2026-10-19T05:29:00Z");
+  expect(onTime).toContain("Test done. The report comes by email.");
+  const late = await render("2026-10-19T05:29:01Z");
+  expect(late).toContain("Test done. Asha&#x27;s new result is taking longer than it should.");
+  expect(late).not.toContain("The report comes by email");
 });
 
 describe("a family the switch opens to", () => {
@@ -398,6 +422,21 @@ describe("a family the switch opens to", () => {
       expect(out).not.toContain("/account/notes/z-old");
       if (stage === "active") expect(out).toContain("Asha&#x27;s new result is being prepared.");
       expect(parentMinutes).not.toHaveBeenCalled();
+    });
+
+    // #771 review: the Overview says the result is late, so the test's line under it does not say it again.
+    it("says once that a late result is late: in the Overview, and the test's line only says the test is done", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-10-19T06:00:00Z") });
+      let out: string;
+      try {
+        out = await render({ ...full(), level: null, areas: [], resultPreparing: true, resultLate: true });
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(out.match(/taking longer than it should/g)).toHaveLength(1);
+      expect(out).toContain('class="po-preparing">Asha&#x27;s new result is taking longer than it should.');
+      expect(out).toContain('<span class="small acct-done">Test done. The next test opens at <time');
+      expect(out).not.toContain("The report comes by email");
     });
 
     it("a tile or a section with no data does not appear, and no card shows when none applies", async () => {

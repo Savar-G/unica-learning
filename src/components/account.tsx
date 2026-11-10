@@ -691,15 +691,24 @@ function startView(state: Exclude<StartState, { kind: "wait" }>, name: string, w
  * Opens the child's test (#64), in the state the assessment core gives (#72): start, continue an open test until its
  * deadline, finish a test whose answers are all in, start again after a test ran out of time, or wait 30 days after
  * a completed test. `report` is the path of the child's newest report (#65): while the child waits it is the button,
- * and in every other state it stays reachable under the button (spec #54, story 32).
+ * and in every other state it stays reachable under the button (spec #54, story 32). `late` (#771, reportLate in
+ * src/lib/report-late.ts): the report of the test just done is more than an hour late. `lateShown`: the page already
+ * says so (the dashboard's Overview), so this line does not say it again.
  */
-export function StartTest({ childId, name, state, report, when }: { childId: string; name: string; state: StartState; report?: string; when: string }) {
+export function StartTest({ childId, name, state, report, when, late = false, lateShown = false }: { childId: string; name: string; state: StartState; report?: string; when: string; late?: boolean; lateShown?: boolean }) {
   const noteId = useId();
   if (state.kind === "wait") {
     if (!report) {
+      // PENDING for Savar (#771): the late line reuses the Overview's words (src/components/parent-overview.tsx) until
+      // he picks the words for Parent home.
       return (
         <span className="small acct-done">
-          Test done. The report comes by email. The next test opens at <When at={state.opensAt} text={when} />.
+          {lateShown
+            ? <>Test done.</>
+            : late
+              ? <>Test done. {name}&apos;s new result is taking longer than it should. Please email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> and we will look into it.</>
+              : <>Test done. The report comes by email.</>}
+          {" "}The next test opens at <When at={state.opensAt} text={when} />.
         </span>
       );
     }
