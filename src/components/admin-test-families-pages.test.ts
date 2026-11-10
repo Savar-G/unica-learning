@@ -149,11 +149,13 @@ describe("Home, Activity and Emails count real families only (finding 2)", () =>
     const d = buildDashboard(rows(), "today", new Date(at), { withTests: true });
     expect(d.families.map((f) => f.name).sort()).toEqual(["Real family", "Test family"]);
     expect(d.kpis.find((k) => k.key === "accounts")?.value).toBe(1);
-    const activity = renderToStaticMarkup(createElement(ActivityView, { d, ctx: ctx("/admin/activity") }));
-    expect(activity).toMatch(/New accounts<\/dt><dd><b>1<\/b>/);
-    expect(activity).toMatch(/<dt>Families<\/dt><dd><b>1<\/b>/);
-    expect(text(activity)).toContain("All families 1");
-    expect(text(activity)).toContain("All emails 1");
+    const activity = text(renderToStaticMarkup(createElement(ActivityView, { d, ctx: ctx("/admin/activity") })));
+    // The kind pills count the real family's events only; the log lists the test family's events too, tagged.
+    expect(activity).toContain("Everything 2");
+    expect(activity).toContain("Signups and tests 1");
+    expect(activity).toContain("Emails 1");
+    expect(activity).toContain("Today 2 events");
+    expect(activity).toContain("Test family test");
     const home = renderToStaticMarkup(createElement(HomeView, { d, ctx: ctx("/admin"), extras: null }));
     expect(text(home)).toContain("1 family signed up today");
     expect(text(home)).toContain("Where the 1 family who signed up today got to");
@@ -161,7 +163,7 @@ describe("Home, Activity and Emails count real families only (finding 2)", () =>
     expect(text(home)).toContain("Test family test");
     expect(home).toContain("Real family");
     const log = text(renderToStaticMarkup(createElement(ActivityView, { d, ctx: ctx("/admin/activity", { view: "emails" }) })));
-    expect(log).toContain("All emails 1");
+    expect(log).toContain("All emails 1 email");
     state.dash = { who: "admin@example.invalid", d, progress: { now: at, tests: {} }, query: {}, demo: false };
     const emails = text(renderToStaticMarkup(await EmailsPage({ params: Promise.resolve({}), searchParams: Promise.resolve({}) } as never)));
     expect(emails).toContain("All 1");

@@ -6,7 +6,7 @@ A family with any child on an open plan also gets the dashboard, with no switch 
 
 ## The plan gate
 
-The admin action "Workbook delivered: start free month" (`/api/admin/cards/[id]/start`) opens the product for that child, and access closes when the plan stops. The report's button only saves a card and opens nothing.
+The admin action "Workbook delivered: start plan" (`/api/admin/cards/[id]/start`) opens the product for that child, and access closes when the plan stops. The report's button only saves a card and opens nothing.
 
 - One gate, read from `child_plan_states`: `childPlanAccess({ parentId, childId }, deps?)` and `familyPlanAccess({ parentId }, deps?)` answer `{ open, reason }`. `deps` holds the database client and the clock, for tests. They never throw for a failed read.
 - Open: `free_month`, `paying`, and `ending` until its end date. Closed: no row, `not_started`, `ended`, `payment_failed`, `paused`, a kind the code does not know, a row that does not fit its kind, an `ending` row with no readable end date, and any failed read.

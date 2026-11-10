@@ -26,6 +26,7 @@ import { STATUS_LABEL } from "@/lib/report-view";
 import { Chip, Table, gradeAndPlace } from "@/components/admin";
 import { AdminFrame } from "@/components/admin-frame";
 import { RecordFacts, childPath } from "@/components/admin-records";
+import "./admin-record.css";
 
 const CERTAINTY: Record<Certainty, string> = { clear: "Clear", "early-sign": "Early sign" };
 const right = (t: Tally) => `${t.correct} of ${t.total}`;
@@ -48,13 +49,19 @@ export function AdminProfile({ email, detail }: { email: string; detail: Profile
   const { test: t, stored } = detail;
   const profile = stored ? storedProfile(stored.profile) : null;
   const name = t.child?.first_name ?? "Child";
-  return <AdminFrame email={email} title={`${name}'s learner profile`}>
-    <RecordFacts facts={[
-      ["Child", <Link key="child" href={childPath(t.child_id)}>{name}</Link>], ["Test", <Link key="test" href={adminTestPath(t.id)}>Open the test</Link>],
-      ["Grade and curriculum", gradeAndPlace(t.grade, t.province)], ["Completed (Pacific)", when(t.completed_at)],
-      ["Built (Pacific)", when(stored?.built_at ?? null)], ["First built (Pacific)", when(stored?.created_at ?? null)], ["Schema version", stored?.schema_version ?? "-"],
-    ]} />
-    {!stored ? <p className="adm-note">No profile is stored for this test. The report job builds it when a test scored against BC finishes.</p>
+  return <AdminFrame email={email} title={`${name}'s learner profile`}
+    lead={<>What one finished test shows about {name}: the level, strengths, struggles and how the test went. {gradeAndPlace(t.grade, t.province)}.</>}
+    actions={<>
+      <Link className="btn ghost adm-btn" href={childPath(t.child_id)} prefetch={false}>Open {name}</Link>
+      <Link className="btn ghost adm-btn" href={adminTestPath(t.id)} prefetch={false}>Open the test</Link>
+    </>}>
+    <div className="rec-summary">
+      <p className="rec-tile"><span>Working level</span><b>{profile ? levelText(profile.level.working) : "-"}</b><small>{profile ? CERTAINTY[profile.level.certainty] : "No profile"}</small></p>
+      <p className="rec-tile is-ok"><span>Strengths</span><b>{profile ? profile.strengths.length : "-"}</b><small>secure standards</small></p>
+      <p className="rec-tile is-warn"><span>Struggles</span><b>{profile ? profile.struggles.length : "-"}</b><small>at or below the school grade</small></p>
+      <p className="rec-tile"><span>Test finished (Pacific)</span><small>{when(t.completed_at)}</small><small>Profile built {when(stored?.built_at ?? null)}</small><small>First built {when(stored?.created_at ?? null)}</small></p>
+    </div>
+    {!stored ? <p className="adm-empty">No profile is stored for this test. The report job builds it when a test scored against BC finishes.</p>
       : !profile ? <>
         <p className="adm-note">This profile was built in an older format, which this page does not read. The next build of the test replaces it.</p>
         <details className="adm-tech"><summary>Technical details</summary><p>Schema version {stored.schema_version}.</p><pre>{JSON.stringify(stored.profile, null, 2)}</pre></details>
@@ -65,7 +72,7 @@ export function AdminProfile({ email, detail }: { email: string; detail: Profile
 
 function ProfileFacts({ profile, numbers, name }: { profile: LearnerProfile; numbers: ReadonlyMap<string, number>; name: string }) {
   const { level, behaviour: b, unknowns: u, facts } = profile;
-  return <>
+  return <div className="rec-profile">
     <p className="adm-note">Written by code from the test unless marked AI. Only answers at or below the school grade make a struggle; rushed wrong answers left out of the score are not counted.</p>
 
     <h2>1. Level, by area and by BC standard</h2>
@@ -81,7 +88,7 @@ function ProfileFacts({ profile, numbers, name }: { profile: LearnerProfile; num
     {profile.strengths.length ? <ul className="adm-list">{profile.strengths.map((s) => <li key={s.code}><span className="adm-mono">{s.code}</span> {s.text} ({right(s)}, {CERTAINTY[s.certainty]})</li>)}</ul> : <p className="adm-note">No secure standard.</p>}
 
     <h2>3. Struggles</h2>
-    {profile.struggles.length === 0 ? <p className="adm-note">No struggle at or below the school grade.</p> : profile.struggles.map((s) => <section key={s.code}>
+    {profile.struggles.length === 0 ? <p className="adm-empty">No struggle at or below the school grade.</p> : profile.struggles.map((s) => <section key={s.code} className="rec-struggle">
       <h3><span className="adm-mono">{s.code}</span> {s.text}</h3>
       <div className="adm-row"><Chip tone={s.status === "needs-attention" ? "bad" : "warn"}>{STATUS_LABEL[s.status]}</Chip><span>{right(s)} right. {CERTAINTY[s.certainty]}.</span></div>
       <Table label={`Wrong answers, ${s.code}`} head={["Question", "Child answer", "Right answer", "Mistake"]} empty="No wrong answer.">
@@ -133,7 +140,7 @@ function ProfileFacts({ profile, numbers, name }: { profile: LearnerProfile; num
     <ProfileAiParts ai={profile.ai ?? {}} struggles={profile.struggles.map((s) => s.code)} name={name} />
 
     <details className="adm-tech"><summary>Technical details</summary><p>The stored profile, schema version {profile.schemaVersion}.</p><pre>{JSON.stringify(profile, null, 2)}</pre></details>
-  </>;
+  </div>;
 }
 
 /**

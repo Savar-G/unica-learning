@@ -472,6 +472,8 @@ export interface CardSetupRow {
   planStarted?: boolean | null;
   /** A plan start that needs the team: open, with Stripe's key past its life (#554). */
   stuckPlanStart?: number | null;
+  /** The child's stored plan kind (child_plan_states.kind) for this family, or null when none is stored. Absent when the read failed. */
+  planKind?: string | null;
   /**
    * Read only for a card that can start: the child's workbook 1 (its id, or null when there is none) and whether it has the
    * delivery receipt the start route requires. Null or absent means the read failed or did not run, so no start button shows.
@@ -524,7 +526,7 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
     return {
       ...c, workbookEmails: emails && planEmails ? [...emails, ...planEmailRecords].filter((e) => e.card_setup_id === c.id) : undefined,
       workbookEmailsReadAt: emails && planEmails ? workbookEmailsReadAt : undefined,
-      planStarted, stuckPlanStart: stuck.get(c.id) ?? null,
+      planStarted, stuckPlanStart: stuck.get(c.id) ?? null, planKind: plans ? plan?.kind ?? null : undefined,
     };
   }));
 }
@@ -981,6 +983,25 @@ export async function listProduction(a: AdminSession, tests: { ids: readonly str
     children: children.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name })),
     parents: parents.map((p) => ({ id: p.id, name: p.name })),
     incomplete: base.incomplete,
+  };
+}
+
+/**
+ * One family's Production stage inputs, for the family and child pages: the same sources and rules as listProduction,
+ * read for this parent only (a few small requests). A detail page: a test family is read like any other.
+ */
+export async function familyProduction(a: AdminSession, parentId: string, now = new Date()): Promise<Omit<ProductionInput, "tests">> {
+  if (!isUuid(parentId)) return { runs: [], workbooks: [], cards: [], plans: [], deliveries: [] };
+  const base = await readProductionSet(a, { only: [parentId] });
+  const light = buildBooks({ ...base, runs: base.runs.map((run) => ({ run })), deliveries: [], tests: { show: true, isTest: () => false } }, now);
+  const current = new Set(light.flatMap((b) => (b.run ? [b.run.run.id] : [])));
+  const shipped = base.workbooks.filter((w) => w.status === "shipped").map((w) => w.id);
+  const [rows, delivered] = await Promise.all([runRows(a, base.runs.filter((r) => current.has(r.id))), deliveredTimes(a.db, shipped)]);
+  const rich = new Map(rows.map((r) => [r.run.id, r]));
+  return {
+    runs: base.runs.map((run) => rich.get(run.id) ?? { run }),
+    workbooks: base.workbooks, cards: base.cards, plans: base.plans,
+    deliveries: [...delivered].map(([workbookId, deliveredAt]) => ({ workbookId, deliveredAt })),
   };
 }
 
